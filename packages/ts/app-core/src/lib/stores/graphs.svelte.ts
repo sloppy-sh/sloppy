@@ -20,7 +20,7 @@ import {
 	type CreateGraphRequest,
 	type UpdateGraphRequest
 } from '@sloppy/types';
-import { api } from '../api.js';
+import { api, resetApi } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
 import { type KnownFolder, runtime } from '../runtime.js';
 import { serverMessage } from './errors.js';
@@ -74,6 +74,8 @@ class GraphsStore {
 	#openFolder: Promise<void> | null = null;
 	#folders = $state<KnownFolder[]>([]);
 	#knownFolders: Promise<void> | null = null;
+	#rereading: Promise<void> | null = null;
+	#folderReads = $state(0);
 	/** The listing standing is the one this device kept, so an ask that will not
 	 *  answer has nothing to report over it. */
 	#asLastRead = false;
@@ -281,10 +283,39 @@ class GraphsStore {
 	private async folderChanged(): Promise<void> {
 		await this.readOpenFolder(true);
 		await Promise.all([this.readFolders(true), this.reload().catch(() => [])]);
+		await this.readTheNotesAgain();
+	}
+
+	/**
+	 * The open folder read off the device again, for a graph something other
+	 * than this app may have written into — the terminal writes the same files,
+	 * and nothing tells the app when. Does nothing where the graphs here are not
+	 * folders on the device, and one read runs at a time.
+	 */
+	readFolderAgain(): Promise<void> {
+		if (this.#folderRoot === undefined) return Promise.resolve();
+		this.#rereading ??= this.readTheNotesAgain().finally(() => {
+			this.#rereading = null;
+		});
+		return this.#rereading;
+	}
+
+	/** How many reads of the folder have FINISHED, for a surface holding
+	 *  something of it this store does not — a note's sections. */
+	get folderReads(): number {
+		return this.#folderReads;
+	}
+
+	/** Everything drawn out of the folder, read again. */
+	private async readTheNotesAgain(): Promise<void> {
+		// Whatever serves the graph out of the folder holds its own index of it,
+		// so it is served again before anything is read back.
+		resetApi();
 		await Promise.all([
 			nodes.readAgain(),
 			...this.onCanvas.map((graph) => tags.reload(graph).catch(() => {}))
 		]);
+		this.#folderReads += 1;
 	}
 
 	/** Deduped and idempotent: every surface may call it on mount. */
@@ -451,6 +482,8 @@ class GraphsStore {
 		this.#openFolder = null;
 		this.#folders = [];
 		this.#knownFolders = null;
+		this.#rereading = null;
+		this.#folderReads = 0;
 		this.#asLastRead = false;
 		prefs.set('graph', null);
 		prefs.set('alsoOnCanvas', []);

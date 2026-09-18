@@ -1,6 +1,6 @@
 import type { NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { drawnNodes, drawnReading } from "./contract.js";
+import { drawnLit, drawnNodes, drawnReading } from "./contract.js";
 
 const DID = "did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc";
 
@@ -166,5 +166,45 @@ describe("drawnReading", () => {
         active: away.ref,
       }),
     ).toEqual({ open: new Set([away.ref]), active: away.ref });
+  });
+});
+
+// The notes a question names are a set a mark can be IN, so a fold aggregates
+// it the way it aggregates tags: a mega-node standing for a named note stays in
+// ink rather than dimming with the field.
+describe("drawnLit", () => {
+  const every = [root, child, grandchild, sibling];
+
+  it("leaves a drawn note where it is", () => {
+    expect(drawnLit(every, new Set(), new Set([child.ref]))).toEqual(
+      new Set([child.ref]),
+    );
+  });
+
+  it("names the mega-node that swallowed a named note", () => {
+    expect(
+      drawnLit(every, new Set([root.ref]), new Set([grandchild.ref])),
+    ).toEqual(new Set([root.ref]));
+  });
+
+  it("carries a nested fold out to the outermost mega-node", () => {
+    expect(
+      drawnLit(
+        every,
+        new Set([root.ref, child.ref]),
+        new Set([grandchild.ref]),
+      ),
+    ).toEqual(new Set([root.ref]));
+  });
+
+  it("names nothing where the question named nothing", () => {
+    expect(drawnLit(every, new Set([root.ref]), new Set())).toEqual(new Set());
+  });
+
+  it("leaves a note the host has not loaded alone", () => {
+    const away = node(9, "2");
+    expect(drawnLit(every, new Set([root.ref]), new Set([away.ref]))).toEqual(
+      new Set([away.ref]),
+    );
   });
 });

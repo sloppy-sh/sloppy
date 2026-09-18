@@ -9,6 +9,7 @@
 	import Bold from '@lucide/svelte/icons/bold';
 	import Brackets from '@lucide/svelte/icons/brackets';
 	import Code from '@lucide/svelte/icons/code';
+	import Compass from '@lucide/svelte/icons/compass';
 	import FileCode from '@lucide/svelte/icons/file-code';
 	import Heading1 from '@lucide/svelte/icons/heading-1';
 	import Heading2 from '@lucide/svelte/icons/heading-2';
@@ -39,6 +40,7 @@
 	import { BlockHandles, type SectionActs, type SectionHolds } from './block-handles.js';
 	import { CARET_MENU, caretOptionId } from './caret-menu.svelte';
 	import { anchorLabel, CODE_PROTOCOL, CodeAnchors, codeHref } from './code-anchor.js';
+	import { CompassNode } from './compass-node.js';
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		docBlocks,
@@ -96,6 +98,7 @@
 		references,
 		code,
 		drafts,
+		onBothVersions,
 		arranging = true,
 		offering = false
 	}: BlockStackProps & {
@@ -173,6 +176,9 @@
 	let readHeld = false;
 	/** Whether anything has been written here since the note opened. */
 	let touched = false;
+	/** Whether what is waiting here has been handed to the device for the surface
+	 *  that replaces this one — {@link holdUnsaved}. */
+	let handedOver = false;
 
 	// ── Saving ───────────────────────────────────────────────────────────────
 	/** One trip to the API, holding everything it needs to outlive this surface. */
@@ -687,6 +693,22 @@
 		editor?.commands.focus(at);
 	}
 
+	/**
+	 * Puts writing the API does not have on the device for the surface that
+	 * replaces this one, and answers whether there was any — `openDraft` settles
+	 * it against what the note says then. A draft this surface never read is a
+	 * later one's to open from, so it is left where it is.
+	 */
+	export function holdUnsaved(): boolean {
+		const current = editor;
+		if (!current || current.isDestroyed || !readHeld) return false;
+		const next = docBlocks(current.state.doc);
+		if (planSave(saved, next).length === 0) return false;
+		drafts.keep(writingTo, { rows: saved, next });
+		handedOver = true;
+		return true;
+	}
+
 	/** Puts writing somebody arrived with into the section this note opened on,
 	 *  from where it saves the way everything typed here saves. A note that
 	 *  already says something keeps what it says. */
@@ -725,6 +747,10 @@
 					EmojiSuggestion(completions, () => ownCatalog),
 					ReferenceNode(() => references),
 					ReferenceSuggestion(noteCompletions, () => references),
+					CompassNode(
+						() => references,
+						() => node
+					),
 					CodeAnchors(() => code),
 					InkNode,
 					PictureNode(() => media),
@@ -763,6 +789,7 @@
 			let opened = true;
 			readHeld = false;
 			touched = false;
+			handedOver = false;
 			void (async () => {
 				await drafts.settled(opening);
 				const held = await drafts.read(opening);
@@ -776,7 +803,9 @@
 						created.commands.insertContentAt(at, sections, { updateSelection: false });
 					}
 				} else {
-					open(openDraft(held, stack, created.schema));
+					const settled = openDraft(held, stack, created.schema);
+					open(settled);
+					if (settled.bothVersions) onBothVersions?.(opening);
 				}
 				refreshMarks();
 				saveSoon();
@@ -823,7 +852,7 @@
 				// The last write of a note being left. No surface stays open for it
 				// to be reported on, so the device holds the writing until it lands,
 				// and the note opens from there when it does not.
-				if (last) {
+				if (last && !handedOver) {
 					if (!knew) void holdOnLeaving(last);
 					void run(last)
 						.then(
@@ -1063,6 +1092,12 @@
 			label: 'Diagram',
 			icon: Workflow,
 			run: () => editor?.commands.insertDiagram()
+		},
+		{
+			id: 'compass',
+			label: 'Compass',
+			icon: Compass,
+			run: () => editor?.commands.insertCompass()
 		}
 	]);
 </script>
@@ -1608,6 +1643,153 @@
 		margin-top: 0.5rem;
 		width: 100%;
 		resize: vertical;
+	}
+	:global(.sloppy-compass) {
+		margin: 0.85em 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--card);
+		padding: 0.6rem 0.75rem;
+		container-type: inline-size;
+	}
+	:global(.sloppy-compass.is-selected) {
+		outline: 2px solid color-mix(in oklab, var(--primary) 60%, transparent);
+		outline-offset: 2px;
+	}
+	:global(.sloppy-compass-slots) {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.75rem;
+	}
+	:global(.sloppy-compass-note) {
+		border: 1px solid var(--border);
+		border-radius: calc(var(--radius) - 2px);
+		padding: 0.4rem 0.6rem;
+	}
+	:global(.sloppy-compass-address) {
+		font-size: 0.875rem;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-compass-title) {
+		margin: 0;
+		font-weight: 500;
+		overflow-wrap: anywhere;
+	}
+	/* The note in the middle and the four slots around it — DESIGN.md § "The
+	   compass card". Below this the four stack into one column, north to west. */
+	@container (min-width: 30rem) {
+		:global(.sloppy-compass-slots) {
+			grid-template-columns: 1fr 1fr 1fr;
+			align-items: start;
+		}
+		:global(.sloppy-compass-note) {
+			grid-column: 2;
+			grid-row: 2;
+			text-align: center;
+		}
+		:global(.sloppy-compass-slot[data-direction='north']) {
+			grid-column: 2;
+			grid-row: 1;
+		}
+		:global(.sloppy-compass-slot[data-direction='west']) {
+			grid-column: 1;
+			grid-row: 2;
+		}
+		:global(.sloppy-compass-slot[data-direction='east']) {
+			grid-column: 3;
+			grid-row: 2;
+		}
+		:global(.sloppy-compass-slot[data-direction='south']) {
+			grid-column: 2;
+			grid-row: 3;
+		}
+	}
+	:global(.sloppy-compass-word) {
+		margin: 0;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-compass ul.sloppy-compass-notes) {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.15rem 0.75rem;
+		margin: 0.2rem 0 0;
+		padding: 0;
+		list-style: none;
+	}
+	:global(.sloppy-compass-notes li) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.15rem;
+		margin: 0;
+	}
+	:global(.sloppy-compass-asks) {
+		margin: 0.2rem 0 0;
+	}
+	:global(.sloppy-compass-act),
+	:global(.sloppy-compass-off) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 2.25rem;
+		border-radius: calc(var(--radius) - 2px);
+		padding: 0.25rem 0.55rem;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-compass-off) {
+		min-width: 2.25rem;
+	}
+	:global(.sloppy-compass-off svg) {
+		width: 0.875rem;
+		height: 0.875rem;
+	}
+	:global(.sloppy-compass-act) {
+		margin-top: 0.1rem;
+		margin-left: -0.55rem;
+	}
+	:global(.sloppy-compass-act:hover),
+	:global(.sloppy-compass-off:hover) {
+		background: var(--muted);
+		color: var(--foreground);
+	}
+	:global(.sloppy-compass-finder) {
+		margin-top: 0.35rem;
+	}
+	:global(.sloppy-compass-field) {
+		width: 100%;
+		border: 1px solid var(--border);
+		border-radius: calc(var(--radius) - 2px);
+		background: var(--background);
+		padding: 0.4rem 0.55rem;
+		font-size: 0.875rem;
+		color: var(--foreground);
+		outline: none;
+	}
+	:global(.sloppy-compass-field:focus-visible) {
+		border-color: var(--ring);
+	}
+	:global(.sloppy-compass ul.sloppy-compass-menu) {
+		margin: 0.25rem 0 0;
+		padding: 0;
+		list-style: none;
+		max-height: 12rem;
+		overflow-y: auto;
+	}
+	:global(.sloppy-compass-choice) {
+		border-radius: calc(var(--radius) - 2px);
+		padding: 0.4rem 0.55rem;
+		font-size: 0.875rem;
+		cursor: pointer;
+	}
+	:global(.sloppy-compass-choice[aria-selected='true']) {
+		background: var(--muted);
+	}
+	:global(.sloppy-compass-said) {
+		margin: 0.25rem 0 0;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
 	}
 	:global(.sloppy-diagram) {
 		margin: 0.85em 0;

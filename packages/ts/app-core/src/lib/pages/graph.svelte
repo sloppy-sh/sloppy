@@ -33,6 +33,7 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
+	import Footprints from '@lucide/svelte/icons/footprints';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Hash from '@lucide/svelte/icons/hash';
 	import HistoryIcon from '@lucide/svelte/icons/history';
@@ -128,8 +129,9 @@
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import PersonSurface from '../components/person-surface.svelte';
+	import ReviewSheet from '../components/review-sheet.svelte';
 	import { api } from '../api.js';
-	import type { KnownFolder } from '../runtime.js';
+	import { runtime, type KnownFolder } from '../runtime.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
 	import { saveHere, savesFiles } from '../save-file.js';
@@ -147,6 +149,7 @@
 	import { people } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
+	import { review } from '../stores/review.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
@@ -155,6 +158,7 @@
 	import HistorySurface from './history.svelte';
 	import Note from './node.svelte';
 	import Writing from './writing.svelte';
+	import type { NoteLanding } from './page-state.js';
 	import { citationUrl, nodeHref, refFromPath } from './routes.js';
 	import {
 		acceleratorFor,
@@ -397,7 +401,57 @@
 		gitSettings.clear();
 		find.clear();
 		deleted.clear();
+		review.clear();
+		reviewing = false;
+		readProjectFiles();
 		closeUndrawn();
+	}
+
+	/** The project's own files, `undefined` where this graph is nobody's project
+	 *  and `null` before the shell has answered. */
+	let projectFiles = $state.raw<Awaited<ReturnType<typeof runtime.project>> | null>(null);
+	let reviewing = $state(false);
+
+	/** An answer about the folder that was is not about the folder that is. */
+	let askedFor = 0;
+
+	/** Ask the shell where the project this graph is about is kept. Asked again
+	 *  for every folder opened: another folder is another project, or none. */
+	function readProjectFiles(): void {
+		const asking = ++askedFor;
+		projectFiles = null;
+		void runtime.project().then(
+			(found) => {
+				if (asking === askedFor) projectFiles = found;
+			},
+			() => {
+				if (asking === askedFor) projectFiles = undefined;
+			}
+		);
+	}
+
+	$effect(() => {
+		readProjectFiles();
+		return () => {
+			askedFor++;
+		};
+	});
+
+	/** A question is asked of one graph; another one in front of somebody has not
+	 *  been asked it. */
+	$effect(() => {
+		review.forget(graphs.current);
+	});
+
+	/** What the code has left behind, asked for the graph on screen — DESIGN.md
+	 *  § "What the code left behind". A field that could not be read whole has no
+	 *  answer to this: the notes missing from it are the ones that would say the
+	 *  code was written about. */
+	function askWhatIsLeft(): void {
+		const project = projectFiles;
+		if (!project || shortField) return;
+		reviewing = true;
+		void graphs.readFolderAgain().then(() => review.ask(graphs.current, visible, project));
 	}
 
 	/** The graphs on the canvas, in the order the reader put them there. */
@@ -407,6 +461,8 @@
 	const open = $derived(page.state.note ?? null);
 	/** Every note open on the reading surface, in the order they were opened. */
 	const openNotes = $derived<readonly OwnedRef[]>(page.state.notes ?? (open ? [open] : []));
+	/** The part of the open note an act sent the reader to, where one did. */
+	const landOn = $derived(page.state.at);
 	/** An address is read inside one graph, so a tab names its own only where a
 	 *  note from a second one is open beside it. */
 	const tabs = $derived.by(() => {
@@ -873,8 +929,15 @@
 				showing = pictureTurn(wallpaper, Date.now()) ?? null;
 			}
 		};
+		// A graph kept as files may have been written to while somebody was
+		// elsewhere, and nothing tells the app when.
+		const readAgain = (): void => void graphs.readFolderAgain();
 		document.addEventListener('visibilitychange', back);
-		return () => document.removeEventListener('visibilitychange', back);
+		window.addEventListener('focus', readAgain);
+		return () => {
+			document.removeEventListener('visibilitychange', back);
+			window.removeEventListener('focus', readAgain);
+		};
 	});
 
 	// A graph the reader has moved into, or stood up beside the one they were
@@ -925,13 +988,17 @@
 	}
 
 	/** Shallow, so the graph behind the notes is never torn down and rebuilt. */
-	function goTo(ref: OwnedRef, strip: readonly OwnedRef[]): void {
+	function goTo(
+		ref: OwnedRef,
+		strip: readonly OwnedRef[],
+		at: NoteLanding | undefined = undefined
+	): void {
 		aside = [];
 		behind = [...behind, standing];
 		ahead = [];
 		standing = ref;
 		bringingTo = ref;
-		pushState(nodeHref(ref), { note: ref, notes: [...strip] });
+		pushState(nodeHref(ref), { note: ref, notes: [...strip], ...(at === undefined ? {} : { at }) });
 	}
 
 	/** The entry being read, made to say something else. Tidying up is not
@@ -985,7 +1052,8 @@
 			from: OwnedRef | null;
 			shape: NoteTemplate | null;
 			typed?: { title: string; body: string; where: 'title' | 'body' };
-		} | null = null
+		} | null = null,
+		at: NoteLanding | undefined = undefined
 	): void {
 		naming = wrote ? ref : null;
 		seed = wrote?.shape ? { ref, shape: wrote.shape } : null;
@@ -994,7 +1062,7 @@
 		leaveWriting();
 		refused = null;
 		openInPlace(ref);
-		goTo(ref, inPlaceOf(ref, wrote?.from ?? null));
+		goTo(ref, inPlaceOf(ref, wrote?.from ?? null), at);
 	}
 
 	/** The outline reads a note where the note stands, so one reached while the
@@ -1999,6 +2067,7 @@
 					nodes={visible}
 					{collapsed}
 					{selection}
+					lit={foreign || notNow ? undefined : review.lit}
 					fields={foreign || asWas ? undefined : graphs.fields}
 					viewer={session.viewer?.did}
 					remountKey={asWas ? asWas.commit : foreign?.ref}
@@ -2347,6 +2416,12 @@
 									<ListChecks class="size-4 text-muted-foreground" />
 									Choose notes
 								</DropdownMenu.Item>
+								{#if projectFiles && !shortField}
+									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={askWhatIsLeft}>
+										<Footprints class="size-4 text-muted-foreground" />
+										What the code left behind
+									</DropdownMenu.Item>
+								{/if}
 								{#if graphHistory.keeps}
 									<DropdownMenu.Item
 										class="min-h-11 gap-2"
@@ -2714,6 +2789,12 @@
 
 <PersonSurface bind:did={meeting} />
 
+<ReviewSheet
+	bind:open={reviewing}
+	onOpen={(ref, at) => show(ref, null, at)}
+	onWrote={(ref) => show(ref, { from: null, shape: null })}
+/>
+
 <ResponsiveModal
 	bind:open={numbering}
 	title="Number a new branch"
@@ -2799,6 +2880,7 @@
 			{naming}
 			{seed}
 			{typed}
+			{landOn}
 			writingAnother={creating}
 			{openNotes}
 			onAsking={(up) => (noteAsking = up)}

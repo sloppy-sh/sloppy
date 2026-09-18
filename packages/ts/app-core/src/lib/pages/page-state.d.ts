@@ -9,6 +9,10 @@
 
 import type { OwnedRef } from '@sloppy/types';
 
+/** A part of a note somebody was sent to: its compass card, or the section a
+ *  decision gives its reason in. */
+export type NoteLanding = 'compass' | 'why';
+
 declare global {
 	namespace App {
 		interface PageState {
@@ -17,6 +21,9 @@ declare global {
 			/** Every note open beside it, this one included, in the order they
 			 *  were opened. Absent is the one note in {@link note}, or none. */
 			notes?: readonly OwnedRef[];
+			/** Where in {@link note} to open. Absent is the top of it, which is
+			 *  every way of reaching a note but an act that named a part of one. */
+			at?: NoteLanding;
 		}
 	}
 }

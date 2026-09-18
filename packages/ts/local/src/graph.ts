@@ -425,6 +425,21 @@ export class LocalGraph {
     return held?.deleted_at === undefined ? held : undefined;
   }
 
+  /**
+   * One note taken off the folder again, for a file something other than this
+   * reader may have written since the index was built. A file that is not there,
+   * or that this build cannot read, leaves the index as it was.
+   */
+  async readAgain(ref: OwnedRef): Promise<StoredNote | undefined> {
+    const id = this.notes.get(ref)?.ulid ?? localOf(ref);
+    const bytes = await this.files.read(notePath(id));
+    const read = bytes && this.readNote(bytes);
+    if (!read || read.ref !== ref) return this.notes.get(ref);
+    this.notes.set(ref, read);
+    this.places = null;
+    return read;
+  }
+
   findDeleted(ref: OwnedRef): StoredNote | undefined {
     const held = this.notes.get(ref);
     return held?.deleted_at === undefined ? undefined : held;

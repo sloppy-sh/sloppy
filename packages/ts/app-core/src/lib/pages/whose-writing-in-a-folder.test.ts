@@ -289,4 +289,34 @@ describe('the folder’s owner, reading it back', () => {
 		expect(screen()).toContain('Ada Lovelace');
 		expect(screen()).toContain('with');
 	});
+
+	// The terminal offers on a note a person has written in whatever gates it —
+	// docs/ARCHITECTURE.md § "Tooling and the review" — so an open note carries
+	// offers too, and whoever wrote it is who takes them in.
+	it('is shown a change offered on a note it wrote that nothing gates', async () => {
+		const held = await folder();
+		await client(held.store, held.helperDid).proposeAmendment({
+			note: held.open,
+			title: 'The opening, as a machine would have it',
+			tags: [],
+			blocks: [],
+			message: 'Drafted from the terminal'
+		});
+
+		await readingAs(client(held.store));
+		await open(held.open);
+
+		expect(screen()).toContain('Offered changes (1)');
+		button('Offered changes (1)').click();
+		await settle();
+		button('Drafted from the terminal').click();
+		await settle();
+		button('Take it in').click();
+		await settle();
+
+		const after = await client(held.store).getNode(held.open);
+		expect(after?.title).toBe('The opening, as a machine would have it');
+		expect(after?.contributors).toEqual([held.helperDid]);
+		expect(authorsOf(after!)).toEqual([held.did]);
+	});
 });

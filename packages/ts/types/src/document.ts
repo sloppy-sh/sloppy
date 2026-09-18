@@ -149,6 +149,92 @@ export function citedUploads(content: BlockDocument): string[] {
  */
 export const REFERENCE_NOTE_ATTR = "note";
 
+/** The element kind a compass is written as: an element inside a section,
+ *  holding four slots of citations. docs/ARCHITECTURE.md § "The compass". */
+export const COMPASS_TYPE = "compass";
+
+/**
+ * The heading a Decision writes its reasoning under. The shape is a compass and
+ * this section, and nothing on the note marks one, so this word is what the
+ * template writes and what the review reads — change it in one place or the two
+ * stop meaning the same note. docs/ARCHITECTURE.md § "The compass".
+ */
+export const DECISION_WHY_HEADING = "Why";
+
+/**
+ * The four slots, in the order a compass is written and read in. **These
+ * tokens are the wire**; the words a surface draws beside them — "Part of",
+ * "Made of", "Like", "Instead of" — are copy, and may change or be translated
+ * without moving anything a peer holds.
+ */
+export const COMPASS_DIRECTIONS = ["north", "south", "east", "west"] as const;
+export type CompassDirection = (typeof COMPASS_DIRECTIONS)[number];
+
+/** What each slot points at. An empty list is a slot nobody has filled, which
+ *  is what an absent one reads as. */
+export type Compass = Record<CompassDirection, OwnedRef[]>;
+
+/** One filled place in a slot. A slot cites a note under
+ *  {@link REFERENCE_NOTE_ATTR}, the same key a sentence cites one under, so
+ *  every rule that reads or withholds a citation reaches it without being told
+ *  what a compass is. */
+export interface CompassCitation {
+  [REFERENCE_NOTE_ATTR]: OwnedRef;
+}
+
+/** The compass node holding these slots, as the editor and the vault write one.
+ *  All four are written; an empty slot is an empty list. */
+export function compassNode(slots: Compass): DocumentNode {
+  const attrs: Record<string, CompassCitation[]> = {};
+  for (const direction of COMPASS_DIRECTIONS) {
+    attrs[direction] = slots[direction].map((note) => ({
+      [REFERENCE_NOTE_ATTR]: note,
+    }));
+  }
+  return { type: COMPASS_TYPE, attrs };
+}
+
+/** The slots a node holds where it is a compass, absent where it is not. */
+function compassAt(held: unknown): Compass | undefined {
+  if (held === null || typeof held !== "object") return undefined;
+  const node = held as DocumentNode;
+  if (node.type !== COMPASS_TYPE) return undefined;
+  const attrs = node.attrs ?? {};
+  const slots = {} as Compass;
+  for (const direction of COMPASS_DIRECTIONS) {
+    const named = attrs[direction];
+    slots[direction] = (Array.isArray(named) ? named : []).flatMap((one) => {
+      const ref = OwnedRefSchema.safeParse(citedIn(one));
+      return ref.success ? [ref.data] : [];
+    });
+  }
+  return slots;
+}
+
+function citedIn(place: unknown): unknown {
+  return place === null || typeof place !== "object"
+    ? undefined
+    : (place as Record<string, unknown>)[REFERENCE_NOTE_ATTR];
+}
+
+/**
+ * The compass a section holds, or absent where it holds none. Where a document
+ * carries two, the first one in it is the answer: a note points one way, and a
+ * second compass is a hand in the file rather than a second heading.
+ */
+export function compassOf(content: BlockDocument): Compass | undefined {
+  const find = (nodes: readonly DocumentNode[]): Compass | undefined => {
+    for (const held of nodes) {
+      const slots = compassAt(held);
+      if (slots) return slots;
+      const deeper = held.content && find(held.content);
+      if (deeper) return deeper;
+    }
+    return undefined;
+  };
+  return find(content.content ?? []);
+}
+
 /**
  * Every note a section's document cites, in the order it cites them and
  * without repeats — which is what a note's `references` are derived from, and
@@ -161,6 +247,10 @@ export const REFERENCE_NOTE_ATTR = "note";
  * than by removing the element, so a stored document is also whatever some
  * client wrote — anything held there that is not a `<did>/<ulid>` names no note
  * and is skipped, because an edge to nowhere must not be drawn.
+ *
+ * A compass slot is one of these: filling one writes that same key, so the line
+ * it draws is the line the same note named in a sentence would draw, and the
+ * slot is withheld from a reader who may not follow it by the same rule.
  */
 export function citedNotes(content: BlockDocument): OwnedRef[] {
   const cited = new Set<OwnedRef>();

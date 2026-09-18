@@ -97,6 +97,7 @@ import {
   splitOwnedRef,
   ulid,
   writeOutcome,
+  writesAlone,
 } from "@sloppy/types";
 import {
   type EmojiDrawing,
@@ -144,7 +145,7 @@ import {
   readIdentities,
 } from "./identity.js";
 import { lookWritten, NoteWriter, offerInstead } from "./notes.js";
-import { absent, checked, contested, refuse } from "./refusal.js";
+import { absent, checked, contested, refuse, sectionGone } from "./refusal.js";
 import { recent, search } from "./search.js";
 import { type KnownVault, readVaults, writeVaults } from "./vaults.js";
 import {
@@ -523,6 +524,7 @@ export class LocalApi implements SloppyApi {
     const request = checked(() => CreateBlockRequestSchema.parse(asked));
     return this.write(async () => {
       const graph = await this.holder(request.node);
+      await graph.readAgain(request.node);
       const note = graph.find(request.node);
       if (!note) throw absent("That note is not here.");
       const writing = await this.writing(graph, note);
@@ -559,10 +561,15 @@ export class LocalApi implements SloppyApi {
     const request = checked(() => UpdateBlockRequestSchema.parse(asked));
     if (request.after === ref) throw refuse("A block cannot follow itself.");
     return this.write(async () => {
-      const graph = await this.holderOfSection(ref);
-      const held = graph.sectionAt(ref);
-      if (!held || held.note.deleted_at !== undefined) {
-        throw absent("That block is not here.");
+      const graph = await this.graphHoldingSection(ref);
+      const was = graph?.sectionAt(ref);
+      if (graph && was) await graph.readAgain(was.note.ref);
+      const held = graph?.sectionAt(ref);
+      if (held && held.note.deleted_at !== undefined) {
+        throw absent("That note is in the bin.");
+      }
+      if (!graph || !held) {
+        throw sectionGone("That section is no longer in this note.");
       }
       const section = held.note.sections[held.at];
       if (
@@ -616,6 +623,8 @@ export class LocalApi implements SloppyApi {
   async deleteBlock(ref: OwnedRef): Promise<void> {
     await this.write(async () => {
       const graph = await this.graphHoldingSection(ref);
+      const was = graph?.sectionAt(ref);
+      if (graph && was) await graph.readAgain(was.note.ref);
       const held = graph?.sectionAt(ref);
       if (!graph || !held) return;
       const writing = await this.writing(graph, held.note);
@@ -655,7 +664,12 @@ export class LocalApi implements SloppyApi {
       const note = graph.find(request.note);
       if (!note) throw absent("That note is not here.");
       const writer = await this.writer;
-      if (writeOutcome(note, writer) === "lands") {
+      const whose = {
+        created_by: splitOwnedRef(note.ref).did,
+        owner: note.owner,
+        authors: note.authors,
+      };
+      if (writesAlone(whose, writer)) {
         throw refuse(
           "You can write in this note. Change it rather than offering a change.",
         );
@@ -1743,12 +1757,6 @@ export class LocalApi implements SloppyApi {
       if (graph.sectionAt(ref)) return graph;
     }
     return undefined;
-  }
-
-  private async holderOfSection(ref: OwnedRef): Promise<LocalGraph> {
-    const graph = await this.graphHoldingSection(ref);
-    if (!graph) throw absent("That block is not here.");
-    return graph;
   }
 
   /** Which of these notes this device already keeps in a graph other than the

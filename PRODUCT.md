@@ -36,7 +36,9 @@ One person thinking, the people they let read over their shoulder, and the ones 
   They want to be told when the code under a piece of reasoning has moved since they last
   read it, and never to be nagged about the ones they have not got to. Their colleagues read
   the same notes out of the same repository, and a colleague who disagrees offers a change
-  the way any contributor does.
+  the way any contributor does. A note of theirs says what it is part of, what it is made
+  of, what it is like and what was chosen instead, and what the code has left behind is
+  something they ask the graph rather than something it tells them.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the hosted, self-hosted and
 fully-local modes that serve all five.

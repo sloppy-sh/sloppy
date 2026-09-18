@@ -29,6 +29,7 @@
 		BlockViewSchema,
 		citedNotes,
 		compareOrd,
+		compassOf,
 		graphOf,
 		isAddress,
 		isInSubtree,
@@ -89,6 +90,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import * as Tabs from '@sloppy/ui/tabs';
+	import { headsWhy } from '@sloppy/vault';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import CiteCode from '../components/cite-code.svelte';
@@ -118,6 +120,7 @@
 	import { publications, type VersionChanges } from '../stores/publications.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { addressNesting, type AddressNesting } from './address-nesting.js';
+	import type { NoteLanding } from './page-state.js';
 	import { citationUrl } from './routes.js';
 	import { WRITE_UNDER } from './shortcuts.js';
 	import { session } from '../stores/session.svelte.js';
@@ -128,6 +131,7 @@
 		naming = null,
 		seed = null,
 		typed = null,
+		landOn,
 		writingAnother = false,
 		openNotes = [],
 		onAsking,
@@ -157,6 +161,9 @@
 		/** Called once that writing has been taken up, for the same reason
 		 *  {@link onSeeded} is. */
 		onTyped?: () => void;
+		/** The part of this note an act sent the reader to, which it opens at.
+		 *  Absent opens it at the top. */
+		landOn?: NoteLanding;
 		/** Write the note that springs from this one. The surface for it opens on
 		 *  the asking, which is whatever is showing this note. */
 		onWrite: (want: {
@@ -261,7 +268,6 @@
 	interface Refusals {
 		title?: string;
 		shape?: string;
-		writing?: string;
 		link?: string;
 		unlink?: string;
 		tag?: string;
@@ -276,6 +282,12 @@
 	}
 	const refusals = new SvelteMap<OwnedRef, Refusals>();
 	const refused = $derived<Refusals>(refusals.get(ref) ?? {});
+
+	/** Notes read again holding two versions of a section somebody was writing
+	 *  in. Nothing of theirs was lost and nothing is theirs to fix, so it is said
+	 *  the way anything else that happened to the note is said. */
+	const alsoWrote = new SvelteSet<OwnedRef>();
+	const alsoWritten = $derived(alsoWrote.has(ref));
 
 	function refuse(of: OwnedRef, act: keyof Refusals, says: string | null): void {
 		const held = { ...(refusals.get(of) ?? {}) };
@@ -308,7 +320,7 @@
 		// Cleared on the way out rather than the way in: this one is about what the
 		// note now holds, not about an act the reader asked for.
 		return () => {
-			if (refusals.get(of)?.writing !== undefined) refuse(of, 'writing', null);
+			alsoWrote.delete(of);
 			if (untrack(() => moved)?.of === of) moved = null;
 		};
 	});
@@ -324,6 +336,7 @@
 	let bodyStack = $state<{
 		focusBody: (at?: 'start' | 'end') => void;
 		carry: (text: string) => void;
+		holdUnsaved: () => boolean;
 	} | null>(null);
 	/** Writing this note arrived with, until the surface it goes into is up. */
 	let carried = $state<{ ref: OwnedRef; body: string } | null>(null);
@@ -724,9 +737,15 @@
 		},
 		read: async (target: OwnedRef) =>
 			nodes.get(target) ?? heldNotes.get(target)?.note ?? (await nodes.fetch(target)),
-		write: async (name: string, relation: 'under' | 'after') => {
+		write: async (name: string, relation: 'under' | 'after' | 'free') => {
 			try {
-				return await nodes.create({ from: { relation, note: ref }, title: name });
+				return await nodes.create({
+					from:
+						relation === 'free'
+							? { relation, ...(inGraph ? { graph: inGraph } : {}) }
+							: { relation, note: ref },
+					title: name
+				});
 			} catch (error) {
 				throw new Error(
 					serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.',
@@ -781,8 +800,17 @@
 	 *  a section written now would go nowhere. */
 	const holdingWriting = $derived(offering && offerDraft === undefined);
 	const shownTags = $derived(offerDraft?.tags ?? node?.tags ?? []);
+	/** Whether an offer standing here is this person's to take in: the note's
+	 *  owner, and where it has none, whoever has written in it — a note nothing
+	 *  gates carries offers too (docs/ARCHITECTURE.md § "Tooling and the
+	 *  review"). */
+	const settlesOffers = $derived(
+		node !== undefined &&
+			viewerDid !== '' &&
+			(node.owner === undefined ? authorsOf(node).includes(viewerDid) : node.owner === viewerDid)
+	);
 	/** Every offer standing on this note, oldest first. */
-	const standing = $derived(node?.owner === undefined ? [] : offers.on(ref));
+	const standing = $derived(settlesOffers ? offers.on(ref) : []);
 	/** The one this person has standing here, which they may take back. */
 	const myOffer = $derived(offering ? offers.mine(ref) : undefined);
 	/** Whoever writes this note, where that is somebody else. Until their store
@@ -817,9 +845,9 @@
 
 	$effect(() => {
 		const owner = node?.owner;
-		if (owner === undefined) return;
+		if (owner === undefined && !settlesOffers) return;
 		void offers.read(ref);
-		if (owner !== viewerDid) people.resolve(owner);
+		if (owner !== undefined && owner !== viewerDid) people.resolve(owner);
 	});
 
 	// The writing surface opens on the offer this person already has standing
@@ -1586,6 +1614,37 @@
 		void tick().then(() => startAtTheirPlace(opening));
 	});
 
+	/** The section an act sent the reader to, where this note holds one. */
+	const landingAt = $derived.by(() => {
+		if (landOn === undefined) return undefined;
+		const found =
+			landOn === 'compass'
+				? blocks.find((one) => compassOf(one.content) !== undefined)
+				: blocks.find((one) => headsWhy(one.content));
+		return found?.ref;
+	});
+
+	/** The one act already answered, so a save that rewrites the stack does not
+	 *  pull the reader back there. */
+	let sentTo: string | null = null;
+
+	$effect(() => {
+		const section = landingAt;
+		const reading = side === 'note';
+		untrack(() => {
+			if (section === undefined || !reading) return;
+			const asked = `${ref} ${landOn} ${section}`;
+			if (sentTo === asked) return;
+			sentTo = asked;
+			void tick().then(() => {
+				const rows = [...(noteBody?.querySelectorAll('[data-block-ref]') ?? [])];
+				rows
+					.find((row) => row.getAttribute('data-block-ref') === section)
+					?.scrollIntoView({ block: 'start' });
+			});
+		});
+	});
+
 	$effect(() => {
 		const opening = ref;
 		const starting = untrack(() => {
@@ -1851,33 +1910,48 @@
 	const rereading = new SvelteSet<OwnedRef>();
 
 	/**
-	 * The note as it stands now, after a write was refused because the section
-	 * had been written somewhere else. The surface is built again from it, and
-	 * opens on what this device is still holding beside what came in.
+	 * The note as it stands now, and the surface built again from it. After a
+	 * refusal it is built whatever the read says, since the stamps the next write
+	 * is conditioned on have moved, and the trip that was refused has already kept
+	 * what it could not send. A folder read puts this surface's unsaved writing
+	 * down first, so the surface replacing it settles it section by section.
 	 */
-	async function reopen(of: OwnedRef): Promise<void> {
-		if (rereading.has(of)) return;
+	async function readTheNoteAgain(
+		of: OwnedRef,
+		after: 'a refusal' | 'a folder read'
+	): Promise<void> {
+		if (rereading.has(of) || seeding.has(of)) return;
 		rereading.add(of);
 		try {
 			const stack = (await api.listBlocks(of)).sort(byOrd);
+			const held = of === ref ? blocks : (read.get(of) ?? []);
+			if (after === 'a folder read') {
+				if (!differs(held, stack)) return;
+				if (of === ref) bodyStack?.holdUnsaved();
+			}
 			remember(of, stack);
-			refuse(of, 'writing', 'This note was also written somewhere else. Both versions are here.');
 			if (of !== ref) return;
+			alsoWrote.delete(of);
 			shown = { of, stack };
 			rebuilt += 1;
 		} catch {
-			// The surface is holding the writing and says so; a read that will not
-			// answer takes nothing away from it.
+			// What is on screen is still the note; a read that will not answer says
+			// nothing about it.
 		} finally {
 			rereading.delete(of);
 		}
 	}
 
+	$effect(() => {
+		if (graphs.folderReads === 0) return;
+		untrack(() => void readTheNoteAgain(ref, 'a folder read'));
+	});
+
 	/** What the writing surface is told when a write does not land, which decides
 	 *  whether it keeps trying and what it says. */
 	function refusedWrite(of: OwnedRef, error: unknown): Error {
 		const failure = saveFailure(error);
-		if (failure.trouble === 'elsewhere') void reopen(of);
+		if (failure.trouble === 'elsewhere') void readTheNoteAgain(of, 'a refusal');
 		return failure;
 	}
 
@@ -2298,8 +2372,10 @@
 			{/if}
 		</div>
 
-		{#if refused.writing}
-			<p class="pb-1 text-sm text-destructive" role="alert">{refused.writing}</p>
+		{#if alsoWritten}
+			<p class="pb-1 text-sm text-muted-foreground" role="status">
+				This note was also written somewhere else. Both versions are here.
+			</p>
 		{/if}
 		{#if saysHere}
 			<p class="pb-1 text-sm text-destructive" role="alert">{saysHere}</p>
@@ -2500,15 +2576,15 @@
 						<PenLine class="size-3.5 shrink-0" />
 						Only you write this
 					</button>
-					{#if standing.length > 0}
-						<button
-							type="button"
-							onclick={() => (readingOffers = true)}
-							class="inline-flex min-h-9 items-center rounded-md px-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-						>
-							Offered changes ({standing.length})
-						</button>
-					{/if}
+				{/if}
+				{#if standing.length > 0}
+					<button
+						type="button"
+						onclick={() => (readingOffers = true)}
+						class="inline-flex min-h-9 items-center rounded-md px-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					>
+						Offered changes ({standing.length})
+					</button>
 				{/if}
 				{#if publishable && (publication || carriedBy)}
 					<button
@@ -2626,6 +2702,7 @@
 				{:else if readOnly}
 					{#key rebuilt}
 						<HeldStack
+							note={node}
 							author={node.created_by}
 							blocks={stack}
 							pictures={noteMedia}
@@ -2649,6 +2726,7 @@
 							onUpdate={editBlock}
 							onRemove={dropBlock}
 							onReorder={(block: OwnedRef, after: OwnedRef | null) => editBlock(block, { after })}
+							onBothVersions={(note: OwnedRef) => alsoWrote.add(note)}
 						/>
 					{/key}
 				{/if}
@@ -3015,7 +3093,7 @@
 			/>
 		{/if}
 
-		{#if node.owner === viewerDid && viewerDid !== ''}
+		{#if settlesOffers}
 			<OfferedChanges
 				bind:open={readingOffers}
 				note={node}

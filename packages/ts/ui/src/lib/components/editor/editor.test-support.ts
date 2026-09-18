@@ -7,6 +7,7 @@ import { TaskItem, TaskList } from '@tiptap/extension-list';
 import StarterKit from '@tiptap/starter-kit';
 import type { CustomEmojiEntry } from '../../emoji/catalog.js';
 import { CODE_PROTOCOL } from './code-anchor.js';
+import { CompassNode } from './compass-node.js';
 import type { NoteCode, NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
 import { docBlocks, openBlocks, type DraftStore, type SavedBlock } from './document.js';
 import { DRAWN_ELEMENTS } from './elements.js';
@@ -18,9 +19,19 @@ import { NoteDocument, SectionNode } from './section-node.js';
 
 export const OWNER = 'did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc';
 
+/** Crockford's base 32, which is the only alphabet a ULID is read in: a digit
+ *  outside it makes a ref that every reader of one skips. */
+const ULID_DIGITS = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
 let ulid = 0;
 export function ref(): OwnedRef {
-	return `${OWNER}/${(++ulid).toString(36).toUpperCase().padStart(26, '0')}` as OwnedRef;
+	let held = ++ulid;
+	let said = '';
+	do {
+		said = ULID_DIGITS[held % 32] + said;
+		held = Math.floor(held / 32);
+	} while (held > 0);
+	return `${OWNER}/${said.padStart(26, '0')}` as OwnedRef;
 }
 
 /** One section, from the elements written into it. */
@@ -163,6 +174,7 @@ export function makeEditor(blocks: readonly BlockView[] = []): {
 			InkNode,
 			PictureNode(() => undefined),
 			ReferenceNode(() => undefined),
+			CompassNode(() => undefined),
 			...DRAWN_ELEMENTS
 		]
 	});

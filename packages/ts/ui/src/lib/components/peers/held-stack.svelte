@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Somebody else's sections, drawn from the same element kinds `../editor`
 	// writes them in, on a surface nobody can type into.
-	import type { BlockView } from '@sloppy/types';
+	import type { BlockView, NodeView } from '@sloppy/types';
 	import { Editor } from '@tiptap/core';
 	import { TaskItem, TaskList } from '@tiptap/extension-list';
 	import type { Transaction } from '@tiptap/pm/state';
@@ -9,6 +9,7 @@
 	import { untrack } from 'svelte';
 	import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 	import { CODE_PROTOCOL } from '../editor/code-anchor.js';
+	import { CompassNode } from '../editor/compass-node.js';
 	import type { NoteEmoji } from '../editor/contract.js';
 	import { openBlocks } from '../editor/document.js';
 	import { DRAWN_ELEMENTS } from '../editor/elements.js';
@@ -20,12 +21,15 @@
 	import { withoutPeerAddresses } from './held-document.js';
 
 	let {
+		note,
 		author,
 		blocks,
 		pictures,
 		references,
 		emoji
 	}: {
+		/** The note these sections are of, which is what a compass points out from. */
+		note: Pick<NodeView, 'title' | 'address'>;
 		/** Whose note this is: their catalog is what its shortcodes mean. */
 		author: string;
 		/** Their stack, in `ord` order. */
@@ -55,6 +59,10 @@
 					TaskItem.configure({ nested: true }),
 					EmojiNode(() => catalog),
 					ReferenceNode(() => references),
+					CompassNode(
+						() => references,
+						() => note
+					),
 					InkNode,
 					PictureNode(() => pictures),
 					...DRAWN_ELEMENTS

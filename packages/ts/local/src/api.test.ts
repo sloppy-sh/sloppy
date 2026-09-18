@@ -1,5 +1,10 @@
 import { ServerRequiredError, type SloppyApi } from "@sloppy/client";
-import { type DidSyr, UNNAMED_GRAPH_ULID, splitOwnedRef } from "@sloppy/types";
+import {
+  type BlockDocument,
+  type DidSyr,
+  UNNAMED_GRAPH_ULID,
+  splitOwnedRef,
+} from "@sloppy/types";
 import { GRAPH_FILE, decodeText, encodeText, notePath } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { LocalApi } from "./api.js";
@@ -523,5 +528,73 @@ describe("a graph in a folder", () => {
     expect(held.store.has(`/graphs/one/${GRAPH_FILE}`)).toBe(false);
     expect(held.store.has("/graphs/one/README.md")).toBe(true);
     expect(await reopened(held).listGraphs()).toEqual([]);
+  });
+});
+
+// The terminal writes the same files, and a shell that has been reading them is
+// holding an index of what they said when it opened.
+describe("a section saved into a folder written in elsewhere", () => {
+  const said = (block: { content: BlockDocument }): string =>
+    JSON.stringify(block.content);
+
+  async function opened() {
+    const held = device();
+    await held.api.createGraph({ title: "Thesis" });
+    const note = await held.api.createNode({ title: "Seeds" });
+    const section = await held.api.createBlock({
+      node: note.ref,
+      content: textDocument("A seed keeps its own clock."),
+    });
+    // Read once, so this client is holding the folder as it was.
+    await held.api.listBlocks(note.ref);
+    return { held, note, section };
+  }
+
+  it("leaves the section somebody else added where it is", async () => {
+    const { held, note, section } = await opened();
+    await reopened(held).createBlock({
+      node: note.ref,
+      content: textDocument("What the terminal added."),
+    });
+
+    await held.api.updateBlock(section.ref, {
+      content: textDocument("What I wrote."),
+    });
+
+    expect((await reopened(held).listBlocks(note.ref)).map(said)).toEqual([
+      said({ content: textDocument("What the terminal added.") }),
+      said({ content: textDocument("What I wrote.") }),
+    ]);
+  });
+
+  it("refuses a write over a section written somewhere else in between", async () => {
+    const { held, note, section } = await opened();
+    // A section's stamp is the note file's own, written to the millisecond.
+    await new Promise((later) => setTimeout(later, 2));
+    await reopened(held).updateBlock(section.ref, {
+      content: textDocument("What the terminal wrote."),
+    });
+
+    await expect(
+      held.api.updateBlock(section.ref, {
+        content: textDocument("What I wrote."),
+        expects: section.updated_at,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect((await reopened(held).listBlocks(note.ref)).map(said)).toEqual([
+      said({ content: textDocument("What the terminal wrote.") }),
+    ]);
+  });
+
+  it("says a section the note no longer holds is gone rather than writing it back", async () => {
+    const { held, note, section } = await opened();
+    await reopened(held).deleteBlock(section.ref);
+
+    await expect(
+      held.api.updateBlock(section.ref, {
+        content: textDocument("What I wrote."),
+      }),
+    ).rejects.toMatchObject({ status: 410 });
+    expect(await reopened(held).listBlocks(note.ref)).toEqual([]);
   });
 });

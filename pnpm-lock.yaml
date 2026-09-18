@@ -395,6 +395,9 @@ importers:
       '@sloppy/ui':
         specifier: workspace:*
         version: link:../ui
+      '@sloppy/vault':
+        specifier: workspace:*
+        version: link:../vault
     devDependencies:
       '@eslint/js':
         specifier: 'catalog:'
@@ -450,6 +453,37 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+
+  packages/ts/cli:
+    dependencies:
+      '@sloppy/client':
+        specifier: workspace:*
+        version: link:../client
+      '@sloppy/local':
+        specifier: workspace:*
+        version: link:../local
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../types
+      '@sloppy/vault':
+        specifier: workspace:*
+        version: link:../vault
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.5.0
+        version: 2.5.0
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.13.3
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(typescript@6.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
 
   packages/ts/client:
     dependencies:

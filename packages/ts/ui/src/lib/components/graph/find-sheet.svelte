@@ -26,6 +26,7 @@
 	// inside it. PRODUCT.md § Design Principles 3 — the address is what a person
 	// navigates by, so it is what they may type.
 	import Search from '@lucide/svelte/icons/search';
+	import { untrack } from 'svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
@@ -44,6 +45,8 @@
 		onopen
 	}: {
 		open?: boolean;
+		/** What the field opens on. While the surface is up the field's contents
+		 *  are its own; a later answer for it is read, not written back. */
 		query: string;
 		/** Best first; the caller decides how many are worth showing. */
 		found: readonly FoundNote[];
@@ -63,6 +66,14 @@
 	} = $props();
 
 	let field = $state<HTMLInputElement | null>(null);
+	/** What has been typed. The caller answers for it on its own clock, so a draw
+	 *  carrying the words as they were a moment ago would take back everything
+	 *  typed since — the field keeps its own. */
+	let words = $state(untrack(() => query));
+
+	$effect(() => {
+		if (open) untrack(() => (words = query));
+	});
 
 	const nothing = $derived(settled && !looking && found.length === 0);
 	const showing = $derived(
@@ -100,12 +111,15 @@
 			/>
 			<Input
 				bind:ref={field}
-				value={query}
+				value={words}
 				class="h-11 ps-9"
 				autocomplete="off"
 				aria-label="Find a note by its number, its title or a word in it"
 				placeholder="1a3, or a word you wrote"
-				oninput={(event) => onquery(event.currentTarget.value)}
+				oninput={(event) => {
+					words = event.currentTarget.value;
+					onquery(words);
+				}}
 				onkeydown={(event) => {
 					if (event.key !== 'Enter') return;
 					event.preventDefault();

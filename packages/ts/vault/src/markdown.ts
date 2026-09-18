@@ -5,11 +5,18 @@
 
 import {
   type BlockDocument,
+  type Compass,
+  COMPASS_DIRECTIONS,
+  COMPASS_TYPE,
+  type CompassDirection,
+  compassNode,
   type DocumentMark,
   type DocumentNode,
   EMOJI_SHORTCODE_PATTERN,
   opensDiagram,
+  type OwnedRef,
   OwnedRefSchema,
+  REFERENCE_NOTE_ATTR,
 } from "@sloppy/types";
 import {
   INK_DIR,
@@ -81,6 +88,11 @@ const INLINE_FALLBACK = "sloppy:span";
 const EMPTY_PARAGRAPH = "<!-- -->";
 const BLOCK_RULE = "***";
 const REFERENCE_SCHEME = "sloppy:";
+
+/** What a compass line is recognised by: the direction's own token, and the
+ *  refs after it. The words a surface draws are never in the file. */
+const COMPASS_LINE = new RegExp(`^(${COMPASS_DIRECTIONS.join("|")}): (.+)$`);
+const COMPASS_CITE = /^\[\[(.+)\]\]$/;
 
 const SAFE_PATH = /^[A-Za-z0-9._\-/]+$/;
 const SAFE_HREF = /^[^\s()<>]+$/;
@@ -251,6 +263,8 @@ function writeElement(held: DocumentNode, sidecars: Sidecars): string | null {
     case "orderedList":
     case "taskList":
       return writeList(held, attrs, children, sidecars);
+    case COMPASS_TYPE:
+      return writeCompass(attrs);
     case "picture":
       return writePicture(attrs, sidecars);
     case "ink":
@@ -350,6 +364,39 @@ function writeList(
     );
   }
   return written.join("\n");
+}
+
+/**
+ * A compass as its own lines, one per filled direction in the order the
+ * directions are written in. Only the shape the editor writes — the four slots
+ * and nothing besides, each a list of refs — is written this way; anything else
+ * goes as its JSON, so a document carrying a slot nobody gave it, or a slot
+ * holding something that names no note, reads back carrying exactly that.
+ */
+function writeCompass(attrs: Record<string, unknown>): string | null {
+  if (!only(attrs, [...COMPASS_DIRECTIONS])) return null;
+  const lines: string[] = [];
+  for (const direction of COMPASS_DIRECTIONS) {
+    const held = attrs[direction];
+    if (!Array.isArray(held)) return null;
+    const refs = held.map(citedRef);
+    if (refs.some((ref) => ref === null)) return null;
+    if (refs.length === 0) continue;
+    lines.push(`${direction}: ${refs.map((ref) => `[[${ref}]]`).join(" ")}`);
+  }
+  // A compass with every slot empty has no lines, and a blank block reads back
+  // as nothing at all.
+  return lines.length === 0 ? null : lines.join("\n");
+}
+
+/** The note one place in a slot cites, or null where the place holds anything
+ *  besides that — which the caller answers by writing the node's JSON. */
+function citedRef(place: unknown): OwnedRef | null {
+  if (place === null || typeof place !== "object") return null;
+  const held = place as Record<string, unknown>;
+  if (!only(held, [REFERENCE_NOTE_ATTR])) return null;
+  const ref = OwnedRefSchema.safeParse(held[REFERENCE_NOTE_ATTR]);
+  return ref.success ? ref.data : null;
 }
 
 function writePicture(
@@ -616,7 +663,44 @@ function readBlock(
   const image = imageLine(line);
   if (image) return { node: readImage(image, sidecars), next: at + 1 };
 
+  if (compassLine(line)) return readCompass(lines, at);
+
   return readParagraph(lines, at, sidecars);
+}
+
+/** The slot a line fills, or null where it is not one — which is every line a
+ *  person's prose can write, because the writer escapes a bracket in a
+ *  sentence and a citation of a note is written as a link. */
+function compassLine(
+  line: string,
+): { direction: CompassDirection; refs: OwnedRef[] } | null {
+  const held = COMPASS_LINE.exec(line);
+  if (!held) return null;
+  const refs: OwnedRef[] = [];
+  for (const cited of held[2].split(" ")) {
+    const ref = OwnedRefSchema.safeParse(COMPASS_CITE.exec(cited)?.[1]);
+    if (!ref.success) return null;
+    refs.push(ref.data);
+  }
+  return { direction: held[1] as CompassDirection, refs };
+}
+
+/** The run of slot lines starting here as one compass. A direction written
+ *  twice ends the run: the second line opens a compass of its own rather than
+ *  taking the first one's slot away. */
+function readCompass(lines: readonly string[], at: number): Read {
+  const slots = {} as Compass;
+  for (const direction of COMPASS_DIRECTIONS) slots[direction] = [];
+  const filled = new Set<CompassDirection>();
+  let cursor = at;
+  while (cursor < lines.length) {
+    const held = compassLine(lines[cursor]);
+    if (!held || filled.has(held.direction)) break;
+    filled.add(held.direction);
+    slots[held.direction] = held.refs;
+    cursor++;
+  }
+  return { node: compassNode(slots), next: cursor };
 }
 
 function heldJson(line: string, tag: string): DocumentNode | null {
@@ -1022,13 +1106,14 @@ function readLink(
 
 /**
  * A section's markdown, with every note it names moved to another identity. A
- * reference's link and the JSON that holds what markdown cannot — an element
- * this build has no writer for, a link somebody wrote to a note — are the two
- * places a ref appears in a section.
+ * reference's link, a compass slot, and the JSON that holds what markdown
+ * cannot — an element this build has no writer for, a link somebody wrote to a
+ * note — are the three places a ref appears in a section.
  */
 export function rekeyMarkdown(text: string, from: string, to: string): string {
   return text
     .replaceAll(`](${REFERENCE_SCHEME}${from}/`, `](${REFERENCE_SCHEME}${to}/`)
+    .replaceAll(`[[${from}/`, `[[${to}/`)
     .replace(/<!-- sloppy:(?:node|span) .*? -->/g, (held) =>
       held
         .replaceAll(`"${from}/`, `"${to}/`)

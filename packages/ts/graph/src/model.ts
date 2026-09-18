@@ -187,6 +187,9 @@ export type GraphModel = Graph<GraphNodeAttributes, GraphEdgeAttributes>;
 export interface ModelOptions {
   /** In selection order, which is the order the hue slots are handed out in. */
   selection: readonly Tag[];
+  /** {@link GraphSurfaceProps.lit} — the notes a second question names, which
+   *  a note must be among to stay in ink while one is being asked. */
+  lit?: ReadonlySet<OwnedRef>;
   palette: GraphPalette;
   /** Whose graph this is. Absent means nothing here is claimed as own. */
   viewer?: DidSyr;
@@ -266,6 +269,7 @@ export function buildModel(
     const gone = difference === "gone";
     const answering =
       (options.selection.length === 0 || slot !== undefined) &&
+      (options.lit === undefined || options.lit.has(node.ref)) &&
       (!comparing || difference !== undefined);
 
     graph.addNode(node.ref, {
