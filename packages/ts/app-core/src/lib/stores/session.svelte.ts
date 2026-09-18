@@ -29,6 +29,7 @@ class SessionStore {
 	#unavailable = $state(false);
 	#inflight: Promise<Viewer | null> | null = null;
 	#signInProblem = $state<string | null>(null);
+	#servedFrom = $state(0);
 	// A session change that lands while `me()` is in flight must not be undone by
 	// its answer, which the server may have sent before the change reached it.
 	#epoch = 0;
@@ -44,7 +45,16 @@ class SessionStore {
 	/** The graph is a folder on this device. Which deployment is running, not
 	 *  whether anybody is signed in — {@link signedIn} answers that separately. */
 	get onDevice(): boolean {
+		// Reading this is what makes a surface read the answer again, since where
+		// the graph is served from is the shell's and no rune watches it.
+		void this.#servedFrom;
 		return runtime.mode() === 'local';
+	}
+
+	/** Say the shell now serves the graph from somewhere else — a shell that can
+	 *  swap while it is running calls this after it has. */
+	servedFromElsewhere(): void {
+		this.#servedFrom += 1;
 	}
 
 	/** True once the first {@link load} has settled, either way. */

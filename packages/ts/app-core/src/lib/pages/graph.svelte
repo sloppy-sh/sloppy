@@ -2694,7 +2694,7 @@
 />
 
 {#snippet openHere()}
-	<OpenHere heading={false} />
+	<OpenHere brief />
 {/snippet}
 
 <input

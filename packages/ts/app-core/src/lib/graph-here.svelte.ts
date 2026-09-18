@@ -140,8 +140,6 @@ class GraphHereStore {
 	async close(): Promise<void> {
 		this.#folder?.release();
 		this.#folder = undefined;
-		this.#open = null;
-		await rememberFolder(null);
 		updateRuntime({
 			mode: () => 'hosted',
 			createApi: undefined,
@@ -149,8 +147,14 @@ class GraphHereStore {
 			vault: undefined
 		});
 		resetApi();
-		letGoOfWhatWasRead();
+		// Who is signed in is asked of the Sloppy this app is served from before
+		// anything reads that the graph on this device is gone: a surface told
+		// both at once would otherwise read one against the other.
 		await session.refresh();
+		session.servedFromElsewhere();
+		this.#open = null;
+		letGoOfWhatWasRead();
+		await rememberFolder(null);
 		await graphs.load();
 	}
 
@@ -170,7 +174,6 @@ class GraphHereStore {
 			filesHere(files, browserOwnFiles()),
 			signedIn === undefined ? {} : { writer: signedIn }
 		);
-		this.#open = { ...opened, ownIdentity: signedIn === undefined };
 		updateRuntime({
 			mode: () => 'local',
 			createApi: () => served,
@@ -185,7 +188,12 @@ class GraphHereStore {
 			}
 		});
 		resetApi();
+		session.servedFromElsewhere();
+		this.#open = { ...opened, ownIdentity: signedIn === undefined };
 		letGoOfWhatWasRead();
+		// Who is writing here is the graph on this device's answer now, and an
+		// account is not what a person needs to read one.
+		await session.refresh();
 		await graphs.load();
 	}
 }

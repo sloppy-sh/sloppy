@@ -10,10 +10,11 @@
 	import { savesFiles } from '../save-file.js';
 
 	let {
-		/** Where the doors are one thing among many — the picker's sheet — rather
-		 *  than a surface's own section. */
-		heading = true
-	}: { heading?: boolean } = $props();
+		/** A sheet somebody opened to change which graph they are in: the offer,
+		 *  and not the account of what is true while one is open. Settings is
+		 *  where that is said. */
+		brief = false
+	}: { brief?: boolean } = $props();
 
 	let working = $state<'folder' | 'archive' | 'copy' | 'close' | null>(null);
 	let problem = $state<string | null>(null);
@@ -43,7 +44,9 @@
 </script>
 
 {#if open}
-	{#if heading}
+	{#if brief}
+		<h3 class="text-sm font-medium">The graph in front of you</h3>
+	{:else}
 		<h2 class="text-sm font-medium">Where your writing is</h2>
 	{/if}
 	<p class="text-sm text-muted-foreground">
@@ -55,20 +58,24 @@
 			tab until you save a copy, and nothing in it is sent anywhere. The file you opened is untouched.
 		{/if}
 	</p>
-	<p class="text-sm text-muted-foreground">
-		{#if open.ownIdentity}
-			You're writing as the identity this browser made for itself. Signing in waits until you close
-			this graph.
-		{:else}
-			You're writing as the account you are signed in with. Signing out waits until you close this
-			graph.
-		{/if}
-	</p>
-	<p class="text-sm text-muted-foreground">
-		Publishing a branch, reading somebody else's and answering a note need a Sloppy other people can
-		reach, so they are not offered while this graph is open.{#if open.how === 'folder'}
-			Keeping versions of a folder as you go is the desktop app's to do.{/if}
-	</p>
+	{#if !brief}
+		<p class="text-sm text-muted-foreground">
+			{#if open.ownIdentity}
+				You're writing as the identity this browser made for itself. Signing in waits until you
+				close this graph.
+			{:else}
+				You're writing as the account you are signed in with. Signing out waits until you close this
+				graph.
+			{/if}
+		</p>
+		<p class="text-sm text-muted-foreground">
+			Publishing a branch, reading somebody else's and answering a note need a Sloppy other people
+			can reach, so they are not offered while this graph is open.
+			{#if open.how === 'folder'}
+				Keeping versions of a folder as you go is the desktop app's to do.
+			{/if}
+		</p>
+	{/if}
 
 	<div class="flex flex-wrap gap-2">
 		{#if open.how === 'archive'}
@@ -104,7 +111,9 @@
 		</Button>
 	</div>
 {:else}
-	{#if heading}
+	{#if brief}
+		<h3 class="text-sm font-medium">A graph kept on this device</h3>
+	{:else}
 		<h2 class="text-sm font-medium">A graph kept on this device</h2>
 	{/if}
 	<p class="text-sm text-muted-foreground">
