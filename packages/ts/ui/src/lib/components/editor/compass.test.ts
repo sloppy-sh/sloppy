@@ -131,6 +131,19 @@ function type(words: string): void {
 	flushSync();
 }
 
+const field = (): HTMLInputElement =>
+	card().querySelector('.sloppy-compass-field') as HTMLInputElement;
+
+/** One keystroke, into whatever holds the keyboard: a field the caret has left
+ *  between one character and the next never sees the rest of the word. */
+function press(letter: string): void {
+	const held = document.activeElement;
+	if (!(held instanceof HTMLInputElement)) return;
+	held.value += letter;
+	held.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+}
+
 async function settled(): Promise<void> {
 	await vi.advanceTimersByTimeAsync(0);
 	flushSync();
@@ -198,6 +211,18 @@ describe('a compass in the writing', () => {
 
 		expect(stored()?.north).toEqual([seed.ref]);
 		expect(stored()?.south).toEqual([]);
+	});
+
+	it('keeps the keyboard in the field for every character of the word', () => {
+		open(graph([note('1b', 'Seed banks'), note('1c', 'Photosynthesis')]));
+		put();
+		tap(act('north', 'Cite a note'));
+		expect(document.activeElement).toBe(field());
+
+		for (const letter of 'see') press(letter);
+
+		expect(field().value).toBe('see');
+		expect(menu().map(words)).toEqual(['Seed banks', 'Write “see” as a stub']);
 	});
 
 	// A slot is a citation and nothing else, which is why the canvas draws the

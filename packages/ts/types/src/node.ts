@@ -185,6 +185,23 @@ export function writeOutcome(
 }
 
 /**
+ * Whether a write by `writer` is theirs alone to make: it lands, and the note
+ * carries nobody else's writing. A machine writer holds itself to this rather
+ * than to {@link writeOutcome} — docs/ARCHITECTURE.md § "Tooling and the
+ * review" — and it is what makes an offer on a note with no owner a real offer
+ * rather than a change the writer could simply have made.
+ */
+export function writesAlone(
+  note: Pick<Node, "created_by" | "owner" | "authors">,
+  writer: DidSyr,
+): boolean {
+  return (
+    writeOutcome(note, writer) === "lands" &&
+    authorsOf(note).every((did) => did === writer)
+  );
+}
+
+/**
  * The note as a landed write by `writer` leaves its authorship: appended where
  * the note is open and the writer is not in the list yet, untouched where it
  * has an owner — an owned note's authorship is the owner's, and taking an

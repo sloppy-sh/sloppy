@@ -7,6 +7,7 @@ import {
 	type BlockDocument,
 	type BlockView,
 	compassNode,
+	DECISION_WHY_HEADING,
 	type NodeView,
 	type OwnedRef
 } from '@sloppy/types';
@@ -41,16 +42,17 @@ vi.mock('$app/state', () => ({
 			return new URL(at.path, 'http://app.test');
 		},
 		get state() {
-			return at.note ? { note: at.note, notes: at.notes } : {};
+			if (!at.note) return {};
+			return { note: at.note, notes: at.notes, ...(at.landing ? { at: at.landing } : {}) };
 		}
 	}
 }));
 
 vi.mock('$app/navigation', () => ({
-	pushState: (path: string, state: { note?: OwnedRef; notes?: readonly OwnedRef[] }) =>
-		pushed(path, state.note ?? null, [...(state.notes ?? [])]),
-	replaceState: (path: string, state: { note?: OwnedRef; notes?: readonly OwnedRef[] }) =>
-		replaced(path, state.note ?? null, [...(state.notes ?? [])]),
+	pushState: (path: string, state: App.PageState) =>
+		pushed(path, state.note ?? null, [...(state.notes ?? [])], state.at ?? null),
+	replaceState: (path: string, state: App.PageState) =>
+		replaced(path, state.note ?? null, [...(state.notes ?? [])], state.at ?? null),
 	afterNavigate: () => {}
 }));
 
@@ -161,15 +163,24 @@ let kept: MemoryHistory;
 let store: Map<string, Uint8Array>;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
+/** The sections the reading surface has brought into view, in order. */
+let brought: string[];
 
 async function keepFile(at: string, said: string): Promise<void> {
 	await files.write(at, new TextEncoder().encode(said));
 	await kept.commit(`Wrote ${at}`);
 }
 
+/** The notes the graph holds, which something else may add to while the page
+ *  stands on it. */
+let held: NodeView[];
+/** The decision's two sections, which the acts about it land on. */
+let compassCard: BlockView;
+let whySection: BlockView;
+
 /** Two notes: one anchored at code, one holding a compass with empty slots. */
 function installGraph(): void {
-	const held: NodeView[] = [
+	held = [
 		node(1, '1', { title: 'The parser' }),
 		node(2, '1a', { title: 'Two ways round it', origin: PARSER, parent: PARSER })
 	];
@@ -197,12 +208,23 @@ function installGraph(): void {
 			]
 		})
 	]);
-	api.on(`GET ${path(DECISION)}/blocks`, () => [
-		section(DECISION, {
-			type: 'doc',
-			content: [compassNode({ north: [PARSER], south: [], east: [], west: [] })]
-		})
-	]);
+	// A decision: its compass card, and the Why nobody has written yet.
+	compassCard = section(DECISION, {
+		type: 'doc',
+		content: [compassNode({ north: [PARSER], south: [], east: [], west: [] })]
+	});
+	whySection = section(DECISION, {
+		type: 'doc',
+		content: [
+			{
+				type: 'heading',
+				attrs: { level: 2 },
+				content: [{ type: 'text', text: DECISION_WHY_HEADING }]
+			},
+			{ type: 'paragraph' }
+		]
+	});
+	api.on(`GET ${path(DECISION)}/blocks`, () => [compassCard, whySection]);
 }
 
 async function open(): Promise<void> {
@@ -229,6 +251,11 @@ beforeEach(async () => {
 	kept = new MemoryHistory(new MemoryFiles({ root: PROJECT, store, data: '/data' }), {
 		author: 'Ada'
 	});
+	brought = [];
+	Element.prototype.scrollIntoView = function scrollIntoView(this: Element) {
+		const section = this.getAttribute('data-block-ref');
+		if (section) brought.push(section);
+	};
 	api = useFakeApi();
 	installGraph();
 	canvasInk.rubOut(HOME);
@@ -316,6 +343,40 @@ describe('asking what the code left behind', () => {
 	});
 });
 
+// An act lands on the thing it named — DESIGN.md § "What the code left behind" —
+// rather than at the top of a note somebody then hunts through.
+describe('an act that opens a note', () => {
+	async function ask(question: string): Promise<void> {
+		await open();
+		labelled('More').click();
+		await settle();
+		menuItem('What the code left behind').click();
+		await settle();
+		named(question)?.click();
+		await settle();
+	}
+
+	it('opens the note at its compass card for an empty slot', async () => {
+		await ask('An empty slot');
+
+		named('What is this made of?')?.click();
+		await settle();
+
+		expect(screen()).toContain('Two ways round it');
+		expect(brought).toContain(compassCard.ref);
+	});
+
+	it('opens the note with its Why in view for a decision with none written', async () => {
+		await ask('No why written');
+
+		named('Say why')?.click();
+		await settle();
+
+		expect(screen()).toContain('Two ways round it');
+		expect(brought).toContain(whySection.ref);
+	});
+});
+
 // A folder is opened while the page stands, so what the question is about is
 // asked again for it rather than left over from the folder that was.
 describe('another folder in front of somebody', () => {
@@ -389,6 +450,34 @@ describe('another folder in front of somebody', () => {
 		await choose('Choose a folder');
 
 		expect(await moreOffers()).not.toContain('What the code left behind');
+	});
+
+	// The terminal writes into the same folder while the app stands on it, and
+	// nothing tells the app when.
+	it('asks about a note that arrived in the folder while the page stood', async () => {
+		serving = files;
+		keepsFolders();
+		await open();
+		expect(litOnCanvas()).toEqual({ '1': undefined, '1a': undefined });
+
+		const arrived = ref(3);
+		held.push(node(3, '1b', { title: 'The lexer' }));
+		api.on(`GET ${path(arrived)}`, () => held[2]);
+		api.on(`GET ${path(arrived)}/blocks`, () => [
+			section(arrived, {
+				type: 'doc',
+				content: [compassNode({ north: [], south: [], east: [], west: [] })]
+			})
+		]);
+
+		labelled('More').click();
+		await settle();
+		menuItem('What the code left behind').click();
+		await settle();
+		named('An empty slot')?.click();
+		await settle();
+
+		expect(screen()).toContain('1b The lexer');
 	});
 
 	it('closes an answer that was about the folder that was', async () => {

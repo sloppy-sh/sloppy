@@ -171,7 +171,8 @@ function whyUnwritten(note: ReviewedNote): boolean {
   return why !== undefined && !holdsWriting(why.content);
 }
 
-function headsWhy(content: BlockDocument): boolean {
+/** Whether this section is the one a decision gives its reason in. */
+export function headsWhy(content: BlockDocument): boolean {
   const opener = (content.content ?? [])[0];
   if (!opener || opener.type !== "heading") return false;
   return (

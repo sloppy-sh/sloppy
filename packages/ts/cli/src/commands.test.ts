@@ -356,19 +356,64 @@ describe("sloppy draft", () => {
     );
   });
 
-  it("leaves alone a note open to everybody that somebody else wrote in", async () => {
+  /** The identity this container writes under, which every note it wrote is
+   *  addressed in. */
+  async function itsOwnDid(): Promise<string> {
+    const held = await noteSaying("title: packages/one/src/index.ts");
+    const said = /^ref: (did:syr:[^/\s]+)\//m.exec(held);
+    if (!said) throw new Error("That note has no ref");
+    return said[1];
+  }
+
+  it("offers a change to a note a person has written in", async () => {
     await aProject();
     await ran(["init"]);
     await ran(["draft", "packages/one/src/index.ts"]);
-    const someoneElse = makeLocalIdentity().identity.did;
-    const was = await asSomebodyElses(`authors:\n  - ${someoneElse}`);
+    const person = makeLocalIdentity().identity.did;
+    const was = await asSomebodyElses(`authors:\n  - ${person}`);
 
     const { code, out } = await ran(["draft", "packages/one/src/index.ts"]);
     expect(code).toBe(FINE);
     expect(out).toEqual([
-      "packages/one/src/index.ts: left alone. Somebody else has written in the note about it.",
+      "packages/one/src/index.ts: offered. The note about it is somebody else's to take in.",
     ]);
     expect(await noteSaying("title: packages/one/src/index.ts")).toBe(was);
+    expect(await readdir(join(root, ".sloppy/amendments"))).toHaveLength(1);
+  });
+
+  it("offers a change to a note a person wrote in beside it", async () => {
+    await aProject();
+    await ran(["init"]);
+    await ran(["draft", "packages/one/src/index.ts"]);
+    const person = makeLocalIdentity().identity.did;
+    const was = await asSomebodyElses(
+      `authors:\n  - ${await itsOwnDid()}\n  - ${person}`,
+    );
+
+    const { code, out } = await ran(["draft", "packages/one/src/index.ts"]);
+    expect(code).toBe(FINE);
+    expect(out).toEqual([
+      "packages/one/src/index.ts: offered. The note about it is somebody else's to take in.",
+    ]);
+    expect(await noteSaying("title: packages/one/src/index.ts")).toBe(was);
+    expect(await readdir(join(root, ".sloppy/amendments"))).toHaveLength(1);
+  });
+
+  it("writes over a note nobody but it has written in", async () => {
+    await aProject();
+    await ran(["init"]);
+    await ran(["draft", "packages/one/src/index.ts"]);
+    await wrote(
+      "packages/one/src/index.ts",
+      'export const NAME = "one";\nexport function stop() { return NAME; }',
+    );
+
+    const { code, out } = await ran(["draft", "packages/one/src/index.ts"]);
+    expect(code).toBe(FINE);
+    expect(out).toEqual(["packages/one/src/index.ts: written."]);
+    const note = await noteSaying("title: packages/one/src/index.ts");
+    expect(note).toContain("stop");
+    expect(note).not.toContain("start");
     expect(
       await readdir(join(root, ".sloppy/amendments")).catch(() => []),
     ).toEqual([]);

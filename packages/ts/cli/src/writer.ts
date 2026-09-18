@@ -3,7 +3,6 @@
 
 import type { LocalApi } from "@sloppy/local";
 import {
-  authorsOf,
   type BlockDocument,
   type BlockView,
   type NodePlacement,
@@ -11,18 +10,14 @@ import {
   type OwnedRef,
   splitOwnedRef,
   ulid,
-  writeOutcome,
+  writesAlone,
 } from "@sloppy/types";
 import { notePath } from "@sloppy/vault";
 import { headingOf } from "./writing.js";
 
-/**
- * What one act of writing came to: written outright, `offered` to the owner of
- * a note somebody else keeps, or `left` — a note open to everybody that
- * somebody else has already written in, which there is nothing to offer
- * against and nothing worth taking away.
- */
-export type WriteDone = "written" | "offered" | "left";
+/** What one act of writing came to: written outright, or `offered` to whoever
+ *  wrote the note. */
+export type WriteDone = "written" | "offered";
 
 export interface WrittenNote {
   title: string;
@@ -66,9 +61,10 @@ export async function writeNote(
  * the section the CLI wrote under that heading before, and the rest after
  * whatever the note holds. So a second run leaves one copy rather than two.
  *
- * Whose note it is decides how: one somebody else keeps is offered, standing
- * until they take it in; one open to everybody that somebody else has written
- * in is left as it is, because a machine takes nobody's writing away.
+ * Whose WRITING the note carries decides how, never whose note it is: a note
+ * nobody but the CLI has written in is written straight onto, and a note a
+ * person has written in is offered an amendment, standing until they take it
+ * in.
  */
 export async function writeOnto(
   api: LocalApi,
@@ -78,7 +74,7 @@ export async function writeOnto(
   const writer = await api.writer;
   const held = await api.listBlocks(note.ref);
   const written = { title: note.title, file: fileOf(note.ref) };
-  if (writeOutcome(note, writer) === "offered") {
+  if (!writesAlone(note, writer)) {
     await api.proposeAmendment({
       note: note.ref,
       title: note.title,
@@ -86,9 +82,6 @@ export async function writeOnto(
       blocks: offered(note.ref, held, sections),
     });
     return { ...written, done: "offered" };
-  }
-  if (authorsOf(note).some((did) => did !== writer)) {
-    return { ...written, done: "left" };
   }
   let after = held[held.length - 1]?.ref;
   for (const content of sections) {

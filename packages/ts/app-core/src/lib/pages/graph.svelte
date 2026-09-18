@@ -158,6 +158,7 @@
 	import HistorySurface from './history.svelte';
 	import Note from './node.svelte';
 	import Writing from './writing.svelte';
+	import type { NoteLanding } from './page-state.js';
 	import { citationUrl, nodeHref, refFromPath } from './routes.js';
 	import {
 		acceleratorFor,
@@ -450,7 +451,7 @@
 		const project = projectFiles;
 		if (!project || shortField) return;
 		reviewing = true;
-		void review.ask(graphs.current, visible, project);
+		void graphs.readFolderAgain().then(() => review.ask(graphs.current, visible, project));
 	}
 
 	/** The graphs on the canvas, in the order the reader put them there. */
@@ -460,6 +461,8 @@
 	const open = $derived(page.state.note ?? null);
 	/** Every note open on the reading surface, in the order they were opened. */
 	const openNotes = $derived<readonly OwnedRef[]>(page.state.notes ?? (open ? [open] : []));
+	/** The part of the open note an act sent the reader to, where one did. */
+	const landOn = $derived(page.state.at);
 	/** An address is read inside one graph, so a tab names its own only where a
 	 *  note from a second one is open beside it. */
 	const tabs = $derived.by(() => {
@@ -926,8 +929,15 @@
 				showing = pictureTurn(wallpaper, Date.now()) ?? null;
 			}
 		};
+		// A graph kept as files may have been written to while somebody was
+		// elsewhere, and nothing tells the app when.
+		const readAgain = (): void => void graphs.readFolderAgain();
 		document.addEventListener('visibilitychange', back);
-		return () => document.removeEventListener('visibilitychange', back);
+		window.addEventListener('focus', readAgain);
+		return () => {
+			document.removeEventListener('visibilitychange', back);
+			window.removeEventListener('focus', readAgain);
+		};
 	});
 
 	// A graph the reader has moved into, or stood up beside the one they were
@@ -978,13 +988,17 @@
 	}
 
 	/** Shallow, so the graph behind the notes is never torn down and rebuilt. */
-	function goTo(ref: OwnedRef, strip: readonly OwnedRef[]): void {
+	function goTo(
+		ref: OwnedRef,
+		strip: readonly OwnedRef[],
+		at: NoteLanding | undefined = undefined
+	): void {
 		aside = [];
 		behind = [...behind, standing];
 		ahead = [];
 		standing = ref;
 		bringingTo = ref;
-		pushState(nodeHref(ref), { note: ref, notes: [...strip] });
+		pushState(nodeHref(ref), { note: ref, notes: [...strip], ...(at === undefined ? {} : { at }) });
 	}
 
 	/** The entry being read, made to say something else. Tidying up is not
@@ -1038,7 +1052,8 @@
 			from: OwnedRef | null;
 			shape: NoteTemplate | null;
 			typed?: { title: string; body: string; where: 'title' | 'body' };
-		} | null = null
+		} | null = null,
+		at: NoteLanding | undefined = undefined
 	): void {
 		naming = wrote ? ref : null;
 		seed = wrote?.shape ? { ref, shape: wrote.shape } : null;
@@ -1047,7 +1062,7 @@
 		leaveWriting();
 		refused = null;
 		openInPlace(ref);
-		goTo(ref, inPlaceOf(ref, wrote?.from ?? null));
+		goTo(ref, inPlaceOf(ref, wrote?.from ?? null), at);
 	}
 
 	/** The outline reads a note where the note stands, so one reached while the
@@ -2776,7 +2791,7 @@
 
 <ReviewSheet
 	bind:open={reviewing}
-	onOpen={show}
+	onOpen={(ref, at) => show(ref, null, at)}
 	onWrote={(ref) => show(ref, { from: null, shape: null })}
 />
 
@@ -2865,6 +2880,7 @@
 			{naming}
 			{seed}
 			{typed}
+			{landOn}
 			writingAnother={creating}
 			{openNotes}
 			onAsking={(up) => (noteAsking = up)}
