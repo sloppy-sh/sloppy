@@ -2,6 +2,7 @@ import {
   type BlockDocument,
   type DocumentNode,
   EMOJI_UPLOAD_ATTR,
+  looksReaching,
   type Node,
   parseNode,
 } from "@sloppy/types";
@@ -355,5 +356,52 @@ describe("a note as a version froze it", () => {
     );
     expect(written).not.toHaveProperty("references");
     expect(written.links).toEqual([PUBLISHED_NOTE]);
+  });
+});
+
+// The bound a look is held to is `links`': every ref a published note names is
+// one the reader may read — docs/ARCHITECTURE.md § "A look a person set on a
+// line".
+describe("the looks a version carries", () => {
+  const region = { root: at(AVA, "RGNRT"), address: "1a" };
+  const reaching = (of: Node) => ({
+    links: of.links.filter((target) => held.reaches(target)),
+    edges: looksReaching(of.edges, (to) => held.reaches(to)),
+    aliases: [],
+  });
+
+  it("carries a look on a line to a note the reader may read", () => {
+    const of = note({
+      address: "1a1",
+      depth: 3,
+      edges: [
+        { to: PUBLISHED_NOTE, label: "follows from", direction: "to" },
+        { to: PRIVATE_NOTE, label: "objects to" },
+      ],
+    });
+
+    expect(publishedNodeOf(of, region, reaching(of)).edges).toEqual([
+      { to: PUBLISHED_NOTE, label: "follows from", direction: "to" },
+    ]);
+  });
+
+  it("names no note the reader may not read", () => {
+    const of = note({
+      address: "1a1",
+      depth: 3,
+      edges: [{ to: PRIVATE_NOTE, label: "objects to" }],
+    });
+
+    expect(publishedNodeOf(of, region, reaching(of))).not.toHaveProperty(
+      "edges",
+    );
+  });
+
+  it("carries no looks where the note has none", () => {
+    const of = note({ address: "1a1", depth: 3 });
+
+    expect(publishedNodeOf(of, region, reaching(of))).not.toHaveProperty(
+      "edges",
+    );
   });
 });
