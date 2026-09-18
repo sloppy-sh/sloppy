@@ -45,13 +45,15 @@ function compassIn(side: WritingSide): Compass | undefined {
 	return undefined;
 }
 
-/** The same section with every compass taken out of it, so two sections that
- *  differ only in where the note points read as the same writing. */
-function withoutCompass(content: BlockDocument): BlockDocument {
+/** The same section with every compass emptied of its slots but left where it
+ *  stands, so two sections that differ only in where the note points read as the
+ *  same writing, and one where a compass arrived, went or moved does not. */
+function withoutSlots(content: BlockDocument): BlockDocument {
 	const strip = (nodes: readonly DocumentNode[]): DocumentNode[] =>
-		nodes
-			.filter((one) => one.type !== COMPASS_TYPE)
-			.map((one) => (one.content ? { ...one, content: strip(one.content) } : one));
+		nodes.map((one) => {
+			if (one.type === COMPASS_TYPE) return { type: COMPASS_TYPE };
+			return one.content ? { ...one, content: strip(one.content) } : one;
+		});
 	return { ...content, content: strip(content.content ?? []) };
 }
 
@@ -87,7 +89,7 @@ export function sectionsApart(
 	for (const one of offered.sections) {
 		const was = before.get(one.ref);
 		if (was !== undefined && same(was, one.content)) continue;
-		if (was !== undefined && same(withoutCompass(was), withoutCompass(one.content))) continue;
+		if (was !== undefined && same(withoutSlots(was), withoutSlots(one.content))) continue;
 		sections.push({
 			ulid: splitOwnedRef(one.ref).localId,
 			...(was === undefined ? {} : { before: was }),

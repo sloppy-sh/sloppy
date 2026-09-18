@@ -192,6 +192,46 @@ describe('where an offer would have the note point', () => {
 		expect(saysNothing(apart, compassApart(now, now), tagsApart(now, now))).toBe(true);
 	});
 
+	it('shows a section a compass arrived in, though no slot points anywhere yet', () => {
+		const now = side('', [[ONE, 'The decision']]);
+		const offered = pointing(ONE, {});
+		const apart = offerDifference({ ref: NOTE }, now, offered);
+
+		expect(sectionsApart(now, offered).sections).toHaveLength(1);
+		expect(saysNothing(apart, compassApart(now, offered), tagsApart(now, offered))).toBe(false);
+	});
+
+	it('shows a section a compass went from, though it pointed nowhere', () => {
+		const now = pointing(ONE, {});
+		const offered = side('', [[ONE, 'The decision']]);
+		const apart = offerDifference({ ref: NOTE }, now, offered);
+
+		expect(sectionsApart(now, offered).sections).toHaveLength(1);
+		expect(saysNothing(apart, compassApart(now, offered), tagsApart(now, offered))).toBe(false);
+	});
+
+	it('shows both sections where a compass moved from one to the other', () => {
+		const held = (at: OwnedRef, holds: boolean): { ref: OwnedRef; content: BlockDocument } => ({
+			ref: at,
+			content: {
+				type: 'doc',
+				content: [
+					{ type: 'paragraph', content: [{ type: 'text', text: 'The decision' }] },
+					...(holds ? [compassNode({ ...NOWHERE, north: [THREE] })] : [])
+				]
+			}
+		});
+		const now: WritingSide = { title: '', tags: [], sections: [held(ONE, true), held(TWO, false)] };
+		const offered: WritingSide = {
+			title: '',
+			tags: [],
+			sections: [held(ONE, false), held(TWO, true)]
+		};
+
+		expect(sectionsApart(now, offered).sections).toHaveLength(2);
+		expect(compassApart(now, offered)).toEqual([]);
+	});
+
 	it('still shows the writing where the section changed around the compass', () => {
 		const now = pointing(ONE, {}, 'The decision');
 		const offered = pointing(ONE, { north: [TWO] }, 'The decision, sharpened');

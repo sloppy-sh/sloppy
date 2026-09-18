@@ -1,4 +1,4 @@
-import type { BlockDocument } from '@sloppy/types';
+import { compassNode, type BlockDocument } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
 import { sectionDifference, sectionLines } from './section-text.js';
 
@@ -49,10 +49,11 @@ describe('a section read as lines', () => {
 			sectionLines(
 				doc([
 					{ type: 'picture', attrs: { upload_id: 'a-copy' } },
-					{ type: 'ink', attrs: { strokes: [] } }
+					{ type: 'ink', attrs: { strokes: [] } },
+					compassNode({ north: [], south: [], east: [], west: [] })
 				])
 			)
-		).toEqual(['A picture', 'A drawing']);
+		).toEqual(['A picture', 'A drawing', 'A compass']);
 	});
 
 	it('reads a citation as the note it names', () => {
