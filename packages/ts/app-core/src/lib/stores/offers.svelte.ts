@@ -12,6 +12,7 @@
 import {
 	BlockDocumentSchema,
 	BlockViewSchema,
+	EdgeLookSchema,
 	emptyDocument,
 	splitOwnedRef,
 	TagsSchema,
@@ -19,6 +20,7 @@ import {
 	type AmendmentView,
 	type BlockView,
 	type CreateBlockRequest,
+	type EdgeLook,
 	type NodeView,
 	type OwnedRef,
 	type ProposeAmendmentRequest,
@@ -40,6 +42,9 @@ const AREA = 'offers';
 export interface OfferDraft {
 	title: string;
 	tags: Tag[];
+	/** The looks on the note's lines, whole. Absent leaves the note's own looks
+	 *  alone, which is what an offer saying nothing about them says. */
+	edges?: EdgeLook[];
 	blocks: BlockView[];
 }
 
@@ -56,9 +61,27 @@ function placeIn(blocks: readonly BlockView[], after: OwnedRef | null): number {
 	return after === null ? 0 : blocks.findIndex((one) => one.ref === after) + 1;
 }
 
+function sameLooks(
+	a: readonly EdgeLook[] | undefined,
+	b: readonly EdgeLook[] | undefined
+): boolean {
+	if (a === undefined || b === undefined) return a === b;
+	return (
+		a.length === b.length &&
+		a.every(
+			(look, at) =>
+				look.to === b[at].to &&
+				look.label === b[at].label &&
+				look.direction === b[at].direction &&
+				look.stroke === b[at].stroke
+		)
+	);
+}
+
 function sameWriting(a: OfferDraft, b: OfferDraft): boolean {
 	return (
 		a.title === b.title &&
+		sameLooks(a.edges, b.edges) &&
 		a.tags.length === b.tags.length &&
 		a.tags.every((tag, at) => tag === b.tags[at]) &&
 		a.blocks.length === b.blocks.length &&
@@ -91,16 +114,23 @@ function stackOf(offer: AmendmentView, note: OwnedRef): BlockView[] {
  *  where what it kept is no longer writing this build can read. */
 function draftFrom(held: unknown): OfferDraft | null {
 	if (typeof held !== 'object' || held === null) return null;
-	const { title, tags, blocks } = held as Record<string, unknown>;
+	const { title, tags, edges, blocks } = held as Record<string, unknown>;
 	const named = TagsSchema.safeParse(tags);
 	if (typeof title !== 'string' || !named.success || !Array.isArray(blocks)) return null;
+	const lines = edges === undefined ? undefined : EdgeLookSchema.array().safeParse(edges);
+	if (lines && !lines.success) return null;
 	const stack: BlockView[] = [];
 	for (const row of blocks) {
 		const block = BlockViewSchema.safeParse(row);
 		if (!block.success) return null;
 		stack.push(block.data);
 	}
-	return { title, tags: named.data, blocks: stack };
+	return {
+		title,
+		tags: named.data,
+		...(lines === undefined ? {} : { edges: lines.data }),
+		blocks: stack
+	};
 }
 
 class OffersStore {
@@ -200,8 +230,16 @@ class OffersStore {
 		this.#opening.add(note);
 		const at = this.#epoch;
 		const standing = this.mine(note);
+		// A draft opened on the note itself says nothing about its looks; one
+		// opened on an offer already standing here carries that offer's, so
+		// offering again does not take back what this person already set.
 		const as: OfferDraft = standing
-			? { title: standing.title, tags: [...standing.tags], blocks: stackOf(standing, note) }
+			? {
+					title: standing.title,
+					tags: [...standing.tags],
+					...(standing.edges === undefined ? {} : { edges: [...standing.edges] }),
+					blocks: stackOf(standing, note)
+				}
 			: { title: writing.title, tags: [...writing.tags], blocks: ordered(writing.blocks) };
 		const kept = draftFrom(
 			await this.#area()
@@ -211,7 +249,12 @@ class OffersStore {
 		this.#opening.delete(note);
 		if (at !== this.#epoch || this.#drafts.has(note)) return;
 		this.#drafts.set(note, {
-			draft: kept ?? { ...as, tags: [...as.tags], blocks: [...as.blocks] },
+			draft: kept ?? {
+				...as,
+				tags: [...as.tags],
+				...(as.edges === undefined ? {} : { edges: [...as.edges] }),
+				blocks: [...as.blocks]
+			},
 			as
 		});
 	}
@@ -328,6 +371,7 @@ class OffersStore {
 			...(said === '' ? {} : { message: said }),
 			title: draft.title,
 			tags: [...draft.tags],
+			...(draft.edges === undefined ? {} : { edges: [...draft.edges] }),
 			blocks: draft.blocks.map((block) => ({ ref: block.ref, content: block.content }))
 		};
 		const offered = await this.#act(
