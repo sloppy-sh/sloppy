@@ -17,14 +17,17 @@ import { people } from './people.svelte.js';
 import { publications } from './publications.svelte.js';
 import { tags } from './tags.svelte.js';
 
-export function letGoOfWhatWasRead(): void {
+/** For one graph swapped for another in front of the same person: what they
+ *  keep is read again, and the graph they were in and the ones up beside it
+ *  stay this device's choice, because a swap can be swapped back. */
+export function letGoOfTheGraphRead(): void {
 	graphHistory.clear();
 	gitSettings.clear();
 	nodes.clear();
 	offers.clear();
 	outlineSections.clear();
 	deleted.clear();
-	graphs.clear();
+	graphs.forgetTheListing();
 	tags.clear();
 	peers.clear();
 	find.clear();
@@ -32,4 +35,12 @@ export function letGoOfWhatWasRead(): void {
 	publications.clear();
 	conversation.clear();
 	identity.clear();
+}
+
+/** The same, and the choice of graph with it: nobody is signed in any more, or
+ *  this app is pointed at another Sloppy, so a saved ref names a graph the
+ *  person in front of it does not keep. */
+export function letGoOfWhatWasRead(): void {
+	letGoOfTheGraphRead();
+	graphs.clear();
 }

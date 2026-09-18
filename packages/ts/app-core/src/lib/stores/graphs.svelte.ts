@@ -477,6 +477,16 @@ class GraphsStore {
 	/** After a sign-out or an erase: nothing cached belongs to the next person,
 	 *  and a saved graph choice names the identity that kept it. */
 	clear(): void {
+		this.forgetTheListing();
+		prefs.set('graph', null);
+		prefs.set('alsoOnCanvas', []);
+	}
+
+	/** The listing given up for another one, where the person reading is the
+	 *  same: which graph they were in and what stood beside it on the canvas are
+	 *  this device's view choices and outlast the swap, since a ref the next
+	 *  listing does not hold is dropped as it is read. */
+	forgetTheListing(): void {
 		this.#epoch++;
 		this.#all = [];
 		this.#state = IDLE;
@@ -490,8 +500,6 @@ class GraphsStore {
 		this.#rereading = null;
 		this.#folderReads = 0;
 		this.#asLastRead = false;
-		prefs.set('graph', null);
-		prefs.set('alsoOnCanvas', []);
 	}
 
 	#keep(): void {

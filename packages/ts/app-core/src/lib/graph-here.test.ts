@@ -3,6 +3,7 @@
 // docs/ARCHITECTURE.md § "A graph on this device, in the browser".
 
 import { LocalApi, MemoryFiles } from '@sloppy/local';
+import type { GraphView } from '@sloppy/types';
 import { pack, unpack } from '@sloppy/vault';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api } from './api.js';
@@ -10,8 +11,17 @@ import { fakeFolder, type Held } from './browser-files.test-support.js';
 import { graphHere } from './graph-here.svelte.js';
 import { initRuntime, runtime } from './runtime.js';
 import { pictureSrc } from './asset-src.js';
-import { type FakeApi, useFakeApi, VIEWER } from './stores/fake-api.test-support.js';
+import {
+	AT,
+	DID,
+	type FakeApi,
+	homeListing,
+	ref,
+	useFakeApi,
+	VIEWER
+} from './stores/fake-api.test-support.js';
 import { graphs } from './stores/graphs.svelte.js';
+import { prefs } from './stores/prefs.svelte.js';
 import { session } from './stores/session.svelte.js';
 
 /** A folder holding a graph with one note in it, as a map of path to bytes. A
@@ -116,6 +126,30 @@ describe('the folder door', () => {
 		expect(runtime.vault()).toBeUndefined();
 		expect((await api.listGraphs()).map((one) => one.title)).toEqual(['My graph']);
 		expect(pictureSrc('https://elsewhere.test/one.png')).toContain('/proxy?url=');
+	});
+
+	// Opening one is a door a person walks back out of, so what they had up on
+	// the canvas of the graph they were reading is still there when they do.
+	it('leaves the graph a person was in and the ones beside it as they were', async () => {
+		const beside: GraphView = {
+			ref: ref(20),
+			created_by: DID,
+			created_at: AT,
+			updated_at: AT,
+			title: 'The garden shed'
+		};
+		fake.on('GET /graphs', () => [...homeListing(), beside]);
+		await graphs.load();
+		graphs.enter(beside.ref);
+		graphs.toggleOnCanvas(graphs.home);
+		const canvas = graphs.onCanvas;
+
+		picksUp(await aFolderWithAGraph());
+		await graphHere.openFolder();
+		await graphHere.close();
+
+		expect(prefs.current.graph).toBe(beside.ref);
+		expect(graphs.onCanvas).toEqual(canvas);
 	});
 
 	it('is written under the account somebody is signed in with', async () => {

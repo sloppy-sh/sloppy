@@ -26,7 +26,8 @@ import { updateRuntime } from './runtime.js';
 import { openHere, saveHere } from './save-file.js';
 import { serverMessage } from './stores/errors.js';
 import { graphs } from './stores/graphs.svelte.js';
-import { letGoOfWhatWasRead } from './stores/let-go.js';
+import { letGoOfTheGraphRead } from './stores/let-go.js';
+import { prefs } from './stores/prefs.svelte.js';
 import { session } from './stores/session.svelte.js';
 
 /** Which of the two a person opened, which is what says where their writing
@@ -56,6 +57,11 @@ class GraphHereStore {
 	#offered = $state(false);
 	#open = $state<OpenedHere | null>(null);
 	#folder: DirectoryFiles | undefined;
+	// Which graph the reader was in before this one, handed back when they close
+	// it: a graph on this device is the only one there is while it is open, so
+	// the choice they made against the Sloppy this app is served from is let go
+	// of as its own graph is read.
+	#wasReading: OwnedRef | null = null;
 
 	/** Whether this app can open a graph kept on this device at all. The shell
 	 *  says so: a webview that already serves one has nothing to offer here. */
@@ -153,7 +159,9 @@ class GraphHereStore {
 		await session.refresh();
 		session.servedFromElsewhere();
 		this.#open = null;
-		letGoOfWhatWasRead();
+		letGoOfTheGraphRead();
+		prefs.set('graph', this.#wasReading);
+		this.#wasReading = null;
 		await rememberFolder(null);
 		await graphs.load();
 	}
@@ -165,6 +173,7 @@ class GraphHereStore {
 	}
 
 	private async serve(opened: Pick<OpenedHere, 'how' | 'name'>, files: Files): Promise<void> {
+		if (!this.#open) this.#wasReading = prefs.current.graph;
 		if (this.#folder && this.#folder !== files) this.#folder.release();
 		this.#folder = files instanceof DirectoryFiles ? files : undefined;
 		// Who is signed in here settles before the swap: after it, asking reaches
@@ -190,7 +199,7 @@ class GraphHereStore {
 		resetApi();
 		session.servedFromElsewhere();
 		this.#open = { ...opened, ownIdentity: signedIn === undefined };
-		letGoOfWhatWasRead();
+		letGoOfTheGraphRead();
 		// Who is writing here is the graph on this device's answer now, and an
 		// account is not what a person needs to read one.
 		await session.refresh();
