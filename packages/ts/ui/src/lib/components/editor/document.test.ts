@@ -71,6 +71,9 @@ function stack(initial: BlockView[]) {
 		},
 		writer: {
 			create: async (request: { after: OwnedRef | null; content: BlockDocument }) => {
+				if (request.after && at(request.after) < 0) {
+					throw new SaveFailure('refused', 'That section is not in this note.');
+				}
 				const made = block({ content: request.content, updated_at: stamped() });
 				put(request.after, made);
 				return { ref: made.ref, updated_at: made.updated_at };
@@ -552,8 +555,6 @@ describe('a note this device is still holding writing for', () => {
 		]);
 	});
 
-	// A note kept in a folder stamps its sections with the file's own time, so
-	// somebody adding a section anywhere in it moves the stamp on every one.
 	it('keeps one version of a section whose stamp moved without its words', () => {
 		const reopened = reopen(
 			draftOf([measured('u1', 'a/A', 'as it was', FIRST)], [doc('u1', 'a/A', 'as it was, mine')]),
@@ -576,6 +577,20 @@ describe('a note this device is still holding writing for', () => {
 		expect(reopened.says).toEqual(['the first', 'the second, mine']);
 		expect(reopened.plan).toEqual([
 			expect.objectContaining({ kind: 'create', content: one('the second, mine') })
+		]);
+	});
+
+	it('takes the version written elsewhere of a section nobody wrote into here', () => {
+		const reopened = reopen(
+			draftOf(
+				[measured('u1', 'a/A', 'the first', FIRST), measured('u2', 'a/B', 'the second', FIRST)],
+				[doc('u1', 'a/A', 'the first, mine'), doc('u2', 'a/B', 'the second')]
+			),
+			[stamped('a/A', 'the first', SINCE), stamped('a/B', 'the second, rewritten', SINCE)]
+		);
+		expect(reopened.says).toEqual(['the first, mine', 'the second, rewritten']);
+		expect(reopened.plan).toEqual([
+			{ kind: 'update', ref: 'a/A', content: one('the first, mine') }
 		]);
 	});
 
@@ -779,6 +794,21 @@ describe('a section the note no longer holds', () => {
 		// Nothing is left to write, so a second pass offers it no second time.
 		const again = docBlocks(made.editor.state.doc);
 		expect(planSave(made.saved, again)).toEqual([]);
+		made.editor.destroy();
+	});
+
+	it('is written back even where the note no longer holds the section it stood after', async () => {
+		const of = stack([block({ content: one('as it was') }), block({ content: one('and more') })]);
+		const made = makeEditor(of.held);
+		const intoSecond = made.editor.state.doc.child(0).nodeSize + 2;
+		made.editor.commands.insertContentAt(intoSecond, 'mine over ');
+		const next = docBlocks(made.editor.state.doc);
+		of.took(of.held[1].ref);
+		of.took(of.held[0].ref);
+		await of.writer.create({ after: null, content: one('what the terminal left') });
+
+		await runSave(planSave(made.saved, next), made.saved, next, of.writer);
+		expect(of.read()).toEqual([['mine over and more'], ['what the terminal left']]);
 		made.editor.destroy();
 	});
 });

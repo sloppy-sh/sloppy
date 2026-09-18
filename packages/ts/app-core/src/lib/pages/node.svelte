@@ -268,7 +268,6 @@
 	interface Refusals {
 		title?: string;
 		shape?: string;
-		writing?: string;
 		link?: string;
 		unlink?: string;
 		tag?: string;
@@ -283,6 +282,12 @@
 	}
 	const refusals = new SvelteMap<OwnedRef, Refusals>();
 	const refused = $derived<Refusals>(refusals.get(ref) ?? {});
+
+	/** Notes read again holding two versions of a section somebody was writing
+	 *  in. Nothing of theirs was lost and nothing is theirs to fix, so it is said
+	 *  the way anything else that happened to the note is said. */
+	const alsoWrote = new SvelteSet<OwnedRef>();
+	const alsoWritten = $derived(alsoWrote.has(ref));
 
 	function refuse(of: OwnedRef, act: keyof Refusals, says: string | null): void {
 		const held = { ...(refusals.get(of) ?? {}) };
@@ -315,7 +320,7 @@
 		// Cleared on the way out rather than the way in: this one is about what the
 		// note now holds, not about an act the reader asked for.
 		return () => {
-			if (refusals.get(of)?.writing !== undefined) refuse(of, 'writing', null);
+			alsoWrote.delete(of);
 			if (untrack(() => moved)?.of === of) moved = null;
 		};
 	});
@@ -1907,9 +1912,9 @@
 	/**
 	 * The note as it stands now, and the surface built again from it. After a
 	 * refusal it is built whatever the read says, since the stamps the next write
-	 * is conditioned on have moved; after a folder read only where the note has
-	 * changed, and writing this surface has not saved is put down first so the
-	 * surface replacing it settles it section by section rather than adding it.
+	 * is conditioned on have moved, and the trip that was refused has already kept
+	 * what it could not send. A folder read puts this surface's unsaved writing
+	 * down first, so the surface replacing it settles it section by section.
 	 */
 	async function readTheNoteAgain(
 		of: OwnedRef,
@@ -1920,13 +1925,13 @@
 		try {
 			const stack = (await api.listBlocks(of)).sort(byOrd);
 			const held = of === ref ? blocks : (read.get(of) ?? []);
-			if (after === 'a folder read' && !differs(held, stack)) return;
-			const waiting = after === 'a refusal' || (of === ref && (bodyStack?.holdUnsaved() ?? false));
-			remember(of, stack);
-			if (waiting) {
-				refuse(of, 'writing', 'This note was also written somewhere else. Both versions are here.');
+			if (after === 'a folder read') {
+				if (!differs(held, stack)) return;
+				if (of === ref) bodyStack?.holdUnsaved();
 			}
+			remember(of, stack);
 			if (of !== ref) return;
+			alsoWrote.delete(of);
 			shown = { of, stack };
 			rebuilt += 1;
 		} catch {
@@ -2367,8 +2372,10 @@
 			{/if}
 		</div>
 
-		{#if refused.writing}
-			<p class="pb-1 text-sm text-destructive" role="alert">{refused.writing}</p>
+		{#if alsoWritten}
+			<p class="pb-1 text-sm text-muted-foreground" role="status">
+				This note was also written somewhere else. Both versions are here.
+			</p>
 		{/if}
 		{#if saysHere}
 			<p class="pb-1 text-sm text-destructive" role="alert">{saysHere}</p>
@@ -2719,6 +2726,7 @@
 							onUpdate={editBlock}
 							onRemove={dropBlock}
 							onReorder={(block: OwnedRef, after: OwnedRef | null) => editBlock(block, { after })}
+							onBothVersions={(note: OwnedRef) => alsoWrote.add(note)}
 						/>
 					{/key}
 				{/if}

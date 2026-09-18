@@ -240,13 +240,61 @@ describe('the note in front of somebody when the folder is read again', () => {
 		await settle();
 		expect(screen()).toContain('a section the terminal added');
 		expect(screen()).toContain('my own words');
-		expect(screen()).toContain('This note was also written somewhere else');
+		expect(screen()).not.toContain('This note was also written somewhere else');
 
 		await written();
 		const held = await onDisk(seed);
 		expect(held.filter((said) => said.includes('my own words'))).toHaveLength(1);
 		expect(held.filter((said) => said.includes('a section the terminal added'))).toHaveLength(1);
 		expect(held).toHaveLength(2);
+	});
+
+	it('leaves a section rewritten in the terminal as the terminal wrote it', async () => {
+		// A section written into the folder goes in at the top of the note.
+		await client().createBlock({ node: seed, content: paragraph('a section of its own') });
+		window.dispatchEvent(new Event('focus'));
+		await settle();
+		expect(screen()).toContain('a section of its own');
+
+		writingIn().commands.insertContentAt(2, 'mine — ');
+		flushSync();
+		const [, second] = await client().listBlocks(seed);
+		await client().updateBlock(second.ref, {
+			content: paragraph('as the terminal wrote it again')
+		});
+
+		window.dispatchEvent(new Event('focus'));
+		await settle();
+		await written();
+
+		expect(await onDisk(seed)).toEqual([
+			'mine — a section of its own',
+			'as the terminal wrote it again'
+		]);
+		expect(screen()).not.toContain('This note was also written somewhere else');
+	});
+
+	it('says both versions are here, quietly, where the section written in changed too', async () => {
+		writingIn().commands.insertContentAt(2, 'mine — ');
+		flushSync();
+		const [section] = await client().listBlocks(seed);
+		await client().updateBlock(section.ref, {
+			content: paragraph('as the terminal wrote it again')
+		});
+
+		window.dispatchEvent(new Event('focus'));
+		await settle();
+
+		const notice = [...document.body.querySelectorAll('p')].find((one) =>
+			one.textContent?.includes('This note was also written somewhere else')
+		);
+		expect(notice?.getAttribute('role')).toBe('status');
+		expect(notice?.className).not.toContain('text-destructive');
+
+		await written();
+		const held = await onDisk(seed);
+		expect(held).toContain('as the terminal wrote it again');
+		expect(held.filter((said) => said.includes('mine —'))).toHaveLength(1);
 	});
 
 	it('leaves one copy of every section where a save lands after a rewrite', async () => {

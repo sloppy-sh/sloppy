@@ -98,6 +98,7 @@
 		references,
 		code,
 		drafts,
+		onBothVersions,
 		arranging = true,
 		offering = false
 	}: BlockStackProps & {
@@ -802,7 +803,9 @@
 						created.commands.insertContentAt(at, sections, { updateSelection: false });
 					}
 				} else {
-					open(openDraft(held, stack, created.schema));
+					const settled = openDraft(held, stack, created.schema);
+					open(settled);
+					if (settled.bothVersions) onBothVersions?.(opening);
 				}
 				refreshMarks();
 				saveSoon();

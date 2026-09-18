@@ -2465,7 +2465,11 @@ section with the file's own time, so somebody adding a section anywhere in it mo
 stamp on all of them: what says a section was written elsewhere is its words. A ref the
 folder still holds is rewritten in place; a ref it no longer holds is offered back as one
 new section, once — `410` from the local store is what says so, against `409` for a section
-whose words really did change elsewhere.
+whose words really did change elsewhere. It is offered back where it stood, or as near to it
+as the folder still holds, since a file rewritten elsewhere may hold none of the sections it
+stood after. **The note says "also written somewhere else" only where both versions of a
+section really do stand in it**, and says it the way anything else that happened to the note
+is said: nothing of the person's was lost, and nothing is theirs to fix.
 
 ## The vault's history
 

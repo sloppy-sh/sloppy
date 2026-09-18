@@ -139,4 +139,7 @@ export interface BlockStackProps {
 	code?: NoteCode;
 	/** Where this note's writing waits while the API does not have it. */
 	drafts: DraftStore;
+	/** Said when the note opens holding both a section written elsewhere and the
+	 *  version of it written on this device. */
+	onBothVersions?: (note: OwnedRef) => void;
 }
