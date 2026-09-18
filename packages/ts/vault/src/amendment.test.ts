@@ -112,6 +112,14 @@ describe("an offered change as a file", () => {
     expect(held.appearance).toEqual({ ring_weight: "heavy" });
   });
 
+  it("carries the looks it offers on the note's lines", () => {
+    const edges = [
+      { to: `${OWNER}/${SECTIONS[0]}`, label: "answers", stroke: "dashed" },
+    ] as AmendmentView["edges"];
+    expect(read(amendmentToVault(offer({ edges })).files).edges).toEqual(edges);
+    expect(read(amendmentToVault(offer()).files).edges).toBeUndefined();
+  });
+
   it("carries every section it offers, whatever is written in them", () => {
     fc.assert(
       fc.property(

@@ -8,7 +8,10 @@ import {
   CommitIdSchema,
   type DidSyr,
   DidSyrSchema,
+  type EdgeLook,
+  EdgeLookSchema,
   isUnstyled,
+  looksWritten,
   type NodeAppearance,
   NodeAppearanceSchema,
   type NodeView,
@@ -21,7 +24,10 @@ import {
 } from "@sloppy/types";
 import {
   type FrontBlock,
+  type FrontEntries,
+  type FrontValue,
   frontBlock,
+  frontEntries,
   frontList,
   frontString,
   splitNoteFile,
@@ -77,6 +83,9 @@ export interface VaultNote {
   contributors?: DidSyr[];
   tags: string[];
   links: OwnedRef[];
+  /** The looks its author set on the lines out of it, one per note at the other
+   *  end. Absent is a note nobody set one on. */
+  edges?: EdgeLook[];
   title: string;
   /** How its author asked the mark to be drawn. Absent is a note nobody
    *  styled, which is not itself a look. */
@@ -138,6 +147,7 @@ export function noteToVault(
     ["contributors", [...(note.contributors ?? [])]],
     ["tags", [...note.tags]],
     ["links", [...note.links]],
+    ["edges", edgeEntries(note.edges)],
     ["title", note.title],
     ["created", note.created_at],
     ["updated", note.updated_at],
@@ -248,6 +258,7 @@ export function vaultToNote(files: NoteSource): VaultNote {
     links: frontList(front, "links").filter(
       (held) => OwnedRefSchema.safeParse(held).success,
     ),
+    ...edgesRead(front),
     title: frontString(front, "title") ?? "",
     ...(look.success && !isUnstyled(look.data)
       ? { appearance: look.data }
@@ -285,6 +296,37 @@ export function lookBlock(
     if (value !== undefined) channels.set(channel, value);
   }
   return channels;
+}
+
+/**
+ * Each look as one entry under `edges`, its fields in one order so two writers
+ * cannot spell one look two ways. A channel that says nothing is not written,
+ * and neither is a look that says nothing at all.
+ */
+export function edgeEntries(
+  edges: readonly EdgeLook[] | undefined,
+): FrontEntries | undefined {
+  return looksWritten(edges)?.map(lookFields);
+}
+
+function lookFields(look: EdgeLook): FrontBlock {
+  const fields = new Map<string, string>([["to", look.to]]);
+  if (look.label !== undefined) fields.set("label", look.label);
+  if (look.direction !== undefined) fields.set("direction", look.direction);
+  if (look.stroke !== undefined) fields.set("stroke", look.stroke);
+  return fields;
+}
+
+/** The looks a file holds. One a hand got wrong costs that look and not the
+ *  note, the way a field a hand got wrong costs that field. */
+export function edgesRead(
+  front: ReadonlyMap<string, FrontValue>,
+): Pick<VaultNote, "edges"> {
+  const edges = frontEntries(front, "edges").flatMap((entry) => {
+    const look = EdgeLookSchema.safeParse(entry);
+    return look.success ? [look.data] : [];
+  });
+  return edges.length === 0 ? {} : { edges };
 }
 
 /** The sections a body holds, read back against the sidecars they draw on. */

@@ -2,7 +2,10 @@ import {
   authorsOf,
   type BlockDocument,
   type BlockView,
+  type EdgeLook,
+  EdgeLookSchema,
   isUnstyled,
+  looksWritten,
   MARK_SCALE_MAX,
   MARK_SCALE_MIN,
   type NodeAppearance,
@@ -476,5 +479,129 @@ describe("a note as a file", () => {
     expect(() => vaultToNote({ markdown: "---\ntitle: x\n---\n" })).toThrow(
       VaultFormatError,
     );
+  });
+});
+
+/** Words a person might write on a line, the ones that read back as something
+ *  other than themselves included. */
+const labels = fc.oneof(
+  fc.constantFrom(
+    "answers",
+    "17",
+    "1e5",
+    " x ",
+    '"q"',
+    "a: b",
+    "a #b",
+    "- x",
+    "to: y",
+    "over\ntwo lines",
+    "",
+  ),
+  fc.string({ maxLength: 12 }),
+);
+
+const TARGETS = [
+  `${OWNER}/01J0000000000000000000000E`,
+  `${OWNER}/01J0000000000000000000000F`,
+  `${BOB}/01J0000000000000000000000G`,
+];
+
+const edges: fc.Arbitrary<EdgeLook[]> = fc
+  .uniqueArray(
+    fc.record(
+      {
+        to: fc.constantFrom(...TARGETS),
+        label: labels,
+        direction: fc.constantFrom("to", "from", "both"),
+        stroke: fc.constantFrom("solid", "dashed", "dotted"),
+      },
+      { requiredKeys: ["to"] },
+    ),
+    { selector: (look) => look.to, maxLength: TARGETS.length },
+  )
+  .map((looks) => looks.map((look) => EdgeLookSchema.parse(look)));
+
+describe("the looks a note sets on its lines", () => {
+  it("writes each one as an entry, its fields in one order", () => {
+    const { files } = noteToVault(
+      note({
+        edges: [
+          {
+            to: TARGETS[0],
+            label: "grew out of",
+            direction: "to",
+            stroke: "dotted",
+          },
+          { to: TARGETS[1], stroke: "solid" },
+        ],
+      }),
+      [],
+      [],
+    );
+    expect(decodeText(files.get(notePath(NOTE)) as Uint8Array)).toContain(
+      [
+        "edges:",
+        `  - to: ${TARGETS[0]}`,
+        "    label: grew out of",
+        "    direction: to",
+        "    stroke: dotted",
+        `  - to: ${TARGETS[1]}`,
+        "    stroke: solid",
+      ].join("\n"),
+    );
+  });
+
+  it("writes none for a note nobody set one on, and none for a look that says nothing", () => {
+    for (const held of [undefined, [], [{ to: TARGETS[0] }]] as (
+      | EdgeLook[]
+      | undefined
+    )[]) {
+      const { files } = noteToVault(note({ edges: held }), [], []);
+      expect(decodeText(files.get(notePath(NOTE)) as Uint8Array)).not.toContain(
+        "edges",
+      );
+      expect(read(files).edges).toBeUndefined();
+    }
+  });
+
+  it("carries every look back, whatever a person wrote on the line", () => {
+    fc.assert(
+      fc.property(edges, (looks) => {
+        const { files } = noteToVault(note({ edges: looks }), [], []);
+        expect(read(files).edges).toEqual(looksWritten(looks));
+      }),
+      { numRuns: 5000 },
+    );
+  });
+
+  it("leaves the rest of the note alone beside them", () => {
+    const { files } = noteToVault(
+      note({ edges: [{ to: TARGETS[0], label: "cites" }] }),
+      ["1a"],
+      [block(BLOCK, paragraph("First"))],
+    );
+    const held = read(files);
+    expect(held.links).toEqual([`${OWNER}/${PARENT}`]);
+    expect(held.aliases).toEqual(["1a"]);
+    expect(held.title).toBe("What I meant: a note");
+    expect(held.sections).toEqual([
+      { ulid: BLOCK, content: paragraph("First") },
+    ]);
+  });
+
+  it("costs the look and not the note where a hand got one wrong", () => {
+    const { files } = noteToVault(
+      note({ edges: [{ to: TARGETS[0], label: "cites" }] }),
+      [],
+      [],
+    );
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      `  - to: ${TARGETS[0]}`,
+      "  - to: 1a",
+    );
+    const held = vaultToNote({ markdown: text });
+    expect(held.edges).toBeUndefined();
+    expect(held.title).toBe("What I meant: a note");
   });
 });
