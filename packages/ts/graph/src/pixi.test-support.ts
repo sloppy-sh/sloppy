@@ -207,17 +207,24 @@ export class FakeTilingSprite extends FakeContainer {
   }
 }
 
+/** A face 7 CSS pixels to the character, so what a layout holds clear of these
+ *  words is held clear of a box that grows with them. */
+const FAKE_GLYPH = 7;
+
 export class FakeText extends FakeContainer {
   text = "";
   visible = false;
   tint = 0;
-  width = 10;
+  alpha = 1;
   resolution = 1;
   readonly anchor = { set: () => {} };
   constructor(options: { text: string; resolution?: number }) {
     super();
     this.text = options.text;
     this.resolution = options.resolution ?? 1;
+  }
+  get width(): number {
+    return this.text.length * FAKE_GLYPH;
   }
 }
 

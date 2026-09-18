@@ -3,8 +3,10 @@
 	// at a time and writing in them where they stand. A run belongs to the graph
 	// it was written in — AI.md § "The Genealogy Is the Protocol" — so each graph
 	// on the canvas is its own tree.
+	import Spline from '@lucide/svelte/icons/spline';
 	import {
 		graphOf,
+		noteLabel,
 		type BlockView,
 		type CreateBlockRequest,
 		type NodeView,
@@ -45,6 +47,7 @@
 		onToggle,
 		onOpen,
 		onReached,
+		onEdge,
 		writeUnder,
 		writeAlone
 	}: {
@@ -67,6 +70,9 @@
 		/** A note opened where it stands, so the graph behind the walk is at it
 		 *  when the reader goes back to it. */
 		onReached?: (ref: OwnedRef) => void;
+		/** Set the look on the line between two notes. Absent leaves the walk the
+		 *  notes alone, which is what a region pulled from somebody else is. */
+		onEdge?: (from: OwnedRef, to: OwnedRef) => void;
 		/** Writing a note under a row, from the row. Absent where these notes are
 		 *  not the reader's to write under. */
 		writeUnder?: TreeSurfaceProps['writeUnder'];
@@ -325,6 +331,17 @@
 {#snippet interior(row: TreeNote)}
 	{@const note = byRef.get(row.ref)}
 	{@const stack = outlineSections.stack(row.ref)}
+	{@const sprang = note?.parent ? byRef.get(note.parent) : undefined}
+	{#if note && sprang && onEdge}
+		<button
+			type="button"
+			class="flex min-h-11 items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+			onclick={() => onEdge?.(note.ref, sprang.ref)}
+		>
+			<Spline class="size-3.5" aria-hidden="true" />
+			The line to {noteLabel(sprang)}
+		</button>
+	{/if}
 	{#if note && stack}
 		<!-- Opened again on the order the stack stands in, so a section carried by
 		     its handle is where the writing shows it. -->

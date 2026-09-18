@@ -28,6 +28,9 @@ import {
   differenceMarks,
   type DrawnNode,
   type GraphDifference,
+  type GraphEdgeLook,
+  edgeLookKey,
+  edgeLooksByPair,
   type GraphField,
 } from "./contract.js";
 import { MAX_DENSITY } from "./density.js";
@@ -180,6 +183,10 @@ export interface GraphEdgeAttributes {
    *  strongest of them — `EDGE_KINDS` in `@sloppy/types` is the order. */
   kind: EdgeKind;
   distance: number;
+  /** The look a person set on this pair, oriented as they set it. Absent is a
+   *  line drawn as DESIGN.md § Edges alone says. It is read where the line is
+   *  drawn and nowhere else: a look changes no {@link distance}. */
+  look?: GraphEdgeLook;
 }
 
 export type GraphModel = Graph<GraphNodeAttributes, GraphEdgeAttributes>;
@@ -197,6 +204,9 @@ export interface ModelOptions {
   keep?: ReadonlyMap<OwnedRef, { x: number; y: number }>;
   /** {@link GraphSurfaceProps.fields} — the graphs on the canvas, in order. */
   fields?: readonly GraphField[];
+  /** {@link GraphSurfaceProps.edgeLooks} — one resolved look per pair. A look
+   *  naming a pair this canvas draws no line between is left where it is. */
+  edgeLooks?: readonly GraphEdgeLook[];
   /** Two states being compared, the notes that went already standing in
    *  `drawn` — `nodesWithGone` in `contract.ts` is what puts them there. */
   difference?: GraphDifference;
@@ -368,12 +378,34 @@ export function buildModel(
     }
   }
 
+  lookLines(graph, options.edgeLooks);
+
   return {
     graph,
     order: drawn.map((entry) => entry.node.ref),
     fields,
     difference: differenceLines(drawn, graph, marks, options.difference),
   };
+}
+
+/**
+ * The looks onto the lines they are set on. A look draws on the line that is
+ * already there and makes none: one naming a pair with no line between them —
+ * two notes nothing joins, or an end this canvas is not drawing — is left where
+ * it is. DESIGN.md § Edges, "A look a person set".
+ */
+function lookLines(
+  graph: GraphModel,
+  looks: readonly GraphEdgeLook[] | undefined,
+): void {
+  if (looks === undefined || looks.length === 0) return;
+  const byPair = edgeLooksByPair(looks);
+  graph.forEachEdge((edge, _attributes, source, target) => {
+    const look = byPair.get(
+      edgeLookKey(source as OwnedRef, target as OwnedRef),
+    );
+    if (look !== undefined) graph.setEdgeAttribute(edge, "look", look);
+  });
 }
 
 /**

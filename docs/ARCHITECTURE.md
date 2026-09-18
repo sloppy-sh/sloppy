@@ -1998,15 +1998,16 @@ arrowhead, the break the line already has, no words on it. The three channels ar
 never heard of is refused on the way in rather than stored and ignored.
 
 **One note stores it, and a pair resolves off both ends.** The look is written on the
-note the person opened the sheet from — an owned note's look is the owner's, and a
-contributor's change to it is an offer, the same rule every other field is held to
-(§ "Whose writing a note carries"). The other note may carry one for the same pair, which
-is what happens when two people each set one. `lookBetween(a, b)` is the whole answer:
-the one end that has a look, or — where both do — the note with the later `updated_at`,
-with the smaller ref settling a tie so two peers reading one pair read one look. The
-answer is the winning note's own entry, and its `to` is what says which way round
-`direction` points. **The app writes only one**: a person editing a line writes their own
-note and never somebody else's.
+end already carrying the pair's look, so editing a line edits the look it is drawn under
+and clearing it takes that one off — and on the note the person reached the line from
+wherever that end is one somebody else gates, because **the app writes only one, and it
+is the reader's own**: an owned note's look is the owner's, and a contributor's change to
+it is an offer, the same rule every other field is held to (§ "Whose writing a note
+carries"). The other note may carry one for the same pair, which is what happens when two
+people each set one. `lookBetween(a, b)` is the whole answer: the one end that has a
+look, or — where both do — the note with the later `updated_at`, with the smaller ref
+settling a tie so two peers reading one pair read one look. The answer is the winning
+note's own entry, and its `to` is what says which way round `direction` points.
 
 **At most one look per `to`, and a second one costs that look alone.** Two entries naming
 one note would be a line drawn two ways. A WRITER is refused: `looksAreOnePerTarget` on

@@ -135,6 +135,13 @@ class StandInScene {
    *  was mapped through the box the marks are drawn in. */
   hitAt: { x: number; y: number } | null = null;
 
+  /** What the next tap on bare canvas finds a line between, if anything. */
+  online: [string, string] | null = null;
+
+  hitEdge(): [string, string] | null {
+    return this.online;
+  }
+
   hitTest(world: { x: number; y: number }): string | null {
     this.hitAt = world;
     return this.under;
@@ -362,6 +369,11 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
       sent.filter((command) => command.kind === "pin"),
     model: (): BuiltModel => scene.model as BuiltModel,
     tap: (ref: string): void => pressAndRelease(ref, "touch", 1),
+    /** A finger landing on no mark, where a line may be what it found. */
+    tapPaper: (line: [string, string] | null): void => {
+      scene.online = line;
+      pressAndRelease(null as unknown as string, "touch", 1);
+    },
     /** A finger landing on a named point of the SCREEN, chrome included. */
     tapAt: (ref: string, at: { clientX: number; clientY: number }): void =>
       pressAndRelease(ref, "touch", 1, at),
@@ -1728,5 +1740,122 @@ describe("the room the chrome takes", () => {
 
     expect(rested[0]?.clientX).toBe(40);
     expect(rested[0]?.clientY).toBe(124);
+  });
+});
+
+// DESIGN.md § Edges, "A look a person set": a line is something a reader can
+// reach for, and the pair it joins is what the host is handed.
+describe("a tap that landed on a line", () => {
+  async function canvas(over: Partial<GraphMountOptions> = {}) {
+    const lines: [OwnedRef, OwnedRef][] = [];
+    const graph = await mount({
+      onEdge: (from, to) => lines.push([from, to]),
+      ...over,
+    });
+    const [first, second] = graph.model().order;
+    return { graph, lines, pair: [first, second] as [string, string] };
+  }
+
+  it("hands the host the two notes the line joins", async () => {
+    const { graph, lines, pair } = await canvas();
+    graph.tapPaper(pair);
+    expect(lines).toEqual([pair]);
+  });
+
+  it("does nothing where the tap found no line", async () => {
+    const { graph, lines } = await canvas();
+    graph.tapPaper(null);
+    expect(lines).toEqual([]);
+  });
+
+  it("stays quiet while the canvas is being asked something else", async () => {
+    const { graph, lines, pair } = await canvas({
+      chosen: new Set<OwnedRef>(),
+    });
+    graph.tapPaper(pair);
+
+    const [from] = pair;
+    graph.handle.update({
+      ...graph.props,
+      chosen: undefined,
+      picking: { from: from as OwnedRef, taken: new Set(), onPick: () => {} },
+    });
+    graph.tapPaper(pair);
+
+    expect(lines).toEqual([]);
+  });
+
+  it("stays quiet while two states are being compared", async () => {
+    const { graph, lines, pair } = await canvas();
+    graph.handle.update({
+      ...graph.props,
+      difference: {
+        added: new Set([pair[0] as OwnedRef]),
+        removed: [],
+        moved: [],
+        changed: new Set<OwnedRef>(),
+      },
+    });
+    graph.tapPaper(pair);
+    expect(lines).toEqual([]);
+  });
+});
+
+// A look is how a line is drawn, so it reaches the canvas with what is drawn —
+// and it moves nothing, so it never restarts the settle by itself.
+describe("the looks the lines are drawn under", () => {
+  /** A pair the canvas is already drawing a line between. */
+  const joined = (
+    graph: Awaited<ReturnType<typeof mount>>,
+  ): [OwnedRef, OwnedRef] => {
+    const model = graph.model();
+    const edge = model.graph.edges()[0];
+    return [
+      model.graph.source(edge) as OwnedRef,
+      model.graph.target(edge) as OwnedRef,
+    ];
+  };
+
+  const lookBetween = (
+    graph: Awaited<ReturnType<typeof mount>>,
+    label: string,
+  ) => {
+    const [from, to] = joined(graph);
+    return [{ from, to, label }];
+  };
+
+  it("hands the canvas the look on each pair", async () => {
+    const graph = await mount();
+    const looks = lookBetween(graph, "grew out of");
+    graph.handle.update({ ...graph.props, edgeLooks: looks });
+
+    const model = graph.model();
+    const edge = model.graph.undirectedEdge(looks[0].from, looks[0].to);
+    expect(edge).toBeDefined();
+    expect(model.graph.getEdgeAttribute(edge as string, "look")).toEqual(
+      looks[0],
+    );
+  });
+
+  it("replaces what is drawn when a look changes, and not when it has not", async () => {
+    const graph = await mount();
+    const looks = lookBetween(graph, "why");
+    graph.handle.update({ ...graph.props, edgeLooks: looks });
+    const drew = graph.scene.models;
+
+    // The same looks, freshly resolved: a host builds this list every update.
+    graph.handle.update({
+      ...graph.props,
+      edgeLooks: lookBetween(graph, "why"),
+      ground: "dots",
+    });
+    expect(graph.scene.models).toBe(drew);
+
+    graph.handle.update({
+      ...graph.props,
+      edgeLooks: lookBetween(graph, "why not"),
+      ground: "dots",
+    });
+    expect(graph.scene.models).toBe(drew + 1);
   });
 });
