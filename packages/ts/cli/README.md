@@ -28,11 +28,12 @@ without a process:
 import { MemoryFiles } from "@sloppy/local";
 import { run } from "@sloppy/cli";
 
+const disk = new MemoryFiles({ root: "/" });
 const lines: string[] = [];
 const code = await run(["check"], {
   cwd: "/project",
   told: { out: (line) => lines.push(line), err: (line) => lines.push(line) },
-  filesAt: (root) => files.at(root),
+  filesAt: (root) => disk.at(root),
 });
 ```
 
