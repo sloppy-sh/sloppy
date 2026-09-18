@@ -2,6 +2,7 @@
 // line here would be a second copy of it.
 
 export * from "./layout.js";
+export * from "./front.js";
 export * from "./markdown.js";
 export * from "./ink.js";
 export * from "./note.js";
