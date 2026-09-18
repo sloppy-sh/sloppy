@@ -124,6 +124,7 @@ export function rowsFor(
         title: note.title,
         tags: TagsSchema.catch([]).parse(note.tags),
         links: note.links,
+        ...(note.edges?.length ? { edges: note.edges } : {}),
         references: referencesOf(note.ref, sections),
         ...(note.checked ? { checked: note.checked } : {}),
         published: keeping?.published ?? false,

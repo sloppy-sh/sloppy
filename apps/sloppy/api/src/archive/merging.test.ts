@@ -2,6 +2,7 @@ import type {
   Address,
   BlockDocument,
   BlockView,
+  EdgeLook,
   ImportConflict,
   ImportResolution,
   NodeView,
@@ -36,6 +37,7 @@ interface Written {
   aliases?: Address[];
   title: string;
   tags?: string[];
+  edges?: EdgeLook[];
   checked?: string;
   sections?: { ulid: string; text: string }[];
 }
@@ -63,6 +65,7 @@ function vaultOf(notes: readonly Written[]): Vault {
       title: note.title,
       tags: note.tags ?? [],
       links: [],
+      ...(note.edges === undefined ? {} : { edges: note.edges }),
       ...(note.checked === undefined ? {} : { checked: note.checked }),
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
@@ -154,6 +157,45 @@ describe("what two copies of one graph disagree about", () => {
         copies(
           [{ ...osmosis, tags: ["biology", "seed"] }],
           [{ ...osmosis, tags: ["seed", "biology"] }],
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  // A look is the author's writing, like the tags and the links beside it, so
+  // an import asks rather than keeping whichever copy it started from.
+  it("names a note the two copies draw a line from differently", () => {
+    const [conflict] = conflictsBetween(
+      copies(
+        [{ ...osmosis, edges: [{ to: ref(SECOND), label: "follows from" }] }],
+        [{ ...osmosis, edges: [{ to: ref(SECOND), label: "objects to" }] }],
+      ),
+    );
+
+    expect(conflict.kind).toBe("note");
+    expect(conflict.ref).toBe(ref(FIRST));
+  });
+
+  it("names one where a look arrived on a line only one copy draws it on", () => {
+    const [conflict] = conflictsBetween(
+      copies(
+        [osmosis],
+        [{ ...osmosis, edges: [{ to: ref(SECOND), stroke: "dotted" }] }],
+      ),
+    );
+
+    expect(conflict.ref).toBe(ref(FIRST));
+  });
+
+  it("says nothing about looks written down in a different order", () => {
+    const one: EdgeLook = { to: ref(SECOND), label: "follows from" };
+    const two: EdgeLook = { to: ref(THIRD), direction: "both" };
+
+    expect(
+      conflictsBetween(
+        copies(
+          [{ ...osmosis, edges: [one, two] }],
+          [{ ...osmosis, edges: [two, one] }],
         ),
       ),
     ).toEqual([]);

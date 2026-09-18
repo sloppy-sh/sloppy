@@ -177,6 +177,71 @@ describe("the rows an archive's notes land as", () => {
     expect(written.blocks.map((one) => one.node)).toEqual([ref(1), ref(1)]);
   });
 
+  it("writes back the looks a note's file holds, the way it writes back its links", () => {
+    const written = rowsFor(
+      DID,
+      GRAPH,
+      placed([
+        note({
+          ref: ref(1),
+          links: [ref(2)],
+          edges: [{ to: ref(2), label: "follows from", stroke: "dashed" }],
+        }),
+        note({ ref: ref(2) }),
+      ]),
+      new Map(),
+    );
+
+    expect(written.nodes[0].edges).toEqual([
+      { to: ref(2), label: "follows from", stroke: "dashed" },
+    ]);
+    expect(written.nodes[1]).not.toHaveProperty("edges");
+  });
+
+  // A hand edits the files, so a second look on one line costs that look and
+  // never the import — docs/ARCHITECTURE.md § "A look a person set on a line".
+  it("keeps the first of two looks a file puts on one line", () => {
+    const written = rowsFor(
+      DID,
+      GRAPH,
+      placed([
+        note({
+          ref: ref(1),
+          edges: [
+            { to: ref(2), label: "follows from" },
+            { to: ref(2), label: "objects to" },
+          ],
+        }),
+      ]),
+      new Map(),
+    );
+
+    expect(written.nodes[0].edges).toEqual([
+      { to: ref(2), label: "follows from" },
+    ]);
+  });
+
+  it("takes a look from the archive though it keeps the styling it has", () => {
+    const kept: Kept = {
+      created_at: "2020-01-01T00:00:00.000Z",
+      published: true,
+      graph: GRAPH,
+      appearance: { ring_weight: "heavy" },
+    };
+
+    const written = rowsFor(
+      DID,
+      GRAPH,
+      placed([
+        note({ ref: ref(1), edges: [{ to: ref(2), label: "answers" }] }),
+      ]),
+      new Map([[ref(1), kept]]),
+    );
+
+    expect(written.nodes[0].edges).toEqual([{ to: ref(2), label: "answers" }]);
+    expect(written.nodes[0].appearance).toEqual(kept.appearance);
+  });
+
   it("leaves the styling and the publication of a note it writes over alone", () => {
     const kept: Kept = {
       created_at: "2020-01-01T00:00:00.000Z",

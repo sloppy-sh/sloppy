@@ -6,6 +6,7 @@ import {
   type Address,
   type BlockDocument,
   compareAddresses,
+  type EdgeLook,
   type ImportConflict,
   type ImportResolution,
   type ImportSide,
@@ -208,9 +209,9 @@ function led(note: VaultNote, address: Address): Address[] {
 }
 
 /** The notes both sides hold that differ in anything a person settles: what
- *  they are called, what they sprang out of, the number they carry, the tags
- *  and links on them, or their sections. A note's look is not one of these: an
- *  import keeps the styling of the copy the person has. */
+ *  they are called, what they sprang out of, the number they carry, the tags,
+ *  links and line looks on them, or their sections. How the MARK is styled is
+ *  not one of these: an import keeps the styling of the copy the person has. */
 function differing(copies: TwoCopies): OwnedRef[] {
   const { notes } = copies.difference;
   const refs = new Set<OwnedRef>([
@@ -222,11 +223,38 @@ function differing(copies: TwoCopies): OwnedRef[] {
   for (const [ref, mine] of copies.mine) {
     const theirs = copies.theirs.get(ref);
     if (!theirs) continue;
-    if (!same(mine.tags, theirs.tags) || !same(mine.links, theirs.links)) {
+    if (
+      !same(mine.tags, theirs.tags) ||
+      !same(mine.links, theirs.links) ||
+      !sameLooks(mine.edges, theirs.edges)
+    ) {
       refs.add(ref);
     }
   }
   return [...refs].sort();
+}
+
+/** Whether two copies of a note draw the same lines the same way. The order
+ *  the looks were written in is not one of the channels. */
+function sameLooks(
+  mine: readonly EdgeLook[] | undefined,
+  theirs: readonly EdgeLook[] | undefined,
+): boolean {
+  const here = new Map((mine ?? []).map((look) => [look.to, look]));
+  const there = new Map((theirs ?? []).map((look) => [look.to, look]));
+  if (here.size !== there.size) return false;
+  for (const [to, look] of here) {
+    const other = there.get(to);
+    if (
+      other === undefined ||
+      other.label !== look.label ||
+      other.direction !== look.direction ||
+      other.stroke !== look.stroke
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Whether two of a note's lists say the same things, in whatever order. */
