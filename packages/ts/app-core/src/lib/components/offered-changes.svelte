@@ -10,6 +10,7 @@
 		compassApart,
 		offerDifference,
 		saysAnything,
+		saysNothing,
 		tagsApart,
 		type WritingSide
 	} from './offer-difference.js';
@@ -128,7 +129,7 @@
 
 			{#if apart && saysAnything(apart)}
 				<ChangedNotes notes={[apart]} />
-			{:else if compass.length === 0}
+			{:else if apart && tags && saysNothing(apart, compass, tags)}
 				<p class="px-1 py-2 text-sm text-muted-foreground">This offer says the same as the note.</p>
 			{/if}
 

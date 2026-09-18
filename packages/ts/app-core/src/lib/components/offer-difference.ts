@@ -123,10 +123,25 @@ export function tagsApart(
 	};
 }
 
-/** Whether the difference has anything to draw. A compass stands outside the
- *  difference language, and is read slot by slot instead. */
+/** Whether the difference language has anything to draw. A compass stands
+ *  outside it, and is read slot by slot instead. */
 export function saysAnything(apart: ChangedNote): boolean {
 	return apart.sections.length > 0 || apart.reordered || apart.retitled !== undefined;
+}
+
+/** Whether the offer says nothing at all — the whole of what a sheet draws,
+ *  which is the difference language, the slots and the words together. */
+export function saysNothing(
+	apart: ChangedNote,
+	compass: readonly CompassApart[],
+	tags: { added: readonly Tag[]; removed: readonly Tag[] }
+): boolean {
+	return (
+		!saysAnything(apart) &&
+		compass.length === 0 &&
+		tags.added.length === 0 &&
+		tags.removed.length === 0
+	);
 }
 
 /**

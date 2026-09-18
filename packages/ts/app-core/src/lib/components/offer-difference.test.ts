@@ -5,6 +5,7 @@ import {
 	compassApart,
 	offerDifference,
 	saysAnything,
+	saysNothing,
 	sectionsApart,
 	tagsApart,
 	type WritingSide
@@ -173,6 +174,22 @@ describe('where an offer would have the note point', () => {
 
 		expect(sectionsApart(now, offered).sections).toEqual([]);
 		expect(saysAnything(offerDifference({ ref: NOTE }, now, offered))).toBe(false);
+	});
+
+	it('says an offer that only adds a word is not nothing', () => {
+		const now = side('The opening', [[ONE, 'As it stands']]);
+		const offered = side('The opening', [[ONE, 'As it stands']], ['biology']);
+		const apart = offerDifference({ ref: NOTE }, now, offered);
+
+		expect(saysAnything(apart)).toBe(false);
+		expect(saysNothing(apart, compassApart(now, offered), tagsApart(now, offered))).toBe(false);
+	});
+
+	it('says an offer that changes nothing at all is nothing', () => {
+		const now = side('The opening', [[ONE, 'As it stands']], ['biology']);
+		const apart = offerDifference({ ref: NOTE }, now, now);
+
+		expect(saysNothing(apart, compassApart(now, now), tagsApart(now, now))).toBe(true);
 	});
 
 	it('still shows the writing where the section changed around the compass', () => {

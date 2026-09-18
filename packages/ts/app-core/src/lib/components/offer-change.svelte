@@ -10,6 +10,7 @@
 		compassApart,
 		offerDifference,
 		saysAnything,
+		saysNothing,
 		tagsApart,
 		type WritingSide
 	} from './offer-difference.js';
@@ -56,7 +57,7 @@
 	<div class="space-y-4 px-2 pt-4 pb-2">
 		{#if saysAnything(apart)}
 			<ChangedNotes notes={[apart]} />
-		{:else if compass.length === 0}
+		{:else if saysNothing(apart, compass, tags)}
 			<p class="px-1 py-2 text-sm text-muted-foreground">You have not changed anything yet.</p>
 		{/if}
 
