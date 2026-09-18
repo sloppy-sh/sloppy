@@ -225,6 +225,30 @@ describe('a compass in the writing', () => {
 		expect(menu().map(words)).toEqual(['Seed banks', 'Write “see” as a stub']);
 	});
 
+	// WebKit takes the caret out of the field on Escape before the field has
+	// answered for it, and a picker left standing cites whatever the next tap
+	// lands on.
+	it('shuts on Escape with nothing cited, from wherever the keyboard is', () => {
+		open(graph([note('1b', 'Seed banks')]));
+		put();
+		tap(act('north', 'Cite a note'));
+		type('seed');
+		expect(menu()).not.toHaveLength(0);
+		field().blur();
+
+		document.body.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		flushSync();
+
+		expect(card().querySelector('.sloppy-compass-field')).toBeNull();
+		expect(menu()).toHaveLength(0);
+		expect(stored()?.north).toEqual([]);
+		expect(words(slot('north').querySelector('.sloppy-compass-asks'))).toBe(
+			COMPASS_WORDS.north.asks
+		);
+	});
+
 	// A slot is a citation and nothing else, which is why the canvas draws the
 	// line it already draws for one.
 	it('counts a cited slot among the notes the section cites', () => {

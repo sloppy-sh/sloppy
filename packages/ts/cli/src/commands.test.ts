@@ -346,7 +346,7 @@ describe("sloppy draft", () => {
     const { code, out } = await ran(["draft", "packages/one/src/index.ts"]);
     expect(code).toBe(FINE);
     expect(out).toEqual([
-      "packages/one/src/index.ts: offered. The note about it is somebody else's to take in.",
+      "packages/one/src/index.ts: offered; it shows once the note's author takes it in.",
     ]);
     expect(await noteSaying("title: packages/one/src/index.ts")).toBe(was);
     const offers = await readdir(join(root, ".sloppy/amendments"));
@@ -375,7 +375,7 @@ describe("sloppy draft", () => {
     const { code, out } = await ran(["draft", "packages/one/src/index.ts"]);
     expect(code).toBe(FINE);
     expect(out).toEqual([
-      "packages/one/src/index.ts: offered. The note about it is somebody else's to take in.",
+      "packages/one/src/index.ts: offered; it shows once the note's author takes it in.",
     ]);
     expect(await noteSaying("title: packages/one/src/index.ts")).toBe(was);
     expect(await readdir(join(root, ".sloppy/amendments"))).toHaveLength(1);
@@ -393,7 +393,7 @@ describe("sloppy draft", () => {
     const { code, out } = await ran(["draft", "packages/one/src/index.ts"]);
     expect(code).toBe(FINE);
     expect(out).toEqual([
-      "packages/one/src/index.ts: offered. The note about it is somebody else's to take in.",
+      "packages/one/src/index.ts: offered; it shows once the note's author takes it in.",
     ]);
     expect(await noteSaying("title: packages/one/src/index.ts")).toBe(was);
     expect(await readdir(join(root, ".sloppy/amendments"))).toHaveLength(1);

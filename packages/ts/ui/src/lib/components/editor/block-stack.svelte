@@ -98,6 +98,7 @@
 		references,
 		code,
 		drafts,
+		onBothVersions,
 		arranging = true,
 		offering = false
 	}: BlockStackProps & {
@@ -175,6 +176,9 @@
 	let readHeld = false;
 	/** Whether anything has been written here since the note opened. */
 	let touched = false;
+	/** Whether what is waiting here has been handed to the device for the surface
+	 *  that replaces this one — {@link holdUnsaved}. */
+	let handedOver = false;
 
 	// ── Saving ───────────────────────────────────────────────────────────────
 	/** One trip to the API, holding everything it needs to outlive this surface. */
@@ -689,6 +693,22 @@
 		editor?.commands.focus(at);
 	}
 
+	/**
+	 * Puts writing the API does not have on the device for the surface that
+	 * replaces this one, and answers whether there was any — `openDraft` settles
+	 * it against what the note says then. A draft this surface never read is a
+	 * later one's to open from, so it is left where it is.
+	 */
+	export function holdUnsaved(): boolean {
+		const current = editor;
+		if (!current || current.isDestroyed || !readHeld) return false;
+		const next = docBlocks(current.state.doc);
+		if (planSave(saved, next).length === 0) return false;
+		drafts.keep(writingTo, { rows: saved, next });
+		handedOver = true;
+		return true;
+	}
+
 	/** Puts writing somebody arrived with into the section this note opened on,
 	 *  from where it saves the way everything typed here saves. A note that
 	 *  already says something keeps what it says. */
@@ -769,6 +789,7 @@
 			let opened = true;
 			readHeld = false;
 			touched = false;
+			handedOver = false;
 			void (async () => {
 				await drafts.settled(opening);
 				const held = await drafts.read(opening);
@@ -782,7 +803,9 @@
 						created.commands.insertContentAt(at, sections, { updateSelection: false });
 					}
 				} else {
-					open(openDraft(held, stack, created.schema));
+					const settled = openDraft(held, stack, created.schema);
+					open(settled);
+					if (settled.bothVersions) onBothVersions?.(opening);
 				}
 				refreshMarks();
 				saveSoon();
@@ -829,7 +852,7 @@
 				// The last write of a note being left. No surface stays open for it
 				// to be reported on, so the device holds the writing until it lands,
 				// and the note opens from there when it does not.
-				if (last) {
+				if (last && !handedOver) {
 					if (!knew) void holdOnLeaving(last);
 					void run(last)
 						.then(

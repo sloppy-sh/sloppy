@@ -260,6 +260,19 @@ export function CompassNode(
 					);
 				}
 
+				/** Escape shuts the picker with nothing cited, wherever the keyboard
+				 *  is by then — a field WebKit has taken the caret out of still has
+				 *  the person's Escape to answer. Caught on the way down and stopped
+				 *  there: the sheet's escape layer does not consult
+				 *  `defaultPrevented`, so an un-stopped Escape shuts the note being
+				 *  written in. */
+				const shutOnEscape = (event: KeyboardEvent): void => {
+					if (event.key !== 'Escape' || finding === null) return;
+					event.preventDefault();
+					event.stopPropagation();
+					closeFinder();
+				};
+
 				function openFinder(direction: CompassDirection): void {
 					finding = direction;
 					field.value = '';
@@ -267,11 +280,13 @@ export function CompassNode(
 					writing = false;
 					highlighted = 0;
 					field.setAttribute('aria-label', `Cite a note under ${COMPASS_WORDS[direction].word}`);
+					document.addEventListener('keydown', shutOnEscape, { capture: true });
 					draw();
 					field.focus();
 				}
 
 				function closeFinder(): void {
+					document.removeEventListener('keydown', shutOnEscape, { capture: true });
 					finding = null;
 					choices = [];
 					refused = null;
@@ -324,14 +339,6 @@ export function CompassNode(
 					draw();
 				});
 				field.addEventListener('keydown', (event) => {
-					if (event.key === 'Escape') {
-						// The sheet's escape layer does not consult `defaultPrevented`, so
-						// an un-stopped Escape shuts the note being written in.
-						event.preventDefault();
-						event.stopPropagation();
-						closeFinder();
-						return;
-					}
 					if (choices.length === 0 || writing) return;
 					if (event.key === 'ArrowDown') {
 						event.preventDefault();
@@ -479,6 +486,9 @@ export function CompassNode(
 					},
 					selectNode: () => dom.classList.add('is-selected'),
 					deselectNode: () => dom.classList.remove('is-selected'),
+					destroy: () => {
+						document.removeEventListener('keydown', shutOnEscape, { capture: true });
+					},
 					stopEvent: () => true,
 					ignoreMutation: () => true
 				};

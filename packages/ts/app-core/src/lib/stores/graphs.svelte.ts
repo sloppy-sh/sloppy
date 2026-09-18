@@ -75,6 +75,7 @@ class GraphsStore {
 	#folders = $state<KnownFolder[]>([]);
 	#knownFolders: Promise<void> | null = null;
 	#rereading: Promise<void> | null = null;
+	#folderReads = $state(0);
 	/** The listing standing is the one this device kept, so an ask that will not
 	 *  answer has nothing to report over it. */
 	#asLastRead = false;
@@ -299,6 +300,12 @@ class GraphsStore {
 		return this.#rereading;
 	}
 
+	/** How many reads of the folder have FINISHED, for a surface holding
+	 *  something of it this store does not — a note's sections. */
+	get folderReads(): number {
+		return this.#folderReads;
+	}
+
 	/** Everything drawn out of the folder, read again. */
 	private async readTheNotesAgain(): Promise<void> {
 		// Whatever serves the graph out of the folder holds its own index of it,
@@ -308,6 +315,7 @@ class GraphsStore {
 			nodes.readAgain(),
 			...this.onCanvas.map((graph) => tags.reload(graph).catch(() => {}))
 		]);
+		this.#folderReads += 1;
 	}
 
 	/** Deduped and idempotent: every surface may call it on mount. */
@@ -475,6 +483,7 @@ class GraphsStore {
 		this.#folders = [];
 		this.#knownFolders = null;
 		this.#rereading = null;
+		this.#folderReads = 0;
 		this.#asLastRead = false;
 		prefs.set('graph', null);
 		prefs.set('alsoOnCanvas', []);

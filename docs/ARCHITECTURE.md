@@ -2453,6 +2453,24 @@ and an absent `path` a signal about a note.** DESIGN.md § "What the code left b
 they are drawn, and the answer there is highlight-and-dim plus one sheet — never a count in
 the chrome, never a badge on a mark.
 
+**The folder is read again when it may have changed under the app** — the window coming
+back, an act of the History surface, the review sheet opening — and **the note in front of
+somebody is read with it.** Whatever serves the graph out of the folder holds its own index,
+so it takes the files again first. A pane with nothing waiting to be saved takes the
+folder's version outright; one that IS holding writing puts it down for the surface built
+in its place, which settles it section by section by block ref — the same settlement a
+section written in two places gets — and never as sections added beside what is there.
+**A section save reconciles by ref, not by stamp.** A note kept in a folder stamps every
+section with the file's own time, so somebody adding a section anywhere in it moves the
+stamp on all of them: what says a section was written elsewhere is its words. A ref the
+folder still holds is rewritten in place; a ref it no longer holds is offered back as one
+new section, once — `410` from the local store is what says so, against `409` for a section
+whose words really did change elsewhere. It is offered back where it stood, or as near to it
+as the folder still holds, since a file rewritten elsewhere may hold none of the sections it
+stood after. **The note says "also written somewhere else" only where both versions of a
+section really do stand in it**, and says it the way anything else that happened to the note
+is said: nothing of the person's was lost, and nothing is theirs to fix.
+
 ## The vault's history
 
 **The folder is a git repository, and that is the whole of the history.** A folder of

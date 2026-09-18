@@ -73,8 +73,8 @@ sentence is.
 
 Don't write over it. \`sloppy draft\` writes straight onto a note only where the note
 carries nobody's writing but its own; on any note a person has written in — alone or
-beside it — it writes your version as an offer, and they take it in or do not. A note you
-write where there was none is yours to write outright.
+beside it — it writes your version as an offer, and the note's author takes it in or does
+not. A note you write where there was none is yours to write outright.
 
 ## Never write
 

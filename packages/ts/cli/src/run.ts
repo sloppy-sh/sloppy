@@ -199,7 +199,7 @@ const NO_NOTES = "There are no notes in that folder yet.";
 /** What `draft` says it did with each file it was named. */
 const DRAFTED: Record<WriteDone, string> = {
   written: "written.",
-  offered: "offered. The note about it is somebody else's to take in.",
+  offered: "offered; it shows once the note's author takes it in.",
 };
 
 /** The container a command works in: the one in the folder named, and where
