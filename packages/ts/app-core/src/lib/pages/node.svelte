@@ -29,6 +29,7 @@
 		BlockViewSchema,
 		citedNotes,
 		compareOrd,
+		compassOf,
 		graphOf,
 		isAddress,
 		isInSubtree,
@@ -41,6 +42,7 @@
 		type Address,
 		type AmendmentView,
 		type CodeAnchor,
+		type Compass,
 		type DidSyr,
 		type BlockDocument,
 		type BlockView,
@@ -93,6 +95,7 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import CiteCode from '../components/cite-code.svelte';
 	import CodePreview from '../components/code-preview.svelte';
+	import CompassCard from '../components/compass-card.svelte';
 	import NoteAuthor from '../components/note-author.svelte';
 	import NoteOwner from '../components/note-owner.svelte';
 	import OfferChange from '../components/offer-change.svelte';
@@ -783,6 +786,15 @@
 	/** The sections on screen: the ones being offered where a write here is
 	 *  offered, and the note's own everywhere else. */
 	const stack = $derived(offerDraft?.blocks ?? blocks);
+	/** Where this note points, out of the writing itself: the first compass the
+	 *  sections hold, and null where they hold none. */
+	const pointing = $derived.by<Compass | null>(() => {
+		for (const section of stack) {
+			const held = compassOf(section.content);
+			if (held) return held;
+		}
+		return null;
+	});
 	/** A write here is offered and the writing it goes into is not open yet, so
 	 *  a section written now would go nowhere. */
 	const holdingWriting = $derived(offering && offerDraft === undefined);
@@ -2673,6 +2685,12 @@
 
 				{#if refused.shape}
 					<p class="text-sm text-destructive" role="alert">{refused.shape}</p>
+				{/if}
+
+				{#if pointing && node && !loading}
+					<div class="border-t border-border pt-6">
+						<CompassCard note={node} compass={pointing} onOpen={(target) => onOpen(target)} />
+					</div>
 				{/if}
 
 				<!-- Container query, never `sm:` — DESIGN.md § Layout: the room the acts
