@@ -48,7 +48,8 @@ sloppy/
 │       ├── graph/     @sloppy/graph     — pixi renderer + graphology model + layout worker
 │       ├── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
 │       ├── vault/     @sloppy/vault     — a graph as files: the vault folder and the archive
-│       └── local/     @sloppy/local     — the graph served off this device: files, a local identity, the vault client
+│       ├── local/     @sloppy/local     — the graph served off this device: files, a local identity, the vault client
+│       └── cli/       @sloppy/cli       — the `sloppy` command: a project's notes read, checked and written
 ├── docs/
 ├── scripts/
 ├── docker/dev/          (the one image api, web and the package builder share)
@@ -2051,6 +2052,51 @@ this adds a field to a request and nothing to the store.
 says the note went, so it is stamped and cleared alongside the note's; taking one section
 out of a note on its own is still the row going, and no timestamp.
 
+## The compass
+
+**A compass is an element inside a section, and four lists of citations is all of it.**
+`{ type: "compass", attrs: { north, south, east, west } }`, each direction holding refs;
+an empty list is a slot nobody has filled, which is what an absent one reads as.
+`COMPASS_DIRECTIONS` in `@sloppy/types` is the order it is written and read in, and
+`compassOf` is the one reader — the FIRST compass a document holds is the answer, because
+a note points one way and a second one is a hand in the file rather than a second heading.
+
+**The tokens are the wire and the words are copy.** `north`, `south`, `east` and `west`
+are what a file and a peer carry; "Part of", "Made of", "Like" and "Instead of" are what a
+surface draws beside them, and are free to change or be translated without moving anything
+somebody else is holding. Nothing in storage enumerates the four: the compass is an element
+kind like any other, carried by `BlockDocumentSchema` by shape, so a build with no renderer
+for it keeps it whole (§ "Blocks and ink").
+
+**Its markdown form is the lines themselves** (§ "A graph on disk"): inside the section,
+one line per filled direction, in the fixed order, `north: [[<ref>]] [[<ref>]]`. A
+direction with nothing in it is not written, the reader recognises the block by the TOKENS
+and never by the words, and anything else a compass node carries — a slot nobody gave it, a
+slot naming something that is not a note — goes as its JSON like any other element markdown
+cannot say. The round trip is held to the strong form by the vault's property tests, so a
+graph read out of a folder is the graph that was written into it.
+
+**A slot is a citation, and nothing else changes.** `citedNotes` counts a compass ref
+exactly as it counts a note named in a sentence, so the canvas draws the line it already
+draws for a reference, at the same weight, and no mark moves: the genealogy, the addresses
+and `node.links` are untouched, and no column is added anywhere. Where direction is drawn
+at all is the compass card on the note (DESIGN.md § "The compass card") — the canvas has
+one shape and the compass is not part of it.
+
+**Filling somebody else's slot is an offer, because it is writing.** A compass lives in a
+section, so a change to one on an owned note travels the amendment path every other change
+travels (§ "Whose writing a note carries"); what differs is only how the offer is SHOWN,
+which is the slot that gained a note rather than a diff of a block.
+
+**The hosted graph carries it with the block.** There is no compass route, no compass
+column and nothing for the API to learn: a section holding one is a section, and it is
+written, published, pulled and purged as one.
+
+**A Decision is a note holding a compass and a "Why".** It joins the templates a new note
+can be started from, and nothing marks it: what makes a note a decision is the compass in
+it. That is also what `review` reads — a compass whose `west` is empty is a decision whose
+author has not said what they did instead (§ "Tooling and the review").
+
 ## A graph on disk
 
 **The vault is a folder somebody owns, and the archive is that folder zipped.** One
@@ -2296,6 +2342,71 @@ so does its timestamp.
 **The genealogy, refs, addresses, aliases, retired numbers and the section opener are
 untouched by all of this.** A container is a vault, a note in it is a note, and an anchor is
 a link inside a section.
+
+## Tooling and the review
+
+**`@sloppy/cli` is the container without a window.** One package, `packages/ts/cli`,
+running over `@sloppy/vault` and `@sloppy/local` on a `Files` backed by `node:fs/promises`
+— never a server, never a browser, and never a second implementation of anything the app
+already does. It is what a person runs in a repository and what an agent working in one
+reaches for, so the notes a project keeps are writable from where the code is worked on.
+
+```
+sloppy init [dir]      start the notes in a project, and write what the tree can tell
+sloppy draft [paths…]  a note in detail per file named, written as an offer
+sloppy review [dir]    what the code has left behind
+sloppy check [dir]     read every note and say what doesn't hold
+```
+
+Each prints lines, answers JSON with `--json`, and says what it did in its exit code: **0**
+nothing to fix, **1** something to fix and listed, **2** nothing done. `init` starts the
+container where there is none and writes the BASIC documentation the tree can be read for —
+a note per top-level package or folder the workspace declares, each anchored to its entry
+points and pointing north at the project's own note. `draft` writes the DETAILED kind for
+the paths it is named: what a module imports and exports, an anchor per exported symbol, and
+what a compass MIGHT hold written as candidates in the note's own writing. `review` is the
+signals below. **The CLI never writes a "west" and never writes a "Why"** — what was decided
+against, and why, is the author's thinking and not a tool's to supply.
+
+**`check` is the one that says no.** Every file in `notes/` reads as a note, every front
+matter field holds to the schema the rest of Sloppy holds it to, every citation of a note in
+THIS graph lands on one, and every anchor lands on a path the project has. A citation of
+somebody else's note is left alone — this folder is not where that note lives, so its
+absence here says nothing — a note in the bin is still there, and a graph that is nobody's
+project has nowhere to look for an anchor and is not asked to.
+
+**A note the CLI did not write is changed by offering, never by writing over.** A container
+is `owned`, so `draft` on a path that already has a note proposes an amendment the way any
+other contributor does (§ "Whose writing a note carries"); a path with no note yet gets one
+written outright.
+
+**`.sloppy/AGENT.md` is what an agent finds where it already looks.** `sloppy init` commits
+it, and it says the file shapes — one note per file, the front matter, the sections, the
+compass block, `code:` anchors — the rule that an existing note is changed through an offer,
+what an agent may never write, and the commands above. `AGENT_MD` in `@sloppy/cli` is the
+one copy of that text.
+
+**The review is derived, never stored, and computed in one place.** `review()` in
+`@sloppy/vault` is given the notes, the project's top-level paths and a way to ask what has
+moved, and hands back `ReviewSignal[]`; the app and the CLI both call it, so the two cannot
+disagree about what a person is shown. Nothing it says is written down anywhere — there is
+no signals table, no cached count and nothing to migrate.
+
+- **`anchor-changed`** — an anchor whose file has moved since the note's `checked`, from the
+  history's `changedSince`. **A note with no `checked` yields nothing at all: unread is not
+  stale.**
+- **`code-without-note`** — a top-level folder or declared package no anchor in the graph
+  names or reaches into. It is a signal about the PROJECT, so it carries a `path` and no
+  note.
+- **`compass-gap`** — a slot left empty on a note that holds a compass. A note with no
+  compass is not missing one.
+- **`no-instead-of`** — a compass whose `west` is empty. A decision is a note holding a
+  compass, and nothing marks one, so this is that and nothing more.
+
+A signal names a note, a path, or both: **an absent `note` is a signal about the project,
+and an absent `path` a signal about a note.** DESIGN.md § "What the code left behind" is how
+they are drawn, and the answer there is highlight-and-dim plus one sheet — never a count in
+the chrome, never a badge on a mark.
 
 ## The vault's history
 

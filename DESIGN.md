@@ -854,6 +854,79 @@ the top and the code scrolling under it; the line about moved code is one line a
 and stays one line with the act under it rather than beside it. Nothing here is a hover: an
 anchor says what it is in the words it is drawn with.
 
+## The compass card
+
+A note that says what it is part of, what it is made of, what it is like and what was
+chosen instead has said most of what somebody comes back for. The compass is where those
+four go, and it is drawn once — **on the note, never on the canvas.** The graph draws one
+shape, and a citation from a slot is a citation like any other (§ "The graph's colour
+language"); a compass that put arrows on the field would be a second shape saying something
+the first one already says.
+
+**The card is the note in the middle and four slots around it**, each headed by its word —
+**Part of**, **Made of**, **Like**, **Instead of** — with the notes it holds listed under
+it. It is a section of the note like any other, so it sits in the reading order the author
+put it in and is reordered by the same handle.
+
+**An empty slot asks rather than complains.** Under a slot with nothing in it sits the
+question it answers — "What larger pattern is this part of?", "What is this made of?",
+"What else works like this?", "What was chosen instead?" — in the note's own ink at the body
+size, and nothing else: no red, no "incomplete", no three-of-four counter. A note with one
+slot filled is a note with one slot filled, and the product has no opinion about that.
+
+**A slot is filled the way a sentence cites a note.** Typing in a slot searches the graph
+exactly as `[[` does, and what it writes is a citation. Where the note somebody wants does
+not exist yet, filling the slot writes it — a new note with no parent, titled from what was
+typed — and cites it, so a half-formed thought becomes something to write into later
+instead of a dead end.
+
+**Phone first: the four slots stack into one column**, in the order north, south, east,
+west, each a heading with its notes under it. That is also how the card reads in the
+outline, where the compass is four labelled lists of links and a screen reader meets them as
+that. Nothing about the four is carried by position alone.
+
+**A slot on somebody else's note is a suggestion.** Filling one where the author has
+reserved their note offers it, the way writing in it does (§ "Whose writing"), and the
+offer reads as what it is — "Part of: gained …" against the slot — rather than as a block
+of changed markup.
+
+## What the code left behind
+
+A body of notes beside a codebase goes out of date quietly, and the whole job of this
+surface is to say so without ever nagging. **It is a question the person asks, not a state
+the product broadcasts.** There is no badge on a mark, no count in the chrome, no score, and
+nothing that goes red on its own — a note nobody has confirmed says nothing at all, because
+unread is not stale (§ "An anchor into code").
+
+**Asking is choosing one signal, and the canvas answers by highlighting.** The four —
+_the code moved_, _nothing written here_, _an empty slot_, _no "instead of"_ — behave exactly
+as tags do: the notes that carry the chosen one stay in ink and the rest dim, so the shape
+of the graph survives the question. Never a filter, never a colour of its own, and never
+two signals at once: the question is one at a time, the way a person asks one.
+
+**Beside it, one quiet sheet.** The same modal every sheet is (§ Layout), titled "What the
+code left behind", listing the notes under the chosen signal — the title, the address where
+there is one, and the act, in the note's own ink:
+
+- **Still true** — for a note whose code has moved. Taking it records the reading and
+  nothing else.
+- **Write a note** — for code nothing has been written about. It opens a walkthrough under
+  the project's own note, already anchored at the path.
+- **the slot's own question** — for an empty slot, which is the same line the card shows,
+  and tapping it opens the note at its compass.
+- **Say why instead** — for a decision that has not said what it turned down. It opens the
+  slot, and it never fills one in.
+
+**Where nothing is left behind, the sheet says so in one line and offers nothing.** "Nothing
+the code has left behind." That is the ordinary state of a project somebody is keeping up
+with, and it should read as the pleasant thing it is rather than as an empty container with
+a call to action in it.
+
+**Phone first.** The sheet is the full-width bottom sheet, one note per row with its act
+under the title rather than beside it, and the signal chosen from a row of chips along the
+top that scrolls sideways. The canvas keeps answering underneath, so dismissing the sheet
+leaves the highlight where it was — the question is still the one being asked.
+
 ## Typography
 
 - **UI and content face**: Inter with a system fallback (`Inter, system-ui, -apple-system,
