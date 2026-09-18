@@ -15,6 +15,8 @@ const MARKS = ["link", "bold", "italic", "strike", "code"] as const;
 
 const REF =
   "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01J0000000000000000000000A";
+const OTHER_REF =
+  "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01J0000000000000000000000E";
 
 const marks: fc.Arbitrary<DocumentMark[]> = fc
   .subarray([...MARKS])
@@ -106,6 +108,48 @@ function element(
   return made;
 }
 
+const slot = fc.array(fc.constantFrom({ note: REF }, { note: OTHER_REF }), {
+  maxLength: 2,
+});
+
+/** The four slots the editor writes, and the shapes a hand or a later build
+ *  leaves behind — a slot missing, a slot holding something that cites no note,
+ *  a place carrying more than the citation — which the vault carries as JSON
+ *  rather than as lines. */
+const compasses: fc.Arbitrary<DocumentNode> = fc.oneof(
+  fc.tuple(slot, slot, slot, slot).map(([north, south, east, west]) => ({
+    type: "compass",
+    attrs: { north, south, east, west },
+  })),
+  fc.constant({ type: "compass", attrs: { north: [{ note: REF }] } }),
+  fc.constant({
+    type: "compass",
+    attrs: { north: [REF], south: [], east: [], west: [] },
+  }),
+  fc.constant({
+    type: "compass",
+    attrs: {
+      north: [{ note: "not-a-ref" }],
+      south: [],
+      east: [],
+      west: [],
+    },
+  }),
+  fc.constant({
+    type: "compass",
+    attrs: {
+      north: [{ note: REF, label: "the tides" }],
+      south: [],
+      east: [],
+      west: [],
+    },
+  }),
+  fc.constant({
+    type: "compass",
+    attrs: { north: [], south: [], east: [], west: [], why: "later" },
+  }),
+);
+
 const leaves: fc.Arbitrary<DocumentNode> = fc.oneof(
   inline.map((content) => element("paragraph", {}, content)),
   fc
@@ -155,6 +199,7 @@ const leaves: fc.Arbitrary<DocumentNode> = fc.oneof(
       description: "A shape",
     },
   }),
+  compasses,
   fc.constant({ type: "fromTheFuture", attrs: { whatever: { deep: true } } }),
 );
 

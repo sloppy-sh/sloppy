@@ -4,6 +4,9 @@ import {
   BlockDocumentSchema,
   citedNotes,
   citedUploads,
+  COMPASS_TYPE,
+  compassNode,
+  compassOf,
   EMOJI_UPLOAD_ATTR,
   MAX_DOCUMENT_NESTING,
   REFERENCE_NOTE_ATTR,
@@ -353,5 +356,135 @@ describe("the notes a section cites", () => {
         { type: "paragraph", content: [{ type: "text", text: SEED }] },
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("the compass a section holds", () => {
+  const AVA = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
+  const ulid = (n: number) => `01JPBSHEDX${String(n).padStart(16, "0")}`;
+  const TIDES = `${AVA}/${ulid(3)}`;
+  const MOON = `${AVA}/${ulid(4)}`;
+  const EBB = `${AVA}/${ulid(5)}`;
+
+  const doc = (content: unknown[]) =>
+    BlockDocumentSchema.parse({ type: "doc", content });
+
+  /** One slot's places, as the editor writes them: a citation under the same
+   *  key a sentence cites a note under. */
+  const slot = (...refs: unknown[]) => refs.map((note) => ({ note }));
+
+  const compass = (slots: Record<string, unknown>) => ({
+    type: COMPASS_TYPE,
+    attrs: { north: [], south: [], east: [], west: [], ...slots },
+  });
+
+  it("is absent where the section holds none", () => {
+    expect(
+      compassOf(
+        doc([{ type: "paragraph", content: [{ type: "text", text: "a" }] }]),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("is the four slots, in the order they are written", () => {
+    expect(
+      compassOf(doc([compass({ north: slot(TIDES), west: slot(MOON) })])),
+    ).toEqual({
+      north: [TIDES],
+      south: [],
+      east: [],
+      west: [MOON],
+    });
+  });
+
+  it("writes a slot as the citation a sentence would carry", () => {
+    expect(
+      compassNode({ north: [TIDES], south: [], east: [], west: [MOON] }),
+    ).toEqual({
+      type: COMPASS_TYPE,
+      attrs: {
+        north: [{ [REFERENCE_NOTE_ATTR]: TIDES }],
+        south: [],
+        east: [],
+        west: [{ [REFERENCE_NOTE_ATTR]: MOON }],
+      },
+    });
+  });
+
+  it("reads a slot publishing has withheld as one the reader cannot follow", () => {
+    expect(
+      compassOf(
+        doc([
+          compass({
+            north: [
+              { [REFERENCE_NOTE_ATTR]: "" },
+              { [REFERENCE_NOTE_ATTR]: TIDES },
+            ],
+          }),
+        ]),
+      ),
+    ).toEqual({ north: [TIDES], south: [], east: [], west: [] });
+  });
+
+  it("reads an absent slot as one nobody has filled", () => {
+    expect(compassOf(doc([{ type: COMPASS_TYPE }]))).toEqual({
+      north: [],
+      south: [],
+      east: [],
+      west: [],
+    });
+  });
+
+  it("leaves out whatever a slot holds that names no note", () => {
+    expect(
+      compassOf(
+        doc([
+          compass({ north: [...slot(TIDES, "", 7, "not-a-ref"), TIDES, null] }),
+        ]),
+      ),
+    ).toEqual({ north: [TIDES], south: [], east: [], west: [] });
+  });
+
+  it("is the first one where a hand has left two in the file", () => {
+    expect(
+      compassOf(
+        doc([compass({ north: slot(TIDES) }), compass({ north: slot(MOON) })]),
+      ),
+    ).toEqual({ north: [TIDES], south: [], east: [], west: [] });
+  });
+
+  it("is cited exactly as a citation in a sentence is", () => {
+    expect(
+      citedNotes(
+        doc([compass({ north: slot(TIDES), south: slot(MOON, EBB) })]),
+      ),
+    ).toEqual([TIDES, MOON, EBB]);
+  });
+
+  it("is cited where the only citation a note carries is in a slot", () => {
+    expect(
+      citedNotes(
+        doc([
+          { type: "paragraph", content: [{ type: "text", text: "a thought" }] },
+          compass({ east: slot(EBB) }),
+        ]),
+      ),
+    ).toEqual([EBB]);
+  });
+
+  it("cites a note once where a sentence names it as well", () => {
+    expect(
+      citedNotes(
+        doc([
+          compass({ north: slot(TIDES) }),
+          {
+            type: "paragraph",
+            content: [
+              { type: "reference", attrs: { [REFERENCE_NOTE_ATTR]: TIDES } },
+            ],
+          },
+        ]),
+      ),
+    ).toEqual([TIDES]);
   });
 });
