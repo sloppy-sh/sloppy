@@ -454,7 +454,11 @@ export function CompassNode(
 						add.hidden = !canFill || finding === direction;
 					}
 					if (finding && canFill) {
-						drawn[finding].add.after(finder);
+						// `after` re-inserts a node that is already there, and an input
+						// taken out of the document loses the keyboard mid-word, so the
+						// finder is moved only when it is somewhere else.
+						const { add } = drawn[finding];
+						if (add.nextSibling !== finder) add.after(finder);
 						drawMenu(finding);
 					} else {
 						finder.remove();

@@ -15,6 +15,7 @@
 	import type { ReviewSignal, ReviewSignalKind } from '@sloppy/vault';
 	import { COMPASS_WORDS, ResponsiveModal } from '@sloppy/ui';
 	import { Skeleton } from '@sloppy/ui/skeleton';
+	import type { NoteLanding } from '../pages/page-state.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { actKey, review, signalKey } from '../stores/review.svelte.js';
 
@@ -24,8 +25,8 @@
 		onWrote
 	}: {
 		open?: boolean;
-		/** Read a note the answer named. */
-		onOpen: (note: OwnedRef) => void;
+		/** Read a note the answer named, at the part of it the row was about. */
+		onOpen: (note: OwnedRef, at?: NoteLanding) => void;
 		/** Read a note an act has just written, so its address is said once. */
 		onWrote: (note: OwnedRef) => void;
 	} = $props();
@@ -43,6 +44,8 @@
 		act: string;
 		/** Which rows this row's act settles — {@link actKey}. */
 		actAt: string;
+		/** The part of the note the row is about, for the act to open it at. */
+		lands?: NoteLanding;
 	}
 
 	const chosen = $derived(review.chosen);
@@ -69,7 +72,8 @@
 				title: note?.title ?? 'Untitled',
 				...(slot === undefined ? {} : { said: slot.word }),
 				act: slot?.asks ?? 'Say why',
-				actAt: actKey(signal)
+				actAt: actKey(signal),
+				lands: signal.kind === 'compass-gap' ? 'compass' : 'why'
 			};
 		});
 	});
@@ -108,9 +112,10 @@
 		};
 	}
 
-	function read(note: OwnedRef): void {
+	function read(row: Row): void {
+		if (!row.note) return;
 		open = false;
-		onOpen(note);
+		onOpen(row.note, row.lands);
 	}
 
 	function readWritten(note: OwnedRef): void {
@@ -128,7 +133,7 @@
 			if (written) readWritten(written);
 			return;
 		}
-		if (row.note) read(row.note);
+		read(row);
 	}
 
 	const chip =
@@ -142,11 +147,7 @@
 >
 	<div class="space-y-4 px-2 pt-4 pb-2">
 		{#if review.kinds.length > 0}
-			<div
-				role="group"
-				aria-label="What to look at"
-				class="flex gap-1.5 overflow-x-auto py-0.5 [scrollbar-width:none]"
-			>
+			<div role="group" aria-label="What to look at" class="flex flex-wrap gap-1.5 py-0.5">
 				{#each review.kinds as kind (kind)}
 					<button
 						type="button"
@@ -179,11 +180,10 @@
 				{#each rows as row (row.key)}
 					<li class="rounded-md px-2 py-2">
 						{#if row.note}
-							{@const note = row.note}
 							<button
 								type="button"
 								class="flex min-h-11 w-full flex-col items-start justify-center gap-0.5 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-								onclick={() => read(note)}
+								onclick={() => read(row)}
 							>
 								<span class="flex w-full min-w-0 items-baseline gap-2">
 									{#if row.address}

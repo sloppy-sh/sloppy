@@ -8,6 +8,7 @@ import {
 	type BlockView,
 	compassNode,
 	type CreateBlockRequest,
+	DECISION_WHY_HEADING,
 	type NodeView,
 	type OwnedRef,
 	type UpdateNodeRequest
@@ -284,6 +285,50 @@ describe('a project with something left behind', () => {
 		expect(JSON.stringify(blocks[0]?.content)).toContain('code:docs');
 		expect(justWrote).toEqual([fresh.ref]);
 		expect(opened).toEqual([]);
+	});
+});
+
+describe('a project with all four questions to ask', () => {
+	it('wraps the questions rather than putting one past the edge', async () => {
+		const at = await keepFile('src/parser.ts', 'export const one = 1;\n');
+		await keepFile('docs/guide.md', '# Guide\n');
+		await keepFile('src/parser.ts', 'export const one = 2;\n');
+		const notes = [
+			node(1, '1', { title: 'The parser', checked: at }),
+			node(2, '1a', { title: 'Two ways round it', origin: PARSER, parent: PARSER })
+		];
+		await askAbout(notes, {
+			[PARSER]: [anchored(PARSER, 'src/parser.ts')],
+			[DECISION]: [
+				section(DECISION, {
+					type: 'doc',
+					content: [compassNode({ north: [PARSER], south: [], east: [], west: [] })]
+				}),
+				section(DECISION, {
+					type: 'doc',
+					content: [
+						{
+							type: 'heading',
+							attrs: { level: 2 },
+							content: [{ type: 'text', text: DECISION_WHY_HEADING }]
+						},
+						{ type: 'paragraph' }
+					]
+				})
+			]
+		});
+		show();
+		await settle();
+
+		const row = document.body.querySelector('[aria-label="What to look at"]') as HTMLElement;
+		expect([...row.querySelectorAll('button')].map((one) => one.textContent?.trim())).toEqual([
+			'The code moved',
+			'Nothing written here',
+			'An empty slot',
+			'No why written'
+		]);
+		expect(row.className).toContain('flex-wrap');
+		expect(row.className).not.toMatch(/overflow-x-(auto|scroll)/);
 	});
 });
 

@@ -918,6 +918,10 @@ there is one, and the act, in the note's own ink:
 - **Say why** — for a decision whose "Why" is still empty. Taking it opens the note, and it
   never writes a word there.
 
+**An act lands on the thing it named.** An empty slot opens the note at its compass card and
+"Say why" opens it with the Why section in view — not at the top of a note somebody then has
+to hunt through for the part the row was about.
+
 **Where nothing is left behind, the sheet says so in one line and offers nothing.** "Nothing
 the code has left behind." That is the ordinary state of a project somebody is keeping up
 with, and it should read as the pleasant thing it is rather than as an empty container with
@@ -925,7 +929,9 @@ a call to action in it.
 
 **Phone first.** The sheet is the full-width bottom sheet, one note per row with its act
 under the title rather than beside it, and the signal chosen from a row of chips along the
-top that scrolls sideways. The canvas keeps answering underneath, so dismissing the sheet
+top that wraps onto a second line where the four do not fit — nothing here scrolls sideways,
+because a chip past the edge with nothing to say it is there is a question nobody can ask.
+The canvas keeps answering underneath, so dismissing the sheet
 leaves the highlight where it was — the question is still the one being asked.
 
 ## Typography

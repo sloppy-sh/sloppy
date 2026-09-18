@@ -29,6 +29,7 @@
 		BlockViewSchema,
 		citedNotes,
 		compareOrd,
+		compassOf,
 		graphOf,
 		isAddress,
 		isInSubtree,
@@ -89,6 +90,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import * as Tabs from '@sloppy/ui/tabs';
+	import { headsWhy } from '@sloppy/vault';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import CiteCode from '../components/cite-code.svelte';
@@ -118,6 +120,7 @@
 	import { publications, type VersionChanges } from '../stores/publications.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { addressNesting, type AddressNesting } from './address-nesting.js';
+	import type { NoteLanding } from './page-state.js';
 	import { citationUrl } from './routes.js';
 	import { WRITE_UNDER } from './shortcuts.js';
 	import { session } from '../stores/session.svelte.js';
@@ -128,6 +131,7 @@
 		naming = null,
 		seed = null,
 		typed = null,
+		landOn,
 		writingAnother = false,
 		openNotes = [],
 		onAsking,
@@ -157,6 +161,9 @@
 		/** Called once that writing has been taken up, for the same reason
 		 *  {@link onSeeded} is. */
 		onTyped?: () => void;
+		/** The part of this note an act sent the reader to, which it opens at.
+		 *  Absent opens it at the top. */
+		landOn?: NoteLanding;
 		/** Write the note that springs from this one. The surface for it opens on
 		 *  the asking, which is whatever is showing this note. */
 		onWrite: (want: {
@@ -787,8 +794,17 @@
 	 *  a section written now would go nowhere. */
 	const holdingWriting = $derived(offering && offerDraft === undefined);
 	const shownTags = $derived(offerDraft?.tags ?? node?.tags ?? []);
+	/** Whether an offer standing here is this person's to take in: the note's
+	 *  owner, and where it has none, whoever has written in it — a note nothing
+	 *  gates carries offers too (docs/ARCHITECTURE.md § "Tooling and the
+	 *  review"). */
+	const settlesOffers = $derived(
+		node !== undefined &&
+			viewerDid !== '' &&
+			(node.owner === undefined ? authorsOf(node).includes(viewerDid) : node.owner === viewerDid)
+	);
 	/** Every offer standing on this note, oldest first. */
-	const standing = $derived(node?.owner === undefined ? [] : offers.on(ref));
+	const standing = $derived(settlesOffers ? offers.on(ref) : []);
 	/** The one this person has standing here, which they may take back. */
 	const myOffer = $derived(offering ? offers.mine(ref) : undefined);
 	/** Whoever writes this note, where that is somebody else. Until their store
@@ -823,9 +839,9 @@
 
 	$effect(() => {
 		const owner = node?.owner;
-		if (owner === undefined) return;
+		if (owner === undefined && !settlesOffers) return;
 		void offers.read(ref);
-		if (owner !== viewerDid) people.resolve(owner);
+		if (owner !== undefined && owner !== viewerDid) people.resolve(owner);
 	});
 
 	// The writing surface opens on the offer this person already has standing
@@ -1590,6 +1606,37 @@
 		const opening = side === 'note' ? ref : null;
 		if (!opening) return;
 		void tick().then(() => startAtTheirPlace(opening));
+	});
+
+	/** The section an act sent the reader to, where this note holds one. */
+	const landingAt = $derived.by(() => {
+		if (landOn === undefined) return undefined;
+		const found =
+			landOn === 'compass'
+				? blocks.find((one) => compassOf(one.content) !== undefined)
+				: blocks.find((one) => headsWhy(one.content));
+		return found?.ref;
+	});
+
+	/** The one act already answered, so a save that rewrites the stack does not
+	 *  pull the reader back there. */
+	let sentTo: string | null = null;
+
+	$effect(() => {
+		const section = landingAt;
+		const reading = side === 'note';
+		untrack(() => {
+			if (section === undefined || !reading) return;
+			const asked = `${ref} ${landOn} ${section}`;
+			if (sentTo === asked) return;
+			sentTo = asked;
+			void tick().then(() => {
+				const rows = [...(noteBody?.querySelectorAll('[data-block-ref]') ?? [])];
+				rows
+					.find((row) => row.getAttribute('data-block-ref') === section)
+					?.scrollIntoView({ block: 'start' });
+			});
+		});
 	});
 
 	$effect(() => {
@@ -2506,15 +2553,15 @@
 						<PenLine class="size-3.5 shrink-0" />
 						Only you write this
 					</button>
-					{#if standing.length > 0}
-						<button
-							type="button"
-							onclick={() => (readingOffers = true)}
-							class="inline-flex min-h-9 items-center rounded-md px-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-						>
-							Offered changes ({standing.length})
-						</button>
-					{/if}
+				{/if}
+				{#if standing.length > 0}
+					<button
+						type="button"
+						onclick={() => (readingOffers = true)}
+						class="inline-flex min-h-9 items-center rounded-md px-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					>
+						Offered changes ({standing.length})
+					</button>
 				{/if}
 				{#if publishable && (publication || carriedBy)}
 					<button
@@ -3022,7 +3069,7 @@
 			/>
 		{/if}
 
-		{#if node.owner === viewerDid && viewerDid !== ''}
+		{#if settlesOffers}
 			<OfferedChanges
 				bind:open={readingOffers}
 				note={node}

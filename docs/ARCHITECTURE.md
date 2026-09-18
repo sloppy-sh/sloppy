@@ -2384,12 +2384,14 @@ somebody else's note is left alone — this folder is not where that note lives,
 absence here says nothing — a note in the bin is still there, and a graph that is nobody's
 project has nowhere to look for an anchor and is not asked to.
 
-**A note somebody else has written in is never written over.** `draft` on a path that
-already has a note offers an amendment where that note is somebody's to keep (§ "Whose
-writing a note carries"), and where the note is open to everybody and carries writing that
-is not the CLI's, it leaves it alone and says so — an open note is one the store would let
-anybody land a write on, and a machine takes nobody's writing away. A path with no note yet
-gets one written outright. **A run nobody is watching is held to the same rule and no other**:
+**A note somebody else has written in is never written over — by authorship, never by
+ownership.** `draft` writes straight onto a note only where that note's `authors` is the
+CLI's own identity and nothing else; on any note a person has written in, alone or beside
+the CLI, it offers an amendment, whatever the note's `owner` says (§ "Whose writing a note
+carries"). `writesAlone` in `@sloppy/types` is that rule, and the local store reads the same
+one, so an offer stands on a note with no owner rather than being refused as a change the
+writer could have made. A path with no note yet gets one written outright. **A run nobody is
+watching is held to the same rule and no other**:
 there is no person behind a job on a runner, so `init` there mints an identity for the machine
 it is on, and what an unattended `draft` writes lands or is offered by exactly that rule. What
 comes back is a branch somebody reads before it is merged.

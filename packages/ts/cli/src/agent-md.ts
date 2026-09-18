@@ -71,10 +71,10 @@ sentence is.
 
 ## Changing a note somebody already wrote
 
-Don't write over it. Where the note is somebody's to keep, \`sloppy draft\` writes your
-version as an offer and they take it in or do not; where it is open to everybody and
-somebody else has written in it, \`draft\` leaves it alone and says so. A note you write
-where there was none is yours to write outright.
+Don't write over it. \`sloppy draft\` writes straight onto a note only where the note
+carries nobody's writing but its own; on any note a person has written in — alone or
+beside it — it writes your version as an offer, and they take it in or do not. A note you
+write where there was none is yours to write outright.
 
 ## Never write
 

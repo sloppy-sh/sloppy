@@ -97,6 +97,7 @@ import {
   splitOwnedRef,
   ulid,
   writeOutcome,
+  writesAlone,
 } from "@sloppy/types";
 import {
   type EmojiDrawing,
@@ -655,7 +656,12 @@ export class LocalApi implements SloppyApi {
       const note = graph.find(request.note);
       if (!note) throw absent("That note is not here.");
       const writer = await this.writer;
-      if (writeOutcome(note, writer) === "lands") {
+      const whose = {
+        created_by: splitOwnedRef(note.ref).did,
+        owner: note.owner,
+        authors: note.authors,
+      };
+      if (writesAlone(whose, writer)) {
         throw refuse(
           "You can write in this note. Change it rather than offering a change.",
         );

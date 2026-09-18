@@ -200,7 +200,6 @@ const NO_NOTES = "There are no notes in that folder yet.";
 const DRAFTED: Record<WriteDone, string> = {
   written: "written.",
   offered: "offered. The note about it is somebody else's to take in.",
-  left: "left alone. Somebody else has written in the note about it.",
 };
 
 /** The container a command works in: the one in the folder named, and where
