@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { vaultToNote } from "./note.js";
-import { review, type ReviewInput, type ReviewSignal } from "./review.js";
+import {
+  placesIn,
+  review,
+  type ReviewInput,
+  type ReviewSignal,
+} from "./review.js";
 
 const DID = "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE";
 const ulid = (n: number) => `01J000000000000000000000${n}A`;
@@ -197,5 +202,48 @@ describe("what the code has left behind", () => {
       changed: nothingMoved,
     });
     expect(signals).toEqual([]);
+  });
+});
+
+describe("the places a project keeps its code", () => {
+  it("names its top-level folders and every package the tree declares", () => {
+    expect(
+      placesIn([
+        "README.md",
+        "src/parser.ts",
+        "docs/guide.md",
+        "packages/ui/package.json",
+        "packages/ui/src/one.ts",
+        "crates/engine/Cargo.toml",
+      ]),
+    ).toEqual([
+      "crates",
+      "crates/engine",
+      "docs",
+      "packages",
+      "packages/ui",
+      "src",
+    ]);
+  });
+
+  it("leaves a file at the top out: a project is not a note about its own README", () => {
+    expect(placesIn(["README.md", "package.json"])).toEqual([]);
+  });
+
+  it("asks for nothing a build wrote or a tool keeps", () => {
+    expect(
+      placesIn([
+        "dist/app.js",
+        "build/app.js",
+        "out/app.js",
+        "coverage/index.html",
+        "vendor/thing.go",
+        "__pycache__/one.pyc",
+        "node_modules/left-pad/package.json",
+        "target/debug/app",
+        ".github/workflows/check.yml",
+        "src/parser.ts",
+      ]),
+    ).toEqual(["src"]);
   });
 });

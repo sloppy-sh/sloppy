@@ -129,6 +129,17 @@ describe('a stack of sections opened as one document', () => {
 		expect(read[0].ref).toBe(stored.ref);
 	});
 
+	// A surface holds its rows in live state, and what is written down from the
+	// editor is kept by `structuredClone`, which that state does not survive.
+	it('holds nothing of the stack it was opened with, down to an element\u2019s lists', () => {
+		const drawn = section(INK);
+		const read = rows(open([block({ content: drawn })]));
+
+		expect(read[0].content).toEqual(drawn);
+		expect(read[0].content.content[0].attrs?.strokes).not.toBe(INK.attrs.strokes);
+		expect(() => structuredClone(read[0].content)).not.toThrow();
+	});
+
 	it('has nothing to save the moment it opens', () => {
 		const of = open([
 			block({ content: written }),

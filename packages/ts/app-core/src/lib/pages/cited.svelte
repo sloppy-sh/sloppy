@@ -181,7 +181,14 @@
 			{:else}
 				{#key open.ref}
 					<div class="mt-6">
-						<HeldStack author={open.created_by} blocks={sections} {pictures} {references} {emoji} />
+						<HeldStack
+							note={open}
+							author={open.created_by}
+							blocks={sections}
+							{pictures}
+							{references}
+							{emoji}
+						/>
 					</div>
 				{/key}
 			{/if}

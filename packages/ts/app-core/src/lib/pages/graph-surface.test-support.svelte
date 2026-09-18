@@ -19,6 +19,7 @@
 	let {
 		handle = $bindable(),
 		nodes,
+		lit,
 		difference,
 		wallpaper,
 		picking,
@@ -56,6 +57,7 @@
 		<li>
 			<button
 				type="button"
+				data-lit={lit === undefined ? undefined : lit.has(note.ref) ? 'yes' : 'no'}
 				data-difference={marks.get(note.ref)}
 				data-marked={marked}
 				data-chosen={chosen?.has(note.ref) ? 'yes' : undefined}

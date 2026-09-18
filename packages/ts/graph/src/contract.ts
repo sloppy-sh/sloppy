@@ -246,6 +246,16 @@ export interface GraphSurfaceProps {
    */
   selection: readonly Tag[];
   /**
+   * The notes another question about this graph names — the review's chosen
+   * signal, DESIGN.md § "What the code left behind". They stay in ink and every
+   * other note dims, exactly as a tag question dims what carries none of its
+   * tags; a note has to answer both to stay lit while both are being asked.
+   *
+   * Absent is a canvas nobody has asked this of, which is not the same as an
+   * empty set — that is a question nothing answered, and dims the field.
+   */
+  lit?: ReadonlySet<OwnedRef>;
+  /**
    * Re-initialises the scene when it changes, and only then: a pan, a zoom or a
    * drag must never remount, or the viewport is lost on every gesture.
    */
@@ -404,14 +414,36 @@ export function drawnReading(
   collapsed: ReadonlySet<OwnedRef>,
   reading: GraphReadingMarks,
 ): GraphReadingMarks {
-  const byRef = new Map(nodes.map((node) => [node.ref, node]));
-  const onto = (ref: OwnedRef): OwnedRef => {
-    const node = byRef.get(ref);
-    return node ? (outermostCollapsed(node, byRef, collapsed) ?? ref) : ref;
-  };
+  const onto = drawnAs(nodes, collapsed);
   return {
     open: new Set([...reading.open].map(onto)),
     active: reading.active === null ? null : onto(reading.active),
+  };
+}
+
+/**
+ * {@link drawnNodes}'s resolution applied to {@link GraphSurfaceProps.lit}: a
+ * named note a fold swallowed is answered for by the mega-node that swallowed
+ * it, the way that mega-node carries the tags of everything under it.
+ */
+export function drawnLit(
+  nodes: readonly NodeView[],
+  collapsed: ReadonlySet<OwnedRef>,
+  lit: ReadonlySet<OwnedRef>,
+): ReadonlySet<OwnedRef> {
+  return new Set([...lit].map(drawnAs(nodes, collapsed)));
+}
+
+/** Where a ref is drawn: itself, or the mega-node it folded into. A ref outside
+ *  `nodes` is left as it is. */
+function drawnAs(
+  nodes: readonly NodeView[],
+  collapsed: ReadonlySet<OwnedRef>,
+): (ref: OwnedRef) => OwnedRef {
+  const byRef = new Map(nodes.map((node) => [node.ref, node]));
+  return (ref) => {
+    const node = byRef.get(ref);
+    return node ? (outermostCollapsed(node, byRef, collapsed) ?? ref) : ref;
   };
 }
 

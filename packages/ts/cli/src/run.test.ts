@@ -115,16 +115,19 @@ describe("sloppy", () => {
     expect(err).toEqual(["This file isn't a Sloppy graph."]);
   });
 
-  it("says the commands that are not here yet are not here yet", async () => {
-    for (const command of ["init", "draft", "review"]) {
-      const { code, out } = await ran([command], new MemoryFiles());
+  it("says a folder with no notes in it has none, whatever was asked of it", async () => {
+    for (const argv of [["review"], ["draft", "a.ts"]]) {
+      const { code, err } = await ran(argv, new MemoryFiles({ root: "/" }));
       expect(code).toBe(NOTHING_DONE);
-      expect(out).toEqual(["Not here yet."]);
+      expect(err).toEqual(["There are no notes in that folder yet."]);
     }
-    const { out } = await ran(["draft", "--json"], new MemoryFiles());
+    const { out } = await ran(
+      ["draft", "a.ts", "--json"],
+      new MemoryFiles({ root: "/" }),
+    );
     expect(JSON.parse(out[0])).toEqual({
       command: "draft",
-      said: "Not here yet.",
+      said: "There are no notes in that folder yet.",
     });
   });
 

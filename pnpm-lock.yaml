@@ -395,6 +395,9 @@ importers:
       '@sloppy/ui':
         specifier: workspace:*
         version: link:../ui
+      '@sloppy/vault':
+        specifier: workspace:*
+        version: link:../vault
     devDependencies:
       '@eslint/js':
         specifier: 'catalog:'
@@ -453,6 +456,9 @@ importers:
 
   packages/ts/cli:
     dependencies:
+      '@sloppy/client':
+        specifier: workspace:*
+        version: link:../client
       '@sloppy/local':
         specifier: workspace:*
         version: link:../local

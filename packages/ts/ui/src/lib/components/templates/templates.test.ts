@@ -1,5 +1,7 @@
 import {
 	BlockDocumentSchema,
+	compassOf,
+	DECISION_WHY_HEADING,
 	readsAsInk,
 	type BlockView,
 	type CreateBlockRequest,
@@ -81,6 +83,20 @@ describe('the shapes on offer', () => {
 		for (const template of NOTE_TEMPLATES) {
 			expect(Object.keys(template).sort()).toEqual(['id', 'name', 'sections']);
 		}
+	});
+
+	// The shape is a compass and a section under that word, and nothing else
+	// says a note is a decision — `@sloppy/vault`'s review reads the same two.
+	it('opens a decision on a compass with every slot empty, and a why to write', () => {
+		const sections = templateSections(shape('decision'));
+		expect(sections).toHaveLength(2);
+		expect(compassOf(sections[0])).toEqual({ north: [], south: [], east: [], west: [] });
+		expect(sections[1].content[0]).toEqual({
+			type: 'heading',
+			attrs: { level: 2 },
+			content: [{ type: 'text', text: DECISION_WHY_HEADING }]
+		});
+		expect(sections[1].content[1]).toEqual({ type: 'paragraph' });
 	});
 
 	it('opens the sketch on a drawing surface with nothing drawn on it', () => {

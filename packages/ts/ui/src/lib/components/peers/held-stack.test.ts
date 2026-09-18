@@ -47,6 +47,7 @@ function show(blocks: BlockView[]): void {
 	mounted = mount(HeldStack, {
 		target,
 		props: {
+			note: { title: 'A note somebody else wrote' },
 			author: ADA,
 			blocks,
 			pictures: { picture: async () => ({ src: '', release: () => {} }) },

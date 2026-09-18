@@ -52,7 +52,8 @@
 		"@sloppy/graph": "workspace:*",
 		"@sloppy/local": "workspace:*",
 		"@sloppy/types": "workspace:*",
-		"@sloppy/ui": "workspace:*"
+		"@sloppy/ui": "workspace:*",
+		"@sloppy/vault": "workspace:*"
 	},
 	"devDependencies": {
 		"@eslint/js": "catalog:",

@@ -184,6 +184,17 @@ function readable(node: DocumentNode, schema: Schema): boolean {
 	return (node.content ?? []).every((child) => readable(child, schema));
 }
 
+/**
+ * A section opens on the editor's own copy of what it was handed. ProseMirror
+ * keeps an element's `attrs` VALUES by reference, so a list or an object inside
+ * one would otherwise still belong to whoever opened the note — and a draft
+ * written down from it is kept by `structuredClone`, which throws on the live
+ * state a surface holds its rows in.
+ */
+function ownCopy(elements: readonly DocumentNode[]): JSONContent[] {
+	return JSON.parse(JSON.stringify(elements)) as JSONContent[];
+}
+
 function sectionOf(
 	content: BlockDocument,
 	ref: OwnedRef | null,
@@ -194,7 +205,7 @@ function sectionOf(
 	return {
 		type: SECTION_NODE,
 		attrs: { blockUid: nextUid(), blockRef: ref },
-		content: elements.length > 0 ? (elements as JSONContent[]) : [{ type: 'paragraph' }]
+		content: elements.length > 0 ? ownCopy(elements) : [{ type: 'paragraph' }]
 	};
 }
 
