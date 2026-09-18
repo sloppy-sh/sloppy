@@ -14,6 +14,7 @@ import {
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { documents } from "./documents.test-support.js";
+import { frontEntries, frontList, splitNoteFile } from "./front.js";
 import {
   decodeText,
   inkPath,
@@ -522,6 +523,23 @@ const edges: fc.Arbitrary<EdgeLook[]> = fc
   )
   .map((looks) => looks.map((look) => EdgeLookSchema.parse(look)));
 
+/** Looks a file holds, with one of them picked out for a hand to get wrong. */
+const looksWithOneWrong = fc
+  .tuple(edges, fc.nat())
+  .map(([looks, pick]) => ({ looks: looksWritten(looks) ?? [], pick }))
+  .filter(({ looks }) => looks.length >= 2)
+  .map(({ looks, pick }) => ({ looks, wrong: pick % looks.length }));
+
+/** The file the note writes, with the dash line of one look typed as the ref
+ *  alone — the lines under it left where a hand would have left them. */
+function edgesWithOneWrong(looks: EdgeLook[], wrong: number): string {
+  const { files } = noteToVault(note({ edges: looks }), [], []);
+  return decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+    `  - to: ${looks[wrong].to}`,
+    `  - ${looks[wrong].to}`,
+  );
+}
+
 describe("a list a hand wrote an item with a colon into", () => {
   it("reads back as the items it was typed as, not as nothing", () => {
     const { files } = noteToVault(note({ tags: ["seed"] }), [], []);
@@ -650,6 +668,43 @@ describe("the looks a note sets on its lines", () => {
     expect(vaultToNote({ markdown: text }).edges).toEqual([
       { to: TARGETS[0], label: "cites" },
     ]);
+  });
+
+  it("keeps the looks after one a hand got wrong, the lines under it and all", () => {
+    const text = edgesWithOneWrong(
+      [
+        { to: TARGETS[0], label: "cites" },
+        { to: TARGETS[1], label: "answers", stroke: "dashed" },
+        { to: TARGETS[2], direction: "both" },
+      ],
+      1,
+    );
+    expect(vaultToNote({ markdown: text }).edges).toEqual([
+      { to: TARGETS[0], label: "cites" },
+      { to: TARGETS[2], direction: "both" },
+    ]);
+    const { front } = splitNoteFile(text);
+    expect(frontList(front, "edges")).toEqual([
+      `to: ${TARGETS[0]}`,
+      TARGETS[1],
+      `to: ${TARGETS[2]}`,
+    ]);
+    expect(frontEntries(front, "edges")).toEqual([
+      { to: TARGETS[0], label: "cites" },
+      { to: TARGETS[2], direction: "both" },
+    ]);
+  });
+
+  it("costs whichever one a hand got wrong and none of the rest", () => {
+    fc.assert(
+      fc.property(looksWithOneWrong, ({ looks, wrong }) => {
+        const kept = looks.filter((_, at) => at !== wrong);
+        expect(
+          vaultToNote({ markdown: edgesWithOneWrong(looks, wrong) }).edges,
+        ).toEqual(kept.length === 0 ? undefined : kept);
+      }),
+      { numRuns: 2000 },
+    );
   });
 
   it("costs the look and not the note where a hand got one wrong", () => {

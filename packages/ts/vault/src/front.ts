@@ -74,6 +74,11 @@ function isEntries(value: FrontWritten): value is FrontEntries {
   return Array.isArray(value) && value.every(isBlock);
 }
 
+/** A line indented under the field above it, whatever it reads as. */
+function under(line: string): boolean {
+  return line.startsWith("  ");
+}
+
 /** The fenced block, in the order the fields are given. A field with nothing in
  *  it is left out, which is what its absence means when it is read back. */
 export function writeFront(
@@ -156,7 +161,9 @@ export function splitNoteFile(text: string): NoteFile {
 }
 
 /** A field with nothing after its colon opens either a list or a block; which
- *  one it is, is what the first line under it says. */
+ *  one it is, is what the first line under it says. A line under it that reads
+ *  as neither belongs to the item or block it sits under, so an item a hand got
+ *  wrong costs that item and not the field. */
 function readFront(lines: readonly string[]): Map<string, FrontValue> {
   const front = new Map<string, FrontValue>();
   let opened: string | null = null;
@@ -213,6 +220,7 @@ function readFront(lines: readonly string[]): Map<string, FrontValue> {
         }
         continue;
       }
+      if (under(line)) continue;
     }
     close();
     const field = /^([A-Za-z0-9_]+):(?: (.*))?$/.exec(line);
