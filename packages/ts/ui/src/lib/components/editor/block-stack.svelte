@@ -1646,7 +1646,7 @@
 		font-weight: 500;
 		color: var(--muted-foreground);
 	}
-	:global(.sloppy-compass-notes) {
+	:global(.sloppy-compass ul.sloppy-compass-notes) {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.15rem 0.75rem;
@@ -1696,7 +1696,7 @@
 	:global(.sloppy-compass-field:focus-visible) {
 		border-color: var(--ring);
 	}
-	:global(.sloppy-compass-menu) {
+	:global(.sloppy-compass ul.sloppy-compass-menu) {
 		margin: 0.25rem 0 0;
 		padding: 0;
 		list-style: none;

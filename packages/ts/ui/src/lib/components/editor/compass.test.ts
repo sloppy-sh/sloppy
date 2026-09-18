@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { citedNotes, compassOf, type CreateBlockRequest, type NodeView } from '@sloppy/types';
+import {
+	citedNotes,
+	compassOf,
+	type BlockDocument,
+	type CreateBlockRequest,
+	type NodeView
+} from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -57,7 +63,8 @@ function open(references: NoteReferences) {
 			references,
 			node: NOTE,
 			blocks: [block({ content: section() })],
-			onCreate: async (request: CreateBlockRequest) => block({ content: request.content }),
+			onCreate: async (request: CreateBlockRequest) =>
+				block({ content: request.content as BlockDocument }),
 			onUpdate: async () => block(),
 			onRemove: async () => {},
 			onReorder: async () => block()
