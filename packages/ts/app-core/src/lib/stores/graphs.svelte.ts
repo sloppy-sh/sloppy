@@ -168,8 +168,10 @@ class GraphsStore {
 	/**
 	 * Where a graph is a folder on this device, the graph in the open folder is
 	 * the one in front of somebody, so a choice made against another folder is
-	 * let go of. Deduped like {@link load}; `again` is a folder that has just
-	 * changed. Elsewhere there is no folder and this decides nothing.
+	 * let go of — unless the folder stands alongside the graphs a Sloppy serves,
+	 * where that choice is still the reader's when they close it. Deduped like
+	 * {@link load}; `again` is a folder that has just changed. Elsewhere there is
+	 * no folder and this decides nothing.
 	 */
 	readOpenFolder(again = false): Promise<void> {
 		if (again) this.#openFolder = null;
@@ -181,7 +183,8 @@ class GraphsStore {
 			if (epoch !== this.#epoch || ref === undefined) return;
 			this.#inFolder = ref;
 			this.#folderRoot = vault.folder();
-			if (prefs.current.graph !== null && prefs.current.graph !== ref) prefs.set('graph', null);
+			if (!vault.alongside && prefs.current.graph !== null && prefs.current.graph !== ref)
+				prefs.set('graph', null);
 		})();
 		return this.#openFolder;
 	}

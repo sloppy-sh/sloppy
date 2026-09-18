@@ -49,7 +49,11 @@
 	let moved = $state<string | null>(null);
 
 	const canSaveFiles = savesFiles();
-	const offersCopy = $derived(session.onDevice ? canSaveFiles : session.signedIn);
+	// A graph opened on this device hands back its own copy, so the account's —
+	// which is not of the graph being read — is not offered beside it.
+	const offersCopy = $derived(
+		!graphHere.open && (session.onDevice ? canSaveFiles : session.signedIn)
+	);
 
 	/** Where a person's identity is kept for them. A graph on this device is
 	 *  written under one this device made, and there is nowhere else it is. */

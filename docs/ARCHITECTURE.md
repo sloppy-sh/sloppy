@@ -706,17 +706,20 @@ serve the graph through `LocalApi`, the same implementation the native app runs,
 page, store and component reaches it through the `api` they already reach a hosted graph
 through, and `runtime.mode()` answers `local` for as long as one is open. `AppRuntime.createApi`
 is where that swap happens, and closing the graph puts the hosted one back in front of the
-reader. Who is signed in is asked again on both sides of it: while one of these graphs is
-open, the graph on the device is what answers, which is why reading one needs no account.
+reader — at the graph they were reading, with the canvas they had arranged, because a
+folder opened in a tab stands alongside the graphs a Sloppy serves rather than replacing
+them (`VaultAccess.alongside`). Who is signed in is asked again on both sides of it: while
+one of these graphs is open, the graph on the device is what answers, which is why reading
+one needs no account.
 
 **The web shell stays a shell.** The doors, the `Files` over a directory handle and the
 archive unpacking live in `@sloppy/app-core` (or a browser module beside it), not in
 `apps/sloppy/web` — a route added to a shell is a route in the wrong package.
 
 **Nothing leaves the device.** No byte read from the folder or the archive is sent to the
-API, and a picture in one of these graphs is drawn from the handle or from memory as a blob
-URL rather than through the proxy — there is no remote origin to keep from the viewer,
-because the bytes never left. The door's own copy says that as a consequence, once, and
+API, and a picture in one of these graphs is drawn straight off the handle or out of memory
+rather than through the proxy — there is no remote origin to keep from the viewer, because
+the bytes never left. The door's own copy says that as a consequence, once, and
 nowhere else.
 
 **What a tab cannot do is absent, and Settings says so where a person would look.** There

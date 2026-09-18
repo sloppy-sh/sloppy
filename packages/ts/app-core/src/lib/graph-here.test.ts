@@ -2,12 +2,11 @@
 // writes it where it is, and nothing about it reaches the API —
 // docs/ARCHITECTURE.md § "A graph on this device, in the browser".
 
-import { LocalApi, MemoryFiles } from '@sloppy/local';
 import type { GraphView } from '@sloppy/types';
 import { pack, unpack } from '@sloppy/vault';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api } from './api.js';
-import { fakeFolder, type Held } from './browser-files.test-support.js';
+import { aGraphFolder, fakeFolder, type Held } from './browser-files.test-support.js';
 import { graphHere } from './graph-here.svelte.js';
 import { initRuntime, runtime } from './runtime.js';
 import { pictureSrc } from './asset-src.js';
@@ -23,22 +22,6 @@ import {
 import { graphs } from './stores/graphs.svelte.js';
 import { prefs } from './stores/prefs.svelte.js';
 import { session } from './stores/session.svelte.js';
-
-/** A folder holding a graph with one note in it, as a map of path to bytes. A
- *  real `LocalApi` writes it, so the files are the ones the app reads back. */
-async function aFolderWithAGraph(title = 'The garden'): Promise<Held> {
-	const store = new Map<string, Uint8Array>();
-	const at = '/the-folder';
-	const writing = new LocalApi(new MemoryFiles({ store, folder: at, data: '/elsewhere' }));
-	const graph = await writing.createGraph({ title });
-	await writing.createNode({ title: 'One' });
-	expect(graph.title).toBe(title);
-	return new Map(
-		[...store]
-			.filter(([path]) => path.startsWith(`${at}/`))
-			.map(([path, bytes]) => [path.slice(at.length + 1), bytes])
-	);
-}
 
 let fake: FakeApi;
 let handed: string[];
@@ -84,7 +67,7 @@ describe('the folder door', () => {
 	});
 
 	it('serves the graph in the folder, and says the graph is on this device', async () => {
-		picksUp(await aFolderWithAGraph());
+		picksUp(await aGraphFolder());
 		expect(await graphHere.openFolder()).toBe(true);
 
 		expect(runtime.mode()).toBe('local');
@@ -95,7 +78,7 @@ describe('the folder door', () => {
 	});
 
 	it('writes into the folder itself, and sends nothing to the API', async () => {
-		const held = await aFolderWithAGraph();
+		const held = await aGraphFolder();
 		const notesBefore = [...held.keys()].filter((path) => path.startsWith('notes/')).length;
 		picksUp(held);
 		await graphHere.openFolder();
@@ -109,7 +92,7 @@ describe('the folder door', () => {
 	});
 
 	it('draws what is in it as it is rather than through the proxy', async () => {
-		picksUp(await aFolderWithAGraph());
+		picksUp(await aGraphFolder());
 		const elsewhere = 'https://elsewhere.test/one.png';
 		expect(pictureSrc(elsewhere)).toContain('/proxy?url=');
 		await graphHere.openFolder();
@@ -117,7 +100,7 @@ describe('the folder door', () => {
 	});
 
 	it('puts the graph this app is served from back when it is closed', async () => {
-		picksUp(await aFolderWithAGraph());
+		picksUp(await aGraphFolder());
 		await graphHere.openFolder();
 		await graphHere.close();
 
@@ -144,8 +127,13 @@ describe('the folder door', () => {
 		graphs.toggleOnCanvas(graphs.home);
 		const canvas = graphs.onCanvas;
 
-		picksUp(await aFolderWithAGraph());
+		picksUp(await aGraphFolder());
 		await graphHere.openFolder();
+		// What a tab reads on a fresh load, which is where a remembered folder is
+		// opened again: the choice has to outlast the door, not just the closing.
+		prefs.init();
+		expect(prefs.current.graph).toBe(beside.ref);
+
 		await graphHere.close();
 
 		expect(prefs.current.graph).toBe(beside.ref);
@@ -153,7 +141,7 @@ describe('the folder door', () => {
 	});
 
 	it('is written under the account somebody is signed in with', async () => {
-		picksUp(await aFolderWithAGraph());
+		picksUp(await aGraphFolder());
 		await session.load();
 		expect(session.signedIn).toBe(true);
 		await graphHere.openFolder();
@@ -164,7 +152,7 @@ describe('the folder door', () => {
 
 	it('is written under an identity this browser made where nobody is signed in', async () => {
 		session.clear();
-		picksUp(await aFolderWithAGraph());
+		picksUp(await aGraphFolder());
 		await graphHere.openFolder();
 
 		expect(graphHere.open?.ownIdentity).toBe(true);
@@ -183,7 +171,7 @@ describe('the archive door', () => {
 	}
 
 	async function anArchive(): Promise<Uint8Array> {
-		const held = await aFolderWithAGraph('The thesis');
+		const held = await aGraphFolder('The thesis');
 		return pack(new Map(held));
 	}
 

@@ -1,11 +1,27 @@
 // A stand-in for the folder a browser hands over, so what reads and writes one
 // can be exercised without a browser.
 
+import { LocalApi, MemoryFiles } from '@sloppy/local';
 import type { FileHandleHere, FolderHandle, WritingHere } from './browser-files.js';
 
 /** A folder and everything under it, as one map of path to bytes — the shape a
  *  vault is already held in everywhere else. */
 export type Held = Map<string, Uint8Array>;
+
+/** A folder holding a graph with one note in it. A real `LocalApi` writes it,
+ *  so the files are the ones the app reads back. */
+export async function aGraphFolder(title = 'The garden'): Promise<Held> {
+	const store = new Map<string, Uint8Array>();
+	const at = '/the-folder';
+	const writing = new LocalApi(new MemoryFiles({ store, folder: at, data: '/elsewhere' }));
+	await writing.createGraph({ title });
+	await writing.createNode({ title: 'One' });
+	return new Map(
+		[...store]
+			.filter(([path]) => path.startsWith(`${at}/`))
+			.map(([path, bytes]) => [path.slice(at.length + 1), bytes])
+	);
+}
 
 class NotThere extends DOMException {
 	constructor(name: string) {

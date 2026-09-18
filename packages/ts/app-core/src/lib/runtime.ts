@@ -64,6 +64,11 @@ export interface VaultAccess {
 	 *  its graphs in one place, and the offer says so rather than promising a
 	 *  choice nobody gets. */
 	readonly asks: boolean;
+	/** Whether this folder stands alongside the graphs a Sloppy serves and is
+	 *  closed again — a folder opened in a browser tab. Absent → the folder is
+	 *  the only graph there is, so the graph a reader chose in another one is
+	 *  let go of when this one opens. */
+	readonly alongside?: boolean;
 	/**
 	 * Every folder this device knows, newest first. Absent, like the four acts
 	 * below, is a shell that keeps one folder and no list of them, so nothing
