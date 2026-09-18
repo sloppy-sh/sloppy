@@ -211,6 +211,7 @@ export class FakeText extends FakeContainer {
   text = "";
   visible = false;
   tint = 0;
+  alpha = 1;
   width = 10;
   resolution = 1;
   readonly anchor = { set: () => {} };

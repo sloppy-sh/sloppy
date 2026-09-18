@@ -8,6 +8,8 @@
 // tint cannot make one texture read as two shapes.
 
 import {
+  type EdgeKind,
+  type EdgeStroke,
   pictureTurn,
   RING_STYLES,
   type RingStyle,
@@ -25,10 +27,12 @@ import type {
   TextureSource,
 } from "pixi.js";
 import { clamp } from "./color.js";
-import type {
-  GraphPickMarks,
-  GraphReadingMarks,
-  GraphPictures,
+import {
+  edgeLookKey,
+  type GraphEdgeLook,
+  type GraphPickMarks,
+  type GraphReadingMarks,
+  type GraphPictures,
 } from "./contract.js";
 import type { GraphGround } from "./ground.js";
 import { GroundLayer } from "./ground-layer.js";
@@ -182,6 +186,40 @@ const CONNECTION_DASH = 9;
 /** The most segments one dashed edge may cost. Reached only by an edge long
  *  enough that the dashes stretch to meet it. */
 const MAX_DASHES = 60;
+/** How often a dotted line is marked, in CSS pixels, and how much of each step
+ *  it lays down — short enough that dotted is never read as dashed at the same
+ *  weight. DESIGN.md § Edges, "A look a person set". */
+const LOOK_DOT = 5;
+const LOOK_DOT_DUTY = 0.3;
+
+/** The break each kind of line already has, which a look's `stroke` replaces
+ *  and an absent one leaves alone — DESIGN.md § Edges. */
+const EDGE_BREAK: Record<EdgeKind, EdgeStroke> = {
+  genealogy: "solid",
+  run: "solid",
+  reference: "solid",
+  link: "dashed",
+};
+
+/** An arrowhead's reach back down the line, as a multiple of that line's
+ *  stroke: taking the weight is what clamps it, since the weight is clamped. */
+const ARROW_REACH = 6;
+/** How far each barb stands off the line, in radians. */
+const ARROW_SPREAD = 0.42;
+
+/** How close to a line a tap lands and still means that line, in CSS pixels —
+ *  a finger's reach, the way {@link GraphScene.hitTest} gives a leaf mark one. */
+const EDGE_TAP = 11;
+
+/** How many lines may carry their words at once. Fewer than the marks: a label
+ *  over a line has the whole field to collide with. */
+const MAX_EDGE_LABELS = 24;
+/** Below this drawn length, in CSS pixels, a line is too short to be read as
+ *  carrying the words at its middle. */
+const EDGE_LABEL_MIN_SPAN = 56;
+/** Words long enough to cross the field they are written over are not a
+ *  caption. */
+const EDGE_LABEL_CHARS = 24;
 
 /** The band a difference lays in the orbit, at the weight choosing takes: a
  *  canvas is never comparing and choosing at once, so the two never meet. */
@@ -288,6 +326,31 @@ interface LabelSlot {
   title: Text;
 }
 
+/**
+ * A line somebody set a look on: the two marks it reaches as indices into
+ * {@link GraphScene.positions}, oriented the way the look names them so an
+ * arrowhead knows which end is which, and what the line would have been drawn
+ * as without it.
+ */
+interface LookedLine {
+  from: number;
+  to: number;
+  kind: EdgeKind;
+  /** The step of the depth ramp a genealogy line is struck at; 0 on the rest. */
+  step: number;
+  look: GraphEdgeLook;
+}
+
+/** What one line is struck in: its ink, and what a look drawn on it takes. */
+interface LineInk {
+  color: number;
+  alpha: number;
+  width: number;
+  /** What a caption on this line is drawn at — a mark's caption takes the ink
+   *  whole, and this is the share the line itself has receded by. */
+  captionAlpha: number;
+}
+
 interface MarkTextures {
   disc: Texture;
   ring: Texture;
@@ -308,9 +371,17 @@ export class GraphScene {
    *  other broken — DESIGN.md § Edges. */
   private referencePairs: number[] = [];
   private linkPairs: number[] = [];
+  /** The lines a person set a look on, drawn one at a time because each one is
+   *  broken, headed and captioned on its own. */
+  private lookedLines: LookedLine[] = [];
+  /** Every pair a line is drawn between, whatever kind and whether or not a
+   *  look is on it — what {@link hitEdge} answers a tap against. */
+  private linePairs: number[] = [];
   private differenceLines: DifferenceLines = { arrived: [], gone: [] };
   private comparing = false;
   private readonly labelSlots = new Map<string, number>();
+  /** Which slot each line's words are written in, keyed by {@link edgeLookKey}. */
+  private readonly edgeLabelSlots = new Map<string, number>();
   private fieldNames: readonly NamedField[] = [];
   private selecting = false;
   private readonly ground: GroundLayer;
@@ -364,6 +435,7 @@ export class GraphScene {
     private readonly picks: Graphics,
     private readonly labels: Container,
     private readonly labelPool: LabelSlot[],
+    private readonly edgeLabelPool: Text[],
     private readonly fieldPool: Text[],
     private textures: MarkTextures,
     private sheetTier: number,
@@ -461,6 +533,25 @@ export class GraphScene {
       };
     });
 
+    // Before the field names, so those stay the last words on the layer: what a
+    // line carries is a caption like a mark's, and it is written in the same
+    // face — DESIGN.md § Edges, "A look a person set".
+    const edgeLabelPool = Array.from({ length: MAX_EDGE_LABELS }, () => {
+      const text = new pixi.Text({
+        text: "",
+        style: {
+          fontFamily: options.fonts.ui,
+          fontSize: 12,
+          fill: 0xffffff,
+        },
+        resolution: options.resolution,
+      });
+      text.visible = false;
+      text.anchor.set(0.5, 0.5);
+      labels.addChild(text);
+      return text;
+    });
+
     const fieldPool = Array.from({ length: MAX_FIELDS }, () => {
       const text = new pixi.Text({
         text: "",
@@ -496,6 +587,7 @@ export class GraphScene {
       picks,
       labels,
       labelPool,
+      edgeLabelPool,
       fieldPool,
       textures,
       sheetTier,
@@ -533,6 +625,7 @@ export class GraphScene {
       slot.address.resolution = resolution;
       slot.title.resolution = resolution;
     }
+    for (const label of this.edgeLabelPool) label.resolution = resolution;
     for (const name of this.fieldPool) name.resolution = resolution;
     this.previewsDirty = true;
     this.positionsDirty = true;
@@ -646,6 +739,8 @@ export class GraphScene {
     this.runPairs = [];
     this.referencePairs = [];
     this.linkPairs = [];
+    this.lookedLines = [];
+    this.linePairs = [];
     model.graph.forEachEdge((_edge, attributes, source, target) => {
       const a = byRef.get(source);
       const b = byRef.get(target);
@@ -657,6 +752,23 @@ export class GraphScene {
         model.graph.getNodeAttributes(source).difference === "gone" ||
         model.graph.getNodeAttributes(target).difference === "gone"
       ) {
+        return;
+      }
+      this.linePairs.push(a, b);
+      const deeper = Math.max(
+        model.graph.getNodeAttributes(source).depth,
+        model.graph.getNodeAttributes(target).depth,
+      );
+      const step = clamp(Math.round(deeper), 1, DEPTH_STEPS + 1) - 1;
+      if (attributes.look !== undefined) {
+        const from = byRef.get(attributes.look.from);
+        this.lookedLines.push({
+          from: from === a ? a : b,
+          to: from === a ? b : a,
+          kind: attributes.kind,
+          step,
+          look: attributes.look,
+        });
         return;
       }
       if (attributes.kind === "link") {
@@ -671,12 +783,7 @@ export class GraphScene {
         this.runPairs.push(a, b);
         return;
       }
-      const deeper = Math.max(
-        model.graph.getNodeAttributes(source).depth,
-        model.graph.getNodeAttributes(target).depth,
-      );
-      const depth = clamp(Math.round(deeper), 1, DEPTH_STEPS + 1);
-      this.edgesByDepth[depth - 1].push(a, b);
+      this.edgesByDepth[step].push(a, b);
     });
 
     this.differenceLines = model.difference;
@@ -816,10 +923,6 @@ export class GraphScene {
   }
 
   stats(): FrameStats {
-    const genealogy = this.edgesByDepth.reduce(
-      (total, pairs) => total + pairs.length,
-      0,
-    );
     return {
       cpuP50: percentile(this.cpuSamples, 0.5),
       cpuP95: percentile(this.cpuSamples, 0.95),
@@ -828,12 +931,7 @@ export class GraphScene {
       frameP95: percentile(this.frameSamples, 0.95),
       frames: this.frameSamples.length,
       drawn: this.marks.length,
-      edges:
-        (genealogy +
-          this.runPairs.length +
-          this.referencePairs.length +
-          this.linkPairs.length) /
-        2,
+      edges: this.linePairs.length / 2,
       labels: this.labelSlots.size,
     };
   }
@@ -1404,10 +1502,59 @@ export class GraphScene {
     return Math.min(12, Math.max(0.5, EDGE_WIDTH / this.viewport.scale));
   }
 
-  private rebuildEdges(): void {
+  /**
+   * What one line is struck in. `receding` is the canvas stepping back from a
+   * question — DESIGN.md § Edges recedes three of the four kinds and leaves the
+   * hand link where it was, which is why the alpha is read per kind.
+   */
+  private lineInk(kind: EdgeKind, step: number, receding: boolean): LineInk {
     const { palette } = this.options;
     const width = this.lineWidth;
+    const ink = (
+      color: number,
+      alpha: number,
+      standing: number,
+      weight = 1,
+    ): LineInk => ({
+      color,
+      alpha,
+      width: width * weight,
+      captionAlpha: alpha / standing,
+    });
+    switch (kind) {
+      case "run":
+        return ink(
+          palette.run,
+          receding ? palette.runAlphaWhileSelecting : palette.runAlpha,
+          palette.runAlpha,
+          RUN_WEIGHT,
+        );
+      case "reference":
+        return ink(
+          palette.connection,
+          receding
+            ? palette.connectionAlphaWhileSelecting
+            : palette.connectionAlpha,
+          palette.connectionAlpha,
+          CONNECTION_WEIGHT,
+        );
+      case "link":
+        return ink(
+          palette.connection,
+          palette.connectionAlpha,
+          palette.connectionAlpha,
+          CONNECTION_WEIGHT,
+        );
+      default:
+        return ink(
+          palette.depth(step + 1),
+          receding ? palette.edgeAlphaWhileSelecting : palette.edgeAlpha,
+          palette.edgeAlpha,
+        );
+    }
+  }
 
+  private rebuildEdges(): void {
     // Both questions take their answer off the same field: the notes a
     // difference names are left as they are and everything else dims, the lines
     // the addresses and the writing make included — DESIGN.md § "A difference
@@ -1415,9 +1562,6 @@ export class GraphScene {
     // through a tag question.
     const receding = this.selecting || this.comparing;
 
-    const edgeAlpha = receding
-      ? palette.edgeAlphaWhileSelecting
-      : palette.edgeAlpha;
     this.edges.clear();
     this.edgesByDepth.forEach((pairs, step) => {
       if (pairs.length === 0) return;
@@ -1427,11 +1571,7 @@ export class GraphScene {
         this.edges.moveTo(this.positions[a], this.positions[a + 1]);
         this.edges.lineTo(this.positions[b], this.positions[b + 1]);
       }
-      this.edges.stroke({
-        color: palette.depth(step + 1),
-        alpha: edgeAlpha,
-        width,
-      });
+      this.edges.stroke(this.lineInk("genealogy", step, receding));
     });
 
     this.runs.clear();
@@ -1442,11 +1582,7 @@ export class GraphScene {
       this.runs.lineTo(this.positions[b], this.positions[b + 1]);
     }
     if (this.runPairs.length > 0) {
-      this.runs.stroke({
-        color: palette.run,
-        alpha: receding ? palette.runAlphaWhileSelecting : palette.runAlpha,
-        width: width * RUN_WEIGHT,
-      });
+      this.runs.stroke(this.lineInk("run", 0, receding));
     }
 
     // Two strokes, because the two do not recede together. A reference is
@@ -1461,13 +1597,7 @@ export class GraphScene {
       this.connections.lineTo(this.positions[b], this.positions[b + 1]);
     }
     if (this.referencePairs.length > 0) {
-      this.connections.stroke({
-        color: palette.connection,
-        alpha: receding
-          ? palette.connectionAlphaWhileSelecting
-          : palette.connectionAlpha,
-        width: width * CONNECTION_WEIGHT,
-      });
+      this.connections.stroke(this.lineInk("reference", 0, receding));
     }
 
     const dash = CONNECTION_DASH / this.viewport.scale;
@@ -1484,14 +1614,106 @@ export class GraphScene {
       );
     }
     if (this.linkPairs.length > 0) {
-      this.connections.stroke({
-        color: palette.connection,
-        alpha: palette.connectionAlpha,
-        width: width * CONNECTION_WEIGHT,
-      });
+      this.connections.stroke(this.lineInk("link", 0, receding));
     }
 
+    this.drawLooks(receding);
     this.lastEdgeScale = this.viewport.scale;
+  }
+
+  /** The layer each kind of line is drawn on, so a look stays on the line it is
+   *  set on rather than over the field. */
+  private layerFor(kind: EdgeKind): Graphics {
+    if (kind === "run") return this.runs;
+    return kind === "genealogy" ? this.edges : this.connections;
+  }
+
+  /**
+   * The lines somebody set a look on, each struck on its own: the break the
+   * look names or the one the line already has, and an arrowhead at whichever
+   * end it names — DESIGN.md § Edges, "A look a person set".
+   */
+  private drawLooks(receding: boolean): void {
+    for (const line of this.lookedLines) {
+      const into = this.layerFor(line.kind);
+      const ink = this.lineInk(line.kind, line.step, receding);
+      const from = this.positionOf(line.from);
+      const to = this.positionOf(line.to);
+      const span = Math.hypot(to.x - from.x, to.y - from.y);
+      const stroke = line.look.stroke ?? EDGE_BREAK[line.kind];
+      if (stroke === "solid") {
+        into.moveTo(from.x, from.y);
+        into.lineTo(to.x, to.y);
+      } else {
+        brokenLine(
+          into,
+          from,
+          to,
+          stroke === "dashed"
+            ? dashSegments(span, CONNECTION_DASH / this.viewport.scale)
+            : dotSegments(span, LOOK_DOT / this.viewport.scale),
+        );
+      }
+      const { direction } = line.look;
+      if (direction === "to" || direction === "both") {
+        this.arrowInto(into, from, to, line.to, ink.width);
+      }
+      if (direction === "from" || direction === "both") {
+        this.arrowInto(into, to, from, line.from, ink.width);
+      }
+      into.stroke(ink);
+    }
+  }
+
+  /**
+   * An arrowhead where the line reaches the mark at `at`, held off that mark so
+   * the head is not drawn under it. Its reach is the line's own stroke, which is
+   * clamped — so a field zoomed out draws hairline heads rather than the
+   * loudest thing on it.
+   */
+  private arrowInto(
+    into: Graphics,
+    from: Point,
+    to: Point,
+    at: number,
+    width: number,
+  ): void {
+    const span = Math.hypot(to.x - from.x, to.y - from.y);
+    if (span < 1) return;
+    const ux = (to.x - from.x) / span;
+    const uy = (to.y - from.y) / span;
+    const clear = Math.min(this.marks[at]?.radius ?? 0, span / 2);
+    const reach = Math.min(width * ARROW_REACH, span - clear);
+    if (reach <= 0) return;
+    const tipX = to.x - ux * clear;
+    const tipY = to.y - uy * clear;
+    const angle = Math.atan2(uy, ux);
+    for (const spread of [ARROW_SPREAD, -ARROW_SPREAD]) {
+      into.moveTo(
+        tipX - Math.cos(angle + spread) * reach,
+        tipY - Math.sin(angle + spread) * reach,
+      );
+      into.lineTo(tipX, tipY);
+    }
+  }
+
+  /**
+   * The pair a tap landed on the LINE between, and `null` where it landed on
+   * none. The nearest line within a finger's reach wins; a tap on a mark is the
+   * mark's, which {@link hitTest} answers first.
+   */
+  hitEdge(world: Point): [string, string] | null {
+    let best: [string, string] | null = null;
+    let nearest = EDGE_TAP / this.viewport.scale;
+    for (let at = 0; at < this.linePairs.length; at += 2) {
+      const a = this.linePairs[at];
+      const b = this.linePairs[at + 1];
+      const away = awayFromLine(world, this.positionOf(a), this.positionOf(b));
+      if (away > nearest) continue;
+      nearest = away;
+      best = [this.marks[a].ref, this.marks[b].ref];
+    }
+    return best;
   }
 
   /**
@@ -1691,7 +1913,83 @@ export class GraphScene {
       slot.title.text = caption.title;
     }
 
-    this.placeMarkLabels(wanted);
+    // The marks are placed first, so a line's words give way to a note's name
+    // rather than the other way round.
+    this.layoutEdgeLabels(this.placeMarkLabels(wanted));
+  }
+
+  /**
+   * The words a person wrote on a line, at its middle — a caption, held to the
+   * rules a mark's caption is held to, so a field of labelled lines is never a
+   * wall of text. DESIGN.md § Edges, "A look a person set".
+   */
+  private layoutEdgeLabels(placed: number[]): void {
+    const held = this.edgeLabelSlots;
+    const enter = EDGE_LABEL_MIN_SPAN;
+    const leave = enter * LABEL_HYSTERESIS;
+    const receding = this.selecting || this.comparing;
+
+    const wanted: { key: string; line: LookedLine; at: Point; span: number }[] =
+      [];
+    for (const line of this.lookedLines) {
+      const words = line.look.label;
+      if (words === undefined || words === "") continue;
+      const from = this.positionOf(line.from);
+      const to = this.positionOf(line.to);
+      const span =
+        Math.hypot(to.x - from.x, to.y - from.y) * this.viewport.scale;
+      const key = edgeLookKey(line.look.from, line.look.to);
+      if (span < (held.has(key) ? leave : enter)) continue;
+      const at = this.viewport.toScreen(
+        (from.x + to.x) / 2,
+        (from.y + to.y) / 2,
+      );
+      if (at.x < 0 || at.x > this.width || at.y < 0 || at.y > this.height) {
+        continue;
+      }
+      wanted.push({ key, line, at, span });
+    }
+    wanted.sort((a, b) => b.span - a.span);
+    wanted.length = Math.min(wanted.length, this.edgeLabelPool.length);
+    const keeping = new Set(wanted.map((entry) => entry.key));
+
+    for (const [key, at] of held) {
+      if (keeping.has(key)) continue;
+      held.delete(key);
+      this.edgeLabelPool[at].visible = false;
+    }
+
+    const taken = new Set(held.values());
+    const free: number[] = [];
+    for (let at = 0; at < this.edgeLabelPool.length; at++) {
+      if (!taken.has(at)) free.push(at);
+    }
+
+    for (const entry of wanted) {
+      let at = held.get(entry.key);
+      if (at === undefined) {
+        at = free.pop();
+        if (at === undefined) break;
+        held.set(entry.key, at);
+      }
+      const text = this.edgeLabelPool[at];
+      const words = shorten(entry.line.look.label ?? "", EDGE_LABEL_CHARS);
+      if (text.text !== words) text.text = words;
+      const left = entry.at.x - text.width / 2;
+      if (overlaps(placed, left, entry.at.y, text.width)) {
+        text.visible = false;
+        continue;
+      }
+      placed.push(left, entry.at.y, text.width);
+      text.position.set(entry.at.x, entry.at.y);
+      text.tint = this.options.palette.ink;
+      text.alpha = this.lineInk(
+        entry.line.kind,
+        entry.line.step,
+        receding,
+      ).captionAlpha;
+      text.visible = true;
+    }
   }
 
   /**
@@ -1727,7 +2025,9 @@ export class GraphScene {
     }
   }
 
-  private placeMarkLabels(wanted: readonly Mark[]): void {
+  /** Answers the boxes it took, so whatever is written next keeps clear of
+   *  them. */
+  private placeMarkLabels(wanted: readonly Mark[]): number[] {
     const held = this.labelSlots;
     // Placed biggest first, and a label that would land on one already placed is
     // dropped for this frame rather than overprinted. It keeps its slot, so the
@@ -1766,6 +2066,7 @@ export class GraphScene {
       slot.title.tint = fill;
       slot.title.visible = titled;
     }
+    return placed;
   }
 }
 
@@ -2080,6 +2381,40 @@ export function dashSegments(
   });
 }
 
+/**
+ * Where each mark of a dotted line falls, as distances along it: one every
+ * `step`, laid down for {@link LOOK_DOT_DUTY} of it. Capped for cost the way
+ * {@link dashSegments} is, and the spacing absorbs the cap.
+ */
+export function dotSegments(
+  length: number,
+  step: number,
+): { from: number; to: number }[] {
+  if (length < 1) return [];
+  const steps = Math.min(Math.ceil(length / step), MAX_DASHES);
+  const period = length / steps;
+  return Array.from({ length: steps }, (_unused, at) => ({
+    from: at * period,
+    to: at * period + period * LOOK_DOT_DUTY,
+  }));
+}
+
+function brokenLine(
+  graphics: Graphics,
+  from: Point,
+  to: Point,
+  segments: readonly { from: number; to: number }[],
+): void {
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (length === 0) return;
+  const ux = (to.x - from.x) / length;
+  const uy = (to.y - from.y) / length;
+  for (const segment of segments) {
+    graphics.moveTo(from.x + ux * segment.from, from.y + uy * segment.from);
+    graphics.lineTo(from.x + ux * segment.to, from.y + uy * segment.to);
+  }
+}
+
 function dashLine(
   graphics: Graphics,
   x1: number,
@@ -2089,12 +2424,28 @@ function dashLine(
   dash: number,
 ): void {
   const length = Math.hypot(x2 - x1, y2 - y1);
-  const ux = (x2 - x1) / length;
-  const uy = (y2 - y1) / length;
-  for (const { from, to } of dashSegments(length, dash)) {
-    graphics.moveTo(x1 + ux * from, y1 + uy * from);
-    graphics.lineTo(x1 + ux * to, y1 + uy * to);
-  }
+  brokenLine(
+    graphics,
+    { x: x1, y: y1 },
+    { x: x2, y: y2 },
+    dashSegments(length, dash),
+  );
+}
+
+/** How far a point lies off the segment between two others, which is what a tap
+ *  on a line is measured by. */
+function awayFromLine(point: Point, from: Point, to: Point): number {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const span = dx * dx + dy * dy;
+  const along =
+    span === 0
+      ? 0
+      : clamp(((point.x - from.x) * dx + (point.y - from.y) * dy) / span, 0, 1);
+  return Math.hypot(
+    point.x - (from.x + dx * along),
+    point.y - (from.y + dy * along),
+  );
 }
 
 function percentile(samples: readonly number[], fraction: number): number {

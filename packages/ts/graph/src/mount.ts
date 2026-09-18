@@ -14,6 +14,7 @@ import {
   drawnReading,
   type GraphDifference,
   type GraphField,
+  type GraphEdgeLook,
   type GraphFieldInset,
   type GraphHoverAt,
   type GraphSurfaceProps,
@@ -271,6 +272,7 @@ export function mountGraph(
     collapsed: GraphMountOptions["collapsed"];
     viewer: GraphMountOptions["viewer"];
     fields: GraphMountOptions["fields"];
+    edgeLooks: GraphMountOptions["edgeLooks"];
     difference: GraphMountOptions["difference"];
     focus: OwnedRef | undefined;
     palette: GraphPalette;
@@ -294,6 +296,7 @@ export function mountGraph(
       standing.nodes === props.nodes &&
       standing.collapsed === props.collapsed &&
       standing.viewer === props.viewer &&
+      sameLooks(standing.edgeLooks, props.edgeLooks) &&
       sameDifference(standing.difference, props.difference) &&
       sameFields(standing.fields, props.fields) &&
       standing.focus === focus &&
@@ -317,6 +320,7 @@ export function mountGraph(
       keep: scene.snapshot(),
       fields: props.fields,
       difference: props.difference,
+      edgeLooks: props.edgeLooks,
     });
 
     const questioned = props.selection.length > 0 || props.lit !== undefined;
@@ -327,6 +331,7 @@ export function mountGraph(
       collapsed: props.collapsed,
       viewer: props.viewer,
       fields: props.fields,
+      edgeLooks: props.edgeLooks,
       difference: props.difference,
       focus,
       palette,
@@ -378,8 +383,16 @@ export function mountGraph(
     watchDensity();
     detachGestures = attachGestures(field, built.viewport, {
       hitTest: (world) => built.hitTest(world),
-      onTap: (target, _world, withModifier) => {
-        if (target === null) return;
+      onTap: (target, world, withModifier) => {
+        if (target === null) {
+          // A line is what is left where a tap landed on no mark, and only
+          // where nothing else has already said what a tap means.
+          if (props.onEdge === undefined || comparing()) return;
+          if (props.picking !== undefined || props.chosen !== undefined) return;
+          const pair = built.hitEdge(world);
+          if (pair) props.onEdge(pair[0] as OwnedRef, pair[1] as OwnedRef);
+          return;
+        }
         const node = built.attributesOf(target);
         if (!node) return;
         const ref = target as OwnedRef;
@@ -685,6 +698,27 @@ function sameRefs(a: ReadonlySet<OwnedRef>, b: ReadonlySet<OwnedRef>): boolean {
   if (a.size !== b.size) return false;
   for (const ref of a) if (!b.has(ref)) return false;
   return true;
+}
+
+/**
+ * Whether the lines are drawn under the same looks. Read rather than compared
+ * by identity for the reason the fields are: a host resolves these off its own
+ * notes, so the same canvas arrives as a fresh list every update.
+ */
+function sameLooks(
+  a: readonly GraphEdgeLook[] | undefined,
+  b: readonly GraphEdgeLook[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a.length !== b.length) return false;
+  return a.every(
+    (look, at) =>
+      look.from === b[at].from &&
+      look.to === b[at].to &&
+      look.label === b[at].label &&
+      look.direction === b[at].direction &&
+      look.stroke === b[at].stroke,
+  );
 }
 
 /**
