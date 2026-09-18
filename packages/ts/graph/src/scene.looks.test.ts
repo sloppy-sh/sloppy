@@ -278,7 +278,7 @@ describe("the arrowhead a look names", () => {
 });
 
 describe("the words a look puts on a line", () => {
-  it("writes them at the line's middle", async () => {
+  it("writes them beside the line's middle, clear of the line", async () => {
     const looked = await canvasOn(
       [parent, child],
       [lookOn({ label: "grew out of" })],
@@ -297,8 +297,21 @@ describe("the words a look puts on a line", () => {
       (from.x + to.x) / 2,
       (from.y + to.y) / 2,
     );
-    expect(written?.x).toBeCloseTo(middle.x, 5);
-    expect(written?.y).toBeCloseTo(middle.y, 5);
+    const ends = [from, to].map((at) =>
+      looked.scene.viewport.toScreen(at.x, at.y),
+    );
+    const off = Math.hypot(
+      (written?.x ?? 0) - middle.x,
+      (written?.y ?? 0) - middle.y,
+    );
+    // Beside the middle, and square to the line: as far from one end as from
+    // the other, which is what "at the middle" means once it is held clear.
+    expect(off).toBeGreaterThan(0);
+    expect(off).toBeLessThan(20);
+    const away = ends.map((end) =>
+      Math.hypot((written?.x ?? 0) - end.x, (written?.y ?? 0) - end.y),
+    );
+    expect(away[0]).toBeCloseTo(away[1], 5);
     looked.scene.destroy();
   });
 

@@ -220,6 +220,10 @@ const EDGE_LABEL_MIN_SPAN = 56;
 /** Words long enough to cross the field they are written over are not a
  *  caption. */
 const EDGE_LABEL_CHARS = 24;
+/** How far off its line the words sit, in CSS pixels: a caption stands beside
+ *  what it names, the way a mark's does, rather than being struck through by
+ *  it. */
+const EDGE_LABEL_GAP = 13;
 
 /** The band a difference lays in the orbit, at the weight choosing takes: a
  *  canvas is never comparing and choosing at once, so the two never meet. */
@@ -1940,9 +1944,10 @@ export class GraphScene {
         Math.hypot(to.x - from.x, to.y - from.y) * this.viewport.scale;
       const key = edgeLookKey(line.look.from, line.look.to);
       if (span < (held.has(key) ? leave : enter)) continue;
-      const at = this.viewport.toScreen(
-        (from.x + to.x) / 2,
-        (from.y + to.y) / 2,
+      const at = beside(
+        this.viewport.toScreen((from.x + to.x) / 2, (from.y + to.y) / 2),
+        this.viewport.toScreen(from.x, from.y),
+        this.viewport.toScreen(to.x, to.y),
       );
       if (at.x < 0 || at.x > this.width || at.y < 0 || at.y > this.height) {
         continue;
@@ -2430,6 +2435,21 @@ function dashLine(
     { x: x2, y: y2 },
     dashSegments(length, dash),
   );
+}
+
+/** A point held {@link EDGE_LABEL_GAP} clear of the line through `from` and
+ *  `to`, on the upper side of it — where the words stand beside their line
+ *  rather than under it. */
+function beside(at: Point, from: Point, to: Point): Point {
+  const span = Math.hypot(to.x - from.x, to.y - from.y);
+  if (span === 0) return at;
+  const nx = -(to.y - from.y) / span;
+  const ny = (to.x - from.x) / span;
+  const up = ny > 0 ? -1 : 1;
+  return {
+    x: at.x + nx * up * EDGE_LABEL_GAP,
+    y: at.y + ny * up * EDGE_LABEL_GAP,
+  };
 }
 
 /** How far a point lies off the segment between two others, which is what a tap
