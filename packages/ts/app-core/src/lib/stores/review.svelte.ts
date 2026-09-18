@@ -203,9 +203,7 @@ class ReviewStore {
 				return;
 			}
 			await nodes.update(note, { checked: at });
-			this.#signals = this.#signals.filter(
-				(one) => !(one.kind === 'anchor-changed' && one.note === note)
-			);
+			this.#settle((one) => !(one.kind === 'anchor-changed' && one.note === note));
 		} catch (error) {
 			this.#trouble = serverMessage(error) ?? UNRECORDED;
 		} finally {
@@ -236,15 +234,23 @@ class ReviewStore {
 			if (walkthrough) {
 				await writeTemplate(walkthrough, { node: note.ref, after: anchor.ref }, api.createBlock);
 			}
-			this.#signals = this.#signals.filter(
-				(one) => !(one.kind === 'code-without-note' && one.path === path)
-			);
+			this.#settle((one) => !(one.kind === 'code-without-note' && one.path === path));
 			return note.ref;
 		} catch (error) {
 			this.#trouble = serverMessage(error) ?? UNWRITTEN;
 			return null;
 		} finally {
 			if (this.#acting === row) this.#acting = null;
+		}
+	}
+
+	/** What an act has settled is no longer a thing to do; where it was the last
+	 *  of its kind, the question moves on to the next one rather than leaving
+	 *  somebody looking at a list that is not there. */
+	#settle(keep: (signal: ReviewSignal) => boolean): void {
+		this.#signals = this.#signals.filter(keep);
+		if (this.#chosen !== null && !this.#signals.some((one) => one.kind === this.#chosen)) {
+			this.#chosen = this.kinds[0] ?? null;
 		}
 	}
 

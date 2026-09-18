@@ -331,6 +331,9 @@ describe('acting on what was left behind', () => {
 		expect(written).toEqual([{ checked: await kept.currentCommit() }]);
 		expect(review.under('anchor-changed')).toEqual([]);
 		expect(review.acting).toBeNull();
+		// The last of its kind settled, so the question moves on rather than
+		// leaving somebody looking at a list that is not there.
+		expect(review.chosen).toBe('code-without-note');
 	});
 
 	it('says what to do where the reading could not be recorded', async () => {
