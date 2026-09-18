@@ -565,7 +565,10 @@ export class LocalApi implements SloppyApi {
       const was = graph?.sectionAt(ref);
       if (graph && was) await graph.readAgain(was.note.ref);
       const held = graph?.sectionAt(ref);
-      if (!graph || !held || held.note.deleted_at !== undefined) {
+      if (held && held.note.deleted_at !== undefined) {
+        throw absent("That note is in the bin.");
+      }
+      if (!graph || !held) {
         throw sectionGone("That section is no longer in this note.");
       }
       const section = held.note.sections[held.at];
