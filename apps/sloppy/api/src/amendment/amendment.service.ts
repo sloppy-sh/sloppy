@@ -100,10 +100,7 @@ export class AmendmentService {
       });
     }
     const carried = new Set(sections.map((section) => section.ref));
-    // An offer arrives in an archive, so its looks are read the way a file's
-    // are: the first of two on one line, and nothing where none of them says
-    // anything — an offer leaves the note's looks alone rather than taking
-    // them off.
+    // An offer leaves the note's looks alone rather than taking them off.
     const lines = offer.edges
       ? looksWritten(looksRead(offer.edges))
       : undefined;

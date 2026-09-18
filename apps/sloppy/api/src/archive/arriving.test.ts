@@ -739,6 +739,34 @@ describe("the offers an archive carries", () => {
     ]);
   });
 
+  it("brings the looks the offer proposes on the note's lines", () => {
+    const [row] = offeredRows(
+      DID,
+      [
+        offer({
+          ulid: "01JAMENDA00000000000000000",
+          amends: ref(1),
+          edges: [{ to: ref(2), label: "follows from", stroke: "dashed" }],
+        }),
+      ],
+      new Set([ref(1)]),
+    );
+
+    expect(row.edges).toEqual([
+      { to: ref(2), label: "follows from", stroke: "dashed" },
+    ]);
+  });
+
+  it("leaves a note's looks alone where the offer proposes none", () => {
+    const [row] = offeredRows(
+      DID,
+      [offer({ ulid: "01JAMENDA00000000000000000", amends: ref(1) })],
+      new Set([ref(1)]),
+    );
+
+    expect("edges" in row).toBe(false);
+  });
+
   it("drops one offered on a note the archive does not carry", () => {
     expect(
       offeredRows(

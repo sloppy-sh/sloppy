@@ -138,6 +138,23 @@ describe("the seeded graph", () => {
     for (const root of plan.roots) expect(root.look).toBeUndefined();
   });
 
+  // The seed is what somebody looks at to see what a look does, so a channel
+  // that never varies against the other leaves half of them unseen.
+  it("varies which way a line points apart from how it is broken", () => {
+    const looked = all.flatMap((node) => (node.look ? [node.look] : []));
+    const strokes = new Set(looked.map((look) => look.stroke));
+    const pointing = new Set(looked.map((look) => look.direction));
+
+    expect(strokes).toEqual(new Set([undefined, "dashed", "dotted"]));
+    expect(pointing).toEqual(new Set(["to", "from", "both"]));
+    for (const stroke of strokes) {
+      const drawn = looked.filter((look) => look.stroke === stroke);
+      expect(new Set(drawn.map((look) => look.direction)).size).toBeGreaterThan(
+        1,
+      );
+    }
+  });
+
   it("is the same graph on every run", () => {
     const again = planGraph(2400);
     expect(JSON.stringify(again)).toBe(JSON.stringify(plan));

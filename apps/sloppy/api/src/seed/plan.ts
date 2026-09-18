@@ -423,8 +423,6 @@ function widestRun(node: PlannedNode): number {
   );
 }
 
-/** Mulberry32: a small, well-known PRNG. Any deterministic source would do;
- *  what matters is that it is not the platform's, which offers no seed. */
 /** What one note says about the one it sprang out of — the words a person
  *  writes on a line, rather than anything the graph derives. */
 const LINE_LABELS = [
@@ -450,11 +448,16 @@ function lookAtLines(
   const walk = (node: PlannedNode): void => {
     for (const child of node.children) {
       if (lines() < 1 / 12) {
-        const roll = lines();
+        const pointing = lines();
+        const broken = lines();
         child.look = {
           label: pick(lines, LINE_LABELS),
-          direction: roll < 0.55 ? "from" : roll < 0.85 ? "to" : "both",
-          ...(roll < 0.25 ? { stroke: "dashed" as const } : {}),
+          direction: pointing < 0.55 ? "from" : pointing < 0.85 ? "to" : "both",
+          ...(broken < 0.15
+            ? { stroke: "dotted" as const }
+            : broken < 0.35
+              ? { stroke: "dashed" as const }
+              : {}),
         };
         set++;
       }
@@ -465,6 +468,8 @@ function lookAtLines(
   return set;
 }
 
+/** Mulberry32: a small, well-known PRNG. Any deterministic source would do;
+ *  what matters is that it is not the platform's, which offers no seed. */
 function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
   return () => {

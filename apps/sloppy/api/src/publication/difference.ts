@@ -117,9 +117,9 @@ function sectionChanges(
 }
 
 /**
- * Every field of the note a reader is handed, except `updated_at`: it is a
- * record of a change rather than one, and a note's look is not published at all,
- * so recolouring one would otherwise report a difference with nothing in it.
+ * Every field of the note a reader is handed, except `updated_at`, which is a
+ * record of a change rather than one. What a person set on the MARK is not
+ * published, so recolouring a note reports nothing.
  */
 function sameNote(a: PublishedNode, b: PublishedNode): boolean {
   return (
@@ -133,7 +133,8 @@ function sameNote(a: PublishedNode, b: PublishedNode): boolean {
     a.signing_device_public_key === b.signing_device_public_key &&
     sameList(a.tags, b.tags) &&
     sameList(a.links, b.links) &&
-    sameList(a.aliases ?? [], b.aliases ?? [])
+    sameList(a.aliases ?? [], b.aliases ?? []) &&
+    same(a.edges ?? [], b.edges ?? [])
   );
 }
 

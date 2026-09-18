@@ -203,6 +203,7 @@ export function offeredRows(
         ...(offer.message === undefined ? {} : { message: offer.message }),
         title: offer.title,
         tags: TagsSchema.catch([]).parse(offer.tags),
+        ...(offer.edges?.length ? { edges: offer.edges } : {}),
         ...(offer.appearance ? { appearance: offer.appearance } : {}),
         blocks: offer.sections.map((section) => ({
           ref: ownedRefFrom(createOwnedRecordId("block", did, section.ulid)),
