@@ -223,4 +223,35 @@ describe('every way out of an open archive', () => {
 			expect((await api.getNode(written.ref))?.title).toBe('Written in this tab');
 		});
 	}
+
+	it('leaves when the answer is yes', async () => {
+		await anArchiveWithAWordInIt();
+
+		press('Close');
+		await settle();
+		answer('Close it');
+		await settle();
+
+		expect(graphHere.open).toBeNull();
+		expect(screen()).toContain('A graph kept on this device');
+	});
+
+	it('says a copy that could not be saved where the question is, before it is answered', async () => {
+		await anArchiveWithAWordInIt();
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			saveFile: async () => {
+				throw new Error('There was nowhere to put it. Try again.');
+			}
+		});
+
+		press('Close');
+		await settle();
+		answer('Save a copy');
+		await settle();
+
+		const asked = document.body.querySelector('[role="dialog"]');
+		expect(asked?.textContent).toContain('There was nowhere to put it');
+		expect(graphHere.open?.how).toBe('archive');
+	});
 });

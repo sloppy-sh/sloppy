@@ -23,6 +23,7 @@ import {
 	stillAllowed
 } from './browser-files.js';
 import { type DeploymentMode, runtime, updateRuntime } from './runtime.js';
+import { seamSettledAgain } from './seam.svelte.js';
 import { openHere, saveHere } from './save-file.js';
 import { serverMessage } from './stores/errors.js';
 import { graphs } from './stores/graphs.svelte.js';
@@ -157,7 +158,7 @@ class GraphHereStore {
 		// anything reads that the graph on this device is gone: a surface told
 		// both at once would otherwise read one against the other.
 		await session.refresh();
-		session.servedFromElsewhere();
+		seamSettledAgain();
 		this.#open = null;
 		letGoOfTheGraphRead();
 		await rememberFolder(null);
@@ -197,7 +198,7 @@ class GraphHereStore {
 			}
 		});
 		resetApi();
-		session.servedFromElsewhere();
+		seamSettledAgain();
 		this.#open = { ...opened, ownIdentity: signedIn === undefined };
 		letGoOfTheGraphRead();
 		// Who is writing here is the graph on this device's answer now.

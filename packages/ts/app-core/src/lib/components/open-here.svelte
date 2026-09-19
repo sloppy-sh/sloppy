@@ -16,8 +16,6 @@
 		brief = false
 	}: { brief?: boolean } = $props();
 
-	/** Every way out of the graph in front of somebody, with what the answer to
-	 *  the question reads as. */
 	const WAYS_OUT = {
 		close: { answer: 'Close it', act: () => graphHere.close() },
 		folder: { answer: 'Open a folder', act: () => graphHere.openFolder() },
@@ -170,7 +168,7 @@
 	</div>
 {/if}
 
-{#if problem}
+{#if problem && question === null}
 	<p class="text-sm text-destructive" role="alert">{problem}</p>
 {/if}
 
@@ -183,32 +181,37 @@
 	description="What you have written since you opened it is only in this tab. Save a copy first to keep it."
 >
 	{#if question}
-		<div class="flex flex-col-reverse gap-2 px-2 pt-4 sm:flex-row sm:justify-end">
-			<Button
-				variant="outline"
-				class="h-11 sm:h-9"
-				disabled={working !== null}
-				onclick={() => (asking = null)}
-			>
-				Cancel
-			</Button>
-			<Button
-				variant="outline"
-				class="h-11 sm:h-9"
-				disabled={working !== null || !canSaveFiles}
-				aria-busy={working === 'copy'}
-				onclick={() => void doing('copy', () => graphHere.saveCopy())}
-			>
-				{working === 'copy' ? 'Putting it together…' : 'Save a copy'}
-			</Button>
-			<Button
-				variant="destructive"
-				class="h-11 sm:h-9"
-				disabled={working !== null}
-				onclick={() => void answered(question.way)}
-			>
-				{question.answer}
-			</Button>
+		<div class="flex flex-col gap-3 px-2 pt-4">
+			{#if problem}
+				<p class="text-sm text-destructive" role="alert">{problem}</p>
+			{/if}
+			<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+				<Button
+					variant="outline"
+					class="h-11 sm:h-9"
+					disabled={working !== null}
+					onclick={() => (asking = null)}
+				>
+					Cancel
+				</Button>
+				<Button
+					variant="outline"
+					class="h-11 sm:h-9"
+					disabled={working !== null || !canSaveFiles}
+					aria-busy={working === 'copy'}
+					onclick={() => void doing('copy', () => graphHere.saveCopy())}
+				>
+					{working === 'copy' ? 'Putting it together…' : 'Save a copy'}
+				</Button>
+				<Button
+					variant="destructive"
+					class="h-11 sm:h-9"
+					disabled={working !== null}
+					onclick={() => void answered(question.way)}
+				>
+					{question.answer}
+				</Button>
+			</div>
 		</div>
 	{/if}
 </ResponsiveModal>

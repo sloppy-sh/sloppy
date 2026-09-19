@@ -23,6 +23,7 @@ import {
 import { api, resetApi } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
 import { type KnownFolder, runtime } from '../runtime.js';
+import { seam } from '../seam.svelte.js';
 import { serverMessage } from './errors.js';
 import { nodes } from './nodes.svelte.js';
 import { prefs } from './prefs.svelte.js';
@@ -209,21 +210,21 @@ class GraphsStore {
 	 *  what makes the picker the place a folder is opened, started and
 	 *  forgotten. */
 	get keepsFolders(): boolean {
-		return runtime.vault()?.known !== undefined;
+		return seam().vault()?.known !== undefined;
 	}
 
 	/** Whether a graph that is not open yet can be put on this device at all:
 	 *  started by naming it, or brought in from a file. Both want somewhere to
 	 *  keep it, and a folder opened in a browser tab is the only one there. */
 	get startsGraphs(): boolean {
-		const vault = runtime.vault();
+		const vault = seam().vault();
 		return vault === undefined || vault.known !== undefined;
 	}
 
 	/** Whether a copy of a graph kept somewhere else can be brought onto this
 	 *  device at all. */
 	get bringsFolders(): boolean {
-		return runtime.vault()?.clone !== undefined;
+		return seam().vault()?.clone !== undefined;
 	}
 
 	/** Deduped like {@link load}; `again` is a list that has just changed. */
@@ -249,7 +250,7 @@ class GraphsStore {
 
 	/** Whether a project's own folder can be opened as a graph at all. */
 	get opensProjects(): boolean {
-		return runtime.vault()?.openProject !== undefined;
+		return seam().vault()?.openProject !== undefined;
 	}
 
 	/** Open a project somebody names and read the notes kept in it. False is

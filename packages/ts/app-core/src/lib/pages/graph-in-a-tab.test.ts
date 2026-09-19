@@ -1,6 +1,6 @@
-// Settings while a graph kept on this device is open in a browser tab: what it
-// offers, and what it stops offering — docs/ARCHITECTURE.md § "A graph on this
-// device, in the browser".
+// Settings and the graph picker while a graph kept on this device is open in a
+// browser tab: what they offer, and what they stop offering —
+// docs/ARCHITECTURE.md § "A graph on this device, in the browser".
 
 import { LocalApi, MemoryFiles } from '@sloppy/local';
 import type { OwnedRef } from '@sloppy/types';
@@ -8,9 +8,9 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeFolder, type Held } from '../browser-files.test-support.js';
 import { graphHere } from '../graph-here.svelte.js';
-import { useFakeApi, VIEWER } from '../stores/fake-api.test-support.js';
+import { type FakeApi, useFakeApi, VIEWER } from '../stores/fake-api.test-support.js';
 import { session } from '../stores/session.svelte.js';
-import { at, pushed, replaced } from './page.test-support.svelte.js';
+import { at, pushed, replaced, startAt } from './page.test-support.svelte.js';
 
 vi.mock('$app/state', () => ({
 	page: {
@@ -32,10 +32,17 @@ vi.mock('$app/navigation', () => ({
 	goto: () => {}
 }));
 
+vi.mock('@sloppy/ui', async (original) => ({
+	...((await original()) as object),
+	GraphSurface: (await import('./graph-surface.test-support.svelte')).default
+}));
+
 const Settings = (await import('./settings.svelte')).default;
+const Graph = (await import('./graph.svelte')).default;
 
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
+let hosted: FakeApi;
 
 async function aFolderWithAGraph(title: string): Promise<Held> {
 	const store = new Map<string, Uint8Array>();
@@ -66,6 +73,21 @@ function screen(): string {
 	return (target.textContent ?? '').replace(/\s+/g, ' ');
 }
 
+/** The picker is over the page rather than in it, so it is read off the body. */
+function sheet(): string {
+	const up = document.body.querySelector('[role="dialog"]');
+	return (up?.textContent ?? '').replace(/\s+/g, ' ');
+}
+
+function press(label: string): void {
+	const one = [...document.body.querySelectorAll('button')].find(
+		(button) => button.textContent?.trim() === label || button.getAttribute('aria-label') === label
+	);
+	if (!one) throw new Error(`Nothing to press reads ${JSON.stringify(label)}`);
+	one.click();
+	flushSync();
+}
+
 beforeEach(async () => {
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
@@ -76,6 +98,7 @@ beforeEach(async () => {
 			removeEventListener: () => {}
 		})
 	});
+	startAt('/');
 	Object.defineProperty(globalThis, 'ResizeObserver', {
 		configurable: true,
 		writable: true,
@@ -89,7 +112,8 @@ beforeEach(async () => {
 	URL.revokeObjectURL = () => {};
 	target = document.createElement('div');
 	document.body.append(target);
-	useFakeApi().on('GET /auth/me', () => VIEWER);
+	hosted = useFakeApi();
+	hosted.on('GET /auth/me', () => VIEWER);
 	graphHere.offerHere();
 	await session.refresh();
 });
@@ -127,6 +151,29 @@ describe('Settings, with a graph on this device open in this tab', () => {
 		expect(screen()).toContain('Where your Sloppy is');
 		expect(screen()).toContain('Your identity lives at');
 		expect(screen()).not.toContain('garden is open');
+	});
+});
+
+// The doors are a section of the graph picker, so the sheet is open at the
+// moment the graph on this device goes in front of somebody.
+describe('the graph picker, with a door in it', () => {
+	it('stops offering to start a graph the moment one on this device is open', async () => {
+		picksUp(await aFolderWithAGraph('The garden'));
+		hosted.on('GET /nodes', () => []);
+		hosted.on('GET /nodes/tags', () => []);
+		hosted.on('GET /publications', () => []);
+		mounted = mount(Graph, { target });
+		await settle();
+
+		press('Your graphs');
+		await settle();
+		expect(sheet()).toContain('A new graph');
+
+		press('Open a folder on this device');
+		await settle();
+
+		expect(sheet()).toContain('garden is open');
+		expect(sheet()).not.toContain('A new graph');
 	});
 });
 

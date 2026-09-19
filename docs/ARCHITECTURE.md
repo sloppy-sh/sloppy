@@ -90,10 +90,11 @@ and that decision has to live inside it.
   that is the API's proxy, which is what keeps a viewer's IP off somebody else's instance.
   The shell calls `initRuntime()` from its root layout before any page mounts, and
   `updateRuntime()` where it settles a member again while it is running — a field passed as
-  `undefined` there puts that member's documented absence back. Nothing watches `mode()`, so
-  a shell that swaps where the graph is served from settles the seam BEFORE the state a
-  surface does watch, and `session.servedFromElsewhere()` is what tells every surface reading
-  `session.onDevice` to read it again.
+  `undefined` there puts that member's documented absence back. Nothing watches the seam, so
+  a shell that swaps where the graph is served from settles it BEFORE the state a surface
+  does watch, and then says `seamSettledAgain()` (`app-core/src/lib/seam.svelte.ts`): every
+  answer a surface read through `seam()` — `session.onDevice`, and what a tab can do with
+  graphs — is read again.
 - **`app-core/src/lib/api.ts`** — `api` is a `Proxy` that resolves its implementation on
   first property access, so remote ↔ local swaps without touching a call site. The port it
   resolves to is `SloppyApi`, the `SloppyClient` surface taken structurally, so an adapter
