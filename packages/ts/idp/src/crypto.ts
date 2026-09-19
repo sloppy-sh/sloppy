@@ -4,3 +4,4 @@
 
 export * from "./encoding.js";
 export * from "./keys.js";
+export * from "./sigil.js";

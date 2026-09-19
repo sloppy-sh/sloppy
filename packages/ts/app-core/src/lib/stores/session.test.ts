@@ -183,6 +183,7 @@ describe('a sign-in the device itself began', () => {
 	const HERE = {
 		did: DID,
 		source: 'delegated' as const,
+		locked: false,
 		lapsed: false,
 		writing: true,
 		carriable: false
@@ -197,6 +198,7 @@ describe('a sign-in the device itself began', () => {
 				signIn: async () => {},
 				finish,
 				bring: async () => HERE,
+				bringSealed: async () => HERE,
 				carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
 				writeAs: async () => {}
 			},

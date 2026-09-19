@@ -15,6 +15,7 @@ export * from "./identity.js";
 export * from "./keys.js";
 export * from "./manifest.js";
 export * from "./sealing.js";
+export * from "./sigil.js";
 export * from "./secrets.js";
 export * from "./store.js";
 export * from "./tokens.js";

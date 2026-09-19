@@ -48,6 +48,7 @@ function here(said: Partial<IdentityHere> = {}): IdentityHere {
 	return {
 		did: 'did:syr:z6Mkone',
 		source: 'device',
+		locked: false,
 		lapsed: false,
 		writing: true,
 		carriable: true,
@@ -62,6 +63,7 @@ function doors(said: Partial<IdentityAccess>): IdentityAccess {
 		signIn: async () => {},
 		finish: async () => undefined,
 		bring: async () => here(),
+		bringSealed: async () => here(),
 		carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
 		writeAs: async () => {},
 		...said

@@ -543,14 +543,26 @@ server are the same suggestion, which is what lets a graph cross between them.
 
 **A device holds identities, plural, and each one says where it came from.** The app's
 private data holds `identities.json`: a list, each entry a DID, its public key and a
-`source` — `IdentitySourceSchema` in `@sloppy/types`, keyed on **where the key is** and
-never on which product keeps it, so a key manager nobody has written yet is a value here and
-not a field. Two values today:
+`source` — `IdentitySourceSchema` in `@sloppy/types`, keyed on **whether the key is usable
+here** and never on which product keeps it or which file it arrived in, so a key manager
+nobody has written yet is a value here and not a field. Three values:
 
 - **`device`** — made here with nothing asked, the key in a file in the app's own private
   data. There is no password over it, because there is nothing a password would protect it
   from that reaching the file would not already have defeated. A lone `identity.json` from
   before the list reads as one `device` identity, and the list is written back.
+- **`sealed`** — the key is here and shut under a passphrase the device does not keep. The
+  entry names the file it is kept in, kept exactly as it arrived. The public key is on the
+  outside of that file, so the DID, the name on the row and who writes here need nothing
+  asked of anybody; the seed comes out only for an act that must sign with it, the
+  passphrase is asked at that moment, and the seed is wiped after. Nothing in local mode
+  signs today — an identity names whose graph a note is in and no more — so the one act
+  that asks is carrying the identity on to another device. A brought-in identity stays
+  sealed: this device never writes the key down in the clear. Which format that file is in
+  is `@sloppy/idp`'s business — `sigil.ts` reads and writes syr's portable one, the same
+  construction as Aegis (§ "An API that serves identities itself") and reproduced byte for
+  byte so a file written here opens on a syr instance. Nothing above that package names a
+  format.
 - **`delegated`** — an identity an identity store somewhere else keeps, reached through
   Platform Delegation. The entry carries where that store is, the delegate's public key and
   the token the exchange returned. **No private key is on the device**, which is the same
@@ -570,7 +582,8 @@ consent page offers to sign with, and it lands here `delegated` like any other. 
 identity from another device" reads an identity file another device exported. Settings
 exports a `device` identity as one file — the DID, the public key and the key — with the
 consequence stated where the person chooses: whoever has that file writes as them. One
-brought in is a `device` identity like any other.
+brought in that way is a `device` identity like any other; one brought in sealed under a
+passphrase stays `sealed`, and carrying it on again asks for that passphrase.
 
 **The app is its own platform.** There is no Sloppy API here to hold the delegation, so the
 native app performs Platform Delegation itself. `platform_origin` is the app's public web

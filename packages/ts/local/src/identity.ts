@@ -9,7 +9,11 @@ import {
   generateKeypair,
   publicKeyFromDid,
   publicKeyFromPrivateKey,
+  readSigil,
+  type Sigil,
+  SigilDecryptionError,
   wipe,
+  withSigilSeed,
 } from "@sloppy/idp/crypto";
 import {
   type DidSyr,
@@ -58,6 +62,22 @@ export interface DeviceIdentity extends LocalIdentity {
 }
 
 /**
+ * An identity whose key is on this device and shut under a passphrase this
+ * device does not keep. It names whose graph a note is in the moment it
+ * arrives; the key comes out only for an act that must sign with it, and goes
+ * again straight after.
+ */
+export interface SealedIdentity extends LocalIdentity {
+  source: "sealed";
+  /** The file the sealed key is in, relative to {@link Files.dataPath}, kept
+   *  as it arrived. */
+  sealed: string;
+  /** What is known to call them. Absent where nothing said — a sealed key
+   *  carries no name of its own. */
+  name?: string;
+}
+
+/**
  * An identity an identity store somewhere else keeps and signs for. Nothing of
  * the key is on this device — AI.md § "Sloppy's Vocabulary Stays Out of the
  * Identity Store".
@@ -81,7 +101,7 @@ export interface DelegatedIdentity extends LocalIdentity {
 
 /** One of the identities this device holds. {@link IdentitySource} is the axis:
  *  a second kind of store is another arm here, never a field beside one. */
-export type HeldIdentity = DeviceIdentity | DelegatedIdentity;
+export type HeldIdentity = DeviceIdentity | SealedIdentity | DelegatedIdentity;
 
 /** Every identity this device holds, and which of them writes where a graph's
  *  own owner is not among them. `writing` naming nobody held is read as
@@ -210,6 +230,18 @@ function readHeld(said: unknown): HeldIdentity | undefined {
         ? { name: one.name }
         : {}),
       ...(picture === undefined ? {} : { picture }),
+    };
+  }
+  if (source === "sealed") {
+    if (typeof one.sealed !== "string" || !one.sealed) return undefined;
+    return {
+      did: did.data,
+      public_key: one.public_key,
+      source: "sealed",
+      sealed: one.sealed,
+      ...(typeof one.name === "string" && one.name !== ""
+        ? { name: one.name }
+        : {}),
     };
   }
   return {
@@ -475,10 +507,13 @@ export function readCarriedIdentity(bytes: Uint8Array): MintedIdentity {
 export interface IdentityHere {
   did: DidSyr;
   source: IdentitySource;
-  /** What the store that keeps it calls them. Absent where nothing says. */
+  /** What is known to call them. Absent where nothing says. */
   name?: string;
   /** The host of the store that keeps it, for one kept somewhere else. */
   instance?: string;
+  /** Whether the key is here but shut, so an act that needs it asks the person
+   *  for the passphrase first. */
+  locked: boolean;
   /** Whether the store's word for it has run out, so the name and the picture
    *  stop refreshing until somebody signs in again. The DID is a fact either
    *  way, so the identity stays held. */
@@ -515,8 +550,16 @@ export interface IdentityAccess {
   finish(query: URLSearchParams): Promise<SignedIn | undefined>;
   /** Hold the identity in a file another device wrote. */
   bring(file: Uint8Array): Promise<IdentityHere>;
-  /** The file that carries one to another device. */
-  carryOut(did: DidSyr): Promise<{ name: string; body: Uint8Array }>;
+  /** Hold the identity in a sealed file a person brought, exactly as it
+   *  arrived. Nothing is asked of them here: what the row shows is on the
+   *  outside of it. */
+  bringSealed(file: Uint8Array): Promise<IdentityHere>;
+  /** The file that carries one to another device. A sealed identity needs the
+   *  passphrase it is sealed under; every other one ignores it. */
+  carryOut(
+    did: DidSyr,
+    passphrase?: string,
+  ): Promise<{ name: string; body: Uint8Array }>;
   /** Write under this one from now on. */
   writeAs(did: DidSyr): Promise<void>;
 }
@@ -549,18 +592,20 @@ function hostOf(url: string): string {
 
 function shown(identity: HeldIdentity, writing: boolean): IdentityHere {
   const delegated = identity.source === "delegated" ? identity : undefined;
+  const named = identity.source === "device" ? undefined : identity.name;
   return {
     did: identity.did,
     source: identity.source,
-    ...(delegated?.name === undefined ? {} : { name: delegated.name }),
+    ...(named === undefined ? {} : { name: named }),
     ...(delegated === undefined
       ? {}
       : { instance: hostOf(delegated.instance_url) }),
+    locked: identity.source === "sealed",
     lapsed:
       delegated?.expires_at !== undefined &&
       Date.parse(delegated.expires_at) <= Date.now(),
     writing,
-    carriable: identity.source === "device",
+    carriable: identity.source !== "delegated",
   };
 }
 
@@ -692,9 +737,17 @@ export class Identities implements IdentityAccess {
     return shown(made, true);
   }
 
-  async carryOut(did: DidSyr): Promise<{ name: string; body: Uint8Array }> {
+  async bringSealed(_file: Uint8Array): Promise<IdentityHere> {
+    throw new Error("not implemented");
+  }
+
+  async carryOut(
+    did: DidSyr,
+    passphrase?: string,
+  ): Promise<{ name: string; body: Uint8Array }> {
     const held = await readIdentities(this.files);
     const one = held.identities.find((identity) => identity.did === did);
+    if (one?.source === "sealed") return this.carrySealedOut(one, passphrase);
     if (!one || one.source !== "device") {
       throw refuse(
         "That identity is kept for you somewhere else, so there is no file of it to carry.",
@@ -714,6 +767,42 @@ export class Identities implements IdentityAccess {
   async writeAs(did: DidSyr): Promise<void> {
     await writeAs(this.files, did);
     await this.options.changed?.();
+  }
+
+  private async carrySealedOut(
+    one: SealedIdentity,
+    passphrase?: string,
+  ): Promise<{ name: string; body: Uint8Array }> {
+    if (!passphrase) {
+      throw refuse(
+        "That identity is kept shut. Type the passphrase it was sealed with to carry it out.",
+      );
+    }
+    const own = this.files.at(await this.files.dataPath());
+    const bytes = await own.read(one.sealed);
+    if (!bytes) {
+      throw refuse("The key for that identity is not on this device any more.");
+    }
+    const unreadable =
+      "The key for that identity could not be read, so there is nothing to carry.";
+    let sigil: Sigil;
+    try {
+      sigil = readSigil(bytes);
+    } catch {
+      throw refuse(unreadable);
+    }
+    if (sigil.pub !== one.public_key) throw refuse(unreadable);
+    try {
+      return await withSigilSeed(sigil, passphrase, (seed) => ({
+        name: CARRIED_FILE,
+        body: carryIdentityOut(one, seed),
+      }));
+    } catch (err) {
+      if (err instanceof SigilDecryptionError) {
+        throw refuse("That passphrase did not open it. Try it again.");
+      }
+      throw err;
+    }
   }
 
   /** The picture kept where a graph started later can still be written with
