@@ -94,5 +94,18 @@ describe('the note a look is written on', () => {
 		const line = lineBetween(gated, ONE, DID);
 		expect(line.on.ref).toBe(ONE.ref);
 		expect(line.other.ref).toBe(gated.ref);
+		expect(line.writes).toBe('lands');
+	});
+
+	// Both ends are somebody else's: there is no note here a write lands on, so
+	// the look is the reader's to offer rather than theirs to set.
+	it('is the note the reader came from, offered, where neither end is theirs to write', () => {
+		const mine = looking(ONE, { owner: ELSE });
+		const theirs = looking(TWO, { owner: ELSE, edges: [{ to: ONE.ref, label: 'theirs' }] });
+		const line = lineBetween(theirs, mine, DID);
+		expect(line.on.ref).toBe(theirs.ref);
+		expect(line.other.ref).toBe(mine.ref);
+		expect(line.writes).toBe('offered');
+		expect(line.look).toEqual({ to: ONE.ref, label: 'theirs' });
 	});
 });

@@ -2,16 +2,28 @@
 // the words, the arrowhead and the break, written onto one note of the pair.
 
 import 'fake-indexeddb/auto';
-import type { NodeView, OwnedRef, UpdateNodeRequest } from '@sloppy/types';
+import type {
+	AmendmentView,
+	BlockView,
+	NodeView,
+	OwnedRef,
+	ProfileView,
+	UpdateNodeRequest
+} from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initRuntime } from '../runtime.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { offers } from '../stores/offers.svelte.js';
+import { people } from '../stores/people.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import {
+	amending,
+	AT,
 	DID,
 	homeOf,
 	node,
+	ref,
 	useFakeApi,
 	VIEWER,
 	type FakeApi
@@ -98,6 +110,8 @@ function show(from: NodeView, to: NodeView): void {
 
 beforeEach(() => {
 	nodes.clear();
+	offers.clear();
+	people.hold(null);
 	written = [];
 	closed = false;
 	api = useFakeApi();
@@ -115,6 +129,8 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	nodes.clear();
+	offers.clear();
+	people.hold(null);
 	session.clear();
 	initRuntime({ apiHost: () => '' });
 	target.remove();
@@ -249,10 +265,89 @@ describe('a line whose look is on a note somebody else gates', () => {
 		const words = field();
 		words.value = 'mine';
 		words.dispatchEvent(new Event('input', { bubbles: true }));
+		expect(named('Offer this look')).toBeUndefined();
 		named('Save')?.click();
 		await settle();
 
 		expect(written).toEqual([{ edges: [{ to: THEIRS.ref, label: 'mine' }] }]);
 		expect(closed).toBe(true);
+	});
+});
+
+describe('a line neither end of which this reader writes', () => {
+	const ADA: ProfileView = {
+		did: ELSE,
+		username: 'ada',
+		display_name: 'Ada Lovelace',
+		bio: null,
+		avatar_src: null,
+		banner_src: null
+	};
+	const HERS = node(5, '4', { title: 'Hers', owner: ELSE });
+	const ALSO = node(6, '5', { title: 'Also hers', owner: ELSE });
+	const SECTION: BlockView = {
+		ref: ref(7),
+		created_by: DID,
+		node: HERS.ref,
+		ord: '000',
+		content: {
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Her writing' }] }]
+		},
+		created_at: AT,
+		updated_at: AT
+	};
+	let standing: Map<OwnedRef, AmendmentView[]>;
+
+	async function graphWith(looked: NodeView[]): Promise<void> {
+		await graphOf(looked);
+		api.on(`GET ${pathOf(HERS.ref)}/blocks`, () => [SECTION]);
+		api.on(`GET /profile/${encodeURIComponent(ELSE)}`, () => ADA);
+		standing = amending(api, { [HERS.ref]: [] }, () => HERS);
+	}
+
+	it('offers the look to whoever writes the note, and writes nothing onto it', async () => {
+		await graphWith([HERS, ALSO]);
+		show(nodes.get(HERS.ref) as NodeView, ALSO);
+		await settle();
+
+		const words = field();
+		words.value = 'hers too';
+		words.dispatchEvent(new Event('input', { bubbles: true }));
+		named('Dashed')?.click();
+		flushSync();
+		named('Offer this look')?.click();
+		await settle();
+
+		expect(written).toEqual([]);
+		const offered = standing.get(HERS.ref) ?? [];
+		expect(offered).toHaveLength(1);
+		expect(offered[0].edges).toEqual([{ to: ALSO.ref, label: 'hers too', stroke: 'dashed' }]);
+		expect(offered[0].title).toBe('Hers');
+		expect(offered[0].blocks).toEqual([{ ref: SECTION.ref, content: SECTION.content }]);
+		expect(screen()).toContain('Offered to Ada Lovelace. It shows once they take it.');
+	});
+
+	it('offers taking the look off the same way, leaving the note’s other lines alone', async () => {
+		const LOOKED = {
+			...HERS,
+			edges: [
+				{ to: ALSO.ref, label: 'hers' },
+				{ to: ONE.ref, label: 'beside' }
+			]
+		};
+		await graphWith([LOOKED, ALSO]);
+		show(nodes.get(HERS.ref) as NodeView, ALSO);
+		await settle();
+		expect(field().value).toBe('hers');
+
+		named('Clear the look')?.click();
+		await settle();
+
+		expect(written).toEqual([]);
+		const offered = standing.get(HERS.ref) ?? [];
+		expect(offered).toHaveLength(1);
+		expect(offered[0].edges).toEqual([{ to: ONE.ref, label: 'beside' }]);
+		expect(screen()).toContain('Offered to Ada Lovelace. It shows once they take it.');
 	});
 });

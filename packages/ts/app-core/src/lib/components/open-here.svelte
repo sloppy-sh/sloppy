@@ -204,7 +204,6 @@
 					{working === 'copy' ? 'Putting it together…' : 'Save a copy'}
 				</Button>
 				<Button
-					variant="destructive"
 					class="h-11 sm:h-9"
 					disabled={working !== null}
 					onclick={() => void answered(question.way)}

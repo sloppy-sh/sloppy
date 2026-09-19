@@ -2026,8 +2026,13 @@ and clearing it takes that one off — and on the note the person reached the li
 wherever that end is one somebody else gates, because **the app writes only one, and it
 is the reader's own**: an owned note's look is the owner's, and a contributor's change to
 it is an offer, the same rule every other field is held to (§ "Whose writing a note
-carries"). The other note may carry one for the same pair, which is what happens when two
-people each set one. `lookBetween(a, b)` is the whole answer: the one end that has a
+carries"). Where NEITHER end is theirs to write, the look goes on the end they reached
+the line from and is offered to whoever writes it — the amendment that carries `edges`,
+composed against that note's writing as it stands so an offer about one line proposes
+nothing else. `lineBetween` answers which note and which of the two outcomes, so the
+sheet asks for one and never the other. The other note may carry one for the same pair,
+which is what happens when two people each set one. `lookBetween(a, b)` is the whole
+answer: the one end that has a
 look, or — where both do — the note with the later `updated_at`, with the smaller ref
 settling a tie so two peers reading one pair read one look. The answer is the winning
 note's own entry, and its `to` is what says which way round `direction` points.

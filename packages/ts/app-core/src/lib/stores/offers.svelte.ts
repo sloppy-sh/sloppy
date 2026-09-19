@@ -14,6 +14,7 @@ import {
 	BlockViewSchema,
 	EdgeLookSchema,
 	emptyDocument,
+	looksWritten,
 	splitOwnedRef,
 	TagsSchema,
 	ulid,
@@ -284,6 +285,20 @@ class OffersStore {
 
 	retag(note: OwnedRef, tags: readonly Tag[]): void {
 		this.#write(note, (draft) => ({ ...draft, tags: [...tags] }));
+	}
+
+	/**
+	 * The look this change offers on the note's line to `look.to`, leaving the
+	 * looks on its other lines as the change already had them — the note's own
+	 * where it says nothing about them yet. A look with nothing said on it is
+	 * what offers to take one off.
+	 */
+	setLook(note: OwnedRef, look: EdgeLook): void {
+		this.#write(note, (draft) => {
+			const now = draft.edges ?? nodes.get(note)?.edges ?? [];
+			const rest = now.filter((one) => one.to !== look.to);
+			return { ...draft, edges: looksWritten([...rest, look]) ?? [] };
+		});
 	}
 
 	/** A section the offer adds. Its ulid is minted here and its DID half is the
