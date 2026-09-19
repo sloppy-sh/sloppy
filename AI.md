@@ -226,8 +226,13 @@ split is not a preference we could revisit; it is the shape syr enforces:
   agent key under a mandate and no root at all. `@sloppy/local` holds one too, and for the
   same reason: a `device` identity is minted on the machine and its key written to the app's
   own private data (`makeLocalIdentity()` and `holdDeviceIdentity()` in
-  `packages/ts/local/src/identity.ts`), because there is no instance behind it to ask. Those
-  two are identity stores. Everything that CONSUMES an identity signs through the delegation.
+  `packages/ts/local/src/identity.ts`), because there is no instance behind it to ask. It
+  also keeps a key it cannot use: an identity brought in **sealed** is kept exactly as it
+  arrived, shut under a passphrase this device does not have, and the seed is opened only
+  for an act that must sign with it — the passphrase asked at that moment, the seed wiped
+  after. A sealed key is not a key this device can use, and it is no exemption: nothing
+  else here keeps a private key at rest, sealed or otherwise. Those two are identity
+  stores. Everything that CONSUMES an identity signs through the delegation.
 - **Every remote asset goes through our proxy** (`proxied()`). Viewing a federated node
   must never leak the viewer's IP to the author's instance — a graph you can pull from
   strangers makes this more important, not less. A raw remote URL rendered into an
