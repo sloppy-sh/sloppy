@@ -6,8 +6,10 @@
 	import { Button } from '@sloppy/ui/button';
 	import { people } from '../stores/people.svelte.js';
 	import CompassDifference from './compass-difference.svelte';
+	import LineDifference from './line-difference.svelte';
 	import {
 		compassApart,
+		looksApart,
 		offerDifference,
 		saysAnything,
 		saysNothing,
@@ -44,10 +46,18 @@
 	const now = $derived<WritingSide>({
 		title: note.title,
 		tags: note.tags,
+		...(note.edges === undefined ? {} : { edges: note.edges }),
 		sections: sections.map((one) => ({ ref: one.ref, content: one.content }))
 	});
 	const offered = $derived<WritingSide | null>(
-		shown ? { title: shown.title, tags: shown.tags, sections: shown.blocks } : null
+		shown
+			? {
+					title: shown.title,
+					tags: shown.tags,
+					...(shown.edges === undefined ? {} : { edges: shown.edges }),
+					sections: shown.blocks
+				}
+			: null
 	);
 	const apart = $derived(
 		offered
@@ -60,6 +70,7 @@
 	);
 	const tags = $derived(offered ? tagsApart(now, offered) : null);
 	const compass = $derived(offered ? compassApart(now, offered) : []);
+	const lines = $derived(offered ? looksApart(now, offered) : []);
 
 	$effect(() => {
 		for (const one of offers) people.resolve(one.by);
@@ -129,11 +140,13 @@
 
 			{#if apart && saysAnything(apart)}
 				<ChangedNotes notes={[apart]} />
-			{:else if apart && tags && saysNothing(apart, compass, tags)}
+			{:else if apart && tags && saysNothing(apart, compass, tags, lines)}
 				<p class="px-1 py-2 text-sm text-muted-foreground">This offer says the same as the note.</p>
 			{/if}
 
 			<CompassDifference apart={compass} />
+
+			<LineDifference apart={lines} />
 
 			{#if tags && (tags.added.length > 0 || tags.removed.length > 0)}
 				<p class="px-1 text-xs text-muted-foreground">

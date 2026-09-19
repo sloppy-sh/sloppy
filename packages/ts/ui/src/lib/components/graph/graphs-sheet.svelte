@@ -51,7 +51,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
-	import { untrack } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -83,7 +83,8 @@
 		onOwnership,
 		onRemove,
 		onRestore,
-		onShow
+		onShow,
+		alsoOffer
 	}: {
 		open?: boolean;
 		graphs: readonly GraphChoice[];
@@ -112,8 +113,10 @@
 		publishedFrom?: ReadonlySet<OwnedRef>;
 		onEnter: (ref: OwnedRef) => void;
 		onToggle: (ref: OwnedRef) => void;
-		/** Rejects with an `Error` whose `message` is already fit to show. */
-		onOpen: (title: string) => Promise<void>;
+		/** Start a graph by naming it here. Rejects with an `Error` whose
+		 *  `message` is already fit to show. Absent where this app has nowhere to
+		 *  put a new one, and nothing about starting one is offered. */
+		onOpen?: (title: string) => Promise<void>;
 		/** Read the graph kept in that folder from now on. Absent leaves every
 		 *  row a graph to move into rather than a folder to open. */
 		onOpenFolder?: (folder: string) => Promise<void>;
@@ -137,6 +140,10 @@
 		onRestore?: (ref: OwnedRef) => Promise<void>;
 		/** The sheet has just opened, and what it lists is worth asking for again. */
 		onShow?: () => void;
+		/** Where else a graph can be opened from, for an app that reaches more
+		 *  than the one it is served by. Absent leaves the sheet the graphs it
+		 *  lists and nothing else. */
+		alsoOffer?: Snippet;
 	} = $props();
 
 	let opening = $state('');
@@ -230,7 +237,7 @@
 
 	async function openGraph(): Promise<void> {
 		const title = opening.trim();
-		if (title === '') return;
+		if (title === '' || !onOpen) return;
 		if (await act(() => onOpen(title))) {
 			opening = '';
 			open = false;
@@ -514,7 +521,7 @@
 					</div>
 				</section>
 			{/if}
-		{:else}
+		{:else if onOpen}
 			<section class="space-y-2 border-t border-border pt-4">
 				<h3 class="text-sm font-medium">A new graph</h3>
 				<div class="flex gap-2">
@@ -540,6 +547,12 @@
 						Start it
 					</Button>
 				</div>
+			</section>
+		{/if}
+
+		{#if alsoOffer}
+			<section class="space-y-2 border-t border-border pt-4">
+				{@render alsoOffer()}
 			</section>
 		{/if}
 

@@ -11,6 +11,10 @@ export default defineConfig({
 	test: {
 		environment: 'jsdom',
 		include: ['src/**/*.test.ts'],
-		setupFiles: ['./src/lib/device-store.test-setup.ts', './src/lib/sheet-cleanup.test-setup.ts']
+		setupFiles: [
+			'./src/lib/one-realm.test-setup.ts',
+			'./src/lib/device-store.test-setup.ts',
+			'./src/lib/sheet-cleanup.test-setup.ts'
+		]
 	}
 });

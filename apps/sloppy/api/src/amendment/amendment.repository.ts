@@ -8,6 +8,7 @@ import {
   AmendmentSchema,
   type BlockDocument,
   type DidSyr,
+  type EdgeLook,
   type NodeAppearance,
   nowIso,
   type OwnedRef,
@@ -35,6 +36,9 @@ export interface Approval {
   tags: Tags;
   /** Absent leaves the note's look as it is. */
   appearance?: NodeAppearance;
+  /** The looks on the note's lines, whole. Absent leaves them as they are:
+   *  an offer that names none says nothing about them. */
+  edges?: EdgeLook[];
   contributors: DidSyr[];
   references: OwnedRef[];
   sections: SettledSection[];
@@ -105,6 +109,12 @@ export class AmendmentRepository {
             `UPDATE $note SET appearance = $appearance
                WHERE created_by = $did RETURN NONE;`,
           ]),
+      ...(taking.edges === undefined
+        ? []
+        : [
+            `UPDATE $note SET edges = $edges
+               WHERE created_by = $did RETURN NONE;`,
+          ]),
       ...(taking.dropping.length === 0
         ? []
         : ["DELETE block WHERE created_by = $did AND id IN $dropping;"]),
@@ -133,6 +143,7 @@ export class AmendmentRepository {
       contributors: [...taking.contributors],
       references: [...taking.references],
       appearance: taking.appearance,
+      edges: taking.edges,
       dropping: taking.dropping.map((ref) =>
         recordIdFromOwnedRef("block", ref),
       ),

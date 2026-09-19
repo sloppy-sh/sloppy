@@ -20,7 +20,7 @@ import {
   type Tag,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { type DrawnNode, drawnNodes } from "./contract.js";
+import { type DrawnNode, drawnNodes, type GraphEdgeLook } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import { MAX_DENSITY } from "./density.js";
 import { applyLod } from "./lod.js";
@@ -1110,5 +1110,91 @@ describe("the two budgets a picture is cut against", () => {
       expect(cut, step).toBeLessThanOrEqual(MARK_PICTURE_PX);
       below = cut;
     }
+  });
+});
+
+// DESIGN.md § Edges, "A look a person set": a look draws on the line that is
+// already there, and it moves nothing.
+describe("a look set on a line", () => {
+  const options = { selection: [], palette };
+  const parent = note("1");
+  const child = { ...note("1a"), parent: parent.ref, origin: parent.ref };
+  const built = (edgeLooks?: readonly GraphEdgeLook[]) =>
+    buildModel(drawnNodes([parent, child], new Set()), {
+      ...options,
+      ...(edgeLooks === undefined ? {} : { edgeLooks }),
+    });
+  const lookOn = (model: ReturnType<typeof buildModel>) =>
+    model.graph.getEdgeAttribute(
+      model.graph.undirectedEdge(parent.ref, child.ref) as string,
+      "look",
+    );
+
+  it("reaches the line whichever way round the pair is named", () => {
+    const named: GraphEdgeLook = {
+      from: child.ref,
+      to: parent.ref,
+      label: "grew from",
+    };
+    expect(lookOn(built([named]))).toEqual(named);
+    const back: GraphEdgeLook = {
+      from: parent.ref,
+      to: child.ref,
+      stroke: "dotted",
+    };
+    expect(lookOn(built([back]))).toEqual(back);
+  });
+
+  it("leaves every line alone where nobody set one", () => {
+    expect(lookOn(built())).toBeUndefined();
+    expect(lookOn(built([]))).toBeUndefined();
+  });
+
+  // It makes no line: carrying one joins two notes to nothing.
+  it("draws nothing on a pair with no line between them", () => {
+    const apart = note("2");
+    const stranger = { ...note("2a"), parent: apart.ref, origin: apart.ref };
+    const model = buildModel(drawnNodes([parent, stranger], new Set()), {
+      ...options,
+      edgeLooks: [{ from: parent.ref, to: stranger.ref, label: "about" }],
+    });
+    expect(
+      model.graph.undirectedEdge(parent.ref, stranger.ref),
+    ).toBeUndefined();
+    model.graph.forEachEdge((_edge, attributes) => {
+      expect(attributes.look).toBeUndefined();
+    });
+  });
+
+  // A look is on the same footing as `appearance`: how a thing is drawn, never
+  // where — AI.md § "The Genealogy Is the Protocol".
+  it("moves no mark and changes no distance", () => {
+    const plain = built();
+    const looked = built([
+      { from: parent.ref, to: child.ref, stroke: "dashed", label: "why" },
+    ]);
+    for (const ref of [parent.ref, child.ref]) {
+      const before = plain.graph.getNodeAttributes(ref);
+      const after = looked.graph.getNodeAttributes(ref);
+      expect([
+        after.x,
+        after.y,
+        after.anchorX,
+        after.anchorY,
+        after.radius,
+      ]).toEqual([
+        before.x,
+        before.y,
+        before.anchorX,
+        before.anchorY,
+        before.radius,
+      ]);
+    }
+    const distance = (model: ReturnType<typeof buildModel>) =>
+      model.graph.getEdgeAttribute(
+        model.graph.undirectedEdge(parent.ref, child.ref) as string,
+        "distance",
+      );
+    expect(distance(looked)).toBe(distance(plain));
   });
 });

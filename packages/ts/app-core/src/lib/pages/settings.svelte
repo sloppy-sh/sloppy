@@ -11,20 +11,14 @@
 	import { api } from '../api.js';
 	import HistorySettings from '../components/history-settings.svelte';
 	import IdentitySettings from '../components/identity-settings.svelte';
+	import OpenHere from '../components/open-here.svelte';
+	import { graphHere } from '../graph-here.svelte.js';
 	import { repointRuntime, runtime } from '../runtime.js';
 	import { saveHere, savesFiles } from '../save-file.js';
 	import { serverMessage } from '../stores/errors.js';
-	import { conversation } from '../stores/conversation.svelte.js';
-	import { deleted } from '../stores/deleted.svelte.js';
-	import { find } from '../stores/find.svelte.js';
-	import { gitSettings } from '../stores/git-settings.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
-	import { identity } from '../stores/identity.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
-	import { nodes } from '../stores/nodes.svelte.js';
-	import { offers } from '../stores/offers.svelte.js';
-	import { outlineSections } from '../stores/outline-sections.svelte.js';
-	import { peers } from '../stores/peers.svelte.js';
+	import { letGoOfWhatWasRead } from '../stores/let-go.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
 		ACCENT_LABELS,
@@ -38,9 +32,7 @@
 		THEME_LABELS,
 		THEMES
 	} from '../stores/prefs.svelte.js';
-	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
-	import { tags } from '../stores/tags.svelte.js';
 	import HistorySurface from './history.svelte';
 
 	const vault = runtime.vault();
@@ -57,7 +49,11 @@
 	let moved = $state<string | null>(null);
 
 	const canSaveFiles = savesFiles();
-	const offersCopy = $derived(session.onDevice ? canSaveFiles : session.signedIn);
+	// A graph opened on this device hands back its own copy, so the account's —
+	// which is not of the graph being read — is not offered beside it.
+	const offersCopy = $derived(
+		!graphHere.open && (session.onDevice ? canSaveFiles : session.signedIn)
+	);
 
 	/** Where a person's identity is kept for them. A graph on this device is
 	 *  written under one this device made, and there is nowhere else it is. */
@@ -115,23 +111,6 @@
 			letGoOfWhatWasRead();
 			leaving = false;
 		}
-	}
-
-	function letGoOfWhatWasRead() {
-		graphHistory.clear();
-		gitSettings.clear();
-		nodes.clear();
-		offers.clear();
-		outlineSections.clear();
-		deleted.clear();
-		graphs.clear();
-		tags.clear();
-		peers.clear();
-		find.clear();
-		people.hold(null);
-		publications.clear();
-		conversation.clear();
-		identity.clear();
 	}
 
 	/** Null returns to the Sloppy the app came with. */
@@ -240,7 +219,11 @@
 			</div>
 		</fieldset>
 
-		{#if session.onDevice}
+		{#if graphHere.open}
+			<div class="space-y-3 border-t border-border pt-8">
+				<OpenHere />
+			</div>
+		{:else if session.onDevice}
 			<div class="space-y-3 border-t border-border pt-8">
 				<h2 class="text-sm font-medium">Where your writing is</h2>
 				<p class="text-sm text-muted-foreground">
@@ -328,6 +311,12 @@
 					</Button>
 				{/if}
 			</div>
+
+			{#if graphHere.offered}
+				<div class="space-y-3 border-t border-border pt-8">
+					<OpenHere />
+				</div>
+			{/if}
 		{/if}
 
 		{#if offersCopy}

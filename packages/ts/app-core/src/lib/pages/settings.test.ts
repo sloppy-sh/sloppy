@@ -1,4 +1,5 @@
 import type { GraphExport, ProfileView } from '@sloppy/types';
+import { pack } from '@sloppy/vault';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -18,6 +19,8 @@ import { prefs } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { people } from '../stores/people.svelte.js';
+import { aGraphFolder } from '../browser-files.test-support.js';
+import { graphHere } from '../graph-here.svelte.js';
 import Settings from './settings.svelte';
 
 const STORED: ProfileView = {
@@ -71,9 +74,10 @@ beforeEach(() => {
 	document.body.appendChild(target);
 });
 
-afterEach(() => {
+afterEach(async () => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
+	if (graphHere.open) await graphHere.close();
 	session.clear();
 	target.remove();
 	document.body.innerHTML = '';
@@ -177,6 +181,26 @@ describe('a copy of everything somebody keeps', () => {
 		expect(target.textContent?.replace(/\s+/g, ' ')).toContain(
 			"writing still waiting on this device isn't in it yet"
 		);
+	});
+
+	// An archive hands back the graph it is holding; this copy is of the account's
+	// graphs, which are not the ones being read, so the two must not stand
+	// together as the way to keep what somebody has written.
+	it('is not offered beside a graph opened on this device', async () => {
+		const bytes = pack(await aGraphFolder('The thesis'));
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			openFile: async () => new File([bytes.slice().buffer as ArrayBuffer], 'thesis.sloppy')
+		});
+		graphHere.offerHere();
+		expect(await graphHere.openArchive()).toBe(true);
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(target.textContent).toContain('Save a copy');
+		expect(target.textContent).not.toContain('Download a copy');
+		expect(target.textContent).not.toContain('every graph, every note');
 	});
 
 	it('is not offered to somebody who is not signed in', async () => {

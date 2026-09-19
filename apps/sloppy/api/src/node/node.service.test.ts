@@ -26,7 +26,7 @@ import type { PublicationService } from "../publication/publication.service";
 import type { FindRepository } from "./find.repository";
 import type { GraphRepository } from "./graph.repository";
 import { GraphService } from "./graph.service";
-import type { NodeRepository } from "./node.repository";
+import type { NodePatch, NodeRepository } from "./node.repository";
 import { NodeService } from "./node.service";
 
 /** Nothing here reaches a picture, so the store is never asked for one. */
@@ -1686,5 +1686,99 @@ describe("two copies of one graph settled while somebody is numbering notes", ()
       "a note reads the run",
     ]);
     expect((await written).address).toBe("2");
+  });
+});
+
+// The whole list, never a delta, and absent rather than empty: a note nobody
+// set a look on and one whose looks were all taken off are one note —
+// docs/ARCHITECTURE.md § "A look a person set on a line".
+describe("the looks a write leaves on a note", () => {
+  const OTHER = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HNN` as OwnedRef;
+
+  function writing(note: Node & { ref: OwnedRef }) {
+    const written: NodePatch[] = [];
+    const repository = {
+      find: () => Promise.resolve(note),
+      patch: (_did: string, _ref: OwnedRef, changes: NodePatch) => {
+        written.push(changes);
+        return Promise.resolve(note);
+      },
+    } as unknown as NodeRepository;
+    const service = new NodeService(
+      repository,
+      finds,
+      graphs,
+      media,
+      publications,
+    );
+    return { service, written };
+  }
+
+  it("writes the looks a request names", async () => {
+    const note = live("1");
+    const { service, written } = writing(note);
+
+    await service.update(
+      DID,
+      note.ref,
+      { edges: [{ to: OTHER, label: "follows from", direction: "to" }] },
+      undefined,
+    );
+
+    expect(written[0].edges).toEqual([
+      { to: OTHER, label: "follows from", direction: "to" },
+    ]);
+  });
+
+  it("clears the column where the request takes them all off", async () => {
+    const note = live("1", { edges: [{ to: OTHER, label: "follows from" }] });
+    const { service, written } = writing(note);
+
+    await service.update(DID, note.ref, { edges: [] }, undefined);
+
+    expect(written[0].edges).toBeNull();
+  });
+
+  it("reads a look with every channel cleared as no look at all", async () => {
+    const note = live("1");
+    const { service, written } = writing(note);
+
+    await service.update(
+      DID,
+      note.ref,
+      { edges: [{ to: OTHER, label: "" }] },
+      undefined,
+    );
+
+    expect(written[0].edges).toBeNull();
+  });
+
+  it("leaves them alone where the request names none", async () => {
+    const note = live("1", { edges: [{ to: OTHER, label: "follows from" }] });
+    const { service, written } = writing(note);
+
+    await service.update(DID, note.ref, { title: "Renamed" }, undefined);
+
+    expect(written[0]).not.toHaveProperty("edges");
+  });
+
+  it("refuses two looks on one line, in words", async () => {
+    const note = live("1");
+    const { service, written } = writing(note);
+
+    await expect(
+      service.update(
+        DID,
+        note.ref,
+        {
+          edges: [
+            { to: OTHER, label: "follows from" },
+            { to: OTHER, label: "objects to" },
+          ],
+        },
+        undefined,
+      ),
+    ).rejects.toThrow("A line between two notes carries one look.");
+    expect(written).toEqual([]);
   });
 });

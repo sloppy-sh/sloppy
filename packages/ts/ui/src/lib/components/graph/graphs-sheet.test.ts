@@ -112,6 +112,32 @@ describe('the graphs sheet', () => {
 		expect(document.body.textContent).not.toContain('Recently deleted');
 	});
 
+	it('offers no way to start a graph where this app has nowhere to put one', async () => {
+		await open([]);
+		expect(document.body.textContent).toContain('A new graph');
+
+		if (mounted) unmount(mounted, { outro: false });
+		document.body.innerHTML = '';
+		target = document.createElement('div');
+		document.body.appendChild(target);
+		mounted = mount(GraphsSheet, {
+			target,
+			props: {
+				open: true,
+				graphs: [{ ref: HOME, title: 'My graph' }],
+				current: HOME,
+				home: HOME,
+				alsoUp: new Set<OwnedRef>(),
+				onEnter: () => {},
+				onToggle: () => {},
+				onRename: () => Promise.resolve()
+			}
+		});
+		await settle();
+
+		expect(document.body.textContent).not.toContain('A new graph');
+	});
+
 	it('names a deleted branch by its number, its title and what comes back with it', async () => {
 		await open([branch()]);
 

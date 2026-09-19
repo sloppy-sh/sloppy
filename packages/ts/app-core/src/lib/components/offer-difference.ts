@@ -11,6 +11,7 @@ import {
 	type Compass,
 	type CompassDirection,
 	type DocumentNode,
+	type EdgeLook,
 	type OwnedRef,
 	type Tag
 } from '@sloppy/types';
@@ -22,6 +23,9 @@ import type { ChangedNote, ChangedSection } from '@sloppy/ui';
 export interface WritingSide {
 	title: string;
 	tags: readonly Tag[];
+	/** The looks on the note's lines, whole. Absent is a side that says nothing
+	 *  about them, which is an offer that leaves the note's looks alone. */
+	edges?: readonly EdgeLook[];
 	sections: readonly { ref: OwnedRef; content: BlockDocument }[];
 }
 
@@ -125,6 +129,56 @@ export function tagsApart(
 	};
 }
 
+/** One line the offer would draw differently, and the look it would have on it —
+ *  absent where the offer takes the look off. */
+export interface LookApart {
+	to: OwnedRef;
+	look?: EdgeLook;
+}
+
+/**
+ * The lines the offer would draw differently, in the order the offer names them,
+ * with the ones it drops after. An offer that names no look at all leaves every
+ * line alone and has nothing to show — DESIGN.md § Edges, "A look a person set".
+ */
+export function looksApart(now: WritingSide, offered: WritingSide): LookApart[] {
+	if (offered.edges === undefined) return [];
+	const before = new Map((now.edges ?? []).map((look) => [look.to, look]));
+	const after = new Set(offered.edges.map((look) => look.to));
+	const apart: LookApart[] = offered.edges
+		.filter((look) => {
+			const was = before.get(look.to);
+			return was === undefined || !sameLook(was, look);
+		})
+		.map((look) => ({ to: look.to, look }));
+	for (const look of now.edges ?? []) {
+		if (!after.has(look.to)) apart.push({ to: look.to });
+	}
+	return apart;
+}
+
+function sameLook(a: EdgeLook, b: EdgeLook): boolean {
+	return a.label === b.label && a.direction === b.direction && a.stroke === b.stroke;
+}
+
+/** Which end an arrowhead sits at, read against the note the look is on. */
+const ARROWS: Record<NonNullable<EdgeLook['direction']>, string> = {
+	to: '→',
+	from: '←',
+	both: '↔'
+};
+
+/** What a look says, as a row beside the note at the other end reads it. */
+export function lookInWords(look: EdgeLook | undefined): string {
+	if (look === undefined) return 'no look';
+	const said = [
+		...(look.label ? [`“${look.label}”`] : []),
+		...(look.direction ? [ARROWS[look.direction]] : []),
+		...(look.stroke ? [look.stroke] : [])
+	];
+	return said.length === 0 ? 'no look' : said.join(', ');
+}
+
 /** Whether the difference language has anything to draw. A compass stands
  *  outside it, and is read slot by slot instead. */
 export function saysAnything(apart: ChangedNote): boolean {
@@ -132,17 +186,20 @@ export function saysAnything(apart: ChangedNote): boolean {
 }
 
 /** Whether the offer says nothing at all — the whole of what a sheet draws,
- *  which is the difference language, the slots and the words together. */
+ *  which is the difference language, the slots, the words and the lines
+ *  together. */
 export function saysNothing(
 	apart: ChangedNote,
 	compass: readonly CompassApart[],
-	tags: { added: readonly Tag[]; removed: readonly Tag[] }
+	tags: { added: readonly Tag[]; removed: readonly Tag[] },
+	looks: readonly LookApart[]
 ): boolean {
 	return (
 		!saysAnything(apart) &&
 		compass.length === 0 &&
 		tags.added.length === 0 &&
-		tags.removed.length === 0
+		tags.removed.length === 0 &&
+		looks.length === 0
 	);
 }
 

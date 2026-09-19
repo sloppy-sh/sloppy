@@ -1,6 +1,7 @@
 // Fills one identity's graph with something worth looking at: thousands of
 // notes, deep chains and wide sibling runs, tags that cut across the genealogy,
-// and interiors divided into sections with real prose in them.
+// interiors divided into sections with real prose in them, and a look on some
+// of the lines.
 //
 //   pnpm --filter @sloppy/api seed [--did <did>] [--fresh] [--nodes <n>]
 //
@@ -106,7 +107,7 @@ async function main(): Promise<void> {
 
     const plan = planGraph(options.nodes);
     console.log(
-      `Planning ${plan.nodes} notes, ${plan.blocks} blocks, ${plan.tags.length} tags.`,
+      `Planning ${plan.nodes} notes, ${plan.blocks} blocks, ${plan.tags.length} tags, ${plan.looks} lines with a look on them.`,
     );
 
     const started = Date.now();
@@ -124,6 +125,14 @@ async function main(): Promise<void> {
         title: planned.title,
         tags: planned.tags,
       });
+      if (parent && planned.look) {
+        await nodes.update(
+          did,
+          node.ref,
+          { edges: [{ to: parent, ...planned.look }] },
+          undefined,
+        );
+      }
       written++;
       if (written % 250 === 0) {
         console.log(`  ${written} / ${plan.nodes} notes`);
@@ -153,6 +162,7 @@ async function main(): Promise<void> {
         `  deepest branch   ${plan.deepest} levels`,
         `  widest run       ${plan.widestRun} siblings`,
         `  tags             ${plan.tags.join(", ")}`,
+        `  lines with looks ${plan.looks}`,
         "",
       ].join("\n"),
     );
