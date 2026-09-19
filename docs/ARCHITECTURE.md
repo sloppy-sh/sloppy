@@ -734,6 +734,17 @@ the graph hands the sign-in control back. Starting a second graph and bringing o
 an archive are absent for the same reason: both want a folder to keep the new graph in, and
 a tab can name none — `GraphsStore.startsGraphs` is the one answer every surface asks.
 
+**A tab opens a graph and never starts one.** The folder door reads the folder before
+anything is swapped in: one holding no graph — no `graph.json` at its root and no container
+inside it — is refused in the door's own words and left exactly as it was, and the handle is
+remembered only once the graph opened. A folder that will not read leaves the hosted graph
+in front of the reader rather than an empty local one, which is why the swap is rolled back
+where the read that follows it fails.
+
+**An archive is left the same way wherever it is left from.** Its writing is in the tab and
+nowhere else, so closing it, opening a folder and opening another archive all ask the one
+question first, with "Save a copy" beside the answer.
+
 **A browser without the directory picker sees only the archive door.** Feature-detected on
 `showDirectoryPicker`, never sniffed from a user agent, so a browser that gains it gains the
 door on its own.

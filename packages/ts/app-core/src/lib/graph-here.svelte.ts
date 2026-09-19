@@ -8,7 +8,7 @@
  */
 
 import type { OwnedRef } from '@sloppy/types';
-import { type Files, LocalApi } from '@sloppy/local';
+import { type Files, holdsAGraph, LocalApi } from '@sloppy/local';
 import { api, resetApi } from './api.js';
 import { filesFromArchive } from './archive-files.js';
 import {
@@ -45,6 +45,9 @@ export interface OpenedHere {
 }
 
 const NO_FOLDER = 'Sloppy could not open that folder. Try another one.';
+/** A tab opens graphs and never starts one, so a folder holding none is the
+ *  wrong folder rather than a new graph. */
+const NO_GRAPH_THERE = 'That folder holds no graph. Choose the folder your notes are in.';
 
 function said(reason: unknown, fallback: string): string {
 	if (typeof reason === 'string' && reason.trim()) return reason;
@@ -163,6 +166,7 @@ class GraphHereStore {
 
 	private async serveFolder(handle: FolderHandle): Promise<void> {
 		const folder = new DirectoryFiles(handle);
+		if (!(await holdsAGraph(folder))) throw new Error(NO_GRAPH_THERE);
 		await folder.warm();
 		await this.serve({ how: 'folder', name: handle.name }, folder);
 	}
@@ -198,7 +202,12 @@ class GraphHereStore {
 		letGoOfTheGraphRead();
 		// Who is writing here is the graph on this device's answer now.
 		await session.refresh();
-		await graphs.load();
+		try {
+			await graphs.load();
+		} catch (reason) {
+			await this.close();
+			throw reason;
+		}
 	}
 }
 

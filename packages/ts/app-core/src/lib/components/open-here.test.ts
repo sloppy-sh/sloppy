@@ -6,6 +6,7 @@ import { LocalApi, MemoryFiles } from '@sloppy/local';
 import { pack } from '@sloppy/vault';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { api } from '../api.js';
 import { fakeFolder, type Held } from '../browser-files.test-support.js';
 import { graphHere } from '../graph-here.svelte.js';
 import { initRuntime } from '../runtime.js';
@@ -52,6 +53,17 @@ function screen(): string {
 
 function labels(): string[] {
 	return [...target.querySelectorAll('button')].map((one) => one.textContent?.trim() ?? '');
+}
+
+/** The question is over the page rather than in it, so its answers are found
+ *  in the body and the page's own buttons in `target`. */
+function answer(label: string): void {
+	const one = [...document.body.querySelectorAll('button')].find(
+		(button) => button.textContent?.trim() === label
+	);
+	if (!one) throw new Error(`Nothing to press reads ${JSON.stringify(label)}`);
+	one.click();
+	flushSync();
 }
 
 function press(label: string): void {
@@ -174,7 +186,41 @@ describe('while one is open', () => {
 
 		press('Close');
 		await settle();
-		expect(document.body.textContent).toContain('Close this graph?');
+		expect(document.body.textContent).toContain('Leave this graph?');
 		expect(graphHere.open?.how).toBe('archive');
 	});
+});
+
+// An archive's writing is in this tab and nowhere else, so it is not only
+// closing that would throw it away.
+describe('every way out of an open archive', () => {
+	async function anArchiveWithAWordInIt() {
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			openFile: async () =>
+				new File([pack(await aGraphOnTheDevice('The thesis')).slice()], 'thesis.sloppy')
+		});
+		picksUp(await aGraphOnTheDevice('The garden'), 'garden');
+		show();
+		press('Open an archive');
+		await settle();
+		return await api.createNode({ title: 'Written in this tab' });
+	}
+
+	for (const way of ['Close', 'Open a folder instead', 'Open an archive instead']) {
+		it(`asks before ${way}, and keeps what is in the tab when the answer is no`, async () => {
+			const written = await anArchiveWithAWordInIt();
+
+			press(way);
+			await settle();
+			const asked = document.body.querySelector('[role="dialog"]');
+			expect(asked?.textContent).toContain('Leave this graph?');
+			expect(asked?.textContent).toContain('Save a copy');
+
+			answer('Cancel');
+			await settle();
+			expect(graphHere.open?.how).toBe('archive');
+			expect((await api.getNode(written.ref))?.title).toBe('Written in this tab');
+		});
+	}
 });

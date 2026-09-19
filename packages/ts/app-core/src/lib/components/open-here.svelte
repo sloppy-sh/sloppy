@@ -4,7 +4,7 @@
 	// device, in the browser".
 	import FileArchive from '@lucide/svelte/icons/file-archive';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
-	import { ConfirmModal } from '@sloppy/ui';
+	import { ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { graphHere } from '../graph-here.svelte.js';
 	import { savesFiles } from '../save-file.js';
@@ -16,18 +16,33 @@
 		brief = false
 	}: { brief?: boolean } = $props();
 
-	let working = $state<'folder' | 'archive' | 'copy' | 'close' | null>(null);
+	/** Every way out of the graph in front of somebody, with what the answer to
+	 *  the question reads as. */
+	const WAYS_OUT = {
+		close: { answer: 'Close it', act: () => graphHere.close() },
+		folder: { answer: 'Open a folder', act: () => graphHere.openFolder() },
+		archive: { answer: 'Open an archive', act: () => graphHere.openArchive() }
+	} as const;
+	type WayOut = keyof typeof WAYS_OUT;
+
+	let working = $state<WayOut | 'copy' | null>(null);
 	let problem = $state<string | null>(null);
-	let leaving = $state(false);
+	let asking = $state<WayOut | null>(null);
 
 	const open = $derived(graphHere.open);
 	const canSaveFiles = savesFiles();
+	const question = $derived(asking === null ? null : { way: asking, ...WAYS_OUT[asking] });
 
-	/** An archive's writing is in this tab and nowhere else, so leaving it is
-	 *  the one of the two that asks first. */
-	function leave(): void {
-		if (open?.how === 'archive') leaving = true;
-		else void doing('close', () => graphHere.close());
+	/** An archive's writing is in this tab and nowhere else, so every way out of
+	 *  one asks first. */
+	function leave(way: WayOut): void {
+		if (open?.how === 'archive') asking = way;
+		else void doing(way, WAYS_OUT[way].act);
+	}
+
+	async function answered(way: WayOut): Promise<void> {
+		asking = null;
+		await doing(way, WAYS_OUT[way].act);
 	}
 
 	async function doing(what: NonNullable<typeof working>, act: () => Promise<unknown>) {
@@ -96,17 +111,26 @@
 				class="h-11"
 				disabled={working !== null}
 				aria-busy={working === 'folder'}
-				onclick={() => void doing('folder', () => graphHere.openFolder())}
+				onclick={() => leave('folder')}
 			>
-				{working === 'folder' ? 'One moment…' : 'Open another folder'}
+				{working === 'folder' ? 'One moment…' : 'Open a folder instead'}
 			</Button>
 		{/if}
+		<Button
+			variant="outline"
+			class="h-11"
+			disabled={working !== null}
+			aria-busy={working === 'archive'}
+			onclick={() => leave('archive')}
+		>
+			{working === 'archive' ? 'One moment…' : 'Open an archive instead'}
+		</Button>
 		<Button
 			variant="ghost"
 			class="h-11"
 			disabled={working !== null}
 			aria-busy={working === 'close'}
-			onclick={() => leave()}
+			onclick={() => leave('close')}
 		>
 			Close
 		</Button>
@@ -127,7 +151,7 @@
 				class="h-11 sm:flex-1"
 				disabled={working !== null}
 				aria-busy={working === 'folder'}
-				onclick={() => void doing('folder', () => graphHere.openFolder())}
+				onclick={() => leave('folder')}
 			>
 				<FolderOpen class="size-4" />
 				{working === 'folder' ? 'One moment…' : 'Open a folder on this device'}
@@ -138,7 +162,7 @@
 			class="h-11 sm:flex-1"
 			disabled={working !== null}
 			aria-busy={working === 'archive'}
-			onclick={() => void doing('archive', () => graphHere.openArchive())}
+			onclick={() => leave('archive')}
 		>
 			<FileArchive class="size-4" />
 			{working === 'archive' ? 'One moment…' : 'Open an archive'}
@@ -150,10 +174,41 @@
 	<p class="text-sm text-destructive" role="alert">{problem}</p>
 {/if}
 
-<ConfirmModal
-	bind:open={leaving}
-	title="Close this graph?"
+<ResponsiveModal
+	open={question !== null}
+	onOpenChange={(up) => {
+		if (!up) asking = null;
+	}}
+	title="Leave this graph?"
 	description="What you have written since you opened it is only in this tab. Save a copy first to keep it."
-	confirmLabel="Close it"
-	onconfirm={() => doing('close', () => graphHere.close())}
-/>
+>
+	{#if question}
+		<div class="flex flex-col-reverse gap-2 px-2 pt-4 sm:flex-row sm:justify-end">
+			<Button
+				variant="outline"
+				class="h-11 sm:h-9"
+				disabled={working !== null}
+				onclick={() => (asking = null)}
+			>
+				Cancel
+			</Button>
+			<Button
+				variant="outline"
+				class="h-11 sm:h-9"
+				disabled={working !== null || !canSaveFiles}
+				aria-busy={working === 'copy'}
+				onclick={() => void doing('copy', () => graphHere.saveCopy())}
+			>
+				{working === 'copy' ? 'Putting it together…' : 'Save a copy'}
+			</Button>
+			<Button
+				variant="destructive"
+				class="h-11 sm:h-9"
+				disabled={working !== null}
+				onclick={() => void answered(question.way)}
+			>
+				{question.answer}
+			</Button>
+		</div>
+	{/if}
+</ResponsiveModal>

@@ -77,6 +77,37 @@ describe('the folder door', () => {
 		expect(graphs.all.map((one) => one.title)).toEqual(['The garden']);
 	});
 
+	// A tab can put no new graph anywhere, so a folder holding none is the wrong
+	// folder rather than a graph waiting to be started in it.
+	it('refuses a folder with no graph in it, and writes nothing into it', async () => {
+		const holiday = new Map([['holiday.txt', new TextEncoder().encode('off the coast')]]);
+		picksUp(holiday);
+
+		await expect(graphHere.openFolder()).rejects.toThrow('That folder holds no graph');
+
+		expect([...holiday.keys()]).toEqual(['holiday.txt']);
+		expect(graphHere.open).toBeNull();
+		expect(runtime.mode()).toBe('hosted');
+	});
+
+	it('leaves the graph this app is served from in front of somebody when the folder will not read', async () => {
+		const folder = fakeFolder(await aGraphFolder(), '', 'garden');
+		Object.defineProperty(globalThis, 'showDirectoryPicker', {
+			configurable: true,
+			writable: true,
+			value: async () => ({
+				...folder,
+				getFileHandle: () => Promise.reject(new Error('That folder is not there any more.'))
+			})
+		});
+
+		await expect(graphHere.openFolder()).rejects.toThrow('not there any more');
+
+		expect(graphHere.open).toBeNull();
+		expect(runtime.mode()).toBe('hosted');
+		expect((await api.listGraphs()).map((one) => one.title)).toEqual(['My graph']);
+	});
+
 	it('writes into the folder itself, and sends nothing to the API', async () => {
 		const held = await aGraphFolder();
 		const notesBefore = [...held.keys()].filter((path) => path.startsWith('notes/')).length;
