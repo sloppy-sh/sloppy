@@ -570,6 +570,10 @@ interface CarriedIdentity {
 /** What a file carrying an identity is called on the way out. */
 export const CARRIED_FILE = "sloppy-identity.json";
 
+/** What a file carrying a sealed identity is called on the way out. It keeps
+ *  {@link CARRIED_NAME}'s prefix so {@link carriedIdentityFile} covers it. */
+export const CARRIED_SEALED_FILE = "sloppy-identity-sealed.json";
+
 const CARRIED_NAME = "sloppy-identity";
 
 /** Whether a path is a copy of an identity saved out of the app: {@link
@@ -687,12 +691,9 @@ export interface IdentityAccess {
    *  arrived. Nothing is asked of them here: what the row shows is on the
    *  outside of it. */
   bringSealed(file: Uint8Array): Promise<IdentityHere>;
-  /** The file that carries one to another device. A sealed identity needs the
-   *  passphrase it is sealed under; every other one ignores it. */
-  carryOut(
-    did: DidSyr,
-    passphrase?: string,
-  ): Promise<{ name: string; body: Uint8Array }>;
+  /** The file that carries one to another device. A sealed identity carries out
+   *  still sealed, so this asks for nothing. */
+  carryOut(did: DidSyr): Promise<{ name: string; body: Uint8Array }>;
   /** Write under this one from now on. */
   writeAs(did: DidSyr): Promise<void>;
 }
@@ -876,13 +877,10 @@ export class Identities implements IdentityAccess {
     return shown(held, true);
   }
 
-  async carryOut(
-    did: DidSyr,
-    passphrase?: string,
-  ): Promise<{ name: string; body: Uint8Array }> {
+  async carryOut(did: DidSyr): Promise<{ name: string; body: Uint8Array }> {
     const held = await readIdentities(this.files);
     const one = held.identities.find((identity) => identity.did === did);
-    if (one?.source === "sealed") return this.carrySealedOut(one, passphrase);
+    if (one?.source === "sealed") return this.carrySealedOut(one);
     if (!one || one.source !== "device") {
       throw refuse(
         "That identity is kept for you somewhere else, so there is no file of it to carry.",
@@ -904,19 +902,18 @@ export class Identities implements IdentityAccess {
     await this.options.changed?.();
   }
 
+  /** The sealed file, byte for byte as it arrived. Copying it needs no key, so
+   *  the copy stays under the passphrase its owner keeps it under and Sloppy
+   *  never opens the seal to make one. */
   private async carrySealedOut(
     one: SealedIdentity,
-    passphrase?: string,
   ): Promise<{ name: string; body: Uint8Array }> {
-    if (!passphrase) {
-      throw refuse(
-        "That identity is kept shut. Type the passphrase it was sealed with to carry it out.",
-      );
+    const own = this.files.at(await this.files.dataPath());
+    const bytes = await own.read(one.sealed);
+    if (!bytes) {
+      throw refuse("The key for that identity is not on this device any more.");
     }
-    return withSealedKey(this.files, one, passphrase, (key) => ({
-      name: CARRIED_FILE,
-      body: carryIdentityOut(one, key),
-    }));
+    return { name: CARRIED_SEALED_FILE, body: bytes };
   }
 
   /** The picture kept where a graph started later can still be written with

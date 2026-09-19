@@ -20,6 +20,6 @@ export function kept(one: IdentityHere): string {
  *  stands between the person and it. */
 export function shut(one: IdentityHere): string | undefined {
 	return one.locked
-		? 'You can write as this one now. Your passphrase is asked only if you save a copy to move it.'
+		? 'You can write as this one now. Sloppy cannot open it without your passphrase, and a copy you save stays shut the same way.'
 		: undefined;
 }

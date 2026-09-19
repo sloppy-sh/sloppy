@@ -556,9 +556,10 @@ nobody has written yet is a value here and not a field. Three values:
   outside of that file, so the DID, the name on the row and who writes here need nothing
   asked of anybody; the seed comes out only for an act that must sign with it, the
   passphrase is asked at that moment, and the seed is wiped after. Nothing in local mode
-  signs today — an identity names whose graph a note is in and no more — so the one act
-  that asks is carrying the identity on to another device. A brought-in identity stays
-  sealed: this device never writes the key down in the clear. Which format that file is in
+  signs today — an identity names whose graph a note is in and no more — so nothing asks at
+  all: carrying one on hands over the sealed file as it stands, which needs no key. A
+  brought-in identity stays sealed wherever it goes, and this device never writes the key
+  down in the clear. Which format that file is in
   is `@sloppy/idp`'s business — `sigil.ts` reads and writes syr's portable one, the same
   construction as Aegis (§ "An API that serves identities itself") and reproduced byte for
   byte so a file written here opens on a syr instance. Nothing above that package names a
@@ -582,8 +583,9 @@ consent page offers to sign with, and it lands here `delegated` like any other. 
 identity from another device" reads an identity file another device exported. Settings
 exports a `device` identity as one file — the DID, the public key and the key — with the
 consequence stated where the person chooses: whoever has that file writes as them. One
-brought in that way is a `device` identity like any other; one brought in sealed under a
-passphrase stays `sealed`, and carrying it on again asks for that passphrase.
+brought in that way is a `device` identity like any other. One brought in sealed carries on
+as the sealed file it arrived as, so the copy is shut the way its owner keeps it and nothing
+is asked to make one.
 
 **The app is its own platform.** There is no Sloppy API here to hold the delegation, so the
 native app performs Platform Delegation itself. `platform_origin` is the app's public web

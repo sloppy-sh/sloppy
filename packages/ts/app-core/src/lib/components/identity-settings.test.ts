@@ -1,5 +1,10 @@
 import { SloppyApiError } from '@sloppy/client';
-import { CARRIED_FILE, type IdentityAccess, type IdentityHere } from '@sloppy/local';
+import {
+	CARRIED_FILE,
+	CARRIED_SEALED_FILE,
+	type IdentityAccess,
+	type IdentityHere
+} from '@sloppy/local';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initRuntime } from '../runtime.js';
@@ -70,20 +75,10 @@ function press(label: string): void {
 	one.click();
 }
 
-/** The sheet asking for a passphrase stands outside this surface's own box. */
+/** Anything on the page asking somebody for a passphrase. Nothing should:
+ *  nothing here needs the key. */
 function asked(): HTMLInputElement | null {
 	return document.querySelector<HTMLInputElement>('#identity-passphrase');
-}
-
-function type(said: string): void {
-	const field = asked();
-	if (!field) throw new Error('nowhere to type a passphrase');
-	field.value = said;
-	field.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
-function answer(): void {
-	asked()?.closest('form')?.requestSubmit();
 }
 
 beforeEach(() => {
@@ -344,62 +339,33 @@ describe('the identities a device holds', () => {
 		expect(offers()).toContain('Save a copy to move it');
 	});
 
-	it('asks for the passphrase at the moment the copy is made, and not before', async () => {
-		const carryOut = vi.fn(async () => ({ name: CARRIED_FILE, body: new Uint8Array([1, 2, 3]) }));
+	// Copying a file needs no key, so the seal is never opened to make one and
+	// the copy arrives shut, the way its owner keeps it.
+	it('carries a locked one out with nothing asked, still sealed', async () => {
+		const carryOut = vi.fn(async () => ({
+			name: CARRIED_SEALED_FILE,
+			body: new Uint8Array([1, 2, 3])
+		}));
 		shell({ list: async () => [here({ source: 'sealed', locked: true })], carryOut });
 		show();
 		await settle();
 
-		expect(asked()).toBeNull();
-
 		press('Save a copy to move it');
 		await settle();
-		type('the whole hill');
-		await settle();
-		answer();
-		await settle();
 
-		expect(carryOut).toHaveBeenCalledWith('did:syr:z6Mkone', 'the whole hill');
-		expect(saved.map((one) => one.name)).toEqual(['sloppy-identity.json']);
+		expect(carryOut).toHaveBeenCalledWith('did:syr:z6Mkone');
+		expect(saved.map((one) => one.name)).toEqual(['sloppy-identity-sealed.json']);
 		expect(asked()).toBeNull();
 	});
 
-	it('says what to try where the passphrase does not open it', async () => {
-		const carryOut = vi.fn(async () => {
-			throw new SloppyApiError(400, 'POST /identities 400', {
-				detail: 'That passphrase did not open it. Try it again.'
-			});
-		});
-		shell({ list: async () => [here({ source: 'sealed', locked: true })], carryOut });
+	it('says a saved copy stays shut the same way', async () => {
+		shell({ list: async () => [here({ source: 'sealed', locked: true })] });
 		show();
 		await settle();
 
-		press('Save a copy to move it');
-		await settle();
-		type('the wrong hill');
-		await settle();
-		answer();
-		await settle();
-
-		expect(saved).toEqual([]);
-		expect(asked()).not.toBeNull();
-		expect(asked()?.value).toBe('');
-		expect(document.querySelector('[role="alert"]')?.textContent).toContain('Try it again');
-	});
-
-	it('asks for a passphrase rather than trying without one', async () => {
-		const carryOut = vi.fn(async () => ({ name: CARRIED_FILE, body: new Uint8Array([1, 2, 3]) }));
-		shell({ list: async () => [here({ source: 'sealed', locked: true })], carryOut });
-		show();
-		await settle();
-
-		press('Save a copy to move it');
-		await settle();
-		answer();
-		await settle();
-
-		expect(carryOut).not.toHaveBeenCalled();
-		expect(document.querySelector('[role="alert"]')?.textContent).toContain('Type the passphrase');
+		expect(target.textContent?.replace(/\s+/g, ' ')).toContain(
+			'a copy you save stays shut the same way'
+		);
 	});
 
 	it('says what is already written keeps the name it was written under', async () => {

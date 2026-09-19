@@ -2,7 +2,6 @@
 	// The identities a device holds, and the ways one arrives —
 	// docs/ARCHITECTURE.md § "A graph off the device".
 	import type { IdentityHere } from '@sloppy/local';
-	import { ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
@@ -25,13 +24,9 @@
 	let problem = $state<string | null>(null);
 	let asking = $state(false);
 	let address = $state('');
-	let unlocking = $state<string | null>(null);
-	let passphrase = $state('');
-	let refused = $state<string | null>(null);
 
 	const canCarryOut = $derived(savesFiles());
 	const canBringIn = $derived(opensFiles());
-	const anyLocked = $derived(held.some((one) => one.locked));
 
 	$effect(() => {
 		void refresh();
@@ -101,53 +96,12 @@
 		});
 	}
 
-	function carryOut(one: IdentityHere): void {
+	function carryOut(did: string): void {
 		if (!identities) return;
-		if (one.locked) {
-			unlocking = one.did;
-			passphrase = '';
-			refused = null;
-			return;
-		}
-		void run(`carry:${one.did}`, () => copyOut(one.did, undefined));
-	}
-
-	async function copyOut(did: string, said: string | undefined): Promise<void> {
-		if (!identities) return;
-		const file = await identities.carryOut(did, said);
-		await saveHere(file.name, new Blob([file.body.slice().buffer as ArrayBuffer]));
-	}
-
-	function unlock(event: SubmitEvent): void {
-		event.preventDefault();
-		const did = unlocking;
-		if (!identities || !did) return;
-		if (!passphrase) {
-			refused = 'Type the passphrase you keep this one under.';
-			return;
-		}
-		const said = passphrase;
-		busy = `carry:${did}`;
-		refused = null;
-		void (async () => {
-			try {
-				await copyOut(did, said);
-				unlocking = null;
-			} catch (error) {
-				refused = serverMessage(error) ?? 'That did not work. Try again.';
-			} finally {
-				passphrase = '';
-				busy = null;
-				await refresh();
-			}
-		})();
-	}
-
-	function dismissed(open: boolean): void {
-		if (open) return;
-		unlocking = null;
-		passphrase = '';
-		refused = null;
+		void run(`carry:${did}`, async () => {
+			const file = await identities.carryOut(did);
+			await saveHere(file.name, new Blob([file.body.slice().buffer as ArrayBuffer]));
+		});
 	}
 
 	function writeAs(did: string): void {
@@ -198,7 +152,7 @@
 									variant="ghost"
 									class="h-11"
 									disabled={busy !== null}
-									onclick={() => carryOut(one)}
+									onclick={() => carryOut(one.did)}
 								>
 									{busy === `carry:${one.did}` ? 'Putting it together…' : 'Save a copy to move it'}
 								</Button>
@@ -278,33 +232,4 @@
 			<p class="text-sm text-destructive" role="alert">{problem ?? session.signInProblem}</p>
 		{/if}
 	</div>
-
-	{#if anyLocked}
-		<ResponsiveModal
-			open={unlocking !== null}
-			onOpenChange={dismissed}
-			title="Type your passphrase"
-			description="This one is locked. The copy is made with the passphrase you keep it under."
-		>
-			<form class="space-y-3 px-2 pt-4 pb-2" onsubmit={unlock}>
-				<Label for="identity-passphrase" class="sr-only">Your passphrase</Label>
-				<Input
-					id="identity-passphrase"
-					name="identity-passphrase"
-					type="password"
-					autocomplete="current-password"
-					autocapitalize="none"
-					spellcheck={false}
-					bind:value={passphrase}
-					class="h-11"
-				/>
-				<Button type="submit" class="h-11 w-full" disabled={busy !== null}>
-					{busy === `carry:${unlocking}` ? 'Putting it together…' : 'Save a copy to move it'}
-				</Button>
-				{#if refused}
-					<p class="text-sm text-destructive" role="alert">{refused}</p>
-				{/if}
-			</form>
-		</ResponsiveModal>
-	{/if}
 {/if}

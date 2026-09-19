@@ -9,7 +9,7 @@ import {
   writeSigil,
 } from "@sloppy/idp/crypto";
 import { type DidSyr, DidSyrSchema } from "@sloppy/types";
-import { encodeText } from "@sloppy/vault";
+import { decodeText, encodeText } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { LocalApi } from "./api.js";
 import type { Fetching } from "./delegation.js";
@@ -17,6 +17,7 @@ import { MemoryFiles } from "./files.js";
 import { LocalGraph } from "./graph.js";
 import {
   CARRIED_FILE,
+  CARRIED_SEALED_FILE,
   carryIdentityOut,
   type DeviceIdentity,
   holdDelegatedIdentity,
@@ -928,38 +929,36 @@ describe("the three doors a person is offered", () => {
     expect(await door.held.list()).toEqual([]);
   });
 
-  it("carries a sealed identity brought in here to another device", async () => {
+  it("carries a sealed identity brought in here to another device, still sealed", async () => {
     const files = new MemoryFiles({ data: "/data" });
     const one = await aSigil();
     const door = identities(files);
     const arrived = await door.held.bringSealed(one.file);
 
-    const file = await door.held.carryOut(arrived.did, PASSPHRASE);
+    const file = await door.held.carryOut(arrived.did);
+    expect(file.name).toBe(CARRIED_SEALED_FILE);
+    expect(file.body).toEqual(one.file);
 
     const there = new MemoryFiles({ data: "/data" });
-    expect((await identities(there).held.bring(file.body)).did).toBe(one.did);
-  });
-
-  it("carries a sealed identity out under the passphrase it was sealed with", async () => {
-    const files = new MemoryFiles({ data: "/data" });
-    const one = await holdSealed(files);
-
-    const file = await identities(files).held.carryOut(one.did, PASSPHRASE);
-    expect(file.name).toBe(CARRIED_FILE);
-
-    const there = new MemoryFiles({ data: "/data" });
-    expect((await identities(there).held.bring(file.body)).did).toBe(one.did);
-  });
-
-  it("asks for the passphrase, and says so where it does not open it", async () => {
-    const files = new MemoryFiles({ data: "/data" });
-    const one = await holdSealed(files);
-    const door = identities(files);
-
-    await expect(door.held.carryOut(one.did)).rejects.toThrow(/passphrase/i);
-    await expect(door.held.carryOut(one.did, "not it")).rejects.toThrow(
-      /did not open it/i,
+    expect((await identities(there).held.bringSealed(file.body)).did).toBe(
+      one.did,
     );
+  });
+
+  // The passphrase protects the copy as much as the original, so nothing opens
+  // the seal to make one and nothing asks.
+  it("neither asks for the passphrase nor writes the key in the clear", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const one = await holdSealed(files);
+
+    const file = await identities(files).held.carryOut(one.did);
+
+    const said = JSON.parse(decodeText(file.body)) as Record<string, unknown>;
+    expect(said.key).toBeUndefined();
+    expect(said.enc).toBeDefined();
+    await expect(
+      identities(new MemoryFiles({ data: "/data" })).held.bring(file.body),
+    ).rejects.toThrow(/does not hold an identity/i);
   });
 
   it("has nothing to carry where the sealed key is gone from this device", async () => {
@@ -967,9 +966,9 @@ describe("the three doors a person is offered", () => {
     const one = await holdSealed(files);
     await files.at("/data").remove(SEALED_FILE);
 
-    await expect(
-      identities(files).held.carryOut(one.did, PASSPHRASE),
-    ).rejects.toThrow(/not on this device any more/i);
+    await expect(identities(files).held.carryOut(one.did)).rejects.toThrow(
+      /not on this device any more/i,
+    );
   });
 
   it("has no file to carry for an identity kept somewhere else", async () => {
