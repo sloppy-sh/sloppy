@@ -1,3 +1,4 @@
+import { SloppyApiError } from '@sloppy/client';
 import { CARRIED_FILE, type IdentityAccess, type IdentityHere } from '@sloppy/local';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -69,17 +70,56 @@ function press(label: string): void {
 	one.click();
 }
 
+/** The sheet asking for a passphrase stands outside this surface's own box. */
+function asked(): HTMLInputElement | null {
+	return document.querySelector<HTMLInputElement>('#identity-passphrase');
+}
+
+function type(said: string): void {
+	const field = asked();
+	if (!field) throw new Error('nowhere to type a passphrase');
+	field.value = said;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function answer(): void {
+	asked()?.closest('form')?.requestSubmit();
+}
+
 beforeEach(() => {
 	saved = [];
 	brought = null;
+	Element.prototype.hasPointerCapture = () => false;
+	Element.prototype.setPointerCapture = () => {};
+	Element.prototype.releasePointerCapture = () => {};
+	Element.prototype.scrollIntoView = () => {};
+	Object.defineProperty(globalThis, 'matchMedia', {
+		configurable: true,
+		writable: true,
+		value: (query: string) => ({
+			matches: query.includes('min-width'),
+			addEventListener: () => {},
+			removeEventListener: () => {}
+		})
+	});
+	Object.defineProperty(globalThis, 'ResizeObserver', {
+		configurable: true,
+		writable: true,
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+	});
 	target = document.createElement('div');
 	document.body.append(target);
 });
 
 afterEach(() => {
-	if (mounted) unmount(mounted);
+	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	target.remove();
+	document.body.innerHTML = '';
 	initRuntime({
 		apiHost: () => '',
 		mode: () => 'hosted',
@@ -97,14 +137,15 @@ describe('the identities a device holds', () => {
 		expect(target.querySelector('[data-surface="identities"]')).toBeNull();
 	});
 
-	it('offers all three ways one arrives', () => {
+	it('offers every way one arrives', () => {
 		shell({});
 		show();
 
 		expect(offers()).toEqual([
 			'Start a new one here',
 			'Sign in with your identity',
-			'Bring one from another device'
+			'Bring one from another device',
+			'Bring one you keep under a passphrase'
 		]);
 	});
 
@@ -112,7 +153,11 @@ describe('the identities a device holds', () => {
 		shell({});
 		show({ mints: false });
 
-		expect(offers()).not.toContain('Start a new one here');
+		expect(offers()).toEqual([
+			'Sign in with your identity',
+			'Bring one from another device',
+			'Bring one you keep under a passphrase'
+		]);
 	});
 
 	it('says which one the writing here carries', async () => {
@@ -274,5 +319,96 @@ describe('the identities a device holds', () => {
 
 		expect(target.textContent).toContain('Sign in again');
 		expect(target.textContent).toContain('still yours');
+	});
+	it('holds one kept under a passphrase with nothing asked of anybody', async () => {
+		const bringSealed = vi.fn(async () => here({ source: 'sealed', locked: true }));
+		brought = new File([new Uint8Array([1, 2, 3])], 'identity.sigil');
+		shell({ bringSealed });
+		show();
+		await settle();
+
+		press('Bring one you keep under a passphrase');
+		await settle();
+
+		expect(bringSealed).toHaveBeenCalledOnce();
+		expect(asked()).toBeNull();
+	});
+
+	it('says a locked one is written as now and asked about later', async () => {
+		shell({ list: async () => [here({ source: 'sealed', locked: true, name: 'Ada' })] });
+		show();
+		await settle();
+
+		expect(target.textContent).toContain('On this device, locked');
+		expect(target.textContent).toContain('You can write as this one now');
+		expect(offers()).toContain('Save a copy to move it');
+	});
+
+	it('asks for the passphrase at the moment the copy is made, and not before', async () => {
+		const carryOut = vi.fn(async () => ({ name: CARRIED_FILE, body: new Uint8Array([1, 2, 3]) }));
+		shell({ list: async () => [here({ source: 'sealed', locked: true })], carryOut });
+		show();
+		await settle();
+
+		expect(asked()).toBeNull();
+
+		press('Save a copy to move it');
+		await settle();
+		type('the whole hill');
+		await settle();
+		answer();
+		await settle();
+
+		expect(carryOut).toHaveBeenCalledWith('did:syr:z6Mkone', 'the whole hill');
+		expect(saved.map((one) => one.name)).toEqual(['sloppy-identity.json']);
+		expect(asked()).toBeNull();
+	});
+
+	it('says what to try where the passphrase does not open it', async () => {
+		const carryOut = vi.fn(async () => {
+			throw new SloppyApiError(400, 'POST /identities 400', {
+				detail: 'That passphrase did not open it. Try it again.'
+			});
+		});
+		shell({ list: async () => [here({ source: 'sealed', locked: true })], carryOut });
+		show();
+		await settle();
+
+		press('Save a copy to move it');
+		await settle();
+		type('the wrong hill');
+		await settle();
+		answer();
+		await settle();
+
+		expect(saved).toEqual([]);
+		expect(asked()).not.toBeNull();
+		expect(asked()?.value).toBe('');
+		expect(document.querySelector('[role="alert"]')?.textContent).toContain('Try it again');
+	});
+
+	it('asks for a passphrase rather than trying without one', async () => {
+		const carryOut = vi.fn(async () => ({ name: CARRIED_FILE, body: new Uint8Array([1, 2, 3]) }));
+		shell({ list: async () => [here({ source: 'sealed', locked: true })], carryOut });
+		show();
+		await settle();
+
+		press('Save a copy to move it');
+		await settle();
+		answer();
+		await settle();
+
+		expect(carryOut).not.toHaveBeenCalled();
+		expect(document.querySelector('[role="alert"]')?.textContent).toContain('Type the passphrase');
+	});
+
+	it('says what is already written keeps the name it was written under', async () => {
+		shell({ list: async () => [here()] });
+		show();
+		await settle();
+
+		expect(target.textContent?.replace(/\s+/g, ' ')).toContain(
+			'what you have already written keeps the name it was written under'
+		);
 	});
 });

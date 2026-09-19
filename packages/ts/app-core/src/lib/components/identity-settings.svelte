@@ -1,11 +1,12 @@
 <script lang="ts">
-	// The identities a device holds, and the three ways one arrives —
+	// The identities a device holds, and the ways one arrives —
 	// docs/ARCHITECTURE.md § "A graph off the device".
 	import type { IdentityHere } from '@sloppy/local';
+	import { ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
-	import { called, kept } from '../held-identity.js';
+	import { called, kept, shut } from '../held-identity.js';
 	import { runtime } from '../runtime.js';
 	import { openHere, opensFiles, saveHere, savesFiles } from '../save-file.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -24,9 +25,13 @@
 	let problem = $state<string | null>(null);
 	let asking = $state(false);
 	let address = $state('');
+	let unlocking = $state<string | null>(null);
+	let passphrase = $state('');
+	let refused = $state<string | null>(null);
 
 	const canCarryOut = $derived(savesFiles());
 	const canBringIn = $derived(opensFiles());
+	const anyLocked = $derived(held.some((one) => one.locked));
 
 	$effect(() => {
 		void refresh();
@@ -86,12 +91,63 @@
 		});
 	}
 
-	function carryOut(did: string): void {
+	function bringLocked(): void {
 		if (!identities) return;
-		void run(`carry:${did}`, async () => {
-			const file = await identities.carryOut(did);
-			await saveHere(file.name, new Blob([file.body.slice().buffer as ArrayBuffer]));
+		void run('bring-locked', async () => {
+			const file = await openHere('.sigil,.json,application/json');
+			if (!file) return;
+			await identities.bringSealed(new Uint8Array(await file.arrayBuffer()));
+			await session.refresh();
 		});
+	}
+
+	function carryOut(one: IdentityHere): void {
+		if (!identities) return;
+		if (one.locked) {
+			unlocking = one.did;
+			passphrase = '';
+			refused = null;
+			return;
+		}
+		void run(`carry:${one.did}`, () => copyOut(one.did, undefined));
+	}
+
+	async function copyOut(did: string, said: string | undefined): Promise<void> {
+		if (!identities) return;
+		const file = await identities.carryOut(did, said);
+		await saveHere(file.name, new Blob([file.body.slice().buffer as ArrayBuffer]));
+	}
+
+	function unlock(event: SubmitEvent): void {
+		event.preventDefault();
+		const did = unlocking;
+		if (!identities || !did) return;
+		if (!passphrase) {
+			refused = 'Type the passphrase you keep this one under.';
+			return;
+		}
+		const said = passphrase;
+		busy = `carry:${did}`;
+		refused = null;
+		void (async () => {
+			try {
+				await copyOut(did, said);
+				unlocking = null;
+			} catch (error) {
+				refused = serverMessage(error) ?? 'That did not work. Try again.';
+			} finally {
+				passphrase = '';
+				busy = null;
+				await refresh();
+			}
+		})();
+	}
+
+	function dismissed(open: boolean): void {
+		if (open) return;
+		unlocking = null;
+		passphrase = '';
+		refused = null;
 	}
 
 	function writeAs(did: string): void {
@@ -108,6 +164,7 @@
 		{#if held.length > 0}
 			<ul class="space-y-2">
 				{#each held as one (one.did)}
+					{@const locked = shut(one)}
 					<li class="rounded-md border border-border bg-card p-3">
 						<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 							<span class="text-sm font-medium">{called(one)}</span>
@@ -116,6 +173,9 @@
 							{/if}
 						</div>
 						<p class="text-sm text-muted-foreground">{kept(one)}</p>
+						{#if locked}
+							<p class="text-sm text-muted-foreground">{locked}</p>
+						{/if}
 						{#if one.lapsed}
 							<p class="text-sm text-muted-foreground">
 								Sign in again to keep your name and picture up to date. What you have written is
@@ -138,7 +198,7 @@
 									variant="ghost"
 									class="h-11"
 									disabled={busy !== null}
-									onclick={() => carryOut(one.did)}
+									onclick={() => carryOut(one)}
 								>
 									{busy === `carry:${one.did}` ? 'Putting it together…' : 'Save a copy to move it'}
 								</Button>
@@ -149,7 +209,8 @@
 			</ul>
 			<p class="text-sm text-muted-foreground">
 				A folder you started is written in as yours. In somebody else's folder you write as
-				whichever of these you pick.
+				whichever of these you pick. Picking one changes what you write from then on; what you have
+				already written keeps the name it was written under.
 			</p>
 		{/if}
 
@@ -171,6 +232,9 @@
 			{#if canBringIn}
 				<Button variant="outline" class="h-11" disabled={busy !== null} onclick={bring}>
 					{busy === 'bring' ? 'Reading it…' : 'Bring one from another device'}
+				</Button>
+				<Button variant="outline" class="h-11" disabled={busy !== null} onclick={bringLocked}>
+					{busy === 'bring-locked' ? 'Reading it…' : 'Bring one you keep under a passphrase'}
 				</Button>
 			{/if}
 		</div>
@@ -198,8 +262,9 @@
 				</Button>
 			</form>
 			<p class="text-sm text-muted-foreground">
-				You'll approve Sloppy where your identity lives and come straight back. It settles who you
-				write as; what you write still stays on this device.
+				You'll approve Sloppy where your identity lives and come straight back. If you keep it in
+				Syner, Syner is what you'll approve with when you get there. It settles who you write as;
+				what you write still stays on this device.
 			</p>
 		{/if}
 
@@ -213,4 +278,33 @@
 			<p class="text-sm text-destructive" role="alert">{problem ?? session.signInProblem}</p>
 		{/if}
 	</div>
+
+	{#if anyLocked}
+		<ResponsiveModal
+			open={unlocking !== null}
+			onOpenChange={dismissed}
+			title="Type your passphrase"
+			description="This one is locked. The copy is made with the passphrase you keep it under."
+		>
+			<form class="space-y-3 px-2 pt-4 pb-2" onsubmit={unlock}>
+				<Label for="identity-passphrase" class="sr-only">Your passphrase</Label>
+				<Input
+					id="identity-passphrase"
+					name="identity-passphrase"
+					type="password"
+					autocomplete="current-password"
+					autocapitalize="none"
+					spellcheck={false}
+					bind:value={passphrase}
+					class="h-11"
+				/>
+				<Button type="submit" class="h-11 w-full" disabled={busy !== null}>
+					{busy === `carry:${unlocking}` ? 'Putting it together…' : 'Save a copy to move it'}
+				</Button>
+				{#if refused}
+					<p class="text-sm text-destructive" role="alert">{refused}</p>
+				{/if}
+			</form>
+		</ResponsiveModal>
+	{/if}
 {/if}

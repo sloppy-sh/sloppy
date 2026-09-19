@@ -291,7 +291,8 @@ describe('the three doors a first run offers', () => {
 		expect(offers()).toEqual([
 			'Choose a folder',
 			'Sign in with your identity',
-			'Bring one from another device'
+			'Bring one from another device',
+			'Bring one you keep under a passphrase'
 		]);
 	});
 
