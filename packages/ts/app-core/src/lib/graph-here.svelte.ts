@@ -273,7 +273,6 @@ class GraphHereStore {
 
 	private async serve(opened: Pick<OpenedHere, 'how' | 'name'>, files: Files): Promise<void> {
 		if (this.#open === null) this.#servedMode = runtime.mode();
-		this.#waiting = null;
 		if (this.#folder && this.#folder !== files) this.#folder.release();
 		this.#folder = files instanceof DirectoryFiles ? files : undefined;
 		// Who is signed in here settles before the swap: after it, asking reaches
@@ -298,6 +297,9 @@ class GraphHereStore {
 			}
 		});
 		resetApi();
+		// The door comes down only once the graph on this device answers, so no
+		// page reads the hosted Sloppy about a note kept here.
+		this.#waiting = null;
 		seamSettledAgain();
 		this.#open = { ...opened, ownIdentity: signedIn === undefined };
 		letGoOfTheGraphRead();
