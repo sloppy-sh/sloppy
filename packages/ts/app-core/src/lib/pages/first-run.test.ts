@@ -1,7 +1,7 @@
 import type { IdentityAccess, IdentityHere } from '@sloppy/local';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initRuntime, type VaultAccess } from '../runtime.js';
+import { initRuntime, type KnownFolder, type VaultAccess } from '../runtime.js';
 import { session } from '../stores/session.svelte.js';
 import FirstRun from './first-run.svelte';
 
@@ -25,6 +25,13 @@ function show(missing = false): void {
 function button(): HTMLButtonElement {
 	const one = target.querySelector('button');
 	if (!one) throw new Error('No offer on the page');
+	return one;
+}
+
+/** The one line at the foot that opens who this device writes as. */
+function whoDoor(): HTMLButtonElement {
+	const one = target.querySelector<HTMLButtonElement>('button[aria-controls="who-writes-here"]');
+	if (!one) throw new Error('Nothing at the foot says who writes here');
 	return one;
 }
 
@@ -284,15 +291,29 @@ describe('the three doors a first run offers', () => {
 		return [...target.querySelectorAll('button')].map((one) => one.textContent?.trim() ?? '');
 	}
 
-	it('offers the other two beside the one that asks nothing', () => {
+	it('keeps them behind one line until somebody goes looking', async () => {
 		shell({}, {});
 		show();
+		await settle();
 
-		expect(offers()).toEqual([
-			'Choose a folder',
-			'Sign in with your identity',
-			'Bring one from another device'
-		]);
+		expect(offers()).toEqual(['Choose a folder', 'Who you write as']);
+		expect(target.querySelector('[data-surface="identities"]')).toBeNull();
+		expect(whoDoor().getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('opens the ways in for somebody who asks', async () => {
+		shell({}, {});
+		show();
+		await settle();
+
+		whoDoor().click();
+		await settle();
+
+		expect(whoDoor().getAttribute('aria-expanded')).toBe('true');
+		expect(target.querySelector('[data-surface="identities"]')).not.toBeNull();
+		expect(offers()).toContain('Sign in with your identity');
+		expect(offers()).toContain('Bring one from another device');
+		expect(offers()).toContain('Bring one you keep under a passphrase');
 	});
 
 	it('makes an identity here before the folder, asking nothing', async () => {
@@ -352,9 +373,29 @@ describe('the three doors a first run offers', () => {
 		expect(target.textContent).toContain('writing as Ada Lovelace');
 	});
 
+	it('names an identity brought in under a passphrase rather than the one made here', async () => {
+		shell(
+			{},
+			{ list: async () => [here({ source: 'sealed', locked: true, did: 'did:syr:z6Mkbrought' })] }
+		);
+		show();
+		await settle();
+
+		expect(target.textContent).not.toContain('writing as the identity on this device');
+		expect(whoDoor().textContent).toContain('writing as');
+	});
+
 	it('says an identity held in Syner is one of the ones you can use', async () => {
 		shell({}, {});
 		show();
+		await settle();
+
+		whoDoor().click();
+		await settle();
+		const door = [...target.querySelectorAll('button')].find(
+			(one) => one.textContent?.trim() === 'Sign in with your identity'
+		);
+		door?.click();
 		await settle();
 
 		expect(target.textContent).toContain('Syner');
@@ -366,6 +407,8 @@ describe('the three doors a first run offers', () => {
 		show();
 		await settle();
 
+		whoDoor().click();
+		await settle();
 		const door = [...target.querySelectorAll('button')].find(
 			(one) => one.textContent?.trim() === 'Sign in with your identity'
 		);
@@ -420,7 +463,7 @@ describe('a sign-in that lands while the first run is on screen', () => {
 		shell({}, { list: async () => listed });
 		show();
 		await settle();
-		expect(target.textContent).toContain('Starting here gives you');
+		expect(target.textContent).toContain('Who you write as');
 
 		listed = [here({ name: 'Ada Lovelace', source: 'delegated', instance: 'keys.example' })];
 		session.adopt(
@@ -464,5 +507,167 @@ describe('a sign-in that lands while the first run is on screen', () => {
 
 		expect(target.querySelector('[role="alert"]')).toBeNull();
 		expect(target.textContent).toContain('writing as Ada Lovelace');
+	});
+});
+
+describe('the folders this device already knows', () => {
+	const OWNER = 'did:syr:z6Mkone';
+	const GARDEN = '/Users/me/garden';
+	const ENGINE = '/Users/me/engine';
+	const GONE = '/Volumes/stick/thesis';
+
+	function known(): KnownFolder[] {
+		return [
+			{
+				root: GARDEN,
+				graph: { ref: `${OWNER}/one`, name: 'Garden', owner: OWNER },
+				reachable: true
+			},
+			{
+				root: ENGINE,
+				graph: { ref: `${OWNER}/two`, name: 'Engine', owner: OWNER, project: ENGINE },
+				reachable: true
+			},
+			{ root: GONE, reachable: false }
+		];
+	}
+
+	function rows(): HTMLElement[] {
+		return [...target.querySelectorAll('li')];
+	}
+
+	/** What each row calls the graph in it, which is its first line. */
+	function named(): (string | undefined)[] {
+		return rows().map((one) => one.querySelector('span')?.textContent?.trim());
+	}
+
+	function row(words: string): HTMLElement {
+		const one = rows().find((each) => each.textContent?.includes(words));
+		if (!one) throw new Error(`No row for ${words}`);
+		return one;
+	}
+
+	it('lists them in the order the device gave them, which is newest first', async () => {
+		shell({ known: async () => known(), openKnown: async () => {} });
+		show();
+		await settle();
+
+		expect(named()).toEqual(['Garden', 'Engine', 'thesis']);
+	});
+
+	it('says which folder each one is in, and which of them is a project', async () => {
+		shell({ known: async () => known(), openKnown: async () => {} });
+		show();
+		await settle();
+
+		expect(row('Garden').textContent).toContain(GARDEN);
+		expect(row('Garden').textContent).not.toContain('Project');
+		expect(row('Engine').textContent).toContain(`Project · ${ENGINE}`);
+	});
+
+	it('shows no list at all on a device that knows no folder', async () => {
+		shell({ known: async () => [] });
+		show();
+		await settle();
+
+		expect(rows()).toEqual([]);
+		expect(target.textContent).toContain('Pick an empty one');
+	});
+
+	it('shows no list where the shell keeps none', async () => {
+		shell({});
+		show();
+		await settle();
+
+		expect(rows()).toEqual([]);
+		expect(button().textContent?.trim()).toBe('Choose a folder');
+	});
+
+	it('opens the folder whose row was pressed', async () => {
+		const openKnown = vi.fn(async () => {});
+		shell({ known: async () => known(), openKnown });
+		show();
+		await settle();
+
+		row('Garden').querySelector('button')?.click();
+		await settle();
+
+		expect(openKnown).toHaveBeenCalledWith(GARDEN);
+		expect(opened).toEqual([GARDEN]);
+	});
+
+	it('makes an identity here first, exactly as choosing a folder does', async () => {
+		const makeOne = vi.fn(async () => here());
+		shell({ known: async () => known(), openKnown: async () => {} }, { makeOne });
+		show();
+		await settle();
+
+		row('Garden').querySelector('button')?.click();
+		await settle();
+
+		expect(makeOne).toHaveBeenCalledOnce();
+		expect(opened).toEqual([GARDEN]);
+	});
+
+	it('says what to do next when a folder on the list will not open', async () => {
+		shell({
+			known: async () => known(),
+			openKnown: async () => {
+				throw new Error('ENOENT');
+			}
+		});
+		show();
+		await settle();
+
+		row('Garden').querySelector('button')?.click();
+		await settle();
+
+		const said = target.querySelector('[role="alert"]');
+		expect(said?.textContent).toContain('Try another one');
+		expect(said?.textContent).not.toContain('ENOENT');
+		expect(opened).toEqual([]);
+	});
+
+	it('says a folder is not where it was rather than offering to open it', async () => {
+		shell({ known: async () => known(), openKnown: async () => {}, forget: async () => {} });
+		show();
+		await settle();
+
+		expect(row('thesis').textContent).toContain('not where it was');
+		expect(row('thesis').textContent).toContain(GONE);
+		expect(row('thesis').querySelector('button')?.textContent?.trim()).toBe('Forget');
+	});
+
+	it('takes a folder that is not where it was off the list', async () => {
+		let listed = known();
+		const forget = vi.fn(async (root: string) => {
+			listed = listed.filter((one) => one.root !== root);
+		});
+		shell({ known: async () => listed, openKnown: async () => {}, forget });
+		show();
+		await settle();
+
+		row('thesis').querySelector('button')?.click();
+		await settle();
+
+		expect(forget).toHaveBeenCalledWith(GONE);
+		expect(named()).toEqual(['Garden', 'Engine']);
+	});
+
+	it('leaves it on the list where the shell cannot forget one', async () => {
+		shell({ known: async () => known(), openKnown: async () => {} });
+		show();
+		await settle();
+
+		expect(row('thesis').querySelector('button')).toBeNull();
+	});
+
+	it('offers another folder beside the ones already here', async () => {
+		shell({ known: async () => known(), openKnown: async () => {} });
+		show();
+		await settle();
+
+		expect(target.textContent).toContain('Open another folder');
+		expect(target.textContent).not.toContain('Pick an empty one');
 	});
 });

@@ -12,5 +12,14 @@ export function called(one: IdentityHere): string {
 
 /** Where it lives. */
 export function kept(one: IdentityHere): string {
-	return one.instance ?? 'Made on this device';
+	if (one.instance) return one.instance;
+	return one.locked ? 'On this device, locked' : 'Made on this device';
+}
+
+/** What a row says about one this device holds shut. Absent where nothing
+ *  stands between the person and it. */
+export function shut(one: IdentityHere): string | undefined {
+	return one.locked
+		? 'You can write as this one now. Your passphrase is asked only if you save a copy to move it.'
+		: undefined;
 }
