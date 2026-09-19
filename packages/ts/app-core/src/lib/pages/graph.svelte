@@ -129,10 +129,12 @@
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import EdgeSheet from '../components/edge-sheet.svelte';
+	import OpenHere from '../components/open-here.svelte';
 	import PersonSurface from '../components/person-surface.svelte';
 	import ReviewSheet from '../components/review-sheet.svelte';
 	import { api } from '../api.js';
 	import { looksOnCanvas } from '../edge-look.js';
+	import { graphHere } from '../graph-here.svelte.js';
 	import { runtime, type KnownFolder } from '../runtime.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
@@ -2212,9 +2214,11 @@
 							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
 								Number it yourself
 							</Button>
-							<Button variant="ghost" class="h-11" onclick={() => chooser?.click()}>
-								Import a graph
-							</Button>
+							{#if graphs.startsGraphs}
+								<Button variant="ghost" class="h-11" onclick={() => chooser?.click()}>
+									Import a graph
+								</Button>
+							{/if}
 							<Button variant="ghost" class="h-11" onclick={() => (switching = true)}>
 								Your graphs
 							</Button>
@@ -2458,10 +2462,12 @@
 									<Download class="size-4 text-muted-foreground" />
 									Export this graph
 								</DropdownMenu.Item>
-								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => chooser?.click()}>
-									<Upload class="size-4 text-muted-foreground" />
-									Import a graph
-								</DropdownMenu.Item>
+								{#if graphs.startsGraphs}
+									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => chooser?.click()}>
+										<Upload class="size-4 text-muted-foreground" />
+										Import a graph
+									</DropdownMenu.Item>
+								{/if}
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
 						{#if walkingNow}
@@ -2662,7 +2668,9 @@
 		graphs.toggleOnCanvas(ref);
 		closeUndrawn();
 	}}
-	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
+	onOpen={graphs.startsGraphs
+		? (title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')
+		: undefined}
 	onOpenFolder={graphs.keepsFolders
 		? (folder) =>
 				inTheDevicesWords(async () => {
@@ -2711,7 +2719,12 @@
 			closeUndrawn();
 			void deleted.reload().catch(() => {});
 		}, 'That graph could not be closed.')}
+	alsoOffer={graphHere.offered ? openHere : undefined}
 />
+
+{#snippet openHere()}
+	<OpenHere brief />
+{/snippet}
 
 <input
 	bind:this={chooser}

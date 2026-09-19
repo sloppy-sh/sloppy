@@ -23,6 +23,7 @@ import {
 import { api, resetApi } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
 import { type KnownFolder, runtime } from '../runtime.js';
+import { seam } from '../seam.svelte.js';
 import { serverMessage } from './errors.js';
 import { nodes } from './nodes.svelte.js';
 import { prefs } from './prefs.svelte.js';
@@ -56,9 +57,13 @@ const IDLE: GraphsState = { loading: false, loaded: false, failed: false };
 
 const LISTING = 'listing';
 
+/** Nothing is kept for a folder standing alongside the graphs a Sloppy serves:
+ *  its rows are that one folder's and would be read back as the Sloppy's, and
+ *  the folder is in hand by the time anything asks. */
 function kept(): DeviceArea | null {
 	const did = session.viewer?.did;
-	return did ? deviceStore.area(did, 'graphs') : null;
+	if (!did || runtime.vault()?.alongside) return null;
+	return deviceStore.area(did, 'graphs');
 }
 
 class GraphsStore {
@@ -163,8 +168,10 @@ class GraphsStore {
 	/**
 	 * Where a graph is a folder on this device, the graph in the open folder is
 	 * the one in front of somebody, so a choice made against another folder is
-	 * let go of. Deduped like {@link load}; `again` is a folder that has just
-	 * changed. Elsewhere there is no folder and this decides nothing.
+	 * let go of — unless the folder stands alongside the graphs a Sloppy serves,
+	 * where that choice is still the reader's when they close it. Deduped like
+	 * {@link load}; `again` is a folder that has just changed. Elsewhere there is
+	 * no folder and this decides nothing.
 	 */
 	readOpenFolder(again = false): Promise<void> {
 		if (again) this.#openFolder = null;
@@ -176,7 +183,8 @@ class GraphsStore {
 			if (epoch !== this.#epoch || ref === undefined) return;
 			this.#inFolder = ref;
 			this.#folderRoot = vault.folder();
-			if (prefs.current.graph !== null && prefs.current.graph !== ref) prefs.set('graph', null);
+			if (!vault.alongside && prefs.current.graph !== null && prefs.current.graph !== ref)
+				prefs.set('graph', null);
 		})();
 		return this.#openFolder;
 	}
@@ -202,13 +210,21 @@ class GraphsStore {
 	 *  what makes the picker the place a folder is opened, started and
 	 *  forgotten. */
 	get keepsFolders(): boolean {
-		return runtime.vault()?.known !== undefined;
+		return seam().vault()?.known !== undefined;
+	}
+
+	/** Whether a graph that is not open yet can be put on this device at all:
+	 *  started by naming it, or brought in from a file. Both want somewhere to
+	 *  keep it, and a folder opened in a browser tab is the only one there. */
+	get startsGraphs(): boolean {
+		const vault = seam().vault();
+		return vault === undefined || vault.known !== undefined;
 	}
 
 	/** Whether a copy of a graph kept somewhere else can be brought onto this
 	 *  device at all. */
 	get bringsFolders(): boolean {
-		return runtime.vault()?.clone !== undefined;
+		return seam().vault()?.clone !== undefined;
 	}
 
 	/** Deduped like {@link load}; `again` is a list that has just changed. */
@@ -234,7 +250,7 @@ class GraphsStore {
 
 	/** Whether a project's own folder can be opened as a graph at all. */
 	get opensProjects(): boolean {
-		return runtime.vault()?.openProject !== undefined;
+		return seam().vault()?.openProject !== undefined;
 	}
 
 	/** Open a project somebody names and read the notes kept in it. False is
@@ -472,6 +488,16 @@ class GraphsStore {
 	/** After a sign-out or an erase: nothing cached belongs to the next person,
 	 *  and a saved graph choice names the identity that kept it. */
 	clear(): void {
+		this.forgetTheListing();
+		prefs.set('graph', null);
+		prefs.set('alsoOnCanvas', []);
+	}
+
+	/** The listing given up for another one, where the person reading is the
+	 *  same: which graph they were in and what stood beside it on the canvas are
+	 *  this device's view choices and outlast the swap, since a ref the next
+	 *  listing does not hold is dropped as it is read. */
+	forgetTheListing(): void {
 		this.#epoch++;
 		this.#all = [];
 		this.#state = IDLE;
@@ -485,8 +511,6 @@ class GraphsStore {
 		this.#rereading = null;
 		this.#folderReads = 0;
 		this.#asLastRead = false;
-		prefs.set('graph', null);
-		prefs.set('alsoOnCanvas', []);
 	}
 
 	#keep(): void {

@@ -88,7 +88,13 @@ and that decision has to live inside it.
   `openFile?` are how a file leaves and arrives where a webview cannot do what a tab does,
   and `assetSrc?` is how a stored picture becomes an address this page can load — absent,
   that is the API's proxy, which is what keeps a viewer's IP off somebody else's instance.
-  The shell calls `initRuntime()` from its root layout before any page mounts.
+  The shell calls `initRuntime()` from its root layout before any page mounts, and
+  `updateRuntime()` where it settles a member again while it is running — a field passed as
+  `undefined` there puts that member's documented absence back. Nothing watches the seam, so
+  a shell that swaps where the graph is served from settles it BEFORE the state a surface
+  does watch, and then says `seamSettledAgain()` (`app-core/src/lib/seam.svelte.ts`): every
+  answer a surface read through `seam()` — `session.onDevice`, and what a tab can do with
+  graphs — is read again.
 - **`app-core/src/lib/api.ts`** — `api` is a `Proxy` that resolves its implementation on
   first property access, so remote ↔ local swaps without touching a call site. The port it
   resolves to is `SloppyApi`, the `SloppyClient` surface taken structurally, so an adapter
@@ -701,16 +707,20 @@ serve the graph through `LocalApi`, the same implementation the native app runs,
 page, store and component reaches it through the `api` they already reach a hosted graph
 through, and `runtime.mode()` answers `local` for as long as one is open. `AppRuntime.createApi`
 is where that swap happens, and closing the graph puts the hosted one back in front of the
-reader.
+reader — at the graph they were reading, with the canvas they had arranged, because a
+folder opened in a tab stands alongside the graphs a Sloppy serves rather than replacing
+them (`VaultAccess.alongside`). Who is signed in is asked again on both sides of it: while
+one of these graphs is open, the graph on the device is what answers, which is why reading
+one needs no account.
 
 **The web shell stays a shell.** The doors, the `Files` over a directory handle and the
 archive unpacking live in `@sloppy/app-core` (or a browser module beside it), not in
 `apps/sloppy/web` — a route added to a shell is a route in the wrong package.
 
 **Nothing leaves the device.** No byte read from the folder or the archive is sent to the
-API, and a picture in one of these graphs is drawn from the handle or from memory as a blob
-URL rather than through the proxy — there is no remote origin to keep from the viewer,
-because the bytes never left. The door's own copy says that as a consequence, once, and
+API, and a picture in one of these graphs is drawn straight off the handle or out of memory
+rather than through the proxy — there is no remote origin to keep from the viewer, because
+the bytes never left. The door's own copy says that as a consequence, once, and
 nowhere else.
 
 **What a tab cannot do is absent, and Settings says so where a person would look.** There
@@ -721,7 +731,20 @@ Signing in and out is not offered while one of these graphs is open, so the iden
 reader writes as is settled when they open it: the signed-in account's DID where somebody is
 signed in, and otherwise a device identity minted into the browser's own storage — the
 graph's owner block is where a reader is told which of the two they are writing as. Closing
-the graph hands the sign-in control back.
+the graph hands the sign-in control back. Starting a second graph and bringing one in from
+an archive are absent for the same reason: both want a folder to keep the new graph in, and
+a tab can name none — `GraphsStore.startsGraphs` is the one answer every surface asks.
+
+**A tab opens a graph and never starts one.** The folder door reads the folder before
+anything is swapped in: one holding no graph — no `graph.json` at its root and no container
+inside it — is refused in the door's own words and left exactly as it was, and the handle is
+remembered only once the graph opened. A folder that will not read leaves the hosted graph
+in front of the reader rather than an empty local one, which is why the swap is rolled back
+where the read that follows it fails.
+
+**An archive is left the same way wherever it is left from.** Its writing is in the tab and
+nowhere else, so closing it, opening a folder and opening another archive all ask the one
+question first, with "Save a copy" beside the answer.
 
 **A browser without the directory picker sees only the archive door.** Feature-detected on
 `showDirectoryPicker`, never sniffed from a user agent, so a browser that gains it gains the
