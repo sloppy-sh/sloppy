@@ -27,7 +27,14 @@
 	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
-	import { activeRouteId, isOpenRoute, navRoutes, OPEN_ROUTES, refFromPath } from './routes.js';
+	import {
+		activeRouteId,
+		isOpenRoute,
+		navRoutes,
+		navShows,
+		OPEN_ROUTES,
+		refFromPath
+	} from './routes.js';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -156,12 +163,7 @@
 	});
 </script>
 
-<AppShell
-	items={destinations}
-	{activeId}
-	showNav={session.ready && (session.signedIn || session.unavailable)}
-	keyboardOpen={keyboard.open}
->
+<AppShell items={destinations} {activeId} showNav={navShows()} keyboardOpen={keyboard.open}>
 	{#if admitted}
 		{@render children()}
 	{:else if held}

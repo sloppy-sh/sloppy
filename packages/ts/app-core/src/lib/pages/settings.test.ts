@@ -330,6 +330,30 @@ function typeAddress(typed: string): void {
 	flushSync();
 }
 
+describe('the way out', () => {
+	// The nav pill is the way between the app's pages, and it is not under this
+	// one until somebody is signed in.
+	it('is on the page with nobody signed in, and leads back to signing in', async () => {
+		session.clear();
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		const back = [...target.querySelectorAll('a')].find((a) => a.textContent?.includes('Back'));
+		expect(back?.getAttribute('href')).toBe('/sign-in');
+	});
+
+	it('leaves the nav pill to it once somebody is signed in', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect([...target.querySelectorAll('a')].some((a) => a.textContent?.includes('Back'))).toBe(
+			false
+		);
+	});
+});
+
 describe('where your Sloppy is', () => {
 	// The look axes stand without an account, and so does this: somebody whose
 	// own Sloppy holds their account has to reach it before signing in.
