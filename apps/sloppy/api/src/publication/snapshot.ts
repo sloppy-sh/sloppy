@@ -8,6 +8,7 @@ import {
   type BlockDocument,
   type DocumentMark,
   type DocumentNode,
+  type EdgeLook,
   EMOJI_UPLOAD_ATTR,
   type Node,
   type NodeAppearance,
@@ -149,7 +150,11 @@ export function publishedDocument(
 export function publishedNodeOf(
   node: Node,
   region: { root: OwnedRef },
-  carried: { links: readonly OwnedRef[]; aliases: readonly Address[] },
+  carried: {
+    links: readonly OwnedRef[];
+    edges?: readonly EdgeLook[];
+    aliases: readonly Address[];
+  },
 ): Omit<PublishedNode, "ref"> {
   const root = ownedRefFrom(node.id) === region.root;
   const look = travellingLook(node.appearance);
@@ -170,6 +175,7 @@ export function publishedNodeOf(
     tags: node.tags,
     ...(look === undefined ? {} : { look }),
     links: [...carried.links],
+    ...(carried.edges === undefined ? {} : { edges: [...carried.edges] }),
     created_at: node.created_at,
     updated_at: node.updated_at,
     ...(node.content_signature === undefined

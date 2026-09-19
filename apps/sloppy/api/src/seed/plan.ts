@@ -5,7 +5,7 @@
 // it can be reproduced. The interiors are drawn from a second stream off that
 // same seed, so rewriting how a section is written cannot reshape the graph.
 
-import type { BlockDocument, DocumentNode } from "@sloppy/types";
+import type { BlockDocument, DocumentNode, EdgeLook } from "@sloppy/types";
 import {
   FOLLOWING_TEMPLATES,
   LIST_TEMPLATES,
@@ -33,6 +33,9 @@ export interface PlannedNode {
   tags: string[];
   /** One document per section, holding everything written inside it. */
   blocks: BlockDocument[];
+  /** The look this note sets on the line up to the one it sprang out of, where
+   *  the plan gives it one. A branch has none: there is no line above it. */
+  look?: Omit<EdgeLook, "to">;
   children: PlannedNode[];
 }
 
@@ -41,6 +44,8 @@ export interface GraphPlan {
   /** Every tag the plan used, so the command can report what it wrote. */
   tags: string[];
   nodes: number;
+  /** How many lines carry a look, likewise. */
+  looks: number;
   blocks: number;
   deepest: number;
   widestRun: number;
@@ -69,11 +74,13 @@ export function planGraph(nodeTarget: number, seed = 0x5104_9713): GraphPlan {
   const roots = TOPICS.map((topic) =>
     growTree(random, prose, used, topic, perTree),
   );
+  const looks = lookAtLines(mulberry32(seed ^ 0x3c6e_f372), roots);
 
   return {
     roots,
     tags: [...vocabulary(roots)].sort(),
     nodes: roots.reduce((total, root) => total + count(root), 0),
+    looks,
     blocks: roots.reduce((total, root) => total + blockCount(root), 0),
     deepest: Math.max(...roots.map((root) => deepest(root, 1))),
     widestRun: Math.max(...roots.map(widestRun)),
@@ -414,6 +421,51 @@ function widestRun(node: PlannedNode): number {
     (found, child) => Math.max(found, widestRun(child)),
     node.children.length,
   );
+}
+
+/** What one note says about the one it sprang out of — the words a person
+ *  writes on a line, rather than anything the graph derives. */
+const LINE_LABELS = [
+  "follows from",
+  "answers",
+  "objects to",
+  "for example",
+  "in contrast",
+  "grew out of",
+] as const;
+
+/**
+ * The looks the seeded graph carries, drawn from a stream of their own so
+ * neither the shape of the graph nor a word of its prose moves when this
+ * changes. Roughly one line in twelve carries one: enough to see what a look
+ * does on a canvas, few enough that the canvas still reads as a graph.
+ */
+function lookAtLines(
+  lines: () => number,
+  roots: readonly PlannedNode[],
+): number {
+  let set = 0;
+  const walk = (node: PlannedNode): void => {
+    for (const child of node.children) {
+      if (lines() < 1 / 12) {
+        const pointing = lines();
+        const broken = lines();
+        child.look = {
+          label: pick(lines, LINE_LABELS),
+          direction: pointing < 0.55 ? "from" : pointing < 0.85 ? "to" : "both",
+          ...(broken < 0.15
+            ? { stroke: "dotted" as const }
+            : broken < 0.35
+              ? { stroke: "dashed" as const }
+              : {}),
+        };
+        set++;
+      }
+      walk(child);
+    }
+  };
+  for (const root of roots) walk(root);
+  return set;
 }
 
 /** Mulberry32: a small, well-known PRNG. Any deterministic source would do;

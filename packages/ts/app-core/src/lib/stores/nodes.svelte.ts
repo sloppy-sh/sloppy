@@ -13,7 +13,9 @@
 import {
 	type Address,
 	type CreateNodeRequest,
+	type EdgeLook,
 	graphOf,
+	looksWritten,
 	type NodeBulkRequest,
 	type NodeBulkResult,
 	type NodeView,
@@ -291,6 +293,17 @@ class NodesStore {
 		const node = await api.updateNode(ref, request);
 		if (epoch === this.#epoch) this.#learn(node);
 		return node;
+	}
+
+	/**
+	 * Set the look this note carries on its line to `look.to`, leaving the looks
+	 * it carries on every other line alone. A look with nothing said on it is
+	 * what takes one off.
+	 */
+	async setLook(ref: OwnedRef, look: EdgeLook): Promise<NodeView> {
+		const held = this.#byRef.get(ref) ?? (await this.fetch(ref));
+		const rest = (held?.edges ?? []).filter((one) => one.to !== look.to);
+		return this.update(ref, { edges: looksWritten([...rest, look]) ?? [] });
 	}
 
 	/** Write the address a person cites this note by, or take it off with

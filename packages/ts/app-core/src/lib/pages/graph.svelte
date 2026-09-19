@@ -128,9 +128,11 @@
 	import { onMount, untrack } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import EdgeSheet from '../components/edge-sheet.svelte';
 	import PersonSurface from '../components/person-surface.svelte';
 	import ReviewSheet from '../components/review-sheet.svelte';
 	import { api } from '../api.js';
+	import { looksOnCanvas } from '../edge-look.js';
 	import { runtime, type KnownFolder } from '../runtime.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
@@ -553,6 +555,24 @@
 	 * the graph. Copied, so a fold reaches the surface as a new set.
 	 */
 	const collapsed = $derived(new Set(folded));
+
+	/** The looks on the lines between the notes on the canvas, one per pair. */
+	const edgeLooks = $derived(looksOnCanvas(visible));
+
+	/** The line whose look is being set. It outlives the sheet's closing, so the
+	 *  sheet is still there to slide away, and each opening keys a fresh one. */
+	let lineAt = $state<{ from: NodeView; to: NodeView } | null>(null);
+	let lineShowing = $state(false);
+	let opening = $state(0);
+
+	function setLookOn(from: OwnedRef, to: OwnedRef): void {
+		const one = nodes.get(from);
+		const other = nodes.get(to);
+		if (!one || !other) return;
+		lineAt = { from: one, to: other };
+		opening += 1;
+		lineShowing = true;
+	}
 
 	const selection = $derived(tags.selected);
 
@@ -2066,6 +2086,7 @@
 					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
 					nodes={visible}
 					{collapsed}
+					{edgeLooks}
 					{selection}
 					lit={foreign || notNow ? undefined : review.lit}
 					fields={foreign || asWas ? undefined : graphs.fields}
@@ -2097,6 +2118,7 @@
 					onChoose={pointing || foreign || notNow ? undefined : chooseAlso}
 					onChooseWithin={pointing || foreign || notNow ? undefined : chooseWithin}
 					onMenu={pointing || foreign || notNow ? undefined : (at) => (menuAt = at)}
+					onEdge={pointing || foreign || notNow ? undefined : setLookOn}
 					onOpenNode={notNow
 						? (ref) => (bringingTo = ref)
 						: foreign
@@ -2142,6 +2164,7 @@
 							? (ref) => void readHeld(ref)
 							: openPage}
 					onReached={(ref) => (bringingTo = ref)}
+					onEdge={foreign || notNow ? undefined : setLookOn}
 					writeUnder={foreign || notNow ? undefined : writeFromRow}
 					writeAlone={foreign || notNow ? undefined : writeAlone}
 				/>
@@ -2794,6 +2817,17 @@
 	onOpen={(ref, at) => show(ref, null, at)}
 	onWrote={(ref) => show(ref, { from: null, shape: null })}
 />
+
+{#if lineAt}
+	{#key opening}
+		<EdgeSheet
+			open={lineShowing}
+			onOpenChange={(showing) => (lineShowing = showing)}
+			from={lineAt.from}
+			to={lineAt.to}
+		/>
+	{/key}
+{/if}
 
 <ResponsiveModal
 	bind:open={numbering}
