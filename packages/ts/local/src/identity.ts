@@ -3,7 +3,6 @@
 
 import {
   decodePrivateKey,
-  decodePublicKey,
   deriveDid,
   encodePrivateKey,
   encodePublicKey,
@@ -15,6 +14,7 @@ import {
   type Sigil,
   SigilDecryptionError,
   sigilDid,
+  sigilPublicKey,
   wipe,
 } from "@sloppy/idp/crypto";
 import {
@@ -129,13 +129,26 @@ function seedFor(publicKey: string): string {
 /** Where a key that arrived shut is kept, beside the ones made here and named
  *  the same way. */
 function sealedFor(publicKey: string): string {
-  return `${publicKey}.sigil`;
+  return `${publicKey}.sealed`;
 }
 
-/** A sealed key's public key, spelled the way every identity here spells one —
- *  a Sigil may carry the raw key where this device writes the prefixed one. */
-function sealedPublicKey(sigil: Sigil): string {
-  return encodePublicKey(decodePublicKey(sigil.pub));
+/** The file a held identity keeps a key in, or nothing where the key is not on
+ *  this device. */
+function keyFileOf(one: HeldIdentity): string | undefined {
+  if (one.source === "device") return one.seed;
+  if (one.source === "sealed") return one.sealed;
+  return undefined;
+}
+
+/** Clear the key a row being replaced named, unless the row replacing it names
+ *  the same file: a key file no row names is one nothing will ever clear. */
+async function dropKeyOf(
+  own: Files,
+  replaced: HeldIdentity | undefined,
+  keeping: string | undefined,
+): Promise<void> {
+  const file = replaced && keyFileOf(replaced);
+  if (file && file !== keeping) await own.remove(file);
 }
 
 /** Where the picture a store has one identity wearing is kept, beside its key
@@ -331,6 +344,7 @@ export async function holdDeviceIdentity(
 ): Promise<DeviceIdentity> {
   const own = files.at(await files.dataPath());
   const held = await readIdentities(files);
+  const replaced = held.identities.find((one) => one.did === made.identity.did);
   try {
     await own.write(made.identity.seed, encodeText(encodePrivateKey(made.key)));
     await writeIdentities(files, {
@@ -345,6 +359,7 @@ export async function holdDeviceIdentity(
   } finally {
     wipe(made.key);
   }
+  await dropKeyOf(own, replaced, made.identity.seed);
   return made.identity;
 }
 
@@ -355,6 +370,7 @@ export async function holdDelegatedIdentity(
   identity: DelegatedIdentity,
 ): Promise<DelegatedIdentity> {
   const held = await readIdentities(files);
+  const replaced = held.identities.find((one) => one.did === identity.did);
   await writeIdentities(files, {
     identities: [
       ...held.identities.filter((one) => one.did !== identity.did),
@@ -362,6 +378,7 @@ export async function holdDelegatedIdentity(
     ],
     writing: identity.did,
   });
+  await dropKeyOf(files.at(await files.dataPath()), replaced, undefined);
   return identity;
 }
 
@@ -390,7 +407,7 @@ export function readSealedIdentity(bytes: Uint8Array): BroughtSealed {
   }
   const did = DidSyrSchema.safeParse(sigilDid(sigil));
   if (!did.success) throw notOne;
-  const publicKey = sealedPublicKey(sigil);
+  const publicKey = sigilPublicKey(sigil);
   return {
     identity: {
       did: did.data,
@@ -410,6 +427,9 @@ export async function holdSealedIdentity(
 ): Promise<SealedIdentity> {
   const own = files.at(await files.dataPath());
   const held = await readIdentities(files);
+  const replaced = held.identities.find(
+    (one) => one.did === brought.identity.did,
+  );
   await own.write(brought.identity.sealed, brought.file);
   await writeIdentities(files, {
     identities: [
@@ -418,6 +438,7 @@ export async function holdSealedIdentity(
     ],
     writing: brought.identity.did,
   });
+  await dropKeyOf(own, replaced, brought.identity.sealed);
   return brought.identity;
 }
 
@@ -446,7 +467,7 @@ export async function withSealedKey<T>(
   } catch {
     throw unreadable;
   }
-  if (sealedPublicKey(sigil) !== identity.public_key) throw unreadable;
+  if (sigilPublicKey(sigil) !== identity.public_key) throw unreadable;
   let seed: Uint8Array;
   try {
     seed = await openSigil(sigil, passphrase);

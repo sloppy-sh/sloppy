@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodePublicKey } from "./encoding.js";
+import { encodeMultibase, encodePublicKey } from "./encoding.js";
 import { generateKeypair } from "./keys.js";
 import {
   createSigil,
@@ -9,6 +9,7 @@ import {
   SigilDecryptionError,
   SigilFormatError,
   sigilDid,
+  sigilPublicKey,
   withSigilSeed,
   writeSigil,
 } from "./sigil.js";
@@ -112,6 +113,19 @@ describe("a Sigil", () => {
         "right",
       ),
     ).rejects.toThrow(SigilDecryptionError);
+  });
+
+  it("opens one whose key on the outside is written without the prefix", async () => {
+    const { privateKey, publicKey } = generateKeypair();
+    const sigil = await createSigil(privateKey, PASSPHRASE);
+    const unprefixed = { ...sigil, pub: encodeMultibase(publicKey) };
+    expect(unprefixed.pub).not.toBe(sigil.pub);
+
+    expect(sigilPublicKey(unprefixed)).toBe(sigil.pub);
+    expect(sigilDid(unprefixed)).toBe(sigilDid(sigil));
+    await expect(openSigil(unprefixed, PASSPHRASE)).resolves.toEqual(
+      privateKey,
+    );
   });
 
   it("refuses a seed whose key is not the one on the outside", async () => {

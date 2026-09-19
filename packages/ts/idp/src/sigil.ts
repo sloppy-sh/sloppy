@@ -189,6 +189,12 @@ export function sigilDid(sigil: Sigil): string {
   return deriveDid(decodePublicKey(sigil.pub));
 }
 
+/** The key on the outside of a Sigil, multibase with the Ed25519 prefix,
+ *  whichever of the two spellings the file itself carries. */
+export function sigilPublicKey(sigil: Sigil): string {
+  return encodePublicKey(decodePublicKey(sigil.pub));
+}
+
 /** The file, as it is written out. */
 export function writeSigil(sigil: Sigil): Uint8Array {
   return new TextEncoder().encode(`${JSON.stringify(sigil, null, 2)}\n`);
@@ -265,7 +271,10 @@ export async function openSigil(
     seed.fill(0);
     throw new SigilDecryptionError();
   }
-  if (encodePublicKey(publicKeyFromPrivateKey(seed)) !== parsed.data.pub) {
+  if (
+    encodePublicKey(publicKeyFromPrivateKey(seed)) !==
+    sigilPublicKey(parsed.data)
+  ) {
     seed.fill(0);
     throw new SigilDecryptionError();
   }

@@ -172,7 +172,7 @@ describe("the identities this device holds", () => {
       did,
       public_key,
       source: "sealed",
-      sealed: "identity.sigil",
+      sealed: "identity.sealed",
       name: "Ada",
     };
     await writeIdentities(held, { identities: [sealed], writing: did });
@@ -190,7 +190,7 @@ describe("the identities this device holds", () => {
       did,
       public_key,
       source: "sealed",
-      sealed: "identity.sigil",
+      sealed: "identity.sealed",
     };
     await writeIdentities(held, { identities: [sealed], writing: did });
 
@@ -475,7 +475,7 @@ describe("a key that arrived shut", () => {
       did: one.did,
       public_key: one.public_key,
       source: "sealed",
-      sealed: `${one.public_key}.sigil`,
+      sealed: `${one.public_key}.sealed`,
     });
   });
 
@@ -493,6 +493,37 @@ describe("a key that arrived shut", () => {
     await brought(held);
 
     const spelled = encodePrivateKey((await aSigil()).key);
+    for (const path of await held.at("/data").list("")) {
+      const bytes = await held.at("/data").read(path);
+      expect(
+        new TextDecoder().decode(bytes ?? new Uint8Array()),
+        path,
+      ).not.toContain(spelled);
+    }
+  });
+
+  it("clears the key the same identity was held here in the clear under", async () => {
+    const held = files();
+    const one = await aSigil();
+    const inTheClear = await holdDeviceIdentity(
+      held,
+      readCarriedIdentity(
+        encodeText(
+          JSON.stringify({
+            sloppy_identity: 1,
+            did: one.did,
+            public_key: one.public_key,
+            key: encodePrivateKey(one.key),
+          }),
+        ),
+      ),
+    );
+    expect(await held.at("/data").exists(inTheClear.seed)).toBe(true);
+
+    await brought(held);
+
+    expect(await held.at("/data").exists(inTheClear.seed)).toBe(false);
+    const spelled = encodePrivateKey(one.key);
     for (const path of await held.at("/data").list("")) {
       const bytes = await held.at("/data").read(path);
       expect(
@@ -689,7 +720,7 @@ describe("the three doors a person is offered", () => {
     };
   }
 
-  const SEALED_FILE = "identity.sigil";
+  const SEALED_FILE = "identity.sealed";
 
   async function holdSealed(
     held: MemoryFiles,
