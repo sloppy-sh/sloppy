@@ -64,7 +64,6 @@ function doors(said: Partial<IdentityAccess>): IdentityAccess {
 		finish: async () => undefined,
 		bring: async () => here(),
 		bringSealed: async () => here(),
-		unlock: async () => {},
 		carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
 		writeAs: async () => {},
 		...said

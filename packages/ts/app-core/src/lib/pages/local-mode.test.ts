@@ -141,7 +141,6 @@ function holding(...these: IdentityHere[]): IdentityAccess {
 		finish: async () => undefined,
 		bring: async () => these[0],
 		bringSealed: async () => these[0],
-		unlock: async () => {},
 		carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
 		writeAs: async () => {}
 	};

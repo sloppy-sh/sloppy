@@ -152,7 +152,7 @@ describe("a Sigil", () => {
     }
   });
 
-  it("refuses parameters that would make deriving the key unbounded work", () => {
+  it("refuses parameters no key derives from, and ones that would make deriving it unbounded work", async () => {
     for (const kdf of [
       { mem: 262145 },
       { it: 11 },
@@ -160,12 +160,17 @@ describe("a Sigil", () => {
       { mem: 0 },
       { it: 0 },
       { par: 0 },
+      { mem: 4 },
+      { mem: 16, par: 4 },
     ]) {
       const other = {
         ...SYR_REFERENCE_SIGIL,
         kdf: { ...SYR_REFERENCE_SIGIL.kdf, ...kdf },
       };
       expect(() => readSigil(JSON.stringify(other))).toThrow(SigilFormatError);
+      await expect(
+        openSigil(other as Sigil, SYR_REFERENCE_PASSPHRASE),
+      ).rejects.toThrow(SigilFormatError);
     }
   });
 

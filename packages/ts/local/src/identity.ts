@@ -9,7 +9,11 @@ import {
   generateKeypair,
   publicKeyFromDid,
   publicKeyFromPrivateKey,
+  readSigil,
+  type Sigil,
+  SigilDecryptionError,
   wipe,
+  withSigilSeed,
 } from "@sloppy/idp/crypto";
 import {
   type DidSyr,
@@ -550,10 +554,6 @@ export interface IdentityAccess {
    *  arrived. Nothing is asked of them here: what the row shows is on the
    *  outside of it. */
   bringSealed(file: Uint8Array): Promise<IdentityHere>;
-  /** Whether that passphrase opens a sealed identity, so somebody is told at
-   *  the moment they type it. The key is let go of again — the identity stays
-   *  sealed. Refuses an identity that is not one. */
-  unlock(did: DidSyr, passphrase: string): Promise<void>;
   /** The file that carries one to another device. A sealed identity needs the
    *  passphrase it is sealed under; every other one ignores it. */
   carryOut(
@@ -741,17 +741,13 @@ export class Identities implements IdentityAccess {
     throw new Error("not implemented");
   }
 
-  async unlock(_did: DidSyr, _passphrase: string): Promise<void> {
-    throw new Error("not implemented");
-  }
-
   async carryOut(
     did: DidSyr,
-    _passphrase?: string,
+    passphrase?: string,
   ): Promise<{ name: string; body: Uint8Array }> {
     const held = await readIdentities(this.files);
     const one = held.identities.find((identity) => identity.did === did);
-    if (one?.source === "sealed") throw new Error("not implemented");
+    if (one?.source === "sealed") return this.carrySealedOut(one, passphrase);
     if (!one || one.source !== "device") {
       throw refuse(
         "That identity is kept for you somewhere else, so there is no file of it to carry.",
@@ -771,6 +767,42 @@ export class Identities implements IdentityAccess {
   async writeAs(did: DidSyr): Promise<void> {
     await writeAs(this.files, did);
     await this.options.changed?.();
+  }
+
+  private async carrySealedOut(
+    one: SealedIdentity,
+    passphrase?: string,
+  ): Promise<{ name: string; body: Uint8Array }> {
+    if (!passphrase) {
+      throw refuse(
+        "That identity is kept shut. Type the passphrase it was sealed with to carry it out.",
+      );
+    }
+    const own = this.files.at(await this.files.dataPath());
+    const bytes = await own.read(one.sealed);
+    if (!bytes) {
+      throw refuse("The key for that identity is not on this device any more.");
+    }
+    const unreadable =
+      "The key for that identity could not be read, so there is nothing to carry.";
+    let sigil: Sigil;
+    try {
+      sigil = readSigil(bytes);
+    } catch {
+      throw refuse(unreadable);
+    }
+    if (sigil.pub !== one.public_key) throw refuse(unreadable);
+    try {
+      return await withSigilSeed(sigil, passphrase, (seed) => ({
+        name: CARRIED_FILE,
+        body: carryIdentityOut(one, seed),
+      }));
+    } catch (err) {
+      if (err instanceof SigilDecryptionError) {
+        throw refuse("That passphrase did not open it. Try it again.");
+      }
+      throw err;
+    }
   }
 
   /** The picture kept where a graph started later can still be written with

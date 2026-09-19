@@ -30,6 +30,10 @@ const KDF = { mem: 65536, it: 3, par: 1 } as const;
 // them.
 const KDF_LIMITS = { mem: 262144, it: 10, par: 4 } as const;
 
+/** Argon2's own floor on memory per lane, below which no implementation will
+ *  derive a key at all. */
+const MIN_MEM_PER_LANE = 8;
+
 const Base64UrlSchema = z
   .string()
   .regex(/^[A-Za-z0-9_-]*$/, "Expected base64url");
@@ -108,6 +112,29 @@ function decodeBase64Url(text: string): Uint8Array {
   return out.subarray(0, at);
 }
 
+/** The fields the schema can only say are base64url, read as the bytes they
+ *  must be. Throws `SigilFormatError` for anything a Sigil cannot hold. */
+function sealedParts(sigil: Sigil): {
+  salt: Uint8Array;
+  nonce: Uint8Array;
+  ct: Uint8Array;
+  tag: Uint8Array;
+} {
+  const salt = decodeBase64Url(sigil.kdf.salt);
+  const nonce = decodeBase64Url(sigil.enc.nonce);
+  const ct = decodeBase64Url(sigil.enc.ct);
+  const tag = decodeBase64Url(sigil.enc.tag);
+  if (
+    salt.length < MIN_SALT_BYTES ||
+    nonce.length !== NONCE_BYTES ||
+    tag.length !== TAG_BYTES ||
+    sigil.kdf.mem < MIN_MEM_PER_LANE * sigil.kdf.par
+  ) {
+    throw new SigilFormatError();
+  }
+  return { salt, nonce, ct, tag };
+}
+
 function deriveKey(
   passphrase: string,
   salt: Uint8Array,
@@ -148,13 +175,7 @@ export function readSigil(file: Uint8Array | string): Sigil {
   const parsed = SigilSchema.safeParse(said);
   if (!parsed.success) throw new SigilFormatError();
   const sigil = parsed.data;
-  if (
-    decodeBase64Url(sigil.kdf.salt).length < MIN_SALT_BYTES ||
-    decodeBase64Url(sigil.enc.nonce).length !== NONCE_BYTES ||
-    decodeBase64Url(sigil.enc.tag).length !== TAG_BYTES
-  ) {
-    throw new SigilFormatError();
-  }
+  sealedParts(sigil);
   try {
     decodePublicKey(sigil.pub);
   } catch {
@@ -221,17 +242,7 @@ export async function openSigil(
 ): Promise<Uint8Array> {
   const parsed = SigilSchema.safeParse(sigil);
   if (!parsed.success) throw new SigilFormatError();
-  const salt = decodeBase64Url(parsed.data.kdf.salt);
-  const nonce = decodeBase64Url(parsed.data.enc.nonce);
-  const ct = decodeBase64Url(parsed.data.enc.ct);
-  const tag = decodeBase64Url(parsed.data.enc.tag);
-  if (
-    salt.length < MIN_SALT_BYTES ||
-    nonce.length !== NONCE_BYTES ||
-    tag.length !== TAG_BYTES
-  ) {
-    throw new SigilFormatError();
-  }
+  const { salt, nonce, ct, tag } = sealedParts(parsed.data);
   const sealed = new Uint8Array(ct.length + tag.length);
   sealed.set(ct);
   sealed.set(tag, ct.length);

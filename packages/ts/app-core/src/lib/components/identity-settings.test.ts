@@ -34,7 +34,6 @@ function doors(said: Partial<IdentityAccess>): IdentityAccess {
 		finish: async () => undefined,
 		bring: async () => here(),
 		bringSealed: async () => here(),
-		unlock: async () => {},
 		carryOut: async () => ({ name: CARRIED_FILE, body: new Uint8Array([1, 2, 3]) }),
 		writeAs: async () => {},
 		...said
