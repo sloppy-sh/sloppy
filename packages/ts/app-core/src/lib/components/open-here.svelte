@@ -23,11 +23,12 @@
 	} as const;
 	type WayOut = keyof typeof WAYS_OUT;
 
-	let working = $state<WayOut | 'copy' | null>(null);
+	let working = $state<WayOut | 'copy' | 'again' | null>(null);
 	let problem = $state<string | null>(null);
 	let asking = $state<WayOut | null>(null);
 
 	const open = $derived(graphHere.open);
+	const waiting = $derived(graphHere.waiting);
 	const canSaveFiles = savesFiles();
 	const question = $derived(asking === null ? null : { way: asking, ...WAYS_OUT[asking] });
 
@@ -139,9 +140,36 @@
 	{:else}
 		<h2 class="text-sm font-medium">A graph kept on this device</h2>
 	{/if}
-	<p class="text-sm text-muted-foreground">
-		Open a graph you keep on this device and read and write it here. Nothing in it is sent anywhere.
-	</p>
+	{#if waiting}
+		<p class="text-sm text-muted-foreground">
+			<span class="text-foreground select-text">{waiting}</span> was open here last. Your browser asks
+			again before Sloppy can read it. Nothing in it is sent anywhere.
+		</p>
+		<div class="flex flex-col gap-2 sm:flex-row">
+			<Button
+				class="h-11 sm:flex-1"
+				disabled={working !== null}
+				aria-busy={working === 'again'}
+				onclick={() => void doing('again', () => graphHere.openAgain())}
+			>
+				<FolderOpen class="size-4" />
+				{working === 'again' ? 'One moment…' : 'Open it again'}
+			</Button>
+			<Button
+				variant="ghost"
+				class="h-11"
+				disabled={working !== null}
+				onclick={() => graphHere.notNow()}
+			>
+				Not now
+			</Button>
+		</div>
+	{:else}
+		<p class="text-sm text-muted-foreground">
+			Open a graph you keep on this device and read and write it here. Nothing in it is sent
+			anywhere.
+		</p>
+	{/if}
 	<div class="flex flex-col gap-2 sm:flex-row">
 		{#if graphHere.opensAFolder}
 			<Button

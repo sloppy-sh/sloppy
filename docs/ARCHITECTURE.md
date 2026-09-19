@@ -742,9 +742,17 @@ remembered only once the graph opened. A folder that will not read leaves the ho
 in front of the reader rather than an empty local one, which is why the swap is rolled back
 where the read that follows it fails.
 
+**The remembered folder is served before the first page mounts.** `graphHere.boot()` is what
+the web shell awaits, exactly as the native shell awaits `openRememberedVault()`, so no page
+reads `api` while the hosted graph is still in place and a note kept on the device is never
+asked of the API; where the browser wants a gesture before it hands the folder back, the
+door's "Open it again" state stands in front of the pages rather than a hosted read for a
+ref the account cannot have.
+
 **An archive is left the same way wherever it is left from.** Its writing is in the tab and
-nowhere else, so closing it, opening a folder and opening another archive all ask the one
-question first, with "Save a copy" beside the answer.
+nowhere else, so closing it, opening a folder, opening another archive and leaving the page
+all ask the one question first, with "Save a copy" beside the answer — the page itself
+through a `beforeunload` guard that stands only while the archive holds writing.
 
 **A browser without the directory picker sees only the archive door.** Feature-detected on
 `showDirectoryPicker`, never sniffed from a user agent, so a browser that gains it gains the

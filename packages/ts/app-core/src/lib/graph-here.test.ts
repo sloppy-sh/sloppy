@@ -6,6 +6,7 @@ import type { GraphView } from '@sloppy/types';
 import { pack, unpack } from '@sloppy/vault';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api } from './api.js';
+import { type FolderHandle, rememberFolder } from './browser-files.js';
 import { aGraphFolder, fakeFolder, type Held } from './browser-files.test-support.js';
 import { graphHere } from './graph-here.svelte.js';
 import { initRuntime, runtime } from './runtime.js';
@@ -38,6 +39,22 @@ function picksUpNothing(): void {
 	Reflect.deleteProperty(globalThis, 'showDirectoryPicker');
 }
 
+/** A folder a browser will hand over again only on a press, which is what it
+ *  does with one it kept across visits. */
+function asksAgain(folder: FolderHandle, answer: PermissionState): FolderHandle {
+	return Object.assign(folder, {
+		queryPermission: async (): Promise<PermissionState> => 'prompt',
+		requestPermission: async (): Promise<PermissionState> => answer
+	});
+}
+
+/** Whether the browser would ask before leaving the page. */
+function leavingAsks(): boolean {
+	const leaving = new Event('beforeunload', { cancelable: true });
+	window.dispatchEvent(leaving);
+	return leaving.defaultPrevented;
+}
+
 beforeEach(async () => {
 	handed = [];
 	URL.createObjectURL = (blob: Blob) => {
@@ -54,8 +71,104 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	if (graphHere.open) await graphHere.close();
+	graphHere.notNow();
+	await rememberFolder(null);
 	picksUpNothing();
 	session.clear();
+});
+
+// A tab reloaded on a note kept here must not ask the Sloppy this app is served
+// from about it, so the graph a page reads is settled before any page mounts.
+describe('the boot', () => {
+	it('leaves the graph this app is served from in front of a browser told no folder', async () => {
+		await graphHere.boot();
+
+		expect(graphHere.ready).toBe(true);
+		expect(graphHere.waiting).toBeNull();
+		expect(runtime.mode()).toBe('hosted');
+		expect((await api.listGraphs()).map((one) => one.title)).toEqual(['My graph']);
+	});
+
+	it('is unsettled until the folder this browser was told to open again is served', async () => {
+		await rememberFolder(fakeFolder(await aGraphFolder(), '', 'garden'));
+
+		const booting = graphHere.boot();
+		expect(graphHere.ready).toBe(false);
+		await booting;
+
+		expect(graphHere.ready).toBe(true);
+		expect(graphHere.open).toEqual({ how: 'folder', name: 'garden', ownIdentity: false });
+		expect(runtime.mode()).toBe('local');
+	});
+
+	it('reads a note kept here out of the folder and asks the API nothing about it', async () => {
+		await rememberFolder(fakeFolder(await aGraphFolder(), '', 'garden'));
+		await graphHere.boot();
+		const asked = fake.calls.length;
+
+		const [graph] = await api.listGraphs();
+		const [note] = await api.listNodes({ graph: graph.ref });
+		expect((await api.getNode(note.ref))?.title).toBe('One');
+		expect(await api.listBlocks(note.ref)).toEqual([]);
+
+		expect(fake.calls.slice(asked)).toEqual([]);
+	});
+
+	it('waits at the door for a folder this browser must be asked about again', async () => {
+		await rememberFolder(asksAgain(fakeFolder(await aGraphFolder(), '', 'garden'), 'granted'));
+		const asked = fake.calls.length;
+
+		await graphHere.boot();
+
+		expect(graphHere.waiting).toBe('garden');
+		expect(graphHere.open).toBeNull();
+		expect(fake.calls.slice(asked)).toEqual([]);
+	});
+
+	it('opens the folder that is waiting on a press', async () => {
+		await rememberFolder(asksAgain(fakeFolder(await aGraphFolder(), '', 'garden'), 'granted'));
+		await graphHere.boot();
+
+		expect(await graphHere.openAgain()).toBe(true);
+
+		expect(graphHere.waiting).toBeNull();
+		expect(runtime.mode()).toBe('local');
+		expect((await api.listGraphs()).map((one) => one.title)).toEqual(['The garden']);
+	});
+
+	it('says what a folder it is refused needs, and leaves the hosted graph in front of somebody', async () => {
+		await rememberFolder(asksAgain(fakeFolder(await aGraphFolder(), '', 'garden'), 'denied'));
+		await graphHere.boot();
+
+		await expect(graphHere.openAgain()).rejects.toThrow('needs your go-ahead');
+
+		expect(runtime.mode()).toBe('hosted');
+	});
+
+	it('reads the graph this app is served from where somebody leaves the folder shut', async () => {
+		await rememberFolder(asksAgain(fakeFolder(await aGraphFolder(), '', 'garden'), 'granted'));
+		await graphHere.boot();
+
+		graphHere.notNow();
+
+		expect(graphHere.waiting).toBeNull();
+		expect(runtime.mode()).toBe('hosted');
+		expect((await api.listGraphs()).map((one) => one.title)).toEqual(['My graph']);
+	});
+
+	it('leaves the graph this app is served from in front of somebody when the folder will not read', async () => {
+		const folder = fakeFolder(await aGraphFolder(), '', 'garden');
+		await rememberFolder({
+			...folder,
+			getFileHandle: () => Promise.reject(new Error('That folder is not there any more.'))
+		});
+
+		await graphHere.boot();
+
+		expect(graphHere.ready).toBe(true);
+		expect(graphHere.open).toBeNull();
+		expect(runtime.mode()).toBe('hosted');
+	});
 });
 
 describe('the folder door', () => {
@@ -120,6 +233,16 @@ describe('the folder door', () => {
 		const notes = [...held.keys()].filter((path) => path.startsWith('notes/'));
 		expect(notes).toHaveLength(notesBefore + 1);
 		expect(fake.calls).toHaveLength(asked);
+	});
+
+	// A folder holds what is written into it as it is written, so a reload
+	// throws nothing away and nobody is stopped on the way out.
+	it('lets a reload go ahead', async () => {
+		picksUp(await aGraphFolder());
+		await graphHere.openFolder();
+		await api.createNode({ title: 'Another thought' });
+
+		expect(leavingAsks()).toBe(false);
 	});
 
 	it('draws what is in it as it is rather than through the proxy', async () => {
@@ -263,6 +386,31 @@ describe('the archive door', () => {
 			.filter(([path]) => path.startsWith('notes/'))
 			.map(([, bytes]) => new TextDecoder().decode(bytes));
 		expect(written.some((note) => note.includes('Written in this tab'))).toBe(true);
+	});
+
+	// An archive's writing is in this tab and nowhere else, and a reload is a way
+	// out of it like any other.
+	it('has the browser ask before a reload throws away what is only in this tab', async () => {
+		chooses('thesis.sloppy', await anArchive());
+		await graphHere.openArchive();
+		expect(leavingAsks()).toBe(false);
+
+		await api.createNode({ title: 'Written in this tab' });
+		expect(leavingAsks()).toBe(true);
+
+		await graphHere.close();
+		expect(leavingAsks()).toBe(false);
+	});
+
+	it('lets a reload go ahead once a copy has been saved', async () => {
+		chooses('thesis.sloppy', await anArchive());
+		await graphHere.openArchive();
+		await api.createNode({ title: 'Written in this tab' });
+		initRuntime({ apiHost: () => 'http://api.test', saveFile: async () => {} });
+
+		await graphHere.saveCopy();
+
+		expect(leavingAsks()).toBe(false);
 	});
 
 	it('refuses a file that is not a graph, in words a person can act on', async () => {
