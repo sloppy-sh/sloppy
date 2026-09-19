@@ -3,17 +3,19 @@
 
 import {
   decodePrivateKey,
+  decodePublicKey,
   deriveDid,
   encodePrivateKey,
   encodePublicKey,
   generateKeypair,
+  openSigil,
   publicKeyFromDid,
   publicKeyFromPrivateKey,
   readSigil,
   type Sigil,
   SigilDecryptionError,
+  sigilDid,
   wipe,
-  withSigilSeed,
 } from "@sloppy/idp/crypto";
 import {
   type DidSyr,
@@ -122,6 +124,18 @@ export interface MintedIdentity {
  *  first one's. Multibase spells the public key in letters and digits only. */
 function seedFor(publicKey: string): string {
   return `${publicKey}.key`;
+}
+
+/** Where a key that arrived shut is kept, beside the ones made here and named
+ *  the same way. */
+function sealedFor(publicKey: string): string {
+  return `${publicKey}.sigil`;
+}
+
+/** A sealed key's public key, spelled the way every identity here spells one —
+ *  a Sigil may carry the raw key where this device writes the prefixed one. */
+function sealedPublicKey(sigil: Sigil): string {
+  return encodePublicKey(decodePublicKey(sigil.pub));
 }
 
 /** Where the picture a store has one identity wearing is kept, beside its key
@@ -349,6 +363,104 @@ export async function holdDelegatedIdentity(
     writing: identity.did,
   });
   return identity;
+}
+
+/** A key that arrived shut, and the file it arrived in. The file is kept byte
+ *  for byte: what seals it is the person's, and re-sealing it here would put
+ *  this device between them and their own key. */
+export interface BroughtSealed {
+  identity: SealedIdentity;
+  file: Uint8Array;
+}
+
+/**
+ * The identity in a sealed file, read without asking anybody for anything: the
+ * public key is on the outside of it, and that is the whole of what a DID and a
+ * row on screen need.
+ */
+export function readSealedIdentity(bytes: Uint8Array): BroughtSealed {
+  const notOne = refuse(
+    "That file does not hold an identity Sloppy can write under.",
+  );
+  let sigil: Sigil;
+  try {
+    sigil = readSigil(bytes);
+  } catch {
+    throw notOne;
+  }
+  const did = DidSyrSchema.safeParse(sigilDid(sigil));
+  if (!did.success) throw notOne;
+  const publicKey = sealedPublicKey(sigil);
+  return {
+    identity: {
+      did: did.data,
+      public_key: publicKey,
+      source: "sealed",
+      sealed: sealedFor(publicKey),
+    },
+    file: bytes,
+  };
+}
+
+/** Hold a key this device cannot use without the person, replacing what it
+ *  held of that identity before. */
+export async function holdSealedIdentity(
+  files: Files,
+  brought: BroughtSealed,
+): Promise<SealedIdentity> {
+  const own = files.at(await files.dataPath());
+  const held = await readIdentities(files);
+  await own.write(brought.identity.sealed, brought.file);
+  await writeIdentities(files, {
+    identities: [
+      ...held.identities.filter((one) => one.did !== brought.identity.did),
+      brought.identity,
+    ],
+    writing: brought.identity.did,
+  });
+  return brought.identity;
+}
+
+/**
+ * Run `act` with the key a sealed identity is shut under, and wipe it on the
+ * way out. The passphrase belongs to this one act: the seed is never written
+ * down, and it does not outlive `act` even where `act` throws.
+ */
+export async function withSealedKey<T>(
+  files: Files,
+  identity: SealedIdentity,
+  passphrase: string,
+  act: (key: Uint8Array) => T | Promise<T>,
+): Promise<T> {
+  const own = files.at(await files.dataPath());
+  const bytes = await own.read(identity.sealed);
+  if (!bytes) {
+    throw refuse("The key for that identity is not on this device any more.");
+  }
+  const unreadable = refuse(
+    "The key for that identity could not be read. Bring the identity in again.",
+  );
+  let sigil: Sigil;
+  try {
+    sigil = readSigil(bytes);
+  } catch {
+    throw unreadable;
+  }
+  if (sealedPublicKey(sigil) !== identity.public_key) throw unreadable;
+  let seed: Uint8Array;
+  try {
+    seed = await openSigil(sigil, passphrase);
+  } catch (err) {
+    if (err instanceof SigilDecryptionError) {
+      throw refuse("That passphrase did not open it. Try it again.");
+    }
+    throw err;
+  }
+  try {
+    return await act(seed);
+  } finally {
+    wipe(seed);
+  }
 }
 
 /** Write under this one from now on, where a graph's own owner is not held
@@ -737,8 +849,10 @@ export class Identities implements IdentityAccess {
     return shown(made, true);
   }
 
-  async bringSealed(_file: Uint8Array): Promise<IdentityHere> {
-    throw new Error("not implemented");
+  async bringSealed(file: Uint8Array): Promise<IdentityHere> {
+    const held = await holdSealedIdentity(this.files, readSealedIdentity(file));
+    await this.options.changed?.();
+    return shown(held, true);
   }
 
   async carryOut(
@@ -778,31 +892,10 @@ export class Identities implements IdentityAccess {
         "That identity is kept shut. Type the passphrase it was sealed with to carry it out.",
       );
     }
-    const own = this.files.at(await this.files.dataPath());
-    const bytes = await own.read(one.sealed);
-    if (!bytes) {
-      throw refuse("The key for that identity is not on this device any more.");
-    }
-    const unreadable =
-      "The key for that identity could not be read, so there is nothing to carry.";
-    let sigil: Sigil;
-    try {
-      sigil = readSigil(bytes);
-    } catch {
-      throw refuse(unreadable);
-    }
-    if (sigil.pub !== one.public_key) throw refuse(unreadable);
-    try {
-      return await withSigilSeed(sigil, passphrase, (seed) => ({
-        name: CARRIED_FILE,
-        body: carryIdentityOut(one, seed),
-      }));
-    } catch (err) {
-      if (err instanceof SigilDecryptionError) {
-        throw refuse("That passphrase did not open it. Try it again.");
-      }
-      throw err;
-    }
+    return withSealedKey(this.files, one, passphrase, (key) => ({
+      name: CARRIED_FILE,
+      body: carryIdentityOut(one, key),
+    }));
   }
 
   /** The picture kept where a graph started later can still be written with
