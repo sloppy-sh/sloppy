@@ -74,3 +74,42 @@ describe("saying a note's reasoning still holds", () => {
     expect((await client.getNode(NOTE))?.checked).toBeUndefined();
   });
 });
+
+describe("the looks a note sets on its lines", () => {
+  const OTHER = `${DID}/01JMVEDNTE0000000000000001`;
+  const LOOK = { to: OTHER, label: "follows from", direction: "to" } as const;
+
+  it("sends the whole list and reads back what the note carries", async () => {
+    const { asked, client } = serving(note({ edges: [LOOK] }));
+
+    const written = await client.updateNode(NOTE, { edges: [LOOK] });
+
+    expect(JSON.parse(asked[0].body)).toEqual({ edges: [LOOK] });
+    expect(written.edges).toEqual([LOOK]);
+  });
+
+  it("sends an empty list where a person takes every look off", async () => {
+    const { asked, client } = serving(note());
+
+    const written = await client.updateNode(NOTE, { edges: [] });
+
+    expect(JSON.parse(asked[0].body)).toEqual({ edges: [] });
+    expect(written.edges).toBeUndefined();
+  });
+
+  // A row a peer or a hand wrote can say two things about one line; a reader
+  // takes the first rather than refusing the note.
+  it("reads the first of two looks a note carries on one line", async () => {
+    const { client } = serving(
+      note({ edges: [LOOK, { to: OTHER, label: "objects to" }] }),
+    );
+
+    expect((await client.getNode(NOTE))?.edges).toEqual([LOOK]);
+  });
+
+  it("reads a note nobody set a look on as one carrying none", async () => {
+    const { client } = serving(note());
+
+    expect((await client.getNode(NOTE))?.edges).toBeUndefined();
+  });
+});

@@ -835,11 +835,13 @@
 	const sideNow = $derived<WritingSide>({
 		title: node?.title ?? '',
 		tags: node?.tags ?? [],
+		...(node?.edges === undefined ? {} : { edges: node.edges }),
 		sections: blocks.map((one) => ({ ref: one.ref, content: one.content }))
 	});
 	const sideOffered = $derived<WritingSide>({
 		title: offerDraft?.title ?? title,
 		tags: shownTags,
+		...(offerDraft?.edges === undefined ? {} : { edges: offerDraft.edges }),
 		sections: stack.map((one) => ({ ref: one.ref, content: one.content }))
 	});
 

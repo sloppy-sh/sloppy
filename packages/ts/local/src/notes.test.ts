@@ -317,3 +317,72 @@ describe("one act over the notes somebody chose", () => {
     ).rejects.toThrow("Choose a picture for this note first");
   });
 });
+
+describe("a look a person set on a line", () => {
+  it("is written on the note it was set from, and read back out of the folder", async () => {
+    const files = new MemoryFiles();
+    const { writer } = await graphOnly(files);
+    const one = await writer.create({ title: "Seeds" });
+    const two = await writer.create({ title: "Clocks" });
+    const look = { to: two.ref, label: "answers", direction: "to" } as const;
+
+    const lined = await writer.update(one.ref, { edges: [look] });
+    expect(lined.edges).toEqual([look]);
+    expect((await reread(files)).find(one.ref)?.edges).toEqual([look]);
+    expect((await reread(files)).find(two.ref)?.edges).toBeUndefined();
+  });
+
+  it("is the whole list, so one absent from it is one taken off", async () => {
+    const files = new MemoryFiles();
+    const { writer } = await graphOnly(files);
+    const one = await writer.create({ title: "Seeds" });
+    const two = await writer.create({ title: "Clocks" });
+    await writer.update(one.ref, {
+      edges: [{ to: two.ref, stroke: "dotted" }],
+    });
+
+    const cleared = await writer.update(one.ref, { edges: [] });
+    expect(cleared.edges).toBeUndefined();
+    expect((await reread(files)).find(one.ref)?.edges).toBeUndefined();
+  });
+
+  it("leaves the looks alone where a write said nothing about them", async () => {
+    const files = new MemoryFiles();
+    const { writer } = await graphOnly(files);
+    const one = await writer.create({ title: "Seeds" });
+    const two = await writer.create({ title: "Clocks" });
+    await writer.update(one.ref, { edges: [{ to: two.ref, stroke: "solid" }] });
+
+    const retitled = await writer.update(one.ref, { title: "Seeds, sown" });
+    expect(retitled.edges).toEqual([{ to: two.ref, stroke: "solid" }]);
+  });
+
+  it("refuses a second look on one note at the other end", async () => {
+    const { writer } = await graphOnly();
+    const one = await writer.create({ title: "Seeds" });
+    const two = await writer.create({ title: "Clocks" });
+    await expect(
+      writer.update(one.ref, {
+        edges: [
+          { to: two.ref, stroke: "solid" },
+          { to: two.ref, label: "and again" },
+        ],
+      }),
+    ).rejects.toThrow("carries one look");
+  });
+
+  it("is the owner's on a note somebody else gates", async () => {
+    const files = new MemoryFiles();
+    const { graph, writer, did } = await graphOnly(files);
+    const one = await writer.create({ title: "Seeds" });
+    const two = await writer.create({ title: "Clocks" });
+    await writer.update(one.ref, { owner: did });
+
+    await expect(
+      new NoteWriter(graph, GUEST).update(one.ref, {
+        edges: [{ to: two.ref, stroke: "solid" }],
+      }),
+    ).rejects.toThrow("Offer your change instead");
+    expect((await reread(files)).find(one.ref)?.edges).toBeUndefined();
+  });
+});

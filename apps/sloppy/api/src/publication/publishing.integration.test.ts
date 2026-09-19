@@ -561,6 +561,37 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(JSON.stringify(page)).not.toContain(root.ref);
   });
 
+  // Every ref a published note names is one the reader may read, and a look is
+  // no exception — docs/ARCHITECTURE.md § "A look a person set on a line".
+  scenario(
+    "carries a look on a line a reader can see, and no other",
+    async () => {
+      const branch = await newNode({ title: "What the lines say" });
+      const under = await newNode({
+        from: { relation: "under", note: branch.ref },
+        title: "Under it",
+      });
+      const unpublished = await newNode({ title: "Kept back" });
+      await ok("PATCH", `/nodes/${at(under.ref)}`, ada, {
+        edges: [
+          { to: branch.ref, label: "follows from", direction: "to" },
+          { to: unpublished.ref, label: "argues with", stroke: "dotted" },
+        ],
+      });
+
+      const publication = await publish(branch.ref);
+      const reader = publishedSubtreeReader({ publication: publication.ref });
+      const page = reader.take(await read(publication.ref));
+      const served = page.nodes.find((node) => node.ref === under.ref);
+
+      expect(served?.edges).toEqual([
+        { to: branch.ref, label: "follows from", direction: "to" },
+      ]);
+      expect(page.nodes[0]).not.toHaveProperty("edges");
+      expect(JSON.stringify(page)).not.toContain(unpublished.ref);
+    },
+  );
+
   // A branch its author never numbered publishes like any other: what a peer
   // reads it back by is the note it is rooted at, and the walk of the branch is
   // what the pages are taken in.

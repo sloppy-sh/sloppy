@@ -24,6 +24,13 @@ function path(of: OwnedRef): string {
 	return `/nodes/${encodeURIComponent(of.slice(0, cut))}/${encodeURIComponent(of.slice(cut + 1))}`;
 }
 
+function words(said: string): BlockDocument {
+	return {
+		type: 'doc',
+		content: [{ type: 'paragraph', content: [{ type: 'text', text: said }] }]
+	};
+}
+
 function pointing(slots: Partial<Compass>, said = 'The decision'): WritingSide {
 	const content: BlockDocument = {
 		type: 'doc',
@@ -126,6 +133,44 @@ describe('offering a change to where a note points', () => {
 		show(pointing({}), pointing({}));
 		await settled();
 
+		expect(screen()).toContain('You have not changed anything yet.');
+	});
+});
+
+describe('offering a look on a line', () => {
+	function saying(edges: WritingSide['edges']): WritingSide {
+		return {
+			title: 'Guard cells',
+			tags: [],
+			...(edges === undefined ? {} : { edges }),
+			sections: [{ ref: SECTION, content: words('The decision') }]
+		};
+	}
+
+	it('names the note at the other end and what the look says', async () => {
+		show(
+			saying([]),
+			saying([{ to: LARGER.ref, label: 'follows from', direction: 'to', stroke: 'dashed' }])
+		);
+		await settled();
+
+		expect(screen()).toContain('Line to Stomata: \u201cfollows from\u201d, \u2192, dashed');
+	});
+
+	it('says a line the offer takes the look off carries no look', async () => {
+		show(saying([{ to: LARGER.ref, label: 'follows from' }]), saying([]));
+		await settled();
+
+		expect(screen()).toContain('Line to Stomata: no look');
+	});
+
+	// Absent is an offer that says nothing about the lines, which is every offer
+	// made before somebody set a look on one.
+	it('leaves the note\u2019s looks alone where the offer names none', async () => {
+		show(saying([{ to: LARGER.ref, label: 'follows from' }]), saying(undefined));
+		await settled();
+
+		expect(screen()).not.toContain('Line to');
 		expect(screen()).toContain('You have not changed anything yet.');
 	});
 });

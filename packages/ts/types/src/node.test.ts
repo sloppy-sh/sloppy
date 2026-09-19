@@ -152,6 +152,34 @@ describe("the references a note's writing names", () => {
   });
 });
 
+describe("the looks a note sets on its lines", () => {
+  const OTHER = `${DID}/01J0000000000000000000000Z`;
+
+  it("stay absent on a note nobody set one on", () => {
+    expect(parseNode(row("1"))).not.toHaveProperty("edges");
+  });
+
+  it("are the whole list on a write, and absent leaves them alone", () => {
+    expect(UpdateNodeRequestSchema.parse({}).edges).toBeUndefined();
+    expect(UpdateNodeRequestSchema.parse({ edges: [] }).edges).toEqual([]);
+    expect(
+      UpdateNodeRequestSchema.parse({
+        edges: [{ to: OTHER, stroke: "dotted" }],
+      }).edges,
+    ).toEqual([{ to: OTHER, stroke: "dotted" }]);
+  });
+
+  it("cost a note nothing where a row carries a second one", () => {
+    const twice = [{ to: OTHER, label: "one" }, { to: OTHER }];
+    expect(parseNode({ ...row("1"), edges: twice }).edges).toEqual([
+      { to: OTHER, label: "one" },
+    ]);
+    expect(
+      parseNode({ ...row("1"), edges: [{ to: OTHER, label: "one" }] }).edges,
+    ).toEqual([{ to: OTHER, label: "one" }]);
+  });
+});
+
 describe("the address a person names on a move", () => {
   const under = { relation: "under", note: `${DID}/${ULID}` } as const;
 

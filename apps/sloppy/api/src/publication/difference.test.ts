@@ -49,8 +49,9 @@ describe("what became of a note between two versions", () => {
     ).toEqual([]);
   });
 
-  // A note's look is not published, so a recoloured note reaches here as one
-  // whose timestamp moved and whose every readable field did not.
+  // What a person set on the MARK is not published, so a recoloured note
+  // reaches here as one whose timestamp moved and whose every readable field
+  // did not.
   it("says nothing about one whose writing did not move", () => {
     const held = note({ address: "1a" });
     expect(
@@ -63,6 +64,17 @@ describe("what became of a note between two versions", () => {
         ],
       ),
     ).toEqual([]);
+  });
+
+  it("reports a note whose line is drawn differently", () => {
+    const before = note({ address: "1a" });
+    const after = note({
+      address: "1a",
+      edges: [{ to: at("OTH"), label: "answers" }],
+    });
+    expect(changesBetween([side(before)], [side(after)])).toEqual([
+      { change: "changed", note: after, before, sections: [] },
+    ]);
   });
 
   it("reports a note that arrived, with its whole stack added", () => {

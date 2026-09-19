@@ -18,8 +18,10 @@ import { rekeyMarkdown } from "./markdown.js";
 
 /**
  * The same vault under another identity: the owner, every note's own ref, its
- * parent, its links, every reference in its writing, and the note an offered
- * change amends. The aliases ride the note, so its ref carries them.
+ * parent, its links, the note at the other end of each look it sets on a line,
+ * every reference in its writing, and the note an offered change amends. The
+ * aliases ride the note, so its ref carries them. A look's LABEL is a person's
+ * words and is never rewritten.
  *
  * `authors`, `contributors` and an offer's `by` are never rewritten. A note's
  * `owner` is rewritten where it is `from`'s and left alone where it is anybody
@@ -49,7 +51,7 @@ function rekeyGraph(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
   }
 }
 
-const REF_FIELD = /^((?:ref|parent|amends): | {2}- )/;
+const REF_FIELD = /^((?:ref|parent|amends): | {2}- (?:to: )?| {4}to: )/;
 const GATE_FIELD = "owner: ";
 
 function rekeyRefs(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {

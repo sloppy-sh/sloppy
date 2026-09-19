@@ -498,6 +498,7 @@ export class LocalGraph {
       title: note.title,
       tags: [...note.tags],
       links: [...note.links],
+      ...(note.edges === undefined ? {} : { edges: [...note.edges] }),
       references: referencesOf(note),
       ...(note.owner === undefined ? {} : { owner: note.owner }),
       ...(note.authors === undefined ? {} : { authors: [...note.authors] }),
@@ -847,6 +848,7 @@ export class LocalGraph {
       ...(offer.message === undefined ? {} : { message: offer.message }),
       title: offer.title,
       tags: [...offer.tags],
+      ...(offer.edges === undefined ? {} : { edges: [...offer.edges] }),
       ...(offer.appearance === undefined
         ? {}
         : { appearance: offer.appearance }),

@@ -11,6 +11,7 @@ import { splitOwnedRef, type Viewer } from '@sloppy/types';
 import { api } from '../api.js';
 import { deviceStore } from '../device-store.js';
 import { runtime } from '../runtime.js';
+import { seam } from '../seam.svelte.js';
 import { serverMessage } from './errors.js';
 
 /** A credential the server turned down is an answer — nobody is signed in.
@@ -44,7 +45,7 @@ class SessionStore {
 	/** The graph is a folder on this device. Which deployment is running, not
 	 *  whether anybody is signed in — {@link signedIn} answers that separately. */
 	get onDevice(): boolean {
-		return runtime.mode() === 'local';
+		return seam().mode() === 'local';
 	}
 
 	/** True once the first {@link load} has settled, either way. */

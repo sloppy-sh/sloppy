@@ -4,6 +4,8 @@
 
 import type {
   DidSyr,
+  EdgeDirection,
+  EdgeStroke,
   NodeView,
   OwnedRef,
   PictureTransition,
@@ -19,6 +21,44 @@ import type { GraphGround } from "./ground.js";
 export interface GraphField {
   ref: OwnedRef;
   title: string;
+}
+
+/**
+ * A look a person set on the line between two notes, oriented: `from` is the
+ * note the look is stored on and `to` the note at the other end, which is what
+ * `direction` is read against. The host hands one per pair, resolved through
+ * `lookBetween` in `@sloppy/types`. An absent channel is DESIGN.md § Edges' own
+ * value for that channel.
+ */
+export interface GraphEdgeLook {
+  from: OwnedRef;
+  to: OwnedRef;
+  label?: string;
+  direction?: EdgeDirection;
+  stroke?: EdgeStroke;
+}
+
+/** The look on each pair, under a key that reads the same from either end —
+ *  {@link edgeLookKey}. */
+export type GraphEdgeLooks = ReadonlyMap<string, GraphEdgeLook>;
+
+/** One pair's key, whichever order the pair is named in: a line is one line. */
+export function edgeLookKey(a: OwnedRef, b: OwnedRef): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/** The looks a canvas was handed, keyed for lookup. A pair draws one line, so
+ *  the first look on a pair is the one it draws — `looksRead` and `lookOn` in
+ *  `@sloppy/types` keep the first too. */
+export function edgeLooksByPair(
+  looks: readonly GraphEdgeLook[] | undefined,
+): GraphEdgeLooks {
+  const byPair = new Map<string, GraphEdgeLook>();
+  for (const look of looks ?? []) {
+    const key = edgeLookKey(look.from, look.to);
+    if (!byPair.has(key)) byPair.set(key, look);
+  }
+  return byPair;
 }
 
 /** The notes a picking canvas outlines, so a tap is answered before it lands. */
@@ -237,6 +277,15 @@ export interface GraphSurfaceProps {
   /** Subtree roots to draw as one mega-node — {@link drawnNodes}. */
   collapsed: ReadonlySet<OwnedRef>;
   /**
+   * The looks the reader's own notes set on the lines between them, one per
+   * pair. Absent, and empty, are a canvas where every line draws as DESIGN.md
+   * § Edges alone says it should.
+   *
+   * A look naming a pair this canvas draws no line between draws nothing: a
+   * look makes no line, moves no mark and changes no distance.
+   */
+  edgeLooks?: readonly GraphEdgeLook[];
+  /**
    * The tags the reader selected, in the order they selected them — the order
    * `assignTagHueSlots` hands out the hues in. Empty is the monochrome
    * genealogical view DESIGN.md § Hue calls for when nothing has been asked.
@@ -333,6 +382,18 @@ export interface GraphSurfaceProps {
    *  independent: a reader may have either, both or neither. */
   wallpaper?: GraphWallpaper;
   onOpenNode: (ref: OwnedRef) => void;
+  /**
+   * A tap that landed on a LINE rather than on a mark, naming the two notes it
+   * joins in the order the canvas drew it. The pair is unordered as far as the
+   * answer goes — a look on either note is the line's — so a host opening a
+   * sheet reads both ends.
+   *
+   * Absent leaves a tap on a line doing nothing, which is every canvas today.
+   * It stays quiet while {@link GraphSurfaceProps.picking}, a chosen set or a
+   * {@link GraphSurfaceProps.difference} is up: those already say what a tap
+   * means.
+   */
+  onEdge?: (from: OwnedRef, to: OwnedRef) => void;
   /** Draw this mega-node's subtree instead of folding it. */
   onExpand: (ref: OwnedRef) => void;
   /** Fold this node's subtree into a mega-node. */

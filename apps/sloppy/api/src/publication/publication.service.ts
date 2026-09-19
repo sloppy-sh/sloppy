@@ -19,6 +19,7 @@ import {
   entityView,
   graphOf,
   isInSubtree,
+  looksReaching,
   type Node,
   noteLabel,
   nowIso,
@@ -475,6 +476,7 @@ export class PublicationService {
           ord: ordAt(from + at),
           node: publishedNodeOf(node, region, {
             links: node.links.filter((target) => reach.holds(target)),
+            edges: looksReaching(node.edges, (to) => reach.holds(to)),
             // A region its author gave no number opens no run of addresses for
             // an address left behind to lie inside, so none of them travels.
             aliases:
@@ -766,6 +768,7 @@ function cited(
   const named = new Set<OwnedRef>();
   for (const node of batch) {
     for (const target of node.links) named.add(target);
+    for (const look of node.edges ?? []) named.add(look.to);
     for (const block of stacks.get(ownedRefFrom(node.id)) ?? []) {
       for (const target of citedNotes(block.content)) named.add(target);
     }

@@ -684,8 +684,8 @@ there.** `PublishedNodeSchema` carries `links` and no `references`, so a note so
 pulled shows the connections its author made by hand and none of the ones its writing
 makes — fewer lines than the same writing draws on the author's own canvas, and every one
 of them broken. The publishing milestone owns closing that, and the reason it is not free is
-the same one that keeps a look off a published node: what a peer may be shown is bounded by
-what they may follow, and docs/ARCHITECTURE.md § "Federating the graph" owns that bound.
+the same one that bounds every ref a published node carries: what a peer may be shown is
+bounded by what they may follow, and docs/ARCHITECTURE.md § "Federating the graph" owns that bound.
 
 **With tags selected, genealogy and the run both dim**: the reader has asked to see sets,
 and the tree is momentarily the background. **A reference dims with them, and a hand link
@@ -694,6 +694,44 @@ lines do and would read as the darkest thing on the canvas if it stayed while th
 back. A hand link is broken, is on no ladder, and is the one line somebody made on purpose —
 the canvas swallowing it the moment a tag is ticked would take back the whole reason it
 leads the order above.
+
+#### A look a person set
+
+Everything above is how a line is drawn when nobody has said otherwise, and that is what
+almost every line on almost every canvas is. A person may set a look on one line, and it
+wins only on the channels it names. Three channels, and nothing else moves:
+
+| Channel         | Absent                                  | Set                                                      |
+| --------------- | --------------------------------------- | -------------------------------------------------------- |
+| **`stroke`**    | the break the line already has          | `solid`, `dashed` or `dotted`, whatever kind the line is |
+| **`direction`** | no arrowhead, which is every line above | an arrowhead at the far end, this end, or both           |
+| **`label`**     | no words on the line                    | the words, as a caption at the line's middle             |
+
+- **`stroke` overrides the break, and only the break.** The break otherwise says how the
+  line was made — a hand drew it — so a hand link a person drew solid is solid and says
+  nothing about how it was made any more. That is the point: they said so on purpose, and
+  the canvas swallowing it would be the same gesture lost the break rule is written against.
+  The weight and the lightness are NOT a channel, so the ladder of the four kinds survives
+  every look anybody sets, and the line still reads at the depth it belongs to. `dotted` is
+  a third texture beside `dashed`, drawn at the same weight.
+- **An arrowhead is drawn in the line's own ink at the line's own weight**, and is clamped
+  as the width is: a field zoomed out far enough draws hairlines, and an arrowhead that
+  stayed its size would be the loudest thing on a canvas of them. It is a mark ON the line
+  and never a second colour — hue belongs to the tags, here as everywhere.
+- **A label is a caption, in the caption face the canvas already uses for marks**, bound to
+  the line's midpoint, and held to the same level-of-detail rules a mark's caption is: it
+  appears when there is room for it to be read and is not drawn when there is not, which is
+  what keeps a field of labelled lines from turning into a wall of text at any zoom.
+- **A look dims with the line it is on.** Ticking a tag dims genealogy, the run and
+  references (above); a look set on one of those dims with it, arrowhead and label
+  together, because the look is how that line is drawn and not a separate thing over it.
+- **A look moves no mark.** The distance between two marks and the sector a subtree
+  radiates into are the addresses' and the genealogy's. Setting a look changes how a line
+  is drawn and nothing about where anything sits — docs/ARCHITECTURE.md § "A look a person
+  set on a line" carries the storage side of that.
+- **A look draws on the line that is there, and on nothing where there is none.** Two notes
+  with no line between them stay two notes with no line between them, however carefully
+  somebody has described one.
 
 ### Contrast is measured, not assumed
 

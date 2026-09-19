@@ -36,6 +36,9 @@ function vault(): Vault {
     title: "A note that names another",
     tags: ["seed"],
     links: [`${FROM}/${CITED}`],
+    edges: [
+      { to: `${FROM}/${CITED}`, label: `${FROM}/${CITED}`, stroke: "dashed" },
+    ],
     published: false,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
@@ -109,6 +112,11 @@ describe("a graph moving into another identity", () => {
     expect(read.ref).toBe(`${TO}/${NOTE}`);
     expect(read.parent).toBe(`${TO}/${PARENT}`);
     expect(read.links).toEqual([`${TO}/${CITED}`]);
+    // A look's target is a ref and moves; the words on the line are a person's
+    // and do not, however much they read like one.
+    expect(read.edges).toEqual([
+      { to: `${TO}/${CITED}`, label: `${FROM}/${CITED}`, stroke: "dashed" },
+    ]);
     expect(readGraphFile(moved.get("graph.json") as Uint8Array).owner).toBe(TO);
     expect(readGraphFile(moved.get("graph.json") as Uint8Array).graph).toBe(
       GRAPH,

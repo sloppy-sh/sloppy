@@ -5,6 +5,7 @@ import {
   type AmendmentView,
   type DidSyr,
   DidSyrSchema,
+  type EdgeLook,
   isUnstyled,
   type NodeAppearance,
   NodeAppearanceSchema,
@@ -23,6 +24,8 @@ import {
 } from "./front.js";
 import { amendmentPath, VaultFormatError } from "./layout.js";
 import {
+  edgeEntries,
+  edgesRead,
   lookBlock,
   type NoteFiles,
   type NoteSource,
@@ -49,6 +52,9 @@ export interface VaultAmendment {
   tags: string[];
   /** Absent is an offer that leaves the note's look alone. */
   appearance?: NodeAppearance;
+  /** The looks it proposes on the note's lines, whole. Absent is an offer that
+   *  leaves the note's looks alone. */
+  edges?: EdgeLook[];
   sections: VaultSection[];
 }
 
@@ -64,6 +70,7 @@ export function amendmentToVault(
     ["message", amendment.message],
     ["title", amendment.title],
     ["tags", [...amendment.tags]],
+    ["edges", edgeEntries(amendment.edges)],
     ["appearance", lookBlock(amendment.appearance)],
   ]);
   const ulid = splitOwnedRef(amendment.ref).localId;
@@ -104,6 +111,7 @@ export function vaultToAmendment(files: NoteSource): VaultAmendment {
     ...(message === undefined ? {} : { message }),
     title: frontString(front, "title") ?? "",
     tags: frontList(front, "tags"),
+    ...edgesRead(front),
     ...(look.success && !isUnstyled(look.data)
       ? { appearance: look.data }
       : {}),

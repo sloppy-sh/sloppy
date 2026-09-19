@@ -13,6 +13,7 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
+import { EdgeLookSchema, looksRead } from "./edge.js";
 import { graphRef, requireOwnGraph } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
@@ -73,6 +74,18 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * a miss rather than treat it as corruption.
    */
   links: z.array(OwnedRefSchema).default([]),
+  /**
+   * The looks its author set on the lines out of this note, one entry per note
+   * at the other end. Absent is a note nobody has set a look on, and so is an
+   * empty list — a line's look is read off both ends, `lookBetween`, and a look
+   * draws on the line that is already there rather than making one.
+   *
+   * At most one entry per `to`. A writer meets that rule as
+   * `looksAreOnePerTarget`, which refuses; a reader meets it as `looksRead`,
+   * which keeps the first — docs/ARCHITECTURE.md § "A look a person set on a
+   * line".
+   */
+  edges: z.array(EdgeLookSchema).optional(),
   /**
    * The notes this one's own writing names, derived from its blocks and
    * rewritten whenever they change — so the words going takes the line with
@@ -244,7 +257,8 @@ export function requireNodeConsistent(
 export function parseNode(row: unknown): Node {
   const node = NodeSchema.parse(row);
   requireNodeConsistent(node);
-  return node;
+  if (node.edges === undefined) return node;
+  return { ...node, edges: looksRead(node.edges) };
 }
 
 /**
@@ -387,6 +401,12 @@ export const UpdateNodeRequestSchema = z.object({
   /** The WHOLE set, never a delta: a tag absent from it is a tag removed. */
   tags: TagsSchema.optional(),
   links: z.array(OwnedRefSchema).optional(),
+  /**
+   * The WHOLE list of looks this note sets on its lines, never a delta: one
+   * absent from it is one taken off, and an empty list takes them all off.
+   * Absent leaves whatever looks the note carries alone.
+   */
+  edges: z.array(EdgeLookSchema).optional(),
   /**
    * Who gates this note's writing. `null` takes the gate off and leaves the
    * note open; absent leaves it as it is. Writing it is the graph owner's and

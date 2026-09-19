@@ -9,6 +9,7 @@ import {
   CreateNodeRequestSchema,
   type NodeBulkRequest,
   NodeBulkRequestSchema,
+  type EdgeLook,
   type NodeBulkResult,
   type NodeAppearance,
   type NodeView,
@@ -22,6 +23,8 @@ import {
   graphAsked,
   isUnstyled,
   isAncestorAddress,
+  looksAreOnePerTarget,
+  looksWritten,
   isRootAddress,
   movedSubtree,
   namesGraph,
@@ -89,8 +92,12 @@ export class NoteWriter {
       request.appearance === undefined
         ? writing
         : styled(writing, lookWritten(request.appearance));
+    const joined =
+      request.edges === undefined
+        ? held
+        : lined(held, edgeLooksWritten(request.edges));
     return this.put({
-      ...held,
+      ...joined,
       ...(request.title === undefined ? {} : { title: request.title }),
       ...(request.tags === undefined ? {} : { tags: [...request.tags] }),
       ...(request.links === undefined ? {} : { links: [...request.links] }),
@@ -683,6 +690,7 @@ function writesTheGateAlone(request: UpdateNodeRequest): boolean {
     request.title === undefined &&
     request.tags === undefined &&
     request.links === undefined &&
+    request.edges === undefined &&
     request.appearance === undefined &&
     request.checked === undefined
   );
@@ -698,6 +706,7 @@ function confirmsAlone(request: UpdateNodeRequest): boolean {
     request.title === undefined &&
     request.tags === undefined &&
     request.links === undefined &&
+    request.edges === undefined &&
     request.appearance === undefined
   );
 }
@@ -731,6 +740,23 @@ export function lookWritten(
     throw refuse("Choose a picture for this note first.");
   }
   return appearance;
+}
+
+/** The looks about to be written, or absent where the note is left with none.
+ *  Two looks on one note at the other end would be one line drawn two ways. */
+export function edgeLooksWritten(
+  edges: readonly EdgeLook[],
+): EdgeLook[] | undefined {
+  const written = looksWritten(edges);
+  if (!looksAreOnePerTarget(written)) {
+    throw refuse("A line between two notes carries one look. Set just one.");
+  }
+  return written;
+}
+
+function lined(note: StoredNote, edges: EdgeLook[] | undefined): StoredNote {
+  const { edges: _was, ...bare } = note;
+  return { ...bare, ...(edges === undefined ? {} : { edges }) };
 }
 
 function styled(

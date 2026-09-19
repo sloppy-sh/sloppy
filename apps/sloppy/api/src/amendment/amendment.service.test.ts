@@ -42,6 +42,8 @@ const note: Node = {
 const noteRef = ownedRefFrom(note.id);
 
 const section = ownedRefFrom(createOwnedRecordId("block", DID));
+/** The note at the other end of a line the offer sets a look on. */
+const OTHER_NOTE = ownedRefFrom(createOwnedRecordId("node", DID));
 
 function offer(): Amendment {
   return {
@@ -64,12 +66,13 @@ function offer(): Amendment {
 function approving(
   elsewhere: readonly OwnedRef[] = [],
   itsOwn: readonly OwnedRef[] = [],
+  offered: Partial<Amendment> = {},
 ) {
   const standing: Block[] = itsOwn.map(
     (ref) => ({ id: recordIdFromOwnedRef("block", ref) }) as Block,
   );
   const taken: Approval[] = [];
-  const one = offer();
+  const one = { ...offer(), ...offered };
   const service = new AmendmentService(
     {
       find: () => Promise.resolve(one),
@@ -114,5 +117,52 @@ describe("taking in an offer", () => {
 
     expect(taken[0].sections[0].standing).toBe(false);
     expect(taken[0].sections[0].ref).not.toBe(section);
+  });
+
+  it("takes the looks the offer names in with the rest of it", async () => {
+    const { service, taken, ref } = approving([], [section], {
+      edges: [{ to: OTHER_NOTE, label: "follows from", direction: "to" }],
+    });
+
+    await service.approve(DID, ref);
+
+    expect(taken[0].edges).toEqual([
+      { to: OTHER_NOTE, label: "follows from", direction: "to" },
+    ]);
+  });
+
+  // An offer leaves the note's looks alone rather than taking them off, which
+  // is the one thing a write can say and an offer cannot.
+  it("says nothing about the looks where the offer names none", async () => {
+    const { service, taken, ref } = approving();
+
+    await service.approve(DID, ref);
+
+    expect(taken[0]).not.toHaveProperty("edges");
+  });
+
+  it("says nothing about them where every look the offer names is blank", async () => {
+    const { service, taken, ref } = approving([], [section], {
+      edges: [{ to: OTHER_NOTE }],
+    });
+
+    await service.approve(DID, ref);
+
+    expect(taken[0]).not.toHaveProperty("edges");
+  });
+
+  // An offer arrives in a file a hand can edit — docs/ARCHITECTURE.md § "A look
+  // a person set on a line".
+  it("keeps the first of two looks an offer puts on one line", async () => {
+    const { service, taken, ref } = approving([], [section], {
+      edges: [
+        { to: OTHER_NOTE, label: "follows from" },
+        { to: OTHER_NOTE, label: "objects to" },
+      ],
+    });
+
+    await service.approve(DID, ref);
+
+    expect(taken[0].edges).toEqual([{ to: OTHER_NOTE, label: "follows from" }]);
   });
 });

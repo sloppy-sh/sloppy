@@ -124,6 +124,7 @@ export function rowsFor(
         title: note.title,
         tags: TagsSchema.catch([]).parse(note.tags),
         links: note.links,
+        ...(note.edges?.length ? { edges: note.edges } : {}),
         references: referencesOf(note.ref, sections),
         ...(note.checked ? { checked: note.checked } : {}),
         published: keeping?.published ?? false,
@@ -202,6 +203,7 @@ export function offeredRows(
         ...(offer.message === undefined ? {} : { message: offer.message }),
         title: offer.title,
         tags: TagsSchema.catch([]).parse(offer.tags),
+        ...(offer.edges?.length ? { edges: offer.edges } : {}),
         ...(offer.appearance ? { appearance: offer.appearance } : {}),
         blocks: offer.sections.map((section) => ({
           ref: ownedRefFrom(createOwnedRecordId("block", did, section.ulid)),

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { ref } from '../stores/fake-api.test-support.js';
 import {
 	compassApart,
+	lookInWords,
+	looksApart,
 	offerDifference,
 	saysAnything,
 	saysNothing,
@@ -182,14 +184,23 @@ describe('where an offer would have the note point', () => {
 		const apart = offerDifference({ ref: NOTE }, now, offered);
 
 		expect(saysAnything(apart)).toBe(false);
-		expect(saysNothing(apart, compassApart(now, offered), tagsApart(now, offered))).toBe(false);
+		expect(
+			saysNothing(
+				apart,
+				compassApart(now, offered),
+				tagsApart(now, offered),
+				looksApart(now, offered)
+			)
+		).toBe(false);
 	});
 
 	it('says an offer that changes nothing at all is nothing', () => {
 		const now = side('The opening', [[ONE, 'As it stands']], ['biology']);
 		const apart = offerDifference({ ref: NOTE }, now, now);
 
-		expect(saysNothing(apart, compassApart(now, now), tagsApart(now, now))).toBe(true);
+		expect(
+			saysNothing(apart, compassApart(now, now), tagsApart(now, now), looksApart(now, now))
+		).toBe(true);
 	});
 
 	it('shows a section a compass arrived in, though no slot points anywhere yet', () => {
@@ -198,7 +209,14 @@ describe('where an offer would have the note point', () => {
 		const apart = offerDifference({ ref: NOTE }, now, offered);
 
 		expect(sectionsApart(now, offered).sections).toHaveLength(1);
-		expect(saysNothing(apart, compassApart(now, offered), tagsApart(now, offered))).toBe(false);
+		expect(
+			saysNothing(
+				apart,
+				compassApart(now, offered),
+				tagsApart(now, offered),
+				looksApart(now, offered)
+			)
+		).toBe(false);
 	});
 
 	it('shows a section a compass went from, though it pointed nowhere', () => {
@@ -207,7 +225,14 @@ describe('where an offer would have the note point', () => {
 		const apart = offerDifference({ ref: NOTE }, now, offered);
 
 		expect(sectionsApart(now, offered).sections).toHaveLength(1);
-		expect(saysNothing(apart, compassApart(now, offered), tagsApart(now, offered))).toBe(false);
+		expect(
+			saysNothing(
+				apart,
+				compassApart(now, offered),
+				tagsApart(now, offered),
+				looksApart(now, offered)
+			)
+		).toBe(false);
 	});
 
 	it('shows both sections where a compass moved from one to the other', () => {
@@ -238,5 +263,77 @@ describe('where an offer would have the note point', () => {
 
 		expect(sectionsApart(now, offered).sections).toHaveLength(1);
 		expect(compassApart(now, offered)).toHaveLength(1);
+	});
+	it('leaves every line alone where the offer names no look at all', () => {
+		const now: WritingSide = {
+			...side('The opening', [[ONE, 'As it stands']]),
+			edges: [{ to: TWO, label: 'follows from' }]
+		};
+		const offered = side('The opening', [[ONE, 'As it stands']]);
+		const apart = offerDifference({ ref: NOTE }, now, offered);
+
+		expect(looksApart(now, offered)).toEqual([]);
+		expect(
+			saysNothing(
+				apart,
+				compassApart(now, offered),
+				tagsApart(now, offered),
+				looksApart(now, offered)
+			)
+		).toBe(true);
+	});
+
+	it('names the line a look arrived on, and the one a look went from', () => {
+		const now: WritingSide = {
+			...side('', [[ONE, 'As it stands']]),
+			edges: [{ to: TWO, label: 'follows from' }]
+		};
+		const offered: WritingSide = {
+			...side('', [[ONE, 'As it stands']]),
+			edges: [{ to: THREE, direction: 'to', stroke: 'dashed' }]
+		};
+
+		expect(looksApart(now, offered)).toEqual([
+			{ to: THREE, look: { to: THREE, direction: 'to', stroke: 'dashed' } },
+			{ to: TWO }
+		]);
+	});
+
+	it('says nothing about a line the two sides draw the same way', () => {
+		const looks = { edges: [{ to: TWO, label: 'answers', direction: 'both' as const }] };
+		const now: WritingSide = { ...side('', [[ONE, 'As it stands']]), ...looks };
+		const offered: WritingSide = { ...side('', [[ONE, 'As it stands']]), ...looks };
+
+		expect(looksApart(now, offered)).toEqual([]);
+	});
+
+	it('is not nothing where a look is the only thing the offer changes', () => {
+		const now: WritingSide = {
+			...side('The opening', [[ONE, 'As it stands']]),
+			edges: [{ to: TWO, label: 'follows from' }]
+		};
+		const offered: WritingSide = {
+			...side('The opening', [[ONE, 'As it stands']]),
+			edges: [{ to: TWO, label: 'objects to' }]
+		};
+		const apart = offerDifference({ ref: NOTE }, now, offered);
+
+		expect(
+			saysNothing(
+				apart,
+				compassApart(now, offered),
+				tagsApart(now, offered),
+				looksApart(now, offered)
+			)
+		).toBe(false);
+	});
+
+	it('reads a look as the words on it, the end an arrowhead sits at and the break', () => {
+		expect(lookInWords({ to: TWO, label: 'follows from', direction: 'to', stroke: 'dashed' })).toBe(
+			'\u201cfollows from\u201d, \u2192, dashed'
+		);
+		expect(lookInWords({ to: TWO, direction: 'from' })).toBe('\u2190');
+		expect(lookInWords(undefined)).toBe('no look');
+		expect(lookInWords({ to: TWO })).toBe('no look');
 	});
 });

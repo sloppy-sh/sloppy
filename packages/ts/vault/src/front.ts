@@ -14,7 +14,23 @@ export type FrontLeaf = string | number | readonly string[];
 /** A field written as a block of its own, in the order its fields are given. */
 export type FrontBlock = ReadonlyMap<string, FrontLeaf>;
 
-export type FrontValue = string | string[] | FrontBlock;
+/** A field written as a list of blocks — one entry per group of lines, each
+ *  entry's first field on the `-` line. The entries keep the order given. */
+export type FrontEntries = readonly FrontBlock[];
+
+/** One item of a list, held as it was typed and — where it opens `name: value`
+ *  — as the fields under its dash. Both readings stand until a caller takes
+ *  one, so what one item is read as costs the items beside it nothing. */
+export interface FrontItem {
+  plain: string;
+  fields?: FrontBlock;
+}
+
+/** What a field is written as. */
+export type FrontWritten = string | string[] | FrontBlock | FrontEntries;
+
+/** What a field reads back as. */
+export type FrontValue = string | FrontBlock | readonly FrontItem[];
 
 /** Text that reads back as a number rather than as itself. */
 const NUMERIC = /^-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$/;
@@ -50,14 +66,23 @@ function readLeaf(value: string): string | number {
   return NUMERIC.test(value) ? Number(value) : readScalar(value);
 }
 
-function isBlock(value: FrontValue): value is FrontBlock {
+function isBlock(value: FrontValue | FrontWritten): value is FrontBlock {
   return value instanceof Map;
+}
+
+function isEntries(value: FrontWritten): value is FrontEntries {
+  return Array.isArray(value) && value.every(isBlock);
+}
+
+/** A line indented under the field above it, whatever it reads as. */
+function under(line: string): boolean {
+  return line.startsWith("  ");
 }
 
 /** The fenced block, in the order the fields are given. A field with nothing in
  *  it is left out, which is what its absence means when it is read back. */
 export function writeFront(
-  fields: readonly (readonly [string, FrontValue | undefined])[],
+  fields: readonly (readonly [string, FrontWritten | undefined])[],
 ): string {
   const lines = [FENCE];
   for (const [key, value] of fields) {
@@ -73,11 +98,34 @@ export function writeFront(
       continue;
     }
     if (value.length === 0) continue;
+    if (isEntries(value)) {
+      const written = value.flatMap(entryLines);
+      if (written.length === 0) continue;
+      lines.push(`${key}:`, ...written);
+      continue;
+    }
     lines.push(`${key}:`);
-    for (const held of value) lines.push(`  - ${scalar(held)}`);
+    for (const held of value as readonly string[]) {
+      lines.push(`  - ${scalar(held)}`);
+    }
   }
   lines.push(FENCE);
   return lines.join("\n");
+}
+
+/** One entry of a list of blocks: its first field opens the entry beside the
+ *  dash and the rest sit under it. An entry with nothing in it writes nothing. */
+function entryLines(entry: FrontBlock): string[] {
+  const lines: string[] = [];
+  for (const [name, held] of entry) {
+    const written = typeof held === "number" ? `${held}` : leaf(String(held));
+    lines.push(
+      lines.length === 0
+        ? `  - ${name}: ${written}`
+        : `    ${name}: ${written}`,
+    );
+  }
+  return lines;
 }
 
 function blockLines(name: string, held: FrontLeaf): string[] {
@@ -113,18 +161,22 @@ export function splitNoteFile(text: string): NoteFile {
 }
 
 /** A field with nothing after its colon opens either a list or a block; which
- *  one it is, is what the first line under it says. */
+ *  one it is, is what the first line under it says. A line under it that reads
+ *  as neither belongs to the item or block it sits under, so an item a hand got
+ *  wrong costs that item and not the field. */
 function readFront(lines: readonly string[]): Map<string, FrontValue> {
   const front = new Map<string, FrontValue>();
   let opened: string | null = null;
-  let list: string[] | null = null;
   let block: Map<string, FrontLeaf> | null = null;
   let inner: string[] | null = null;
+  let items: FrontItem[] | null = null;
+  let fields: Map<string, FrontLeaf> | null = null;
   const close = (): void => {
     opened = null;
-    list = null;
     block = null;
     inner = null;
+    items = null;
+    fields = null;
   };
   for (const line of lines) {
     if (opened !== null) {
@@ -133,31 +185,42 @@ function readFront(lines: readonly string[]): Map<string, FrontValue> {
         inner.push(readScalar(deep[1]));
         continue;
       }
-      const item = /^ {2}- (.*)$/.exec(line);
-      if (item && !block) {
-        if (!list) {
-          list = [];
-          front.set(opened, list);
-        }
-        list.push(readScalar(item[1]));
+      const within = /^ {4}([A-Za-z0-9_]+): (.*)$/.exec(line);
+      if (within && fields) {
+        fields.set(within[1], readLeaf(within[2]));
         continue;
       }
-      const under = /^ {2}([A-Za-z0-9_]+):(?: (.*))?$/.exec(line);
-      if (under && !list) {
+      const item = /^ {2}- (.*)$/.exec(line);
+      if (item && !block) {
+        if (!items) {
+          items = [];
+          front.set(opened, items);
+        }
+        const opens = /^([A-Za-z0-9_]+): (.*)$/.exec(item[1]);
+        fields = opens ? new Map([[opens[1], readLeaf(opens[2])]]) : null;
+        items.push({
+          plain: readScalar(item[1]),
+          ...(fields ? { fields } : {}),
+        });
+        continue;
+      }
+      const field = /^ {2}([A-Za-z0-9_]+):(?: (.*))?$/.exec(line);
+      if (field && !items) {
         if (!block) {
           block = new Map();
           front.set(opened, block);
         }
-        const said = under[2];
+        const said = field[2];
         if (said === undefined) {
           inner = [];
-          block.set(under[1], inner);
+          block.set(field[1], inner);
         } else {
           inner = null;
-          block.set(under[1], readLeaf(said));
+          block.set(field[1], readLeaf(said));
         }
         continue;
       }
+      if (under(line)) continue;
     }
     close();
     const field = /^([A-Za-z0-9_]+):(?: (.*))?$/.exec(line);
@@ -172,6 +235,10 @@ function readFront(lines: readonly string[]): Map<string, FrontValue> {
   return front;
 }
 
+function itemsOf(held: FrontValue | undefined): readonly FrontItem[] {
+  return typeof held === "object" && !isBlock(held) ? held : [];
+}
+
 export function frontString(
   front: ReadonlyMap<string, FrontValue>,
   key: string,
@@ -184,8 +251,18 @@ export function frontList(
   front: ReadonlyMap<string, FrontValue>,
   key: string,
 ): string[] {
-  const held = front.get(key);
-  return Array.isArray(held) ? held : [];
+  return itemsOf(front.get(key)).map((item) => item.plain);
+}
+
+/** The `name: value` groups under a list, for a caller that parses each one
+ *  into something. An item that opens no field is not one of them. */
+export function frontEntries(
+  front: ReadonlyMap<string, FrontValue>,
+  key: string,
+): Record<string, FrontLeaf>[] {
+  return itemsOf(front.get(key)).flatMap((item) =>
+    item.fields ? [Object.fromEntries(item.fields)] : [],
+  );
 }
 
 /** The fields under a block, for a caller that parses them into something. */

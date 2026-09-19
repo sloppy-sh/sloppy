@@ -380,6 +380,14 @@ describe("a graph handed over as an archive", () => {
     })) as NodeView;
     second = (await ok("PATCH", `/nodes/${at(second.ref)}`, ada, {
       links: [first.ref],
+      edges: [
+        {
+          to: first.ref,
+          label: "follows from",
+          direction: "to",
+          stroke: "dashed",
+        },
+      ],
     })) as NodeView;
     // Renaming a label leaves the one it had leading to the same note, which is
     // the alias an archive has to carry.
@@ -508,6 +516,17 @@ describe("a graph handed over as an archive", () => {
       expect(under.address).toBe("1b");
       expect(under.aliases).toEqual([wasAt]);
       expect(under.links).toEqual([root.ref]);
+      // A look is the author's writing, so it arrives with the note and names
+      // the line under the identity that took the graph in.
+      expect(under.edges).toEqual([
+        {
+          to: root.ref,
+          label: "follows from",
+          direction: "to",
+          stroke: "dashed",
+        },
+      ]);
+      expect(root.edges).toBeUndefined();
       expect(under.checked).toBe(COMMIT);
       expect(root.checked).toBeUndefined();
 

@@ -18,6 +18,7 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
+import { EdgeLookSchema } from "./edge.js";
 import { unnamedGraphRef } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
@@ -197,6 +198,14 @@ export const PublishedNodeSchema = z.object({
   /** Only targets the same author had published when this version was made. A
    *  link to a note nobody published is dropped rather than named. */
   links: z.array(OwnedRefSchema),
+  /**
+   * The looks its author set on the lines out of it. Held to the same bound
+   * `links` is — only looks whose `to` the same author had published are
+   * carried, because every ref on this shape names a note the caller may read.
+   * Absent is a note with none, which is every version published before a look
+   * could travel.
+   */
+  edges: z.array(EdgeLookSchema).optional(),
   created_at: TimestampSchema,
   updated_at: TimestampSchema,
   /**
