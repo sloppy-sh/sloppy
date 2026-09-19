@@ -113,8 +113,10 @@
 		publishedFrom?: ReadonlySet<OwnedRef>;
 		onEnter: (ref: OwnedRef) => void;
 		onToggle: (ref: OwnedRef) => void;
-		/** Rejects with an `Error` whose `message` is already fit to show. */
-		onOpen: (title: string) => Promise<void>;
+		/** Start a graph by naming it here. Rejects with an `Error` whose
+		 *  `message` is already fit to show. Absent where this app has nowhere to
+		 *  put a new one, and nothing about starting one is offered. */
+		onOpen?: (title: string) => Promise<void>;
 		/** Read the graph kept in that folder from now on. Absent leaves every
 		 *  row a graph to move into rather than a folder to open. */
 		onOpenFolder?: (folder: string) => Promise<void>;
@@ -235,7 +237,7 @@
 
 	async function openGraph(): Promise<void> {
 		const title = opening.trim();
-		if (title === '') return;
+		if (title === '' || !onOpen) return;
 		if (await act(() => onOpen(title))) {
 			opening = '';
 			open = false;
@@ -519,7 +521,7 @@
 					</div>
 				</section>
 			{/if}
-		{:else}
+		{:else if onOpen}
 			<section class="space-y-2 border-t border-border pt-4">
 				<h3 class="text-sm font-medium">A new graph</h3>
 				<div class="flex gap-2">

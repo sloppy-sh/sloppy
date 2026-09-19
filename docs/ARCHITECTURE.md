@@ -730,7 +730,9 @@ Signing in and out is not offered while one of these graphs is open, so the iden
 reader writes as is settled when they open it: the signed-in account's DID where somebody is
 signed in, and otherwise a device identity minted into the browser's own storage — the
 graph's owner block is where a reader is told which of the two they are writing as. Closing
-the graph hands the sign-in control back.
+the graph hands the sign-in control back. Starting a second graph and bringing one in from
+an archive are absent for the same reason: both want a folder to keep the new graph in, and
+a tab can name none — `GraphsStore.startsGraphs` is the one answer every surface asks.
 
 **A browser without the directory picker sees only the archive door.** Feature-detected on
 `showDirectoryPicker`, never sniffed from a user agent, so a browser that gains it gains the

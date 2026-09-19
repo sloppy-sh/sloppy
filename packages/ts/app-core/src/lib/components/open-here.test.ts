@@ -98,10 +98,10 @@ describe('before a graph on this device is open', () => {
 		expect(labels()).toEqual(['Open a folder on this device', 'Open an archive']);
 	});
 
-	it('offers the archive alone where it cannot, and says so', () => {
+	it('offers the archive alone where it cannot, with nothing said about the other', () => {
 		show();
 		expect(labels()).toEqual(['Open an archive']);
-		expect(screen()).toContain('This one can open an archive.');
+		expect(screen()).not.toContain('folder');
 	});
 
 	it('says the one consequence once', () => {
@@ -143,6 +143,7 @@ describe('while one is open', () => {
 
 		expect(screen()).toContain("Keeping versions of a folder as you go is the desktop app's to do");
 		expect(screen()).toContain('are not offered while this graph is open');
+		expect(screen()).toContain('Starting another graph and bringing one in from a file wait');
 		expect(screen()).toContain('Signing out waits until you close this graph');
 	});
 

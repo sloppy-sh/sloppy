@@ -99,6 +99,19 @@ describe('the folder door', () => {
 		expect(pictureSrc(elsewhere)).toBe(elsewhere);
 	});
 
+	// A tab has no way to name a second folder, so a graph it cannot put
+	// anywhere is one it never offers to start.
+	it('leaves starting a graph and bringing one in to the app it was served from', async () => {
+		picksUp(await aGraphFolder());
+		expect(graphs.startsGraphs).toBe(true);
+
+		await graphHere.openFolder();
+		expect(graphs.startsGraphs).toBe(false);
+
+		await graphHere.close();
+		expect(graphs.startsGraphs).toBe(true);
+	});
+
 	it('puts the graph this app is served from back when it is closed', async () => {
 		picksUp(await aGraphFolder());
 		await graphHere.openFolder();
@@ -109,6 +122,18 @@ describe('the folder door', () => {
 		expect(runtime.vault()).toBeUndefined();
 		expect((await api.listGraphs()).map((one) => one.title)).toEqual(['My graph']);
 		expect(pictureSrc('https://elsewhere.test/one.png')).toContain('/proxy?url=');
+	});
+
+	it('puts back whatever was serving the app rather than the hosted one', async () => {
+		fake = useFakeApi('self_hosted');
+		fake.on('GET /auth/me', () => VIEWER);
+		await session.refresh();
+		picksUp(await aGraphFolder());
+		await graphHere.openFolder();
+		expect(runtime.mode()).toBe('local');
+
+		await graphHere.close();
+		expect(runtime.mode()).toBe('self_hosted');
 	});
 
 	// Opening one is a door a person walks back out of, so what they had up on

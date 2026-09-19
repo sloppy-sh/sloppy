@@ -98,15 +98,20 @@ function nothingThere(reason: unknown): boolean {
 	return reason instanceof DOMException && reason.name === 'NotFoundError';
 }
 
+/** Whether a page loads this file by address rather than reading its bytes,
+ *  which is what {@link DirectoryFiles.url} answers for. */
+function loadedByAddress(path: string): boolean {
+	return path.startsWith(`${MEDIA_DIR}/`) || path.startsWith(`${EMOJI_DIR}/`);
+}
+
 /**
  * {@link Files} over a folder a person picked in their browser. Read and
  * written in place: nothing is copied anywhere, and nothing leaves the device.
  *
  * {@link Files.url} is answered from addresses this holds for the files a page
- * LOADS rather than reads — pictures and stickers. They cost no memory: an
- * object URL over a file handle is the browser reading the disk, not a copy of
- * it. {@link warm} takes up the ones already in the folder; a file read or
- * written here is taken up as it goes by.
+ * LOADS rather than reads — pictures and stickers. {@link warm} takes up the
+ * ones already in the folder; one read or written here is taken up as it goes
+ * by. {@link release} must be called when the folder is closed.
  */
 export class DirectoryFiles implements Files {
 	/** `root` is a path from the folder somebody picked, and the top of it is
@@ -160,7 +165,7 @@ export class DirectoryFiles implements Files {
 		const file = await this.fileAt(at, false);
 		if (!file) return undefined;
 		const held = await file.getFile();
-		this.hold(at, held);
+		if (loadedByAddress(path)) this.hold(at, held);
 		return new Uint8Array(await held.arrayBuffer());
 	}
 
@@ -174,7 +179,7 @@ export class DirectoryFiles implements Files {
 		} finally {
 			await writing.close();
 		}
-		this.hold(at, await file.getFile());
+		if (loadedByAddress(path)) this.hold(at, await file.getFile());
 	}
 
 	async list(path: string): Promise<string[]> {
@@ -251,8 +256,10 @@ export class DirectoryFiles implements Files {
 		this.loadable.clear();
 	}
 
+	/** A picture keeps the address it was first given: minting a second would
+	 *  revoke the one an `<img>` on the page is showing. */
 	private hold(at: string, file: Blob): void {
-		this.letGo(at);
+		if (this.loadable.has(at)) return;
 		this.loadable.set(at, URL.createObjectURL(file));
 	}
 

@@ -70,7 +70,8 @@
 		</p>
 		<p class="text-sm text-muted-foreground">
 			Publishing a branch, reading somebody else's and answering a note need a Sloppy other people
-			can reach, so they are not offered while this graph is open.
+			can reach, so they are not offered while this graph is open. Starting another graph and
+			bringing one in from a file wait until you close it.
 			{#if open.how === 'folder'}
 				Keeping versions of a folder as you go is the desktop app's to do.
 			{/if}
@@ -117,8 +118,7 @@
 		<h2 class="text-sm font-medium">A graph kept on this device</h2>
 	{/if}
 	<p class="text-sm text-muted-foreground">
-		Open a graph you keep on this device and read and write it here. Nothing in it is sent anywhere
-		— it stays on this device.
+		Open a graph you keep on this device and read and write it here. Nothing in it is sent anywhere.
 	</p>
 	<div class="flex flex-col gap-2 sm:flex-row">
 		{#if graphHere.opensAFolder}
@@ -144,11 +144,6 @@
 			{working === 'archive' ? 'One moment…' : 'Open an archive'}
 		</Button>
 	</div>
-	{#if !graphHere.opensAFolder}
-		<p class="text-xs text-muted-foreground">
-			Opening a folder needs a browser that can hand one over. This one can open an archive.
-		</p>
-	{/if}
 {/if}
 
 {#if problem}

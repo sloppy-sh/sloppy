@@ -2191,9 +2191,11 @@
 							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
 								Number it yourself
 							</Button>
-							<Button variant="ghost" class="h-11" onclick={() => chooser?.click()}>
-								Import a graph
-							</Button>
+							{#if graphs.startsGraphs}
+								<Button variant="ghost" class="h-11" onclick={() => chooser?.click()}>
+									Import a graph
+								</Button>
+							{/if}
 							<Button variant="ghost" class="h-11" onclick={() => (switching = true)}>
 								Your graphs
 							</Button>
@@ -2437,10 +2439,12 @@
 									<Download class="size-4 text-muted-foreground" />
 									Export this graph
 								</DropdownMenu.Item>
-								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => chooser?.click()}>
-									<Upload class="size-4 text-muted-foreground" />
-									Import a graph
-								</DropdownMenu.Item>
+								{#if graphs.startsGraphs}
+									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => chooser?.click()}>
+										<Upload class="size-4 text-muted-foreground" />
+										Import a graph
+									</DropdownMenu.Item>
+								{/if}
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
 						{#if walkingNow}
@@ -2641,7 +2645,9 @@
 		graphs.toggleOnCanvas(ref);
 		closeUndrawn();
 	}}
-	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
+	onOpen={graphs.startsGraphs
+		? (title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')
+		: undefined}
 	onOpenFolder={graphs.keepsFolders
 		? (folder) =>
 				inTheDevicesWords(async () => {

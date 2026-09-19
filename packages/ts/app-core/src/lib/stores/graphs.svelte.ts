@@ -56,14 +56,13 @@ const IDLE: GraphsState = { loading: false, loaded: false, failed: false };
 
 const LISTING = 'listing';
 
-/** Kept under the folder the listing was read out of, since a graph opened on
- *  this device and the one a Sloppy serves are two listings and neither one's
- *  rows are the other's. */
+/** Nothing is kept for a folder standing alongside the graphs a Sloppy serves:
+ *  its rows are that one folder's and would be read back as the Sloppy's, and
+ *  the folder is in hand by the time anything asks. */
 function kept(): DeviceArea | null {
 	const did = session.viewer?.did;
-	if (!did) return null;
-	const folder = runtime.vault()?.folder();
-	return deviceStore.area(did, folder === undefined ? 'graphs' : `graphs ${folder}`);
+	if (!did || runtime.vault()?.alongside) return null;
+	return deviceStore.area(did, 'graphs');
 }
 
 class GraphsStore {
@@ -211,6 +210,14 @@ class GraphsStore {
 	 *  forgotten. */
 	get keepsFolders(): boolean {
 		return runtime.vault()?.known !== undefined;
+	}
+
+	/** Whether a graph that is not open yet can be put on this device at all:
+	 *  started by naming it, or brought in from a file. Both want somewhere to
+	 *  keep it, and a folder opened in a browser tab is the only one there. */
+	get startsGraphs(): boolean {
+		const vault = runtime.vault();
+		return vault === undefined || vault.known !== undefined;
 	}
 
 	/** Whether a copy of a graph kept somewhere else can be brought onto this

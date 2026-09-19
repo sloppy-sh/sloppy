@@ -22,7 +22,7 @@ import {
 	rememberFolder,
 	stillAllowed
 } from './browser-files.js';
-import { updateRuntime } from './runtime.js';
+import { type DeploymentMode, runtime, updateRuntime } from './runtime.js';
 import { openHere, saveHere } from './save-file.js';
 import { serverMessage } from './stores/errors.js';
 import { graphs } from './stores/graphs.svelte.js';
@@ -56,6 +56,9 @@ class GraphHereStore {
 	#offered = $state(false);
 	#open = $state<OpenedHere | null>(null);
 	#folder: DirectoryFiles | undefined;
+	/** What was serving the app before a graph on this device went in front of
+	 *  it, since a shell that is not the hosted one says so itself. */
+	#servedMode: DeploymentMode = 'hosted';
 
 	/** Whether this app can open a graph kept on this device at all. The shell
 	 *  says so: a webview that already serves one has nothing to offer here. */
@@ -141,7 +144,7 @@ class GraphHereStore {
 		this.#folder?.release();
 		this.#folder = undefined;
 		updateRuntime({
-			mode: () => 'hosted',
+			mode: () => this.#servedMode,
 			createApi: undefined,
 			assetSrc: undefined,
 			vault: undefined
@@ -165,6 +168,7 @@ class GraphHereStore {
 	}
 
 	private async serve(opened: Pick<OpenedHere, 'how' | 'name'>, files: Files): Promise<void> {
+		if (this.#open === null) this.#servedMode = runtime.mode();
 		if (this.#folder && this.#folder !== files) this.#folder.release();
 		this.#folder = files instanceof DirectoryFiles ? files : undefined;
 		// Who is signed in here settles before the swap: after it, asking reaches
@@ -192,8 +196,7 @@ class GraphHereStore {
 		session.servedFromElsewhere();
 		this.#open = { ...opened, ownIdentity: signedIn === undefined };
 		letGoOfTheGraphRead();
-		// Who is writing here is the graph on this device's answer now, and an
-		// account is not what a person needs to read one.
+		// Who is writing here is the graph on this device's answer now.
 		await session.refresh();
 		await graphs.load();
 	}
