@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { initRuntime, session, trackKeyboard } from '@sloppy/app-core';
 	import { graphHere } from '@sloppy/app-core/graph-here';
+	import OpenHere from '@sloppy/app-core/components/open-here';
 	import Frame from '@sloppy/app-core/pages/frame';
 	import { onMount } from 'svelte';
 
@@ -24,9 +25,19 @@
 		const stopKeyboard = trackKeyboard();
 		// Nobody is asked for a folder on a launch: one this browser is still
 		// allowed to read opens, and anything else waits to be asked for.
-		void graphHere.reopen().catch(() => {});
+		void graphHere.boot();
 		return stopKeyboard;
 	});
 </script>
 
-<Frame>{@render children()}</Frame>
+{#if !graphHere.ready}
+	<div class="min-h-dvh"></div>
+{:else if graphHere.waiting}
+	<main class="min-h-dvh px-5 pt-[max(4rem,calc(env(safe-area-inset-top)+3rem))] sm:px-8">
+		<div class="mx-auto w-full max-w-md space-y-4">
+			<OpenHere />
+		</div>
+	</main>
+{:else}
+	<Frame>{@render children()}</Frame>
+{/if}

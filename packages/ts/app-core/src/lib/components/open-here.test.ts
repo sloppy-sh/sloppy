@@ -7,6 +7,7 @@ import { pack } from '@sloppy/vault';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api } from '../api.js';
+import { type FolderHandle, rememberFolder } from '../browser-files.js';
 import { fakeFolder, type Held } from '../browser-files.test-support.js';
 import { graphHere } from '../graph-here.svelte.js';
 import { initRuntime } from '../runtime.js';
@@ -99,6 +100,8 @@ afterEach(async () => {
 	mounted = undefined;
 	target.remove();
 	if (graphHere.open) await graphHere.close();
+	graphHere.notNow();
+	await rememberFolder(null);
 	Reflect.deleteProperty(globalThis, 'showDirectoryPicker');
 	session.clear();
 });
@@ -132,6 +135,57 @@ describe('before a graph on this device is open', () => {
 		press('Open an archive');
 		await settle();
 		expect(screen()).toContain("isn't a Sloppy graph");
+	});
+});
+
+// A browser that kept the folder but not the go-ahead has to be pressed before
+// it hands the folder over, and until it is there is no graph here to read.
+describe('a folder this browser must be asked about again', () => {
+	async function waitingAtTheDoor(answer: PermissionState): Promise<void> {
+		const folder = fakeFolder(await aGraphOnTheDevice('The garden'), '', 'garden');
+		await rememberFolder(
+			Object.assign(folder, {
+				queryPermission: async (): Promise<PermissionState> => 'prompt',
+				requestPermission: async (): Promise<PermissionState> => answer
+			}) as FolderHandle
+		);
+		await graphHere.boot();
+	}
+
+	it('offers to open it again, by the name the person knows it as', async () => {
+		await waitingAtTheDoor('granted');
+		show();
+
+		expect(screen()).toContain('garden was open here last');
+		expect(labels()).toContain('Open it again');
+
+		press('Open it again');
+		await settle();
+
+		expect(graphHere.open?.name).toBe('garden');
+		expect(screen()).toContain('garden is open');
+	});
+
+	it('says what a folder it is refused needs', async () => {
+		await waitingAtTheDoor('denied');
+		show();
+
+		press('Open it again');
+		await settle();
+
+		expect(screen()).toContain('needs your go-ahead');
+		expect(graphHere.open).toBeNull();
+	});
+
+	it('leaves it shut for somebody reading the graph this app is served from', async () => {
+		await waitingAtTheDoor('granted');
+		show();
+
+		press('Not now');
+		await settle();
+
+		expect(screen()).not.toContain('was open here last');
+		expect(graphHere.open).toBeNull();
 	});
 });
 
