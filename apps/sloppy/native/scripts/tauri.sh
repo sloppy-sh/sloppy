@@ -42,8 +42,14 @@ if [[ "$PLATFORM" == "ios" ]]; then
 fi
 
 # ── Local mode ───────────────────────────────────────────────────────────────
+# A native build opens a folder on the device unless somebody says otherwise, so
+# SLOPPY_LOCAL_MODE=false is what asks for one that talks to a server.
 SLOPPY_LOCAL_MODE="${SLOPPY_LOCAL_MODE:-$(read_env SLOPPY_LOCAL_MODE)}"
-if is_true "$SLOPPY_LOCAL_MODE"; then LOCAL_MODE=true; else LOCAL_MODE=false; fi
+if [[ -z "$SLOPPY_LOCAL_MODE" ]] || is_true "$SLOPPY_LOCAL_MODE"; then
+	LOCAL_MODE=true
+else
+	LOCAL_MODE=false
+fi
 
 export PUBLIC_ENABLE_LOCAL_MODE="$LOCAL_MODE"
 

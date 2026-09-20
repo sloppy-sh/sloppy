@@ -531,7 +531,9 @@ serve a whole graph with no API at all**, and that is the paragraphs immediately
 #### A graph off the device
 
 **The vault is the local store.** There is no database in the native app: `SLOPPY_LOCAL_MODE`
-decides whether the shell opens a folder on the device, and the folder is § "A graph on
+decides whether the shell opens a folder on the device, and a native build does unless that
+variable says `false` — the app is the local one, and a build that talks to a server is the
+exception somebody asks for. The folder is § "A graph on
 disk" exactly as an archive holds it, read and written by the one `@sloppy/vault`. The
 shell carries file access and nothing else; `@sloppy/local`'s `LocalApi` is the
 `SloppyApi` implementation over it, so every page, store and component reaches a local
