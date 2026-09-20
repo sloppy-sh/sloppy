@@ -43,9 +43,9 @@ export function deviceFolders(device: Files = tauriFiles()): FoldersHere {
 		},
 		remembered: async () => {
 			const root = await rememberedVault(device);
+			if (root === undefined) return undefined;
 			// A folder that has been moved or emptied since is not one to start a
 			// graph in on a launch nobody asked for.
-			if (root === undefined) return undefined;
 			if (!(await holdsAGraph(device.at(root)).catch(() => false))) return undefined;
 			return new FolderOnThisDevice(device, root);
 		},

@@ -69,8 +69,6 @@ describe('the folder this device was told to open again', () => {
 		expect(await deviceFolders(aDevice()).remembered()).toBeUndefined();
 	});
 
-	// A folder that has been moved or emptied since would otherwise have a graph
-	// started in it on a launch nobody asked for.
 	it('is nothing where the folder holds no graph any more', async () => {
 		const device = aDevice();
 		await rememberVault(device, GARDEN);

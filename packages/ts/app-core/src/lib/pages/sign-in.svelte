@@ -138,7 +138,7 @@
 			</Button>
 		</form>
 
-		{#if graphHere.offered}
+		{#if graphHere.offered && !graphHere.open}
 			<div class="flex items-center gap-3" aria-hidden="true">
 				<span class="h-px flex-1 bg-border"></span>
 				<span class="text-xs text-muted-foreground">or</span>

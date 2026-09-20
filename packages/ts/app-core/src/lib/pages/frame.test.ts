@@ -1,5 +1,8 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { rememberFolder } from '../browser-files.js';
+import { aGraphFolder, fakeFolder } from '../browser-files.test-support.js';
+import { graphHere } from '../graph-here.svelte.js';
 import { initRuntime } from '../runtime.js';
 import { deleted } from '../stores/deleted.svelte.js';
 import {
@@ -105,12 +108,24 @@ beforeEach(() => {
 	document.body.append(target);
 });
 
-afterEach(() => {
+afterEach(async () => {
 	if (mounted) unmount(mounted);
 	mounted = undefined;
 	target.remove();
+	if (graphHere.open) await graphHere.close();
+	await rememberFolder(null);
+	Reflect.deleteProperty(globalThis, 'showDirectoryPicker');
 	running('hosted');
 });
+
+/** A folder this browser would hand over, as one somebody picks. */
+function picksUp(held: Awaited<ReturnType<typeof aGraphFolder>>, named = 'garden'): void {
+	Object.defineProperty(globalThis, 'showDirectoryPicker', {
+		configurable: true,
+		writable: true,
+		value: async () => fakeFolder(held, '', named)
+	});
+}
 
 /** Which of the deployments the app is running as, for the mount that follows. */
 function running(mode: 'hosted' | 'local'): void {
@@ -309,6 +324,25 @@ describe('the frame around every page', () => {
 		await show();
 
 		expect(where.gone).toEqual(['/sign-in']);
+	});
+
+	// The door beside the account on the sign-in screen: opening a graph kept
+	// here is the way in, so the page asking for an account is one nobody is
+	// left standing on.
+	it('takes somebody who opened a graph kept on this device off the sign-in page', async () => {
+		api.on('GET /auth/me', () => undefined);
+		where.url = new URL('http://app.test/sign-in');
+		await show();
+		expect(where.gone).toEqual([]);
+
+		graphHere.offerHere();
+		picksUp(await aGraphFolder());
+		await graphHere.openFolder();
+		flushSync();
+		await settle();
+
+		expect(graphHere.open?.name).toBe('garden');
+		expect(where.gone).toEqual(['/']);
 	});
 
 	it('shows the page once it can be asked again', async () => {

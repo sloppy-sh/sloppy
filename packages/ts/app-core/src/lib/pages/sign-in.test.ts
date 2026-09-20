@@ -152,11 +152,13 @@ describe('the sign-in page', () => {
 		});
 
 		// The window stays put while the consent page is somewhere else, so a
-		// person who comes back without finishing must be able to try again.
+		// person who comes back without finishing must be able to try again. A
+		// shell backgrounded by the system browser answers no sooner than that
+		// return, which is why the doors cannot wait on it.
 		it('leaves the doors open once the consent page is somewhere else', async () => {
 			initRuntime({
 				apiHost: () => 'http://api.test',
-				openExternal: () => {},
+				openExternal: () => new Promise(() => {}),
 				signInRedirect: () => 'sloppy://auth/callback'
 			});
 			await show();
