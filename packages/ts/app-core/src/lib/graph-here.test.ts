@@ -1,13 +1,15 @@
 // A graph kept on this device, opened in a browser tab: the app reads and
 // writes it where it is, and nothing about it reaches the API —
-// docs/ARCHITECTURE.md § "A graph on this device, in the browser".
+// docs/ARCHITECTURE.md § "A graph on this device, beside the one a Sloppy serves".
 
+import { MemoryFiles } from '@sloppy/local';
 import type { GraphView } from '@sloppy/types';
 import { pack, unpack } from '@sloppy/vault';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api } from './api.js';
 import { type FolderHandle, rememberFolder } from './browser-files.js';
 import { aGraphFolder, fakeFolder, type Held } from './browser-files.test-support.js';
+import type { FolderHere, FoldersHere } from './folders-here.js';
 import { graphHere } from './graph-here.svelte.js';
 import { initRuntime, runtime } from './runtime.js';
 import { pictureSrc } from './asset-src.js';
@@ -418,5 +420,89 @@ describe('the archive door', () => {
 		await expect(graphHere.openArchive()).rejects.toThrow("isn't a Sloppy graph");
 		expect(graphHere.open).toBeNull();
 		expect(runtime.mode()).toBe('hosted');
+	});
+});
+
+// A shell that is not a browser tab hands its own way of reaching a folder to
+// `offerHere`, and everything after that is this one store.
+describe('a shell that reaches a folder its own way', () => {
+	const ROOT = '/Users/me/garden';
+
+	/** The device as a shell outside a browser reaches it: a folder is a path it
+	 *  names, nothing is ever asked twice, and a folder holding no graph has one
+	 *  started in it. */
+	function aDevice(store: Map<string, Uint8Array>): FoldersHere & { written: string | null } {
+		const device = new MemoryFiles({ store, folder: ROOT, data: '/device-data' });
+		const one = (root: string): FolderHere => ({
+			name: root,
+			allowed: async () => true,
+			open: async () => device.at(root),
+			remember: async () => {
+				folders.written = root;
+			},
+			release: () => {}
+		});
+		const folders = {
+			written: null as string | null,
+			opens: true,
+			starts: true,
+			ask: async () => one(ROOT),
+			remembered: async () => (folders.written === null ? undefined : one(folders.written)),
+			forget: async () => {
+				folders.written = null;
+			}
+		};
+		return folders;
+	}
+
+	it('says a folder with nothing in it becomes a graph, where a tab says it does not', () => {
+		expect(graphHere.startsAGraph).toBe(false);
+
+		graphHere.offerHere(aDevice(new Map()));
+
+		expect(graphHere.startsAGraph).toBe(true);
+	});
+
+	it('starts a graph in the folder somebody names and puts them in it', async () => {
+		const store = new Map<string, Uint8Array>();
+		graphHere.offerHere(aDevice(store));
+
+		expect(await graphHere.openFolder()).toBe(true);
+
+		expect(runtime.mode()).toBe('local');
+		expect(graphHere.open).toEqual({ how: 'folder', name: ROOT, ownIdentity: false });
+		expect(await api.listGraphs()).toHaveLength(1);
+		expect([...store.keys()].some((path) => path.startsWith(`${ROOT}/`))).toBe(true);
+	});
+
+	it('serves the folder it was told to open again before any page reads the api', async () => {
+		const store = new Map<string, Uint8Array>();
+		const folders = aDevice(store);
+		graphHere.offerHere(folders);
+		await graphHere.openFolder();
+		const title = (await api.listGraphs())[0].title;
+		await graphHere.close();
+		expect(runtime.mode()).toBe('hosted');
+
+		folders.written = ROOT;
+		const booting = graphHere.boot();
+		expect(graphHere.ready).toBe(false);
+		await booting;
+
+		expect(graphHere.open).toEqual({ how: 'folder', name: ROOT, ownIdentity: false });
+		const asked = fake.calls.length;
+		expect((await api.listGraphs()).map((one) => one.title)).toEqual([title]);
+		expect(fake.calls.slice(asked)).toEqual([]);
+	});
+
+	it('puts the graph this app is served from back when the folder is closed', async () => {
+		graphHere.offerHere(aDevice(new Map()));
+		await graphHere.openFolder();
+
+		await graphHere.close();
+
+		expect(graphHere.open).toBeNull();
+		expect(runtime.mode()).toBe('hosted');
+		expect((await api.listGraphs()).map((one) => one.title)).toEqual(['My graph']);
 	});
 });

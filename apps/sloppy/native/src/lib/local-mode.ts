@@ -8,8 +8,11 @@ import { containerOf, forgetVault, readVaults, vaultOpened, type Files } from '@
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 
 /**
- * `scripts/tauri.sh` is the only writer of PUBLIC_ENABLE_LOCAL_MODE, so anything
- * else — unset included — is a build that talks to a server.
+ * `scripts/tauri.sh` is the only writer of PUBLIC_ENABLE_LOCAL_MODE: it writes
+ * `true` unless somebody asked for a build that talks to a server. Anything
+ * else — a frontend built outside that script, the variable unset — is a build
+ * that talks to one, and offers a folder on this device from its sign-in screen
+ * instead of serving one from the start.
  *
  * Read through `import.meta.env` rather than `$env/static/public`, which throws
  * when the variable is unset.
@@ -43,6 +46,13 @@ export async function rememberedVault(files: Files): Promise<string | undefined>
 export async function rememberVault(files: Files, folder: string): Promise<void> {
 	const own = files.at(await files.dataPath());
 	await own.write(OPEN_VAULT_FILE, utf8.encode(`${JSON.stringify({ folder }, null, 2)}\n`));
+}
+
+/** Ask for a folder on the next launch rather than opening one again. Nothing
+ *  in the folder is touched, and this device still knows it. */
+export async function forgetOpenVault(files: Files): Promise<void> {
+	const own = files.at(await files.dataPath());
+	await own.remove(OPEN_VAULT_FILE);
 }
 
 /**

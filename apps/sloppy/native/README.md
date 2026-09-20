@@ -14,7 +14,7 @@ pnpm ios:dev          # iOS / iPadOS simulator or device
 pnpm android:dev      # Android emulator or device
 pnpm dev              # just the frontend, in a browser, on :8040
 
-SLOPPY_LOCAL_MODE=true pnpm ios:dev   # …opening a graph as a folder on the device
+SLOPPY_LOCAL_MODE=false pnpm ios:dev  # …talking to a server instead of opening a folder
 ```
 
 All of them go through [`scripts/tauri.sh`](scripts/tauri.sh), which keeps the Xcode
@@ -35,12 +35,12 @@ pnpm tauri android init
 
 All from the monorepo-root `.env`; a shell variable of the same name wins.
 
-| Variable                            | Default                                                    | What it decides                                                              |
-| ----------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `PUBLIC_SLOPPY_API_URL`             | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.               |
-| `PUBLIC_SLOPPY_APP_ORIGIN`          | `https://sloppy.sh`                                        | Sloppy's own web origin, where an identity store sends somebody back.        |
-| `SLOPPY_LOCAL_MODE`                 | off                                                        | Open a graph as a folder on the device, with no API to reach.                |
-| `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                                                        | Front the local API on the https origin a physical device needs to reach it. |
+| Variable                            | Default                                                    | What it decides                                                                                                                            |
+| ----------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PUBLIC_SLOPPY_API_URL`             | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.                                                                             |
+| `PUBLIC_SLOPPY_APP_ORIGIN`          | `https://sloppy.sh`                                        | Sloppy's own web origin, where an identity store sends somebody back.                                                                      |
+| `SLOPPY_LOCAL_MODE`                 | on                                                         | Open a graph as a folder on the device, with no API to reach. `false` talks to a server, and offers a folder here from the sign-in screen. |
+| `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                                                        | Front the local API on the https origin a physical device needs to reach it.                                                               |
 
 `PUBLIC_SLOPPY_API_URL` is the web shell's variable too — one origin, set once, obeyed by
 both surfaces.

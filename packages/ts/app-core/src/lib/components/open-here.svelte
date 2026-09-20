@@ -1,7 +1,7 @@
 <script lang="ts">
-	// The two ways a graph kept on this device is opened in a browser tab, and
-	// what is true while one is — docs/ARCHITECTURE.md § "A graph on this
-	// device, in the browser".
+	// The two ways a graph kept on this device is opened, and what is true while
+	// one is — docs/ARCHITECTURE.md § "A graph on this device, beside the one a
+	// Sloppy serves".
 	import FileArchive from '@lucide/svelte/icons/file-archive';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import { ResponsiveModal } from '@sloppy/ui';
@@ -32,7 +32,7 @@
 	const canSaveFiles = savesFiles();
 	const question = $derived(asking === null ? null : { way: asking, ...WAYS_OUT[asking] });
 
-	/** An archive's writing is in this tab and nowhere else, so every way out of
+	/** An archive's writing is in Sloppy and nowhere else, so every way out of
 	 *  one asks first. */
 	function leave(way: WayOut): void {
 		if (open?.how === 'archive') asking = way;
@@ -68,14 +68,14 @@
 			<span class="text-foreground select-text">{open.name}</span> is open. Everything you write goes
 			straight into it, and nothing in it is sent anywhere.
 		{:else}
-			<span class="text-foreground select-text">{open.name}</span> is open. What you write stays in this
-			tab until you save a copy, and nothing in it is sent anywhere. The file you opened is untouched.
+			<span class="text-foreground select-text">{open.name}</span> is open. What you write stays in Sloppy
+			until you save a copy, and nothing in it is sent anywhere. The file you opened is untouched.
 		{/if}
 	</p>
 	{#if !brief}
 		<p class="text-sm text-muted-foreground">
 			{#if open.ownIdentity}
-				You're writing as the identity this browser made for itself. Signing in waits until you
+				You're writing as the identity Sloppy made here, not an account. Signing in waits until you
 				close this graph.
 			{:else}
 				You're writing as the account you are signed in with. Signing out waits until you close this
@@ -166,8 +166,13 @@
 		</div>
 	{:else}
 		<p class="text-sm text-muted-foreground">
-			Open a graph you keep on this device and read and write it here. Nothing in it is sent
-			anywhere.
+			{#if graphHere.startsAGraph}
+				Open a folder on this device and keep your writing in it. A folder with nothing in it yet
+				becomes a graph of your own. Nothing in it is sent anywhere.
+			{:else}
+				Open a graph you keep on this device and read and write it here. Nothing in it is sent
+				anywhere.
+			{/if}
 		</p>
 	{/if}
 	<div class="flex flex-col gap-2 sm:flex-row">
@@ -206,7 +211,7 @@
 		if (!up) asking = null;
 	}}
 	title="Leave this graph?"
-	description="What you have written since you opened it is only in this tab. Save a copy first to keep it."
+	description="What you have written since you opened it is not in the file yet. Save a copy first to keep it."
 >
 	{#if question}
 		<div class="flex flex-col gap-3 px-2 pt-4">

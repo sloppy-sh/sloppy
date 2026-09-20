@@ -16,7 +16,7 @@
 	});
 
 	// A tab can open a graph kept on this device beside the one it is served —
-	// docs/ARCHITECTURE.md § "A graph on this device, in the browser".
+	// docs/ARCHITECTURE.md § "A graph on this device, beside the one a Sloppy serves".
 	graphHere.offerHere();
 
 	onMount(() => {

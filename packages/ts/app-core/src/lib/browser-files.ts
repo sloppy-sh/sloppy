@@ -1,7 +1,7 @@
 /**
  * The device's own files as a browser tab reaches them: the folder somebody
  * picked, and this browser's own corner beside it —
- * docs/ARCHITECTURE.md § "A graph on this device, in the browser".
+ * docs/ARCHITECTURE.md § "A graph on this device, beside the one a Sloppy serves".
  */
 
 import { checkPath, type Files, joinPath } from '@sloppy/local';

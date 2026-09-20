@@ -113,9 +113,13 @@
 	});
 
 	// Signing in, and being sent to it. A graph on this device has nobody to sign
-	// in to, so none of this is its business.
+	// in to, so the one thing left to do about it there is leave the page asking.
 	$effect(() => {
-		if (!session.ready || session.onDevice) return;
+		if (!session.ready) return;
+		if (session.onDevice) {
+			if (path === '/sign-in') void goto('/');
+			return;
+		}
 		if (!session.signedIn) {
 			// A cited note is read where the reader stands, and signing in from it
 			// brings them back to it rather than to the graph.
