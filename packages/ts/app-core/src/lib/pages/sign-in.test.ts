@@ -130,6 +130,23 @@ describe('the sign-in page', () => {
 
 			expect(asked.redirect).toBe('sloppy://auth/callback');
 		});
+
+		// The window stays put while the consent page is somewhere else, so a
+		// person who comes back without finishing must be able to try again.
+		it('leaves the doors open once the consent page is somewhere else', async () => {
+			initRuntime({
+				apiHost: () => 'http://api.test',
+				openExternal: () => {},
+				signInRedirect: () => 'sloppy://auth/callback'
+			});
+			await show();
+
+			press('Start here');
+			await settle();
+
+			const shut = [...target.querySelectorAll('button')].filter((one) => one.disabled);
+			expect(shut).toEqual([]);
+		});
 	});
 
 	it('offers the identity once the answer can be had', async () => {

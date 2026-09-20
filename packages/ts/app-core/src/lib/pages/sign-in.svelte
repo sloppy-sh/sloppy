@@ -52,8 +52,15 @@
 				redirect: runtime.signInRedirect() ?? `${location.origin}/`
 			});
 			const open = runtime.openExternal();
-			if (open) await open(consent_url);
-			else location.assign(consent_url);
+			if (open) {
+				// The consent page opens outside this app and this window stays
+				// where it is, so somebody who comes back without finishing must
+				// find the door still open.
+				await open(consent_url);
+				leaving = false;
+			} else {
+				location.assign(consent_url);
+			}
 		} catch (error) {
 			problem =
 				serverMessage(error) ?? 'Sloppy could not reach that address. Check it and try again.';
