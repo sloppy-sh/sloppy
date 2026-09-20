@@ -1,6 +1,7 @@
 /**
- * A graph kept on this device, opened in a browser tab —
- * docs/ARCHITECTURE.md § "A graph on this device, in the browser".
+ * A graph kept on this device, put in front of somebody beside the Sloppy their
+ * app is served from — docs/ARCHITECTURE.md § "A graph on this device, beside
+ * the one a Sloppy serves".
  *
  * `LocalApi` serves it, the same one the app for your computer runs, so every
  * page, store and component reaches it through `api` and nothing in it is ever
@@ -11,17 +12,8 @@ import type { OwnedRef } from '@sloppy/types';
 import { type Files, holdsAGraph, LocalApi } from '@sloppy/local';
 import { api, resetApi } from './api.js';
 import { filesFromArchive } from './archive-files.js';
-import {
-	askForAFolder,
-	browserOwnFiles,
-	DirectoryFiles,
-	filesHere,
-	type FolderHandle,
-	opensAFolder,
-	rememberedFolder,
-	rememberFolder,
-	stillAllowed
-} from './browser-files.js';
+import { browserOwnFiles, filesHere } from './browser-files.js';
+import { browserFolders, type FolderHere, type FoldersHere } from './folders-here.js';
 import { type DeploymentMode, runtime, updateRuntime } from './runtime.js';
 import { seamSettledAgain } from './seam.svelte.js';
 import { openHere, saveHere } from './save-file.js';
@@ -30,24 +22,24 @@ import { graphs } from './stores/graphs.svelte.js';
 import { letGoOfTheGraphRead } from './stores/let-go.js';
 import { session } from './stores/session.svelte.js';
 
+export type { FolderHere, FoldersHere } from './folders-here.js';
+
 /** Which of the two a person opened, which is what says where their writing
- *  goes: into the folder as they write, or into this tab until they save a
- *  copy of it. */
+ *  goes: into the folder as they write, or into Sloppy until they save a copy
+ *  of it. */
 export type OpenedHow = 'folder' | 'archive';
 
 export interface OpenedHere {
 	how: OpenedHow;
 	/** What the person calls it — the folder's name, or the file's. */
 	name: string;
-	/** Whether a note written here carries an identity this browser made for
-	 *  itself rather than the account somebody is signed in with. It is what
-	 *  the owner block says, and what settles when the graph is opened. */
+	/** Whether a note written here carries an identity made here rather than the
+	 *  account somebody is signed in with. It is what the owner block says, and
+	 *  what settles when the graph is opened. */
 	ownIdentity: boolean;
 }
 
 const NO_FOLDER = 'Sloppy could not open that folder. Try another one.';
-/** A tab opens graphs and never starts one, so a folder holding none is the
- *  wrong folder rather than a new graph. */
 const NO_GRAPH_THERE = 'That folder holds no graph. Choose the folder your notes are in.';
 const NO_GO_AHEAD = 'Sloppy needs your go-ahead to read and write in that folder.';
 
@@ -58,7 +50,7 @@ function said(reason: unknown, fallback: string): string {
 }
 
 /** The same files, saying so as anything is written into them. What is written
- *  into an archive is in this tab and nowhere else, so leaving has to ask. */
+ *  into an archive is in Sloppy and nowhere else, so leaving has to ask. */
 function watched(files: Files, wrote: () => void): Files {
 	return {
 		root: files.root,
@@ -84,9 +76,10 @@ function watched(files: Files, wrote: () => void): Files {
 class GraphHereStore {
 	#offered = $state(false);
 	#open = $state<OpenedHere | null>(null);
-	#folder: DirectoryFiles | undefined;
+	#folders: FoldersHere = browserFolders();
+	#serving: FolderHere | undefined;
 	#settled = $state(false);
-	#waiting = $state<FolderHandle | null>(null);
+	#waiting = $state<FolderHere | null>(null);
 	#guarding = false;
 	/** What was serving the app before a graph on this device went in front of
 	 *  it, since a shell that is not the hosted one says so itself. */
@@ -104,7 +97,13 @@ class GraphHereStore {
 
 	/** Whether a folder can be opened, as against an archive alone. */
 	get opensAFolder(): boolean {
-		return opensAFolder();
+		return this.#folders.opens;
+	}
+
+	/** Whether a folder holding no graph has one started in it, which is what
+	 *  the offer of a folder says. */
+	get startsAGraph(): boolean {
+		return this.#folders.starts;
 	}
 
 	/** The graph on this device in front of somebody, `null` where the one they
@@ -120,7 +119,7 @@ class GraphHereStore {
 		return this.#settled;
 	}
 
-	/** The folder this browser was told to open again and may not read until
+	/** The folder this shell was told to open again and may not read until
 	 *  somebody presses something, by the name they know it as. `null` is
 	 *  nothing waiting. */
 	get waiting(): string | null {
@@ -128,16 +127,18 @@ class GraphHereStore {
 	}
 
 	/** Called once by a shell that is served over the network and can open a
-	 *  graph kept here beside it. */
-	offerHere(): void {
+	 *  graph kept here beside it. `folders` is how that shell reaches one; left
+	 *  out is a browser tab, which asks its own browser. */
+	offerHere(folders: FoldersHere = browserFolders()): void {
 		this.#offered = true;
+		this.#folders = folders;
 	}
 
 	/**
-	 * The graph this tab is to open, settled before any page reads `api`.
-	 * Nobody is asked for anything: a folder this browser may still read opens,
-	 * one it must be asked about again waits at the door, and anything else
-	 * leaves the Sloppy this app is served from in front of somebody.
+	 * The graph to open here, settled before any page reads `api`. Nobody is
+	 * asked for anything: a folder this shell may still read opens, one it must
+	 * be asked about again waits at the door, and anything else leaves the
+	 * Sloppy this app is served from in front of somebody.
 	 */
 	async boot(): Promise<void> {
 		this.#settled = false;
@@ -152,21 +153,19 @@ class GraphHereStore {
 	/** Ask for a folder and read and write the graph in it from now on. False is
 	 *  somebody who named none, which is not a failure. */
 	async openFolder(): Promise<boolean> {
-		const handle = await askForAFolder();
-		if (!handle) return false;
-		if (!(await stillAllowed(handle, true).catch(() => false))) throw new Error(NO_GO_AHEAD);
-		await this.openHandle(handle);
-		await rememberFolder(handle);
+		const folder = await this.#folders.ask();
+		if (!folder) return false;
+		await this.openOne(folder);
+		await folder.remember();
 		return true;
 	}
 
 	/** Open the folder that is waiting, now that somebody has asked for it: a
 	 *  browser lets one be asked about again only on a press. */
 	async openAgain(): Promise<boolean> {
-		const handle = this.#waiting;
-		if (!handle) return false;
-		if (!(await stillAllowed(handle, true).catch(() => false))) throw new Error(NO_GO_AHEAD);
-		await this.openHandle(handle);
+		const folder = this.#waiting;
+		if (!folder) return false;
+		await this.openOne(folder);
 		return true;
 	}
 
@@ -188,15 +187,18 @@ class GraphHereStore {
 		} catch (reason) {
 			throw new Error(said(reason, "This file isn't a Sloppy graph."), { cause: reason });
 		}
-		await rememberFolder(null);
+		await this.#folders.forget();
 		await this.serve(
 			{ how: 'archive', name: file.name },
-			watched(files, () => this.guard(true))
+			filesHere(
+				watched(files, () => this.guard(true)),
+				browserOwnFiles()
+			)
 		);
 		return true;
 	}
 
-	/** Hand back the graph as an archive again. What is in this tab is what it
+	/** Hand back the graph as an archive again. What is open here is what it
 	 *  holds. */
 	async saveCopy(): Promise<void> {
 		const held = await api.exportArchive(graphs.current);
@@ -211,8 +213,8 @@ class GraphHereStore {
 	 *  in the folder stays in it; what is in an archive is what was saved. */
 	async close(): Promise<void> {
 		this.guard(false);
-		this.#folder?.release();
-		this.#folder = undefined;
+		this.#serving?.release();
+		this.#serving = undefined;
 		updateRuntime({
 			mode: () => this.#servedMode,
 			createApi: undefined,
@@ -227,36 +229,38 @@ class GraphHereStore {
 		seamSettledAgain();
 		this.#open = null;
 		letGoOfTheGraphRead();
-		await rememberFolder(null);
+		await this.#folders.forget();
 		await graphs.load().catch(() => {});
 	}
 
-	/** Open the folder this browser was told to open again, where it is still
+	/** Open the folder this shell was told to open again, where it is still
 	 *  allowed to. A folder it must be asked about again waits at the door, and
 	 *  one that will not read leaves the Sloppy this app is served from in front
 	 *  of somebody. */
 	private async reopen(): Promise<void> {
 		if (!this.#offered || this.#open) return;
-		const handle = await rememberedFolder();
-		if (!handle) return;
-		if (!(await stillAllowed(handle, false).catch(() => false))) {
-			this.#waiting = handle;
+		const folder = await this.#folders.remembered();
+		if (!folder) return;
+		if (!(await folder.allowed(false).catch(() => false))) {
+			this.#waiting = folder;
 			return;
 		}
-		await this.serveFolder(handle).catch(() => {});
+		await this.serveFolder(folder).catch(() => {});
 	}
 
-	/** Serve the folder, saying why in words fit to show where it will not. */
-	private async openHandle(handle: FolderHandle): Promise<void> {
+	/** Serve the folder somebody just pressed for, saying why in words fit to
+	 *  show where it will not. */
+	private async openOne(folder: FolderHere): Promise<void> {
+		if (!(await folder.allowed(true).catch(() => false))) throw new Error(NO_GO_AHEAD);
 		try {
-			await this.serveFolder(handle);
+			await this.serveFolder(folder);
 		} catch (reason) {
 			throw new Error(said(reason, NO_FOLDER), { cause: reason });
 		}
 	}
 
 	/** Whether the browser asks before it leaves the page. What is written into
-	 *  an archive lives in this tab until a copy of it is saved. */
+	 *  an archive lives in Sloppy until a copy of it is saved. */
 	private guard(on: boolean): void {
 		if (on === this.#guarding) return;
 		this.#guarding = on;
@@ -264,24 +268,27 @@ class GraphHereStore {
 		else window.removeEventListener('beforeunload', this.#askBeforeLeaving);
 	}
 
-	private async serveFolder(handle: FolderHandle): Promise<void> {
-		const folder = new DirectoryFiles(handle);
-		if (!(await holdsAGraph(folder))) throw new Error(NO_GRAPH_THERE);
-		await folder.warm();
-		await this.serve({ how: 'folder', name: handle.name }, folder);
+	private async serveFolder(folder: FolderHere): Promise<void> {
+		const files = await folder.open();
+		if (!this.#folders.starts && !(await holdsAGraph(files))) {
+			folder.release();
+			throw new Error(NO_GRAPH_THERE);
+		}
+		await this.serve({ how: 'folder', name: folder.name }, files, folder);
 	}
 
-	private async serve(opened: Pick<OpenedHere, 'how' | 'name'>, files: Files): Promise<void> {
+	private async serve(
+		opened: Pick<OpenedHere, 'how' | 'name'>,
+		files: Files,
+		folder?: FolderHere
+	): Promise<void> {
 		if (this.#open === null) this.#servedMode = runtime.mode();
-		if (this.#folder && this.#folder !== files) this.#folder.release();
-		this.#folder = files instanceof DirectoryFiles ? files : undefined;
+		if (this.#serving && this.#serving !== folder) this.#serving.release();
+		this.#serving = folder;
 		// Who is signed in here settles before the swap: after it, asking reaches
 		// the graph on this device rather than the Sloppy that knows.
 		const signedIn = (await session.load().catch(() => null))?.did;
-		const served = new LocalApi(
-			filesHere(files, browserOwnFiles()),
-			signedIn === undefined ? {} : { writer: signedIn }
-		);
+		const served = new LocalApi(files, signedIn === undefined ? {} : { writer: signedIn });
 		updateRuntime({
 			mode: () => 'local',
 			createApi: () => served,

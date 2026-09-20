@@ -5,11 +5,13 @@
 	import { page } from '$app/state';
 	import { answerBack } from '$lib/back';
 	import { forwardDeepLinks } from '$lib/deep-link';
+	import { deviceFolders } from '$lib/folders';
 	import { trackKeyboardInset } from '$lib/keyboard';
 	import { LOCAL_MODE } from '$lib/local-mode';
 	import { IS_MOBILE, TAURI_PLATFORM } from '$lib/platform';
 	import { initNativeRuntime, openRememberedVault, vaultIsMissing } from '$lib/runtime';
 	import { session } from '@sloppy/app-core';
+	import { graphHere } from '@sloppy/app-core/graph-here';
 	import FirstRun from '@sloppy/app-core/pages/first-run';
 	import Frame from '@sloppy/app-core/pages/frame';
 
@@ -18,9 +20,13 @@
 	// The AppRuntime contract: before any page mounts.
 	initNativeRuntime();
 
-	/** Undefined until the boot read answers, so nobody is offered a folder they
-	 *  already have. A build that talks to a server has one from the start. */
-	let opened = $state<boolean | undefined>(LOCAL_MODE ? undefined : true);
+	// A build that talks to a server can still open a folder kept here, and says
+	// so on the screen somebody lands on.
+	if (!LOCAL_MODE) graphHere.offerHere(deviceFolders());
+
+	/** Undefined until the boot read answers, so no page reads `api` before the
+	 *  graph it will read is settled. */
+	let opened = $state<boolean | undefined>(undefined);
 	let missing = $state(false);
 
 	/** Consent at somebody's identity store comes back through the web app and
@@ -39,6 +45,14 @@
 		replaceState(stripped, page.state);
 	}
 
+	/** The folder this device was told to open again, settled before any page
+	 *  mounts, so nothing asks the Sloppy this build talks to about a note kept
+	 *  here. */
+	async function settleTheGraphHere(): Promise<void> {
+		await graphHere.boot().catch(() => {});
+		opened = true;
+	}
+
 	onMount(() => {
 		if (LOCAL_MODE)
 			void openRememberedVault().then(
@@ -49,6 +63,7 @@
 				},
 				() => (opened = false)
 			);
+		else void settleTheGraphHere();
 		void forwardDeepLinks();
 		// Publishes the real system-bar insets — DESIGN.md § "The four inset vars".
 		if (IS_MOBILE) void import('@saurl/tauri-plugin-safe-area-insets-css-api');

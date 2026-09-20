@@ -8,6 +8,8 @@
 	import { Label } from '@sloppy/ui/label';
 	import { page } from '$app/state';
 	import { api } from '../api.js';
+	import OpenHere from '../components/open-here.svelte';
+	import { graphHere } from '../graph-here.svelte.js';
 	import { runtime } from '../runtime.js';
 	import { serverMessage } from '../stores/errors.js';
 
@@ -52,15 +54,15 @@
 				redirect: runtime.signInRedirect() ?? `${location.origin}/`
 			});
 			const open = runtime.openExternal();
-			if (open) {
-				// The consent page opens outside this app and this window stays
-				// where it is, so somebody who comes back without finishing must
-				// find the door still open.
-				await open(consent_url);
-				leaving = false;
-			} else {
+			if (!open) {
 				location.assign(consent_url);
+				return;
 			}
+			// The consent page opens outside this app and this window stays where
+			// it is, so the doors here are open again before it is even reached:
+			// somebody who comes back without finishing finds them as they were.
+			leaving = false;
+			await open(consent_url);
 		} catch (error) {
 			problem =
 				serverMessage(error) ?? 'Sloppy could not reach that address. Check it and try again.';
@@ -135,6 +137,16 @@
 				{leaving ? 'Taking you there…' : 'Continue'}
 			</Button>
 		</form>
+
+		{#if graphHere.offered}
+			<div class="flex items-center gap-3" aria-hidden="true">
+				<span class="h-px flex-1 bg-border"></span>
+				<span class="text-xs text-muted-foreground">or</span>
+				<span class="h-px flex-1 bg-border"></span>
+			</div>
+
+			<div class="space-y-3"><OpenHere /></div>
+		{/if}
 
 		<a
 			href="/settings"

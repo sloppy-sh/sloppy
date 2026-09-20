@@ -220,7 +220,7 @@ describe('while one is open', () => {
 		press('Open a folder on this device');
 		await settle();
 
-		expect(screen()).toContain('the identity this browser made for itself');
+		expect(screen()).toContain('the identity Sloppy made here, not an account');
 		expect(screen()).toContain('Signing in waits until you close this graph');
 	});
 

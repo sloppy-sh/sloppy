@@ -1,5 +1,5 @@
 // A folder a browser handed over, read and written in place —
-// docs/ARCHITECTURE.md § "A graph on this device, in the browser".
+// docs/ARCHITECTURE.md § "A graph on this device, beside the one a Sloppy serves".
 
 import { MemoryFiles, OutsideRootError } from '@sloppy/local';
 import { EMOJI_DIR, MEDIA_DIR } from '@sloppy/vault';
