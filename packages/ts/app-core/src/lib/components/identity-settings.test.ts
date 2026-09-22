@@ -1,4 +1,10 @@
-import { CARRIED_FILE, type IdentityAccess, type IdentityHere } from '@sloppy/local';
+import { SloppyApiError } from '@sloppy/client';
+import {
+	CARRIED_FILE,
+	CARRIED_SEALED_FILE,
+	type IdentityAccess,
+	type IdentityHere
+} from '@sloppy/local';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initRuntime } from '../runtime.js';
@@ -18,6 +24,7 @@ function here(said: Partial<IdentityHere> = {}): IdentityHere {
 	return {
 		did: 'did:syr:z6Mkone',
 		source: 'device',
+		locked: false,
 		lapsed: false,
 		writing: true,
 		carriable: true,
@@ -32,6 +39,7 @@ function doors(said: Partial<IdentityAccess>): IdentityAccess {
 		signIn: async () => {},
 		finish: async () => undefined,
 		bring: async () => here(),
+		bringSealed: async () => here(),
 		carryOut: async () => ({ name: CARRIED_FILE, body: new Uint8Array([1, 2, 3]) }),
 		writeAs: async () => {},
 		...said
@@ -67,17 +75,46 @@ function press(label: string): void {
 	one.click();
 }
 
+/** Anything on the page asking somebody for a passphrase. Nothing should:
+ *  nothing here needs the key. */
+function asked(): HTMLInputElement | null {
+	return document.querySelector<HTMLInputElement>('#identity-passphrase');
+}
+
 beforeEach(() => {
 	saved = [];
 	brought = null;
+	Element.prototype.hasPointerCapture = () => false;
+	Element.prototype.setPointerCapture = () => {};
+	Element.prototype.releasePointerCapture = () => {};
+	Element.prototype.scrollIntoView = () => {};
+	Object.defineProperty(globalThis, 'matchMedia', {
+		configurable: true,
+		writable: true,
+		value: (query: string) => ({
+			matches: query.includes('min-width'),
+			addEventListener: () => {},
+			removeEventListener: () => {}
+		})
+	});
+	Object.defineProperty(globalThis, 'ResizeObserver', {
+		configurable: true,
+		writable: true,
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+	});
 	target = document.createElement('div');
 	document.body.append(target);
 });
 
 afterEach(() => {
-	if (mounted) unmount(mounted);
+	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	target.remove();
+	document.body.innerHTML = '';
 	initRuntime({
 		apiHost: () => '',
 		mode: () => 'hosted',
@@ -95,14 +132,15 @@ describe('the identities a device holds', () => {
 		expect(target.querySelector('[data-surface="identities"]')).toBeNull();
 	});
 
-	it('offers all three ways one arrives', () => {
+	it('offers every way one arrives', () => {
 		shell({});
 		show();
 
 		expect(offers()).toEqual([
 			'Start a new one here',
 			'Sign in with your identity',
-			'Bring one from another device'
+			'Bring one from another device',
+			'Bring one you keep under a passphrase'
 		]);
 	});
 
@@ -110,7 +148,11 @@ describe('the identities a device holds', () => {
 		shell({});
 		show({ mints: false });
 
-		expect(offers()).not.toContain('Start a new one here');
+		expect(offers()).toEqual([
+			'Sign in with your identity',
+			'Bring one from another device',
+			'Bring one you keep under a passphrase'
+		]);
 	});
 
 	it('says which one the writing here carries', async () => {
@@ -272,5 +314,67 @@ describe('the identities a device holds', () => {
 
 		expect(target.textContent).toContain('Sign in again');
 		expect(target.textContent).toContain('still yours');
+	});
+	it('holds one kept under a passphrase with nothing asked of anybody', async () => {
+		const bringSealed = vi.fn(async () => here({ source: 'sealed', locked: true }));
+		brought = new File([new Uint8Array([1, 2, 3])], 'identity.sigil');
+		shell({ bringSealed });
+		show();
+		await settle();
+
+		press('Bring one you keep under a passphrase');
+		await settle();
+
+		expect(bringSealed).toHaveBeenCalledOnce();
+		expect(asked()).toBeNull();
+	});
+
+	it('says a locked one is written as now and asked about later', async () => {
+		shell({ list: async () => [here({ source: 'sealed', locked: true, name: 'Ada' })] });
+		show();
+		await settle();
+
+		expect(target.textContent).toContain('On this device, locked');
+		expect(target.textContent).toContain('You can write as this one now');
+		expect(offers()).toContain('Save a copy to move it');
+	});
+
+	// Copying a file needs no key, so the seal is never opened to make one and
+	// the copy arrives shut, the way its owner keeps it.
+	it('carries a locked one out with nothing asked, still sealed', async () => {
+		const carryOut = vi.fn(async () => ({
+			name: CARRIED_SEALED_FILE,
+			body: new Uint8Array([1, 2, 3])
+		}));
+		shell({ list: async () => [here({ source: 'sealed', locked: true })], carryOut });
+		show();
+		await settle();
+
+		press('Save a copy to move it');
+		await settle();
+
+		expect(carryOut).toHaveBeenCalledWith('did:syr:z6Mkone');
+		expect(saved.map((one) => one.name)).toEqual(['sloppy-identity-sealed.json']);
+		expect(asked()).toBeNull();
+	});
+
+	it('says a saved copy stays shut the same way', async () => {
+		shell({ list: async () => [here({ source: 'sealed', locked: true })] });
+		show();
+		await settle();
+
+		expect(target.textContent?.replace(/\s+/g, ' ')).toContain(
+			'a copy you save stays shut the same way'
+		);
+	});
+
+	it('says what is already written keeps the name it was written under', async () => {
+		shell({ list: async () => [here()] });
+		show();
+		await settle();
+
+		expect(target.textContent?.replace(/\s+/g, ' ')).toContain(
+			'what you have already written keeps the name it was written under'
+		);
 	});
 });

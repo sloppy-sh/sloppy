@@ -3,6 +3,7 @@
 	   to the shells, so this package has no manifest for `resolve()` to check
 	   against. */
 
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { ChoicePill, PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
@@ -34,6 +35,7 @@
 	} from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import HistorySurface from './history.svelte';
+	import { navShows } from './routes.js';
 
 	const vault = runtime.vault();
 
@@ -61,6 +63,9 @@
 		session.viewer && !session.onDevice ? new URL(session.viewer.syr_instance_url).host : null
 	);
 	const profile = $derived(people.me);
+	/** With nobody signed in there is no nav pill under the page, and sign-in is
+	 *  the only surface this one is reached from. */
+	const wayOut = $derived(session.ready && !navShows());
 
 	$effect(() => {
 		if (session.signedIn && !session.onDevice && !people.me) void people.read().catch(() => {});
@@ -157,7 +162,18 @@
 	<div
 		class="mx-auto w-full max-w-2xl space-y-10 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-12 sm:px-8"
 	>
-		<h1 class="text-3xl font-semibold tracking-tight">Settings</h1>
+		<div class="space-y-3">
+			{#if wayOut}
+				<a
+					href="/sign-in"
+					class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+				>
+					<ArrowLeft class="size-4" />
+					Back
+				</a>
+			{/if}
+			<h1 class="text-3xl font-semibold tracking-tight">Settings</h1>
+		</div>
 
 		<fieldset class="space-y-3">
 			<legend class="text-sm font-medium">Theme</legend>

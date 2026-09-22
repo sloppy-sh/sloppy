@@ -27,7 +27,14 @@
 	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
-	import { activeRouteId, isOpenRoute, navRoutes, OPEN_ROUTES, refFromPath } from './routes.js';
+	import {
+		activeRouteId,
+		isOpenRoute,
+		navRoutes,
+		navShows,
+		OPEN_ROUTES,
+		refFromPath
+	} from './routes.js';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -106,9 +113,13 @@
 	});
 
 	// Signing in, and being sent to it. A graph on this device has nobody to sign
-	// in to, so none of this is its business.
+	// in to, so the one thing left to do about it there is leave the page asking.
 	$effect(() => {
-		if (!session.ready || session.onDevice) return;
+		if (!session.ready) return;
+		if (session.onDevice) {
+			if (path === '/sign-in') void goto('/');
+			return;
+		}
 		if (!session.signedIn) {
 			// A cited note is read where the reader stands, and signing in from it
 			// brings them back to it rather than to the graph.
@@ -156,12 +167,7 @@
 	});
 </script>
 
-<AppShell
-	items={destinations}
-	{activeId}
-	showNav={session.ready && (session.signedIn || session.unavailable)}
-	keyboardOpen={keyboard.open}
->
+<AppShell items={destinations} {activeId} showNav={navShows()} keyboardOpen={keyboard.open}>
 	{#if admitted}
 		{@render children()}
 	{:else if held}

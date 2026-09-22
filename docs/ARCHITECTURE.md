@@ -531,7 +531,9 @@ serve a whole graph with no API at all**, and that is the paragraphs immediately
 #### A graph off the device
 
 **The vault is the local store.** There is no database in the native app: `SLOPPY_LOCAL_MODE`
-decides whether the shell opens a folder on the device, and the folder is § "A graph on
+decides whether the shell opens a folder on the device, and a native build does unless that
+variable says `false` — the app is the local one, and a build that talks to a server is the
+exception somebody asks for. The folder is § "A graph on
 disk" exactly as an archive holds it, read and written by the one `@sloppy/vault`. The
 shell carries file access and nothing else; `@sloppy/local`'s `LocalApi` is the
 `SloppyApi` implementation over it, so every page, store and component reaches a local
@@ -543,14 +545,27 @@ server are the same suggestion, which is what lets a graph cross between them.
 
 **A device holds identities, plural, and each one says where it came from.** The app's
 private data holds `identities.json`: a list, each entry a DID, its public key and a
-`source` — `IdentitySourceSchema` in `@sloppy/types`, keyed on **where the key is** and
-never on which product keeps it, so a key manager nobody has written yet is a value here and
-not a field. Two values today:
+`source` — `IdentitySourceSchema` in `@sloppy/types`, keyed on **whether the key is usable
+here** and never on which product keeps it or which file it arrived in, so a key manager
+nobody has written yet is a value here and not a field. Three values:
 
 - **`device`** — made here with nothing asked, the key in a file in the app's own private
   data. There is no password over it, because there is nothing a password would protect it
   from that reaching the file would not already have defeated. A lone `identity.json` from
   before the list reads as one `device` identity, and the list is written back.
+- **`sealed`** — the key is here and shut under a passphrase the device does not keep. The
+  entry names the file it is kept in, kept exactly as it arrived. The public key is on the
+  outside of that file, so the DID, the name on the row and who writes here need nothing
+  asked of anybody; the seed comes out only for an act that must sign with it, the
+  passphrase is asked at that moment, and the seed is wiped after. Nothing in local mode
+  signs today — an identity names whose graph a note is in and no more — so nothing asks at
+  all: carrying one on hands over the sealed file as it stands, which needs no key. A
+  brought-in identity stays sealed wherever it goes, and this device never writes the key
+  down in the clear. Which format that file is in
+  is `@sloppy/idp`'s business — `sigil.ts` reads and writes syr's portable one, the same
+  construction as Aegis (§ "An API that serves identities itself") and reproduced byte for
+  byte so a file written here opens on a syr instance. Nothing above that package names a
+  format.
 - **`delegated`** — an identity an identity store somewhere else keeps, reached through
   Platform Delegation. The entry carries where that store is, the delegate's public key and
   the token the exchange returned. **No private key is on the device**, which is the same
@@ -570,7 +585,9 @@ consent page offers to sign with, and it lands here `delegated` like any other. 
 identity from another device" reads an identity file another device exported. Settings
 exports a `device` identity as one file — the DID, the public key and the key — with the
 consequence stated where the person chooses: whoever has that file writes as them. One
-brought in is a `device` identity like any other.
+brought in that way is a `device` identity like any other. One brought in sealed carries on
+as the sealed file it arrived as, so the copy is shut the way its owner keeps it and nothing
+is asked to make one.
 
 **The app is its own platform.** There is no Sloppy API here to hold the delegation, so the
 native app performs Platform Delegation itself. `platform_origin` is the app's public web
@@ -692,10 +709,12 @@ is a **separate mode** — a hosted graph and a local one are two graphs, and th
 becomes the other is by exporting it as an archive and importing it, which re-keys its refs
 under the receiving identity (§ "A graph on disk").
 
-#### A graph on this device, in the browser
+#### A graph on this device, beside the one a Sloppy serves
 
-The native app is not the only place a folder can be a graph. **The hosted web app opens a
-graph kept on the reader's own machine, and nothing about it touches their account.**
+The native app's local mode is not the only place a folder can be a graph. **An app that is
+served a Sloppy over the network opens a graph kept on the reader's own machine beside it,
+and nothing about it touches their account.** That is the hosted web app, and it is equally
+a native build somebody asked for a server in.
 
 **Two doors, and neither of them signs anybody in or out.** "Open a folder on this device"
 uses `showDirectoryPicker`, so a `Files` over a `FileSystemDirectoryHandle` reads and
@@ -712,6 +731,22 @@ folder opened in a tab stands alongside the graphs a Sloppy serves rather than r
 them (`VaultAccess.alongside`). Who is signed in is asked again on both sides of it: while
 one of these graphs is open, the graph on the device is what answers, which is why reading
 one needs no account.
+
+**The doors are where somebody with no account lands.** Settings holds them for a reader who
+is already in, and the sign-in screen offers them beside the account door, so nobody who has
+a graph here is stopped at a screen asking for one they do not have — `graphHere.offered` is
+what puts them there, and where nothing can open a graph here nothing about one appears.
+
+**One store, and the shell says how it reaches a folder.** `graphHere.offerHere` takes the
+shell's own `FoldersHere` (`packages/ts/app-core/src/lib/folders-here.ts`): asking for a
+folder, whether it may be read again without anybody being asked, what its `Files` are, and
+whether a folder holding no graph has one started in it. A tab's is the default and is the
+browser machinery below; a native build that talks to a server hands over its own
+(`apps/sloppy/native/src/lib/folders.ts`), where a folder is a path this device names rather
+than a handle a browser hands back, nothing is ever asked twice, and a folder holding no
+graph has one started in it exactly as local mode starts one. Everything after that — the
+swap, the boot, closing the graph again — is the one store, and a second implementation of a
+graph on disk is what this interface exists to prevent.
 
 **The web shell stays a shell.** The doors, the `Files` over a directory handle and the
 archive unpacking live in `@sloppy/app-core` (or a browser module beside it), not in
@@ -738,12 +773,15 @@ a tab can name none — `GraphsStore.startsGraphs` is the one answer every surfa
 **A tab opens a graph and never starts one.** The folder door reads the folder before
 anything is swapped in: one holding no graph — no `graph.json` at its root and no container
 inside it — is refused in the door's own words and left exactly as it was, and the handle is
-remembered only once the graph opened. A folder that will not read leaves the hosted graph
+remembered only once the graph opened. `FoldersHere.starts` is what says which, and a tab
+answers false because it can name no folder to keep a new graph in; a shell that can says
+true, and the door's own words say a folder with nothing in it becomes a graph. A folder that will not read leaves the hosted graph
 in front of the reader rather than an empty local one, which is why the swap is rolled back
 where the read that follows it fails.
 
 **The remembered folder is served before the first page mounts.** `graphHere.boot()` is what
-the web shell awaits, exactly as the native shell awaits `openRememberedVault()`, so no page
+both shells await where a Sloppy is serving them — the native shell awaits
+`openRememberedVault()` instead only in local mode — so no page
 reads `api` while the hosted graph is still in place and a note kept on the device is never
 asked of the API; where the browser wants a gesture before it hands the folder back, the
 door's "Open it again" state stands in front of the pages rather than a hosted read for a

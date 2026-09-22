@@ -10,6 +10,7 @@ import UserRound from '@lucide/svelte/icons/user-round';
 import type { OwnedRef } from '@sloppy/types';
 import type { NavItem, Person } from '@sloppy/ui';
 import { runtime } from '../runtime.js';
+import { session } from '../stores/session.svelte.js';
 
 /** In the order they are shown. `id` is what {@link activeRouteId} answers. */
 export const APP_ROUTES: NavItem[] = [
@@ -26,6 +27,15 @@ export function navRoutes(person: Person | null): NavItem[] {
 
 /** Reachable with no account — DESIGN.md § Persistence, on appearance. */
 export const OPEN_ROUTES = ['/sign-in', '/settings', '/auth/return'];
+
+/**
+ * Whether the nav pill is on screen, which is the only way between the app's
+ * own pages. A surface reachable without an account carries its own way out
+ * where this is false, or somebody who reaches it cannot leave.
+ */
+export function navShows(): boolean {
+	return session.ready && (session.signedIn || session.unavailable);
+}
 
 /** Whether a path stands without an account. A cited note is one of them and is
  *  not in the list above, because its path carries the note it names. */

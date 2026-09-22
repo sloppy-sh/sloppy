@@ -1,6 +1,6 @@
 // Settings and the graph picker while a graph kept on this device is open in a
 // browser tab: what they offer, and what they stop offering —
-// docs/ARCHITECTURE.md § "A graph on this device, in the browser".
+// docs/ARCHITECTURE.md § "A graph on this device, beside the one a Sloppy serves".
 
 import { LocalApi, MemoryFiles } from '@sloppy/local';
 import type { OwnedRef } from '@sloppy/types';

@@ -1,11 +1,11 @@
 <script lang="ts">
-	// The identities a device holds, and the three ways one arrives —
+	// The identities a device holds, and the ways one arrives —
 	// docs/ARCHITECTURE.md § "A graph off the device".
 	import type { IdentityHere } from '@sloppy/local';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
-	import { called, kept } from '../held-identity.js';
+	import { called, kept, shut } from '../held-identity.js';
 	import { runtime } from '../runtime.js';
 	import { openHere, opensFiles, saveHere, savesFiles } from '../save-file.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -86,6 +86,16 @@
 		});
 	}
 
+	function bringLocked(): void {
+		if (!identities) return;
+		void run('bring-locked', async () => {
+			const file = await openHere('.sigil,.json,application/json');
+			if (!file) return;
+			await identities.bringSealed(new Uint8Array(await file.arrayBuffer()));
+			await session.refresh();
+		});
+	}
+
 	function carryOut(did: string): void {
 		if (!identities) return;
 		void run(`carry:${did}`, async () => {
@@ -108,6 +118,7 @@
 		{#if held.length > 0}
 			<ul class="space-y-2">
 				{#each held as one (one.did)}
+					{@const locked = shut(one)}
 					<li class="rounded-md border border-border bg-card p-3">
 						<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 							<span class="text-sm font-medium">{called(one)}</span>
@@ -116,6 +127,9 @@
 							{/if}
 						</div>
 						<p class="text-sm text-muted-foreground">{kept(one)}</p>
+						{#if locked}
+							<p class="text-sm text-muted-foreground">{locked}</p>
+						{/if}
 						{#if one.lapsed}
 							<p class="text-sm text-muted-foreground">
 								Sign in again to keep your name and picture up to date. What you have written is
@@ -149,7 +163,8 @@
 			</ul>
 			<p class="text-sm text-muted-foreground">
 				A folder you started is written in as yours. In somebody else's folder you write as
-				whichever of these you pick.
+				whichever of these you pick. Picking one changes what you write from then on; what you have
+				already written keeps the name it was written under.
 			</p>
 		{/if}
 
@@ -171,6 +186,9 @@
 			{#if canBringIn}
 				<Button variant="outline" class="h-11" disabled={busy !== null} onclick={bring}>
 					{busy === 'bring' ? 'Reading it…' : 'Bring one from another device'}
+				</Button>
+				<Button variant="outline" class="h-11" disabled={busy !== null} onclick={bringLocked}>
+					{busy === 'bring-locked' ? 'Reading it…' : 'Bring one you keep under a passphrase'}
 				</Button>
 			{/if}
 		</div>
@@ -198,8 +216,9 @@
 				</Button>
 			</form>
 			<p class="text-sm text-muted-foreground">
-				You'll approve Sloppy where your identity lives and come straight back. It settles who you
-				write as; what you write still stays on this device.
+				You'll approve Sloppy where your identity lives and come straight back. If you keep it in
+				Syner, Syner is what you'll approve with when you get there. It settles who you write as;
+				what you write still stays on this device.
 			</p>
 		{/if}
 

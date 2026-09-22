@@ -1,6 +1,6 @@
 /**
  * A graph kept in one file, opened in a browser tab —
- * docs/ARCHITECTURE.md § "A graph on this device, in the browser".
+ * docs/ARCHITECTURE.md § "A graph on this device, beside the one a Sloppy serves".
  */
 
 import { type Files, MemoryFiles } from '@sloppy/local';

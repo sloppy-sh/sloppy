@@ -53,4 +53,12 @@ describe('the back press', () => {
 		expect(pressBack()).toBe(false);
 		expect(back).not.toHaveBeenCalled();
 	});
+
+	it('walks back off settings, which is reached before anybody signs in', () => {
+		session.signedIn = false;
+		page.url = new URL('http://localhost/settings');
+
+		expect(pressBack()).toBe(true);
+		expect(back).toHaveBeenCalledOnce();
+	});
 });

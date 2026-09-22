@@ -1,5 +1,6 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { graphHere } from '../graph-here.svelte.js';
 import { initRuntime } from '../runtime.js';
 import { useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
 import SignIn from './sign-in.svelte';
@@ -39,6 +40,13 @@ function unavailable(): Response {
 
 beforeEach(() => {
 	api = useFakeApi();
+	// `ResponsiveModal` inside the door onto a graph kept here asks the viewport
+	// which of its two shapes it is.
+	Object.defineProperty(globalThis, 'matchMedia', {
+		configurable: true,
+		writable: true,
+		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
+	});
 	target = document.createElement('div');
 	document.body.append(target);
 });
@@ -47,6 +55,18 @@ afterEach(() => {
 	if (mounted) unmount(mounted);
 	mounted = undefined;
 	target.remove();
+});
+
+// `offerHere` is a shell's answer once and for all, so the screen with no shell
+// behind it is the one read first.
+describe('a Sloppy that can open no graph on this device', () => {
+	it('says nothing about one on the way in', async () => {
+		api.on('GET /auth/own-instance', () => ({ instance_url: HERE }));
+
+		await show();
+
+		expect(target.textContent).not.toContain('A graph kept on this device');
+	});
 });
 
 // Somebody with no identity anywhere reaches this page with nothing to type in
@@ -130,6 +150,25 @@ describe('the sign-in page', () => {
 
 			expect(asked.redirect).toBe('sloppy://auth/callback');
 		});
+
+		// The window stays put while the consent page is somewhere else, so a
+		// person who comes back without finishing must be able to try again. A
+		// shell backgrounded by the system browser answers no sooner than that
+		// return, which is why the doors cannot wait on it.
+		it('leaves the doors open once the consent page is somewhere else', async () => {
+			initRuntime({
+				apiHost: () => 'http://api.test',
+				openExternal: () => new Promise(() => {}),
+				signInRedirect: () => 'sloppy://auth/callback'
+			});
+			await show();
+
+			press('Start here');
+			await settle();
+
+			const shut = [...target.querySelectorAll('button')].filter((one) => one.disabled);
+			expect(shut).toEqual([]);
+		});
 	});
 
 	it('offers the identity once the answer can be had', async () => {
@@ -142,5 +181,32 @@ describe('the sign-in page', () => {
 
 		expect(target.textContent).toContain('Start here');
 		expect(target.textContent).not.toContain('Try again');
+	});
+});
+
+// Somebody with no account is not stopped at this screen where their writing
+// can stay on the device instead.
+describe('a Sloppy that can open a graph on this device', () => {
+	beforeEach(() => {
+		graphHere.offerHere();
+	});
+
+	it('offers that graph beside the account', async () => {
+		api.on('GET /auth/own-instance', () => ({ instance_url: HERE }));
+
+		await show();
+
+		expect(target.textContent).toContain('Start here');
+		expect(target.textContent).toContain('A graph kept on this device');
+	});
+
+	// The identity this Sloppy hosts may be the half that is unreachable, and
+	// the door that needs nothing of it is the one that must still be there.
+	it('offers it even where no identity can be had here', async () => {
+		api.on('GET /auth/own-instance', () => unavailable());
+
+		await show();
+
+		expect(target.textContent).toContain('A graph kept on this device');
 	});
 });

@@ -7,8 +7,14 @@ import {
   encodePrivateKey,
   encodePublicKey,
   generateKeypair,
+  openSigil,
   publicKeyFromDid,
   publicKeyFromPrivateKey,
+  readSigil,
+  type Sigil,
+  SigilDecryptionError,
+  sigilDid,
+  sigilPublicKey,
   wipe,
 } from "@sloppy/idp/crypto";
 import {
@@ -58,6 +64,22 @@ export interface DeviceIdentity extends LocalIdentity {
 }
 
 /**
+ * An identity whose key is on this device and shut under a passphrase this
+ * device does not keep. It names whose graph a note is in the moment it
+ * arrives; the key comes out only for an act that must sign with it, and goes
+ * again straight after.
+ */
+export interface SealedIdentity extends LocalIdentity {
+  source: "sealed";
+  /** The file the sealed key is in, relative to {@link Files.dataPath}, kept
+   *  as it arrived. */
+  sealed: string;
+  /** What is known to call them. Absent where nothing said — a sealed key
+   *  carries no name of its own. */
+  name?: string;
+}
+
+/**
  * An identity an identity store somewhere else keeps and signs for. Nothing of
  * the key is on this device — AI.md § "Sloppy's Vocabulary Stays Out of the
  * Identity Store".
@@ -81,7 +103,7 @@ export interface DelegatedIdentity extends LocalIdentity {
 
 /** One of the identities this device holds. {@link IdentitySource} is the axis:
  *  a second kind of store is another arm here, never a field beside one. */
-export type HeldIdentity = DeviceIdentity | DelegatedIdentity;
+export type HeldIdentity = DeviceIdentity | SealedIdentity | DelegatedIdentity;
 
 /** Every identity this device holds, and which of them writes where a graph's
  *  own owner is not among them. `writing` naming nobody held is read as
@@ -102,6 +124,31 @@ export interface MintedIdentity {
  *  first one's. Multibase spells the public key in letters and digits only. */
 function seedFor(publicKey: string): string {
   return `${publicKey}.key`;
+}
+
+/** Where a key that arrived shut is kept, beside the ones made here and named
+ *  the same way. */
+function sealedFor(publicKey: string): string {
+  return `${publicKey}.sealed`;
+}
+
+/** The file a held identity keeps a key in, or nothing where the key is not on
+ *  this device. */
+function keyFileOf(one: HeldIdentity): string | undefined {
+  if (one.source === "device") return one.seed;
+  if (one.source === "sealed") return one.sealed;
+  return undefined;
+}
+
+/** Clear the key a row being replaced named, unless the row replacing it names
+ *  the same file: a key file no row names is one nothing will ever clear. */
+async function dropKeyOf(
+  own: Files,
+  replaced: HeldIdentity | undefined,
+  keeping: string | undefined,
+): Promise<void> {
+  const file = replaced && keyFileOf(replaced);
+  if (file && file !== keeping) await own.remove(file);
 }
 
 /** Where the picture a store has one identity wearing is kept, beside its key
@@ -212,6 +259,18 @@ function readHeld(said: unknown): HeldIdentity | undefined {
       ...(picture === undefined ? {} : { picture }),
     };
   }
+  if (source === "sealed") {
+    if (typeof one.sealed !== "string" || !one.sealed) return undefined;
+    return {
+      did: did.data,
+      public_key: one.public_key,
+      source: "sealed",
+      sealed: one.sealed,
+      ...(typeof one.name === "string" && one.name !== ""
+        ? { name: one.name }
+        : {}),
+    };
+  }
   return {
     did: did.data,
     public_key: one.public_key,
@@ -285,6 +344,7 @@ export async function holdDeviceIdentity(
 ): Promise<DeviceIdentity> {
   const own = files.at(await files.dataPath());
   const held = await readIdentities(files);
+  const replaced = held.identities.find((one) => one.did === made.identity.did);
   try {
     await own.write(made.identity.seed, encodeText(encodePrivateKey(made.key)));
     await writeIdentities(files, {
@@ -299,6 +359,7 @@ export async function holdDeviceIdentity(
   } finally {
     wipe(made.key);
   }
+  await dropKeyOf(own, replaced, made.identity.seed);
   return made.identity;
 }
 
@@ -309,6 +370,7 @@ export async function holdDelegatedIdentity(
   identity: DelegatedIdentity,
 ): Promise<DelegatedIdentity> {
   const held = await readIdentities(files);
+  const replaced = held.identities.find((one) => one.did === identity.did);
   await writeIdentities(files, {
     identities: [
       ...held.identities.filter((one) => one.did !== identity.did),
@@ -316,7 +378,110 @@ export async function holdDelegatedIdentity(
     ],
     writing: identity.did,
   });
+  await dropKeyOf(files.at(await files.dataPath()), replaced, undefined);
   return identity;
+}
+
+/** A key that arrived shut, and the file it arrived in. The file is kept byte
+ *  for byte: what seals it is the person's, and re-sealing it here would put
+ *  this device between them and their own key. */
+export interface BroughtSealed {
+  identity: SealedIdentity;
+  file: Uint8Array;
+}
+
+/**
+ * The identity in a sealed file, read without asking anybody for anything: the
+ * public key is on the outside of it, and that is the whole of what a DID and a
+ * row on screen need.
+ */
+export function readSealedIdentity(bytes: Uint8Array): BroughtSealed {
+  const notOne = refuse(
+    "That file does not hold an identity Sloppy can write under.",
+  );
+  let sigil: Sigil;
+  try {
+    sigil = readSigil(bytes);
+  } catch {
+    throw notOne;
+  }
+  const did = DidSyrSchema.safeParse(sigilDid(sigil));
+  if (!did.success) throw notOne;
+  const publicKey = sigilPublicKey(sigil);
+  return {
+    identity: {
+      did: did.data,
+      public_key: publicKey,
+      source: "sealed",
+      sealed: sealedFor(publicKey),
+    },
+    file: bytes,
+  };
+}
+
+/** Hold a key this device cannot use without the person, replacing what it
+ *  held of that identity before. */
+export async function holdSealedIdentity(
+  files: Files,
+  brought: BroughtSealed,
+): Promise<SealedIdentity> {
+  const own = files.at(await files.dataPath());
+  const held = await readIdentities(files);
+  const replaced = held.identities.find(
+    (one) => one.did === brought.identity.did,
+  );
+  await own.write(brought.identity.sealed, brought.file);
+  await writeIdentities(files, {
+    identities: [
+      ...held.identities.filter((one) => one.did !== brought.identity.did),
+      brought.identity,
+    ],
+    writing: brought.identity.did,
+  });
+  await dropKeyOf(own, replaced, brought.identity.sealed);
+  return brought.identity;
+}
+
+/**
+ * Run `act` with the key a sealed identity is shut under, and wipe it on the
+ * way out. The passphrase belongs to this one act: the seed is never written
+ * down, and it does not outlive `act` even where `act` throws.
+ */
+export async function withSealedKey<T>(
+  files: Files,
+  identity: SealedIdentity,
+  passphrase: string,
+  act: (key: Uint8Array) => T | Promise<T>,
+): Promise<T> {
+  const own = files.at(await files.dataPath());
+  const bytes = await own.read(identity.sealed);
+  if (!bytes) {
+    throw refuse("The key for that identity is not on this device any more.");
+  }
+  const unreadable = refuse(
+    "The key for that identity could not be read. Bring the identity in again.",
+  );
+  let sigil: Sigil;
+  try {
+    sigil = readSigil(bytes);
+  } catch {
+    throw unreadable;
+  }
+  if (sigilPublicKey(sigil) !== identity.public_key) throw unreadable;
+  let seed: Uint8Array;
+  try {
+    seed = await openSigil(sigil, passphrase);
+  } catch (err) {
+    if (err instanceof SigilDecryptionError) {
+      throw refuse("That passphrase did not open it. Try it again.");
+    }
+    throw err;
+  }
+  try {
+    return await act(seed);
+  } finally {
+    wipe(seed);
+  }
 }
 
 /** Write under this one from now on, where a graph's own owner is not held
@@ -405,6 +570,10 @@ interface CarriedIdentity {
 /** What a file carrying an identity is called on the way out. */
 export const CARRIED_FILE = "sloppy-identity.json";
 
+/** What a file carrying a sealed identity is called on the way out. It keeps
+ *  {@link CARRIED_NAME}'s prefix so {@link carriedIdentityFile} covers it. */
+export const CARRIED_SEALED_FILE = "sloppy-identity-sealed.json";
+
 const CARRIED_NAME = "sloppy-identity";
 
 /** Whether a path is a copy of an identity saved out of the app: {@link
@@ -475,10 +644,13 @@ export function readCarriedIdentity(bytes: Uint8Array): MintedIdentity {
 export interface IdentityHere {
   did: DidSyr;
   source: IdentitySource;
-  /** What the store that keeps it calls them. Absent where nothing says. */
+  /** What is known to call them. Absent where nothing says. */
   name?: string;
   /** The host of the store that keeps it, for one kept somewhere else. */
   instance?: string;
+  /** Whether the key is here but shut, so an act that needs it asks the person
+   *  for the passphrase first. */
+  locked: boolean;
   /** Whether the store's word for it has run out, so the name and the picture
    *  stop refreshing until somebody signs in again. The DID is a fact either
    *  way, so the identity stays held. */
@@ -515,7 +687,12 @@ export interface IdentityAccess {
   finish(query: URLSearchParams): Promise<SignedIn | undefined>;
   /** Hold the identity in a file another device wrote. */
   bring(file: Uint8Array): Promise<IdentityHere>;
-  /** The file that carries one to another device. */
+  /** Hold the identity in a sealed file a person brought, exactly as it
+   *  arrived. Nothing is asked of them here: what the row shows is on the
+   *  outside of it. */
+  bringSealed(file: Uint8Array): Promise<IdentityHere>;
+  /** The file that carries one to another device. A sealed identity carries out
+   *  still sealed, so this asks for nothing. */
   carryOut(did: DidSyr): Promise<{ name: string; body: Uint8Array }>;
   /** Write under this one from now on. */
   writeAs(did: DidSyr): Promise<void>;
@@ -549,18 +726,20 @@ function hostOf(url: string): string {
 
 function shown(identity: HeldIdentity, writing: boolean): IdentityHere {
   const delegated = identity.source === "delegated" ? identity : undefined;
+  const named = identity.source === "device" ? undefined : identity.name;
   return {
     did: identity.did,
     source: identity.source,
-    ...(delegated?.name === undefined ? {} : { name: delegated.name }),
+    ...(named === undefined ? {} : { name: named }),
     ...(delegated === undefined
       ? {}
       : { instance: hostOf(delegated.instance_url) }),
+    locked: identity.source === "sealed",
     lapsed:
       delegated?.expires_at !== undefined &&
       Date.parse(delegated.expires_at) <= Date.now(),
     writing,
-    carriable: identity.source === "device",
+    carriable: identity.source !== "delegated",
   };
 }
 
@@ -692,9 +871,16 @@ export class Identities implements IdentityAccess {
     return shown(made, true);
   }
 
+  async bringSealed(file: Uint8Array): Promise<IdentityHere> {
+    const held = await holdSealedIdentity(this.files, readSealedIdentity(file));
+    await this.options.changed?.();
+    return shown(held, true);
+  }
+
   async carryOut(did: DidSyr): Promise<{ name: string; body: Uint8Array }> {
     const held = await readIdentities(this.files);
     const one = held.identities.find((identity) => identity.did === did);
+    if (one?.source === "sealed") return this.carrySealedOut(one);
     if (!one || one.source !== "device") {
       throw refuse(
         "That identity is kept for you somewhere else, so there is no file of it to carry.",
@@ -714,6 +900,20 @@ export class Identities implements IdentityAccess {
   async writeAs(did: DidSyr): Promise<void> {
     await writeAs(this.files, did);
     await this.options.changed?.();
+  }
+
+  /** The sealed file, byte for byte as it arrived. Copying it needs no key, so
+   *  the copy stays under the passphrase its owner keeps it under and Sloppy
+   *  never opens the seal to make one. */
+  private async carrySealedOut(
+    one: SealedIdentity,
+  ): Promise<{ name: string; body: Uint8Array }> {
+    const own = this.files.at(await this.files.dataPath());
+    const bytes = await own.read(one.sealed);
+    if (!bytes) {
+      throw refuse("The key for that identity is not on this device any more.");
+    }
+    return { name: CARRIED_SEALED_FILE, body: bytes };
   }
 
   /** The picture kept where a graph started later can still be written with

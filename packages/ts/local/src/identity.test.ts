@@ -1,10 +1,15 @@
 import {
+  createSigil,
+  deriveDid,
   encodePrivateKey,
+  encodePublicKey,
+  generateKeypair,
   publicKeyFromDid,
   publicKeyFromPrivateKey,
+  writeSigil,
 } from "@sloppy/idp/crypto";
-import type { DidSyr } from "@sloppy/types";
-import { encodeText } from "@sloppy/vault";
+import { type DidSyr, DidSyrSchema } from "@sloppy/types";
+import { decodeText, encodeText } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { LocalApi } from "./api.js";
 import type { Fetching } from "./delegation.js";
@@ -12,10 +17,12 @@ import { MemoryFiles } from "./files.js";
 import { LocalGraph } from "./graph.js";
 import {
   CARRIED_FILE,
+  CARRIED_SEALED_FILE,
   carryIdentityOut,
   type DeviceIdentity,
   holdDelegatedIdentity,
   holdDeviceIdentity,
+  holdSealedIdentity,
   Identities,
   type IdentitiesOptions,
   IDENTITIES_FILE,
@@ -27,8 +34,11 @@ import {
   readCarriedIdentity,
   readIdentities,
   readLocalKey,
+  readSealedIdentity,
+  type SealedIdentity,
   SEED_FILE,
   whoWrites,
+  withSealedKey,
   writeAs,
   writeIdentities,
 } from "./identity.js";
@@ -59,6 +69,32 @@ async function deviceIdentity(
   const made = makeLocalIdentity();
   const key = made.key.slice();
   return { identity: await holdDeviceIdentity(held, made), key };
+}
+
+const PASSPHRASE = "a fixture passphrase";
+
+interface ASigil {
+  file: Uint8Array;
+  did: DidSyr;
+  public_key: string;
+  key: Uint8Array;
+}
+
+/** One sealed file for every test here — deriving its key is deliberately slow,
+ *  and none of these ask which key it is. */
+let sealedOnce: Promise<ASigil> | undefined;
+
+function aSigil(): Promise<ASigil> {
+  sealedOnce ??= (async () => {
+    const { privateKey, publicKey } = generateKeypair();
+    return {
+      file: writeSigil(await createSigil(privateKey, PASSPHRASE)),
+      did: DidSyrSchema.parse(deriveDid(publicKey)),
+      public_key: encodePublicKey(publicKey),
+      key: privateKey,
+    };
+  })();
+  return sealedOnce;
 }
 
 describe("the identities this device holds", () => {
@@ -128,6 +164,72 @@ describe("the identities this device holds", () => {
     await expect(openLocalIdentity(held)).rejects.toBeInstanceOf(
       LocalIdentityError,
     );
+  });
+
+  it("keeps one held sealed exactly as it was written", async () => {
+    const held = files();
+    const { did, public_key } = makeLocalIdentity().identity;
+    const sealed: SealedIdentity = {
+      did,
+      public_key,
+      source: "sealed",
+      sealed: "identity.sealed",
+      name: "Ada",
+    };
+    await writeIdentities(held, { identities: [sealed], writing: did });
+
+    expect(await readIdentities(held)).toEqual({
+      identities: [sealed],
+      writing: did,
+    });
+  });
+
+  it("holds one sealed that nothing says a name for", async () => {
+    const held = files();
+    const { did, public_key } = makeLocalIdentity().identity;
+    const sealed: SealedIdentity = {
+      did,
+      public_key,
+      source: "sealed",
+      sealed: "identity.sealed",
+    };
+    await writeIdentities(held, { identities: [sealed], writing: did });
+
+    expect((await readIdentities(held)).identities).toEqual([sealed]);
+  });
+
+  it("refuses the list rather than the row where a sealed one names no key", async () => {
+    const held = files();
+    const { did, public_key } = makeLocalIdentity().identity;
+    await held
+      .at("/data")
+      .write(
+        IDENTITIES_FILE,
+        encodeText(
+          `${JSON.stringify({ identities: [{ did, public_key, source: "sealed" }] })}\n`,
+        ),
+      );
+
+    await expect(readIdentities(held)).rejects.toThrow(LocalIdentityError);
+  });
+
+  it("reads a list written before a key could arrive shut", async () => {
+    const held = files();
+    const { did, public_key } = makeLocalIdentity().identity;
+    await held.at("/data").write(
+      IDENTITIES_FILE,
+      encodeText(
+        `${JSON.stringify({
+          identities: [{ did, public_key, seed: SEED_FILE }],
+          writing: did,
+        })}\n`,
+      ),
+    );
+
+    expect(await readIdentities(held)).toEqual({
+      identities: [{ did, public_key, source: "device", seed: SEED_FILE }],
+      writing: did,
+    });
   });
 
   it("lets go of the seed once it is written down", async () => {
@@ -354,6 +456,175 @@ describe("an identity carried to another device", () => {
   });
 });
 
+describe("a key that arrived shut", () => {
+  /** The same sealed file with somebody else's public key on the outside of
+   *  it — a file nothing inside answers for. */
+  async function relabelled(): Promise<Uint8Array> {
+    const said = JSON.parse(new TextDecoder().decode((await aSigil()).file));
+    said.pub = makeLocalIdentity().identity.public_key;
+    return encodeText(JSON.stringify(said));
+  }
+
+  async function brought(held: MemoryFiles): Promise<SealedIdentity> {
+    return holdSealedIdentity(held, readSealedIdentity((await aSigil()).file));
+  }
+
+  it("says who it is of with nothing asked of anybody", async () => {
+    const one = await aSigil();
+
+    expect(readSealedIdentity(one.file).identity).toEqual({
+      did: one.did,
+      public_key: one.public_key,
+      source: "sealed",
+      sealed: `${one.public_key}.sealed`,
+    });
+  });
+
+  it("is kept byte for byte as it arrived", async () => {
+    const held = files();
+    const identity = await brought(held);
+
+    expect(await held.at("/data").read(identity.sealed)).toEqual(
+      (await aSigil()).file,
+    );
+  });
+
+  it("leaves nothing on this device that opens without the person", async () => {
+    const held = files();
+    await brought(held);
+
+    const spelled = encodePrivateKey((await aSigil()).key);
+    for (const path of await held.at("/data").list("")) {
+      const bytes = await held.at("/data").read(path);
+      expect(
+        new TextDecoder().decode(bytes ?? new Uint8Array()),
+        path,
+      ).not.toContain(spelled);
+    }
+  });
+
+  it("clears the key the same identity was held here in the clear under", async () => {
+    const held = files();
+    const one = await aSigil();
+    const inTheClear = await holdDeviceIdentity(
+      held,
+      readCarriedIdentity(
+        encodeText(
+          JSON.stringify({
+            sloppy_identity: 1,
+            did: one.did,
+            public_key: one.public_key,
+            key: encodePrivateKey(one.key),
+          }),
+        ),
+      ),
+    );
+    expect(await held.at("/data").exists(inTheClear.seed)).toBe(true);
+
+    await brought(held);
+
+    expect(await held.at("/data").exists(inTheClear.seed)).toBe(false);
+    const spelled = encodePrivateKey(one.key);
+    for (const path of await held.at("/data").list("")) {
+      const bytes = await held.at("/data").read(path);
+      expect(
+        new TextDecoder().decode(bytes ?? new Uint8Array()),
+        path,
+      ).not.toContain(spelled);
+    }
+  });
+
+  it("opens for one act and lets the key go again", async () => {
+    const held = files();
+    const identity = await brought(held);
+    let handed: Uint8Array | undefined;
+
+    const answered = await withSealedKey(held, identity, PASSPHRASE, (key) => {
+      handed = key;
+      return encodePublicKey(publicKeyFromPrivateKey(key));
+    });
+
+    expect(answered).toBe(identity.public_key);
+    expect(handed?.every((byte) => byte === 0)).toBe(true);
+  });
+
+  it("lets the key go where the act it opened for throws", async () => {
+    const held = files();
+    const identity = await brought(held);
+    let handed: Uint8Array | undefined;
+
+    await expect(
+      withSealedKey(held, identity, PASSPHRASE, (key) => {
+        handed = key;
+        throw new Error("the act went wrong");
+      }),
+    ).rejects.toThrow("the act went wrong");
+
+    expect(handed?.every((byte) => byte === 0)).toBe(true);
+  });
+
+  it("says what to try where the passphrase does not open it", async () => {
+    const held = files();
+    const identity = await brought(held);
+
+    await expect(
+      withSealedKey(held, identity, "not it", () => "opened"),
+    ).rejects.toThrow(/did not open it. Try it again/i);
+  });
+
+  it("will not open a file that is not the key it is held as", async () => {
+    const held = files();
+    const identity = await brought(held);
+    await held.at("/data").write(identity.sealed, await relabelled());
+
+    await expect(
+      withSealedKey(held, identity, PASSPHRASE, () => "opened"),
+    ).rejects.toThrow(/Bring the identity in again/i);
+  });
+
+  it("will not open one whose key is not the one written on it", async () => {
+    const held = files();
+    const identity = await holdSealedIdentity(
+      held,
+      readSealedIdentity(await relabelled()),
+    );
+
+    await expect(
+      withSealedKey(held, identity, PASSPHRASE, () => "opened"),
+    ).rejects.toThrow(/did not open it/i);
+  });
+
+  it("has nothing to open where the file is gone from this device", async () => {
+    const held = files();
+    const identity = await brought(held);
+    await held.at("/data").remove(identity.sealed);
+
+    await expect(
+      withSealedKey(held, identity, PASSPHRASE, () => "opened"),
+    ).rejects.toThrow(/not on this device any more/i);
+  });
+
+  it("refuses a file that is not one", async () => {
+    const notOne = /does not hold an identity/i;
+    const halfOfOne = (await aSigil()).file.subarray(0, 40);
+
+    expect(() => readSealedIdentity(encodeText("not json"))).toThrow(notOne);
+    expect(() =>
+      readSealedIdentity(encodeText(JSON.stringify({ v: 1 }))),
+    ).toThrow(notOne);
+    expect(() => readSealedIdentity(halfOfOne)).toThrow(notOne);
+  });
+
+  it("refuses one that arrived cut about", async () => {
+    const said = JSON.parse(new TextDecoder().decode((await aSigil()).file));
+    said.enc.tag = said.enc.tag.slice(0, 4);
+
+    expect(() => readSealedIdentity(encodeText(JSON.stringify(said)))).toThrow(
+      /does not hold an identity/i,
+    );
+  });
+});
+
 describe("the three doors a person is offered", () => {
   const INSTANCE = "https://keys.example";
   const ORIGIN = "https://sloppy.sh";
@@ -448,6 +719,29 @@ describe("the three doors a person is offered", () => {
         return counter.changes;
       },
     };
+  }
+
+  const SEALED_FILE = "identity.sealed";
+
+  async function holdSealed(
+    held: MemoryFiles,
+    name?: string,
+  ): Promise<{ did: DidSyr; public_key: string }> {
+    const one = await aSigil();
+    await held.at("/data").write(SEALED_FILE, one.file);
+    await writeIdentities(held, {
+      identities: [
+        {
+          did: one.did,
+          public_key: one.public_key,
+          source: "sealed",
+          sealed: SEALED_FILE,
+          ...(name === undefined ? {} : { name }),
+        },
+      ],
+      writing: one.did,
+    });
+    return { did: one.did, public_key: one.public_key };
   }
 
   /** What a store puts on the callback, as the relay hands it over. */
@@ -576,6 +870,105 @@ describe("the three doors a person is offered", () => {
     const there = new MemoryFiles({ data: "/data" });
     const arrived = await identities(there).held.bring(file.body);
     expect(arrived.did).toBe(made.did);
+  });
+
+  it("shows one brought in sealed as shut, and what it is called", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const one = await holdSealed(files, "Ada");
+
+    expect(await identities(files).held.list()).toEqual([
+      {
+        did: one.did,
+        source: "sealed",
+        name: "Ada",
+        locked: true,
+        lapsed: false,
+        writing: true,
+        carriable: true,
+      },
+    ]);
+  });
+
+  it("brings a sealed identity in and writes under it from then on", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const one = await aSigil();
+    const door = identities(files);
+    await door.held.makeOne();
+
+    const arrived = await door.held.bringSealed(one.file);
+
+    expect(arrived).toEqual({
+      did: one.did,
+      source: "sealed",
+      locked: true,
+      lapsed: false,
+      writing: true,
+      carriable: true,
+    });
+    expect((await readIdentities(files)).writing).toBe(one.did);
+    expect(door.changes).toBe(2);
+  });
+
+  it("lists a sealed identity brought in twice once", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const one = await aSigil();
+    const door = identities(files);
+    await door.held.bringSealed(one.file);
+    await door.held.bringSealed(one.file);
+
+    expect(await door.held.list()).toHaveLength(1);
+  });
+
+  it("holds nothing where the file brought in is not a sealed identity", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const door = identities(files);
+
+    await expect(door.held.bringSealed(encodeText("not one"))).rejects.toThrow(
+      /does not hold an identity/i,
+    );
+    expect(await door.held.list()).toEqual([]);
+  });
+
+  it("carries a sealed identity brought in here to another device, still sealed", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const one = await aSigil();
+    const door = identities(files);
+    const arrived = await door.held.bringSealed(one.file);
+
+    const file = await door.held.carryOut(arrived.did);
+    expect(file.name).toBe(CARRIED_SEALED_FILE);
+    expect(file.body).toEqual(one.file);
+
+    const there = new MemoryFiles({ data: "/data" });
+    expect((await identities(there).held.bringSealed(file.body)).did).toBe(
+      one.did,
+    );
+  });
+
+  // The passphrase protects the copy as much as the original, so nothing opens
+  // the seal to make one and nothing asks.
+  it("neither asks for the passphrase nor writes the key in the clear", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const one = await holdSealed(files);
+
+    const file = await identities(files).held.carryOut(one.did);
+
+    const said = JSON.parse(decodeText(file.body)) as Record<string, unknown>;
+    expect(said.key).toBeUndefined();
+    expect(said.enc).toBeDefined();
+    await expect(
+      identities(new MemoryFiles({ data: "/data" })).held.bring(file.body),
+    ).rejects.toThrow(/does not hold an identity/i);
+  });
+
+  it("has nothing to carry where the sealed key is gone from this device", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const one = await holdSealed(files);
+    await files.at("/data").remove(SEALED_FILE);
+
+    await expect(identities(files).held.carryOut(one.did)).rejects.toThrow(
+      /not on this device any more/i,
+    );
   });
 
   it("has no file to carry for an identity kept somewhere else", async () => {

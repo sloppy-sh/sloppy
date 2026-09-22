@@ -17,6 +17,9 @@ vi.mock('$lib/runtime', () => ({
 	openRememberedVault: () => reading,
 	vaultIsMissing: () => missing
 }));
+vi.mock('@sloppy/app-core/graph-here', () => ({
+	graphHere: { offerHere: vi.fn(), boot: vi.fn(async () => {}) }
+}));
 vi.mock('@sloppy/app-core/pages/frame', async () => ({
 	default: (await import('./frame.test-support.svelte')).default
 }));
@@ -113,5 +116,18 @@ describe('what the native shell opens on', () => {
 		await settle();
 
 		expect(showing()).toBe('frame');
+	});
+
+	// A build that opens a folder from the start is already in one, so there is
+	// no second way onto a graph kept here to offer or to settle.
+	it('offers no graph beside the folder it opens', async () => {
+		const { graphHere } = await import('@sloppy/app-core/graph-here');
+
+		await boots();
+		boot.resolve('/Users/me/garden');
+		await settle();
+
+		expect(graphHere.offerHere).not.toHaveBeenCalled();
+		expect(graphHere.boot).not.toHaveBeenCalled();
 	});
 });

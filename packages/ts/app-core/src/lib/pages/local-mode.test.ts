@@ -140,6 +140,7 @@ function holding(...these: IdentityHere[]): IdentityAccess {
 		signIn: async () => {},
 		finish: async () => undefined,
 		bring: async () => these[0],
+		bringSealed: async () => these[0],
 		carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
 		writeAs: async () => {}
 	};
@@ -613,6 +614,7 @@ describe('the page about you, on a device holding its own graph', () => {
 				source: 'delegated',
 				name: 'Syner Proof',
 				instance: 'localhost:5173',
+				locked: false,
 				lapsed: false,
 				writing: true,
 				carriable: false
@@ -638,6 +640,7 @@ describe('the page about you, on a device holding its own graph', () => {
 			holding({
 				did: DID,
 				source: 'device',
+				locked: false,
 				lapsed: false,
 				writing: true,
 				carriable: true
