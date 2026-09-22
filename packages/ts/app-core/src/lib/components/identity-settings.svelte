@@ -5,7 +5,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
-	import { called, kept, shut } from '../held-identity.js';
+	import { heading, kept, shut } from '../held-identity.js';
 	import { runtime } from '../runtime.js';
 	import { openHere, opensFiles, saveHere, savesFiles } from '../save-file.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -24,6 +24,10 @@
 	let problem = $state<string | null>(null);
 	let asking = $state(false);
 	let address = $state('');
+	/** Which identity is being given a name, and what has been typed for it.
+	 *  Null is nobody being named. */
+	let naming = $state<string | null>(null);
+	let typed = $state('');
 
 	const canCarryOut = $derived(savesFiles());
 	const canBringIn = $derived(opensFiles());
@@ -66,13 +70,13 @@
 	function signIn(event: SubmitEvent): void {
 		event.preventDefault();
 		if (!identities) return;
-		const typed = address.trim();
-		if (!typed) {
+		const where = address.trim();
+		if (!where) {
 			problem = 'Type the web address of where your identity lives.';
 			return;
 		}
 		void run('sign-in', async () => {
-			await identities.signIn(typed);
+			await identities.signIn(where);
 		});
 	}
 
@@ -111,6 +115,21 @@
 			await session.refresh();
 		});
 	}
+
+	function nameIt(one: IdentityHere): void {
+		naming = naming === one.did ? null : one.did;
+		typed = one.label ?? '';
+		problem = null;
+	}
+
+	function callIt(event: SubmitEvent, did: string): void {
+		event.preventDefault();
+		if (!identities) return;
+		void run(`call:${did}`, async () => {
+			await identities.callIt(did, typed);
+			naming = null;
+		});
+	}
 </script>
 
 {#if identities}
@@ -121,7 +140,7 @@
 					{@const locked = shut(one)}
 					<li class="rounded-md border border-border bg-card p-3">
 						<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-							<span class="text-sm font-medium">{called(one)}</span>
+							<span class="text-sm font-medium">{heading(one)}</span>
 							{#if one.writing}
 								<span class="text-xs text-muted-foreground">Writing here</span>
 							{/if}
@@ -147,6 +166,15 @@
 									Write as this one
 								</Button>
 							{/if}
+							<Button
+								variant="ghost"
+								class="h-11"
+								disabled={busy !== null}
+								aria-expanded={naming === one.did}
+								onclick={() => nameIt(one)}
+							>
+								{one.label ? 'Change what you call it' : 'Give it a name'}
+							</Button>
 							{#if one.carriable && canCarryOut}
 								<Button
 									variant="ghost"
@@ -158,6 +186,34 @@
 								</Button>
 							{/if}
 						</div>
+						{#if naming === one.did}
+							<form
+								class="mt-2 flex flex-col gap-2 sm:flex-row"
+								onsubmit={(event) => callIt(event, one.did)}
+							>
+								<Label for="identity-name-{one.did}" class="sr-only">What you call this one</Label>
+								<Input
+									id="identity-name-{one.did}"
+									name="identity-name"
+									type="text"
+									autocomplete="off"
+									placeholder="What you call it"
+									bind:value={typed}
+									class="h-11 sm:flex-1"
+								/>
+								<Button
+									type="submit"
+									class="h-11"
+									disabled={busy !== null}
+									aria-busy={busy === `call:${one.did}`}
+								>
+									{busy === `call:${one.did}` ? 'One moment…' : 'Save'}
+								</Button>
+							</form>
+							<p class="mt-2 text-sm text-muted-foreground">
+								A name you give here stays on this device. Leave it empty to take it off again.
+							</p>
+						{/if}
 					</li>
 				{/each}
 			</ul>

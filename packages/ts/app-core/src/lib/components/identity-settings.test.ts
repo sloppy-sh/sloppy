@@ -42,6 +42,7 @@ function doors(said: Partial<IdentityAccess>): IdentityAccess {
 		bringSealed: async () => here(),
 		carryOut: async () => ({ name: CARRIED_FILE, body: new Uint8Array([1, 2, 3]) }),
 		writeAs: async () => {},
+		callIt: async () => {},
 		...said
 	};
 }
@@ -173,19 +174,37 @@ describe('the identities a device holds', () => {
 
 	// Two made here read the same otherwise, and one of them is about to be
 	// handed to another device.
-	it('tells two identities made here apart', async () => {
+	it('tells two identities made here apart by what a person calls them', async () => {
 		shell({
 			list: async () => [
-				here({ did: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK' }),
+				here({ did: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', label: 'Thesis' }),
 				here({ did: 'did:syr:z6MkjchhfUsD6mmvni8mCdXHw216Xrm9bQe2mBH1P5RDjVJG', writing: false })
 			]
 		});
 		show();
 		await settle();
 
-		expect(target.textContent).toContain('z6MkhaXg…2doK');
-		expect(target.textContent).toContain('z6Mkjchh…jVJG');
+		expect(target.textContent).toContain('Thesis');
+		expect(target.textContent).toContain('The identity on this device');
 		expect(target.textContent).toContain('Made on this device');
+	});
+
+	it('reads no key back to anybody', async () => {
+		shell({
+			list: async () => [
+				here({ did: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK' }),
+				here({
+					did: 'did:syr:z6MkjchhfUsD6mmvni8mCdXHw216Xrm9bQe2mBH1P5RDjVJG',
+					source: 'sealed',
+					locked: true,
+					writing: false
+				})
+			]
+		});
+		show();
+		await settle();
+
+		expect(target.textContent).not.toContain('z6Mk');
 	});
 
 	it('writes as the one somebody picks from then on', async () => {
@@ -376,5 +395,124 @@ describe('the identities a device holds', () => {
 		expect(target.textContent?.replace(/\s+/g, ' ')).toContain(
 			'what you have already written keeps the name it was written under'
 		);
+	});
+});
+
+describe('naming an identity this device holds', () => {
+	/** Where a name is typed for the one row open for naming. */
+	function field(): HTMLInputElement {
+		const one = target.querySelector<HTMLInputElement>('input[name="identity-name"]');
+		if (!one) throw new Error('nowhere to type a name');
+		return one;
+	}
+
+	function type(words: string): void {
+		const one = field();
+		one.value = words;
+		one.dispatchEvent(new Event('input', { bubbles: true }));
+	}
+
+	function save(): void {
+		field().closest('form')?.requestSubmit();
+	}
+
+	it('offers a name on every row, and nothing typed until somebody asks', async () => {
+		shell({ list: async () => [here()] });
+		show();
+		await settle();
+
+		expect(target.querySelector('input[name="identity-name"]')).toBeNull();
+		press('Give it a name');
+		await settle();
+
+		expect(field().value).toBe('');
+	});
+
+	it('calls it what somebody types from then on', async () => {
+		const callIt = vi.fn(async () => {});
+		shell({ list: async () => [here()], callIt });
+		show();
+		await settle();
+
+		press('Give it a name');
+		await settle();
+		type('Thesis');
+		await settle();
+		save();
+		await settle();
+
+		expect(callIt).toHaveBeenCalledWith('did:syr:z6Mkone', 'Thesis');
+		expect(target.querySelector('input[name="identity-name"]')).toBeNull();
+	});
+
+	it('opens on the name it already has, and offers to change it', async () => {
+		shell({ list: async () => [here({ label: 'Thesis' })] });
+		show();
+		await settle();
+
+		expect(offers()).toContain('Change what you call it');
+		press('Change what you call it');
+		await settle();
+
+		expect(field().value).toBe('Thesis');
+	});
+
+	it('takes the name off again for somebody who leaves it empty', async () => {
+		const callIt = vi.fn(async () => {});
+		shell({ list: async () => [here({ label: 'Thesis' })], callIt });
+		show();
+		await settle();
+
+		press('Change what you call it');
+		await settle();
+		type('   ');
+		await settle();
+		save();
+		await settle();
+
+		expect(callIt).toHaveBeenCalledWith('did:syr:z6Mkone', '   ');
+	});
+
+	it('says what to do next where the name would not save, and keeps it on screen', async () => {
+		shell({
+			list: async () => [here()],
+			callIt: async () => {
+				throw new Error('EIO');
+			}
+		});
+		show();
+		await settle();
+
+		press('Give it a name');
+		await settle();
+		type('Thesis');
+		await settle();
+		save();
+		await settle();
+
+		const said = target.querySelector('[role="alert"]');
+		expect(said?.textContent).toContain('Try again');
+		expect(said?.textContent).not.toContain('EIO');
+		expect(field().value).toBe('Thesis');
+	});
+
+	it('says what the graph said where it said anything a person can act on', async () => {
+		shell({
+			list: async () => [here()],
+			callIt: async () => {
+				throw new SloppyApiError(400, 'x', { detail: 'That name is too long. Try a shorter one.' });
+			}
+		});
+		show();
+		await settle();
+
+		press('Give it a name');
+		await settle();
+		type('Thesis');
+		await settle();
+		save();
+		await settle();
+
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain('Try a shorter one');
 	});
 });

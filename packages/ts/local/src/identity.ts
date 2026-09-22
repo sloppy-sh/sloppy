@@ -54,6 +54,9 @@ export interface LocalIdentity {
   /** Multibase, the same key `did` spells — carried so a reader has it without
    *  decoding the DID. */
   public_key: string;
+  /** What the person here calls it. Theirs rather than a store's, so it
+   *  outlives a refresh from one, and nothing carried out or signed holds it. */
+  label?: string;
 }
 
 /** An identity made here, with its key in a file in this app's private data. */
@@ -151,6 +154,12 @@ async function dropKeyOf(
   if (file && file !== keeping) await own.remove(file);
 }
 
+/** What the person called the identity a row is being replaced for: their name
+ *  for somebody outlives that identity arriving here again. */
+function keptLabel(replaced: HeldIdentity | undefined): { label?: string } {
+  return replaced?.label === undefined ? {} : { label: replaced.label };
+}
+
 /** Where the picture a store has one identity wearing is kept, beside its key
  *  and named the same way. */
 function pictureFor(publicKey: string): string {
@@ -222,12 +231,18 @@ function readJson(bytes: Uint8Array): unknown {
   }
 }
 
+function labelIn(one: Record<string, unknown>): { label?: string } {
+  const said = typeof one.label === "string" ? one.label.trim() : "";
+  return said ? { label: said } : {};
+}
+
 function readHeld(said: unknown): HeldIdentity | undefined {
   const one = said as Record<string, unknown> | null;
   const did = DidSyrSchema.safeParse(one?.did);
   if (!one || !did.success || typeof one.public_key !== "string") {
     return undefined;
   }
+  const label = labelIn(one);
   const source: IdentitySource =
     IdentitySourceSchema.safeParse(one.source).data ?? "device";
   if (source === "delegated") {
@@ -246,6 +261,7 @@ function readHeld(said: unknown): HeldIdentity | undefined {
     return {
       did: did.data,
       public_key: one.public_key,
+      ...label,
       source: "delegated",
       instance_url: one.instance_url,
       delegate_public_key: one.delegate_public_key,
@@ -264,6 +280,7 @@ function readHeld(said: unknown): HeldIdentity | undefined {
     return {
       did: did.data,
       public_key: one.public_key,
+      ...label,
       source: "sealed",
       sealed: one.sealed,
       ...(typeof one.name === "string" && one.name !== ""
@@ -274,6 +291,7 @@ function readHeld(said: unknown): HeldIdentity | undefined {
   return {
     did: did.data,
     public_key: one.public_key,
+    ...label,
     source: "device",
     seed: typeof one.seed === "string" && one.seed ? one.seed : SEED_FILE,
   };
@@ -345,12 +363,13 @@ export async function holdDeviceIdentity(
   const own = files.at(await files.dataPath());
   const held = await readIdentities(files);
   const replaced = held.identities.find((one) => one.did === made.identity.did);
+  const row = { ...keptLabel(replaced), ...made.identity };
   try {
     await own.write(made.identity.seed, encodeText(encodePrivateKey(made.key)));
     await writeIdentities(files, {
       identities: [
         ...held.identities.filter((one) => one.did !== made.identity.did),
-        made.identity,
+        row,
       ],
       ...(writing || held.writing === undefined
         ? { writing: made.identity.did }
@@ -360,7 +379,7 @@ export async function holdDeviceIdentity(
     wipe(made.key);
   }
   await dropKeyOf(own, replaced, made.identity.seed);
-  return made.identity;
+  return row;
 }
 
 /** Hold an identity a store somewhere else keeps, replacing what this device
@@ -371,15 +390,16 @@ export async function holdDelegatedIdentity(
 ): Promise<DelegatedIdentity> {
   const held = await readIdentities(files);
   const replaced = held.identities.find((one) => one.did === identity.did);
+  const row = { ...keptLabel(replaced), ...identity };
   await writeIdentities(files, {
     identities: [
       ...held.identities.filter((one) => one.did !== identity.did),
-      identity,
+      row,
     ],
     writing: identity.did,
   });
   await dropKeyOf(files.at(await files.dataPath()), replaced, undefined);
-  return identity;
+  return row;
 }
 
 /** A key that arrived shut, and the file it arrived in. The file is kept byte
@@ -430,16 +450,17 @@ export async function holdSealedIdentity(
   const replaced = held.identities.find(
     (one) => one.did === brought.identity.did,
   );
+  const row = { ...keptLabel(replaced), ...brought.identity };
   await own.write(brought.identity.sealed, brought.file);
   await writeIdentities(files, {
     identities: [
       ...held.identities.filter((one) => one.did !== brought.identity.did),
-      brought.identity,
+      row,
     ],
     writing: brought.identity.did,
   });
   await dropKeyOf(own, replaced, brought.identity.sealed);
-  return brought.identity;
+  return row;
 }
 
 /**
@@ -492,6 +513,31 @@ export async function writeAs(files: Files, did: DidSyr): Promise<void> {
     throw new LocalIdentityError();
   }
   await writeIdentities(files, { ...held, writing: did });
+}
+
+/** Call this one what the person here calls it. Nothing but spaces is no name
+ *  of their own, and it goes back to being called what it was. */
+export async function callIt(
+  files: Files,
+  did: DidSyr,
+  name: string,
+): Promise<void> {
+  const held = await readIdentities(files);
+  if (!held.identities.some((one) => one.did === did)) {
+    throw new LocalIdentityError();
+  }
+  const label = name.trim();
+  await writeIdentities(files, {
+    ...held,
+    identities: held.identities.map((one) =>
+      one.did === did ? labelled(one, label) : one,
+    ),
+  });
+}
+
+function labelled(one: HeldIdentity, label: string): HeldIdentity {
+  const { label: _unnamed, ...rest } = one;
+  return label ? { ...rest, label } : rest;
 }
 
 /** The private key this identity signs with, or `undefined` where the file it
@@ -644,6 +690,9 @@ export function readCarriedIdentity(bytes: Uint8Array): MintedIdentity {
 export interface IdentityHere {
   did: DidSyr;
   source: IdentitySource;
+  /** What the person here calls it, which a surface shows over anything a
+   *  store says. */
+  label?: string;
   /** What is known to call them. Absent where nothing says. */
   name?: string;
   /** The host of the store that keeps it, for one kept somewhere else. */
@@ -696,6 +745,9 @@ export interface IdentityAccess {
   carryOut(did: DidSyr): Promise<{ name: string; body: Uint8Array }>;
   /** Write under this one from now on. */
   writeAs(did: DidSyr): Promise<void>;
+  /** Call this one what the person here calls it, from now on and here only.
+   *  Nothing but spaces takes their name off it again. */
+  callIt(did: DidSyr, name: string): Promise<void>;
 }
 
 /** Where a sign-in that has left for a store is written down, under
@@ -730,6 +782,7 @@ function shown(identity: HeldIdentity, writing: boolean): IdentityHere {
   return {
     did: identity.did,
     source: identity.source,
+    ...(identity.label === undefined ? {} : { label: identity.label }),
     ...(named === undefined ? {} : { name: named }),
     ...(delegated === undefined
       ? {}
@@ -900,6 +953,10 @@ export class Identities implements IdentityAccess {
   async writeAs(did: DidSyr): Promise<void> {
     await writeAs(this.files, did);
     await this.options.changed?.();
+  }
+
+  async callIt(did: DidSyr, name: string): Promise<void> {
+    await callIt(this.files, did, name);
   }
 
   /** The sealed file, byte for byte as it arrived. Copying it needs no key, so

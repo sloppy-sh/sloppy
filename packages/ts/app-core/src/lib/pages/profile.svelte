@@ -14,7 +14,7 @@
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
 	import { api } from '../api.js';
-	import { kept } from '../held-identity.js';
+	import { givenName, kept } from '../held-identity.js';
 	import { runtime } from '../runtime.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { graphs } from '../stores/graphs.svelte.js';
@@ -175,8 +175,9 @@
 				<h2 class="text-sm font-medium">Your identity</h2>
 				{#if session.viewer}
 					{#if writingAs}
-						{#if writingAs.name}
-							<p class="text-base font-medium">{writingAs.name}</p>
+						{@const given = givenName(writingAs)}
+						{#if given}
+							<p class="text-base font-medium">{given}</p>
 						{/if}
 						<p class="text-sm text-muted-foreground">{kept(writingAs)}</p>
 					{/if}
