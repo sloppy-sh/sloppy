@@ -142,7 +142,8 @@ function holding(...these: IdentityHere[]): IdentityAccess {
 		bring: async () => these[0],
 		bringSealed: async () => these[0],
 		carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
-		writeAs: async () => {}
+		writeAs: async () => {},
+		callIt: async () => {}
 	};
 }
 
@@ -653,6 +654,30 @@ describe('the page about you, on a device holding its own graph', () => {
 
 		expect(screen()).toContain('Made on this device');
 		expect(screen()).toContain(DID);
+	});
+
+	it('calls an identity what the person here calls it', async () => {
+		running(
+			'local',
+			undefined,
+			undefined,
+			undefined,
+			holding({
+				did: DID,
+				source: 'device',
+				label: 'Thesis',
+				locked: false,
+				lapsed: false,
+				writing: true,
+				carriable: true
+			})
+		);
+		session.adopt(VIEWER, 'a-session');
+		mounted = mount(Profile, { target });
+		flushSync();
+		await settle();
+
+		expect(screen()).toContain('Thesis');
 	});
 
 	it('draws no identity to copy before the graph has opened', async () => {

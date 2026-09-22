@@ -200,7 +200,8 @@ describe('a sign-in the device itself began', () => {
 				bring: async () => HERE,
 				bringSealed: async () => HERE,
 				carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
-				writeAs: async () => {}
+				writeAs: async () => {},
+				callIt: async () => {}
 			},
 			vault: {
 				folder: () => folder,

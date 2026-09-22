@@ -73,6 +73,7 @@ function doors(said: Partial<IdentityAccess>): IdentityAccess {
 		bringSealed: async () => here(),
 		carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
 		writeAs: async () => {},
+		callIt: async () => {},
 		...said
 	};
 }
@@ -371,6 +372,34 @@ describe('the three doors a first run offers', () => {
 		await settle();
 
 		expect(target.textContent).toContain('writing as Ada Lovelace');
+	});
+
+	it('says the writing carries the one made here, and reads back no key', async () => {
+		shell(
+			{},
+			{
+				list: async () => [
+					here({ did: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK' })
+				]
+			}
+		);
+		show();
+		await settle();
+
+		expect(whoDoor().textContent).toContain("You'll be writing as the identity on this device");
+		expect(target.textContent).not.toContain('z6Mk');
+	});
+
+	it('says who the writing will be in the words a person gave it', async () => {
+		shell(
+			{},
+			{ list: async () => [here({ source: 'delegated', name: 'Ada Lovelace', label: 'Thesis' })] }
+		);
+		show();
+		await settle();
+
+		expect(whoDoor().textContent).toContain('writing as Thesis');
+		expect(target.textContent).not.toContain('Ada Lovelace');
 	});
 
 	it('names an identity brought in under a passphrase rather than the one made here', async () => {

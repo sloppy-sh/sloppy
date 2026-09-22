@@ -38,11 +38,7 @@
 
 	const writing = $derived(held.find((one) => one.writing));
 	const whoLine = $derived(
-		writing === undefined
-			? 'Who you write as'
-			: writing.name === undefined && writing.source === 'device'
-				? `You'll be writing as the identity on this device`
-				: `You'll be writing as ${called(writing)}`
+		writing === undefined ? 'Who you write as' : `You'll be writing as ${called(writing)}`
 	);
 
 	$effect(() => {
