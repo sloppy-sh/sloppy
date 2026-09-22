@@ -18,6 +18,7 @@ import { LocalGraph } from "./graph.js";
 import {
   CARRIED_FILE,
   CARRIED_SEALED_FILE,
+  callIt,
   carryIdentityOut,
   type DeviceIdentity,
   holdDelegatedIdentity,
@@ -362,6 +363,89 @@ describe("which identity a write carries", () => {
     await writeIdentities(held, { identities: [], writing: identity.did });
 
     expect((await readIdentities(held)).writing).toBeUndefined();
+  });
+});
+
+describe("what a person here calls an identity", () => {
+  /** The list as a device wrote it before anybody could name one. */
+  async function asRowsWere(
+    held: MemoryFiles,
+    did: string,
+    publicKey: string,
+  ): Promise<void> {
+    await held.at("/data").write(
+      IDENTITIES_FILE,
+      encodeText(
+        `${JSON.stringify({
+          identities: [
+            { did, public_key: publicKey, source: "device", seed: SEED_FILE },
+          ],
+          writing: did,
+        })}\n`,
+      ),
+    );
+  }
+
+  it("is nothing on a row written before anybody could name one", async () => {
+    const held = files();
+    const { did, public_key } = makeLocalIdentity().identity;
+    await asRowsWere(held, did, public_key);
+
+    const [one] = (await readIdentities(held)).identities;
+
+    expect(one?.did).toBe(did);
+    expect(one?.label).toBeUndefined();
+  });
+
+  it("is what they typed, and is still there the next time", async () => {
+    const held = files();
+    const { identity } = await deviceIdentity(held);
+
+    await callIt(held, identity.did, "  Thesis  ");
+
+    const now = await readIdentities(held);
+    expect(now.identities[0]?.label).toBe("Thesis");
+    expect(now.writing).toBe(identity.did);
+  });
+
+  it("goes back to nothing where they leave it empty", async () => {
+    const held = files();
+    const { identity } = await deviceIdentity(held);
+    await callIt(held, identity.did, "Thesis");
+
+    await callIt(held, identity.did, "   ");
+
+    const [one] = (await readIdentities(held)).identities;
+    expect(one?.label).toBeUndefined();
+    expect(JSON.stringify(one)).not.toContain("label");
+  });
+
+  it("stays theirs when the same identity arrives here again", async () => {
+    const held = files();
+    const { identity } = await deviceIdentity(held);
+    await callIt(held, identity.did, "Thesis");
+
+    const again = await holdDeviceIdentity(
+      held,
+      readCarriedIdentity(
+        carryIdentityOut(
+          identity,
+          (await readLocalKey(held, identity)) ?? new Uint8Array(),
+        ),
+      ),
+    );
+
+    expect(again.label).toBe("Thesis");
+    expect((await readIdentities(held)).identities[0]?.label).toBe("Thesis");
+  });
+
+  it("names nobody this device does not hold", async () => {
+    const held = files();
+    await deviceIdentity(held);
+
+    await expect(
+      callIt(held, makeLocalIdentity().identity.did, "Thesis"),
+    ).rejects.toBeInstanceOf(LocalIdentityError);
   });
 });
 
@@ -969,6 +1053,49 @@ describe("the three doors a person is offered", () => {
     await expect(identities(files).held.carryOut(one.did)).rejects.toThrow(
       /not on this device any more/i,
     );
+  });
+
+  it("keeps what a person calls one when its store says who they are again", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const door = identities(files);
+    await door.held.signIn(INSTANCE);
+    await door.held.finish(cameBack(door.left[0] ?? ""));
+    await door.held.callIt(DID as DidSyr, "Work");
+
+    await door.held.signIn(INSTANCE);
+    await door.held.finish(cameBack(door.left[1] ?? ""));
+
+    const [one] = await door.held.list();
+    expect(one?.label).toBe("Work");
+    expect(one?.name).toBe("Ada Lovelace");
+  });
+
+  // What a person calls an identity is this device's word for them. It is on
+  // nothing signed, so it is on nothing carried anywhere either.
+  it("carries an identity made here out with no name of this device's on it", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const door = identities(files);
+    const made = await door.held.makeOne();
+    await door.held.callIt(made.did, "Thesis");
+
+    const file = await door.held.carryOut(made.did);
+
+    expect(decodeText(file.body)).not.toContain("Thesis");
+    expect(Object.keys(JSON.parse(decodeText(file.body)))).not.toContain(
+      "label",
+    );
+  });
+
+  it("carries a sealed one out byte for byte, whatever it is called here", async () => {
+    const files = new MemoryFiles({ data: "/data" });
+    const one = await aSigil();
+    const door = identities(files);
+    const arrived = await door.held.bringSealed(one.file);
+    await door.held.callIt(arrived.did, "Thesis");
+
+    const file = await door.held.carryOut(arrived.did);
+
+    expect(file.body).toEqual(one.file);
   });
 
   it("has no file to carry for an identity kept somewhere else", async () => {
