@@ -23,7 +23,7 @@ describe("what resolving an identity says", () => {
 
   it("is unknown where nothing answered, never anonymous", () => {
     expect(vouchFrom(AVA, INSTANCE, null, AT)).toEqual({
-      did: AVA,
+      principal: AVA,
       state: "unknown",
       at: AT,
     });
@@ -52,7 +52,7 @@ describe("what resolving an identity says", () => {
       AT,
     );
     expect(answer).toEqual({
-      did: AVA,
+      principal: AVA,
       state: "vouched",
       instance: INSTANCE,
       at: AT,
@@ -61,7 +61,7 @@ describe("what resolving an identity says", () => {
 
   it("names no instance where nobody said where to look", () => {
     expect(vouchFrom(AVA, undefined, [], AT)).toEqual({
-      did: AVA,
+      principal: AVA,
       state: "anonymous",
       at: AT,
     });
@@ -69,7 +69,7 @@ describe("what resolving an identity says", () => {
 
   it("is anonymous for an identity minted here, with nobody to ask", () => {
     expect(anonymousVouch(AVA, AT)).toEqual({
-      did: AVA,
+      principal: AVA,
       state: "anonymous",
       at: AT,
     });
@@ -77,7 +77,7 @@ describe("what resolving an identity says", () => {
 });
 
 describe("the answer to act on", () => {
-  const unreachable = { did: AVA, state: "unknown", at: AT } as const;
+  const unreachable = { principal: AVA, state: "unknown", at: AT } as const;
 
   it("is what resolution just said, wherever it said anything", () => {
     const fresh = vouchFrom(AVA, INSTANCE, [], AT);
@@ -92,7 +92,7 @@ describe("the answer to act on", () => {
       checked_at: "2026-09-01T00:00:00.000Z",
     } as const;
     expect(standingVouch(unreachable, held)).toEqual({
-      did: AVA,
+      principal: AVA,
       state: "vouched",
       at: held.checked_at,
     });
@@ -109,7 +109,7 @@ describe("an identity this instance has written down", () => {
     const row = {
       id: undefined,
       created_by: AVA,
-      did: AVA,
+      principal: AVA,
       created_at: nowIso(),
       updated_at: nowIso(),
     };
@@ -123,7 +123,7 @@ describe("an identity this instance has written down", () => {
     expect(
       KnownIdentitySchema.omit({ id: true }).safeParse({
         created_by: AVA,
-        did: AVA,
+        principal: AVA,
         vouch: "unknown",
         created_at: nowIso(),
         updated_at: nowIso(),

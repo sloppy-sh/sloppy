@@ -3,7 +3,8 @@
 
 import { Injectable } from "@nestjs/common";
 import {
-  type DidSyr,
+  DidSyrSchema,
+  type Principal,
   type TrustedInstance,
   type Vouch,
   type VouchResolver,
@@ -28,19 +29,24 @@ export class VouchService implements VouchResolver {
     private readonly config: AppConfigService,
   ) {}
 
-  async vouchFor(did: DidSyr, at?: TrustedInstance): Promise<Vouch> {
+  async vouchFor(principal: Principal, at?: TrustedInstance): Promise<Vouch> {
     const asked = nowIso();
-    if (at === undefined) return { did, state: "unknown", at: asked };
+    const unknown: Vouch = { principal, state: "unknown", at: asked };
+    // A syr instance is asked about a syr identity. Anybody else is somebody
+    // this resolver has no way of asking about, which is `unknown` and not a
+    // statement that nobody stands behind them.
+    if (!DidSyrSchema.safeParse(principal).success) return unknown;
+    if (at === undefined) return unknown;
 
     const reach = peerReach(this.config);
     const instance = await this.syr.providerFor(
       normalizeInstanceUrl(at.url),
-      did,
+      principal,
       reach,
     );
-    if (instance === null) return { did, state: "unknown", at: asked };
+    if (instance === null) return unknown;
 
-    const listing = await this.syr.listDelegations(instance, did, reach);
-    return vouchFrom(did, instance, listing, asked);
+    const listing = await this.syr.listDelegations(instance, principal, reach);
+    return vouchFrom(principal, instance, listing, asked);
   }
 }

@@ -1511,13 +1511,13 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
   });
 
   it("holds one entry per identity each person has written down", async () => {
-    const knownRow = (owner: string, localId: string, did: string) => ({
+    const knownRow = (owner: string, localId: string, about: string) => ({
       id: new RecordId("known_identity", {
         created_by: owner,
         id: UlidSchema.parse(localId),
       }),
       created_by: owner,
-      did,
+      principal: about,
       instance: "https://peer.example",
       vouch: "vouched",
       checked_at: "2026-03-01T00:00:00.000Z",
@@ -1532,7 +1532,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     // second answer beside it.
     const twice = knownRow(AVA, "01JKNWNB000000000000000000", BOB);
     await expect(db.create(twice.id).content(twice)).rejects.toThrow(
-      /known_identity_owner_did/,
+      /known_identity_owner_principal/,
     );
 
     // One address book each: what BOB wrote down about himself is his row.
@@ -1544,7 +1544,9 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     }
 
     // Who it is about cannot become somebody else.
-    await expect(db.update(wrote.id).merge({ did: CAI })).rejects.toThrow();
+    await expect(
+      db.update(wrote.id).merge({ principal: CAI }),
+    ).rejects.toThrow();
   });
 
   it("purges one author and leaves the other whole", async () => {
