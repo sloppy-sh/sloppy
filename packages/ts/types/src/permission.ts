@@ -57,6 +57,25 @@ export const ALL_PERMISSIONS: bigint = Object.values(Permissions).reduce(
   0n,
 );
 
+/**
+ * What a graph grants an identity no role of its own names — and so what every
+ * graph grants, until somebody writes a role on one. It is the verbs a note's
+ * own gate already governs, and none of the ones that are the graph's: moving a
+ * note and writing its address, publishing, and saying who may do what in it.
+ *
+ * **The floor the cascade folds from**, which is what keeps writing a first
+ * role or a first override from taking a verb off everybody the graph did not
+ * name. A graph closes one off by denying it on the role everybody holds.
+ */
+export const DEFAULT_PERMISSIONS: bigint =
+  Permissions.READ_NOTES |
+  Permissions.WRITE_NOTES |
+  Permissions.CREATE_NOTES |
+  Permissions.DELETE_NOTES |
+  Permissions.OFFER_CHANGE |
+  Permissions.TAKE_OFFER |
+  Permissions.CO_AUTHOR;
+
 /** Whether these permissions carry a verb. `ADMINISTRATOR` carries all of them. */
 export function hasPermission(permissions: bigint, flag: bigint): boolean {
   if (permissions & Permissions.ADMINISTRATOR) return true;
@@ -179,10 +198,11 @@ export interface PermissionFold {
 }
 
 /**
- * Whether a graph has any policy written on it at all. **A graph with none
- * gates its notes exactly as every graph did before roles existed**, and
- * `writeDecision` is given no permissions for it — docs/ARCHITECTURE.md § "Who
- * may write where".
+ * Whether a graph has any policy written on it at all — what a caller asks to
+ * skip a fold, never to reach a second answer: a graph with none folds to
+ * {@link DEFAULT_PERMISSIONS} for anybody but its owner, which is what
+ * `constantPermissionFold(DEFAULT_PERMISSIONS)` hands back without reading a
+ * row.
  */
 export function hasPolicy(
   roles: readonly RoleFacts[],
@@ -219,15 +239,15 @@ function heldRoles(
 }
 
 /**
- * The first layer on its own: what this identity's roles grant across the
- * graph. A caller reads it to skip loading overrides an administrator's answer
- * cannot be moved by.
+ * The first layer on its own: {@link DEFAULT_PERMISSIONS} as the roles this
+ * identity holds leave it. A caller reads it to skip loading overrides an
+ * administrator's answer cannot be moved by.
  */
-export function rolePermissions(
+export function graphPermissionsFor(
   writer: DidSyr,
   roles: readonly RoleFacts[],
 ): bigint {
-  let permissions = 0n;
+  let permissions = DEFAULT_PERMISSIONS;
   for (const role of heldRoles(writer, roles)) {
     permissions = applied(permissions, role.allow, role.deny);
   }
@@ -235,7 +255,8 @@ export function rolePermissions(
 }
 
 /**
- * The cascade, folded in memory. Layers, lowest to highest:
+ * The cascade, folded in memory from {@link DEFAULT_PERMISSIONS}. Layers,
+ * lowest to highest:
  *
  *   1. the roles this identity holds, in ascending position
  *   2. the graph-scoped override written on this identity
@@ -281,7 +302,7 @@ export function resolvePermissionFold(
     }
   }
 
-  let graphPermissions = rolePermissions(writer, roles);
+  let graphPermissions = graphPermissionsFor(writer, roles);
   if (graphOverride) {
     graphPermissions = applied(
       graphPermissions,
@@ -377,12 +398,25 @@ export type SetPermissionOverrideRequest = z.input<
   typeof SetPermissionOverrideRequestSchema
 >;
 
-/** What `PermissionOverrideSchema` cannot refuse: an id of the wrong shape for
- *  the target it names. */
+/** An id of the wrong shape for the target it names. */
 export function overrideTargetIsWellFormed(
   target: OverrideTarget,
   targetId: string,
 ): boolean {
   const shape = target === "role" ? OwnedRefSchema : DidSyrSchema;
   return shape.safeParse(targetId).success;
+}
+
+/**
+ * What `SetPermissionOverrideRequestSchema` cannot refuse.
+ *
+ * A role's graph-wide allow and deny are the role's own columns, folded in
+ * layer 1, so a graph-scoped override on a role is not a layer: written, it
+ * would deny nothing and still give the graph a policy.
+ */
+export function overrideIsWellFormed(
+  override: Pick<SetPermissionOverrideRequest, "note" | "target" | "target_id">,
+): boolean {
+  if (override.target === "role" && override.note === undefined) return false;
+  return overrideTargetIsWellFormed(override.target, override.target_id);
 }

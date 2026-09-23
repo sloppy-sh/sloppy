@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_PERMISSIONS,
+  DEFAULT_PERMISSIONS,
   type OverrideFacts,
   Permissions,
   type RoleFacts,
   constantPermissionFold,
+  graphPermissionsFor,
   hasPermission,
   hasPolicy,
   maskBits,
   maskOf,
+  overrideIsWellFormed,
   overrideTargetIsWellFormed,
   resolvePermissionFold,
-  rolePermissions,
 } from "./permission.js";
 
 const AVA = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
@@ -72,6 +74,39 @@ describe("a graph nobody has written a policy on", () => {
       ),
     ).toBe(true);
   });
+
+  it("grants what a caller skipping the fold hands writeDecision instead", () => {
+    const answer = fold([], [], BOB);
+    expect(answer.graphPermissions).toBe(DEFAULT_PERMISSIONS);
+    expect(answer.forNote(NOTE)).toBe(DEFAULT_PERMISSIONS);
+    expect(answer.hasNoteOverrides).toBe(false);
+  });
+
+  it("gives nobody a verb that is the graph's rather than the note's", () => {
+    for (const graphs of [
+      Permissions.PLACE_NOTES,
+      Permissions.PUBLISH,
+      Permissions.MANAGE_ROLES,
+      Permissions.MANAGE_GRAPH,
+      Permissions.ADMINISTRATOR,
+    ]) {
+      expect(hasPermission(DEFAULT_PERMISSIONS, graphs)).toBe(false);
+    }
+  });
+
+  it("is left where it was by a first override written on somebody else", () => {
+    const first: OverrideFacts = {
+      scope: NOTE,
+      target: "did",
+      target_id: CAI,
+      deny: maskOf(Permissions.WRITE_NOTES),
+    };
+    expect(hasPolicy([], [first])).toBe(true);
+    expect(fold([], [first], BOB).forNote(NOTE)).toBe(DEFAULT_PERMISSIONS);
+    expect(fold([], [first], CAI).forNote(NOTE)).toBe(
+      DEFAULT_PERMISSIONS & ~Permissions.WRITE_NOTES,
+    );
+  });
 });
 
 describe("the cascade", () => {
@@ -97,18 +132,20 @@ describe("the cascade", () => {
       role({
         ref: EVERYONE,
         everyone: true,
-        allow: maskOf(Permissions.READ_NOTES),
+        deny: maskOf(Permissions.WRITE_NOTES),
       }),
       role({
         ref: EDITORS,
         position: 1,
         members: [CAI],
-        allow: maskOf(Permissions.WRITE_NOTES),
+        allow: maskOf(Permissions.WRITE_NOTES | Permissions.PUBLISH),
       }),
     ];
-    expect(fold(roles, [], BOB).graphPermissions).toBe(Permissions.READ_NOTES);
+    expect(fold(roles, [], BOB).graphPermissions).toBe(
+      DEFAULT_PERMISSIONS & ~Permissions.WRITE_NOTES,
+    );
     expect(fold(roles, [], CAI).graphPermissions).toBe(
-      Permissions.READ_NOTES | Permissions.WRITE_NOTES,
+      DEFAULT_PERMISSIONS | Permissions.PUBLISH,
     );
   });
 
@@ -117,7 +154,7 @@ describe("the cascade", () => {
       ref: EVERYONE,
       position: 0,
       everyone: true,
-      allow: maskOf(Permissions.WRITE_NOTES | Permissions.PUBLISH),
+      allow: maskOf(Permissions.PUBLISH),
     });
     const high = role({
       ref: EDITORS,
@@ -128,9 +165,9 @@ describe("the cascade", () => {
     // Handed in the wrong order on purpose: the position orders them, not the
     // array.
     expect(fold([high, low], [], BOB).graphPermissions).toBe(
-      Permissions.WRITE_NOTES,
+      DEFAULT_PERMISSIONS,
     );
-    expect(rolePermissions(BOB, [high, low])).toBe(Permissions.WRITE_NOTES);
+    expect(graphPermissionsFor(BOB, [high, low])).toBe(DEFAULT_PERMISSIONS);
   });
 
   it("lets a graph-scoped override on one identity move what their roles said", () => {
@@ -138,7 +175,7 @@ describe("the cascade", () => {
       role({
         ref: EVERYONE,
         everyone: true,
-        allow: maskOf(Permissions.READ_NOTES),
+        deny: maskOf(Permissions.WRITE_NOTES),
       }),
     ];
     const answer = fold(
@@ -154,17 +191,13 @@ describe("the cascade", () => {
       ],
       BOB,
     );
-    expect(answer.graphPermissions).toBe(Permissions.WRITE_NOTES);
+    expect(answer.graphPermissions).toBe(
+      (DEFAULT_PERMISSIONS & ~Permissions.READ_NOTES) | Permissions.WRITE_NOTES,
+    );
   });
 
   it("reads a graph-scoped role override as nothing: a role says that in layer one", () => {
-    const roles = [
-      role({
-        ref: EVERYONE,
-        everyone: true,
-        allow: maskOf(Permissions.READ_NOTES),
-      }),
-    ];
+    const roles = [role({ ref: EVERYONE, everyone: true })];
     const answer = fold(
       roles,
       [
@@ -177,17 +210,11 @@ describe("the cascade", () => {
       ],
       BOB,
     );
-    expect(answer.graphPermissions).toBe(Permissions.READ_NOTES);
+    expect(answer.graphPermissions).toBe(DEFAULT_PERMISSIONS);
   });
 
   it("lets an override on a note move the answer for that note alone", () => {
-    const roles = [
-      role({
-        ref: EVERYONE,
-        everyone: true,
-        allow: maskOf(Permissions.READ_NOTES | Permissions.WRITE_NOTES),
-      }),
-    ];
+    const roles = [role({ ref: EVERYONE, everyone: true })];
     const answer = fold(
       roles,
       [
@@ -201,10 +228,10 @@ describe("the cascade", () => {
       BOB,
     );
     expect(answer.hasNoteOverrides).toBe(true);
-    expect(answer.forNote(NOTE)).toBe(Permissions.READ_NOTES);
-    expect(answer.forNote(OTHER)).toBe(
-      Permissions.READ_NOTES | Permissions.WRITE_NOTES,
+    expect(answer.forNote(NOTE)).toBe(
+      DEFAULT_PERMISSIONS & ~Permissions.WRITE_NOTES,
     );
+    expect(answer.forNote(OTHER)).toBe(DEFAULT_PERMISSIONS);
   });
 
   it("lets an override on one identity beat an override on their role", () => {
@@ -227,7 +254,7 @@ describe("the cascade", () => {
       ],
       BOB,
     );
-    expect(answer.forNote(NOTE)).toBe(Permissions.WRITE_NOTES);
+    expect(answer.forNote(NOTE)).toBe(DEFAULT_PERMISSIONS);
   });
 
   it("folds note overrides on roles in ascending role position", () => {
@@ -253,7 +280,7 @@ describe("the cascade", () => {
       ],
       BOB,
     );
-    expect(answer.forNote(NOTE)).toBe(Permissions.WRITE_NOTES);
+    expect(answer.forNote(NOTE)).toBe(DEFAULT_PERMISSIONS);
   });
 
   it("reads an override on a role nobody here holds as nothing", () => {
@@ -270,7 +297,7 @@ describe("the cascade", () => {
       ],
       BOB,
     );
-    expect(answer.forNote(NOTE)).toBe(0n);
+    expect(answer.forNote(NOTE)).toBe(DEFAULT_PERMISSIONS);
     expect(answer.hasNoteOverrides).toBe(false);
   });
 
@@ -311,5 +338,18 @@ describe("what an override is written against", () => {
     expect(overrideTargetIsWellFormed("role", BOB)).toBe(false);
     expect(overrideTargetIsWellFormed("did", BOB)).toBe(true);
     expect(overrideTargetIsWellFormed("did", EDITORS)).toBe(false);
+  });
+
+  it("is a note, where it is written on a role: a role says the graph in its own columns", () => {
+    expect(overrideIsWellFormed({ target: "role", target_id: EDITORS })).toBe(
+      false,
+    );
+    expect(
+      overrideIsWellFormed({ note: NOTE, target: "role", target_id: EDITORS }),
+    ).toBe(true);
+    expect(overrideIsWellFormed({ target: "did", target_id: BOB })).toBe(true);
+    expect(
+      overrideIsWellFormed({ note: NOTE, target: "did", target_id: EDITORS }),
+    ).toBe(false);
   });
 });

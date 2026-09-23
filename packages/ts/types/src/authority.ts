@@ -5,13 +5,18 @@
 import type { DidSyr } from "./common.js";
 import type { Graph } from "./graph.js";
 import { type Node, authorsOf, writeOutcome } from "./node.js";
-import { Permissions, hasPermission } from "./permission.js";
+import {
+  DEFAULT_PERMISSIONS,
+  Permissions,
+  hasPermission,
+} from "./permission.js";
 import type { VouchState } from "./vouch.js";
 
 /**
  * What a write comes to. `lands` and `offered` are the note's own rule;
  * `refused` is a graph that does not take this write at all, and is reachable
- * only where somebody has written a policy on the graph.
+ * only where somebody has written a policy on the graph or asked its writers to
+ * be vouched.
  */
 export type WriteVerdict = "lands" | "offered" | "refused";
 
@@ -25,42 +30,46 @@ export interface WriteDecision {
 export interface WriteDecisionInput {
   readonly note: Pick<Node, "created_by" | "owner" | "authors">;
   readonly writer: DidSyr;
-  /** The graph the note is in. **Absent asks nobody to be vouched**, which is
-   *  every graph written before a graph could ask. */
-  readonly graph?: Pick<Graph, "created_by" | "vouching">;
+  /** The graph the note is in. */
+  readonly graph: Pick<Graph, "created_by" | "vouching">;
   /**
-   * What the cascade folded for this writer at this note.
-   *
-   * **Absent is a graph with no policy written on it** — no roles and no
-   * overrides — and no bit is read: the note's own gate decides alone, exactly
-   * as it did before roles existed. `hasPolicy` in `permission.ts` is what a
-   * caller asks before folding.
+   * What the cascade folded for this writer at this note, and
+   * {@link DEFAULT_PERMISSIONS} for a graph with no policy written on it —
+   * which is what folding no roles and no overrides comes to.
    */
-  readonly permissions?: bigint;
-  /** Whether anybody stands behind the writer. **Absent reads as `unknown`**:
-   *  nobody asked, and nobody is told they lost anything for it. */
-  readonly vouch?: VouchState;
+  readonly permissions: bigint;
+  /** What resolving the writer answered, and `unknown` where nobody asked. */
+  readonly vouch: VouchState;
 }
 
 const REFUSED: WriteDecision = { verdict: "refused", coAuthors: false };
 const OFFERED: WriteDecision = { verdict: "offered", coAuthors: false };
 
-function may(permissions: bigint | undefined, flag: bigint): boolean {
-  return permissions === undefined || hasPermission(permissions, flag);
+/** Whether this note already carries this identity's writing. */
+function carries(
+  note: Pick<Node, "created_by" | "owner" | "authors">,
+  writer: DidSyr,
+): boolean {
+  return note.owner === writer || authorsOf(note).includes(writer);
 }
 
 /** What a write by `writer` on `note` comes to, given what its graph says. */
 export function writeDecision(input: WriteDecisionInput): WriteDecision {
   const { note, writer, graph, permissions, vouch } = input;
 
+  const offers = hasPermission(permissions, Permissions.OFFER_CHANGE);
+
   // A graph's own owner is never held to its vouching: an identity minted on a
   // device is anonymous, and asking to be vouched must not shut its author out
   // of the graph they are asking it for.
-  const asksVouching =
-    graph?.vouching === "required" && graph.created_by !== writer;
-  if (asksVouching && vouch === "anonymous") return REFUSED;
-
-  const offers = may(permissions, Permissions.OFFER_CHANGE);
+  if (graph.vouching === "required" && graph.created_by !== writer) {
+    if (vouch === "anonymous") return REFUSED;
+    // Nothing answered, so nothing is taken from a writer this note already
+    // carries and nothing is given to anybody else.
+    if (vouch === "unknown" && !carries(note, writer)) {
+      return offers ? OFFERED : REFUSED;
+    }
+  }
 
   if (writeOutcome(note, writer) === "offered") {
     return offers ? OFFERED : REFUSED;
@@ -71,8 +80,8 @@ export function writeDecision(input: WriteDecisionInput): WriteDecision {
   const coAuthors =
     note.owner === undefined && !authorsOf(note).includes(writer);
   const writes =
-    may(permissions, Permissions.WRITE_NOTES) &&
-    (!coAuthors || may(permissions, Permissions.CO_AUTHOR));
+    hasPermission(permissions, Permissions.WRITE_NOTES) &&
+    (!coAuthors || hasPermission(permissions, Permissions.CO_AUTHOR));
   if (!writes) return offers ? OFFERED : REFUSED;
 
   return { verdict: "lands", coAuthors };

@@ -3,7 +3,13 @@ import { type WriteDecision, writeDecision } from "./authority.js";
 import type { DidSyr } from "./common.js";
 import type { Graph } from "./graph.js";
 import { type Node, authorsOf, withAuthor, writeOutcome } from "./node.js";
-import { ALL_PERMISSIONS, Permissions, maskBits } from "./permission.js";
+import type { VouchState } from "./vouch.js";
+import {
+  ALL_PERMISSIONS,
+  DEFAULT_PERMISSIONS,
+  Permissions,
+  maskBits,
+} from "./permission.js";
 
 const AVA = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
 const BOB = "did:syr:z6MkBobBobBobBobBobBobBobBobBobBob";
@@ -26,8 +32,8 @@ function asDecided(
 type Case = {
   note: Gated;
   writer: DidSyr;
-  graph?: Pick<Graph, "created_by" | "vouching">;
-  vouch?: "vouched" | "anonymous" | "unknown";
+  graph: Pick<Graph, "created_by" | "vouching">;
+  vouch: VouchState;
 };
 
 /**
@@ -46,17 +52,12 @@ function policylessCases(): Case[] {
     [AVA, BOB],
     [CAI],
   ];
-  const graphs: Array<Pick<Graph, "created_by" | "vouching"> | undefined> = [
-    undefined,
+  const graphs: Array<Pick<Graph, "created_by" | "vouching">> = [
     { created_by: AVA },
     { created_by: BOB },
+    { created_by: AVA, vouching: "optional" },
   ];
-  const vouches: Array<"vouched" | "anonymous" | "unknown" | undefined> = [
-    undefined,
-    "vouched",
-    "anonymous",
-    "unknown",
-  ];
+  const vouches: VouchState[] = ["vouched", "anonymous", "unknown"];
 
   const cases: Case[] = [];
   for (const created_by of [AVA, BOB]) {
@@ -98,7 +99,13 @@ describe("a graph with no policy written on it", () => {
     expect(cases.length).toBeGreaterThan(1000);
 
     for (const { note, writer, graph, vouch } of cases) {
-      const decision = writeDecision({ note, writer, graph, vouch });
+      const decision = writeDecision({
+        note,
+        writer,
+        graph,
+        vouch,
+        permissions: DEFAULT_PERMISSIONS,
+      });
       expect(decision.verdict).toBe(writeOutcome(note, writer));
       expect(asDecided(note, writer, decision)).toEqual(
         withAuthor(note, writer),
@@ -125,7 +132,8 @@ describe("a graph with no policy written on it", () => {
         note,
         writer,
         graph: { created_by: pick(dids) },
-        vouch: pick([undefined, "vouched", "anonymous", "unknown"] as const),
+        vouch: pick(["vouched", "anonymous", "unknown"] as const),
+        permissions: DEFAULT_PERMISSIONS,
       });
       expect(decision.verdict).toBe(writeOutcome(note, writer));
       expect(asDecided(note, writer, decision)).toEqual(
@@ -136,9 +144,15 @@ describe("a graph with no policy written on it", () => {
 
   it("never refuses a write: nothing in it can", () => {
     for (const { note, writer, graph, vouch } of policylessCases()) {
-      expect(writeDecision({ note, writer, graph, vouch }).verdict).not.toBe(
-        "refused",
-      );
+      expect(
+        writeDecision({
+          note,
+          writer,
+          graph,
+          vouch,
+          permissions: DEFAULT_PERMISSIONS,
+        }).verdict,
+      ).not.toBe("refused");
     }
   });
 });
@@ -146,31 +160,59 @@ describe("a graph with no policy written on it", () => {
 describe("a graph that asks its writers to be vouched", () => {
   const graph = { created_by: AVA, vouching: "required" } as const;
   const note: Gated = { created_by: AVA, owner: undefined, authors: [AVA] };
+  const asked = (writer: DidSyr, vouch: VouchState, held: Gated = note) =>
+    writeDecision({
+      note: held,
+      writer,
+      graph,
+      vouch,
+      permissions: DEFAULT_PERMISSIONS,
+    });
 
   it("refuses an identity nobody stands behind", () => {
-    expect(
-      writeDecision({ note, writer: BOB, graph, vouch: "anonymous" }),
-    ).toEqual({ verdict: "refused", coAuthors: false });
+    expect(asked(BOB, "anonymous")).toEqual({
+      verdict: "refused",
+      coAuthors: false,
+    });
   });
 
   it("takes writing from one somebody stands behind", () => {
-    expect(
-      writeDecision({ note, writer: BOB, graph, vouch: "vouched" }).verdict,
-    ).toBe("lands");
+    expect(asked(BOB, "vouched").verdict).toBe("lands");
   });
 
-  it("takes nothing away from one whose instance did not answer", () => {
-    for (const vouch of ["unknown", undefined] as const) {
-      expect(writeDecision({ note, writer: BOB, graph, vouch }).verdict).toBe(
-        "lands",
-      );
-    }
+  it("admits nobody new while nothing answers, and offers their change", () => {
+    expect(asked(BOB, "unknown")).toEqual({
+      verdict: "offered",
+      coAuthors: false,
+    });
+  });
+
+  it("refuses the change of one it will not admit and takes no offers from", () => {
+    expect(
+      writeDecision({
+        note,
+        writer: BOB,
+        graph,
+        vouch: "unknown",
+        permissions: DEFAULT_PERMISSIONS & ~Permissions.OFFER_CHANGE,
+      }).verdict,
+    ).toBe("refused");
+  });
+
+  it("takes nothing away from a writer the note already carries", () => {
+    const written: Gated = {
+      created_by: AVA,
+      owner: undefined,
+      authors: [AVA, BOB],
+    };
+    expect(asked(BOB, "unknown", written).verdict).toBe("lands");
+
+    const theirs: Gated = { created_by: AVA, owner: BOB, authors: [AVA] };
+    expect(asked(BOB, "unknown", theirs).verdict).toBe("lands");
   });
 
   it("never shuts its own owner out, however they are held", () => {
-    expect(
-      writeDecision({ note, writer: AVA, graph, vouch: "anonymous" }).verdict,
-    ).toBe("lands");
+    expect(asked(AVA, "anonymous").verdict).toBe("lands");
   });
 });
 
@@ -179,87 +221,55 @@ describe("a graph with roles written on it", () => {
   const open: Gated = { created_by: AVA, owner: undefined, authors: [AVA] };
   const own: Gated = { created_by: BOB, owner: undefined, authors: [BOB] };
   const gated: Gated = { created_by: AVA, owner: AVA, authors: [AVA] };
+  const held = (note: Gated, permissions: bigint) =>
+    writeDecision({ note, writer: BOB, graph, permissions, vouch: "unknown" });
 
   it("refuses a writer it grants nothing", () => {
-    expect(
-      writeDecision({ note: open, writer: BOB, graph, permissions: 0n }),
-    ).toEqual({ verdict: "refused", coAuthors: false });
+    expect(held(open, 0n)).toEqual({ verdict: "refused", coAuthors: false });
   });
 
   it("lands a write it grants, and says the writer joins the note's authors", () => {
-    expect(
-      writeDecision({
-        note: open,
-        writer: BOB,
-        graph,
-        permissions: Permissions.WRITE_NOTES | Permissions.CO_AUTHOR,
-      }),
-    ).toEqual({ verdict: "lands", coAuthors: true });
+    expect(held(open, Permissions.WRITE_NOTES | Permissions.CO_AUTHOR)).toEqual(
+      { verdict: "lands", coAuthors: true },
+    );
   });
 
   it("offers a write it will not land, where it takes offers", () => {
-    expect(
-      writeDecision({
-        note: open,
-        writer: BOB,
-        graph,
-        permissions: Permissions.OFFER_CHANGE,
-      }),
-    ).toEqual({ verdict: "offered", coAuthors: false });
+    expect(held(open, Permissions.OFFER_CHANGE)).toEqual({
+      verdict: "offered",
+      coAuthors: false,
+    });
   });
 
   it("will not let somebody join a note's authorship without being allowed to", () => {
-    const decision = writeDecision({
-      note: open,
-      writer: BOB,
-      graph,
-      permissions: Permissions.WRITE_NOTES | Permissions.OFFER_CHANGE,
-    });
-    expect(decision.verdict).toBe("offered");
+    expect(
+      held(open, Permissions.WRITE_NOTES | Permissions.OFFER_CHANGE).verdict,
+    ).toBe("offered");
   });
 
   it("lands a write on a note its writer already authors, with no leave to join one", () => {
-    expect(
-      writeDecision({
-        note: own,
-        writer: BOB,
-        graph,
-        permissions: Permissions.WRITE_NOTES,
-      }),
-    ).toEqual({ verdict: "lands", coAuthors: false });
+    expect(held(own, Permissions.WRITE_NOTES)).toEqual({
+      verdict: "lands",
+      coAuthors: false,
+    });
   });
 
   it("holds an administrator to the note's own gate, and offers their change", () => {
-    expect(
-      writeDecision({
-        note: gated,
-        writer: BOB,
-        graph,
-        permissions: ALL_PERMISSIONS,
-      }),
-    ).toEqual({ verdict: "offered", coAuthors: false });
+    expect(held(gated, ALL_PERMISSIONS)).toEqual({
+      verdict: "offered",
+      coAuthors: false,
+    });
   });
 
   it("refuses a change offered where it takes none", () => {
-    expect(
-      writeDecision({
-        note: gated,
-        writer: BOB,
-        graph,
-        permissions: maskBits("0"),
-      }).verdict,
-    ).toBe("refused");
+    expect(held(gated, maskBits("0")).verdict).toBe("refused");
   });
 
   it("leaves an owned note's authorship to its owner", () => {
     const theirs: Gated = { created_by: AVA, owner: BOB, authors: [AVA] };
-    expect(
-      writeDecision({
-        note: theirs,
-        writer: BOB,
-        graph,
-        permissions: Permissions.WRITE_NOTES,
-      }),
-    ).toEqual({ verdict: "lands", coAuthors: false });
+    expect(held(theirs, Permissions.WRITE_NOTES)).toEqual({
+      verdict: "lands",
+      coAuthors: false,
+    });
   });
 });
