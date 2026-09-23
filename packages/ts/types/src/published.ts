@@ -21,6 +21,7 @@ import {
   TimestampSchema,
 } from "./common.js";
 import { EdgeLookSchema } from "./edge.js";
+import { SignatureSchemeTagSchema } from "./key-binding.js";
 import { unnamedGraphRef } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
@@ -221,6 +222,11 @@ export const PublishedNodeSchema = z.object({
   content_signature: z.string().optional(),
   signed_payload_json: z.string().optional(),
   signing_device_public_key: z.string().optional(),
+  /** What the signature is in. **Absent is `ed25519-multibase`**, which is what
+   *  every version published before the tag carries. A scheme this reader
+   *  cannot name is one it cannot check, and the note is held rather than
+   *  presented as altered. */
+  signature_scheme: SignatureSchemeTagSchema.optional(),
 });
 export type PublishedNode = z.infer<typeof PublishedNodeSchema>;
 

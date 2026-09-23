@@ -131,6 +131,7 @@ function sameNote(a: PublishedNode, b: PublishedNode): boolean {
     a.content_signature === b.content_signature &&
     a.signed_payload_json === b.signed_payload_json &&
     a.signing_device_public_key === b.signing_device_public_key &&
+    a.signature_scheme === b.signature_scheme &&
     sameList(a.tags, b.tags) &&
     sameList(a.links, b.links) &&
     sameList(a.aliases ?? [], b.aliases ?? []) &&

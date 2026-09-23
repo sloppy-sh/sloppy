@@ -170,6 +170,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
     content_signature: node.content_signature,
     signed_payload_json: node.signed_payload_json,
     signing_device_public_key: node.signing_device_public_key,
+    signature_scheme: node.signature_scheme,
   };
 }
 

@@ -14,6 +14,7 @@ export * from "./appearance.js";
 export * from "./edge.js";
 export * from "./identity.js";
 export * from "./vouch.js";
+export * from "./key-binding.js";
 export * from "./node.js";
 export * from "./authority.js";
 export * from "./document.js";

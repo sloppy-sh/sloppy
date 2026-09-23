@@ -14,6 +14,7 @@ import {
   TimestampSchema,
 } from "./common.js";
 import { EdgeLookSchema, looksRead } from "./edge.js";
+import { SignatureSchemeTagSchema } from "./key-binding.js";
 import { graphRef, requireOwnGraph } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
@@ -120,6 +121,10 @@ export const NodeSchema = OwnedEntitySchema.extend({
   content_signature: z.string().optional(),
   signed_payload_json: z.string().optional(),
   signing_device_public_key: z.string().optional(),
+  /** What the signature is in. **Absent is `ed25519-multibase`**, which is what
+   *  every note signed before the tag carries; `signatureSchemeOf` is the one
+   *  reader of that. */
+  signature_scheme: SignatureSchemeTagSchema.optional(),
 });
 export type Node = z.infer<typeof NodeSchema>;
 
