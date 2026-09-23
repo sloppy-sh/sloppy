@@ -11,6 +11,7 @@ import type { Editor } from '@tiptap/core';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
+import { Refusal } from '../../refusal.js';
 import BlockStack from './block-stack.svelte';
 import { COMPASS_WORDS } from './compass-node.js';
 import type { NoteReferences } from './contract.js';
@@ -31,6 +32,9 @@ let mounted: ReturnType<typeof mount> | undefined;
 let wrote: { title: string; relation: string }[];
 let opened: string[];
 
+/** Words a graph refused in, deliberately not the line a surface falls back to. */
+const REFUSED = 'This notebook is closed to writing just now.';
+
 function note(address: string, title: string): NodeView {
 	return { ...NOTE, ref: ref(), address, depth: address.length, title };
 }
@@ -47,7 +51,7 @@ function graph(held: NodeView[], writing?: (title: string) => Promise<NodeView>)
 		read: async (target) => held.find((one) => one.ref === target) ?? null,
 		write: async (title, relation) => {
 			wrote.push({ title, relation });
-			if (!writing) throw new Error('That note could not be added. Try again in a moment.');
+			if (!writing) throw new Refusal(REFUSED);
 			return writing(title);
 		},
 		open: (target) => void opened.push(target)
@@ -284,9 +288,7 @@ describe('a compass in the writing', () => {
 		tap(menu().at(-1) as HTMLElement);
 		await settled();
 
-		expect(words(card().querySelector('.sloppy-compass-said'))).toBe(
-			'That note could not be added. Try again in a moment.'
-		);
+		expect(words(card().querySelector('.sloppy-compass-said'))).toBe(REFUSED);
 		expect(stored()?.north).toEqual([]);
 	});
 

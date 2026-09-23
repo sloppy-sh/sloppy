@@ -23,9 +23,10 @@ import type { DraftStore } from './document.js';
 
 export interface SendingPicture {
 	/**
-	 * The upload the bytes became. Rejects where the send failed or was stopped,
-	 * with an `Error` whose `message` is already fit to show somebody — this
-	 * package cannot tell a server's words for a person from its words for a log.
+	 * The upload the bytes became. Rejects where the send failed or was stopped:
+	 * with a `Refusal` where something wrote words for a person, and with
+	 * anything else where nothing did, which is what leaves this package showing
+	 * its own line rather than a server's words for a log.
 	 */
 	readonly asset: Promise<MediaAsset>;
 	cancel: () => void;
@@ -100,9 +101,9 @@ export interface NoteReferences {
 	/**
 	 * Writes a note nobody has written yet, and answers with it. `free` springs
 	 * it from nothing, in the graph the note being written is read in. Rejects
-	 * with an `Error` whose `message` is already fit to show somebody — this
-	 * package cannot tell a server's words for a person from its words for a
-	 * log.
+	 * with a `Refusal` where something wrote words for a person, and with
+	 * anything else where nothing did, which is what leaves this package showing
+	 * its own line rather than a server's words for a log.
 	 */
 	write(title: string, relation: 'under' | 'after' | 'free'): Promise<NodeView>;
 	/** Take the reader to a note. */

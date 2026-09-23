@@ -170,7 +170,7 @@ describe('a branch somebody else published', () => {
 		expect(text).toContain('Ada Lovelace');
 		expect(text).not.toContain('undefined');
 		expect(find("Read Ada Lovelace's branch again")).not.toBeNull();
-		expect(find("Stop holding Somebody's branch")).not.toBeNull();
+		expect(find(`Stop holding Somebody's branch, ${BRAM}`)).not.toBeNull();
 
 		find("Stop holding Ada Lovelace's branch")?.click();
 		await settle();
@@ -197,6 +197,27 @@ describe("a note of the reader's own that somebody answered", () => {
 		expect(shown).toContain('Ada Lovelace');
 	});
 
+	it('names everybody who answered, and lets two nobody could name be told apart', async () => {
+		await open({
+			answers: [
+				answered({
+					voices: [
+						{ identity: ADA, person: ADA_PERSON },
+						{ identity: BRAM, person: null, unplaced: true },
+						{ identity: CARL, person: null, unplaced: true }
+					]
+				})
+			]
+		});
+
+		const shown = document.body.textContent ?? '';
+		expect(shown).toContain('Ada Lovelace');
+		expect(shown).toContain('Somebody');
+		expect(shown).toContain(BRAM);
+		expect(shown).toContain(CARL);
+		expect(shown).not.toContain(ADA);
+	});
+
 	it('is named by its title alone where it has no address', async () => {
 		const bare = answered();
 		delete bare.address;
@@ -219,7 +240,8 @@ describe('who the reader follows', () => {
 		});
 
 		expect(find('Stop following Ada Lovelace')).not.toBeNull();
-		expect(find('Stop following Somebody')).not.toBeNull();
+		expect(find(`Stop following Somebody, ${BRAM}`)).not.toBeNull();
+		expect(find(`Stop following Somebody, ${CARL}`)).not.toBeNull();
 
 		find('Stop following Ada Lovelace')?.click();
 		await settle();

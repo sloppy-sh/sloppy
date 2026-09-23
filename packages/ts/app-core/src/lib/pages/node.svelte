@@ -63,6 +63,7 @@
 		HeldStack,
 		LookControls,
 		MoveSheet,
+		isNamed,
 		nameOf,
 		NestingSheet,
 		namedBranch,
@@ -75,7 +76,6 @@
 		TagField,
 		TemplatePicker,
 		textDocument,
-		unnamedPerson,
 		writeTemplate,
 		type MoveTarget,
 		type NestingAsk,
@@ -815,8 +815,9 @@
 	const ownerName = $derived.by(() => {
 		const owner = node?.owner;
 		if (owner === undefined || owner === viewerDid) return '';
-		const person = people.of(owner) ?? (people.unplaced(owner) ? unnamedPerson(owner) : null);
-		return person ? nameOf(person) : 'whoever writes it';
+		const person = people.of(owner);
+		if (person && isNamed(person)) return nameOf(person);
+		return people.unplaced(owner) ? 'somebody else' : 'whoever writes it';
 	});
 	/** Setting and taking off the gate is the graph's owner's act and the note's
 	 *  own owner's — a contributor cannot claim a note. */

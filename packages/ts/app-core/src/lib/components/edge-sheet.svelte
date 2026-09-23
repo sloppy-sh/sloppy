@@ -15,7 +15,7 @@
 		type EdgeStroke,
 		type NodeView
 	} from '@sloppy/types';
-	import { nameOf, ResponsiveModal, unnamedPerson } from '@sloppy/ui';
+	import { isNamed, nameOf, ResponsiveModal } from '@sloppy/ui';
 	import { untrack } from 'svelte';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
@@ -57,8 +57,9 @@
 
 	const ownerName = $derived.by(() => {
 		if (owner === undefined) return 'whoever writes it';
-		const person = people.of(owner) ?? (people.unplaced(owner) ? unnamedPerson(owner) : null);
-		return person ? nameOf(person) : 'whoever writes it';
+		const person = people.of(owner);
+		if (person && isNamed(person)) return nameOf(person);
+		return people.unplaced(owner) ? 'somebody else' : 'whoever writes it';
 	});
 
 	$effect(() => {

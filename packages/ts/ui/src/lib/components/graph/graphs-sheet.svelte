@@ -114,9 +114,10 @@
 		publishedFrom?: ReadonlySet<OwnedRef>;
 		onEnter: (ref: OwnedRef) => void;
 		onToggle: (ref: OwnedRef) => void;
-		/** Start a graph by naming it here. Rejects with an `Error` whose
-		 *  `message` is already fit to show. Absent where this app has nowhere to
-		 *  put a new one, and nothing about starting one is offered. */
+		/** Start a graph by naming it here. Rejects with a `Refusal` where
+		 *  something wrote words for a person, and with anything else where
+		 *  nothing did. Absent where this app has nowhere to put a new one, and
+		 *  nothing about starting one is offered. */
 		onOpen?: (title: string) => Promise<void>;
 		/** Read the graph kept in that folder from now on. Absent leaves every
 		 *  row a graph to move into rather than a folder to open. */

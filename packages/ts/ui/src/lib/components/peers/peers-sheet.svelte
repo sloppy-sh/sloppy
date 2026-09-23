@@ -13,7 +13,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-	import { nameOf, nameOr } from '../identity/person.js';
+	import { isNamed, nameOr } from '../identity/person.js';
 	import VersionChanges, { type VersionComparison } from '../publish/version-changes.svelte';
 	import { when } from '../social/when.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
@@ -231,7 +231,14 @@
 	 *  address its author gave it, and whose branch it is where they gave none,
 	 *  since one row of several has to be told from the rest. */
 	function names(region: HeldRegion): string {
-		return region.address ?? `${nameOr(region.person)}'s branch`;
+		return region.address ?? `${nameOr(region.person)}'s branch${beside(region)}`;
+	}
+
+	/** The identity a row draws under somebody nobody here could name, for a
+	 *  control that has to say which of two such rows it acts on. Empty where
+	 *  what they are called already does. */
+	function beside(peer: Peer): string {
+		return isNamed(peer.person) ? '' : `, ${peer.identity}`;
 	}
 
 	/** The version a region's author serves now, where it is past the one held. */
@@ -323,7 +330,7 @@
 											<span class="min-w-6 shrink-0 address">{region.address ?? ''}</span>
 											<span class="min-w-0 flex-1">
 												<span class="block truncate text-sm">{nameOr(region.person)}</span>
-												{#if !region.person}
+												{#if !isNamed(region.person)}
 													<span
 														class="block truncate font-mono text-xs text-muted-foreground select-text"
 														>{region.identity}</span
@@ -423,9 +430,9 @@
 											<span class="block truncate text-xs text-muted-foreground"
 												>{#each answer.voices as voice, index (voice.identity)}{index > 0
 														? ', '
-														: ''}<span class={voice.person ? undefined : 'font-mono select-text'}
-														>{voice.person ? nameOf(voice.person) : voice.identity}</span
-													>{/each}</span
+														: ''}{nameOr(voice.person)}{#if !isNamed(voice.person)}&nbsp;<span
+															class="font-mono select-text">{voice.identity}</span
+														>{/if}{/each}</span
 											>
 										</span>
 									</button>
@@ -456,7 +463,7 @@
 								variant="ghost"
 								size="icon"
 								class="size-9 shrink-0 rounded-full"
-								aria-label={`Stop following ${nameOr(one.person)}`}
+								aria-label={`Stop following ${nameOr(one.person)}${beside(one)}`}
 								disabled={busy}
 								onclick={() => onUnfollow(one.identity)}
 							>

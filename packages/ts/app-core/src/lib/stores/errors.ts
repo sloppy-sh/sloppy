@@ -1,5 +1,6 @@
 import { SloppyApiError } from '@sloppy/client';
 import { Refusal } from '@sloppy/ui';
+import { VaultFormatError } from '@sloppy/vault';
 
 /** A framework's phrase, never words a person can act on. */
 const UNWRITTEN = 'Internal server error';
@@ -17,13 +18,18 @@ export function serverMessage(err: unknown): string | undefined {
 
 /**
  * Words somebody wrote for a person to read, where anything did: a server's or
- * a graph on this device's own answer, a refusal already carrying them, or the
- * line the native shell rejects with, which crosses its bridge as a bare
- * string. Anything else is the inside of an error and reaches no screen.
+ * a graph on this device's own answer, a refusal already carrying them, what a
+ * folder this build cannot read says about itself, or the line the native shell
+ * rejects with, which crosses its bridge as a bare string. Anything else is the
+ * inside of an error and reaches no screen.
  */
 export function wordsFor(err: unknown): string | undefined {
 	const said =
-		typeof err === 'string' ? err : err instanceof Refusal ? err.message : serverMessage(err);
+		typeof err === 'string'
+			? err
+			: err instanceof Refusal || err instanceof VaultFormatError
+				? err.message
+				: serverMessage(err);
 	return said?.trim() || undefined;
 }
 

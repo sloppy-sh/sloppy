@@ -10,6 +10,7 @@ import type { Editor } from '@tiptap/core';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
+import { Refusal } from '../../refusal.js';
 import BlockStack from './block-stack.svelte';
 import type { NoteReferences } from './contract.js';
 import { docBlocks, openBlocks } from './document.js';
@@ -30,6 +31,9 @@ let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let created: CreateBlockRequest[];
 
+/** Words a graph refused in, deliberately not the line a surface falls back to. */
+const REFUSED = 'This notebook is closed to writing just now.';
+
 function note(address: string, title: string): NodeView {
 	return { ...NOTE, ref: ref(), address, depth: address.length, title };
 }
@@ -44,7 +48,7 @@ const carries = (one: NodeView, query: string) =>
 function graph(
 	held: NodeView[],
 	writing: (title: string, relation: 'under' | 'after') => Promise<NodeView> = async () => {
-		throw new Error('That note could not be added. Try again in a moment.');
+		throw new Refusal(REFUSED);
 	},
 	opened: OwnedRef[] = [],
 	away: NodeView[] = []
@@ -352,11 +356,25 @@ describe('writing a note that is not there yet', () => {
 		tap(menu()[0]);
 		await vi.advanceTimersByTimeAsync(0);
 
+		expect(document.querySelector('[role="alert"]')?.textContent).toBe(REFUSED);
+		expect(referencesIn(writingIn())).toEqual([]);
+		expect(writingIn().state.doc.textContent).toBe('[[Guard cells');
+	});
+
+	it('says what to try where nothing wrote words for a person', async () => {
+		open(
+			graph([], async () => {
+				throw new TypeError("Cannot read properties of undefined (reading 'ref')");
+			})
+		);
+		await type('[[Guard cells');
+		tap(menu()[0]);
+		await vi.advanceTimersByTimeAsync(0);
+
 		expect(document.querySelector('[role="alert"]')?.textContent).toBe(
 			'That note could not be added. Try again in a moment.'
 		);
-		expect(referencesIn(writingIn())).toEqual([]);
-		expect(writingIn().state.doc.textContent).toBe('[[Guard cells');
+		expect(document.querySelector('[role="alert"]')?.textContent).not.toContain('undefined');
 	});
 });
 

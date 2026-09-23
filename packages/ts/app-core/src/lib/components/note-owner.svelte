@@ -2,7 +2,7 @@
 	// Who gates a note's writing, and the choice the people entitled to make it
 	// are offered — DESIGN.md § "Whose writing".
 	import type { DidSyr } from '@sloppy/types';
-	import { nameOf, ResponsiveModal } from '@sloppy/ui';
+	import { isNamed, nameOf, ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { people } from '../stores/people.svelte.js';
 
@@ -30,7 +30,7 @@
 	const them = $derived.by(() => {
 		if (!theirs || owner === undefined) return 'somebody else';
 		const person = people.of(owner);
-		return person ? nameOf(person) : 'somebody else';
+		return person && isNamed(person) ? nameOf(person) : 'somebody else';
 	});
 
 	$effect(() => {

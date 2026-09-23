@@ -8,7 +8,7 @@ import IdentityLine from './identity-line.svelte';
 import PersonEditor from './person-editor.svelte';
 import PersonHeader from './person-header.svelte';
 import PersonChip from './person-chip.svelte';
-import { initialsOf, nameOr, unnamedPerson, type Person, type PictureRole } from './person.js';
+import { nameOr, unnamedPerson, type Person, type PictureRole } from './person.js';
 
 const SOMEBODY: Person = {
 	identity: 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaAda',
@@ -280,12 +280,6 @@ describe('what to call somebody', () => {
 		expect(nameOr(unnamedPerson(did))).toBe('Somebody');
 		expect(nameOr(unnamedPerson(did))).not.toContain('z6Mk');
 	});
-
-	it('tells two nobody could place apart by the identity they travel by', () => {
-		const one = unnamedPerson('did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaTUty');
-		const other = unnamedPerson('did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAda9Kxz');
-		expect(initialsOf(one)).not.toBe(initialsOf(other));
-	});
 });
 
 describe('somebody drawn small', () => {
@@ -296,6 +290,19 @@ describe('somebody drawn small', () => {
 		expect(target.textContent).toContain('Somebody');
 		expect(target.textContent).not.toContain('@');
 		expect(target.textContent).toContain(did);
+	});
+
+	it('tells two nobody could name apart by the identity each carries', () => {
+		const one = 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaTUty';
+		const other = 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAda9Kxz';
+		const first = mount(PersonChip, { target, props: { person: unnamedPerson(one) } });
+		mounted = mount(PersonChip, { target, props: { person: unnamedPerson(other) } });
+		flushSync();
+
+		expect(target.textContent).toContain(one);
+		expect(target.textContent).toContain(other);
+
+		unmount(first, { outro: false });
 	});
 
 	it('writes the handle where there is one to write', () => {

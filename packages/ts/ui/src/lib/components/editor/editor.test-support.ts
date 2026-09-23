@@ -6,6 +6,7 @@ import { Editor } from '@tiptap/core';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import StarterKit from '@tiptap/starter-kit';
 import type { CustomEmojiEntry } from '../../emoji/catalog.js';
+import { Refusal } from '../../refusal.js';
 import { CODE_PROTOCOL } from './code-anchor.js';
 import { CompassNode } from './compass-node.js';
 import type { NoteCode, NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
@@ -96,7 +97,7 @@ export function noNotes(): NoteReferences {
 		elsewhere: () => [],
 		read: async () => null,
 		write: async () => {
-			throw new Error('That note could not be added. Try again in a moment.');
+			throw new Refusal('This notebook is closed to writing just now.');
 		},
 		open: () => {}
 	};

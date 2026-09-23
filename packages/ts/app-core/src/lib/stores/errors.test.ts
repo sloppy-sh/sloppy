@@ -1,6 +1,7 @@
 import { SloppyApiError } from '@sloppy/client';
 import { HistoryError, LocalIdentityError, OutsideRootError } from '@sloppy/local';
 import { Refusal } from '@sloppy/ui';
+import { encodeText, readGraphFile, VAULT_FORMAT } from '@sloppy/vault';
 import { describe, expect, it } from 'vitest';
 import { refusal, serverMessage, wordsFor } from './errors.js';
 
@@ -64,6 +65,19 @@ describe('the words a surface may put in front of a person', () => {
 	it('are what the history says about an act it would not take', () => {
 		expect(wordsFor(new HistoryError('There is nothing new to save.'))).toBe(
 			'There is nothing new to save.'
+		);
+	});
+
+	it('are what a graph written by a newer Sloppy says about itself', () => {
+		let thrown: unknown;
+		try {
+			readGraphFile(encodeText(JSON.stringify({ format: VAULT_FORMAT + 1, name: 'Thesis' })));
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(wordsFor(thrown)).toBe(
+			'This graph was written by a newer Sloppy. Update and open it again.'
 		);
 	});
 

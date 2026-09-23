@@ -33,9 +33,10 @@ export function nameOf(person: Person): string {
 
 /** Whether anything anybody here holds says what to call them. False is
  *  somebody a surface can only call 'Somebody', and the identity they travel by
- *  is all there is to tell them from the next person. */
-export function isNamed(person: Person): boolean {
-	return calledBy(person) !== undefined;
+ *  is all there is to tell them from the next person — so it is also false for
+ *  somebody nobody has drawn yet. */
+export function isNamed(person: Person | null | undefined): boolean {
+	return person ? calledBy(person) !== undefined : false;
 }
 
 /** What to call somebody a surface has no profile for yet. */
@@ -55,9 +56,7 @@ export function unnamedPerson(identity: string): Person {
 	};
 }
 
-/** Up to two letters, for an avatar with no picture behind it. Somebody nobody
- *  could name ends in the letters their identity ends in, so two of them are
- *  never the same monogram. */
+/** Up to two letters, for an avatar with no picture behind it. */
 export function initialsOf(person: Person): string {
 	const called = calledBy(person);
 	if (!called) return person.identity.slice(-2).toUpperCase();
