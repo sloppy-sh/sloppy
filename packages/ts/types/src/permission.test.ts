@@ -12,6 +12,8 @@ import {
   maskOf,
   overrideIsWellFormed,
   overrideTargetIsWellFormed,
+  namedInGraph,
+  NO_PERMISSIONS,
   resolvePermissionFold,
 } from "./permission.js";
 
@@ -31,7 +33,13 @@ function role(
 }
 
 function fold(roles: RoleFacts[], overrides: OverrideFacts[], writer: string) {
-  return resolvePermissionFold({ writer, graph: GRAPH, roles, overrides });
+  return resolvePermissionFold({
+    writer,
+    graph: GRAPH,
+    roles,
+    overrides,
+    member: true,
+  });
 }
 
 describe("a permission mask", () => {
@@ -107,6 +115,91 @@ describe("a graph nobody has written a policy on", () => {
     expect(fold([], [first], CAI).forNote(NOTE)).toBe(
       DEFAULT_PERMISSIONS & ~Permissions.WRITE_NOTES,
     );
+  });
+});
+
+describe("somebody the graph is not kept for", () => {
+  it("holds nothing at all, on a graph nobody has written a policy on", () => {
+    const answer = resolvePermissionFold({
+      writer: BOB,
+      graph: GRAPH,
+      roles: [],
+      overrides: [],
+      member: false,
+    });
+
+    expect(answer.graphPermissions).toBe(NO_PERMISSIONS);
+    expect(hasPermission(answer.graphPermissions, Permissions.READ_NOTES)).toBe(
+      false,
+    );
+    expect(
+      hasPermission(answer.graphPermissions, Permissions.WRITE_NOTES),
+    ).toBe(false);
+    expect(hasPermission(answer.graphPermissions, Permissions.CO_AUTHOR)).toBe(
+      false,
+    );
+  });
+
+  it("is not let in by the role everybody holds", () => {
+    const everyone = role({ ref: EVERYONE, everyone: true });
+    const answer = resolvePermissionFold({
+      writer: BOB,
+      graph: GRAPH,
+      roles: [everyone],
+      overrides: [],
+      member: false,
+    });
+
+    expect(answer.graphPermissions).toBe(NO_PERMISSIONS);
+    expect(answer.forNote(NOTE)).toBe(NO_PERMISSIONS);
+  });
+
+  it("is still nothing where an override was written on them", () => {
+    const answer = resolvePermissionFold({
+      writer: BOB,
+      graph: GRAPH,
+      roles: [],
+      overrides: [
+        {
+          scope: GRAPH,
+          target: "did",
+          target_id: BOB,
+          allow: maskOf(ALL_PERMISSIONS),
+        },
+      ],
+      member: false,
+    });
+
+    expect(answer.graphPermissions).toBe(NO_PERMISSIONS);
+  });
+
+  it("does not shut the graph's own owner out", () => {
+    const answer = resolvePermissionFold({
+      writer: AVA,
+      graph: GRAPH,
+      roles: [],
+      overrides: [],
+      member: false,
+    });
+
+    expect(answer.graphPermissions).toBe(ALL_PERMISSIONS);
+  });
+});
+
+describe("whether a graph served to several people is kept for somebody", () => {
+  it("is kept for its own owner, with no role written at all", () => {
+    expect(namedInGraph(AVA, GRAPH, [])).toBe(true);
+  });
+
+  it("is kept for anybody a role lists", () => {
+    const editors = role({ ref: EDITORS, members: [BOB] });
+    expect(namedInGraph(BOB, GRAPH, [editors])).toBe(true);
+    expect(namedInGraph(CAI, GRAPH, [editors])).toBe(false);
+  });
+
+  it("is not kept for a stranger by the role everybody holds", () => {
+    const everyone = role({ ref: EVERYONE, everyone: true });
+    expect(namedInGraph(BOB, GRAPH, [everyone])).toBe(false);
   });
 });
 

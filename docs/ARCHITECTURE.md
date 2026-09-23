@@ -460,10 +460,12 @@ The note's own gate — § "Whose writing a note carries" — says what a write 
 graph has let it through. This says whether the graph lets it through at all, and whether
 anybody stands behind the identity making it.
 
-**A graph with none of this written on it behaves exactly as every graph did before it
-existed.** No roles, no overrides, nothing asked of a writer: `writeDecision` answers what
-`writeOutcome` and `withAuthor` answer. A person writing alone in a folder on their own
-device never meets any of it.
+**A graph with none of this written on it behaves, for everybody it is kept for, exactly as
+every graph did before it existed.** No roles, no overrides, nothing asked of a writer:
+`writeDecision` answers what `writeOutcome` and `withAuthor` answer. A person writing alone in
+a folder on their own device is somebody it is kept for, and never meets any of it. What is
+new is only the answer for somebody it is _not_ kept for, who used to be nobody: on a graph
+served to several people that is anyone it has not named, and they now hold nothing.
 
 **Nothing holds a write to any of this yet.** The vocabulary, the evaluator, the rows and
 the resolver are here; `gate.ts` still asks `writeOutcome` alone, and the sites that call
@@ -533,12 +535,29 @@ Sloppy's scopes are **graph, then note**. A role belongs to a graph, because a g
 unit people collaborate in, and an override is written on the graph or on one note in it.
 An override's target is a **role** or one **identity**.
 
-**`DEFAULT_PERMISSIONS` is the floor the cascade folds from**: the verbs a note's own gate
-already governs — reading, writing, starting, deleting and placing notes, offering a change,
-taking one in, and joining a note's authorship — and none of the ones that are the graph's
-alone: publishing, and saying who may do what in it. So the first role or override written on
-a graph **takes nothing off anybody it does not name**, and a graph closes a verb off by
-denying it on the role everybody holds.
+**A graph is kept for somebody, or it is not, and that is decided before any layer runs.**
+Somebody it is not kept for folds to `NO_PERMISSIONS` — no writing, no offering, not even
+reading — whatever the roles say, and the role _everybody_ holds does not let them in:
+"everybody" there means everybody the graph is kept for. A graph nobody has written a policy
+on is therefore **closed to a stranger, not open to one**. The graph's own owner is never
+shut out this way.
+
+Who counts is a fact about the surface asking, not a rule the cascade owns, and the two
+surfaces answer it differently on purpose:
+
+- **A graph served to several people names them.** Its owner, or an identity a role lists by
+  DID — `namedInGraph`. Nobody else, however they reached it.
+- **A graph somebody holds on their own device is kept for whoever holds it.** There is
+  nobody to arbitrate between. What they write travels as a contribution somebody else
+  accepts — a pull request on the remote the folder is pushed to — so the acceptance happens
+  where the collaboration does, not in a cascade on this machine.
+
+**`DEFAULT_PERMISSIONS` is the floor the cascade folds from** for somebody the graph _is_
+kept for: the verbs a note's own gate already governs — reading, writing, starting, deleting
+and placing notes, offering a change, taking one in, and joining a note's authorship — and
+none of the ones that are the graph's alone: publishing, and saying who may do what in it. So
+the first role or override written on a graph **takes nothing off anybody already there**,
+and a graph closes a verb off by denying it on the role everybody holds.
 
 `resolvePermissionFold` folds from there, lowest priority first, each layer
 `perms = (perms & ~deny) | allow`:

@@ -56,15 +56,18 @@ export const ALL_PERMISSIONS: bigint = Object.values(Permissions).reduce(
   0n,
 );
 
+/** What somebody the graph is not kept for holds: nothing, reading included. */
+export const NO_PERMISSIONS = 0n;
+
 /**
- * What a graph grants an identity no role of its own names — and so what every
- * graph grants, until somebody writes a role on one. It is the verbs a note's
- * own gate already governs, placing among them, and none of the ones that are
- * the graph's alone: publishing, and saying who may do what in it.
+ * What a graph grants somebody it IS kept for, before any role of its own
+ * narrows it. It is the verbs a note's own gate already governs, placing among
+ * them, and none of the ones that are the graph's alone: publishing, and saying
+ * who may do what in it.
  *
  * **The floor the cascade folds from**, which is what keeps writing a first
- * role or a first override from taking a verb off everybody the graph did not
- * name. A graph closes one off by denying it on the role everybody holds.
+ * role or a first override from taking a verb off everybody already there. A
+ * graph closes one off by denying it on the role everybody holds.
  */
 export const DEFAULT_PERMISSIONS: bigint =
   Permissions.READ_NOTES |
@@ -186,6 +189,22 @@ export interface PermissionFoldInput {
   readonly roles: readonly RoleFacts[];
   /** Every override written on that graph, unfiltered. */
   readonly overrides: readonly OverrideFacts[];
+  /**
+   * Whether this graph is kept for this identity at all. It is a fact about the
+   * surface asking, not a rule the cascade owns, and the two surfaces answer it
+   * differently on purpose:
+   *
+   * - A graph served to several people names them. Its owner, or an identity a
+   *   role lists, is one; anybody else is not, whatever a role everybody holds
+   *   says. {@link namedInGraph} is that answer.
+   * - A graph somebody holds on their own device answers `true` for whoever
+   *   holds it. There is nobody to arbitrate between, and what they write is
+   *   taken up elsewhere by people accepting it rather than gated here.
+   *
+   * False folds to {@link NO_PERMISSIONS} before any layer runs, so a graph
+   * that has never had a role written on it is closed rather than open.
+   */
+  readonly member: boolean;
 }
 
 export interface PermissionFold {
@@ -200,15 +219,31 @@ export interface PermissionFold {
 /**
  * Whether a graph has any policy written on it at all — what a caller asks to
  * skip a fold, never to reach a second answer: a graph with none folds to
- * {@link DEFAULT_PERMISSIONS} for anybody but its owner, which is what
- * `constantPermissionFold(DEFAULT_PERMISSIONS)` hands back without reading a
- * row.
+ * {@link DEFAULT_PERMISSIONS} for somebody it is kept for, and to
+ * {@link NO_PERMISSIONS} for anybody else.
  */
 export function hasPolicy(
   roles: readonly RoleFacts[],
   overrides: readonly OverrideFacts[],
 ): boolean {
   return roles.length > 0 || overrides.length > 0;
+}
+
+/**
+ * Whether a graph served to several people is kept for this identity: it owns
+ * the graph, or a role written on it lists it by DID.
+ *
+ * The role everybody holds does NOT make somebody one of them. "Everybody"
+ * there is everybody the graph is kept for, so that a graph whose policy nobody
+ * has written yet is closed to a stranger rather than open to one.
+ */
+export function namedInGraph(
+  writer: DidSyr,
+  graph: OwnedRef,
+  roles: readonly RoleFacts[],
+): boolean {
+  if (splitOwnedRef(graph).did === writer) return true;
+  return roles.some((role) => role.members?.includes(writer) ?? false);
 }
 
 /** `perms = (perms & ~deny) | allow` — the one rule every layer applies. */
@@ -271,6 +306,8 @@ export function resolvePermissionFold(
   if (splitOwnedRef(graph).did === writer) {
     return constantPermissionFold(ALL_PERMISSIONS);
   }
+
+  if (!input.member) return constantPermissionFold(NO_PERMISSIONS);
 
   const held = heldRoles(writer, roles);
   const positionOf = new Map(held.map((role) => [role.ref, role.position]));
