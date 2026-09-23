@@ -6,7 +6,6 @@ import {
   Permissions,
   type RoleFacts,
   constantPermissionFold,
-  graphPermissionsFor,
   hasPermission,
   hasPolicy,
   maskBits,
@@ -82,15 +81,17 @@ describe("a graph nobody has written a policy on", () => {
     expect(answer.hasNoteOverrides).toBe(false);
   });
 
-  it("gives nobody a verb that is the graph's rather than the note's", () => {
-    for (const graphs of [
-      Permissions.PLACE_NOTES,
+  it("grants every verb a note's own gate governs, and none that are the graph's", () => {
+    const theGraph = [
       Permissions.PUBLISH,
       Permissions.MANAGE_ROLES,
       Permissions.MANAGE_GRAPH,
       Permissions.ADMINISTRATOR,
-    ]) {
-      expect(hasPermission(DEFAULT_PERMISSIONS, graphs)).toBe(false);
+    ];
+    for (const verb of Object.values(Permissions)) {
+      expect(hasPermission(DEFAULT_PERMISSIONS, verb)).toBe(
+        !theGraph.includes(verb),
+      );
     }
   });
 
@@ -167,7 +168,6 @@ describe("the cascade", () => {
     expect(fold([high, low], [], BOB).graphPermissions).toBe(
       DEFAULT_PERMISSIONS,
     );
-    expect(graphPermissionsFor(BOB, [high, low])).toBe(DEFAULT_PERMISSIONS);
   });
 
   it("lets a graph-scoped override on one identity move what their roles said", () => {

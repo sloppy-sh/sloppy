@@ -25,10 +25,9 @@ export const Permissions = {
   CREATE_NOTES: 1n << 2n,
   DELETE_NOTES: 1n << 3n,
   /**
-   * Move a note and write its address. The genealogy and the numbers are the
-   * graph's, not the note's writing — docs/ARCHITECTURE.md § "Whose writing a
-   * note carries" — so this is a verb of its own and never implied by
-   * `WRITE_NOTES`.
+   * Move a note and write its address. An offer carries a note's writing and
+   * never its place — docs/ARCHITECTURE.md § "Whose writing a note carries" —
+   * so this is a verb of its own and never implied by `WRITE_NOTES`.
    */
   PLACE_NOTES: 1n << 4n,
   OFFER_CHANGE: 1n << 5n,
@@ -60,8 +59,8 @@ export const ALL_PERMISSIONS: bigint = Object.values(Permissions).reduce(
 /**
  * What a graph grants an identity no role of its own names — and so what every
  * graph grants, until somebody writes a role on one. It is the verbs a note's
- * own gate already governs, and none of the ones that are the graph's: moving a
- * note and writing its address, publishing, and saying who may do what in it.
+ * own gate already governs, placing among them, and none of the ones that are
+ * the graph's alone: publishing, and saying who may do what in it.
  *
  * **The floor the cascade folds from**, which is what keeps writing a first
  * role or a first override from taking a verb off everybody the graph did not
@@ -72,6 +71,7 @@ export const DEFAULT_PERMISSIONS: bigint =
   Permissions.WRITE_NOTES |
   Permissions.CREATE_NOTES |
   Permissions.DELETE_NOTES |
+  Permissions.PLACE_NOTES |
   Permissions.OFFER_CHANGE |
   Permissions.TAKE_OFFER |
   Permissions.CO_AUTHOR;
@@ -238,12 +238,9 @@ function heldRoles(
     .sort((a, b) => a.position - b.position);
 }
 
-/**
- * The first layer on its own: {@link DEFAULT_PERMISSIONS} as the roles this
- * identity holds leave it. A caller reads it to skip loading overrides an
- * administrator's answer cannot be moved by.
- */
-export function graphPermissionsFor(
+/** Layer 1 alone: {@link DEFAULT_PERMISSIONS} as the roles this identity holds
+ *  leave it. */
+function graphPermissionsFor(
   writer: DidSyr,
   roles: readonly RoleFacts[],
 ): bigint {

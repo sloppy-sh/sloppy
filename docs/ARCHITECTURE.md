@@ -392,8 +392,8 @@ writer)` in `@sloppy/types`:
 
 Setting, changing and removing `owner` is the graph owner's act and the current owner's act.
 A contributor cannot claim a note, and an offer carries the note's **writing** — title, tags,
-look, sections — and never its place: nobody moves, renumbers or re-parents a note they do
-not own. **The graph's own owner places every note in it whatever its gate says** — the
+look, sections — and never its place: nobody moves, renumbers or re-parents a note somebody
+else gates. **The graph's own owner places every note in it whatever its gate says** — the
 genealogy and the numbers are the graph's, and handing a note's writing on does not hand
 those with it. Handing the gate on is likewise not writing, so a request that does only that
 is not held to the gate it is taking off, while one that also writes is.
@@ -534,11 +534,11 @@ unit people collaborate in, and an override is written on the graph or on one no
 An override's target is a **role** or one **identity**.
 
 **`DEFAULT_PERMISSIONS` is the floor the cascade folds from**: the verbs a note's own gate
-already governs — reading, writing, starting and deleting notes, offering a change, taking one
-in, and joining a note's authorship — and none of the ones that are the graph's rather than
-the note's: moving a note and writing its address, publishing, and saying who may do what in
-it. So the first role or override written on a graph **takes nothing off anybody it does not
-name**, and a graph closes a verb off by denying it on the role everybody holds.
+already governs — reading, writing, starting, deleting and placing notes, offering a change,
+taking one in, and joining a note's authorship — and none of the ones that are the graph's
+alone: publishing, and saying who may do what in it. So the first role or override written on
+a graph **takes nothing off anybody it does not name**, and a graph closes a verb off by
+denying it on the role everybody holds.
 
 `resolvePermissionFold` folds from there, lowest priority first, each layer
 `perms = (perms & ~deny) | allow`:
@@ -561,9 +561,9 @@ re-grant every role already written, and no read anywhere would fail.
 
 Two of them carry more than their name:
 
-- `PLACE_NOTES` — moving a note and writing its address. The genealogy and the numbers are the
-  graph's rather than the note's writing, so this is a verb of its own and `WRITE_NOTES` never
-  implies it.
+- `PLACE_NOTES` — moving a note and writing its address. An offer carries a note's writing and
+  never its place — § "Whose writing a note carries" — so this is a verb of its own and
+  `WRITE_NOTES` never implies it.
 - `CO_AUTHOR` — writing into a note somebody else has already written into, and so joining its
   `authors`. Without it such a write does not land and is offered instead. That is what keeps
   `authors` the whole truth about whose writing a note carries: a graph can decide who may
