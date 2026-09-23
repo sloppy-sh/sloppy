@@ -6,6 +6,7 @@ import {
   createOwnedRecordId,
   type Graph,
   type GraphOwnership,
+  type GraphVouching,
   GraphSchema,
   nowIso,
   type OwnedRef,
@@ -72,21 +73,26 @@ export class GraphRepository {
   }
 
   /**
-   * Name a graph and say what it gates the notes written in it by, whether or
-   * not it has a row yet. One statement rather than a read and a write, because
-   * `created_at` is immutable and a whole-row save would have to re-send it as a
-   * different moment.
+   * Name a graph, say what it gates the notes written in it by, and say whether
+   * it asks who stands behind a writer — whether or not it has a row yet. One
+   * statement rather than a read and a write, because `created_at` is immutable
+   * and a whole-row save would have to re-send it as a different moment.
    *
-   * An absent `ownership` leaves whatever the graph gates by alone.
+   * Each absent setting leaves whatever the graph says alone.
    */
   async name(
     did: string,
     ref: OwnedRef,
     title: string,
     ownership?: GraphOwnership,
+    vouching?: GraphVouching,
   ): Promise<Graph> {
-    const written = ownership === undefined ? "" : ", ownership: $ownership";
-    const rewritten = ownership === undefined ? "" : ", ownership = $ownership";
+    const settings = { ownership, vouching };
+    const said = Object.keys(settings).filter(
+      (column) => settings[column as keyof typeof settings] !== undefined,
+    );
+    const written = said.map((column) => `, ${column}: $${column}`).join("");
+    const rewritten = said.map((column) => `, ${column} = $${column}`).join("");
     const now = nowIso();
     const [rows] = await this.query(
       `INSERT INTO graph {
@@ -97,7 +103,7 @@ export class GraphRepository {
         id: recordIdFromOwnedRef("graph", ref),
         did,
         title,
-        ownership,
+        ...settings,
         now,
       },
     );
