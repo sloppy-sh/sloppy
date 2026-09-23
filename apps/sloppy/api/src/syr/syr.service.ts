@@ -93,7 +93,7 @@ const DelegationSchema = z.object({
   revoked_at: z.iso.datetime().optional(),
   expires_at: z.iso.datetime().optional(),
 });
-type DelegationEntry = z.infer<typeof DelegationSchema>;
+export type DelegationEntry = z.infer<typeof DelegationSchema>;
 
 /**
  * Two syr instances in the wild disagree on whether this listing is wrapped,
@@ -247,7 +247,10 @@ export class SyrService {
    * afternoon, and that difference decides whether somebody gets signed out.
    */
   async delegationState(delegation: Delegation): Promise<DelegationState> {
-    const listing = await this.listDelegations(delegation);
+    const listing = await this.listDelegations(
+      delegation.syr_instance_url,
+      delegation.did,
+    );
     if (!listing) return "unknown";
 
     const held = listing.find(
@@ -259,15 +262,22 @@ export class SyrService {
     return "active";
   }
 
-  private async listDelegations(
-    delegation: Delegation,
+  /**
+   * Every platform delegation an instance lists for one identity, or `null`
+   * where it said nothing — which is not the same as listing none, and the
+   * difference is the whole reason this answers a listing rather than a
+   * boolean.
+   */
+  async listDelegations(
+    instanceUrl: string,
+    did: string,
   ): Promise<DelegationEntry[] | null> {
-    const inst = delegation.syr_instance_url;
+    const inst = instanceUrl;
     let response: Response;
     try {
       const { delegations } = await this.platform(inst);
       const url = new URL(delegations);
-      url.searchParams.set("did", delegation.did);
+      url.searchParams.set("did", did);
       response = await fetch(url, {
         headers: { accept: "application/json" },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
