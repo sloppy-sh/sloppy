@@ -5,6 +5,7 @@ export * from "./common.js";
 export * from "./codecs.js";
 export * from "./address.js";
 export * from "./graph.js";
+export * from "./permission.js";
 export * from "./tag.js";
 export * from "./ink.js";
 export * from "./diagram.js";
