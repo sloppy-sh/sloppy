@@ -41,6 +41,12 @@ export const STATEMENTS: readonly string[] = [
   // after the identity behind it is gone.
   `DELETE amendment WHERE by = $did;`,
   `DELETE node WHERE ${OWNED};`,
+  // What this person's graphs let other people do in them. A DID named in a
+  // role of theirs is their own record of whom they asked, so it goes when the
+  // role does; nobody else's rows are reached, and a role with nothing left to
+  // grant in is nothing.
+  `DELETE permission_override WHERE ${OWNED};`,
+  `DELETE graph_role WHERE ${OWNED};`,
   // The addresses those notes spent, and the ones a move left resolving to
   // them. They outlive the notes and nothing else: there is no graph left for
   // one to be read in.
@@ -48,6 +54,10 @@ export const STATEMENTS: readonly string[] = [
   `DELETE node_alias WHERE ${OWNED};`,
   // After the notes, because a graph is what they name.
   `DELETE graph WHERE ${OWNED};`,
+  // Who this person had written down, and what resolving them said. Their
+  // address book, kept by them and about other people, so it goes with them the
+  // way a refusal does.
+  `DELETE known_identity WHERE ${OWNED};`,
   // A held copy of somebody else's region is the reader's row, so it goes with
   // the reader — the author erasing their own identity elsewhere never reaches
   // it, which is the same fact the product states about unpublishing.
@@ -75,6 +85,9 @@ export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "publication_version",
   "publication",
   "node",
+  "permission_override",
+  "graph_role",
+  "known_identity",
   "retired_address",
   "node_alias",
   "graph",
