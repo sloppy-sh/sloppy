@@ -4,6 +4,7 @@
 	import { type CopyEmojiRequest, type CustomEmoji, EMOJI_SHORTCODE_PATTERN } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { refusedWith } from '$lib/refusal.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
 	let {
@@ -39,10 +40,7 @@
 			await onkeep({ shortcode: named, kind: emoji.kind, source_emoji_id: emoji.emoji_id });
 			onclose();
 		} catch (error) {
-			refused =
-				error instanceof Error && error.message
-					? error.message
-					: 'That could not be kept. Try again in a moment.';
+			refused = refusedWith(error, 'That could not be kept. Try again in a moment.');
 		} finally {
 			keeping = false;
 		}

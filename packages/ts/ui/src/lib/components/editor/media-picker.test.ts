@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Refusal } from '$lib/refusal.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import type { HeldPicture, NoteMedia, ShownPicture } from './contract.js';
 import { noMedia, OWNER } from './editor.test-support.js';
@@ -195,7 +196,7 @@ describe('the pictures a person has already added', () => {
 	it('keeps the picture and says why when the store will not let it go', async () => {
 		laidOut(0, 0);
 		await open(shelf(library(1)), async () => {
-			throw new Error('That picture is in use just now.');
+			throw new Refusal('That picture is in use just now.');
 		});
 
 		await click(labelled('Edit'));

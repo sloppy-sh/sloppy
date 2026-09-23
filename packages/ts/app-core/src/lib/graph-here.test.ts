@@ -212,11 +212,13 @@ describe('the folder door', () => {
 			writable: true,
 			value: async () => ({
 				...folder,
-				getFileHandle: () => Promise.reject(new Error('That folder is not there any more.'))
+				getFileHandle: () => Promise.reject(new DOMException('A requested file was not found'))
 			})
 		});
 
-		await expect(graphHere.openFolder()).rejects.toThrow('not there any more');
+		await expect(graphHere.openFolder()).rejects.toThrow(
+			'Sloppy could not open that folder. Try another one.'
+		);
 
 		expect(graphHere.open).toBeNull();
 		expect(runtime.mode()).toBe('hosted');

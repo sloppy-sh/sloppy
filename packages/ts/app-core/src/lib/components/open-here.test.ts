@@ -290,12 +290,34 @@ describe('every way out of an open archive', () => {
 		expect(screen()).toContain('A graph kept on this device');
 	});
 
+	// A bug on the way to the file says nothing anybody could act on, so the
+	// door says what to try instead of what broke.
+	it('says what to try when what came back was never written for a person', async () => {
+		await anArchiveWithAWordInIt();
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			saveFile: async () => {
+				throw new TypeError("Cannot read properties of undefined (reading 'invoke')");
+			}
+		});
+
+		press('Close');
+		await settle();
+		answer('Save a copy');
+		await settle();
+
+		const asked = document.body.querySelector('[role="dialog"]');
+		expect(asked?.textContent).toContain('That did not work. Try again.');
+		expect(asked?.textContent).not.toContain('invoke');
+	});
+
 	it('says a copy that could not be saved where the question is, before it is answered', async () => {
 		await anArchiveWithAWordInIt();
 		initRuntime({
 			apiHost: () => 'http://api.test',
 			saveFile: async () => {
-				throw new Error('There was nowhere to put it. Try again.');
+				// The shell writes its own sentence and rejects with it, unwrapped.
+				throw 'There was nowhere to put it. Try again.';
 			}
 		});
 

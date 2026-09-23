@@ -10,6 +10,7 @@
 
 import type { OwnedRef } from '@sloppy/types';
 import { type Files, holdsAGraph, LocalApi } from '@sloppy/local';
+import { Refusal } from '@sloppy/ui';
 import { api, resetApi } from './api.js';
 import { filesFromArchive } from './archive-files.js';
 import { browserOwnFiles, filesHere } from './browser-files.js';
@@ -17,7 +18,7 @@ import { browserFolders, type FolderHere, type FoldersHere } from './folders-her
 import { type DeploymentMode, runtime, updateRuntime } from './runtime.js';
 import { seamSettledAgain } from './seam.svelte.js';
 import { openHere, saveHere } from './save-file.js';
-import { serverMessage } from './stores/errors.js';
+import { refusal } from './stores/errors.js';
 import { graphs } from './stores/graphs.svelte.js';
 import { letGoOfTheGraphRead } from './stores/let-go.js';
 import { session } from './stores/session.svelte.js';
@@ -42,12 +43,6 @@ export interface OpenedHere {
 const NO_FOLDER = 'Sloppy could not open that folder. Try another one.';
 const NO_GRAPH_THERE = 'That folder holds no graph. Choose the folder your notes are in.';
 const NO_GO_AHEAD = 'Sloppy needs your go-ahead to read and write in that folder.';
-
-function said(reason: unknown, fallback: string): string {
-	if (typeof reason === 'string' && reason.trim()) return reason;
-	const words = serverMessage(reason) ?? (reason instanceof Error ? reason.message : null);
-	return words?.trim() ? words : fallback;
-}
 
 /** The same files, saying so as anything is written into them. What is written
  *  into an archive is in Sloppy and nowhere else, so leaving has to ask. */
@@ -185,7 +180,7 @@ class GraphHereStore {
 		try {
 			files = filesFromArchive(bytes);
 		} catch (reason) {
-			throw new Error(said(reason, "This file isn't a Sloppy graph."), { cause: reason });
+			throw refusal(reason, "This file isn't a Sloppy graph.");
 		}
 		await this.#folders.forget();
 		await this.serve(
@@ -251,11 +246,11 @@ class GraphHereStore {
 	/** Serve the folder somebody just pressed for, saying why in words fit to
 	 *  show where it will not. */
 	private async openOne(folder: FolderHere): Promise<void> {
-		if (!(await folder.allowed(true).catch(() => false))) throw new Error(NO_GO_AHEAD);
+		if (!(await folder.allowed(true).catch(() => false))) throw new Refusal(NO_GO_AHEAD);
 		try {
 			await this.serveFolder(folder);
 		} catch (reason) {
-			throw new Error(said(reason, NO_FOLDER), { cause: reason });
+			throw refusal(reason, NO_FOLDER);
 		}
 	}
 
@@ -272,7 +267,7 @@ class GraphHereStore {
 		const files = await folder.open();
 		if (!this.#folders.starts && !(await holdsAGraph(files))) {
 			folder.release();
-			throw new Error(NO_GRAPH_THERE);
+			throw new Refusal(NO_GRAPH_THERE);
 		}
 		await this.serve({ how: 'folder', name: folder.name }, files, folder);
 	}

@@ -1,6 +1,7 @@
 // The identities this device holds, and which of them a write here carries —
 // docs/ARCHITECTURE.md § "A graph off the device".
 
+import { SloppyApiError } from "@sloppy/client";
 import {
   decodePrivateKey,
   deriveDid,
@@ -212,13 +213,13 @@ export function makeLocalIdentity(): MintedIdentity {
  * A file this device kept an identity in that can no longer be read as one.
  * It is an error rather than a fresh start on purpose: the graphs already
  * written here belong to the identity in that file, and minting a second one
- * over it would orphan every one of them. `message` is fit to show somebody.
+ * over it would orphan every one of them.
  */
-export class LocalIdentityError extends Error {
+export class LocalIdentityError extends SloppyApiError {
   constructor() {
-    super(
-      "This device's identity could not be read, so nothing can be written under it.",
-    );
+    const words =
+      "This device's identity could not be read, so nothing can be written under it.";
+    super(400, words, { detail: words });
     this.name = "LocalIdentityError";
   }
 }

@@ -64,6 +64,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { refusedWith } from '$lib/refusal.js';
 	import Avatar from '../identity/avatar.svelte';
 	import { nameOf, unplacedPerson } from '../identity/person.js';
 	import KeepEmoji from './keep-emoji.svelte';
@@ -233,7 +234,7 @@
 	}
 
 	function says(error: unknown, otherwise: string): string {
-		return error instanceof Error && error.message ? error.message : otherwise;
+		return refusedWith(error, otherwise);
 	}
 </script>
 

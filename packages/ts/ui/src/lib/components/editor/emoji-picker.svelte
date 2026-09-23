@@ -8,6 +8,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
+	import { refusedWith } from '$lib/refusal.js';
 	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import {
@@ -73,10 +74,7 @@
 			shortcode = '';
 			asSticker = false;
 		} catch (error) {
-			refused =
-				error instanceof Error && error.message
-					? error.message
-					: 'That picture could not be added. Try again in a moment.';
+			refused = refusedWith(error, 'That picture could not be added. Try again in a moment.');
 		} finally {
 			adding = false;
 		}

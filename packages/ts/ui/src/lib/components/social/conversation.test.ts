@@ -3,6 +3,7 @@ import type { CopyEmojiRequest, NoteComment, NoteReaction, OwnedRef } from '@slo
 import type { ComponentProps } from 'svelte';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Refusal } from '$lib/refusal.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import type { Person } from '../identity/person.js';
 import Conversation from './conversation.svelte';
@@ -291,7 +292,7 @@ describe('keeping an emoji met on a note', () => {
 	it('says what happened when the emoji could not be kept', async () => {
 		show({
 			reactions: [reacted()],
-			onkeep: () => Promise.reject(new Error('That is already in your set.'))
+			onkeep: () => Promise.reject(new Refusal('That is already in your set.'))
 		});
 		labelled('Keep engine in your set')?.click();
 		await settle();
@@ -302,6 +303,24 @@ describe('keeping an emoji met on a note', () => {
 
 	it('offers nothing to keep where the surface cannot take one', () => {
 		show({ reactions: [reacted()] });
+	// A bug on the way to the store says nothing anybody can act on, so the
+	// surface says what to try instead of what broke.
+	it('says what to try when what came back was never written for a person', async () => {
+		show({
+			reactions: [reacted()],
+			onkeep: () =>
+				Promise.reject(new Error("Cannot read properties of undefined (reading 'invoke')"))
+		});
+		labelled('Keep engine in your set')?.click();
+		await settle();
+		named('Keep it')?.click();
+		await settle();
+
+		const shown = document.body.textContent ?? '';
+		expect(shown).toContain('That could not be kept. Try again in a moment.');
+		expect(shown).not.toContain('invoke');
+	});
+
 		expect(labelled('Keep engine in your set')).toBeNull();
 	});
 });

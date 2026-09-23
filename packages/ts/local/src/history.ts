@@ -1,6 +1,7 @@
 // The history of the folder a graph is in, as a shell reaches it —
 // docs/ARCHITECTURE.md § "The vault's history".
 
+import { SloppyApiError } from "@sloppy/client";
 import type { Timestamp } from "@sloppy/types";
 import type { Vault } from "@sloppy/vault";
 
@@ -136,10 +137,10 @@ export type MergeResult =
   | { merged: true }
   | { merged: false; conflicts: string[] };
 
-/** An act the history would not take. `message` is fit to show somebody. */
-export class HistoryError extends Error {
+/** An act the history would not take, said in words for a person. */
+export class HistoryError extends SloppyApiError {
   constructor(message: string) {
-    super(message);
+    super(400, message, { detail: message });
     this.name = "HistoryError";
   }
 }

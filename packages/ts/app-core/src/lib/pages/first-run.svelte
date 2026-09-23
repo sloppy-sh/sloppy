@@ -6,6 +6,7 @@
 	import KnownFolders from '../components/known-folders.svelte';
 	import { called } from '../held-identity.js';
 	import { runtime, type KnownFolder } from '../runtime.js';
+	import { wordsFor } from '../stores/errors.js';
 	import { session } from '../stores/session.svelte.js';
 
 	let {
@@ -82,19 +83,10 @@
 		}
 	}
 
-	/** The shell says what went wrong in words fit to show; anything else that
-	 *  went wrong is not in any. */
-	function shellSaid(error: unknown): string | null {
-		return typeof error === 'string' && error.trim() ? error : null;
-	}
-
 	/** What to show for something that went wrong holding an identity, which
 	 *  says what a person can do about it where it says anything at all. */
 	function said(error: unknown): string {
-		const words = shellSaid(error) ?? (error instanceof Error ? error.message : null);
-		return words?.trim()
-			? words
-			: 'Sloppy could not read the identities on this device. Try again.';
+		return wordsFor(error) ?? 'Sloppy could not read the identities on this device. Try again.';
 	}
 
 	/** Whether there is an identity here for a graph to be written under, making
@@ -124,7 +116,7 @@
 			onopened(folder);
 		} catch (error) {
 			problem =
-				shellSaid(error) ??
+				wordsFor(error) ??
 				(vault.asks
 					? 'Sloppy could not write in that folder. Try another one.'
 					: 'Sloppy could not make a place for your notes on this device.');
@@ -144,7 +136,7 @@
 			await session.carryProfile();
 			onopened(root);
 		} catch (error) {
-			problem = shellSaid(error) ?? 'That folder could not be opened. Try another one.';
+			problem = wordsFor(error) ?? 'That folder could not be opened. Try another one.';
 		} finally {
 			opening = null;
 			openingFolder = null;
@@ -157,7 +149,7 @@
 		try {
 			await forgetFolder(root);
 		} catch (error) {
-			problem = shellSaid(error) ?? 'That folder could not be forgotten.';
+			problem = wordsFor(error) ?? 'That folder could not be forgotten.';
 		}
 		await readFolders();
 	}

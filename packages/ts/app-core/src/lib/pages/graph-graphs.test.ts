@@ -1,6 +1,7 @@
 // The graphs a person keeps, on the surface they keep them on: which one they
 // are in, moving between them, and seeing more than one at once.
 
+import { HistoryError } from '@sloppy/local';
 import type { CreateNodeRequest, GraphView, NodeView, OwnedRef } from '@sloppy/types';
 
 import { flushSync, mount, unmount } from 'svelte';
@@ -496,7 +497,7 @@ describe('the graphs a device keeps as folders', () => {
 			},
 			clone: async () => {
 				if (cloneRefusal === null) return open;
-				throw cloneRefusal.as === 'bare' ? cloneRefusal.said : new Error(cloneRefusal.said);
+				throw cloneRefusal.as === 'bare' ? cloneRefusal.said : new HistoryError(cloneRefusal.said);
 			}
 		};
 	}

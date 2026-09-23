@@ -23,6 +23,7 @@
 		seriesChannels
 	} from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { refusedWith } from '$lib/refusal.js';
 	import type { HeldPicture, NoteMedia, ShownPicture } from '../editor/contract.js';
 	import { flattened } from '../editor/fit.js';
 	import MediaPicker from '../editor/media-picker.svelte';
@@ -250,9 +251,7 @@
 			}
 			await keeps([...series, picture]);
 		} catch (error) {
-			trouble =
-				(error instanceof Error && error.message) ||
-				'That picture could not be added. Try again in a moment.';
+			trouble = refusedWith(error, 'That picture could not be added. Try again in a moment.');
 		} finally {
 			sending = false;
 		}

@@ -6,6 +6,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import type { PictureSeries, PictureTransition } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { refusedWith } from '$lib/refusal.js';
 	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import type { HeldPicture, NoteMedia, ShownPicture } from '../editor/contract.js';
 	import { fitted, NOTE_PX } from '../editor/fit.js';
@@ -167,9 +168,7 @@
 			// again is no reason to say it failed.
 			held = await media.library().catch(() => held);
 		} catch (error) {
-			trouble =
-				(error instanceof Error && error.message) ||
-				'That picture could not be added. Try again in a moment.';
+			trouble = refusedWith(error, 'That picture could not be added. Try again in a moment.');
 		} finally {
 			sending = false;
 		}
@@ -183,9 +182,7 @@
 		try {
 			await media.remove(picture.upload_id);
 		} catch (error) {
-			refused =
-				(error instanceof Error && error.message) ||
-				'That picture could not be removed. Try again in a moment.';
+			refused = refusedWith(error, 'That picture could not be removed. Try again in a moment.');
 			throw error;
 		}
 		held = held.filter((one) => one.upload_id !== picture.upload_id);

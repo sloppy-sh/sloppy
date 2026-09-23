@@ -6,6 +6,7 @@ import { type NodeView, REFERENCE_NOTE_ATTR } from '@sloppy/types';
 import { Extension, type Editor } from '@tiptap/core';
 import { PluginKey } from '@tiptap/pm/state';
 import Suggestion from '@tiptap/suggestion';
+import { refusedWith } from '../../refusal.js';
 import type { NoteReferences } from './contract.js';
 import { citedAs, REFERENCE_NODE } from './reference-node.js';
 
@@ -200,7 +201,7 @@ async function take(
 	try {
 		written = await references.write(choice.name, choice.relation);
 	} catch (error: unknown) {
-		completions.refuse(error instanceof Error && error.message ? error.message : COULD_NOT_WRITE);
+		completions.refuse(refusedWith(error, COULD_NOT_WRITE));
 		return;
 	}
 	if (editor.isDestroyed) return;

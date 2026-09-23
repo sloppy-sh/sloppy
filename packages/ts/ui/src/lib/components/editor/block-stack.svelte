@@ -32,6 +32,7 @@
 	import StarterKit from '@tiptap/starter-kit';
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { refusedWith } from '$lib/refusal.js';
 	import type { EmojiEntry } from '../../emoji/catalog.js';
 	import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 	import { tokenizeContent } from '../../emoji/tokenize.js';
@@ -528,10 +529,7 @@
 			} catch (error: unknown) {
 				retouch(current, preview, {
 					progress: null,
-					failure:
-						error instanceof Error && error.message
-							? error.message
-							: 'That picture could not be added. Remove it and try again.'
+					failure: refusedWith(error, 'That picture could not be added. Remove it and try again.')
 				});
 			} finally {
 				delete sending[preview];

@@ -28,7 +28,7 @@
 	import { api } from '../api.js';
 	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
 	import { drafts } from '../stores/drafts.svelte.js';
-	import { serverMessage } from '../stores/errors.js';
+	import { refusal, serverMessage } from '../stores/errors.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { outlineSections } from '../stores/outline-sections.svelte.js';
 	import { people } from '../stores/people.svelte.js';
@@ -278,10 +278,7 @@
 						title
 					});
 				} catch (error) {
-					throw new Error(
-						serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.',
-						{ cause: error }
-					);
+					throw refusal(error, 'Sloppy could not add that note. Try again in a moment.');
 				}
 			},
 			open: onOpen

@@ -4,6 +4,7 @@
 	// caller says what it is being chosen for.
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
 	import X from '@lucide/svelte/icons/x';
+	import { refusedWith } from '$lib/refusal.js';
 	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import type { HeldPicture, NoteMedia, ShownPicture } from './contract.js';
@@ -162,10 +163,7 @@
 		try {
 			await onremove(picture);
 		} catch (error) {
-			refused =
-				error instanceof Error && error.message
-					? error.message
-					: 'That picture could not be removed. Try again in a moment.';
+			refused = refusedWith(error, 'That picture could not be removed. Try again in a moment.');
 			throw error;
 		}
 		held = held.filter((one) => one.upload_id !== picture.upload_id);

@@ -1,4 +1,4 @@
-import type { IdentityAccess, IdentityHere } from '@sloppy/local';
+import { LocalIdentityError, type IdentityAccess, type IdentityHere } from '@sloppy/local';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initRuntime, type KnownFolder, type VaultAccess } from '../runtime.js';
@@ -350,9 +350,7 @@ describe('the three doors a first run offers', () => {
 			{
 				makeOne,
 				list: async () => {
-					throw new Error(
-						"This device's identity could not be read, so nothing can be written under it."
-					);
+					throw new LocalIdentityError();
 				}
 			}
 		);
@@ -514,7 +512,7 @@ describe('a sign-in that lands while the first run is on screen', () => {
 			{},
 			{
 				list: async () => {
-					if (!answering) throw new Error('This device’s identities could not be read.');
+					if (!answering) throw new LocalIdentityError();
 					return [here({ name: 'Ada Lovelace', source: 'delegated' })];
 				}
 			}

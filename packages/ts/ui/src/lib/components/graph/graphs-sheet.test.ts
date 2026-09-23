@@ -2,6 +2,7 @@
 import type { OwnedRef } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Refusal } from '$lib/refusal.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import GraphsSheet, { type DeletedChoice } from './graphs-sheet.svelte';
 
@@ -267,7 +268,7 @@ describe('the graphs sheet', () => {
 				onOpen: () => Promise.resolve(),
 				onRename: () => Promise.resolve(),
 				onOwnership: () =>
-					refuse ? Promise.reject(new Error('That did not save.')) : Promise.resolve()
+					refuse ? Promise.reject(new Refusal('That did not save.')) : Promise.resolve()
 			}
 		});
 		await settle();
@@ -304,7 +305,7 @@ describe('the graphs sheet', () => {
 	});
 
 	it('says why one did not close, in the words it was refused in', async () => {
-		await open([], undefined, () => Promise.reject(new Error('That graph is not here.')));
+		await open([], undefined, () => Promise.reject(new Refusal('That graph is not here.')));
 
 		find('Close Garden')?.click();
 		await settle();
@@ -319,8 +320,23 @@ describe('the graphs sheet', () => {
 		expect(document.querySelector('[role="alert"]')).toBeNull();
 	});
 
+	// A bug on the way to the store says nothing anybody could act on, so the
+	// sheet says what it always says instead of what broke.
+	it('says its own line when what came back was never written for a person', async () => {
+		await open([branch()], () =>
+			Promise.reject(new TypeError("Cannot read properties of undefined (reading 'invoke')"))
+		);
+
+		find('Put 1a in My graph back')?.click();
+		await settle();
+
+		const said = document.querySelector('[role="alert"]')?.textContent ?? '';
+		expect(said).toContain('That did not work.');
+		expect(said).not.toContain('invoke');
+	});
+
 	it('says why one did not come back, in the words it was refused in', async () => {
-		await open([branch()], () => Promise.reject(new Error('That number is taken now.')));
+		await open([branch()], () => Promise.reject(new Refusal('That number is taken now.')));
 
 		find('Put 1a in My graph back')?.click();
 		await settle();
@@ -386,7 +402,7 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 					closed.push(ref);
 					return over.refuse === undefined
 						? Promise.resolve()
-						: Promise.reject(new Error(over.refuse));
+						: Promise.reject(new Refusal(over.refuse));
 				},
 				onOpenFolder: (folder: string) => {
 					opened.push(folder);

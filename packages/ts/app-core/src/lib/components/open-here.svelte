@@ -8,6 +8,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { graphHere } from '../graph-here.svelte.js';
 	import { savesFiles } from '../save-file.js';
+	import { wordsFor } from '../stores/errors.js';
 
 	let {
 		/** A sheet somebody opened to change which graph they are in: the offer,
@@ -50,7 +51,7 @@
 		try {
 			await act();
 		} catch (error) {
-			problem = error instanceof Error ? error.message : 'That did not work. Try again.';
+			problem = wordsFor(error) ?? 'That did not work. Try again.';
 		} finally {
 			working = null;
 		}

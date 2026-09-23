@@ -4,6 +4,7 @@
 import {
 	DeviceCredentials,
 	DeviceGitDefaults,
+	HistoryError,
 	MemoryFiles,
 	MemoryHistory,
 	readCredentials,
@@ -334,7 +335,7 @@ describe('how the versions kept here are signed', () => {
 	it('falls back to what the folder says when the key cannot be made', async () => {
 		const kept = new MemoryHistory(folder());
 		kept.setSigning = async () => {
-			throw new Error('No room left on this device.');
+			throw new HistoryError('No room left on this device.');
 		};
 		shellKeeping(kept);
 		show();

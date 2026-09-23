@@ -118,7 +118,7 @@
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
 	import { publications, type VersionChanges } from '../stores/publications.svelte.js';
-	import { serverMessage } from '../stores/errors.js';
+	import { refusal, serverMessage } from '../stores/errors.js';
 	import { addressNesting, type AddressNesting } from './address-nesting.js';
 	import type { NoteLanding } from './page-state.js';
 	import { citationUrl } from './routes.js';
@@ -747,10 +747,7 @@
 					title: name
 				});
 			} catch (error) {
-				throw new Error(
-					serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.',
-					{ cause: error }
-				);
+				throw refusal(error, 'Sloppy could not add that note. Try again in a moment.');
 			}
 		},
 		open: (target: OwnedRef) => onOpen(target)
@@ -2140,12 +2137,6 @@
 			'unlink',
 			'Sloppy could not remove that link. Try again in a moment.'
 		);
-	}
-
-	/** Whatever a conversation shows a person when a send fails is this, so a
-	 *  server that explained itself in words for a human is what they read. */
-	function refusal(error: unknown, otherwise: string): Error {
-		return new Error(serverMessage(error) ?? otherwise, { cause: error });
 	}
 
 	/** Publish the branch rooted here, or send it again as it stands. Thrown on,

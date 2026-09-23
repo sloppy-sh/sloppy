@@ -2,6 +2,7 @@
 import type { MediaAsset, PictureSeries } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Refusal } from '$lib/refusal.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import type { HeldPicture, NoteMedia } from '../editor/contract.js';
 import WallpaperSheet from './wallpaper-sheet.svelte';
@@ -36,7 +37,7 @@ const media: NoteMedia = {
 	picture: async (uploadId) => ({ src: `blob:${uploadId}`, release: () => {} }),
 	library: async () => held,
 	remove: async (uploadId) => {
-		if (refuseRemoval) throw new Error(refuseRemoval);
+		if (refuseRemoval) throw new Refusal(refuseRemoval);
 		removed.push(uploadId);
 		held = held.filter((one) => one.upload_id !== uploadId);
 	}

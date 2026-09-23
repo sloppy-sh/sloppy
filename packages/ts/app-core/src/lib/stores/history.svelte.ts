@@ -22,7 +22,7 @@ import type {
 import type { BlockView, NodeView, OwnedRef } from '@sloppy/types';
 import { api, resetApi } from '../api.js';
 import { runtime } from '../runtime.js';
-import { serverMessage } from './errors.js';
+import { wordsFor } from './errors.js';
 import { graphs } from './graphs.svelte.js';
 import { nodes } from './nodes.svelte.js';
 import { outlineSections } from './outline-sections.svelte.js';
@@ -106,10 +106,7 @@ async function readTheGraphAgain(): Promise<void> {
 /** The words an act came back with. A history and a graph on this device both
  *  refuse in words fit to show. */
 function said(err: unknown): string {
-	const words = serverMessage(err);
-	if (words) return words;
-	if (err instanceof Error && err.message) return err.message;
-	return 'That did not work. Try again in a moment.';
+	return wordsFor(err) ?? 'That did not work. Try again in a moment.';
 }
 
 class HistoryStore {

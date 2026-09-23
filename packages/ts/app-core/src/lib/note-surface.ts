@@ -7,13 +7,7 @@ import type { CustomEmoji, MediaRole } from '@sloppy/types';
 import { SaveFailure, type CustomEmojiEntry, type NoteEmoji, type NoteMedia } from '@sloppy/ui';
 import { api } from './api.js';
 import { pictureSrc } from './asset-src.js';
-import { serverMessage } from './stores/errors.js';
-
-/** Whatever the surface shows a person when a send fails is this message, so a
- *  server that explained itself in words for a human is the one they read. */
-function refusal(error: unknown, fallback: string): Error {
-	return new Error(serverMessage(error) ?? fallback);
-}
+import { refusal, serverMessage } from './stores/errors.js';
 
 /** Answers a server gives while it is busy or out of reach, which the next try
  *  can land. Everything else it names is an answer that will not change. */
@@ -101,6 +95,12 @@ export function noteEmoji(mine: string): NoteEmoji {
 				throw refusal(error, 'That picture could not be added. Try again in a moment.');
 			}
 		},
-		remove: (id) => api.removeEmoji(id)
+		async remove(id) {
+			try {
+				await api.removeEmoji(id);
+			} catch (error) {
+				throw refusal(error, 'That could not be removed. Try again in a moment.');
+			}
+		}
 	};
 }

@@ -18,7 +18,7 @@ import type {
 	SigningConfig
 } from '@sloppy/local';
 import { runtime } from '../runtime.js';
-import { serverMessage } from './errors.js';
+import { wordsFor } from './errors.js';
 
 /** Somewhere else the folder is kept, with what this device has to get in
  *  there. `host` absent is an address with nowhere to sign in to — another
@@ -90,10 +90,7 @@ async function local() {
 
 /** The words an act came back with. A history refuses in words fit to show. */
 function said(err: unknown): string {
-	const words = serverMessage(err);
-	if (words) return words;
-	if (err instanceof Error && err.message) return err.message;
-	return 'That did not work. Try again in a moment.';
+	return wordsFor(err) ?? 'That did not work. Try again in a moment.';
 }
 
 class GitSettingsStore {

@@ -53,6 +53,7 @@
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import { untrack, type Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { refusedWith } from '$lib/refusal.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
@@ -228,7 +229,7 @@
 			await what();
 			return true;
 		} catch (error) {
-			refused = error instanceof Error && error.message ? error.message : 'That did not work.';
+			refused = refusedWith(error, 'That did not work.');
 			return false;
 		} finally {
 			working = false;
@@ -276,7 +277,7 @@
 		try {
 			await onRemove(ref);
 		} catch (error) {
-			closeRefused = error instanceof Error && error.message ? error.message : 'That did not work.';
+			closeRefused = refusedWith(error, 'That did not work.');
 			throw error;
 		}
 		closing = null;

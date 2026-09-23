@@ -17,6 +17,7 @@ import {
 } from '@sloppy/types';
 import { Node, mergeAttributes, type Attribute } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { refusedWith } from '../../refusal.js';
 import type { NoteReferences } from './contract.js';
 import { placeBlock } from './placement.js';
 import { citedAs, type ReferenceReader } from './reference-node.js';
@@ -331,7 +332,7 @@ export function CompassNode(
 						cite(direction, written.ref);
 					} catch (error: unknown) {
 						writing = false;
-						refused = error instanceof Error && error.message ? error.message : COULD_NOT_WRITE;
+						refused = refusedWith(error, COULD_NOT_WRITE);
 						draw();
 					}
 				}
