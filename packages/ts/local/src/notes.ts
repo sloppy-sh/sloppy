@@ -348,7 +348,7 @@ export class NoteWriter {
       ...(address === undefined ? {} : { address }),
       aliases: [],
       ...(this.graph.ownership === "owned" ? { owner: this.writer } : {}),
-      // Absent is the ref's DID alone, so only somebody else's writing is
+      // Absent is the ref's own owner alone, so only somebody else's writing is
       // written down.
       ...(this.writer === this.graph.did ? {} : { authors: [this.writer] }),
       tags: [...request.tags],

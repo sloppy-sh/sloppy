@@ -23,7 +23,9 @@ describe("what scheme a signature is in", () => {
   });
 
   it("answers nothing for a scheme it cannot name, rather than guessing", () => {
-    expect(signatureSchemeOf({ signature_scheme: "ml-dsa-87" })).toBeUndefined();
+    expect(
+      signatureSchemeOf({ signature_scheme: "ml-dsa-87" }),
+    ).toBeUndefined();
   });
 });
 

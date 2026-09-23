@@ -5,11 +5,7 @@
 
 import { z } from "zod";
 import { splitOwnedRef } from "./codecs.js";
-import {
-  OwnedEntitySchema,
-  type OwnedRef,
-  type Principal,
-} from "./common.js";
+import { OwnedEntitySchema, type OwnedRef, type Principal } from "./common.js";
 
 /**
  * The local id a graph nobody named is read under: what a row written before

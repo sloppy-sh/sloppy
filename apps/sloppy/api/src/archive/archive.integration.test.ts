@@ -502,7 +502,7 @@ describe("a graph handed over as an archive", () => {
       expect(notes).toHaveLength(2);
       const [root, under] = notes;
 
-      // The ULID half of every ref is kept and the DID half is the importer's.
+      // The ULID half of every ref is kept and the owner half is the importer's.
       expect(root.ref).toBe(
         `${bram.did}/${splitOwnedRef(first.ref).localId}` as OwnedRef,
       );

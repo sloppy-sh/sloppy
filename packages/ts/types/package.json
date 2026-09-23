@@ -1,7 +1,7 @@
 {
   "name": "@sloppy/types",
   "version": "0.0.1",
-  "description": "Shared Zod schemas and types for Sloppy \u2014 the address protocol, the node/block/tag vocabulary, and the syr wire contracts we consume.",
+  "description": "Shared Zod schemas and types for Sloppy — the address protocol, the node/block/tag vocabulary, and the syr wire contracts we consume.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

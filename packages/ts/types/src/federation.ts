@@ -217,10 +217,13 @@ export type CreatePullRequest = z.input<typeof CreatePullRequestSchema>;
  * disagree.
  */
 export const PulledNodeSchema = OwnedEntitySchema.extend({
-  /** The node as its AUTHOR addresses it: `<their did>/<their ulid>`. */
+  /** The node as its AUTHOR addresses it: `<their principal>/<their ulid>`. */
   source: OwnedRefSchema,
   /** Its author, beside `source` rather than read out of it, because an index
-   *  cannot seek on half a column. `parsePulledNode` holds the two together. */
+   *  cannot seek on half a column. `parsePulledNode` holds the two together.
+   *  Named for a DID and holding any principal: two indexes and the boot
+   *  migration in `schema.ts` read the column by that name, so renaming it
+   *  costs a migration and widening it costs nothing. */
   source_did: PrincipalSchema,
   /**
    * Which of the AUTHOR's graphs it sits in, beside the node for the reason

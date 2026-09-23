@@ -77,7 +77,7 @@ export interface VaultNote {
   /** Who gates the note's writing. Absent is an open note. */
   owner?: Principal;
   /** Whose writing it carries, in order of first writing. **Absent is the
-   *  ref's DID alone** — the canonical form, so that is the one case not
+   *  ref's own owner alone** — the canonical form, so that is the one case not
    *  written down. */
   authors?: Principal[];
   /** Whose offered change its owner has taken in. Absent is none. */

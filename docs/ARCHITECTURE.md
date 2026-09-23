@@ -361,18 +361,18 @@ region — never instead of it.
 
 ### Whose writing a note carries
 
-**The ref's DID says whose graph a note is in. Whose writing it is, is a list on the
+**The ref's owner says whose graph a note is in. Whose writing it is, is a list on the
 note.** Three fields on `NodeSchema` carry it, and every one of them travels — the hosted
 row, the vault's front matter, the archive, a published snapshot and a pulled copy:
 
 - `owner` — who gates the note's writing. Absent is an **open** note, which is every note
   written before this rule.
-- `authors` — every DID whose writing the note carries, in the order they first wrote into
-  it. **Absent, and empty, read as the ref's DID alone**; `authorsOf` in `@sloppy/types` is
+- `authors` — everybody whose writing the note carries, in the order they first wrote into
+  it. **Absent, and empty, read as the ref's own owner alone**; `authorsOf` in `@sloppy/types` is
   the one reader of that fallback, so no surface spells it twice. The writer writes the list
   out whenever it is anything else, which is the canonical form the vault round trip is
   lossless up to.
-- `contributors` — every DID whose offered change the owner has taken in, in the order they
+- `contributors` — everybody whose offered change the owner has taken in, in the order they
   were taken. Absent, and empty, are none.
 
 `created_by` keeps meaning what it always meant: whose rows these are, and what the purge
@@ -415,7 +415,7 @@ already written as they are — a person changes a note's own owner wherever its
 shown.
 
 **An amendment is a row and a file.** The `amendment` table's `created_by` is whose graph the
-note is in — the DID half of the note's own ref, the way `comment_pointer`'s is, and never
+note is in — the owner half of the note's own ref, the way `comment_pointer`'s is, and never
 whoever gates the note, which a graph owner may have handed on. It is what the offer's own
 `<did>/<ulid>` is built from, what a note's offers are read by, and what carries them away
 with the notes they stand on when that identity is erased. `by` is who offered it. **The
@@ -502,6 +502,12 @@ which is what lets `graphAsItWas` derive a public key from it. `Viewer.did` is w
 and the only door is Platform Delegation. A note in that folder may still be OWNED by a
 `mailto:` — the folder's owner and a note's owner are different questions.
 
+**One site hands a wide value into a narrow slot**, and nothing in the types catches it.
+`syrPostRefFor` takes a note's ref and gives an identity store the owner half as `post_did` — the
+identifier a comment and a reaction are filed under. Every ref minted here still holds a `did:syr`
+there, because `created_by` is the signed-in viewer; item 4 below is what changes that, and a note
+whose ref is owned by an email address has nowhere to hang a conversation until it does.
+
 ### Which key speaks for a principal
 
 `KeyBinding` in `key-binding.ts` answers "which key speaks for this identifier right now?" —
@@ -541,10 +547,16 @@ What a second wave adds, in order:
 2. **A keyserver binding** beside it, as a second source with the same shape. A key found
    either way is `vouched`; WHICH is `Vouch.instance`, and that is why `VouchState` stays
    three states.
-3. **A GPG verifier**, and the scheme dispatch at the four places a signature is checked:
-   `peer/attribution.ts`, `social/comment-attribution.ts`, and the two in `@sloppy/local`
-   that derive a key from the identifier (`identity.ts` and `api.ts`). Each of those reads
-   `signatureSchemeOf` and routes; today they hold anything but `ed25519-multibase`.
+3. **A GPG verifier**, and the scheme dispatch at the two places a signature is checked.
+   `peer/attribution.ts` already reads `signatureSchemeOf` and holds anything but
+   `ed25519-multibase`, so a second verifier is reached from there.
+   `social/comment-attribution.ts` cannot read one: a comment arrives as a `SyrComment`, which
+   carries the three signature columns and no scheme beside them, so every comment is checked
+   as `ed25519-multibase` and one signed in another scheme is presented as not its author's
+   rather than held. A tag on the store's own comment record is what has to land first. The
+   `publicKeyFromDid` calls in `@sloppy/local` — `identity.ts` and `api.ts` — check no
+   signature: they derive a key from a `did:syr` for an identity and for a graph view, which
+   is item 1's question asked of a folder rather than this one.
 4. **A door to sign in by**, which is what widens `Viewer.did`, and with it what lets somebody
    who is not a syr identity hold a graph on a hosted instance rather than only be named in
    one.
@@ -1209,7 +1221,7 @@ look never uses colour" carries the ruling.
 **Whose writing a note carries travels with it.** `owner`, `authors` and `contributors` ride
 `PublishedNode`, so a snapshot and the copy a peer pulls both say who wrote what, and a
 reader of a held region is shown it exactly as its author's own graph shows it. Absent
-`authors` is the ref's DID alone here too — which is every version published before a note
+`authors` is the ref's own owner alone here too — which is every version published before a note
 could carry more than one writer — and absent `contributors` is none (§ "Whose writing a note
 carries"). A reader writes into neither: what they hold is a copy, and `owner` is a fact
 about the author's graph rather than a permission on the reader's.
@@ -2629,7 +2641,7 @@ Absent `parent`
 is a branch or an independent note; absent `address` is a note with none; absent `aliases`,
 `tags`, `links` or `contributors` is none of them; absent `owner` is an open note; absent
 `checked` is a note nobody has confirmed against the code (§ "A project's container"). **Absent
-`authors` is the ref's DID alone**, and that is the one case the file leaves out — a note
+`authors` is the ref's own owner alone**, and that is the one case the file leaves out — a note
 only its own author has written into and a note written before anybody else could write into
 one are the same bytes, which is what keeps the round trip lossless (§ "Whose writing a note
 carries"). `appearance` is a block of its own — the channels the author set on the mark, each
@@ -2650,7 +2662,7 @@ has moved a section rather than made two.
 `amends` — the note it is offered on — `by`, `at`, `message`, `title`, `tags`, `edges`
 and `appearance`, and its body is the sections it proposes under the note's own block ulids, read
 by the same reader a note's are. Its own ulid is the file's name rather than a field: an offer is
-read inside the graph that holds it, so the DID half of its reference is that graph's owner
+read inside the graph that holds it, so the owner half of its reference is that graph's owner
 and nothing in the file repeats it. It is committed like any note, so it moves through the
 folder's history and rides in an archive — a graph handed over with offers standing on it
 loses none of them. Its drawings sit in `.sloppy/ink/` like a note's and are named for the

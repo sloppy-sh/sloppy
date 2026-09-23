@@ -301,9 +301,9 @@ class OffersStore {
 		});
 	}
 
-	/** A section the offer adds. Its ulid is minted here and its DID half is the
-	 *  note's, because the section it stands for would live in the note's own
-	 *  graph. */
+	/** A section the offer adds. Its ulid is minted here and its owner half is
+	 *  the note's, because the section it stands for would live in the note's
+	 *  own graph. */
 	addSection(request: CreateBlockRequest): BlockView {
 		const note = request.node as OwnedRef;
 		const written: BlockView = {

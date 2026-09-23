@@ -37,7 +37,7 @@ import {
 
 /**
  * An offer as a vault carries it. Its own ulid is the file's name rather than a
- * field: an offer is read inside the graph that holds it, so the DID half of
+ * field: an offer is read inside the graph that holds it, so the owner half of
  * its reference is that graph's owner and nothing in the file repeats it.
  */
 export interface VaultAmendment {

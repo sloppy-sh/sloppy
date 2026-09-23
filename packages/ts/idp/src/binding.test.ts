@@ -30,7 +30,9 @@ describe("the key that speaks for a did:syr", () => {
     const did = DidSyrSchema.parse(deriveDid(generateKeypair().publicKey));
 
     expect(bindingFor(did, [syrKeyBinding])).toBe(syrKeyBinding);
-    expect(bindingFor("mailto:ava@example.com", [syrKeyBinding])).toBeUndefined();
+    expect(
+      bindingFor("mailto:ava@example.com", [syrKeyBinding]),
+    ).toBeUndefined();
   });
 
   it("answers nothing for an identifier in another scheme", async () => {

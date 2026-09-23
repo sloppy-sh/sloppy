@@ -262,8 +262,8 @@ describe('who wrote the note', () => {
 		expect(said.some((one) => one.endsWith('and'))).toBe(true);
 	});
 
-	// `authors` absent, and empty, are the ref's DID alone — nothing else may
-	// spell that fallback.
+	// `authors` absent, and empty, are the ref's own owner alone — nothing else
+	// may spell that fallback.
 	it('reads an empty list of authors as whoever the note is filed under', async () => {
 		show(PEER, { authors: [] });
 		await settle();

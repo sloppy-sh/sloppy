@@ -80,7 +80,7 @@ function nodeRow(
 }
 
 // A row AVA owns. On a held copy of BOB's graph that makes her the READER, and
-// the author is only ever the DID half of `source`.
+// the author is only ever the owner half of `source`.
 function avaId(table: string, localId: string): RecordId {
   return new RecordId(table, {
     created_by: AVA,

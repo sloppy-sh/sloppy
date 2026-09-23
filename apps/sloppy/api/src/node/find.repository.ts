@@ -7,11 +7,11 @@ import { Injectable } from "@nestjs/common";
 import {
   type Address,
   AddressSchema,
-  DidSyrSchema,
   graphRef,
   type OwnedRef,
   ownedRefFrom,
   OwnedRefSchema,
+  PrincipalSchema,
   RecordIdSchema,
   splitOwnedRef,
 } from "@sloppy/types";
@@ -64,7 +64,7 @@ export interface HeldNote {
 const HeldNoteSchema = z.object({
   source: OwnedRefSchema,
   address: AddressSchema.optional(),
-  source_did: DidSyrSchema,
+  source_did: PrincipalSchema,
   source_graph: OwnedRefSchema.optional(),
   title: z.string().nullish(),
   created_at: z.string().nullish(),

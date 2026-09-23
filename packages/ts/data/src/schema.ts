@@ -204,7 +204,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON retired_address TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON node_alias TYPE string READONLY;
-  -- Whose graph the note is in, which is the DID half of the note's own ref and
+  -- Whose graph the note is in, which is the owner half of the note's own ref and
   -- never whoever gates the note — a gate the graph's owner handed on is
   -- somebody else's. It is what addresses the offer, what a note's offers are
   -- read by, and what sweeps them away with the notes they stand on. Who

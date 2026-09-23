@@ -34,15 +34,20 @@ const localPart: fc.Arbitrary<string> = fc
   })
   .map((atoms) => atoms.join("."));
 
+const tld: fc.Arbitrary<string> = fc.oneof(
+  fc.stringMatching(/^[A-Za-z]{2,10}$/),
+  fc.stringMatching(/^[a-z0-9]{2,10}$/).map((rest) => `xn--${rest}`),
+);
+
 const domain: fc.Arbitrary<string> = fc
   .tuple(
     fc.array(fc.stringMatching(/^[A-Za-z0-9]{1,10}$/), {
       minLength: 1,
       maxLength: 2,
     }),
-    fc.stringMatching(/^[A-Za-z]{2,10}$/),
+    tld,
   )
-  .map(([labels, tld]) => [...labels, tld].join("."));
+  .map(([labels, last]) => [...labels, last].join("."));
 
 const mailto: fc.Arbitrary<string> = fc
   .tuple(localPart, domain)
@@ -163,6 +168,20 @@ describe("an email address as an identifier", () => {
         });
       }),
     );
+  });
+
+  it("is taken wherever the domain ends, .рф and .中国 included", () => {
+    for (const spelled of [
+      "mailto:alice@example.xn--p1ai",
+      "mailto:alice@example.xn--fiqs8s",
+      "mailto:alice@xn--r8jz45g.com",
+      "mailto:alice@xn--80ak6aa92e.xn--80ak6aa92e",
+    ]) {
+      expect(PrincipalSchema.parse(spelled)).toBe(spelled);
+      expect(
+        OwnedRefSchema.parse(`${spelled}/01JQ0000000000000000000000`),
+      ).toBe(`${spelled}/01JQ0000000000000000000000`);
+    }
   });
 
   it("is refused where it is malformed, as firmly as a DID is", () => {

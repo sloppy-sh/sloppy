@@ -126,7 +126,8 @@ export async function check(container: Files): Promise<CheckResult> {
 
   for (const note of read) {
     for (const cited of note.cites) {
-      if (splitOwnedRef(cited).owner !== graph.owner || here.has(cited)) continue;
+      if (splitOwnedRef(cited).owner !== graph.owner || here.has(cited))
+        continue;
       defects.push({
         kind: "missing-note",
         file: note.file,
