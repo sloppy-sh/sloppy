@@ -399,6 +399,18 @@ describe("a graph in a folder", () => {
     expect((await reopened(held).listGraphs())[0].ownership).toBe("owned");
   });
 
+  it("keeps what a graph asks of a writer in the folder it is in", async () => {
+    const held = device();
+    const graph = await held.api.createGraph({ title: "Thesis" });
+    expect(graph.vouching).toBeUndefined();
+    const asking = await held.api.updateGraph(graph.ref, {
+      title: "Thesis",
+      vouching: "required",
+    });
+    expect(asking.vouching).toBe("required");
+    expect((await reopened(held).listGraphs())[0].vouching).toBe("required");
+  });
+
   it("keeps the owner's name and picture with every graph on the device", async () => {
     const held = device(["/graphs/one", "/graphs/two"]);
     await held.api.createGraph({ title: "Thesis" });

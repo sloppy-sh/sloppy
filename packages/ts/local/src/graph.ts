@@ -16,6 +16,7 @@ import {
   type DeletedBranch,
   DELETED_KEPT_FOR_DAYS,
   type GraphOwnership,
+  type GraphVouching,
   type MediaAsset,
   type MediaRole,
   type NodeAppearance,
@@ -224,6 +225,15 @@ export class LocalGraph {
 
   async gate(ownership: GraphOwnership): Promise<void> {
     this.said = { ...this.said, ownership };
+    await this.files.write(GRAPH_FILE, graphFile(this.said));
+  }
+
+  get vouching(): GraphVouching | undefined {
+    return this.said.vouching;
+  }
+
+  async asksVouching(vouching: GraphVouching): Promise<void> {
+    this.said = { ...this.said, vouching };
     await this.files.write(GRAPH_FILE, graphFile(this.said));
   }
 

@@ -159,6 +159,7 @@ export class ArchiveExportService {
         name: held?.title ?? "",
         owner: did,
         ...(held?.ownership === undefined ? {} : { ownership: held.ownership }),
+        ...(held?.vouching === undefined ? {} : { vouching: held.vouching }),
       }),
     );
     let pictures: ReadonlyMap<string, PictureSize> = new Map();
