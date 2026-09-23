@@ -30,6 +30,16 @@ export const GraphOwnershipSchema = z.enum(["open", "owned"]);
 export type GraphOwnership = z.infer<typeof GraphOwnershipSchema>;
 
 /**
+ * Whose writing a graph takes: `optional` takes a write from any identity,
+ * `required` takes one only from an identity somebody stands behind —
+ * docs/ARCHITECTURE.md § "Who may write where". **Absent is `optional`**, which
+ * is what every graph written before this says, and what a folder on somebody's
+ * own device says: whoever writes alone there is asked to be vouched by nobody.
+ */
+export const GraphVouchingSchema = z.enum(["optional", "required"]);
+export type GraphVouching = z.infer<typeof GraphVouchingSchema>;
+
+/**
  * A graph somebody keeps. What a note belongs to is the ref; the row is the
  * name, and which of them its owner started with.
  *
@@ -42,6 +52,9 @@ export const GraphSchema = OwnedEntitySchema.extend({
   home: z.boolean().optional(),
   /** Absent is `open`, which is what every graph made before the field says. */
   ownership: GraphOwnershipSchema.optional(),
+  /** Absent is `optional`, which is what every graph made before the field
+   *  says. */
+  vouching: GraphVouchingSchema.optional(),
 });
 export type Graph = z.infer<typeof GraphSchema>;
 
@@ -105,5 +118,8 @@ export const UpdateGraphRequestSchema = z.object({
   /** Absent leaves it as it is; it reaches notes written from here on and
    *  leaves the ones already written as they are. */
   ownership: GraphOwnershipSchema.optional(),
+  /** Absent leaves it as it is. It reaches every write from here on, the ones
+   *  on notes already written included. */
+  vouching: GraphVouchingSchema.optional(),
 });
 export type UpdateGraphRequest = z.input<typeof UpdateGraphRequestSchema>;

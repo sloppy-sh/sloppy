@@ -1385,6 +1385,168 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     expect(JSON.stringify(plan)).toContain('"index":"amendment_by"');
   });
 
+  it("holds one role everybody in a graph holds, and any number beside it", async () => {
+    const ROLE_GRAPH = notebook(AVA);
+    const roleRow = (localId: string, graph: string, everyone?: true) => ({
+      id: avaId("graph_role", localId),
+      created_by: AVA,
+      graph,
+      title: localId,
+      position: 0,
+      ...(everyone ? { everyone } : {}),
+      allow: "0",
+      deny: "0",
+      created_at: "2026-03-01T00:00:00.000Z",
+      updated_at: "2026-03-01T00:00:00.000Z",
+    });
+
+    const everybody = roleRow("01JRBEVRYA0000000000000000", ROLE_GRAPH, true);
+    await expect(
+      db.create(everybody.id).content(everybody),
+    ).resolves.toBeDefined();
+    const second = roleRow("01JRBEVRYB0000000000000000", ROLE_GRAPH, true);
+    await expect(db.create(second.id).content(second)).rejects.toThrow(
+      /graph_role_owner_graph_everyone/,
+    );
+
+    // The rule is per graph, so the graph beside it has one of its own.
+    const elsewhere = roleRow("01JRBEVRYC0000000000000000", SECOND_GRAPH, true);
+    await expect(
+      db.create(elsewhere.id).content(elsewhere),
+    ).resolves.toBeDefined();
+
+    // And a role that is not it leaves the column out, so any number of them
+    // sit beside it — which is the whole reason `everyone` is never written
+    // false.
+    for (const beside of [
+      "01JRBNAMEDA000000000000000",
+      "01JRBNAMEDB000000000000000",
+    ]) {
+      const named = roleRow(beside, ROLE_GRAPH);
+      await expect(db.create(named.id).content(named)).resolves.toBeDefined();
+    }
+
+    // Both indexes lead with the pair the cascade reads a graph's roles by, so
+    // the planner may seek on either.
+    const [plan] = await db.query(
+      `SELECT id FROM graph_role
+         WHERE created_by = $did AND graph = $graph EXPLAIN;`,
+      { did: AVA, graph: ROLE_GRAPH },
+    );
+    expect(JSON.stringify(plan)).toMatch(
+      /"index":"graph_role_owner_graph(_everyone)?"/,
+    );
+
+    const [held] = await db.query<[{ id: RecordId }[]]>(
+      `SELECT id FROM graph_role WHERE created_by = $did AND graph = $graph;`,
+      { did: AVA, graph: ROLE_GRAPH },
+    );
+    expect(held).toHaveLength(3);
+  });
+
+  it("holds one override per target per scope, and reads a graph's by its index", async () => {
+    const OVERRIDE_GRAPH = notebook(AVA);
+    const SCOPED = OwnedRefSchema.parse(`${AVA}/01JVRDNTEA0000000000000000`);
+    const ELSEWHERE = OwnedRefSchema.parse(`${AVA}/01JVRDNTEB0000000000000000`);
+    const overrideRow = (
+      localId: string,
+      scope: string,
+      target: string,
+      targetId: string,
+    ) => ({
+      id: avaId("permission_override", localId),
+      created_by: AVA,
+      graph: OVERRIDE_GRAPH,
+      scope,
+      target,
+      target_id: targetId,
+      allow: "0",
+      deny: "2",
+      created_at: "2026-03-01T00:00:00.000Z",
+      updated_at: "2026-03-01T00:00:00.000Z",
+    });
+
+    const first = overrideRow("01JVRDA0000000000000000000", SCOPED, "did", BOB);
+    await expect(db.create(first.id).content(first)).resolves.toBeDefined();
+
+    // Writing another on the same target is writing the one that stands.
+    const again = overrideRow("01JVRDB0000000000000000000", SCOPED, "did", BOB);
+    await expect(db.create(again.id).content(again)).rejects.toThrow(
+      /permission_override_owner_scope_target/,
+    );
+
+    // Another target on that scope, and the same target on another, are their
+    // own rows.
+    for (const beside of [
+      overrideRow("01JVRDC0000000000000000000", SCOPED, "did", CAI),
+      overrideRow("01JVRDD0000000000000000000", ELSEWHERE, "did", BOB),
+      overrideRow("01JVRDE0000000000000000000", OVERRIDE_GRAPH, "did", BOB),
+    ]) {
+      await expect(db.create(beside.id).content(beside)).resolves.toBeDefined();
+    }
+
+    // The pairing is what the row IS: a changed half is a different override.
+    await expect(
+      db.update(first.id).merge({ target_id: CAI }),
+    ).rejects.toThrow();
+    await expect(
+      db.update(first.id).merge({ scope: ELSEWHERE }),
+    ).rejects.toThrow();
+
+    const [plan] = await db.query(
+      `SELECT id FROM permission_override
+         WHERE created_by = $did AND graph = $graph EXPLAIN;`,
+      { did: AVA, graph: OVERRIDE_GRAPH },
+    );
+    expect(JSON.stringify(plan)).toContain(
+      '"index":"permission_override_owner_graph"',
+    );
+
+    const [held] = await db.query<[{ id: RecordId }[]]>(
+      `SELECT id FROM permission_override
+         WHERE created_by = $did AND graph = $graph;`,
+      { did: AVA, graph: OVERRIDE_GRAPH },
+    );
+    expect(held).toHaveLength(4);
+  });
+
+  it("holds one entry per identity each person has written down", async () => {
+    const knownRow = (owner: string, localId: string, did: string) => ({
+      id: new RecordId("known_identity", {
+        created_by: owner,
+        id: UlidSchema.parse(localId),
+      }),
+      created_by: owner,
+      did,
+      instance: "https://peer.example",
+      vouch: "vouched",
+      checked_at: "2026-03-01T00:00:00.000Z",
+      created_at: "2026-03-01T00:00:00.000Z",
+      updated_at: "2026-03-01T00:00:00.000Z",
+    });
+
+    const wrote = knownRow(AVA, "01JKNWNA000000000000000000", BOB);
+    await expect(db.create(wrote.id).content(wrote)).resolves.toBeDefined();
+
+    // Resolving them again writes the row that is there rather than growing a
+    // second answer beside it.
+    const twice = knownRow(AVA, "01JKNWNB000000000000000000", BOB);
+    await expect(db.create(twice.id).content(twice)).rejects.toThrow(
+      /known_identity_owner_did/,
+    );
+
+    // One address book each: what BOB wrote down about himself is his row.
+    for (const beside of [
+      knownRow(AVA, "01JKNWNC000000000000000000", CAI),
+      knownRow(BOB, "01JKNWND000000000000000000", BOB),
+    ]) {
+      await expect(db.create(beside.id).content(beside)).resolves.toBeDefined();
+    }
+
+    // Who it is about cannot become somebody else.
+    await expect(db.update(wrote.id).merge({ did: CAI })).rejects.toThrow();
+  });
+
   it("purges one author and leaves the other whole", async () => {
     const before = await db.select<NodeRow>(new Table("node"));
     expect(before.some((row) => row.created_by === BOB)).toBe(true);
@@ -1408,9 +1570,17 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       "snapshot_asset",
       "retired_address",
       "node_alias",
+      "graph_role",
+      "permission_override",
     ]) {
       expect(await db.select(new Table(table))).toHaveLength(0);
     }
+
+    // An address book is the reader's own, so BOB keeps his.
+    const known = await db.select<{ created_by: string }>(
+      new Table("known_identity"),
+    );
+    expect(known.map((row) => row.created_by)).toEqual([BOB]);
 
     // An offer is swept both ways: the ones standing on AVA's notes go with the
     // graph they stand in, and the one she left on BOB's note goes with her.

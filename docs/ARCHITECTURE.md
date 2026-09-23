@@ -392,8 +392,8 @@ writer)` in `@sloppy/types`:
 
 Setting, changing and removing `owner` is the graph owner's act and the current owner's act.
 A contributor cannot claim a note, and an offer carries the note's **writing** — title, tags,
-look, sections — and never its place: nobody moves, renumbers or re-parents a note they do
-not own. **The graph's own owner places every note in it whatever its gate says** — the
+look, sections — and never its place: nobody moves, renumbers or re-parents a note somebody
+else gates. **The graph's own owner places every note in it whatever its gate says** — the
 genealogy and the numbers are the graph's, and handing a note's writing on does not hand
 those with it. Handing the gate on is likewise not writing, so a request that does only that
 is not held to the gate it is taking off, while one that also writes is.
@@ -453,6 +453,174 @@ offer standing in their name and take it back. `POST /amendments` offers one or 
 one already standing; `DELETE /amendments/:did/:ulid` withdraws it;
 `POST /amendments/:did/:ulid/approve` and `/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
 row here, and that DID is the graph owner's.
+
+## Who may write where
+
+The note's own gate — § "Whose writing a note carries" — says what a write does once a
+graph has let it through. This says whether the graph lets it through at all, and whether
+anybody stands behind the identity making it.
+
+**A graph with none of this written on it behaves, for everybody it is kept for, exactly as
+every graph did before it existed.** No roles, no overrides, nothing asked of a writer:
+`writeDecision` answers what `writeOutcome` and `withAuthor` answer. A person writing alone in
+a folder on their own device is somebody it is kept for, and never meets any of it. What is
+new is only the answer for somebody it is _not_ kept for, who used to be nobody: on a graph
+served to several people that is anyone it has not named, and they now hold nothing.
+
+**Nothing holds a write to any of this yet.** The vocabulary, the evaluator, the rows and
+the resolver are here; `gate.ts` still asks `writeOutcome` alone, and the sites that call
+`writeDecision` land with the work that forks from this.
+
+### Whether anybody stands behind an identity
+
+A `did:syr` binds a key and no host — syr's did-method spec is explicit that no part of the
+identifier names a server. So an identity travels with an **instance hint**: where a record
+may be found, and never a fact about the DID.
+
+**What is read there is the whole of what the answer rests on, and syr serves it unsigned.**
+What is resolved today is syr's listing of root-signed platform delegations, which syr's own
+mandates spec calls a chain of length one — and the listing carries no signature, so a host
+that serves an identity manifest and one unrevoked entry says `vouched` about whatever DID
+it is asked for. § "Federating the graph" already rules on this shape where a stranger's
+comment arrives: an identity manifest is whatever the origin serving it says, so a principal
+naming its own store would be vouching for the identity it claims to be. Three things follow,
+and the first is the one the rest hang off:
+
+- **A resolution starts only from an address this reader already trusts.**
+  `TrustedInstance` carries the address and whose word it is, and there are three words: the
+  instance that identity signed in to Sloppy through, an address the person in front of us
+  typed, and this reader's own `known_identity` row — written by an earlier resolution from
+  one of the first two. **There is no word for an address that arrived with a DID from a
+  peer**, and adding one would be deciding that a principal may name its own voucher.
+- **A trusted address is still an address somebody else chose**, so both reads — the
+  identity's record, and the listing of the authority held for it — go through
+  `media/remote-host.ts` on every hop, under the policy a picture's address is held to, and
+  within a bound on how much of an answer is read.
+- **The mandate chain is what makes this a signature check.** Root, then agent, then whoever
+  holds the grant: it lands behind `VouchResolver` as a different reading, and a caller still
+  reads `Vouch.state` and nothing else.
+
+Resolution answers one of three things, and **the third is not a formality**:
+
+- `vouched` — an instance serving that identity holds authority its root key approved, and
+  that authority still stands.
+- `anonymous` — resolution answered, and nobody holds any. An identity minted on a device is
+  this one, and on the device that minted it nothing asks anybody to stand behind it.
+- `unknown` — nothing answered just now. **It grants no authority an identity did not already
+  carry, and takes none away.** `SyrService.delegationState` has drawn the same three-way
+  distinction for the same reason since delegations landed: an instance having a bad afternoon
+  is not a statement about anybody, and treating it as one makes somebody else's outage ours.
+
+`standingVouch` is the one function that turns a just-now `unknown` back into what resolution
+last settled on, so no surface decides on its own that an unreachable instance means somebody
+lost their access. The last settled answer is kept on a `known_identity` row — the address, what
+was settled, and when — one per identity per person who wrote it down. An `unknown` never
+writes over it.
+
+**Nothing a writer says about itself decides any of this.** There is no column a peer can
+write that carries it; it is derived by resolution here and cached here.
+
+**A graph says whether it asks.** `Graph.vouching` is `optional` or `required`, and absent is
+`optional` — every graph written before the column, and every folder somebody keeps to
+themselves. `required` refuses a write by an identity resolved `anonymous`. Where nothing
+answered it neither admits nor evicts: a writer the note already carries — its owner, or
+somebody in its `authors` — writes on, and anybody else has their change **offered** rather
+than landed, because admitting a stranger on an `unknown` would be granting authority nobody
+answered for. A graph never holds its own owner to any of it: an identity minted on a device is
+anonymous, and asking to be vouched must not shut out the person asking for it.
+
+### The cascade
+
+Sloppy's scopes are **graph, then note**. A role belongs to a graph, because a graph is the
+unit people collaborate in, and an override is written on the graph or on one note in it.
+An override's target is a **role** or one **identity**.
+
+**A graph is kept for somebody, or it is not, and that is decided before any layer runs.**
+Somebody it is not kept for folds to `NO_PERMISSIONS` — no writing, no offering, not even
+reading — whatever the roles say, and the role _everybody_ holds does not let them in:
+"everybody" there means everybody the graph is kept for. A graph nobody has written a policy
+on is therefore **closed to a stranger, not open to one**. The graph's own owner is never
+shut out this way.
+
+Who counts is a fact about the surface asking, not a rule the cascade owns, and the two
+surfaces answer it differently on purpose:
+
+- **A graph served to several people names them.** Its owner, or an identity a role lists by
+  DID — `namedInGraph`. Nobody else, however they reached it.
+- **A graph somebody holds on their own device is kept for whoever holds it.** There is
+  nobody to arbitrate between. What they write travels as a contribution somebody else
+  accepts — a pull request on the remote the folder is pushed to — so the acceptance happens
+  where the collaboration does, not in a cascade on this machine.
+
+**`DEFAULT_PERMISSIONS` is the floor the cascade folds from** for somebody the graph _is_
+kept for: the verbs a note's own gate already governs — reading, writing, starting, deleting
+and placing notes, offering a change, taking one in, and joining a note's authorship — and
+none of the ones that are the graph's alone: publishing, and saying who may do what in it. So
+the first role or override written on a graph **takes nothing off anybody already there**,
+and a graph closes a verb off by denying it on the role everybody holds.
+
+`resolvePermissionFold` folds from there, lowest priority first, each layer
+`perms = (perms & ~deny) | allow`:
+
+1. the roles the writer holds, in ascending `position`
+2. the graph-scoped override written on that identity
+3. note-scoped overrides on the roles they hold, in ascending role position
+4. the note-scoped override written on that identity
+
+A graph-scoped override on a ROLE is not a layer: a role carries its graph-wide allow and deny
+in layer 1, so `overrideIsWellFormed` refuses one rather than letting a row be written that
+the fold would drop. `ADMINISTRATOR` short-circuits after layer 2, so nothing written on a note
+takes a verb off an administrator. **The graph's own owner holds every verb**, whatever is
+written — a first role written on a graph must not lock its own author out.
+
+The verbs are a closed enum of bits in `permission.ts`, stored as a decimal string because no
+store here has a number that wide surviving a round trip. **A bit's position is written once
+and never moved**: a role stores the number the bits make, so renumbering one would silently
+re-grant every role already written, and no read anywhere would fail.
+
+Two of them carry more than their name:
+
+- `PLACE_NOTES` — moving a note and writing its address. An offer carries a note's writing and
+  never its place — § "Whose writing a note carries" — so this is a verb of its own and
+  `WRITE_NOTES` never implies it.
+- `CO_AUTHOR` — writing into a note somebody else has already written into, and so joining its
+  `authors`. Without it such a write does not land and is offered instead. That is what keeps
+  `authors` the whole truth about whose writing a note carries: a graph can decide who may
+  join a note's authorship, and can never produce a note whose list leaves somebody out.
+
+### What a write comes to
+
+`writeDecision` is the one function that answers it, and it is the note's gate and the graph's
+policy in one place. It is told what the writer holds and what resolving them said — never
+left to read an absent argument as leave to do anything:
+
+1. a graph that asks for vouched writers refuses an `anonymous` one, lets its own owner
+   through, and offers rather than lands the change of one nothing answered for who has
+   written nothing there yet;
+2. the note's gate decides next — `writeOutcome` unchanged — and a gated note's write is
+   **offered** where the writer may offer and **refused** where they may not;
+3. a write that lands needs `WRITE_NOTES`, and `CO_AUTHOR` besides where it would put the
+   writer into an open note's `authors`; short of either it falls to **offered**, or to
+   **refused** where the graph takes no offers.
+
+`refused` is the one verdict that is new, and it is reachable only where somebody has written
+a policy on the graph or asked its writers to be vouched. `hasPolicy` is what a caller asks to
+skip the fold rather than a second answer: a graph with no roles and no overrides folds to
+`DEFAULT_PERMISSIONS` for anybody but its owner, which `constantPermissionFold` hands back
+without reading a row.
+
+### The rows
+
+`graph_role` and `permission_override` are the graph owner's, as every row in their graph is:
+somebody named in a role holds nothing of it, and the purge sweeps both by `created_by` with
+the rest of that person's graph. `known_identity` is likewise the reader's own — their address
+book, about other people, swept with them the way a refused voice is. `graph_role.everyone`
+marks the one role everybody in a graph holds and is written only as `true`, because the UNIQUE
+index that holds one of those per graph does not constrain a row whose column is absent.
+`permission_override.scope` is written out as the note's ref or the graph's own rather than
+left absent for the graph, for the same reason: UNIQUE is what makes one override per target
+per scope a rule rather than a hope. Both of those are claims about a server rather than about
+a string, so `schema.integration.test.ts` is where they are checked.
 
 ## syr integration
 

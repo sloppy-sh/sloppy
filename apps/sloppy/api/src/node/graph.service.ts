@@ -65,7 +65,8 @@ export class GraphService {
     return entityView(await this.graphs.insert(did, title));
   }
 
-  /** Rename one, and say what it gates the notes written in it by. */
+  /** Rename one, say what it gates the notes written in it by, and say whether
+   *  it asks who stands behind a writer. */
   async write(
     did: DidSyr,
     ref: OwnedRef,
@@ -73,7 +74,13 @@ export class GraphService {
   ): Promise<GraphView> {
     await this.requireHeld(did, ref);
     return entityView(
-      await this.graphs.name(did, ref, changes.title, changes.ownership),
+      await this.graphs.name(
+        did,
+        ref,
+        changes.title,
+        changes.ownership,
+        changes.vouching,
+      ),
     );
   }
 

@@ -93,7 +93,7 @@ const DelegationSchema = z.object({
   revoked_at: z.iso.datetime().optional(),
   expires_at: z.iso.datetime().optional(),
 });
-type DelegationEntry = z.infer<typeof DelegationSchema>;
+export type DelegationEntry = z.infer<typeof DelegationSchema>;
 
 /**
  * Two syr instances in the wild disagree on whether this listing is wrapped,
@@ -171,8 +171,9 @@ export class SyrService {
 
   private async platform(
     instanceUrl: string,
+    reach?: HostPolicy,
   ): Promise<NonNullable<SyrInstanceManifest["platform"]>> {
-    const { platform } = await this.manifest(instanceUrl);
+    const { platform } = await this.manifest(instanceUrl, reach);
     if (!platform) {
       throw new BadRequestException(
         "You cannot sign in to Sloppy with an identity kept there.",
@@ -247,7 +248,10 @@ export class SyrService {
    * afternoon, and that difference decides whether somebody gets signed out.
    */
   async delegationState(delegation: Delegation): Promise<DelegationState> {
-    const listing = await this.listDelegations(delegation);
+    const listing = await this.listDelegations(
+      delegation.syr_instance_url,
+      delegation.did,
+    );
     if (!listing) return "unknown";
 
     const held = listing.find(
@@ -259,35 +263,42 @@ export class SyrService {
     return "active";
   }
 
-  private async listDelegations(
-    delegation: Delegation,
+  /**
+   * Every platform delegation an instance lists for one identity, or `null`
+   * where it said nothing — which is not the same as listing none, and the
+   * difference is the whole reason this answers a listing rather than a
+   * boolean.
+   */
+  async listDelegations(
+    instanceUrl: string,
+    did: string,
+    reach?: HostPolicy,
   ): Promise<DelegationEntry[] | null> {
-    const inst = delegation.syr_instance_url;
-    let response: Response;
+    const inst = instanceUrl;
+    let answer: Answered;
     try {
-      const { delegations } = await this.platform(inst);
+      const { delegations } = await this.platform(inst, reach);
       const url = new URL(delegations);
-      url.searchParams.set("did", delegation.did);
-      response = await fetch(url, {
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
+      url.searchParams.set("did", did);
+      answer = await answered(
+        url.toString(),
+        { headers: { accept: "application/json" } },
+        reach,
+      );
     } catch (err) {
       this.logger.warn(
         `${inst} did not list its delegations: ${err instanceof Error ? err.message : err}`,
       );
       return null;
     }
-    if (!response.ok) {
+    if (!answer.ok) {
       this.logger.warn(
-        `${inst} answered ${response.status} listing its delegations`,
+        `${inst} answered ${answer.status} listing its delegations`,
       );
       return null;
     }
 
-    const listing = DelegationListSchema.safeParse(
-      await response.json().catch(() => null),
-    );
+    const listing = DelegationListSchema.safeParse(parseJson(answer.body));
     if (!listing.success) {
       this.logger.warn(
         `${inst} listed its delegations in a shape Sloppy cannot read`,
@@ -569,14 +580,18 @@ export class SyrService {
    * an identity this instance has never heard of, so a name that resolves to
    * nothing has to cost what one that resolves costs.
    */
-  async providerFor(instanceUrl: string, did: string): Promise<string | null> {
+  async providerFor(
+    instanceUrl: string,
+    did: string,
+    reach?: HostPolicy,
+  ): Promise<string | null> {
     const key = `${instanceUrl}|${did}`;
     const missed = this.unresolved.get(key);
     if (missed !== undefined && Date.now() - missed < MANIFEST_TTL_MS) {
       return null;
     }
     try {
-      return (await this.identityManifest(instanceUrl, did)).provider;
+      return (await this.identityManifest(instanceUrl, did, reach)).provider;
     } catch {
       const now = Date.now();
       for (const [at, when] of this.unresolved) {

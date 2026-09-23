@@ -139,6 +139,9 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS retired_address SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS node_alias SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS amendment SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS graph_role SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS permission_override SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS known_identity SCHEMALESS;
 
 ${MIGRATIONS}
   -- Writable, because a move and a rename both rewrite them;
@@ -232,6 +235,35 @@ ${MIGRATIONS}
   -- refused to everyone.
   DEFINE FIELD IF NOT EXISTS note ON retired_address TYPE option<string> READONLY;
 
+  -- A role in one graph, and an allow and a deny written on one scope. On both,
+  -- the owner is the graph's owner, as it is on every row in their graph:
+  -- somebody named in a role holds nothing of it.
+  DEFINE FIELD IF NOT EXISTS created_by ON graph_role TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS graph ON graph_role TYPE string READONLY;
+  -- The role everybody in the graph holds. Written only as true and otherwise
+  -- left out, the way graph.home is: the UNIQUE index below is what holds one
+  -- of these per graph, and it does not constrain a row whose indexed column is
+  -- absent, so a written false would be constrained to one role too.
+  DEFINE FIELD IF NOT EXISTS everyone ON graph_role TYPE option<bool>;
+  DEFINE FIELD IF NOT EXISTS created_by ON permission_override TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS graph ON permission_override TYPE string READONLY;
+  -- What the override attaches to and who it is written on. Immutable, this row
+  -- being that pairing: a changed half is a different override and a new row,
+  -- which is also what makes the UNIQUE index below the one-per-target rule.
+  -- The scope is a note's reference, or the graph's own, written out rather than
+  -- left absent for the graph, because a UNIQUE index does not constrain a row
+  -- whose indexed column is absent.
+  DEFINE FIELD IF NOT EXISTS scope ON permission_override TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS target ON permission_override TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS target_id ON permission_override TYPE string READONLY;
+
+  -- An identity this person's instance has written down: where to look for its
+  -- record, and what resolving it last settled on. The owner is whoever wrote it
+  -- down, never the identity it is about — it is their address book, and their
+  -- purge is what reaches it.
+  DEFINE FIELD IF NOT EXISTS created_by ON known_identity TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS did ON known_identity TYPE string READONLY;
+
   -- Which foreign row a held row is a copy of, who wrote it, and where they
   -- addressed it. Immutable for the reason created_by is: a row that changed
   -- any of them would quietly become a copy of something else.
@@ -298,6 +330,9 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_at ON retired_address TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON node_alias TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON amendment TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON graph_role TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON permission_override TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON known_identity TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS updated_at ON graph TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
@@ -314,6 +349,9 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS updated_at ON retired_address TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON node_alias TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON amendment TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON graph_role TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON permission_override TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON known_identity TYPE string;
 
   -- When a note, and the sections that go with it, were deleted. TYPE string
   -- for the reason the two timestamps above are; option, because absent is a
@@ -375,6 +413,26 @@ ${MIGRATIONS}
   -- that is not it leaves the column out, and SurrealDB does not constrain a row
   -- whose indexed column is absent, so the rest stay unconstrained.
   DEFINE INDEX IF NOT EXISTS graph_owner_home ON graph FIELDS created_by, home UNIQUE;
+  -- Every role written on one graph. The cascade folds the whole set, so which
+  -- of them one identity holds is answered from the rows rather than by a second
+  -- index over an array of DIDs.
+  DEFINE INDEX IF NOT EXISTS graph_role_owner_graph ON graph_role FIELDS created_by, graph;
+  -- The one role everybody in a graph holds, held here rather than by whichever
+  -- process wrote first. A role that is not it leaves the column out, and
+  -- SurrealDB does not constrain a row whose indexed column is absent, so the
+  -- rest stay unconstrained.
+  DEFINE INDEX IF NOT EXISTS graph_role_owner_graph_everyone ON graph_role FIELDS created_by, graph, everyone UNIQUE;
+  -- Every override written on one graph, which is what the cascade reads, and
+  -- what goes when the graph does.
+  DEFINE INDEX IF NOT EXISTS permission_override_owner_graph ON permission_override FIELDS created_by, graph;
+  -- One override per target per scope: writing another is writing the one that
+  -- stands rather than stacking a second beside it. The scope is a top-level
+  -- column and is always written, which is what lets UNIQUE hold here at all.
+  DEFINE INDEX IF NOT EXISTS permission_override_owner_scope_target ON permission_override FIELDS created_by, scope, target_id UNIQUE;
+  -- One entry per identity per person who wrote it down: resolving it again
+  -- writes what is there rather than growing a second answer beside it.
+  DEFINE INDEX IF NOT EXISTS known_identity_owner_did ON known_identity FIELDS created_by, did UNIQUE;
+
   -- A region, whole or sliced: the leading pair reads a tree, and a trailing
   -- AND depth <= $max bounds it to the levels around a focus. One index rather
   -- than two, because the pair is this one's prefix.
