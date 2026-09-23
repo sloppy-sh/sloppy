@@ -118,9 +118,10 @@ ships both branches to every platform.
 The part that has to be right first, because peers hold each other's graphs. AI.md § "The
 Genealogy Is the Protocol" states the rules; this is the mechanism.
 
-**A note is reached by its ref.** `<did>/<ulid>` is the row's own composite key spelled for
-the wire, and it is what a link, a publication, a pull and every route are keyed on. No
-lookup anywhere resolves a note by address except the one a person types, which is exactly
+**A note is reached by its ref.** `<principal>/<ulid>` is the row's own composite key spelled
+for the wire — § "Who a person is" says what the first half may be — and it is what a link, a
+publication, a pull and every route are keyed on. No lookup anywhere resolves a note by
+address except the one a person types, which is exactly
 the citation case the address exists for. Where an address reaches a note that is at it and
 one that was carried away from it, the note at it is the answer: `addressLeadsTo` reads the
 live row ahead of the alias, and `NodeService.addressed` answers a search out of
@@ -454,6 +455,103 @@ one already standing; `DELETE /amendments/:did/:ulid` withdraws it;
 `POST /amendments/:did/:ulid/approve` and `/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
 row here, and that DID is the graph owner's.
 
+## Who a person is
+
+A person Sloppy names is a **principal**, and a principal is a URI whose scheme says how it
+is read. There are two: `did:syr:z…`, a syr identity whose method-specific part IS an Ed25519
+public key, and `mailto:alice@example.com`, RFC 6068's address spec. `PrincipalSchema` in
+`@sloppy/types`' `common.ts` is the union, and a third way of being named is an arm of it —
+never a second field beside the first, and never a boolean (AI.md § "Provider-Agnostic Data
+Shapes").
+
+**A `mailto:` is lowercased on the way in and compared byte for byte afterwards.** The
+binding it will be resolved through — Web Key Directory — lowercases the local part before it
+hashes it, so lowercasing is what the mechanism already does; and an access list in which
+`Alice@…` and `alice@…` are two people is a way to be locked out of your own graph. It is
+normalised at the schema boundary, so no caller has to remember. Two characters RFC 6068
+allows are refused: `/`, which separates the halves of a ref, and `%`, which would give one
+address two spellings. Everything downstream treats a principal as opaque — it is compared,
+it is half of a ref, and it is the column a person's rows are swept by.
+
+**A ref is `<principal>/<ulid>`.** Each half is held to its own schema rather than to one
+regex spanning both, and the split is at the LAST `/`. A row's key is the same two halves as
+an object — `table:{ created_by: <principal>, id: <ulid> }` — so an `@` or a `.` reaches the
+driver as a value and is never spelled into a query.
+
+### Narrow and wide, and which is which
+
+`DidSyr` did not go away, and blanket-renaming it would have been the wrong answer. The line:
+
+- **Wide — a principal.** What the genealogy and a graph's policy NAME: `created_by` on every
+  row, both halves of every ref, a note's `owner`, `authors` and `contributors`, a role's
+  `members`, an override's target, an amendment's `by`, and the identity a `Vouch` is about.
+  These are strings the system compares and never resolves.
+- **Narrow — a `did:syr`.** What this build RESOLVES, FETCHES FROM, or DERIVES A KEY FROM:
+  everything in `syr.ts` and `@sloppy/idp`, `StoreRef` and the two functions that make and
+  split one, the `Viewer` a session is held under, a peer's `PublishedIndex` and the follow
+  and peer-lookup queries that reach one, a comment's author and a reaction's, a profile, an
+  emoji catalog, a folder's own `VaultGraph.owner` and the archive preview that mirrors it.
+
+The test, site by site: **does this value get compared, or does it get dereferenced?** A
+compared one is wide. A dereferenced one is narrow, because dereferencing is per-scheme and
+this build has one scheme's machinery.
+
+Two of those narrow ones are narrow for a reason worth stating. `VaultGraph.owner` is the
+identity a device writes a folder under, and `makeLocalIdentity()` mints only `did:syr` there,
+which is what lets `graphAsItWas` derive a public key from it. `Viewer.did` is who signed in,
+and the only door is Platform Delegation. A note in that folder may still be OWNED by a
+`mailto:` — the folder's owner and a note's owner are different questions.
+
+### Which key speaks for a principal
+
+`KeyBinding` in `key-binding.ts` answers "which key speaks for this identifier right now?" —
+the question `peer/attribution.ts` says it cannot answer, and the reason a signature that
+checks out says only that the note has not been altered.
+
+One implementation per principal scheme, reached by `bindingFor(principal, bindings)` so a
+caller never learns which schemes exist. `syrKeyBinding` in `@sloppy/idp` is the only one:
+syr answers from the identifier itself, nothing is fetched, and the key it returns is marked
+`signs: "delegations"` — it stands behind the keys that sign content rather than signing any,
+which is precisely why holding it is not yet knowing whose a note is. A `null` answer is a
+binding that did not answer; an empty list is an identifier nobody holds a key for, and that
+is an answer.
+
+A signed row also says what scheme its signature is in. `signature_scheme` is a bounded
+string rather than an enum on the wire, for the reason `BlockDocumentSchema` carries an
+element kind it has no renderer for: a signature in a scheme a reader has never heard of must
+arrive whole rather than take the row down with it. **Absent is `ed25519-multibase`**, which
+is what every signature written before the tag is, and `signatureSchemeOf` is the one reader
+of that. A scheme this build cannot name is one it cannot check, so the note is held rather
+than presented as altered.
+
+### What is not done, and what comes next
+
+Nothing RESOLVES or VERIFIES a `mailto:` principal. The identifier is theirs to hold, a graph
+can name them in a role and a note can be owned by them; nothing can yet say a key is theirs
+or that anybody stands behind them. A `VouchResolver` asked about one answers `unknown`,
+which grants nothing and takes nothing away.
+
+What a second wave adds, in order:
+
+1. **A WKD binding** — `KeyBinding` with `scheme: "mailto"`. The advanced form first,
+   `https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>`, then the direct
+   one, where `<hash>` is z-base-32 over SHA-1 of the lowercased local part — which is why
+   the local part is lowercased here. It goes through `media/remote-host.ts` like every other
+   address somebody else chose, and it is a new file and no change to any caller.
+2. **A keyserver binding** beside it, as a second source with the same shape. A key found
+   either way is `vouched`; WHICH is `Vouch.instance`, and that is why `VouchState` stays
+   three states.
+3. **A GPG verifier**, and the scheme dispatch at the four places a signature is checked:
+   `peer/attribution.ts`, `social/comment-attribution.ts`, and the two in `@sloppy/local`
+   that derive a key from the identifier (`identity.ts` and `api.ts`). Each of those reads
+   `signatureSchemeOf` and routes; today they hold anything but `ed25519-multibase`.
+4. **A door to sign in by**, which is what widens `Viewer.did`, and with it what lets somebody
+   who is not a syr identity hold a graph on a hosted instance rather than only be named in
+   one.
+
+`@sloppy/idp` is not part of any of it. It SERVES syr identities; GPG needs no provider,
+because people already have keys.
+
 ## Who may write where
 
 The note's own gate — § "Whose writing a note carries" — says what a write does once a
@@ -513,9 +611,9 @@ Resolution answers one of three things, and **the third is not a formality**:
 
 `standingVouch` is the one function that turns a just-now `unknown` back into what resolution
 last settled on, so no surface decides on its own that an unreachable instance means somebody
-lost their access. The last settled answer is kept on a `known_identity` row — the address, what
-was settled, and when — one per identity per person who wrote it down. An `unknown` never
-writes over it.
+lost their access. The last settled answer is kept on a `known_identity` row — the principal,
+the address, what was settled, and when — one per identity per person who wrote it down. An
+`unknown` never writes over it.
 
 **Nothing a writer says about itself decides any of this.** There is no column a peer can
 write that carries it; it is derived by resolution here and cached here.
@@ -619,8 +717,10 @@ marks the one role everybody in a graph holds and is written only as `true`, bec
 index that holds one of those per graph does not constrain a row whose column is absent.
 `permission_override.scope` is written out as the note's ref or the graph's own rather than
 left absent for the graph, for the same reason: UNIQUE is what makes one override per target
-per scope a rule rather than a hope. Both of those are claims about a server rather than about
-a string, so `schema.integration.test.ts` is where they are checked.
+per scope a rule rather than a hope. `permission_override.target` is `role` or `principal`,
+and `target_id` is the role's ref or the identifier itself — flat beside the discriminant,
+because an index cannot seek on a nested path. Both of those are claims about a server rather
+than about a string, so `schema.integration.test.ts` is where they are checked.
 
 ## syr integration
 
@@ -1728,10 +1828,11 @@ shell's dev server stands in for the shared origin.
 Own SurrealDB, repository pattern, no ORM — the house pattern across Pendi, syr and Slyng.
 The schemas are `@sloppy/types`; the table definitions and the purge are `@sloppy/data`.
 
-A row's key is composite — `table:{ created_by: <did>, id: <ulid> }` — so it is globally
+A row's key is composite — `table:{ created_by: <principal>, id: <ulid> }` — so it is globally
 unique the moment it is written, which is what lets a peer hold somebody else's node
-without renaming it. A **ref** below is how one row points at another: the string
-`<did>/<ulid>`, the form the reference already travels in. Every row also carries
+without renaming it. The key is an object, so an owner's own characters reach the driver as a
+value and are never spelled into a query. A **ref** below is how one row points at another:
+the string `<principal>/<ulid>`, the form the reference already travels in. Every row also carries
 `created_at` and `updated_at` as **iso** — see the timestamp rule below.
 
 ```
