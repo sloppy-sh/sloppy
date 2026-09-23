@@ -4,40 +4,43 @@
 import { Injectable } from "@nestjs/common";
 import {
   type DidSyr,
-  type InstanceHint,
+  type TrustedInstance,
   type Vouch,
   type VouchResolver,
   nowIso,
   vouchFrom,
 } from "@sloppy/types";
+import { AppConfigService } from "../config/app-config.service";
+import { peerReach } from "../peer/peer-fetch";
 import { SyrService, normalizeInstanceUrl } from "./syr.service";
 
 /**
- * The hint says where to start looking and decides nothing: the identity's own
- * record is resolved from it, and the authority held for that identity is read
- * where the record says it is answered. A hint that points somewhere hostile can
- * fail to resolve and can do nothing else.
- *
- * What is read today is a listing of root-signed delegations, which is a chain
- * of length one. A mandate chain — root, then agent, then whoever holds the
- * grant — replaces that reading here, and every caller still reads a
+ * What is read today is syr's listing of root-signed platform delegations — a
+ * chain of length one, served with nothing signed on it, which is why
+ * {@link TrustedInstance} bounds the addresses a resolution may start from. The
+ * mandate chain replaces the reading here, and every caller still reads a
  * {@link Vouch}.
  */
 @Injectable()
 export class VouchService implements VouchResolver {
-  constructor(private readonly syr: SyrService) {}
+  constructor(
+    private readonly syr: SyrService,
+    private readonly config: AppConfigService,
+  ) {}
 
-  async vouchFor(did: DidSyr, hint?: InstanceHint): Promise<Vouch> {
-    const at = nowIso();
-    if (hint === undefined) return { did, state: "unknown", at };
+  async vouchFor(did: DidSyr, at?: TrustedInstance): Promise<Vouch> {
+    const asked = nowIso();
+    if (at === undefined) return { did, state: "unknown", at: asked };
 
+    const reach = peerReach(this.config);
     const instance = await this.syr.providerFor(
-      normalizeInstanceUrl(hint),
+      normalizeInstanceUrl(at.url),
       did,
+      reach,
     );
-    if (instance === null) return { did, state: "unknown", at };
+    if (instance === null) return { did, state: "unknown", at: asked };
 
-    const listing = await this.syr.listDelegations(instance, did);
-    return vouchFrom(did, instance, listing, at);
+    const listing = await this.syr.listDelegations(instance, did, reach);
+    return vouchFrom(did, instance, listing, asked);
   }
 }

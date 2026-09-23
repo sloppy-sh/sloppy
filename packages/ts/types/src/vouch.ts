@@ -32,15 +32,43 @@ export type VouchState = z.infer<typeof VouchStateSchema>;
 export const AnsweredVouchSchema = z.enum(["vouched", "anonymous"]);
 export type AnsweredVouch = z.infer<typeof AnsweredVouchSchema>;
 
-/**
- * Where an identity's record may be found.
- *
- * **Untrusted.** A `did:syr` binds a key and no host, so this says where to
- * look and nothing more: a wrong or hostile one can only fail to resolve, and
- * can never make a resolution say yes.
- */
+/** Where an identity's record may be found. A `did:syr` binds a key and no
+ *  host, so this is an address somebody supplied and never a fact about the
+ *  DID. */
 export const InstanceHintSchema = z.string().min(1).max(2048);
 export type InstanceHint = z.infer<typeof InstanceHintSchema>;
+
+/**
+ * Whose word it is that an identity's record is at an address.
+ *
+ * - `signed_in` — the instance that identity signed in to Sloppy through, which
+ *   this reader holds a delegation from.
+ * - `typed` — an address the person in front of us named.
+ * - `written_down` — this reader's own {@link KnownIdentity} row, written by an
+ *   earlier resolution from one of the two above.
+ */
+export const InstanceWordSchema = z.enum([
+  "signed_in",
+  "typed",
+  "written_down",
+]);
+export type InstanceWord = z.infer<typeof InstanceWordSchema>;
+
+/**
+ * An address a resolution may be started from, and whose word it is.
+ *
+ * **What is read at that address is what decides `vouched`, and syr serves it
+ * unsigned**: a host that serves a manifest and one unrevoked delegation says
+ * `vouched` about whatever DID it is asked for. So the answer is worth what the
+ * address is worth, and there is no word here for an address that arrived with
+ * a DID from a peer — a principal naming its own instance would be vouching for
+ * itself.
+ */
+export const TrustedInstanceSchema = z.object({
+  url: InstanceHintSchema,
+  word: InstanceWordSchema,
+});
+export type TrustedInstance = z.infer<typeof TrustedInstanceSchema>;
 
 /** What resolution answered about one identity, and when. */
 export const VouchSchema = z.object({
@@ -79,12 +107,11 @@ export type KnownIdentity = z.infer<typeof KnownIdentitySchema>;
  *
  * A caller reads {@link Vouch}`.state` and nothing else, so the mandate chain —
  * root, then agent, then whoever holds the grant — lands here as a different
- * reading rather than as a change to everything that asks. The hint is
- * untrusted metadata the resolver may start from; what it answers is read off
- * the identity's own record.
+ * reading rather than as a change to everything that asks. Absent an address
+ * this reader trusts ({@link TrustedInstance}), the answer is `unknown`.
  */
 export interface VouchResolver {
-  vouchFor(did: DidSyr, hint?: InstanceHint): Promise<Vouch>;
+  vouchFor(did: DidSyr, at?: TrustedInstance): Promise<Vouch>;
 }
 
 /** One statement of authority as an instance serves it. Absent `revoked_at` and

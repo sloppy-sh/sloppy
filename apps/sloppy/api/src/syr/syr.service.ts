@@ -171,8 +171,9 @@ export class SyrService {
 
   private async platform(
     instanceUrl: string,
+    reach?: HostPolicy,
   ): Promise<NonNullable<SyrInstanceManifest["platform"]>> {
-    const { platform } = await this.manifest(instanceUrl);
+    const { platform } = await this.manifest(instanceUrl, reach);
     if (!platform) {
       throw new BadRequestException(
         "You cannot sign in to Sloppy with an identity kept there.",
@@ -271,33 +272,33 @@ export class SyrService {
   async listDelegations(
     instanceUrl: string,
     did: string,
+    reach?: HostPolicy,
   ): Promise<DelegationEntry[] | null> {
     const inst = instanceUrl;
-    let response: Response;
+    let answer: Answered;
     try {
-      const { delegations } = await this.platform(inst);
+      const { delegations } = await this.platform(inst, reach);
       const url = new URL(delegations);
       url.searchParams.set("did", did);
-      response = await fetch(url, {
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
+      answer = await answered(
+        url.toString(),
+        { headers: { accept: "application/json" } },
+        reach,
+      );
     } catch (err) {
       this.logger.warn(
         `${inst} did not list its delegations: ${err instanceof Error ? err.message : err}`,
       );
       return null;
     }
-    if (!response.ok) {
+    if (!answer.ok) {
       this.logger.warn(
-        `${inst} answered ${response.status} listing its delegations`,
+        `${inst} answered ${answer.status} listing its delegations`,
       );
       return null;
     }
 
-    const listing = DelegationListSchema.safeParse(
-      await response.json().catch(() => null),
-    );
+    const listing = DelegationListSchema.safeParse(parseJson(answer.body));
     if (!listing.success) {
       this.logger.warn(
         `${inst} listed its delegations in a shape Sloppy cannot read`,
@@ -579,14 +580,18 @@ export class SyrService {
    * an identity this instance has never heard of, so a name that resolves to
    * nothing has to cost what one that resolves costs.
    */
-  async providerFor(instanceUrl: string, did: string): Promise<string | null> {
+  async providerFor(
+    instanceUrl: string,
+    did: string,
+    reach?: HostPolicy,
+  ): Promise<string | null> {
     const key = `${instanceUrl}|${did}`;
     const missed = this.unresolved.get(key);
     if (missed !== undefined && Date.now() - missed < MANIFEST_TTL_MS) {
       return null;
     }
     try {
-      return (await this.identityManifest(instanceUrl, did)).provider;
+      return (await this.identityManifest(instanceUrl, did, reach)).provider;
     } catch {
       const now = Date.now();
       for (const [at, when] of this.unresolved) {
