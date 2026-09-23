@@ -459,7 +459,7 @@ row here, and that DID is the graph owner's.
 
 A person Sloppy names is a **principal**, and a principal is a URI whose scheme says how it
 is read. There are two: `did:syr:z…`, a syr identity whose method-specific part IS an Ed25519
-public key, and `mailto:alice@example.com`, RFC 6068's address spec. `PrincipalSchema` in
+public key, and `mailto:alice@example.com`, an email address. `PrincipalSchema` in
 `@sloppy/types`' `common.ts` is the union, and a third way of being named is an arm of it —
 never a second field beside the first, and never a boolean (AI.md § "Provider-Agnostic Data
 Shapes").
@@ -468,10 +468,16 @@ Shapes").
 binding it will be resolved through — Web Key Directory — lowercases the local part before it
 hashes it, so lowercasing is what the mechanism already does; and an access list in which
 `Alice@…` and `alice@…` are two people is a way to be locked out of your own graph. It is
-normalised at the schema boundary, so no caller has to remember. Two characters RFC 6068
-allows are refused: `/`, which separates the halves of a ref, and `%`, which would give one
-address two spellings. Everything downstream treats a principal as opaque — it is compared,
-it is half of a ref, and it is the column a person's rows are swept by.
+normalised at the schema boundary, so no caller has to remember. Everything downstream treats
+a principal as opaque — it is compared, it is half of a ref, and it is the column a person's
+rows are swept by.
+
+**What a `mailto:` may hold is narrower than RFC 6068**, and a second implementation must
+match it or mint refs this one refuses: an unquoted local part, at a domain of two or more
+labels of letters, digits and hyphens. A quoted local part (`"alice smith"@…`), a domain
+literal (`alice@[192.0.2.1]`) and a single-label domain (`alice@localhost`) are all refused —
+the binding this scheme resolves through needs a real domain to ask. `/` is refused because it
+separates the halves of a ref, and `%` because it would give one address two spellings.
 
 **A ref is `<principal>/<ulid>`.** Each half is held to its own schema rather than to one
 regex spanning both, and the split is at the LAST `/`. A row's key is the same two halves as

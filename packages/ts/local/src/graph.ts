@@ -13,6 +13,7 @@ import {
   type CustomEmoji,
   type CustomEmojiKind,
   type DidSyr,
+  type Principal,
   type DeletedBranch,
   DELETED_KEPT_FOR_DAYS,
   type GraphOwnership,
@@ -844,7 +845,7 @@ export class LocalGraph {
 
   /** The one offer this person has standing on this note, which is all they may
    *  have — docs/ARCHITECTURE.md § "Whose writing a note carries". */
-  offerBy(note: OwnedRef, by: DidSyr): StoredAmendment | undefined {
+  offerBy(note: OwnedRef, by: Principal): StoredAmendment | undefined {
     return this.offersOn(note).find((offer) => offer.by === by);
   }
 

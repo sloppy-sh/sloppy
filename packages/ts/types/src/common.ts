@@ -53,9 +53,13 @@ export const DidSyrSchema = z
 export type DidSyr = z.infer<typeof DidSyrSchema>;
 
 /**
- * RFC 6068's `addr-spec`, minus two characters: `/`, which separates the halves
- * of an {@link OwnedRef}, and `%`, which would give one address two spellings.
- * Both exclusions exist because a principal is compared byte for byte and never
+ * An unquoted local part at a dotted domain of letters, digits and hyphens —
+ * narrower than RFC 6068's `addr-spec`, and deliberately so. A quoted local
+ * part (`"alice smith"@…`), a domain literal (`alice@[192.0.2.1]`) and a
+ * single-label domain (`alice@localhost`) are all refused: the binding this
+ * scheme resolves through needs a real domain to ask. `/` is excluded because
+ * it separates the halves of an {@link OwnedRef}, and `%` because it would give
+ * one address two spellings — a principal is compared byte for byte and never
  * parsed into parts.
  */
 const MAILTO =

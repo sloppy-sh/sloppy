@@ -476,10 +476,11 @@ function writeAtom(held: DocumentNode, sidecars: Sidecars): string | null {
       return writeEmoji(attrs, sidecars);
     case "reference": {
       if (!only(attrs, ["note", "label"])) return null;
-      if (!OwnedRefSchema.safeParse(attrs.note).success) return null;
+      const cited = OwnedRefSchema.safeParse(attrs.note);
+      if (!cited.success) return null;
       const label = attrs.label ?? "";
       if (typeof label !== "string" || label.includes("\n")) return null;
-      return `[${escapeText(label)}](${REFERENCE_SCHEME}${attrs.note})`;
+      return `[${escapeText(label)}](${REFERENCE_SCHEME}${cited.data})`;
     }
     case "math": {
       if (!only(attrs, ["tex"])) return null;
@@ -1080,13 +1081,15 @@ function readLink(
   const target = value.slice(closes + 2, ends);
   const label = value.slice(at + 1, closes);
   if (target.startsWith(REFERENCE_SCHEME)) {
-    const ref = target.slice(REFERENCE_SCHEME.length);
-    if (OwnedRefSchema.safeParse(ref).success) {
+    const cited = OwnedRefSchema.safeParse(
+      target.slice(REFERENCE_SCHEME.length),
+    );
+    if (cited.success) {
       const plain = unescapeText(label);
       return {
         nodes: [
           node("reference", {
-            note: ref,
+            note: cited.data,
             ...(plain === "" ? {} : { label: plain }),
           }),
         ],

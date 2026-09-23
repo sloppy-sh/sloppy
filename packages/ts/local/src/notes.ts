@@ -6,6 +6,7 @@ import {
   type Address,
   type CreateNodeRequest,
   type DidSyr,
+  type Principal,
   CreateNodeRequestSchema,
   type NodeBulkRequest,
   NodeBulkRequestSchema,
@@ -713,7 +714,7 @@ function confirmsAlone(request: UpdateNodeRequest): boolean {
 
 /** The gate as a request writes it: `null` leaves the note open to anybody
  *  writing in this graph. */
-function gated(note: StoredNote, owner: DidSyr | null): StoredNote {
+function gated(note: StoredNote, owner: Principal | null): StoredNote {
   const { owner: _held, ...rest } = note;
   return owner === null ? rest : { ...rest, owner };
 }
