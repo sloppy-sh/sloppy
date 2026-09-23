@@ -8,6 +8,7 @@ import { Injectable } from "@nestjs/common";
 import {
   type DidSyr,
   type OwnedRef,
+  type Principal,
   type Pull,
   type PulledBlock,
   PulledBlockSchema,
@@ -93,7 +94,7 @@ export class PullRepository {
    * author's pictures are served by the instance that served their branch, and
    * two regions of one graph came from the same one.
    */
-  async regionFrom(reader: DidSyr, author: DidSyr): Promise<Pull | null> {
+  async regionFrom(reader: DidSyr, author: Principal): Promise<Pull | null> {
     const [rows] = await this.query(
       `SELECT * FROM pull
          WHERE created_by = $reader AND string::starts_with(publication, $of)
@@ -158,7 +159,7 @@ export class PullRepository {
    */
   async writePage(
     reader: DidSyr,
-    author: DidSyr,
+    author: Principal,
     pull: OwnedRef,
     page: HeldPage,
   ): Promise<void> {

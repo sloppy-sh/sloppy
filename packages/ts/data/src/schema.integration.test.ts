@@ -13,6 +13,7 @@
 import {
   DidSyrSchema,
   OwnedRefSchema,
+  PrincipalSchema,
   UlidSchema,
   unnamedGraphRef,
 } from "@sloppy/types";
@@ -1594,6 +1595,47 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       new Table("refused_voice"),
     );
     expect(refusals.map((row) => row.created_by)).toEqual([BOB]);
+  });
+
+  // Last, so the rows it writes stand after the sweep above rather than inside
+  // it. An email address is the one principal carrying characters a record id
+  // has to survive: the `@` and the dots reach the driver as the value of a key
+  // rather than as anything spelled into a statement.
+  it("holds somebody named by an email address the way it holds anybody", async () => {
+    const ADA = PrincipalSchema.parse("mailto:ada@example.com");
+    const graph = new RecordId("graph", {
+      created_by: ADA,
+      id: UlidSchema.parse("01JSTARTED0000000000000000"),
+    });
+    await db.create(graph).content({
+      created_by: ADA,
+      title: "Hers",
+      home: true,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    });
+
+    const row = nodeRow(ADA, "1", "01JADA00000000000000000001");
+    await db.create(row.id).content(row);
+    expect((await read(row.id)).created_by).toBe(ADA);
+
+    // The address rule is hers the way it is anybody's.
+    const clash = nodeRow(ADA, "1", "01JADA00000000000000000002");
+    await expect(db.create(clash.id).content(clash)).rejects.toThrow(
+      /node_owner_graph_address/,
+    );
+
+    const [hers] = await db.query<[{ id: RecordId }[]]>(
+      "SELECT id FROM node WHERE created_by = $did AND graph = $graph",
+      { did: ADA, graph: notebook(ADA) },
+    );
+    expect(hers).toHaveLength(1);
+
+    await db.query(STATEMENTS.join("\n"), { did: ADA });
+    for (const table of ["node", "graph"]) {
+      const left = await db.select<{ created_by: string }>(new Table(table));
+      expect(left.some((one) => one.created_by === ADA)).toBe(false);
+    }
   });
 });
 

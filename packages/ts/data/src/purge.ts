@@ -1,6 +1,7 @@
 /**
- * Erasing one person's graph. Every statement binds `$did`, their syr DID, and
- * deletes BY `created_by` rather than by walking down from a parent row;
+ * Erasing one person's graph. Every statement binds `$did`, the principal their
+ * rows are owned under, and deletes BY `created_by` rather than by walking down
+ * from a parent row;
  * docs/ARCHITECTURE.md § "Data model" says why that is the only safe sweep. The
  * one column that is not `created_by` is `amendment.by`, and the statement that
  * reads it says why.

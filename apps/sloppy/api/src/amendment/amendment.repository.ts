@@ -12,6 +12,7 @@ import {
   type NodeAppearance,
   nowIso,
   type OwnedRef,
+  type Principal,
   recordIdFromOwnedRef,
   type Tags,
 } from "@sloppy/types";
@@ -39,7 +40,7 @@ export interface Approval {
   /** The looks on the note's lines, whole. Absent leaves them as they are:
    *  an offer that names none says nothing about them. */
   edges?: EdgeLook[];
-  contributors: DidSyr[];
+  contributors: Principal[];
   references: OwnedRef[];
   sections: SettledSection[];
   /** The note's sections the offer does not carry. */

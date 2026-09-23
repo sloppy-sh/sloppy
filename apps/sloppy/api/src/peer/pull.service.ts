@@ -15,6 +15,7 @@ import {
   type DidSyr,
   type NodeView,
   type OwnedRef,
+  type Principal,
   type Pull,
   type PullView,
   type PublishedSubtreePage,
@@ -281,7 +282,7 @@ function deepen(page: PublishedSubtreePage, deep: Map<OwnedRef, number>): void {
 
 function held(
   page: PublishedSubtreePage,
-  author: DidSyr,
+  author: Principal,
   graph: OwnedRef,
   deep: Map<OwnedRef, number>,
 ): HeldPage {

@@ -9,6 +9,7 @@ import {
   nowIso,
   type OwnedRef,
   ownedRefFrom,
+  type Principal,
   type RefusedVoice,
   RefusedVoiceSchema,
 } from "@sloppy/types";
@@ -32,7 +33,7 @@ export class RefusalRepository {
   constructor(private readonly db: DbService) {}
 
   /** Everything this person has refused, blanket and per note together. */
-  async listRefusals(owner: DidSyr): Promise<RefusedVoice[]> {
+  async listRefusals(owner: Principal): Promise<RefusedVoice[]> {
     const [rows] = await this.query(
       "SELECT * FROM refused_voice WHERE created_by = $owner ORDER BY created_at ASC",
       { owner },
@@ -44,7 +45,7 @@ export class RefusalRepository {
    * The refusal that pair already made, or a new one — the pair IS the row, so
    * refusing the same voice on the same note twice is one refusal.
    */
-  async refuse(owner: DidSyr, refusal: Refusal): Promise<RefusedVoice> {
+  async refuse(owner: Principal, refusal: Refusal): Promise<RefusedVoice> {
     const [standing] = await this.query(
       `SELECT * FROM refused_voice
          WHERE created_by = $owner AND voice = $voice AND ${onNote(refusal)}`,
@@ -71,7 +72,7 @@ export class RefusalRepository {
 
   /** Takes back the refusal that pair made, and says nothing where there was
    *  none. */
-  async allow(owner: DidSyr, refusal: Refusal): Promise<void> {
+  async allow(owner: Principal, refusal: Refusal): Promise<void> {
     await this.query(
       `DELETE refused_voice
          WHERE created_by = $owner AND voice = $voice AND ${onNote(refusal)}`,

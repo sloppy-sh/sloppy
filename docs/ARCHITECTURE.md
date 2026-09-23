@@ -494,7 +494,10 @@ driver as a value and is never spelled into a query.
 
 The test, site by site: **does this value get compared, or does it get dereferenced?** A
 compared one is wide. A dereferenced one is narrow, because dereferencing is per-scheme and
-this build has one scheme's machinery.
+this build has one scheme's machinery. A parameter follows what it is FOR rather than what
+today's caller happens to hand it: one whose contract is "the person signed in here" stays
+narrow though it is only ever compared, and one whose contract is "who gates this note" or
+"whose graph this copy came from" is wide though every caller today hands it a `did:syr`.
 
 Two of those narrow ones are narrow for a reason worth stating. `VaultGraph.owner` is the
 identity a device writes a folder under, and `makeLocalIdentity()` mints only `did:syr` there,

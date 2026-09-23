@@ -43,6 +43,7 @@ import {
   movedSubtree,
   parentAddress,
   parseNode,
+  type Principal,
   namesGraph,
   noteLabel,
   orderSiblings,
@@ -1427,7 +1428,7 @@ function newNode(
   graph: OwnedRef,
   parent: Node | null,
   request: CreateRequest,
-  gate: DidSyr | undefined,
+  gate: Principal | undefined,
   address?: Address,
 ): Node {
   const id = createOwnedRecordId("node", did);
