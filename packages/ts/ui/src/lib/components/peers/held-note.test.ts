@@ -10,6 +10,7 @@ const ADA = 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaAda';
 const NOTE = `${ADA}/01ARZ3NDEKTSV4RRFFQ69G5FAV` as OwnedRef;
 
 const ADA_PERSON: Person = {
+	identity: ADA,
 	displayName: 'Ada Lovelace',
 	handle: 'ada',
 	bio: null,
@@ -176,11 +177,11 @@ describe('the byline on a note somebody else wrote', () => {
 		expect(text).not.toContain(ADA);
 	});
 
-	it('draws the letters they travel by once nobody could be placed there', async () => {
+	it('calls them Somebody, and never a piece of their identity, once nobody could place them', async () => {
 		await read(null, true);
 
 		const text = document.body.textContent ?? '';
-		expect(text).toContain('z6MkAdaA…aAda wrote this');
-		expect(text).not.toContain(ADA);
+		expect(text).toContain('Somebody wrote this');
+		expect(text).not.toContain('z6Mk');
 	});
 });

@@ -65,6 +65,7 @@ describe('isOpenRoute', () => {
 
 describe('navRoutes', () => {
 	const ADA: Person = {
+		identity: 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaAda',
 		displayName: 'Ada Lovelace',
 		handle: 'ada',
 		bio: null,

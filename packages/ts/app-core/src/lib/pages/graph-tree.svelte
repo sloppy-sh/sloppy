@@ -17,7 +17,7 @@
 	} from '@sloppy/types';
 	import {
 		BlockStack,
-		nameOf,
+		nameOr,
 		TreeSurface,
 		type NoteReferences,
 		type TreeGroup,
@@ -120,7 +120,8 @@
 	const heldAuthor = $derived.by((): string | undefined => {
 		if (!heldBy) return undefined;
 		const person = people.of(heldBy);
-		return person ? nameOf(person) : heldBy;
+		if (!person && !people.unplaced(heldBy)) return undefined;
+		return nameOr(person);
 	});
 
 	const groups = $derived.by((): TreeGroup[] => {

@@ -66,7 +66,7 @@
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { refusedWith } from '$lib/refusal.js';
 	import Avatar from '../identity/avatar.svelte';
-	import { nameOf, unplacedPerson } from '../identity/person.js';
+	import { isNamed, nameOf, unnamedPerson } from '../identity/person.js';
 	import KeepEmoji from './keep-emoji.svelte';
 	import ReactionPicker from './reaction-picker.svelte';
 	import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
@@ -144,7 +144,7 @@
 
 	/** Null until their instance has answered one way or the other. */
 	function personOf(did: string): Person | null {
-		return people.of(did) ?? (people.unplaced(did) ? unplacedPerson(did) : null);
+		return people.of(did) ?? (people.unplaced(did) ? unnamedPerson(did) : null);
 	}
 
 	function named(did: string): string {
@@ -281,6 +281,11 @@
 				{/if}
 				<span class="shrink-0 text-xs text-muted-foreground">{when(one.created_at)}</span>
 			</div>
+			{#if person && !isNamed(person)}
+				<p class="truncate font-mono text-xs text-muted-foreground select-text">
+					{one.author}
+				</p>
+			{/if}
 			<p class="text-sm whitespace-pre-wrap">{one.content}</p>
 			<div class="flex flex-wrap items-center gap-1">
 				<Button

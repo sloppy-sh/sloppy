@@ -2,7 +2,7 @@
 	// The changes offered on a note, as whoever writes it reads them: one at a
 	// time, against what the note says now — DESIGN.md § "Whose writing".
 	import type { AmendmentView, BlockView, NodeView } from '@sloppy/types';
-	import { ChangedNotes, PersonChip, ResponsiveModal, unplacedPerson } from '@sloppy/ui';
+	import { ChangedNotes, nameOr, PersonChip, ResponsiveModal, unnamedPerson } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { people } from '../stores/people.svelte.js';
 	import CompassDifference from './compass-difference.svelte';
@@ -82,8 +82,7 @@
 	});
 
 	function who(did: string): string {
-		const person = people.of(did) ?? unplacedPerson(did);
-		return person.displayName?.trim() || person.handle.trim() || 'Somebody';
+		return nameOr(people.of(did));
 	}
 
 	function when(at: string): string {
@@ -114,7 +113,7 @@
 			{:else}
 				<ul class="space-y-1">
 					{#each offers as one (one.ref)}
-						{@const person = people.of(one.by) ?? unplacedPerson(one.by)}
+						{@const person = people.of(one.by) ?? unnamedPerson(one.by)}
 						<li>
 							<button
 								type="button"

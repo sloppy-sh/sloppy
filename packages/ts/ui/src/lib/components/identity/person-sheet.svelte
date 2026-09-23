@@ -7,7 +7,7 @@
 		open?: boolean;
 		/** Whoever this is about, as they are followed and cited. */
 		identity: string;
-		/** Absent where nobody could place them; the identifier stands for them. */
+		/** Absent where nobody could place them, which is somebody unnamed. */
 		person: Person | null;
 		following: boolean;
 		busy?: boolean;
@@ -36,7 +36,7 @@
 	import Avatar from './avatar.svelte';
 	import IdentityLine from './identity-line.svelte';
 	import PersonHeader from './person-header.svelte';
-	import { nameOf, unplacedPerson } from './person.js';
+	import { nameOf, unnamedPerson } from './person.js';
 
 	let {
 		open = $bindable(false),
@@ -59,7 +59,7 @@
 	 *  so a listing that did not land is asked for again next time. */
 	let listed: string | null = null;
 
-	const shown = $derived(person ?? unplacedPerson(identity));
+	const shown = $derived(person ?? unnamedPerson(identity));
 
 	$effect(() => {
 		if (!open) {

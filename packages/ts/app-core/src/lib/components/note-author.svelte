@@ -2,7 +2,7 @@
 	// Whose writing the note on screen carries, and the way to meet them —
 	// DESIGN.md § "Whose writing" and § "Show, don't tell".
 	import { authorsOf, type NodeView } from '@sloppy/types';
-	import { PersonChip, unplacedPerson } from '@sloppy/ui';
+	import { PersonChip, unnamedPerson } from '@sloppy/ui';
 	import { people } from '../stores/people.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import PersonSurface from './person-surface.svelte';
@@ -14,7 +14,7 @@
 	/** Null until their instance has answered one way or the other. */
 	function shown(did: string) {
 		const person = people.of(did);
-		return person ?? (people.unplaced(did) ? unplacedPerson(did) : null);
+		return person ?? (people.unplaced(did) ? unnamedPerson(did) : null);
 	}
 
 	const wrote = $derived(authorsOf(note).filter((did) => shown(did) !== null));

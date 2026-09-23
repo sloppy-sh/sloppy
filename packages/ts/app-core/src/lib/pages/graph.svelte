@@ -103,7 +103,6 @@
 		NotePreview,
 		overlay,
 		PeersSheet,
-		personOr,
 		ReadingPanel,
 		ResponsiveModal,
 		TagRail,
@@ -1913,15 +1912,7 @@
 		if (answerable && reached) void conversation.load(reached);
 	});
 
-	const regionAuthor = $derived(
-		foreign
-			? personOr({
-					identity: authorOf(foreign),
-					person: people.of(authorOf(foreign)),
-					unplaced: people.unplaced(authorOf(foreign))
-				})
-			: null
-	);
+	const regionAuthor = $derived(foreign ? people.of(authorOf(foreign)) : null);
 	/** A note's shortcodes are read against its own author's catalog, which this
 	 *  instance resolves. */
 	const heldEmoji = $derived(readerEmoji.catalog);

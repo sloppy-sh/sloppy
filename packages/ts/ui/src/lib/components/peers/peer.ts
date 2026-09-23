@@ -11,12 +11,12 @@ import type {
 import type { Person } from '../identity/person.js';
 
 /** Somebody a surface names. `person` is absent where nobody here could resolve
- *  them, and the identity they were followed by stands in. */
+ *  them, and the identity they were followed by is what a surface has. */
 export interface Peer {
 	identity: string;
 	person: Person | null;
 	/** True where their instance answered with nobody, so no name is coming and
-	 *  the identifier stands in for good. */
+	 *  the identity beside them is all there is of them. */
 	unplaced?: boolean;
 	/** The instance to ask about them, where the host knows one. Absent is this
 	 *  one, which is the whole of it for somebody whose graph is kept here. */

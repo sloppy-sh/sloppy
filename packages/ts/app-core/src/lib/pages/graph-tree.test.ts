@@ -265,9 +265,11 @@ describe('a branch pulled from somebody else', () => {
 		);
 	});
 
-	it('names them by the identity they travel under until their instance answers', () => {
+	it('names nobody, and never the identity they travel under, until their instance answers', () => {
 		render({ notes: region, fields: undefined });
-		expect(target.querySelector('h2')?.textContent?.trim()).toBe(`Notes by ${OTHER}`);
+		const shown = target.textContent ?? '';
+		expect(shown).not.toContain(OTHER);
+		expect(shown).not.toContain('z6Mk');
 	});
 });
 

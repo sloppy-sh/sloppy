@@ -1,6 +1,6 @@
 import { serverOnly, type SloppyApi } from '@sloppy/client';
 import type { ProfileView } from '@sloppy/types';
-import { unplacedPerson } from '@sloppy/ui';
+import { nameOr } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resetApi } from '../api.js';
 import { initRuntime } from '../runtime.js';
@@ -86,8 +86,8 @@ describe('who somebody is', () => {
 		expect(people.of(stranger)).toBeNull();
 	});
 
-	// A surface draws them as the identifier they travel by, settled: telling one
-	// stranger from another is what the reader is left with.
+	// A surface stops waiting for a name once this is settled, and draws them
+	// with the identity that tells one stranger from another.
 	it('holds somebody nobody could place as somebody nobody can, and stops asking', async () => {
 		const stranger = 'did:syr:z6MkfZ3Uc1nUxUeaKvcVjNbBidsWv5tvfAv1TFuxNvcbXeaC';
 		people.resolve(stranger);
@@ -141,12 +141,15 @@ describe('who somebody is', () => {
 	});
 
 	// A graph on this device knows the identity and nothing else about whoever
-	// owns it, and a full one across a note's author line is not a name.
-	it('shows somebody with nothing to be known by but their identity the short way', async () => {
+	// owns it, and no part of an identity is a name.
+	it('leaves somebody with nothing to be known by but their identity unnamed', async () => {
 		api.on('GET /profile/me', () => ({ ...ME, username: DID, display_name: null }));
 		await people.read();
 
-		expect(people.of(DID)?.handle).toBe(unplacedPerson(DID).handle);
+		const held = people.of(DID);
+		expect(held?.handle).toBeNull();
+		expect(held?.identity).toBe(DID);
+		expect(nameOr(held)).toBe('Somebody');
 	});
 
 	it('holds somebody it has not asked about apart from somebody it could not place', async () => {

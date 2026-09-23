@@ -33,7 +33,9 @@
 
 	<div class="space-y-0.5">
 		<h1 class="text-2xl font-semibold tracking-tight break-words">{nameOf(person)}</h1>
-		<p class="text-sm break-all text-muted-foreground">@{person.handle}</p>
+		{#if person.handle}
+			<p class="text-sm break-all text-muted-foreground">@{person.handle}</p>
+		{/if}
 	</div>
 
 	{#if person.bio?.trim()}

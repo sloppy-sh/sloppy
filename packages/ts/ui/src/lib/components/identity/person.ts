@@ -5,10 +5,14 @@
 import type { MediaRole } from '@sloppy/types';
 
 export interface Person {
-	/** What they chose to be called. Absent falls back to {@link Person.handle}. */
+	/** What they are followed and cited by. Never a name: it is what tells two
+	 *  people nobody could put a name to apart. */
+	identity: string;
+	/** What they chose to be called. */
 	displayName: string | null;
-	/** Without the `@`; the surfaces below add it. */
-	handle: string;
+	/** Without the `@`; the surfaces below add it. Absent where nothing anybody
+	 *  here holds says what to call them. */
+	handle: string | null;
 	bio: string | null;
 	/** Ready for an `<img>`; null where they have not chosen one. */
 	avatar: string | null;
@@ -18,8 +22,20 @@ export interface Person {
 /** The two pictures a person chooses for themselves. */
 export type PictureRole = Extract<MediaRole, 'avatar' | 'banner'>;
 
+/** What anybody here calls them, or nothing where nobody does. */
+function calledBy(person: Person): string | undefined {
+	return person.displayName?.trim() || person.handle?.trim() || undefined;
+}
+
 export function nameOf(person: Person): string {
-	return person.displayName?.trim() || person.handle;
+	return calledBy(person) ?? 'Somebody';
+}
+
+/** Whether anything anybody here holds says what to call them. False is
+ *  somebody a surface can only call 'Somebody', and the identity they travel by
+ *  is all there is to tell them from the next person. */
+export function isNamed(person: Person): boolean {
+	return calledBy(person) !== undefined;
 }
 
 /** What to call somebody a surface has no profile for yet. */
@@ -27,31 +43,25 @@ export function nameOr(person: Person | null | undefined): string {
 	return person ? nameOf(person) : 'Somebody';
 }
 
-/** Somebody drawn from what a surface knows of them. Null only while their
- *  profile is still on its way. */
-export function personOr(who: {
-	identity: string;
-	person: Person | null;
-	unplaced?: boolean;
-}): Person | null {
-	return who.person ?? (who.unplaced ? unplacedPerson(who.identity) : null);
-}
-
-/** Somebody nobody could place, drawn as the identifier they travel by. */
-export function unplacedPerson(identity: string): Person {
-	const key = identity.slice(identity.lastIndexOf(':') + 1);
+/** Somebody a surface has to draw before anybody could say who they are. */
+export function unnamedPerson(identity: string): Person {
 	return {
+		identity,
 		displayName: null,
-		handle: key.length > 14 ? `${key.slice(0, 8)}…${key.slice(-4)}` : key,
+		handle: null,
 		bio: null,
 		avatar: null,
 		banner: null
 	};
 }
 
-/** Up to two letters, for an avatar with no picture behind it. */
+/** Up to two letters, for an avatar with no picture behind it. Somebody nobody
+ *  could name ends in the letters their identity ends in, so two of them are
+ *  never the same monogram. */
 export function initialsOf(person: Person): string {
-	const words = nameOf(person).split(/\s+/).filter(Boolean);
+	const called = calledBy(person);
+	if (!called) return person.identity.slice(-2).toUpperCase();
+	const words = called.split(/\s+/).filter(Boolean);
 	const first = words[0] ?? '';
 	const second = words[1];
 	return (second ? `${first.slice(0, 1)}${second.slice(0, 1)}` : first.slice(0, 2)).toUpperCase();

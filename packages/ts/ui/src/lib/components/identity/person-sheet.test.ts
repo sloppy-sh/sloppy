@@ -12,6 +12,7 @@ const THEM = 'did:syr:z6MkfZ3Uc1nUxUeaKvcVjNbBidsWv5tvfAv1TFuxNvcbXeaC';
 const AT = '2026-01-01T00:00:00.000Z';
 
 const CHARLES: Person = {
+	identity: 'did:syr:z6MkCharlesCharlesCharlesCharlesChar',
 	displayName: 'Charles Babbage',
 	handle: 'charles',
 	bio: 'Notes on the engine.',

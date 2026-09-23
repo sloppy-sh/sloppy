@@ -7,9 +7,11 @@ import Avatar from './avatar.svelte';
 import IdentityLine from './identity-line.svelte';
 import PersonEditor from './person-editor.svelte';
 import PersonHeader from './person-header.svelte';
-import { nameOr, personOr, type Person, type PictureRole } from './person.js';
+import PersonChip from './person-chip.svelte';
+import { initialsOf, nameOr, unnamedPerson, type Person, type PictureRole } from './person.js';
 
 const SOMEBODY: Person = {
+	identity: 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaAda',
 	displayName: 'Ada Lovelace',
 	handle: 'ada',
 	bio: 'Notes on the engine.',
@@ -273,13 +275,34 @@ describe('what to call somebody', () => {
 		expect(nameOr(null)).toBe('Somebody');
 	});
 
-	it('is the letters they travel by once nobody could be placed there', () => {
+	it('is Somebody, and never a piece of their identity, once nobody could place them', () => {
 		const did = 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaAda';
-		expect(nameOr(personOr({ identity: did, person: null, unplaced: true }))).toBe('z6MkAdaA…aAda');
-		expect(nameOr(personOr({ identity: did, person: null }))).toBe('Somebody');
-		expect(nameOr(personOr({ identity: did, person: SOMEBODY, unplaced: true }))).toBe(
-			'Ada Lovelace'
-		);
+		expect(nameOr(unnamedPerson(did))).toBe('Somebody');
+		expect(nameOr(unnamedPerson(did))).not.toContain('z6Mk');
+	});
+
+	it('tells two nobody could place apart by the identity they travel by', () => {
+		const one = unnamedPerson('did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaTUty');
+		const other = unnamedPerson('did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAda9Kxz');
+		expect(initialsOf(one)).not.toBe(initialsOf(other));
+	});
+});
+
+describe('somebody drawn small', () => {
+	it('never writes an @ in front of a key, and offers the identity instead', () => {
+		const did = 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaTUty';
+		mounted = mount(PersonChip, { target, props: { person: unnamedPerson(did) } });
+		flushSync();
+		expect(target.textContent).toContain('Somebody');
+		expect(target.textContent).not.toContain('@');
+		expect(target.textContent).toContain(did);
+	});
+
+	it('writes the handle where there is one to write', () => {
+		mounted = mount(PersonChip, { target, props: { person: SOMEBODY } });
+		flushSync();
+		expect(target.textContent).toContain('@ada');
+		expect(target.textContent).not.toContain(SOMEBODY.identity);
 	});
 });
 

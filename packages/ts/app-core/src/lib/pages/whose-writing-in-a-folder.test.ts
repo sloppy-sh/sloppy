@@ -276,9 +276,10 @@ describe('the folder’s owner, reading it back', () => {
 		await settle();
 		button('Reads better this way').click();
 		await settle();
-		// Whoever offered it is named the same way here as on the row that led
-		// in, rather than becoming an anonymous somebody between the two.
-		expect(screen()).not.toContain('Somebody’s change');
+		// A folder graph reaches nobody's store, so whoever offered it is called
+		// what every unnamed person is called — and never a piece of their key.
+		expect(screen()).toContain('Somebody’s change');
+		expect(screen()).not.toContain('@z6Mk');
 		button('Take it in').click();
 		await settle();
 

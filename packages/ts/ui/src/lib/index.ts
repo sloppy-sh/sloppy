@@ -32,10 +32,10 @@ export { default as PersonSheet } from './components/identity/person-sheet.svelt
 export type { PersonSheetProps } from './components/identity/person-sheet.svelte';
 export {
 	initialsOf,
+	isNamed,
 	nameOf,
 	nameOr,
-	personOr,
-	unplacedPerson
+	unnamedPerson
 } from './components/identity/person.js';
 export type { Person, PictureRole } from './components/identity/person.js';
 

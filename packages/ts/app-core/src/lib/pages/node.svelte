@@ -75,7 +75,7 @@
 		TagField,
 		TemplatePicker,
 		textDocument,
-		unplacedPerson,
+		unnamedPerson,
 		writeTemplate,
 		type MoveTarget,
 		type NestingAsk,
@@ -815,7 +815,7 @@
 	const ownerName = $derived.by(() => {
 		const owner = node?.owner;
 		if (owner === undefined || owner === viewerDid) return '';
-		const person = people.of(owner) ?? (people.unplaced(owner) ? unplacedPerson(owner) : null);
+		const person = people.of(owner) ?? (people.unplaced(owner) ? unnamedPerson(owner) : null);
 		return person ? nameOf(person) : 'whoever writes it';
 	});
 	/** Setting and taking off the gate is the graph's owner's act and the note's

@@ -357,7 +357,8 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 		await enterHeldRegion();
 		await until(() => people.unplaced(AUTHOR));
 		await settle();
-		expect(screen()).toContain('z6MkpTHR…MxYZ');
+		expect(screen()).toContain('Somebody');
+		expect(screen()).not.toContain('z6MkpTHR…MxYZ');
 		button('Your graph').click();
 		await settle();
 		expect(drawn()).toEqual(['1']);
@@ -369,7 +370,7 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 		await until(() => people.unplaced(AUTHOR));
 		onCanvas('1a').click();
 		await settle();
-		expect(screen()).toContain('z6MkpTHR…MxYZ wrote this');
+		expect(screen()).toContain('Somebody wrote this');
 	});
 
 	it('offers nothing that would change somebody else’s note', async () => {

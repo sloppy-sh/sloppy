@@ -13,7 +13,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-	import { nameOf, nameOr, personOr } from '../identity/person.js';
+	import { nameOf, nameOr } from '../identity/person.js';
 	import VersionChanges, { type VersionComparison } from '../publish/version-changes.svelte';
 	import { when } from '../social/when.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
@@ -231,7 +231,7 @@
 	 *  address its author gave it, and whose branch it is where they gave none,
 	 *  since one row of several has to be told from the rest. */
 	function names(region: HeldRegion): string {
-		return region.address ?? `${nameOr(personOr(region))}'s branch`;
+		return region.address ?? `${nameOr(region.person)}'s branch`;
 	}
 
 	/** The version a region's author serves now, where it is past the one held. */
@@ -322,7 +322,7 @@
 										>
 											<span class="min-w-6 shrink-0 address">{region.address ?? ''}</span>
 											<span class="min-w-0 flex-1">
-												<span class="block truncate text-sm">{nameOr(personOr(region))}</span>
+												<span class="block truncate text-sm">{nameOr(region.person)}</span>
 												{#if !region.person}
 													<span
 														class="block truncate font-mono text-xs text-muted-foreground select-text"
@@ -456,7 +456,7 @@
 								variant="ghost"
 								size="icon"
 								class="size-9 shrink-0 rounded-full"
-								aria-label={`Stop following ${nameOr(personOr(one))}`}
+								aria-label={`Stop following ${nameOr(one.person)}`}
 								disabled={busy}
 								onclick={() => onUnfollow(one.identity)}
 							>

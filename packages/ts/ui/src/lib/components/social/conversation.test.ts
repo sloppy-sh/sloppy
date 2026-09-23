@@ -17,6 +17,7 @@ const THEIR_NOTE = `${THEM}/01ARZ3NDEKTSV4RRFFQ69G5FAV` as OwnedRef;
 const AT = '2026-01-01T00:00:00.000Z';
 
 const CHARLES: Person = {
+	identity: 'did:syr:z6MkCharlesCharlesCharlesCharlesChar',
 	displayName: 'Charles Babbage',
 	handle: 'charles',
 	bio: null,
@@ -117,18 +118,19 @@ afterEach(() => {
 });
 
 describe('a voice nobody could place', () => {
-	it('is drawn as the identifier it travels by, not as a name nobody has', () => {
+	it('is called Somebody, with the identity beneath it rather than in its name', () => {
 		show({ comments: [said()] });
 		const text = document.body.textContent ?? '';
-		expect(text).not.toContain('Somebody');
-		expect(text).toContain('z6MkfZ3U');
+		expect(text).toContain('Somebody');
+		expect(text).toContain(THEM);
+		expect(document.querySelector('.font-mono')?.textContent?.trim()).toBe(THEM);
 	});
 
 	it('tells two of them apart', () => {
 		show({ comments: [said(), said({ comment_id: `${ALSO}:1`, author: ALSO })] });
 		const text = document.body.textContent ?? '';
-		expect(text).toContain('z6MkfZ3U');
-		expect(text).toContain('z6MkqQ7Y');
+		expect(text).toContain(THEM);
+		expect(text).toContain(ALSO);
 	});
 
 	it('draws a settled picture rather than one that will never arrive', () => {
@@ -150,7 +152,7 @@ describe('a voice nobody could place', () => {
 			people: { of: () => null, unplaced: () => false, resolve: () => {} }
 		});
 		const text = document.body.textContent ?? '';
-		expect(text).not.toContain('z6MkfZ3U');
+		expect(text).not.toContain(THEM);
 		expect(text).toContain('A thought back.');
 	});
 });
@@ -159,14 +161,14 @@ describe('meeting whoever spoke', () => {
 	it('opens the person a name names', () => {
 		const met: string[] = [];
 		show({ comments: [said()], onperson: (did) => met.push(did) });
-		named('z6MkfZ3U')?.click();
+		named('Somebody')?.click();
 		flushSync();
 		expect(met).toEqual([THEM]);
 	});
 
 	it('leaves the name as plain text where the surface offers nobody to meet', () => {
 		show({ comments: [said()] });
-		expect(named('z6MkfZ3U')).toBeUndefined();
+		expect(named('Somebody')).toBeUndefined();
 	});
 
 	it('leaves the reader’s own voice as plain text', () => {
@@ -301,8 +303,6 @@ describe('keeping an emoji met on a note', () => {
 		expect(document.body.textContent).toContain('That is already in your set.');
 	});
 
-	it('offers nothing to keep where the surface cannot take one', () => {
-		show({ reactions: [reacted()] });
 	// A bug on the way to the store says nothing anybody can act on, so the
 	// surface says what to try instead of what broke.
 	it('says what to try when what came back was never written for a person', async () => {
@@ -321,6 +321,8 @@ describe('keeping an emoji met on a note', () => {
 		expect(shown).not.toContain('invoke');
 	});
 
+	it('offers nothing to keep where the surface cannot take one', () => {
+		show({ reactions: [reacted()] });
 		expect(labelled('Keep engine in your set')).toBeNull();
 	});
 });

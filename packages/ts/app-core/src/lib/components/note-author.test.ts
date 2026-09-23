@@ -93,10 +93,11 @@ describe('who wrote the note', () => {
 		expect(target.textContent).toContain('CB');
 	});
 
-	it('draws an author nobody here can place as the identifier they travel by', async () => {
+	it('calls an author nobody here can place Somebody, with their identity beneath', async () => {
 		show(STRANGER);
 		await settle();
-		expect(target.textContent).toContain('z6MkfZ3U');
+		expect(target.textContent).toContain('Somebody');
+		expect(target.textContent).toContain(STRANGER);
 	});
 
 	it('opens what they publish, and the way to follow them', async () => {

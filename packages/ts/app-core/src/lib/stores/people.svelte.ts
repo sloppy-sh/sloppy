@@ -7,19 +7,19 @@
 
 import { ServerRequiredError, SloppyApiError } from '@sloppy/client';
 import type { ProfileView } from '@sloppy/types';
-import { unplacedPerson, type Person } from '@sloppy/ui';
+import type { Person } from '@sloppy/ui';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { pictureSrc } from '../asset-src.js';
 
 /** Their pictures resolved for an `<img>`; the rest is the store's own answer.
- *  Somebody with nothing to be known by but the identity itself reads the way
- *  everyone unnamed does, rather than carrying it at full length. */
+ *  A store with nothing to call them by answers with the identity itself, which
+ *  is nobody's name and is not read as one. */
 export function personFrom(profile: ProfileView): Person {
 	return {
+		identity: profile.did,
 		displayName: profile.display_name,
-		handle:
-			profile.username === profile.did ? unplacedPerson(profile.did).handle : profile.username,
+		handle: profile.username === profile.did ? null : profile.username,
 		bio: profile.bio,
 		avatar: profile.avatar_src && pictureSrc(profile.avatar_src),
 		banner: profile.banner_src && pictureSrc(profile.banner_src)
@@ -28,7 +28,7 @@ export function personFrom(profile: ProfileView): Person {
 
 /** Whether no name is coming: their store answered with nobody, or there is no
  *  way from here to ask one — a graph served off this device reaches nobody's
- *  store, and the identity itself is what a surface draws them as. */
+ *  store. */
 function noNameIsComing(error: unknown): boolean {
 	return (
 		error instanceof ServerRequiredError ||
@@ -85,8 +85,8 @@ class PeopleStore {
 		return known ? personFrom(known) : null;
 	}
 
-	/** Whether their instance answered with nobody. A surface draws them as the
-	 *  identifier they travel by, settled: no name is coming. */
+	/** Whether their instance answered with nobody, so no name is coming and a
+	 *  surface can stop waiting for one. */
 	unplaced(did: string): boolean {
 		return this.#unplaced.has(did);
 	}

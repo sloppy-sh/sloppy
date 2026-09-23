@@ -14,6 +14,7 @@ const REGION = `${ADA}/01ARZ3NDEKTSV4RRFFQ69G5FAV` as OwnedRef;
 const OTHER = `${BRAM}/01ARZ3NDEKTSV4RRFFQ69G5FAW` as OwnedRef;
 
 const ADA_PERSON: Person = {
+	identity: ADA,
 	displayName: 'Ada Lovelace',
 	handle: 'ada',
 	bio: null,
@@ -131,13 +132,13 @@ describe('a branch somebody else published', () => {
 		expect(text).toContain(ADA);
 	});
 
-	it('draws the letters they travel by once nobody could be placed there', async () => {
+	it('calls them Somebody once nobody could place them, with the identifier beside it', async () => {
 		await open({ regions: [region({ person: null, unplaced: true })] });
 
 		const text = document.body.textContent ?? '';
-		expect(text).toContain('z6MkAdaA…aAda');
-		expect(text).not.toContain('Somebody');
+		expect(text).toContain('Somebody');
 		expect(text).toContain(ADA);
+		expect(text).not.toContain('z6MkAdaA…aAda');
 	});
 
 	it('names the branch each button acts on', async () => {
@@ -218,7 +219,6 @@ describe('who the reader follows', () => {
 		});
 
 		expect(find('Stop following Ada Lovelace')).not.toBeNull();
-		expect(find('Stop following z6MkBram…mBra')).not.toBeNull();
 		expect(find('Stop following Somebody')).not.toBeNull();
 
 		find('Stop following Ada Lovelace')?.click();
