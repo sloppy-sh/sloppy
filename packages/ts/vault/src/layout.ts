@@ -6,6 +6,8 @@ import {
   DidSyrSchema,
   type GraphOwnership,
   GraphOwnershipSchema,
+  type GraphVouching,
+  GraphVouchingSchema,
   UlidSchema,
 } from "@sloppy/types";
 
@@ -47,6 +49,10 @@ export interface VaultGraph {
   /** What a note written in this graph is gated by. Absent is `open`, which is
    *  what every graph written before the field says. */
   ownership?: GraphOwnership;
+  /** Whose writing this graph takes. Absent is `optional`, which is what every
+   *  graph written before the field says, and what a folder somebody keeps to
+   *  themselves says. */
+  vouching?: GraphVouching;
   /** What the owner is called. Absent where they have not said. */
   owner_name?: string;
   /** Their picture, as the path of a file in this vault's `media/`, so a graph
@@ -194,6 +200,7 @@ export function graphFile(graph: VaultGraph): Uint8Array {
     name: graph.name,
     owner: graph.owner,
     ...(graph.ownership === undefined ? {} : { ownership: graph.ownership }),
+    ...(graph.vouching === undefined ? {} : { vouching: graph.vouching }),
     ...(graph.owner_name === undefined ? {} : { owner_name: graph.owner_name }),
     ...(graph.owner_avatar === undefined
       ? {}
@@ -227,14 +234,17 @@ export function readGraphFile(bytes: Uint8Array): VaultGraph {
     throw new VaultFormatError("This file isn't a Sloppy graph.");
   }
   // A gate this build has never heard of leaves the graph open rather than
-  // shutting somebody out of their own notes.
+  // shutting somebody out of their own notes, and the same for what it asks of
+  // a writer.
   const ownership = GraphOwnershipSchema.safeParse(said.ownership);
+  const vouching = GraphVouchingSchema.safeParse(said.vouching);
   return {
     format: said.format,
     graph: graph.data,
     name: said.name,
     owner: owner.data,
     ...(ownership.success ? { ownership: ownership.data } : {}),
+    ...(vouching.success ? { vouching: vouching.data } : {}),
     ...(typeof said.owner_name === "string" && said.owner_name !== ""
       ? { owner_name: said.owner_name }
       : {}),

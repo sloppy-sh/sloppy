@@ -204,7 +204,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON retired_address TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON node_alias TYPE string READONLY;
-  -- Whose graph the note is in, which is the DID half of the note's own ref and
+  -- Whose graph the note is in, which is the owner half of the note's own ref and
   -- never whoever gates the note — a gate the graph's owner handed on is
   -- somebody else's. It is what addresses the offer, what a note's offers are
   -- read by, and what sweeps them away with the notes they stand on. Who
@@ -262,7 +262,7 @@ ${MIGRATIONS}
   -- down, never the identity it is about — it is their address book, and their
   -- purge is what reaches it.
   DEFINE FIELD IF NOT EXISTS created_by ON known_identity TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS did ON known_identity TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS principal ON known_identity TYPE string READONLY;
 
   -- Which foreign row a held row is a copy of, who wrote it, and where they
   -- addressed it. Immutable for the reason created_by is: a row that changed
@@ -365,6 +365,10 @@ ${MIGRATIONS}
   -- why, and why most of these lead with created_by.
 
   REMOVE INDEX IF EXISTS node_owner_parent ON node;
+  -- The column this indexed is named for a syr DID, and an identity written
+  -- down here need not be one.
+  REMOVE INDEX IF EXISTS known_identity_owner_did ON known_identity;
+  REMOVE FIELD IF EXISTS did ON known_identity;
 
   -- UNIQUE is the address rule, enforced: one address per graph, so a second
   -- row claiming a taken address fails at write rather than becoming a citation
@@ -431,7 +435,7 @@ ${MIGRATIONS}
   DEFINE INDEX IF NOT EXISTS permission_override_owner_scope_target ON permission_override FIELDS created_by, scope, target_id UNIQUE;
   -- One entry per identity per person who wrote it down: resolving it again
   -- writes what is there rather than growing a second answer beside it.
-  DEFINE INDEX IF NOT EXISTS known_identity_owner_did ON known_identity FIELDS created_by, did UNIQUE;
+  DEFINE INDEX IF NOT EXISTS known_identity_owner_principal ON known_identity FIELDS created_by, principal UNIQUE;
 
   -- A region, whole or sliced: the leading pair reads a tree, and a trailing
   -- AND depth <= $max bounds it to the levels around a focus. One index rather

@@ -11,6 +11,7 @@ import {
   type DidSyr,
   type OwnedRef,
   POINTERS_PER_NOTE,
+  type Principal,
   POINTERS_PER_VOICE,
   PublicationSchema,
   nowIso,
@@ -58,7 +59,7 @@ export class PointerRepository {
    * answered, so this is the count that decides what a read costs.
    */
   async voicesOn(
-    author: DidSyr,
+    author: Principal,
     note: OwnedRef,
     take: number,
   ): Promise<DidSyr[]> {
@@ -75,7 +76,7 @@ export class PointerRepository {
    * Every note of this person's somebody has left a pointer on, and who left
    * one, in the order the first answer to each arrived.
    */
-  async answered(author: DidSyr): Promise<Answered[]> {
+  async answered(author: Principal): Promise<Answered[]> {
     const [rows] = await this.query<{ note: OwnedRef; voice: DidSyr }>(
       `SELECT note, voice, created_at FROM comment_pointer
          WHERE created_by = $author
@@ -123,7 +124,7 @@ export class PointerRepository {
    * more, which the depositor is not told either way.
    */
   async leave(pointer: {
-    author: DidSyr;
+    author: Principal;
     note: OwnedRef;
     voice: DidSyr;
     comment_id: string;
@@ -183,7 +184,7 @@ export class PointerRepository {
    * Asked from the note outwards: what a note is carried by is a handful of
    * versions however long the author's chain is.
    */
-  async answersFrom(author: DidSyr, note: OwnedRef): Promise<string | null> {
+  async answersFrom(author: Principal, note: OwnedRef): Promise<string | null> {
     const [carriedBy] = await this.query<OwnedRef>(
       "SELECT VALUE version FROM snapshot_node WHERE created_by = $author AND source = $note",
       { author, note },
@@ -207,7 +208,7 @@ export class PointerRepository {
     return inviting.find((one) => one.identity_store)?.identity_store ?? null;
   }
 
-  private async crowdOn(author: DidSyr, note: OwnedRef): Promise<Crowd[]> {
+  private async crowdOn(author: Principal, note: OwnedRef): Promise<Crowd[]> {
     const [rows] = await this.query<Crowd>(
       `SELECT voice, count() AS held FROM comment_pointer
          WHERE created_by = $author AND note = $note

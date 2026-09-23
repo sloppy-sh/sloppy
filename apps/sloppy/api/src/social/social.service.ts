@@ -125,7 +125,7 @@ export class SocialService {
     note: OwnedRef,
     left: { voice: DidSyr; comment_id: string },
   ): Promise<void> {
-    const author = splitOwnedRef(note).did;
+    const author = splitOwnedRef(note).owner;
     if (left.voice === author) return;
     if (splitStoreRef(left.comment_id).did !== left.voice) return;
     if (refuses(await this.refusals.listRefusals(author), left.voice, note)) {
@@ -231,7 +231,7 @@ export class SocialService {
     note: OwnedRef,
     comment: string,
   ): void {
-    if (splitOwnedRef(note).did === delegation.did) return;
+    if (splitOwnedRef(note).owner === delegation.did) return;
     void this.pointers
       .sourceOf(delegation.did, note)
       .then((source) =>
@@ -432,7 +432,7 @@ export class SocialService {
     // A note of the reader's own reaches further than the reader does: somebody
     // they do not follow can still have left a pointer on it, which is the whole
     // of how a stranger's answer arrives at all.
-    if (about !== undefined && splitOwnedRef(about).did === delegation.did) {
+    if (about !== undefined && splitOwnedRef(about).owner === delegation.did) {
       const left = await this.pointers.voicesOn(
         delegation.did,
         about,
@@ -738,9 +738,9 @@ class Catalogs {
 /** Where a note's author is told that somebody answered it: their own
  *  instance's deposit route, on the origin the region was read from. */
 function repliesUrl(origin: string, note: OwnedRef): string {
-  const { did, localId } = splitOwnedRef(note);
+  const { owner, localId } = splitOwnedRef(note);
   return (
-    `${origin}/api/nodes/${encodeURIComponent(did)}` +
+    `${origin}/api/nodes/${encodeURIComponent(owner)}` +
     `/${encodeURIComponent(localId)}/replies`
   );
 }

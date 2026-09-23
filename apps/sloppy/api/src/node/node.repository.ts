@@ -17,6 +17,7 @@ import {
   ownedRefFrom,
   type OwnedRef,
   parseNode,
+  type Principal,
   type RetiredAddress,
   recordIdFromOwnedRef,
   type TagCount,
@@ -150,7 +151,7 @@ export type NodePatch = Partial<
   edges?: EdgeLook[] | null;
   appearance?: NodeAppearance | null;
   /** Who gates the note's writing; `null` takes the gate off. */
-  owner?: DidSyr | null;
+  owner?: Principal | null;
 };
 
 export type NodeBulkPatch = Partial<Pick<Node, "tags" | "authors">> & {

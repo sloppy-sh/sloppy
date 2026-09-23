@@ -16,6 +16,7 @@ import {
   type DidSyr,
   entityView,
   type GraphOwnership,
+  type GraphVouching,
   type GraphView,
   type ImportConflict,
   type ImportResolution,
@@ -100,6 +101,9 @@ interface Opened {
   /** What the graph gates the notes written in it by, absent where the archive
    *  does not say — which reads as open. */
   ownership?: GraphOwnership;
+  /** Whose writing it takes, absent where the archive does not say — which
+   *  reads as asking nobody to be vouched. */
+  vouching?: GraphVouching;
   /** Where this graph lands, and whether that graph is already here — in which
    *  case the two copies are merged rather than one written over the other. */
   graph: OwnedRef;
@@ -333,6 +337,7 @@ export class ArchiveImportService {
         opened.graph,
         opened.said.name,
         opened.ownership,
+        opened.vouching,
       ),
     );
   }
@@ -396,13 +401,13 @@ export class ArchiveImportService {
     const twice = repeated(notes);
     if (twice) throw repeats(twice);
     const graph = await this.landing(did, said.graph);
-    const gating = gatedBy(moved);
+    const settings = settingsOf(moved);
     return {
       said,
       vault: moved,
       notes,
       offers: readAmendments(moved, emoji),
-      ...(gating === undefined ? {} : { ownership: gating }),
+      ...settings,
       graph: graph.ref,
       replaces: graph.replaces,
     };
@@ -586,14 +591,22 @@ function offering(
   }));
 }
 
-/** What `graph.json` says the graph gates the notes written in it by. */
-function gatedBy(vault: Vault): GraphOwnership | undefined {
+/** What `graph.json` says the graph gates its notes by, and asks of a writer.
+ *  An archive that says neither leaves both as the landing graph has them. */
+function settingsOf(vault: Vault): {
+  ownership?: GraphOwnership;
+  vouching?: GraphVouching;
+} {
   const said = vault.get(GRAPH_FILE);
-  if (!said) return undefined;
+  if (!said) return {};
   try {
-    return readGraphFile(said).ownership;
+    const { ownership, vouching } = readGraphFile(said);
+    return {
+      ...(ownership === undefined ? {} : { ownership }),
+      ...(vouching === undefined ? {} : { vouching }),
+    };
   } catch {
-    return undefined;
+    return {};
   }
 }
 

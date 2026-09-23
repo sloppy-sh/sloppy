@@ -8,6 +8,7 @@ import {
   type Block,
   createOwnedRecordId,
   type DidSyr,
+  type Principal,
   type Node,
   type NodeAlias,
   nowIso,
@@ -218,7 +219,7 @@ export function offeredRows(
 }
 
 /** The one offer a person has standing on a note, as a key. */
-export function offeredOn(note: OwnedRef, by: DidSyr): string {
+export function offeredOn(note: OwnedRef, by: Principal): string {
   return `${note}\u0000${by}`;
 }
 

@@ -107,6 +107,31 @@ describe("what a reader can check about a published note", () => {
     ).toBe(false);
   });
 
+  it("holds a note signed in a scheme this build cannot check", () => {
+    const tampered = signedBy(unsigned);
+    expect(
+      signatureRefutes({
+        ...tampered,
+        signature_scheme: "openpgp",
+        content_signature: "not an ed25519 signature",
+      }),
+    ).toBe(false);
+  });
+
+  it("checks a note that names the scheme an untagged one is in", () => {
+    const signed = signedBy(unsigned);
+    expect(
+      signatureRefutes({ ...signed, signature_scheme: "ed25519-multibase" }),
+    ).toBe(false);
+    expect(
+      signatureRefutes({
+        ...signed,
+        signature_scheme: "ed25519-multibase",
+        title: "Something else entirely",
+      }),
+    ).toBe(true);
+  });
+
   it("holds a note whose payload it cannot read at all", () => {
     expect(
       signatureRefutes({

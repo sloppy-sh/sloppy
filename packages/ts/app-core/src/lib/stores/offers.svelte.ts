@@ -101,7 +101,7 @@ function stackOf(offer: AmendmentView, note: OwnedRef): BlockView[] {
 	return ordered(
 		offer.blocks.map((section) => ({
 			ref: section.ref,
-			created_by: splitOwnedRef(note).did,
+			created_by: splitOwnedRef(note).owner,
 			node: note,
 			ord: '',
 			content: section.content,
@@ -301,14 +301,14 @@ class OffersStore {
 		});
 	}
 
-	/** A section the offer adds. Its ulid is minted here and its DID half is the
-	 *  note's, because the section it stands for would live in the note's own
-	 *  graph. */
+	/** A section the offer adds. Its ulid is minted here and its owner half is
+	 *  the note's, because the section it stands for would live in the note's
+	 *  own graph. */
 	addSection(request: CreateBlockRequest): BlockView {
 		const note = request.node as OwnedRef;
 		const written: BlockView = {
-			ref: `${splitOwnedRef(note).did}/${ulid()}`,
-			created_by: splitOwnedRef(note).did,
+			ref: `${splitOwnedRef(note).owner}/${ulid()}`,
+			created_by: splitOwnedRef(note).owner,
 			node: note,
 			ord: '',
 			content:

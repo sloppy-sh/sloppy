@@ -219,9 +219,9 @@ export function changesUrl(
 }
 
 function publicationUrl(origin: PeerOrigin, publication: OwnedRef): string {
-  const { did, localId } = splitOwnedRef(publication);
+  const { owner, localId } = splitOwnedRef(publication);
   return (
-    `${origin}/api/public/publications/${encodeURIComponent(did)}` +
+    `${origin}/api/public/publications/${encodeURIComponent(owner)}` +
     `/${encodeURIComponent(localId)}`
   );
 }

@@ -285,7 +285,7 @@ describe("a write on an open note somebody else's writing is in", () => {
 describe("an act over a set of open notes", () => {
   it("joins whoever made it to each of them, as a single write does", async () => {
     const ours = note({ authors: [OTHER] });
-    // A note whose list is the ref's DID alone is already carrying them, and
+    // A note whose list is the ref's own owner alone is already carrying them, and
     // spelling it out would be a second way to write the same note.
     const mine = note();
     const writes: Record<string, unknown>[] = [];

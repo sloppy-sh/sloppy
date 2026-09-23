@@ -6,14 +6,15 @@ import { z } from "zod";
 import { AddressSchema, RootAddressSchema } from "./address.js";
 import { NodeAppearanceSchema, WrittenAppearanceSchema } from "./appearance.js";
 import {
-  type DidSyr,
-  DidSyrSchema,
   OwnedEntitySchema,
   type OwnedRef,
   OwnedRefSchema,
+  type Principal,
+  PrincipalSchema,
   TimestampSchema,
 } from "./common.js";
 import { EdgeLookSchema, looksRead } from "./edge.js";
+import { SignatureSchemeTagSchema } from "./key-binding.js";
 import { graphRef, requireOwnGraph } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
@@ -53,19 +54,19 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * the rule says. Present, a write by anybody else is offered rather than
    * landed; {@link writeOutcome} is that rule.
    */
-  owner: DidSyrSchema.optional(),
+  owner: PrincipalSchema.optional(),
   /**
    * Whose writing this note carries, in the order they first wrote into it.
-   * **Absent, and empty, read as the ref's DID alone** — the author, which is
-   * what every note written before the list carries. {@link authorsOf} is the
-   * one reader of it, so no surface spells that fallback twice.
+   * **Absent, and empty, read as `created_by` alone** — the author, which is
+   * what every note written before the list carries. {@link authorsOf}
+   * is the one reader of it, so no surface spells that fallback twice.
    */
-  authors: z.array(DidSyrSchema).optional(),
+  authors: z.array(PrincipalSchema).optional(),
   /**
    * Whose offered change this note's owner has taken in, in the order they were
    * taken. Absent, and empty, are none.
    */
-  contributors: z.array(DidSyrSchema).optional(),
+  contributors: z.array(PrincipalSchema).optional(),
   title: z.string().max(512).default(""),
   tags: TagsSchema.default([]),
   /**
@@ -120,6 +121,10 @@ export const NodeSchema = OwnedEntitySchema.extend({
   content_signature: z.string().optional(),
   signed_payload_json: z.string().optional(),
   signing_device_public_key: z.string().optional(),
+  /** What the signature is in. **Absent is `ed25519-multibase`**, which is what
+   *  every note signed before the tag carries; `signatureSchemeOf` is the one
+   *  reader of that. */
+  signature_scheme: SignatureSchemeTagSchema.optional(),
 });
 export type Node = z.infer<typeof NodeSchema>;
 
@@ -178,7 +183,7 @@ export function graphOf(node: Pick<Node, "created_by" | "graph">): OwnedRef {
 /** Whose writing a note carries, in the order they first wrote into it. */
 export function authorsOf(
   note: Pick<Node, "created_by" | "authors">,
-): readonly DidSyr[] {
+): readonly Principal[] {
   return note.authors?.length ? note.authors : [note.created_by];
 }
 
@@ -190,7 +195,7 @@ export type WriteOutcome = "lands" | "offered";
 
 export function writeOutcome(
   note: Pick<Node, "owner">,
-  writer: DidSyr,
+  writer: Principal,
 ): WriteOutcome {
   return note.owner === undefined || note.owner === writer
     ? "lands"
@@ -206,11 +211,11 @@ export function writeOutcome(
  */
 export function writesAlone(
   note: Pick<Node, "created_by" | "owner" | "authors">,
-  writer: DidSyr,
+  writer: Principal,
 ): boolean {
   return (
     writeOutcome(note, writer) === "lands" &&
-    authorsOf(note).every((did) => did === writer)
+    authorsOf(note).every((author) => author === writer)
   );
 }
 
@@ -222,7 +227,7 @@ export function writesAlone(
  */
 export function withAuthor<
   T extends Pick<Node, "created_by" | "owner" | "authors">,
->(note: T, writer: DidSyr): T {
+>(note: T, writer: Principal): T {
   if (note.owner !== undefined) return note;
   const authors = authorsOf(note);
   if (authors.includes(writer)) return note;
@@ -413,7 +418,7 @@ export const UpdateNodeRequestSchema = z.object({
    * the current owner's act — a contributor cannot claim a note — and no other
    * field on this request is a contributor's to write either.
    */
-  owner: DidSyrSchema.nullable().optional(),
+  owner: PrincipalSchema.nullable().optional(),
   /** `null` takes the look back off and leaves the note unstyled; absent leaves
    *  whatever look it has alone. */
   appearance: WrittenAppearanceSchema.nullable().optional(),

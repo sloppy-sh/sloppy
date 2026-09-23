@@ -15,6 +15,7 @@ import {
   type DidSyr,
   type NodeView,
   type OwnedRef,
+  type Principal,
   type Pull,
   type PullView,
   type PublishedSubtreePage,
@@ -67,7 +68,7 @@ export class PullService {
    */
   async pull(reader: DidSyr, request: CreatePullRequest): Promise<PullView> {
     const publication = request.publication;
-    const author = splitOwnedRef(publication).did;
+    const author = splitOwnedRef(publication).owner;
     if (author === reader) {
       throw new BadRequestException("That branch is already in your graph.");
     }
@@ -281,7 +282,7 @@ function deepen(page: PublishedSubtreePage, deep: Map<OwnedRef, number>): void {
 
 function held(
   page: PublishedSubtreePage,
-  author: DidSyr,
+  author: Principal,
   graph: OwnedRef,
   deep: Map<OwnedRef, number>,
 ): HeldPage {

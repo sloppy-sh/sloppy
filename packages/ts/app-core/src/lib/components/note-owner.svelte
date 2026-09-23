@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Who gates a note's writing, and the choice the people entitled to make it
 	// are offered — DESIGN.md § "Whose writing".
-	import type { DidSyr } from '@sloppy/types';
+	import type { DidSyr, Principal } from '@sloppy/types';
 	import { isNamed, nameOf, ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { people } from '../stores/people.svelte.js';
@@ -16,7 +16,7 @@
 	}: {
 		open?: boolean;
 		/** Absent is a note anybody writing in this graph writes straight into. */
-		owner?: DidSyr;
+		owner?: Principal;
 		me: DidSyr;
 		busy?: boolean;
 		refused?: string | null;

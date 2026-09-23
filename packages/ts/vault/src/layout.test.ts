@@ -89,6 +89,30 @@ describe("where a vault keeps things", () => {
     expect(readGraphFile(graphFile(graph))).toEqual(graph);
   });
 
+  it("reads back what a graph asks of whoever writes in it", () => {
+    const graph = {
+      format: VAULT_FORMAT,
+      graph: NOTE,
+      name: "The thesis",
+      owner: OWNER,
+      vouching: "required" as const,
+    };
+    expect(readGraphFile(graphFile(graph))).toEqual(graph);
+  });
+
+  it("asks nobody to be vouched where the file says something it cannot read", () => {
+    const bytes = encodeText(
+      JSON.stringify({
+        format: VAULT_FORMAT,
+        graph: NOTE,
+        name: "The thesis",
+        owner: OWNER,
+        vouching: "notarised",
+      }),
+    );
+    expect(readGraphFile(bytes).vouching).toBeUndefined();
+  });
+
   it("writes the same bytes for a graph nobody has gated", () => {
     const open = {
       format: VAULT_FORMAT,

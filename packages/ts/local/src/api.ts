@@ -339,6 +339,9 @@ export class LocalApi implements SloppyApi {
       const graph = await this.graphAt(ref);
       await graph.rename(request.title);
       if (request.ownership !== undefined) await graph.gate(request.ownership);
+      if (request.vouching !== undefined) {
+        await graph.asksVouching(request.vouching);
+      }
       return this.graphView(graph);
     });
   }
@@ -670,7 +673,7 @@ export class LocalApi implements SloppyApi {
       if (!note) throw absent("That note is not here.");
       const writer = await this.writer;
       const whose = {
-        created_by: splitOwnedRef(note.ref).did,
+        created_by: splitOwnedRef(note.ref).owner,
         owner: note.owner,
         authors: note.authors,
       };
@@ -1816,6 +1819,7 @@ export class LocalApi implements SloppyApi {
       created_by: graph.did,
       title: graph.title,
       ...(graph.ownership === undefined ? {} : { ownership: graph.ownership }),
+      ...(graph.vouching === undefined ? {} : { vouching: graph.vouching }),
       // The folder this device opened first is the one it started with.
       ...(written[0]?.root === root ? { home: true } : {}),
       created_at: at,
@@ -1858,7 +1862,8 @@ export class LocalApi implements SloppyApi {
     }
     // Whose it is now is whoever imported it, so somebody else's name does not
     // come with their graph; a person's own archive still carries theirs back.
-    // What the graph gates its notes by is the graph's and rides in either way.
+    // What the graph gates its notes by, and what it asks of a writer, are the
+    // graph's own and ride in either way.
     const carried = readGraph(vault);
     const owned = said.owner === did ? carried : undefined;
     vault.set(
@@ -1871,6 +1876,9 @@ export class LocalApi implements SloppyApi {
         ...(carried?.ownership === undefined
           ? {}
           : { ownership: carried.ownership }),
+        ...(carried?.vouching === undefined
+          ? {}
+          : { vouching: carried.vouching }),
         ...(owned?.owner_name === undefined
           ? {}
           : { owner_name: owned.owner_name }),
@@ -2060,7 +2068,7 @@ function whoseWriting(note: VaultNote): unknown[] {
   return [
     note.owner ?? null,
     authorsOf({
-      created_by: splitOwnedRef(note.ref).did,
+      created_by: splitOwnedRef(note.ref).owner,
       authors: note.authors,
     }),
     note.contributors ?? [],

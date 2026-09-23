@@ -150,8 +150,8 @@ export function parseSnapshotNode(row: unknown): SnapshotNode {
       `Published note ${snapshot.source} is filed at ${filed(snapshot.address)} and addressed ${filed(snapshot.node.address)}`,
     );
   }
-  const { did } = splitOwnedRef(snapshot.source);
-  if (splitOwnedRef(snapshot.version).did !== did) {
+  const { owner } = splitOwnedRef(snapshot.source);
+  if (splitOwnedRef(snapshot.version).owner !== owner) {
     throw new Error(
       `Published note ${snapshot.source} sits in ${snapshot.version}, which is somebody else's version`,
     );

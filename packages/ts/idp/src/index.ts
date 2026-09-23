@@ -2,6 +2,7 @@
 // line here would be a second copy of it.
 
 export * from "./aegis.js";
+export * from "./binding.js";
 export * from "./canonical.js";
 export * from "./context.js";
 export * from "./contracts.js";

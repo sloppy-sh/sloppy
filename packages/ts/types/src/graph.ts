@@ -5,7 +5,7 @@
 
 import { z } from "zod";
 import { splitOwnedRef } from "./codecs.js";
-import { type DidSyr, OwnedEntitySchema, type OwnedRef } from "./common.js";
+import { OwnedEntitySchema, type OwnedRef, type Principal } from "./common.js";
 
 /**
  * The local id a graph nobody named is read under: what a row written before
@@ -66,7 +66,7 @@ export class InvalidGraphRefError extends Error {
 }
 
 /** The graph a ref names where nobody named one. */
-export function unnamedGraphRef(owner: DidSyr): OwnedRef {
+export function unnamedGraphRef(owner: Principal): OwnedRef {
   return `${owner}/${UNNAMED_GRAPH_ULID}`;
 }
 
@@ -77,19 +77,22 @@ export function unnamedGraphRef(owner: DidSyr): OwnedRef {
  * one. It is never somebody's home graph: that one has a ulid of its own and
  * is looked up, not spelled.
  */
-export function graphRef(owner: DidSyr, graph: OwnedRef | undefined): OwnedRef {
+export function graphRef(
+  owner: Principal,
+  graph: OwnedRef | undefined,
+): OwnedRef {
   return graph ?? unnamedGraphRef(owner);
 }
 
 /** A graph belongs to one identity, and nobody files a note in somebody else's.
  *  Held over a value from anywhere, a peer's answer included. */
 export function requireOwnGraph(
-  owner: DidSyr,
+  owner: Principal,
   graph: OwnedRef | undefined,
 ): void {
   if (graph === undefined) return;
-  const { did } = splitOwnedRef(graph);
-  if (did !== owner) {
+  const { owner: named } = splitOwnedRef(graph);
+  if (named !== owner) {
     throw new InvalidGraphRefError(graph, `${owner} does not own it`);
   }
 }

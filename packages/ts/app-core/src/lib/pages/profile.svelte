@@ -72,7 +72,7 @@
 		publications.all.map((branch) => {
 			const root = nodes.get(branch.root);
 			const notebook = graphs.all.find(
-				(graph) => graph.ref === graphRef(splitOwnedRef(branch.ref).did, branch.graph)
+				(graph) => graph.ref === graphRef(splitOwnedRef(branch.ref).owner, branch.graph)
 			);
 			return {
 				ref: branch.ref,

@@ -156,7 +156,7 @@ class SessionStore {
 		const { name, picture } = carrying;
 		try {
 			const here = await vault.graph();
-			if (!here || splitOwnedRef(here).did !== mine) return;
+			if (!here || splitOwnedRef(here).owner !== mine) return;
 			const asked = {
 				...(name === undefined ? {} : { display_name: name }),
 				...(picture === undefined

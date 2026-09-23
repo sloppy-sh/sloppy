@@ -127,7 +127,7 @@ export class GraphService {
   }
 
   private async row(did: DidSyr, ref: OwnedRef) {
-    if (splitOwnedRef(ref).did !== did) return null;
+    if (splitOwnedRef(ref).owner !== did) return null;
     return this.graphs.find(did, ref);
   }
 }

@@ -149,7 +149,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
   const { node } = row;
   return {
     ref: row.source,
-    created_by: splitOwnedRef(row.source).did,
+    created_by: splitOwnedRef(row.source).owner,
     graph: row.source_graph,
     address: node.address,
     ...(node.aliases ? { aliases: node.aliases } : {}),
@@ -170,6 +170,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
     content_signature: node.content_signature,
     signed_payload_json: node.signed_payload_json,
     signing_device_public_key: node.signing_device_public_key,
+    signature_scheme: node.signature_scheme,
   };
 }
 
@@ -180,7 +181,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
 export function pulledBlockView(row: PulledBlock): BlockView {
   return {
     ref: row.source,
-    created_by: splitOwnedRef(row.source).did,
+    created_by: splitOwnedRef(row.source).owner,
     node: row.node,
     ord: row.ord,
     content: row.content,

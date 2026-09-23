@@ -7,11 +7,11 @@ import { Injectable } from "@nestjs/common";
 import {
   type Address,
   AddressSchema,
-  DidSyrSchema,
   graphRef,
   type OwnedRef,
   ownedRefFrom,
   OwnedRefSchema,
+  PrincipalSchema,
   RecordIdSchema,
   splitOwnedRef,
 } from "@sloppy/types";
@@ -64,7 +64,7 @@ export interface HeldNote {
 const HeldNoteSchema = z.object({
   source: OwnedRefSchema,
   address: AddressSchema.optional(),
-  source_did: DidSyrSchema,
+  source_did: PrincipalSchema,
   source_graph: OwnedRefSchema.optional(),
   title: z.string().nullish(),
   created_at: z.string().nullish(),
@@ -135,7 +135,7 @@ export class FindRepository {
   /** The copies they hold that are read in `graph`. A held note's graph is its
    *  author's, which is where its address is read. */
   async heldNotesIn(did: string, graph: OwnedRef): Promise<OwnedRef[]> {
-    const { did: author } = splitOwnedRef(graph);
+    const { owner: author } = splitOwnedRef(graph);
     const [rows] = await this.db.handle.query<[unknown[]]>(
       `SELECT VALUE source FROM pulled_node
          WHERE created_by = $did AND source_did = $author

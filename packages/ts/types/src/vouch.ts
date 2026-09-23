@@ -2,9 +2,9 @@
 // write where".
 
 import {
-  type DidSyr,
-  DidSyrSchema,
   OwnedEntitySchema,
+  type Principal,
+  PrincipalSchema,
   type Timestamp,
   TimestampSchema,
 } from "./common.js";
@@ -32,9 +32,9 @@ export type VouchState = z.infer<typeof VouchStateSchema>;
 export const AnsweredVouchSchema = z.enum(["vouched", "anonymous"]);
 export type AnsweredVouch = z.infer<typeof AnsweredVouchSchema>;
 
-/** Where an identity's record may be found. A `did:syr` binds a key and no
- *  host, so this is an address somebody supplied and never a fact about the
- *  DID. */
+/** Where an identity's record may be found. No identifier here names a host —
+ *  a `did:syr` binds a key and nothing else — so this is an address somebody
+ *  supplied, and never a fact about the identifier. */
 export const InstanceHintSchema = z.string().min(1).max(2048);
 export type InstanceHint = z.infer<typeof InstanceHintSchema>;
 
@@ -72,7 +72,7 @@ export type TrustedInstance = z.infer<typeof TrustedInstanceSchema>;
 
 /** What resolution answered about one identity, and when. */
 export const VouchSchema = z.object({
-  did: DidSyrSchema,
+  principal: PrincipalSchema,
   state: VouchStateSchema,
   /** Where the record was read. Absent where nothing was reached, and on an
    *  identity known anonymous without asking anybody. */
@@ -89,7 +89,7 @@ export type Vouch = z.infer<typeof VouchSchema>;
  * them. The row is written by resolution here and by nobody else.
  */
 export const KnownIdentitySchema = OwnedEntitySchema.extend({
-  did: DidSyrSchema,
+  principal: PrincipalSchema,
   /** Absent is an identity nobody said where to look for, which resolves to
    *  `unknown` rather than to `anonymous`. */
   instance: InstanceHintSchema.optional(),
@@ -103,7 +103,11 @@ export type KnownIdentity = z.infer<typeof KnownIdentitySchema>;
 
 /**
  * Resolving an identity. The one thing that answers whether anybody stands
- * behind a DID.
+ * behind somebody.
+ *
+ * **A principal in a scheme no resolver here answers for is `unknown`**, which
+ * grants nothing and takes nothing away. Today that is every scheme but
+ * `did:syr`.
  *
  * A caller reads {@link Vouch}`.state` and nothing else, so the mandate chain —
  * root, then agent, then whoever holds the grant — lands here as a different
@@ -111,7 +115,7 @@ export type KnownIdentity = z.infer<typeof KnownIdentitySchema>;
  * this reader trusts ({@link TrustedInstance}), the answer is `unknown`.
  */
 export interface VouchResolver {
-  vouchFor(did: DidSyr, at?: TrustedInstance): Promise<Vouch>;
+  vouchFor(principal: Principal, at?: TrustedInstance): Promise<Vouch>;
 }
 
 /** One statement of authority as an instance serves it. Absent `revoked_at` and
@@ -129,12 +133,12 @@ export interface VouchGrant {
  * nobody stands behind.
  */
 export function vouchFrom(
-  did: DidSyr,
+  principal: Principal,
   instance: InstanceHint | undefined,
   listing: readonly VouchGrant[] | null,
   at: Timestamp,
 ): Vouch {
-  if (listing === null) return { did, state: "unknown", at };
+  if (listing === null) return { principal, state: "unknown", at };
   const now = Date.parse(at);
   const stands = listing.some(
     (grant) =>
@@ -143,7 +147,7 @@ export function vouchFrom(
   );
   return {
     state: stands ? "vouched" : "anonymous",
-    did,
+    principal,
     ...(instance === undefined ? {} : { instance }),
     at,
   };
@@ -154,8 +158,8 @@ export function vouchFrom(
  * answer is not in doubt: nobody stands behind it, and on the device that
  * minted it nothing asks anybody to.
  */
-export function anonymousVouch(did: DidSyr, at: Timestamp): Vouch {
-  return { did, state: "anonymous", at };
+export function anonymousVouch(principal: Principal, at: Timestamp): Vouch {
+  return { principal, state: "anonymous", at };
 }
 
 /**

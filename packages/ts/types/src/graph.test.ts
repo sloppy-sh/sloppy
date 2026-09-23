@@ -39,7 +39,7 @@ function row(address: string, graph?: string, parent?: string) {
 describe("the graph an address is read in", () => {
   it("is a ref its owner holds, and one nobody named is spelled from the DID", () => {
     expect(unnamedGraphRef(AVA)).toBe(`${AVA}/${UNNAMED_GRAPH_ULID}`);
-    expect(splitOwnedRef(unnamedGraphRef(AVA)).did).toBe(AVA);
+    expect(splitOwnedRef(unnamedGraphRef(AVA)).owner).toBe(AVA);
     expect(splitOwnedRef(unnamedGraphRef(AVA)).localId).toBe(
       UNNAMED_GRAPH_ULID,
     );

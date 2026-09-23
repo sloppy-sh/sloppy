@@ -4,11 +4,11 @@
 
 import { splitOwnedRef } from "./codecs.js";
 import {
-  type DidSyr,
-  DidSyrSchema,
   OwnedEntitySchema,
   type OwnedRef,
   OwnedRefSchema,
+  type Principal,
+  PrincipalSchema,
 } from "./common.js";
 import { z } from "zod";
 
@@ -125,14 +125,14 @@ export const GraphRoleSchema = OwnedEntitySchema.extend({
    */
   everyone: z.literal(true).optional(),
   /** Who holds it. Absent, and empty, are nobody. */
-  members: z.array(DidSyrSchema).optional(),
+  members: z.array(PrincipalSchema).optional(),
   allow: PermissionMaskSchema.default("0"),
   deny: PermissionMaskSchema.default("0"),
 });
 export type GraphRole = z.infer<typeof GraphRoleSchema>;
 
 /** What an override is written against: a role in the graph, or one identity. */
-export const OverrideTargetSchema = z.enum(["role", "did"]);
+export const OverrideTargetSchema = z.enum(["role", "principal"]);
 export type OverrideTarget = z.infer<typeof OverrideTargetSchema>;
 
 /**
@@ -153,8 +153,8 @@ export const PermissionOverrideSchema = OwnedEntitySchema.extend({
    */
   scope: OwnedRefSchema,
   target: OverrideTargetSchema,
-  /** The role's `<did>/<ulid>` where `target` is `role`, and the identity's DID
-   *  where it is `did`. Flat beside the discriminant, so an index can read it. */
+  /** The role's ref where `target` is `role`, and the identifier itself where
+   *  it is `principal`. Flat beside the discriminant, so an index can read it. */
   target_id: z.string().min(1).max(256),
   allow: PermissionMaskSchema.default("0"),
   deny: PermissionMaskSchema.default("0"),
@@ -166,7 +166,7 @@ export interface RoleFacts {
   readonly ref: OwnedRef;
   readonly position: number;
   readonly everyone?: boolean;
-  readonly members?: readonly DidSyr[];
+  readonly members?: readonly Principal[];
   readonly allow?: PermissionMask;
   readonly deny?: PermissionMask;
 }
@@ -181,9 +181,9 @@ export interface OverrideFacts {
 }
 
 export interface PermissionFoldInput {
-  readonly writer: DidSyr;
-  /** The graph being folded. Its DID half is its owner, who holds every verb in
-   *  it — a first role written on a graph must not lock its own author out. */
+  readonly writer: Principal;
+  /** The graph being folded. Its owner half holds every verb in it — a first
+   *  role written on a graph must not lock its own author out. */
   readonly graph: OwnedRef;
   /** Every role written on that graph, unfiltered and unsorted. */
   readonly roles: readonly RoleFacts[];
@@ -194,7 +194,7 @@ export interface PermissionFoldInput {
    * surface asking, not a rule the cascade owns, and the two surfaces answer it
    * differently on purpose:
    *
-   * - A graph served to several people names them. Its owner, or an identity a
+   * - A graph served to several people names them. Its owner, or somebody a
    *   role lists, is one; anybody else is not, whatever a role everybody holds
    *   says. {@link namedInGraph} is that answer.
    * - A graph somebody holds on their own device answers `true` for whoever
@@ -231,18 +231,18 @@ export function hasPolicy(
 
 /**
  * Whether a graph served to several people is kept for this identity: it owns
- * the graph, or a role written on it lists it by DID.
+ * the graph, or a role written on it names it.
  *
  * The role everybody holds does NOT make somebody one of them. "Everybody"
  * there is everybody the graph is kept for, so that a graph whose policy nobody
  * has written yet is closed to a stranger rather than open to one.
  */
 export function namedInGraph(
-  writer: DidSyr,
+  writer: Principal,
   graph: OwnedRef,
   roles: readonly RoleFacts[],
 ): boolean {
-  if (splitOwnedRef(graph).did === writer) return true;
+  if (splitOwnedRef(graph).owner === writer) return true;
   return roles.some((role) => role.members?.includes(writer) ?? false);
 }
 
@@ -265,7 +265,7 @@ export function constantPermissionFold(permissions: bigint): PermissionFold {
 }
 
 function heldRoles(
-  writer: DidSyr,
+  writer: Principal,
   roles: readonly RoleFacts[],
 ): readonly RoleFacts[] {
   return roles
@@ -276,7 +276,7 @@ function heldRoles(
 /** Layer 1 alone: {@link DEFAULT_PERMISSIONS} as the roles this identity holds
  *  leave it. */
 function graphPermissionsFor(
-  writer: DidSyr,
+  writer: Principal,
   roles: readonly RoleFacts[],
 ): bigint {
   let permissions = DEFAULT_PERMISSIONS;
@@ -303,7 +303,7 @@ export function resolvePermissionFold(
 ): PermissionFold {
   const { writer, graph, roles, overrides } = input;
 
-  if (splitOwnedRef(graph).did === writer) {
+  if (splitOwnedRef(graph).owner === writer) {
     return constantPermissionFold(ALL_PERMISSIONS);
   }
 
@@ -382,7 +382,7 @@ export const CreateGraphRoleRequestSchema = z.strictObject(
       .min(1, "Name this role.")
       .max(512, "That name is longer than a role name can be. Trim it."),
     position: z.int().min(0).max(1_000_000),
-    members: z.array(DidSyrSchema).max(1000).optional(),
+    members: z.array(PrincipalSchema).max(1000).optional(),
     allow: PermissionMaskSchema.optional(),
     deny: PermissionMaskSchema.optional(),
   },
@@ -402,7 +402,7 @@ export const UpdateGraphRoleRequestSchema = z.strictObject(
       .max(512, "That name is longer than a role name can be. Trim it.")
       .optional(),
     position: z.int().min(0).max(1_000_000).optional(),
-    members: z.array(DidSyrSchema).max(1000).optional(),
+    members: z.array(PrincipalSchema).max(1000).optional(),
     allow: PermissionMaskSchema.optional(),
     deny: PermissionMaskSchema.optional(),
   },
@@ -421,7 +421,7 @@ export const SetPermissionOverrideRequestSchema = z.strictObject(
   {
     note: OwnedRefSchema.optional(),
     target: OverrideTargetSchema,
-    /** The role's `<did>/<ulid>`, or the identity's DID, as `target` says. */
+    /** The role's ref, or the identifier itself, as `target` says. */
     target_id: z.string().min(1).max(256),
     allow: PermissionMaskSchema.optional(),
     deny: PermissionMaskSchema.optional(),
@@ -432,13 +432,19 @@ export type SetPermissionOverrideRequest = z.input<
   typeof SetPermissionOverrideRequestSchema
 >;
 
-/** An id of the wrong shape for the target it names. */
-export function overrideTargetIsWellFormed(
+/**
+ * The id as the row stores it: held to the schema its `target` names, which is
+ * also what spells it the one way everything else compares. **`undefined` is an
+ * id of the wrong shape for the target it names**, and a caller writing the row
+ * stores what comes back rather than what it was handed.
+ */
+export function overrideTargetId(
   target: OverrideTarget,
   targetId: string,
-): boolean {
-  const shape = target === "role" ? OwnedRefSchema : DidSyrSchema;
-  return shape.safeParse(targetId).success;
+): string | undefined {
+  const shape = target === "role" ? OwnedRefSchema : PrincipalSchema;
+  const parsed = shape.safeParse(targetId);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /**
@@ -452,5 +458,5 @@ export function overrideIsWellFormed(
   override: Pick<SetPermissionOverrideRequest, "note" | "target" | "target_id">,
 ): boolean {
   if (override.target === "role" && override.note === undefined) return false;
-  return overrideTargetIsWellFormed(override.target, override.target_id);
+  return overrideTargetId(override.target, override.target_id) !== undefined;
 }

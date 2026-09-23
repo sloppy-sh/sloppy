@@ -61,7 +61,7 @@
 	function noteOf(published: PublishedNode, of: PublishedSubtree): NodeView {
 		return {
 			ref: published.ref,
-			created_by: splitOwnedRef(published.ref).did,
+			created_by: splitOwnedRef(published.ref).owner,
 			...(of.graph === undefined ? {} : { graph: of.graph }),
 			...(published.address === undefined ? {} : { address: published.address }),
 			depth: depthOf(published, of),
@@ -85,7 +85,7 @@
 			.filter((section) => section.node === note)
 			.map((section) => ({
 				ref: section.ref,
-				created_by: splitOwnedRef(section.ref).did,
+				created_by: splitOwnedRef(section.ref).owner,
 				node: section.node,
 				ord: section.ord,
 				content: section.content,

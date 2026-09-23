@@ -13,9 +13,11 @@ import {
   type CustomEmoji,
   type CustomEmojiKind,
   type DidSyr,
+  type Principal,
   type DeletedBranch,
   DELETED_KEPT_FOR_DAYS,
   type GraphOwnership,
+  type GraphVouching,
   type MediaAsset,
   type MediaRole,
   type NodeAppearance,
@@ -224,6 +226,15 @@ export class LocalGraph {
 
   async gate(ownership: GraphOwnership): Promise<void> {
     this.said = { ...this.said, ownership };
+    await this.files.write(GRAPH_FILE, graphFile(this.said));
+  }
+
+  get vouching(): GraphVouching | undefined {
+    return this.said.vouching;
+  }
+
+  async asksVouching(vouching: GraphVouching): Promise<void> {
+    this.said = { ...this.said, vouching };
     await this.files.write(GRAPH_FILE, graphFile(this.said));
   }
 
@@ -834,7 +845,7 @@ export class LocalGraph {
 
   /** The one offer this person has standing on this note, which is all they may
    *  have — docs/ARCHITECTURE.md § "Whose writing a note carries". */
-  offerBy(note: OwnedRef, by: DidSyr): StoredAmendment | undefined {
+  offerBy(note: OwnedRef, by: Principal): StoredAmendment | undefined {
     return this.offersOn(note).find((offer) => offer.by === by);
   }
 

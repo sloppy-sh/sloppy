@@ -3,9 +3,9 @@
 
 import { NodeAppearanceSchema, WrittenAppearanceSchema } from "./appearance.js";
 import {
-  DidSyrSchema,
   OwnedEntitySchema,
   OwnedRefSchema,
+  PrincipalSchema,
   TimestampSchema,
 } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
@@ -30,13 +30,13 @@ export type AmendmentSection = z.infer<typeof AmendmentSectionSchema>;
  * the note's WRITING and nothing about its place: a contributor does not move,
  * renumber or re-parent a note they do not own.
  *
- * `created_by` is whose graph the note is in — the DID half of the note's own
+ * `created_by` is whose graph the note is in — the owner half of the note's own
  * ref, the way `comment_pointer`'s is, and never whoever gates the note, which
  * may be somebody else. `by` is who offered it.
  */
 export const AmendmentSchema = OwnedEntitySchema.extend({
   note: OwnedRefSchema,
-  by: DidSyrSchema,
+  by: PrincipalSchema,
   /** When the person offering it last wrote it. The row's own stamps are the
    *  store's; this is the one that travels in a file and in an archive. */
   at: TimestampSchema,

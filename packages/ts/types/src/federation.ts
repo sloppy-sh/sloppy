@@ -11,7 +11,12 @@
 import { z } from "zod";
 import { AddressSchema } from "./address.js";
 import { splitOwnedRef } from "./codecs.js";
-import { DidSyrSchema, OwnedEntitySchema, OwnedRefSchema } from "./common.js";
+import {
+  DidSyrSchema,
+  OwnedEntitySchema,
+  OwnedRefSchema,
+  PrincipalSchema,
+} from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
 import { requireOwnGraph } from "./graph.js";
 import {
@@ -212,11 +217,14 @@ export type CreatePullRequest = z.input<typeof CreatePullRequestSchema>;
  * disagree.
  */
 export const PulledNodeSchema = OwnedEntitySchema.extend({
-  /** The node as its AUTHOR addresses it: `<their did>/<their ulid>`. */
+  /** The node as its AUTHOR addresses it: `<their principal>/<their ulid>`. */
   source: OwnedRefSchema,
   /** Its author, beside `source` rather than read out of it, because an index
-   *  cannot seek on half a column. `parsePulledNode` holds the two together. */
-  source_did: DidSyrSchema,
+   *  cannot seek on half a column. `parsePulledNode` holds the two together.
+   *  Named for a DID and holding any principal: two indexes and the boot
+   *  migration in `schema.ts` read the column by that name, so renaming it
+   *  costs a migration and widening it costs nothing. */
+  source_did: PrincipalSchema,
   /**
    * Which of the AUTHOR's graphs it sits in, beside the node for the reason
    * `source_did` is, and half of what an address is unique under here. Absent
@@ -263,8 +271,8 @@ export function parsePulledNode(row: unknown): PulledNode {
       `Held node ${pulled.source} is filed under other addresses than the ones it carries`,
     );
   }
-  const { did } = splitOwnedRef(pulled.source);
-  if (pulled.source_did !== did) {
+  const { owner } = splitOwnedRef(pulled.source);
+  if (pulled.source_did !== owner) {
     throw new Error(
       `Held node ${pulled.source} says it was written by ${pulled.source_did}`,
     );

@@ -16,9 +16,12 @@ import {
   DidSyrSchema,
   type OwnedRef,
   OwnedRefSchema,
+  type Principal,
+  PrincipalSchema,
   TimestampSchema,
 } from "./common.js";
 import { EdgeLookSchema } from "./edge.js";
+import { SignatureSchemeTagSchema } from "./key-binding.js";
 import { unnamedGraphRef } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
@@ -128,6 +131,9 @@ export type PublishedPublication = z.infer<typeof PublishedPublicationSchema>;
  * refers to an entry on another page.
  */
 export const PublishedIndexSchema = z.object({
+  /** Whose listing this is. A peer's index is reached by resolving an identity
+   *  store, which only a `did:syr` names, so this is not widened to a
+   *  principal — docs/ARCHITECTURE.md § "Who a person is". */
   did: DidSyrSchema,
   publications: z
     .array(PublishedPublicationSchema)
@@ -183,13 +189,13 @@ export const PublishedNodeSchema = z.object({
   origin: OwnedRefSchema,
   /** Who gates the note's writing where its author set somebody. Absent is an
    *  open note, and a reader of a held copy writes into neither. */
-  owner: DidSyrSchema.optional(),
+  owner: PrincipalSchema.optional(),
   /** Whose writing the note carries, in the order they first wrote into it.
-   *  Absent, and empty, read as the ref's DID alone — which is every version
-   *  published before a note could carry more than one writer. */
-  authors: z.array(DidSyrSchema).optional(),
+   *  Absent, and empty, read as the ref's own owner alone — which is every
+   *  version published before a note could carry more than one writer. */
+  authors: z.array(PrincipalSchema).optional(),
   /** Whose offered change its owner took in. Absent, and empty, are none. */
-  contributors: z.array(DidSyrSchema).optional(),
+  contributors: z.array(PrincipalSchema).optional(),
   title: z.string().max(512),
   tags: TagsSchema,
   /** How its author asked the mark to be drawn. Absent is a mark that draws
@@ -216,6 +222,11 @@ export const PublishedNodeSchema = z.object({
   content_signature: z.string().optional(),
   signed_payload_json: z.string().optional(),
   signing_device_public_key: z.string().optional(),
+  /** What the signature is in. **Absent is `ed25519-multibase`**, which is what
+   *  every version published before the tag carries. A scheme this reader
+   *  cannot name is one it cannot check, and the note is held rather than
+   *  presented as altered. */
+  signature_scheme: SignatureSchemeTagSchema.optional(),
 });
 export type PublishedNode = z.infer<typeof PublishedNodeSchema>;
 
@@ -470,7 +481,7 @@ export interface PublishedSubtreeReader {
 export function publishedSubtreeReader(
   asked: AskedSubtree,
 ): PublishedSubtreeReader {
-  const author = splitOwnedRef(asked.publication).did;
+  const author = splitOwnedRef(asked.publication).owner;
   const heldNodes = new Set<OwnedRef>();
   const heldByAddress = new Map<Address, OwnedRef>();
   const heldBlocks = new Set<OwnedRef>();
@@ -640,7 +651,7 @@ export interface PublishedVersionsReader {
 export function publishedVersionsReader(asked: {
   publication: OwnedRef;
 }): PublishedVersionsReader {
-  const author = splitOwnedRef(asked.publication).did;
+  const author = splitOwnedRef(asked.publication).owner;
   let previous: number | undefined;
   let pages = 0;
 
@@ -687,7 +698,7 @@ export function publishedChangesReader(asked: {
   from: OwnedRef;
   to: OwnedRef;
 }): PublishedChangesReader {
-  const author = splitOwnedRef(asked.publication).did;
+  const author = splitOwnedRef(asked.publication).owner;
   const held = new Set<OwnedRef>();
   let heldAddress: Address | undefined;
   let addressHeld = false;
@@ -775,8 +786,8 @@ function requirePage(taken: number): void {
   }
 }
 
-function requireAuthor(ref: OwnedRef, did: DidSyr): void {
-  if (splitOwnedRef(ref).did !== did) {
-    throw new UnaskedAnswerError(`${ref} among ${did}'s own`);
+function requireAuthor(ref: OwnedRef, author: Principal): void {
+  if (splitOwnedRef(ref).owner !== author) {
+    throw new UnaskedAnswerError(`${ref} among ${author}'s own`);
   }
 }

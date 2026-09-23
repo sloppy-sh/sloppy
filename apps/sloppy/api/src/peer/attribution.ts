@@ -3,6 +3,7 @@
 import {
   NodeSignedPayloadV1Schema,
   type PublishedNode,
+  signatureSchemeOf,
   splitOwnedRef,
 } from "@sloppy/types";
 import { verifySignedPayload } from "@sloppy/idp";
@@ -21,7 +22,8 @@ import { verifySignedPayload } from "@sloppy/idp";
  * signed, and says nothing about who signed it.
  *
  * A payload this build does not understand is one it cannot check, so a note
- * signed by a later version of Sloppy is held rather than refused.
+ * signed by a later version of Sloppy, or in a scheme this one cannot name, is
+ * held rather than refused.
  */
 export function signatureRefutes(node: PublishedNode): boolean {
   const { content_signature, signed_payload_json, signing_device_public_key } =
@@ -33,6 +35,7 @@ export function signatureRefutes(node: PublishedNode): boolean {
   ) {
     return false;
   }
+  if (signatureSchemeOf(node) !== "ed25519-multibase") return false;
 
   const payload = parseObject(signed_payload_json);
   if (payload === null) return false;
@@ -55,9 +58,9 @@ function aboutThisNode(
   claim: ReturnType<typeof NodeSignedPayloadV1Schema.parse>,
   node: PublishedNode,
 ): boolean {
-  const { did, localId } = splitOwnedRef(node.ref);
+  const { owner, localId } = splitOwnedRef(node.ref);
   return (
-    claim.did === did &&
+    claim.did === owner &&
     claim.node_id === localId &&
     claim.address === node.address &&
     claim.title === node.title &&

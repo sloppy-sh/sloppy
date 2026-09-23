@@ -49,11 +49,11 @@ async function offering(
   note: OwnedRef,
   root = "/graphs/one",
 ): Promise<string> {
-  const { did } = splitOwnedRef(note);
+  const { owner } = splitOwnedRef(note);
   const at = new Date().toISOString();
   const { files } = amendmentToVault({
-    ref: `${did}/${ulid()}`,
-    created_by: did,
+    ref: `${owner}/${ulid()}`,
+    created_by: owner,
     created_at: at,
     updated_at: at,
     note,
@@ -127,7 +127,7 @@ describe("somebody else's graph brought in", () => {
     );
     expect(said.name).toBe("Thesis");
     expect(said.notes).toBe(1);
-    expect(said.owner).toBe(splitOwnedRef(theirs.note.ref).did);
+    expect(said.owner).toBe(splitOwnedRef(theirs.note.ref).owner);
     expect(said.collisions).toEqual([]);
     expect(said.replaces).toBe(false);
     expect(said.replacing).toBe(0);
@@ -203,7 +203,7 @@ async function contestedNumber() {
     title: "Kale",
   });
   expect(kale.address).toBe("2");
-  const arrived = `${splitOwnedRef(kale.ref).did}/${
+  const arrived = `${splitOwnedRef(kale.ref).owner}/${
     splitOwnedRef(peas.ref).localId
   }` as OwnedRef;
   return { mine, here, kale, arrived, out };
@@ -646,7 +646,7 @@ describe("a graph of this device's own brought back in", () => {
 
     const client = reopened(mine);
     const arrived =
-      `${splitOwnedRef(here.ref).did}/${splitOwnedRef(kale.ref).localId}` as OwnedRef;
+      `${splitOwnedRef(here.ref).owner}/${splitOwnedRef(kale.ref).localId}` as OwnedRef;
     expect((await client.listBlocks(arrived))[0].content).toEqual(written);
     expect(
       mine.store.get(`/graphs/arrived/media/${ticket.upload_id}.png`),
@@ -702,7 +702,7 @@ describe("a graph of this device's own brought back in", () => {
       "sprout",
     ]);
     const arrived =
-      `${splitOwnedRef(here.ref).did}/${splitOwnedRef(kale.ref).localId}` as OwnedRef;
+      `${splitOwnedRef(here.ref).owner}/${splitOwnedRef(kale.ref).localId}` as OwnedRef;
     expect((await client.listBlocks(arrived))[0].content).toEqual(written);
   });
 

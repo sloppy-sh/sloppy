@@ -187,6 +187,9 @@ export function publishedNodeOf(
     ...(node.signing_device_public_key === undefined
       ? {}
       : { signing_device_public_key: node.signing_device_public_key }),
+    ...(node.signature_scheme === undefined
+      ? {}
+      : { signature_scheme: node.signature_scheme }),
   };
 }
 
