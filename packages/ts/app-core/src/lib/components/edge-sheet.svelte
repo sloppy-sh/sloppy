@@ -58,8 +58,7 @@
 	const ownerName = $derived.by(() => {
 		if (owner === undefined) return 'whoever writes it';
 		const person = people.of(owner);
-		if (person && isNamed(person)) return nameOf(person);
-		return people.unplaced(owner) ? 'somebody else' : 'whoever writes it';
+		return person && isNamed(person) ? nameOf(person) : 'somebody else';
 	});
 
 	$effect(() => {

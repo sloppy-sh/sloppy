@@ -810,14 +810,12 @@
 	const standing = $derived(settlesOffers ? offers.on(ref) : []);
 	/** The one this person has standing here, which they may take back. */
 	const myOffer = $derived(offering ? offers.mine(ref) : undefined);
-	/** Whoever writes this note, where that is somebody else. Until their store
-	 *  has answered one way or the other there is nothing to call them by. */
+	/** Whoever writes this note, and empty where that is nobody or the reader. */
 	const ownerName = $derived.by(() => {
 		const owner = node?.owner;
 		if (owner === undefined || owner === viewerDid) return '';
 		const person = people.of(owner);
-		if (person && isNamed(person)) return nameOf(person);
-		return people.unplaced(owner) ? 'somebody else' : 'whoever writes it';
+		return person && isNamed(person) ? nameOf(person) : 'somebody else';
 	});
 	/** Setting and taking off the gate is the graph's owner's act and the note's
 	 *  own owner's — a contributor cannot claim a note. */
