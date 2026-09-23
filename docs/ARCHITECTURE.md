@@ -548,6 +548,12 @@ What a second wave adds, in order:
 4. **A door to sign in by**, which is what widens `Viewer.did`, and with it what lets somebody
    who is not a syr identity hold a graph on a hosted instance rather than only be named in
    one.
+5. **Federation, last**, because every entry into it resolves an identity store: a peer's
+   `PublishedIndex` is keyed by the DID an instance was asked about, and following somebody
+   or looking them up by name goes the same way. `NodeSignedPayloadV1` is part of this — its
+   `did` is a `did:syr`, and `aboutThisNode` compares it to the ref's owner, so a note owned
+   by a `mailto:` cannot carry a v1 payload that is about itself. A second payload version is
+   what carries one, and the tag above is what says which a reader is holding.
 
 `@sloppy/idp` is not part of any of it. It SERVES syr identities; GPG needs no provider,
 because people already have keys.
