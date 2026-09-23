@@ -59,7 +59,7 @@ export type DidSyr = z.infer<typeof DidSyrSchema>;
  * parsed into parts.
  */
 const MAILTO =
-  /^mailto:[a-z0-9!#$&'*+=?^_`{|}~-]+(?:\.[a-z0-9!#$&'*+=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/;
+  /^mailto:[a-z0-9!#$&'*+=?^_`{|}~-]+(?:\.[a-z0-9!#$&'*+=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 /**
  * Somebody who goes by an email address — `mailto:alice@example.com`.
@@ -73,7 +73,10 @@ export const MailtoSchema = z
   .string()
   .max(327)
   .toLowerCase()
-  .regex(MAILTO, "Expected a mailto: identifier, e.g. mailto:alice@example.com");
+  .regex(
+    MAILTO,
+    "Expected a mailto: identifier, e.g. mailto:alice@example.com",
+  );
 export type Mailto = z.infer<typeof MailtoSchema>;
 
 /**
@@ -96,7 +99,8 @@ export type PrincipalScheme = z.infer<typeof PrincipalSchemeSchema>;
  * question, asked of a `KeyBinding` and of a `VouchResolver`.
  */
 export const PrincipalSchema = z.union([DidSyrSchema, MailtoSchema], {
-  error: "Expected an identifier, e.g. did:syr:z6Mkt9… or mailto:alice@example.com",
+  error:
+    "Expected an identifier, e.g. did:syr:z6Mkt9… or mailto:alice@example.com",
 });
 export type Principal = z.infer<typeof PrincipalSchema>;
 
@@ -124,9 +128,12 @@ export type Ulid = z.infer<typeof UlidSchema>;
  */
 export const OwnedRefSchema = z.string().transform((value, ctx) => {
   const separator = value.lastIndexOf("/");
-  const owner = PrincipalSchema.safeParse(value.slice(0, separator));
+  const owner =
+    separator < 1
+      ? undefined
+      : PrincipalSchema.safeParse(value.slice(0, separator));
   const localId = UlidSchema.safeParse(value.slice(separator + 1));
-  if (separator < 1 || !owner.success || !localId.success) {
+  if (owner?.success !== true || !localId.success) {
     ctx.addIssue({
       code: "custom",
       message: "Expected a <principal>/<ulid> reference",

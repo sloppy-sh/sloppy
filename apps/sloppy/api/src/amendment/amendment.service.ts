@@ -11,6 +11,7 @@ import {
   type AmendmentView,
   createOwnedRecordId,
   type DidSyr,
+  type Principal,
   entityView,
   looksRead,
   looksWritten,
@@ -137,9 +138,9 @@ export class AmendmentService {
 /** The proposer joins the note's contributors, in the order they were taken
  *  in, and joins it once. */
 function withContributor(
-  held: readonly DidSyr[] | undefined,
-  by: DidSyr,
-): DidSyr[] {
+  held: readonly Principal[] | undefined,
+  by: Principal,
+): Principal[] {
   const contributors = [...(held ?? [])];
   return contributors.includes(by) ? contributors : [...contributors, by];
 }

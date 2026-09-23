@@ -68,9 +68,9 @@ export function ownedRefFrom(recordId: RecordId): OwnedRef {
   return `${key.created_by}/${key.id}`;
 }
 
-/** The two halves of a reference: whose row it is, and which one. A principal
- *  carries separators of its own, so the split is at the last `/` and never the
- *  first. */
+/** The two halves of a reference: whose row it is, and which one. No principal
+ *  may carry a `/` — `MailtoSchema` refuses one for this — so the separator
+ *  before the ULID is the only one there is. */
 export function splitOwnedRef(ref: OwnedRef): {
   owner: Principal;
   localId: string;

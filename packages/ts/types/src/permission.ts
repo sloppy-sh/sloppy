@@ -432,13 +432,19 @@ export type SetPermissionOverrideRequest = z.input<
   typeof SetPermissionOverrideRequestSchema
 >;
 
-/** An id of the wrong shape for the target it names. */
-export function overrideTargetIsWellFormed(
+/**
+ * The id as the row stores it: held to the schema its `target` names, which is
+ * also what spells it the one way everything else compares. **`undefined` is an
+ * id of the wrong shape for the target it names**, and a caller writing the row
+ * stores what comes back rather than what it was handed.
+ */
+export function overrideTargetId(
   target: OverrideTarget,
   targetId: string,
-): boolean {
+): string | undefined {
   const shape = target === "role" ? OwnedRefSchema : PrincipalSchema;
-  return shape.safeParse(targetId).success;
+  const parsed = shape.safeParse(targetId);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /**
@@ -452,5 +458,5 @@ export function overrideIsWellFormed(
   override: Pick<SetPermissionOverrideRequest, "note" | "target" | "target_id">,
 ): boolean {
   if (override.target === "role" && override.note === undefined) return false;
-  return overrideTargetIsWellFormed(override.target, override.target_id);
+  return overrideTargetId(override.target, override.target_id) !== undefined;
 }

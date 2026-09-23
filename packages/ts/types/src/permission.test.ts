@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { splitOwnedRef } from "./codecs.js";
 import {
   ALL_PERMISSIONS,
   DEFAULT_PERMISSIONS,
@@ -11,7 +12,7 @@ import {
   maskBits,
   maskOf,
   overrideIsWellFormed,
-  overrideTargetIsWellFormed,
+  overrideTargetId,
   namedInGraph,
   NO_PERMISSIONS,
   resolvePermissionFold,
@@ -426,11 +427,23 @@ describe("the cascade", () => {
 });
 
 describe("what an override is written against", () => {
-  it("is a role's reference, or an identity's DID, and never the other", () => {
-    expect(overrideTargetIsWellFormed("role", EDITORS)).toBe(true);
-    expect(overrideTargetIsWellFormed("role", BOB)).toBe(false);
-    expect(overrideTargetIsWellFormed("principal", BOB)).toBe(true);
-    expect(overrideTargetIsWellFormed("principal", EDITORS)).toBe(false);
+  it("is a role's reference, or an identifier, and never the other", () => {
+    expect(overrideTargetId("role", EDITORS)).toBe(EDITORS);
+    expect(overrideTargetId("role", BOB)).toBeUndefined();
+    expect(overrideTargetId("principal", BOB)).toBe(BOB);
+    expect(overrideTargetId("principal", EDITORS)).toBeUndefined();
+  });
+
+  it("stores an identifier the one way everything else compares it", () => {
+    expect(overrideTargetId("principal", "MAILTO:Ben@Example.COM")).toBe(
+      "mailto:ben@example.com",
+    );
+    expect(
+      overrideTargetId(
+        "role",
+        `MAILTO:Ben@Example.COM/${splitOwnedRef(EDITORS).localId}`,
+      ),
+    ).toBe(`mailto:ben@example.com/${splitOwnedRef(EDITORS).localId}`);
   });
 
   it("is a note, where it is written on a role: a role says the graph in its own columns", () => {
@@ -440,9 +453,15 @@ describe("what an override is written against", () => {
     expect(
       overrideIsWellFormed({ note: NOTE, target: "role", target_id: EDITORS }),
     ).toBe(true);
-    expect(overrideIsWellFormed({ target: "principal", target_id: BOB })).toBe(true);
+    expect(overrideIsWellFormed({ target: "principal", target_id: BOB })).toBe(
+      true,
+    );
     expect(
-      overrideIsWellFormed({ note: NOTE, target: "principal", target_id: EDITORS }),
+      overrideIsWellFormed({
+        note: NOTE,
+        target: "principal",
+        target_id: EDITORS,
+      }),
     ).toBe(false);
   });
 });
