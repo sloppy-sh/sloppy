@@ -77,7 +77,7 @@ describe("a graph nobody has written a policy on", () => {
     expect(
       hasPolicy(
         [],
-        [{ scope: GRAPH, target: "did", target_id: BOB, allow: "1" }],
+        [{ scope: GRAPH, target: "principal", target_id: BOB, allow: "1" }],
       ),
     ).toBe(true);
   });
@@ -106,7 +106,7 @@ describe("a graph nobody has written a policy on", () => {
   it("is left where it was by a first override written on somebody else", () => {
     const first: OverrideFacts = {
       scope: NOTE,
-      target: "did",
+      target: "principal",
       target_id: CAI,
       deny: maskOf(Permissions.WRITE_NOTES),
     };
@@ -162,7 +162,7 @@ describe("somebody the graph is not kept for", () => {
       overrides: [
         {
           scope: GRAPH,
-          target: "did",
+          target: "principal",
           target_id: BOB,
           allow: maskOf(ALL_PERMISSIONS),
         },
@@ -210,7 +210,7 @@ describe("the cascade", () => {
       [
         {
           scope: GRAPH,
-          target: "did",
+          target: "principal",
           target_id: AVA,
           deny: maskOf(ALL_PERMISSIONS),
         },
@@ -276,7 +276,7 @@ describe("the cascade", () => {
       [
         {
           scope: GRAPH,
-          target: "did",
+          target: "principal",
           target_id: BOB,
           allow: maskOf(Permissions.WRITE_NOTES),
           deny: maskOf(Permissions.READ_NOTES),
@@ -340,7 +340,7 @@ describe("the cascade", () => {
         },
         {
           scope: NOTE,
-          target: "did",
+          target: "principal",
           target_id: BOB,
           allow: maskOf(Permissions.WRITE_NOTES),
         },
@@ -407,7 +407,7 @@ describe("the cascade", () => {
       [
         {
           scope: NOTE,
-          target: "did",
+          target: "principal",
           target_id: BOB,
           deny: maskOf(ALL_PERMISSIONS),
         },
@@ -429,8 +429,8 @@ describe("what an override is written against", () => {
   it("is a role's reference, or an identity's DID, and never the other", () => {
     expect(overrideTargetIsWellFormed("role", EDITORS)).toBe(true);
     expect(overrideTargetIsWellFormed("role", BOB)).toBe(false);
-    expect(overrideTargetIsWellFormed("did", BOB)).toBe(true);
-    expect(overrideTargetIsWellFormed("did", EDITORS)).toBe(false);
+    expect(overrideTargetIsWellFormed("principal", BOB)).toBe(true);
+    expect(overrideTargetIsWellFormed("principal", EDITORS)).toBe(false);
   });
 
   it("is a note, where it is written on a role: a role says the graph in its own columns", () => {
@@ -440,9 +440,9 @@ describe("what an override is written against", () => {
     expect(
       overrideIsWellFormed({ note: NOTE, target: "role", target_id: EDITORS }),
     ).toBe(true);
-    expect(overrideIsWellFormed({ target: "did", target_id: BOB })).toBe(true);
+    expect(overrideIsWellFormed({ target: "principal", target_id: BOB })).toBe(true);
     expect(
-      overrideIsWellFormed({ note: NOTE, target: "did", target_id: EDITORS }),
+      overrideIsWellFormed({ note: NOTE, target: "principal", target_id: EDITORS }),
     ).toBe(false);
   });
 });

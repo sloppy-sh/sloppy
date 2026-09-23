@@ -6,8 +6,8 @@ import {
   type BlockDocument,
   type BlockView,
   CommitIdSchema,
-  type DidSyr,
-  DidSyrSchema,
+  type Principal,
+  PrincipalSchema,
   type EdgeLook,
   EdgeLookSchema,
   isUnstyled,
@@ -75,13 +75,13 @@ export interface VaultNote {
   address?: Address;
   aliases: Address[];
   /** Who gates the note's writing. Absent is an open note. */
-  owner?: DidSyr;
+  owner?: Principal;
   /** Whose writing it carries, in order of first writing. **Absent is the
    *  ref's DID alone** — the canonical form, so that is the one case not
    *  written down. */
-  authors?: DidSyr[];
+  authors?: Principal[];
   /** Whose offered change its owner has taken in. Absent is none. */
-  contributors?: DidSyr[];
+  contributors?: Principal[];
   tags: string[];
   links: OwnedRef[];
   /** The looks its author set on the lines out of it, one per note at the other
@@ -237,10 +237,10 @@ export function vaultToNote(files: NoteSource): VaultNote {
   const parent = OwnedRefSchema.safeParse(frontString(front, "parent"));
   const look = NodeAppearanceSchema.safeParse(frontBlock(front, "appearance"));
   const address = AddressSchema.safeParse(frontString(front, "address"));
-  const owner = DidSyrSchema.safeParse(frontString(front, "owner"));
+  const owner = PrincipalSchema.safeParse(frontString(front, "owner"));
   const checked = CommitIdSchema.safeParse(frontString(front, "checked"));
-  const authors = dids(frontList(front, "authors"));
-  const contributors = dids(frontList(front, "contributors"));
+  const authors = named(frontList(front, "authors"));
+  const contributors = named(frontList(front, "contributors"));
   const stamp = (key: string): { [k: string]: Timestamp } => {
     const held = TimestampSchema.safeParse(frontString(front, key));
     return held.success ? { [key]: held.data } : {};
@@ -256,9 +256,7 @@ export function vaultToNote(files: NoteSource): VaultNote {
     ...(authors.length > 0 ? { authors } : {}),
     ...(contributors.length > 0 ? { contributors } : {}),
     tags: frontList(front, "tags"),
-    links: frontList(front, "links").filter(
-      (held) => OwnedRefSchema.safeParse(held).success,
-    ),
+    links: refs(frontList(front, "links")),
     ...edgesRead(front),
     title: frontString(front, "title") ?? "",
     ...(look.success && !isUnstyled(look.data)
@@ -271,17 +269,30 @@ export function vaultToNote(files: NoteSource): VaultNote {
   };
 }
 
-function dids(held: readonly string[]): DidSyr[] {
-  return held.filter((one) => DidSyrSchema.safeParse(one).success);
+/** The references among these, as the schema spells them. */
+function refs(held: readonly string[]): OwnedRef[] {
+  return held.flatMap((one) => {
+    const parsed = OwnedRefSchema.safeParse(one);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
-/** Whose writing the note carries, where that is anything but the ref's DID
- *  alone — the one case the file leaves out, so a note written before the list
- *  and a note only its author has written into are the same file. */
-function writtenAuthors(note: NodeView): DidSyr[] {
+/** The identifiers among these, as the schema spells them — a name a file
+ *  carries in some other casing lands here in the one everything compares. */
+function named(held: readonly string[]): Principal[] {
+  return held.flatMap((one) => {
+    const parsed = PrincipalSchema.safeParse(one);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+/** Whose writing the note carries, where that is anything but the ref's own
+ *  owner alone — the one case the file leaves out, so a note written before the
+ *  list and a note only its author has written into are the same file. */
+function writtenAuthors(note: NodeView): Principal[] {
   const authors = note.authors ?? [];
   const [first] = authors;
-  return authors.length === 1 && first === splitOwnedRef(note.ref).did
+  return authors.length === 1 && first === splitOwnedRef(note.ref).owner
     ? []
     : [...authors];
 }

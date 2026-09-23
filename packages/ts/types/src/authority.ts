@@ -2,7 +2,7 @@
 // function every surface asks, and the one place a graph's policy meets the
 // note's own gate. docs/ARCHITECTURE.md § "Who may write where".
 
-import type { DidSyr } from "./common.js";
+import type { Principal } from "./common.js";
 import type { Graph } from "./graph.js";
 import { type Node, authorsOf, writeOutcome } from "./node.js";
 import {
@@ -29,7 +29,7 @@ export interface WriteDecision {
 
 export interface WriteDecisionInput {
   readonly note: Pick<Node, "created_by" | "owner" | "authors">;
-  readonly writer: DidSyr;
+  readonly writer: Principal;
   /** The graph the note is in. */
   readonly graph: Pick<Graph, "created_by" | "vouching">;
   /**
@@ -48,7 +48,7 @@ const OFFERED: WriteDecision = { verdict: "offered", coAuthors: false };
 /** Whether this note already carries this identity's writing. */
 function carries(
   note: Pick<Node, "created_by" | "owner" | "authors">,
-  writer: DidSyr,
+  writer: Principal,
 ): boolean {
   return note.owner === writer || authorsOf(note).includes(writer);
 }

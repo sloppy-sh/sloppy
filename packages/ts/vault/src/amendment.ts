@@ -3,8 +3,8 @@
 
 import {
   type AmendmentView,
-  type DidSyr,
-  DidSyrSchema,
+  type Principal,
+  PrincipalSchema,
   type EdgeLook,
   isUnstyled,
   type NodeAppearance,
@@ -43,7 +43,7 @@ import {
 export interface VaultAmendment {
   /** The note it is offered on. */
   amends: OwnedRef;
-  by: DidSyr;
+  by: Principal;
   /** Absent where the file did not say, which is a file a hand has been in. */
   at?: Timestamp;
   /** Absent is an offer made with nothing said about it. */
@@ -97,7 +97,7 @@ export function inkOffered(stem: string, ulid: string): boolean {
 export function vaultToAmendment(files: NoteSource): VaultAmendment {
   const { front, body } = splitNoteFile(files.markdown);
   const amends = OwnedRefSchema.safeParse(frontString(front, "amends"));
-  const by = DidSyrSchema.safeParse(frontString(front, "by"));
+  const by = PrincipalSchema.safeParse(frontString(front, "by"));
   if (!amends.success || !by.success) {
     throw new VaultFormatError("This file isn't an offered change.");
   }

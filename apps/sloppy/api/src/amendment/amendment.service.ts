@@ -127,7 +127,7 @@ export class AmendmentService {
 
   /** The offer this person settles, which is one standing in their own graph. */
   private async settling(did: DidSyr, ref: OwnedRef): Promise<Amendment> {
-    if (splitOwnedRef(ref).did !== did) throw notHere();
+    if (splitOwnedRef(ref).owner !== did) throw notHere();
     const offer = await this.amendments.find(ref);
     if (!offer || offer.created_by !== did) throw notHere();
     return offer;

@@ -129,7 +129,7 @@ export function graphOrRefuse(
 ): OwnedRef | undefined {
   if (!raw) return undefined;
   const parsed = OwnedRefSchema.safeParse(raw);
-  if (!parsed.success || splitOwnedRef(parsed.data).did !== did) {
+  if (!parsed.success || splitOwnedRef(parsed.data).owner !== did) {
     throw new NotFoundException("That graph is not here.");
   }
   return parsed.data;

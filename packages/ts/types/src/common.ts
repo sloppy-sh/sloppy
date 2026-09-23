@@ -38,6 +38,11 @@ export function asTimestamp(value: string): Timestamp {
 /**
  * A syr identity. The method-specific part is a multibase base58btc-encoded
  * Ed25519 public key, so the DID is the key rather than a lookup into one.
+ *
+ * **Narrow on purpose.** This is what syr's wire speaks, what a syr instance is
+ * asked about, and what a key is derived from. What a note's owner, its
+ * authors, a role's members and every ref hold is a {@link Principal}, of which
+ * this is one scheme.
  */
 export const DidSyrSchema = z
   .string()
@@ -47,6 +52,61 @@ export const DidSyrSchema = z
   );
 export type DidSyr = z.infer<typeof DidSyrSchema>;
 
+/**
+ * RFC 6068's `addr-spec`, minus two characters: `/`, which separates the halves
+ * of an {@link OwnedRef}, and `%`, which would give one address two spellings.
+ * Both exclusions exist because a principal is compared byte for byte and never
+ * parsed into parts.
+ */
+const MAILTO =
+  /^mailto:[a-z0-9!#$&'*+=?^_`{|}~-]+(?:\.[a-z0-9!#$&'*+=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/**
+ * Somebody who goes by an email address — `mailto:alice@example.com`.
+ *
+ * **Lowercased on the way in**, so that no caller has to remember to: the
+ * binding this scheme will be resolved through lowercases the local part before
+ * it hashes it, and an access list in which `Alice@…` and `alice@…` are two
+ * people is a way to be locked out of your own graph.
+ */
+export const MailtoSchema = z
+  .string()
+  .max(327)
+  .toLowerCase()
+  .regex(MAILTO, "Expected a mailto: identifier, e.g. mailto:alice@example.com");
+export type Mailto = z.infer<typeof MailtoSchema>;
+
+/**
+ * Which scheme an identifier is in. Adding a way for somebody to be named is a
+ * value here and an arm of {@link PrincipalSchema} — never a second field
+ * beside the first, and never a boolean; AI.md § "Provider-Agnostic Data
+ * Shapes".
+ */
+export const PrincipalSchemeSchema = z.enum(["did:syr", "mailto"]);
+export type PrincipalScheme = z.infer<typeof PrincipalSchemeSchema>;
+
+/**
+ * Somebody a graph can name: a syr identity, or an email address.
+ *
+ * Each scheme is recognised and checked on its own terms — a malformed
+ * `mailto:` is refused as firmly as a malformed DID — and a string in neither
+ * is refused. Everything downstream treats the result as opaque: it is compared
+ * byte for byte, it is half of a ref, and it is the column a person's rows are
+ * swept by. What a scheme can be RESOLVED or VERIFIED through is a separate
+ * question, asked of a `KeyBinding` and of a `VouchResolver`.
+ */
+export const PrincipalSchema = z.union([DidSyrSchema, MailtoSchema], {
+  error: "Expected an identifier, e.g. did:syr:z6Mkt9… or mailto:alice@example.com",
+});
+export type Principal = z.infer<typeof PrincipalSchema>;
+
+/** Which scheme a principal is in, or `undefined` where it is in none. */
+export function principalScheme(value: string): PrincipalScheme | undefined {
+  if (DidSyrSchema.safeParse(value).success) return "did:syr";
+  if (MailtoSchema.safeParse(value).success) return "mailto";
+  return undefined;
+}
+
 /** Crockford base32, as `ulid()` emits it. */
 export const UlidSchema = z
   .string()
@@ -54,16 +114,27 @@ export const UlidSchema = z
 export type Ulid = z.infer<typeof UlidSchema>;
 
 /**
- * How one row points at another: `<did>/<ulid>`, deliberately a string and not
- * the SurrealDB record link it looks like it should be. docs/ARCHITECTURE.md
- * § "Data model" says why.
+ * How one row points at another: `<principal>/<ulid>`, deliberately a string
+ * and not the SurrealDB record link it looks like it should be.
+ * docs/ARCHITECTURE.md § "Data model" says why.
+ *
+ * Each half is held to its own schema rather than to one regex spanning both,
+ * so a ref is exactly a principal and a ULID and nothing that merely looks like
+ * the pair. The principal half arrives normalised, as it does anywhere else.
  */
-export const OwnedRefSchema = z
-  .string()
-  .regex(
-    /^did:syr:z[1-9A-HJ-NP-Za-km-z]+\/[0-9A-HJKMNP-TV-Z]{26}$/,
-    "Expected a <did>/<ulid> reference",
-  );
+export const OwnedRefSchema = z.string().transform((value, ctx) => {
+  const separator = value.lastIndexOf("/");
+  const owner = PrincipalSchema.safeParse(value.slice(0, separator));
+  const localId = UlidSchema.safeParse(value.slice(separator + 1));
+  if (separator < 1 || !owner.success || !localId.success) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Expected a <principal>/<ulid> reference",
+    });
+    return z.NEVER;
+  }
+  return `${owner.data}/${localId.data}`;
+});
 export type OwnedRef = z.infer<typeof OwnedRefSchema>;
 
 /**
@@ -74,6 +145,9 @@ export type OwnedRef = z.infer<typeof OwnedRefSchema>;
  * carry colons of its own — which is why this is not an `OwnedRef`, and why
  * `splitStoreRef`, the one place it is taken apart, matches the DID rather than
  * counting colons.
+ *
+ * A record an identity store issued, so the identity is that store's own and is
+ * a `did:syr` rather than a {@link Principal}.
  */
 export const StoreRefSchema = z
   .string()
@@ -97,6 +171,6 @@ export type BaseEntity = z.infer<typeof BaseEntitySchema>;
  * and that sweep are both necessary.
  */
 export const OwnedEntitySchema = BaseEntitySchema.extend({
-  created_by: DidSyrSchema,
+  created_by: PrincipalSchema,
 });
 export type OwnedEntity = z.infer<typeof OwnedEntitySchema>;

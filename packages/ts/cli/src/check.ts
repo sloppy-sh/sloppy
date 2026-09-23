@@ -7,7 +7,7 @@ import {
   anchorsOf,
   citedNotes,
   CommitIdSchema,
-  DidSyrSchema,
+  PrincipalSchema,
   type OwnedRef,
   OwnedRefSchema,
   splitOwnedRef,
@@ -66,7 +66,7 @@ interface Holds {
 const FIELDS: readonly (readonly [string, Holds, string])[] = [
   ["parent", OwnedRefSchema, "`parent` doesn't name a note."],
   ["address", AddressSchema, "`address` isn't an address."],
-  ["owner", DidSyrSchema, "`owner` doesn't name anybody."],
+  ["owner", PrincipalSchema, "`owner` doesn't name anybody."],
   ["created", TimestampSchema, "`created` isn't a time."],
   ["updated", TimestampSchema, "`updated` isn't a time."],
   ["checked", CommitIdSchema, "`checked` doesn't name a commit."],
@@ -74,8 +74,8 @@ const FIELDS: readonly (readonly [string, Holds, string])[] = [
 
 const LISTS: readonly (readonly [string, Holds, string])[] = [
   ["aliases", AddressSchema, "isn't an address"],
-  ["authors", DidSyrSchema, "doesn't name anybody"],
-  ["contributors", DidSyrSchema, "doesn't name anybody"],
+  ["authors", PrincipalSchema, "doesn't name anybody"],
+  ["contributors", PrincipalSchema, "doesn't name anybody"],
   ["links", OwnedRefSchema, "doesn't name a note"],
 ];
 
@@ -126,7 +126,7 @@ export async function check(container: Files): Promise<CheckResult> {
 
   for (const note of read) {
     for (const cited of note.cites) {
-      if (splitOwnedRef(cited).did !== graph.owner || here.has(cited)) continue;
+      if (splitOwnedRef(cited).owner !== graph.owner || here.has(cited)) continue;
       defects.push({
         kind: "missing-note",
         file: note.file,

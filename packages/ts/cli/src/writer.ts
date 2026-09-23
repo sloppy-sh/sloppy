@@ -117,7 +117,7 @@ function offered(
     written.add(drafted);
     return { ref: block.ref, content: drafted };
   });
-  const did = splitOwnedRef(note).did;
+  const did = splitOwnedRef(note).owner;
   for (const content of sections) {
     if (written.has(content)) continue;
     body.push({ ref: `${did}/${ulid()}`, content });

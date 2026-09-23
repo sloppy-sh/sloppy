@@ -140,7 +140,7 @@ class GraphsStore {
 	 *  it knows of nobody, and calls nothing somebody else's. */
 	keeps(did: string): boolean {
 		const folder = this.#inFolder;
-		if (folder !== null && splitOwnedRef(folder).did === did) return true;
+		if (folder !== null && splitOwnedRef(folder).owner === did) return true;
 		return this.#all.length === 0 || this.#all.some((graph) => graph.created_by === did);
 	}
 

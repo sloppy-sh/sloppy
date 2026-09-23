@@ -155,7 +155,7 @@
 	/** Whether the note this was left on is the reader's own: a note belongs to
 	 *  whoever the ref it travels by names. */
 	function onMyNote(one: NoteComment): boolean {
-		return splitOwnedRef(one.node).did === mine;
+		return splitOwnedRef(one.node).owner === mine;
 	}
 
 	async function refuse(voice: string): Promise<void> {

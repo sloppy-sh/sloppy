@@ -315,8 +315,8 @@ export function syrPostRefFor(node: OwnedRef): {
   post_did: string;
   post_id: string;
 } {
-  const { did, localId } = splitOwnedRef(node);
-  return { post_did: did, post_id: localId };
+  const { owner, localId } = splitOwnedRef(node);
+  return { post_did: owner, post_id: localId };
 }
 
 /** The other direction, for a record read back off a store. */

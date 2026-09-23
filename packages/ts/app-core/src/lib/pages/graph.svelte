@@ -897,7 +897,7 @@
 	 *  graph they do not keep is read in the region they hold a copy of it in. */
 	async function reachCited(cited: OwnedRef): Promise<void> {
 		await graphs.load().catch(() => {});
-		if (session.signedIn && !graphs.keeps(splitOwnedRef(cited).did)) {
+		if (session.signedIn && !graphs.keeps(splitOwnedRef(cited).owner)) {
 			await reachHeld(cited);
 			return;
 		}
@@ -922,7 +922,7 @@
 			await readHeld(hit.note.ref);
 			return;
 		}
-		const who = splitOwnedRef(cited).did;
+		const who = splitOwnedRef(cited).owner;
 		const followed = peers.following.find((one) => one.did === who);
 		const from = followed && readAt(followed);
 		asking = { identity: who, ...(from ? { from } : {}) };
@@ -1836,7 +1836,7 @@
 
 	/** Whose graph a held region copies: a publication is its author's, so their
 	 *  identity is one half of its reference. */
-	const authorOf = (region: PullView) => splitOwnedRef(region.publication).did;
+	const authorOf = (region: PullView) => splitOwnedRef(region.publication).owner;
 
 	const heldRegions = $derived<HeldRegion[]>(
 		peers.regions.map((region) => ({

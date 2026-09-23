@@ -67,7 +67,7 @@ export class PullService {
    */
   async pull(reader: DidSyr, request: CreatePullRequest): Promise<PullView> {
     const publication = request.publication;
-    const author = splitOwnedRef(publication).did;
+    const author = splitOwnedRef(publication).owner;
     if (author === reader) {
       throw new BadRequestException("That branch is already in your graph.");
     }

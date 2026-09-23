@@ -1,12 +1,15 @@
 // Composite record ids, and the two conversions that cross the wire.
 //
-// Every user-owned row is keyed `table:{ created_by: <did>, id: <ulid> }`;
+// Every user-owned row is keyed `table:{ created_by: <principal>, id: <ulid> }`;
 // docs/ARCHITECTURE.md § "Data model" says why the owner is half of the key
 // rather than a column alone. Modelled on syr's `codecs.ts`.
+//
+// The key is an object, so an owner's own characters reach the driver as a
+// value and are never spelled into a query.
 
 import { RecordId } from "surrealdb";
 import { ulid } from "ulid";
-import type { DidSyr, OwnedRef, StoreRef } from "./common.js";
+import type { DidSyr, OwnedRef, Principal, StoreRef } from "./common.js";
 
 interface CompositeId {
   created_by: string;
@@ -16,10 +19,10 @@ interface CompositeId {
 /** Mint a row's key. Omit `localId` to draw a fresh ULID. */
 export function createOwnedRecordId(
   table: string,
-  did: string,
+  owner: string,
   localId?: string,
 ): RecordId {
-  return new RecordId(table, { created_by: did, id: localId ?? ulid() });
+  return new RecordId(table, { created_by: owner, id: localId ?? ulid() });
 }
 
 export function isCompositeRecordId(recordId: RecordId): boolean {
@@ -41,8 +44,8 @@ function requireComposite(recordId: RecordId): CompositeId {
   return recordId.id as unknown as CompositeId;
 }
 
-/** The owning DID. Throws if the id is not composite. */
-export function extractDid(recordId: RecordId): string {
+/** Whose row it is. Throws if the id is not composite. */
+export function extractOwner(recordId: RecordId): string {
   return requireComposite(recordId).created_by;
 }
 
@@ -52,12 +55,12 @@ export function extractLocalId(recordId: RecordId): string {
 }
 
 /** Rebuild a key from a route parameter, without trusting it to name a table. */
-export function recordIdFromDidAndLocal(
+export function recordIdFromOwnerAndLocal(
   table: string,
-  did: string,
+  owner: string,
   localId: string,
 ): RecordId {
-  return new RecordId(table, { created_by: did, id: localId });
+  return new RecordId(table, { created_by: owner, id: localId });
 }
 
 export function ownedRefFrom(recordId: RecordId): OwnedRef {
@@ -65,19 +68,23 @@ export function ownedRefFrom(recordId: RecordId): OwnedRef {
   return `${key.created_by}/${key.id}`;
 }
 
-/** The two halves of a reference. The DID carries colons of its own, so the
- *  split is at the last separator and never the first. */
-export function splitOwnedRef(ref: OwnedRef): { did: DidSyr; localId: string } {
+/** The two halves of a reference: whose row it is, and which one. A principal
+ *  carries separators of its own, so the split is at the last `/` and never the
+ *  first. */
+export function splitOwnedRef(ref: OwnedRef): {
+  owner: Principal;
+  localId: string;
+} {
   const separator = ref.lastIndexOf("/");
   if (separator < 1) {
-    throw new Error(`Expected a <did>/<ulid> reference, got ${ref}`);
+    throw new Error(`Expected a <principal>/<ulid> reference, got ${ref}`);
   }
-  return { did: ref.slice(0, separator), localId: ref.slice(separator + 1) };
+  return { owner: ref.slice(0, separator), localId: ref.slice(separator + 1) };
 }
 
 export function recordIdFromOwnedRef(table: string, ref: OwnedRef): RecordId {
-  const { did, localId } = splitOwnedRef(ref);
-  return recordIdFromDidAndLocal(table, did, localId);
+  const { owner, localId } = splitOwnedRef(ref);
+  return recordIdFromOwnerAndLocal(table, owner, localId);
 }
 
 /** How an identity store's own record is cited: `<did>:<local id>`. */

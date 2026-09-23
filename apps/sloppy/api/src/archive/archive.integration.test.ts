@@ -489,7 +489,7 @@ describe("a graph handed over as an archive", () => {
       const landed = answered.body as GraphView;
 
       expect(landed.title).toBe("The garden");
-      expect(splitOwnedRef(landed.ref).did).toBe(bram.did);
+      expect(splitOwnedRef(landed.ref).owner).toBe(bram.did);
       expect(splitOwnedRef(landed.ref).localId).toBe(
         splitOwnedRef(garden.ref).localId,
       );

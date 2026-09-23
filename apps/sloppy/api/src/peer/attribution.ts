@@ -55,9 +55,9 @@ function aboutThisNode(
   claim: ReturnType<typeof NodeSignedPayloadV1Schema.parse>,
   node: PublishedNode,
 ): boolean {
-  const { did, localId } = splitOwnedRef(node.ref);
+  const { owner, localId } = splitOwnedRef(node.ref);
   return (
-    claim.did === did &&
+    claim.did === owner &&
     claim.node_id === localId &&
     claim.address === node.address &&
     claim.title === node.title &&

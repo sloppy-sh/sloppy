@@ -26,7 +26,7 @@
 	const from = $derived.by(() => {
 		if (met === null) return undefined;
 		const region = peers.regions.find(
-			(one) => splitOwnedRef(one.publication).did === met
+			(one) => splitOwnedRef(one.publication).owner === met
 		)?.source_url;
 		const followed = peers.following.find((one) => one.did === met)?.provider_url;
 		return region ?? peerOrigin(followed ?? '') ?? undefined;

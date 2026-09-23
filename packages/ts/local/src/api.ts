@@ -670,7 +670,7 @@ export class LocalApi implements SloppyApi {
       if (!note) throw absent("That note is not here.");
       const writer = await this.writer;
       const whose = {
-        created_by: splitOwnedRef(note.ref).did,
+        created_by: splitOwnedRef(note.ref).owner,
         owner: note.owner,
         authors: note.authors,
       };
@@ -2060,7 +2060,7 @@ function whoseWriting(note: VaultNote): unknown[] {
   return [
     note.owner ?? null,
     authorsOf({
-      created_by: splitOwnedRef(note.ref).did,
+      created_by: splitOwnedRef(note.ref).owner,
       authors: note.authors,
     }),
     note.contributors ?? [],
