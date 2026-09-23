@@ -189,7 +189,7 @@ describe('the identities a device holds', () => {
 		expect(target.textContent).toContain('Made on this device');
 	});
 
-	it('reads no key back to anybody', async () => {
+	it('names nobody by a key, and still offers the identity itself to copy', async () => {
 		shell({
 			list: async () => [
 				here({ did: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK' }),
@@ -204,7 +204,31 @@ describe('the identities a device holds', () => {
 		show();
 		await settle();
 
-		expect(target.textContent).not.toContain('z6Mk');
+		const names = [...target.querySelectorAll('li span.font-medium')].map(
+			(one) => one.textContent ?? ''
+		);
+		expect(names).toEqual(['The identity on this device', 'The identity you brought here']);
+		expect(target.querySelectorAll('li .address')).toHaveLength(2);
+	});
+
+	it('tells two of the same kind apart before either has been named', async () => {
+		shell({
+			list: async () => [
+				here({ did: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK' }),
+				here({
+					did: 'did:syr:z6MkjchhfUsD6mmvni8mCdXHw216Xrm9bQe2mBH1P5RDjVJG',
+					writing: false
+				})
+			]
+		});
+		show();
+		await settle();
+
+		const rows = [...target.querySelectorAll('li')];
+		expect(rows).toHaveLength(2);
+		const told = rows.map((row) => row.querySelector('.address')?.textContent ?? '');
+		expect(told[0]).not.toBe(told[1]);
+		expect(told.every(Boolean)).toBe(true);
 	});
 
 	it('writes as the one somebody picks from then on', async () => {

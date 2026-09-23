@@ -292,6 +292,34 @@ describe('a note somebody else writes, in a folder on this device', () => {
 	});
 });
 
+/** A store with nothing to call somebody by answers with the identity itself
+ *  where a name would be, and that is nobody's name. */
+const NAMELESS: ProfileView = {
+	did: KEEPER,
+	username: KEEPER,
+	display_name: null,
+	bio: null,
+	avatar_src: null,
+	banner_src: null
+};
+
+describe('a note somebody else writes, whose store has nothing to call them by', () => {
+	beforeEach(() => {
+		running('local');
+		api.on(`GET /profile/${encodeURIComponent(KEEPER)}`, () => NAMELESS);
+		serve(theirNote(), [OPENING]);
+		amending(api, { [THEIRS]: [] }, () => theirNote());
+	});
+
+	it('still says only they write it, never that anyone writing here does', async () => {
+		await open(THEIRS);
+
+		const said = [...document.body.querySelectorAll('p')].map((one) => one.textContent?.trim());
+		expect(said).toContain('Only somebody else writes this note.');
+		expect(screen()).not.toContain('whoever writes it');
+	});
+});
+
 describe('a note the reader writes', () => {
 	it('says nothing about who writes it while nobody gates it', async () => {
 		serve(myNote(), [MY_OPENING]);

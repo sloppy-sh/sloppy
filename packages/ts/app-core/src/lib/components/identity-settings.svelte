@@ -2,6 +2,7 @@
 	// The identities a device holds, and the ways one arrives —
 	// docs/ARCHITECTURE.md § "A graph off the device".
 	import type { IdentityHere } from '@sloppy/local';
+	import { IdentityLine } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
@@ -146,6 +147,7 @@
 							{/if}
 						</div>
 						<p class="text-sm text-muted-foreground">{kept(one)}</p>
+						<IdentityLine identity={one.did} label="Copy this identity" class="mt-1" />
 						{#if locked}
 							<p class="text-sm text-muted-foreground">{locked}</p>
 						{/if}

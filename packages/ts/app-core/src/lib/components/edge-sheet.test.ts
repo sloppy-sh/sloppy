@@ -328,6 +328,25 @@ describe('a line neither end of which this reader writes', () => {
 		expect(screen()).toContain('Offered to Ada Lovelace. It shows once they take it.');
 	});
 
+	it('offers it to somebody else where their store has nothing to call them by', async () => {
+		await graphWith([HERS, ALSO]);
+		api.on(`GET /profile/${encodeURIComponent(ELSE)}`, () => ({
+			...ADA,
+			username: ELSE,
+			display_name: null
+		}));
+		show(nodes.get(HERS.ref) as NodeView, ALSO);
+		await settle();
+
+		named('Dashed')?.click();
+		flushSync();
+		named('Offer this look')?.click();
+		await settle();
+
+		expect(screen()).toContain('Offered to somebody else. It shows once they take it.');
+		expect(screen()).not.toContain('whoever writes it');
+	});
+
 	it('offers taking the look off the same way, leaving the note’s other lines alone', async () => {
 		const LOOKED = {
 			...HERS,
