@@ -132,6 +132,8 @@ export function consentPage(apiBase: string): string {
     if (bearer) headers.authorization = 'Bearer ' + bearer;
     return fetch(API + path, {
       method: 'POST', headers: headers, body: JSON.stringify(body)
+    }).catch(function () {
+      throw new Error('Sloppy could not be reached. Check your connection and try again.');
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (data) {
         if (response.ok) return data;

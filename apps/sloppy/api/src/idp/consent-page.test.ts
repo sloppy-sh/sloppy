@@ -134,6 +134,9 @@ function openPage(
   options: {
     remembers?: boolean;
     answer?: (path: string, body: Record<string, unknown>) => Reply;
+    /** A browser that could not make the request at all, which rejects with a
+     *  phrase of its own rather than answering. */
+    unreachable?: boolean;
   } = {},
 ) {
   const root = new El("main");
@@ -162,6 +165,9 @@ function openPage(
       const path = url.slice(API.length);
       const body = JSON.parse(init.body) as Record<string, unknown>;
       sent.push({ path, body });
+      if (options.unreachable) {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
       const reply = answer(path, body);
       return Promise.resolve({
         ok: reply.ok,
@@ -271,5 +277,19 @@ describe("what a mistake on the consent page costs", () => {
     const line = problem(root);
     expect(line?.textContent).toBe("That did not match.");
     expect(line?.attributes.role).toBe("alert");
+  });
+
+  it("says what to try when the browser could not make the request at all", async () => {
+    const { root } = openPage({ remembers: true, unreachable: true });
+    fieldNamed(root, "Username").value = "alice";
+    fieldNamed(root, "Password").value = "hunter2";
+    submitForm(root);
+    await settled();
+
+    const line = problem(root);
+    expect(line?.textContent).toBe(
+      "Sloppy could not be reached. Check your connection and try again.",
+    );
+    expect(line?.textContent).not.toMatch(/fetch/i);
   });
 });
