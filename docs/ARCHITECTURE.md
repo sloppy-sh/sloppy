@@ -461,17 +461,42 @@ graph has let it through. This says whether the graph lets it through at all, an
 anybody stands behind the identity making it.
 
 **A graph with none of this written on it behaves exactly as every graph did before it
-existed.** No roles, no overrides, nothing asked of a writer: `writeDecision` reads no bit,
-asks nothing about the writer, and answers what `writeOutcome` and `withAuthor` answer. A
-person writing alone in a folder on their own device never meets any of it.
+existed.** No roles, no overrides, nothing asked of a writer: `writeDecision` answers what
+`writeOutcome` and `withAuthor` answer. A person writing alone in a folder on their own
+device never meets any of it.
+
+**Nothing holds a write to any of this yet.** The vocabulary, the evaluator, the rows and
+the resolver are here; `gate.ts` still asks `writeOutcome` alone, and the sites that call
+`writeDecision` land with the work that forks from this.
 
 ### Whether anybody stands behind an identity
 
 A `did:syr` binds a key and no host — syr's did-method spec is explicit that no part of the
-identifier names a server. So an identity travels with an **instance hint**, which says where
-its record may be found and decides nothing: a wrong or hostile hint can fail to resolve, and
-that is the whole of what it can do. What is read is the identity's own record, resolved from
-the hint and then read where the record says it is answered.
+identifier names a server. So an identity travels with an **instance hint**: where a record
+may be found, and never a fact about the DID.
+
+**What is read there is the whole of what the answer rests on, and syr serves it unsigned.**
+What is resolved today is syr's listing of root-signed platform delegations, which syr's own
+mandates spec calls a chain of length one — and the listing carries no signature, so a host
+that serves an identity manifest and one unrevoked entry says `vouched` about whatever DID
+it is asked for. § "Federating the graph" already rules on this shape where a stranger's
+comment arrives: an identity manifest is whatever the origin serving it says, so a principal
+naming its own store would be vouching for the identity it claims to be. Three things follow,
+and the first is the one the rest hang off:
+
+- **A resolution starts only from an address this reader already trusts.**
+  `TrustedInstance` carries the address and whose word it is, and there are three words: the
+  instance that identity signed in to Sloppy through, an address the person in front of us
+  typed, and this reader's own `known_identity` row — written by an earlier resolution from
+  one of the first two. **There is no word for an address that arrived with a DID from a
+  peer**, and adding one would be deciding that a principal may name its own voucher.
+- **A trusted address is still an address somebody else chose**, so both reads — the
+  identity's record, and the listing of the authority held for it — go through
+  `media/remote-host.ts` on every hop, under the policy a picture's address is held to, and
+  within a bound on how much of an answer is read.
+- **The mandate chain is what makes this a signature check.** Root, then agent, then whoever
+  holds the grant: it lands behind `VouchResolver` as a different reading, and a caller still
+  reads `Vouch.state` and nothing else.
 
 Resolution answers one of three things, and **the third is not a formality**:
 
@@ -486,27 +511,21 @@ Resolution answers one of three things, and **the third is not a formality**:
 
 `standingVouch` is the one function that turns a just-now `unknown` back into what resolution
 last settled on, so no surface decides on its own that an unreachable instance means somebody
-lost their access. The last settled answer is kept on a `known_identity` row — the hint, what
+lost their access. The last settled answer is kept on a `known_identity` row — the address, what
 was settled, and when — one per identity per person who wrote it down. An `unknown` never
 writes over it.
 
 **Nothing a writer says about itself decides any of this.** There is no column a peer can
 write that carries it; it is derived by resolution here and cached here.
 
-What is resolved TODAY is syr's listing of root-signed platform delegations, which syr's own
-mandates spec calls a chain of length one. It is read through `VouchResolver`, and a caller
-reads `Vouch.state` and nothing else — so the mandate chain, root to agent to whoever holds
-the grant, lands as a different reading behind the same port rather than as a change to
-everything that asks. Today's listing carries no signature, so what `vouched` rests on is the
-identity's own instance saying so; the mandate chain is what makes it a signature check, and
-it changes nothing above the port.
-
 **A graph says whether it asks.** `Graph.vouching` is `optional` or `required`, and absent is
 `optional` — every graph written before the column, and every folder somebody keeps to
-themselves. `required` refuses a write by an identity resolved `anonymous`; it lets `unknown`
-through on whatever that identity already holds, because of the rule above. A graph never
-holds its own owner to it: an identity minted on a device is anonymous, and asking to be
-vouched must not shut out the person asking for it.
+themselves. `required` refuses a write by an identity resolved `anonymous`. Where nothing
+answered it neither admits nor evicts: a writer the note already carries — its owner, or
+somebody in its `authors` — writes on, and anybody else has their change **offered** rather
+than landed, because admitting a stranger on an `unknown` would be granting authority nobody
+answered for. A graph never holds its own owner to any of it: an identity minted on a device is
+anonymous, and asking to be vouched must not shut out the person asking for it.
 
 ### The cascade
 
@@ -514,7 +533,14 @@ Sloppy's scopes are **graph, then note**. A role belongs to a graph, because a g
 unit people collaborate in, and an override is written on the graph or on one note in it.
 An override's target is a **role** or one **identity**.
 
-`resolvePermissionFold` folds them, lowest priority first, each layer
+**`DEFAULT_PERMISSIONS` is the floor the cascade folds from**: the verbs a note's own gate
+already governs — reading, writing, starting and deleting notes, offering a change, taking one
+in, and joining a note's authorship — and none of the ones that are the graph's rather than
+the note's: moving a note and writing its address, publishing, and saying who may do what in
+it. So the first role or override written on a graph **takes nothing off anybody it does not
+name**, and a graph closes a verb off by denying it on the role everybody holds.
+
+`resolvePermissionFold` folds from there, lowest priority first, each layer
 `perms = (perms & ~deny) | allow`:
 
 1. the roles the writer holds, in ascending `position`
@@ -523,9 +549,10 @@ An override's target is a **role** or one **identity**.
 4. the note-scoped override written on that identity
 
 A graph-scoped override on a ROLE is not a layer: a role carries its graph-wide allow and deny
-in layer 1. `ADMINISTRATOR` short-circuits after layer 2, so nothing written on a note takes a
-verb off an administrator. **The graph's own owner holds every verb**, whatever is written —
-a first role written on a graph must not lock its own author out.
+in layer 1, so `overrideIsWellFormed` refuses one rather than letting a row be written that
+the fold would drop. `ADMINISTRATOR` short-circuits after layer 2, so nothing written on a note
+takes a verb off an administrator. **The graph's own owner holds every verb**, whatever is
+written — a first role written on a graph must not lock its own author out.
 
 The verbs are a closed enum of bits in `permission.ts`, stored as a decimal string because no
 store here has a number that wide surviving a round trip. **A bit's position is written once
@@ -545,10 +572,12 @@ Two of them carry more than their name:
 ### What a write comes to
 
 `writeDecision` is the one function that answers it, and it is the note's gate and the graph's
-policy in one place:
+policy in one place. It is told what the writer holds and what resolving them said — never
+left to read an absent argument as leave to do anything:
 
-1. a graph that asks for vouched writers refuses an `anonymous` one, and lets its own owner
-   and an `unknown` one through;
+1. a graph that asks for vouched writers refuses an `anonymous` one, lets its own owner
+   through, and offers rather than lands the change of one nothing answered for who has
+   written nothing there yet;
 2. the note's gate decides next — `writeOutcome` unchanged — and a gated note's write is
    **offered** where the writer may offer and **refused** where they may not;
 3. a write that lands needs `WRITE_NOTES`, and `CO_AUTHOR` besides where it would put the
@@ -556,9 +585,10 @@ policy in one place:
    **refused** where the graph takes no offers.
 
 `refused` is the one verdict that is new, and it is reachable only where somebody has written
-a policy on the graph. `hasPolicy` is what a caller asks before folding anything: a graph with
-no roles and no overrides is given no permissions at all, and every bit check above is skipped
-rather than answered.
+a policy on the graph or asked its writers to be vouched. `hasPolicy` is what a caller asks to
+skip the fold rather than a second answer: a graph with no roles and no overrides folds to
+`DEFAULT_PERMISSIONS` for anybody but its owner, which `constantPermissionFold` hands back
+without reading a row.
 
 ### The rows
 
@@ -570,7 +600,8 @@ marks the one role everybody in a graph holds and is written only as `true`, bec
 index that holds one of those per graph does not constrain a row whose column is absent.
 `permission_override.scope` is written out as the note's ref or the graph's own rather than
 left absent for the graph, for the same reason: UNIQUE is what makes one override per target
-per scope a rule rather than a hope.
+per scope a rule rather than a hope. Both of those are claims about a server rather than about
+a string, so `schema.integration.test.ts` is where they are checked.
 
 ## syr integration
 
