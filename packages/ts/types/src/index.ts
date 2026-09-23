@@ -13,6 +13,7 @@ export * from "./picture.js";
 export * from "./appearance.js";
 export * from "./edge.js";
 export * from "./identity.js";
+export * from "./vouch.js";
 export * from "./node.js";
 export * from "./document.js";
 export * from "./code-anchor.js";
