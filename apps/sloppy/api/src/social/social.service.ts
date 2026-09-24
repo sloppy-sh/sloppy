@@ -196,8 +196,9 @@ export class SocialService {
       () => this.keys.contentKeysFor(whereTheirKeysAreListed(about)),
     );
     return about
-      .filter((_, at) => said[at] !== "refuted")
-      .map((held, at) => this.commentView(held.record, node, said[at]))
+      .map((held, at) => ({ record: held.record, whose: said[at] }))
+      .filter(({ whose }) => whose !== "refuted")
+      .map(({ record, whose }) => this.commentView(record, node, whose))
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 

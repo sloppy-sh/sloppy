@@ -1218,12 +1218,15 @@ describe("a voice somebody will not be shown", () => {
 describe("a comment carrying a signature", () => {
   /** As the writer's own instance leaves one: over the canonical form of what
    *  their store wrote. */
-  function signed(over: Record<string, unknown>): Record<string, unknown> {
+  function signed(
+    over: Record<string, unknown>,
+    localId = "signed",
+  ): Record<string, unknown> {
     const keys = generateKeypair();
     const payload = {
       type: "comment@v1",
       did: ME,
-      comment_id: "signed",
+      comment_id: localId,
       post_did: ME,
       post_id: NOTE_ID,
       ancestor_chain: [],
@@ -1233,7 +1236,7 @@ describe("a comment carrying a signature", () => {
       created_at: "2026-03-01T10:00:00Z",
     };
     return {
-      ...comment(ME, "signed", { content: payload.content, ...over }),
+      ...comment(ME, localId, { content: payload.content, ...over }),
       content_signature: encodeMultibase(
         sign(canonicalize(payload as JsonValue), keys.privateKey),
       ),
@@ -1269,6 +1272,28 @@ describe("a comment carrying a signature", () => {
     const said = await social().comments(DELEGATION, NOTE);
 
     expect(said.map((one) => one.comment_id)).toEqual([`${ME}:signed`]);
+  });
+
+  it("takes nothing away from the comments that come after it", async () => {
+    instance({
+      "/api/follows": { body: following() },
+      [commentsPath(ME)]: {
+        body: {
+          data: [
+            signed({ content: "words nobody signed" }, "changed"),
+            comment(ME, "plain"),
+            signed({}, "checks-out"),
+          ],
+        },
+      },
+    });
+
+    const said = await social().comments(DELEGATION, NOTE);
+
+    expect(said.map((one) => [one.comment_id, one.attribution])).toEqual([
+      [`${ME}:plain`, undefined],
+      [`${ME}:checks-out`, "unattributed"],
+    ]);
   });
 });
 
