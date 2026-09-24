@@ -32,6 +32,8 @@
     "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
   },
   "dependencies": {
+    "@noble/hashes": "^2.3.0",
+    "@sloppy/types": "workspace:*",
     "openpgp": "6.3.1"
   },
   "devDependencies": {

@@ -633,6 +633,12 @@ importers:
 
   packages/ts/openpgp:
     dependencies:
+      '@noble/hashes':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../types
       openpgp:
         specifier: 6.3.1
         version: 6.3.1
