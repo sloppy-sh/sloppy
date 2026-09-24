@@ -12,9 +12,8 @@ import type { InstanceHint } from "./vouch.js";
  * - `ed25519-multibase` — Ed25519 over the payload's canonical form, the key
  *   multibase-encoded beside it. **This is what an absent tag means**, and it
  *   is every signature written before there was a tag.
- * - `openpgp` — somebody's own OpenPGP key over the same payload.
- *   `@sloppy/openpgp` checks one, and nothing that checks a signature reaches
- *   it yet, so a signature carrying this tag is held rather than refused.
+ * - `openpgp` — somebody's own OpenPGP key over the same payload, checked by
+ *   `@sloppy/openpgp`.
  */
 export const SignatureSchemeSchema = z.enum(["ed25519-multibase", "openpgp"]);
 export type SignatureScheme = z.infer<typeof SignatureSchemeSchema>;

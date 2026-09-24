@@ -32,6 +32,9 @@ catalog:
   # is where moving either half without the other shows up.
   surrealdb: 2.0.8
 
+  openpgp: 6.3.1
+  "@noble/hashes": "^2.3.0"
+
   # The Svelte toolchain. web, native and every Svelte package compile against
   # one version of each of these or they disagree about what a component is.
   svelte: 5.55.2

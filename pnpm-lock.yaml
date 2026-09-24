@@ -21,6 +21,9 @@ catalogs:
     '@fontsource/opendyslexic':
       specifier: 5.3.0
       version: 5.3.0
+    '@noble/hashes':
+      specifier: ^2.3.0
+      version: 2.3.0
     '@sveltejs/adapter-static':
       specifier: 3.0.10
       version: 3.0.10
@@ -48,6 +51,9 @@ catalogs:
     globals:
       specifier: 17.4.0
       version: 17.4.0
+    openpgp:
+      specifier: 6.3.1
+      version: 6.3.1
     prettier:
       specifier: 3.8.1
       version: 3.8.1
@@ -131,6 +137,9 @@ importers:
       '@sloppy/idp':
         specifier: workspace:*
         version: link:../../../packages/ts/idp
+      '@sloppy/openpgp':
+        specifier: workspace:*
+        version: link:../../../packages/ts/openpgp
       '@sloppy/types':
         specifier: workspace:*
         version: link:../../../packages/ts/types
@@ -177,6 +186,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.13.3
+      openpgp:
+        specifier: 'catalog:'
+        version: 6.3.1
       typescript:
         specifier: 'catalog:'
         version: 6.0.2
@@ -575,7 +587,7 @@ importers:
         specifier: ^2.3.0
         version: 2.3.0
       '@noble/hashes':
-        specifier: ^2.3.0
+        specifier: 'catalog:'
         version: 2.3.0
       '@sloppy/types':
         specifier: workspace:*
@@ -633,8 +645,14 @@ importers:
 
   packages/ts/openpgp:
     dependencies:
+      '@noble/hashes':
+        specifier: 'catalog:'
+        version: 2.3.0
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../types
       openpgp:
-        specifier: 6.3.1
+        specifier: 'catalog:'
         version: 6.3.1
     devDependencies:
       '@biomejs/biome':

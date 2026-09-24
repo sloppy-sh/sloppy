@@ -32,7 +32,9 @@
     "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
   },
   "dependencies": {
-    "openpgp": "6.3.1"
+    "@noble/hashes": "catalog:",
+    "@sloppy/types": "workspace:*",
+    "openpgp": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.0",
