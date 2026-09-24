@@ -135,9 +135,6 @@ export const PublishedIndexSchema = z.object({
    * holder makes about where their graph is served, so being named one way
    * rather than another no longer decides who can be listed;
    * docs/ARCHITECTURE.md § "Where a person's graph is".
-   *
-   * The field keeps the name every deployed peer serves and reads it by: this
-   * shape is one peers hold copies of, so it widens and is not renamed.
    */
   did: PrincipalSchema,
   publications: z

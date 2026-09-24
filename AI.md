@@ -239,14 +239,13 @@ split is not a preference we could revisit; it is the shape syr enforces:
   `<img>` or a `fetch` is a privacy bug, not a shortcut.
 - **Federation is pull-only, and no instance is a home.** syr has no relay and no
   firehose: follow somebody → find where their writing is served → fetch the kind you want
-  from there. A DID resolves, so following one answers itself. An email address names a
-  person and no place, and **where somebody is, is their own declaration to make and to
-  move** — said by a domain they control, so changing instance costs them one edit and
-  breaks nobody's link. An instance named beside the identifier answers only where no
-  declaration does: a way in, explicitly the lesser of the two, and never a host to file
-  somebody under. Anything designed around a push feed is designed against the platform,
-  and anything that treats one host as the identity's home has assumed something the
-  protocol never promises.
+  from there. **No identifier names a place**, so **where somebody is, is their own
+  declaration to make and to move** — said by a domain they control, so changing instance
+  costs them one edit and breaks nobody's link. An instance named beside the identifier
+  serves that same declaration for somebody no domain of theirs speaks for: a way in,
+  explicitly the lesser of the two, and never a host to file somebody under. Anything
+  designed around a push feed is designed against the platform, and anything that treats
+  one host as the identity's home has assumed something the protocol never promises.
 
 ## Provider-Agnostic Data Shapes (required)
 

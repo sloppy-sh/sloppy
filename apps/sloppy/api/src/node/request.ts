@@ -13,6 +13,7 @@ import {
   type OwnedRef,
   OwnedRefSchema,
   type Principal,
+  PrincipalSchema,
   splitOwnedRef,
 } from "@sloppy/types";
 import type { z } from "zod";
@@ -115,12 +116,27 @@ export function parsePatch<S extends z.ZodType>(
   ) as Partial<z.output<S>>;
 }
 
-/** An identity named in a path. A person never types one — it arrives from a
- *  link — so a malformed one is a page that is not there. */
-export function didOrRefuse(raw: string): DidSyr {
-  const parsed = DidSyrSchema.safeParse(decodeURIComponent(raw));
+/** Somebody named in a path. A person never types one — it arrives from a link
+ *  — so a malformed one is a page that is not there. */
+function namedOrRefuse<S extends z.ZodType>(
+  schema: S,
+  raw: string,
+): z.output<S> {
+  const parsed = schema.safeParse(decodeURIComponent(raw));
   if (!parsed.success) throw new NotFoundException("That person is not here.");
   return parsed.data;
+}
+
+/** For a route that goes on to reach somebody's identity STORE, which only a
+ *  syr identity names. */
+export function didOrRefuse(raw: string): DidSyr {
+  return namedOrRefuse(DidSyrSchema, raw);
+}
+
+/** For a route that is about a person rather than about their store, so it
+ *  takes them named any way they can be. */
+export function principalOrRefuse(raw: string): Principal {
+  return namedOrRefuse(PrincipalSchema, raw);
 }
 
 /** `null` rather than a refusal, for a route where "gone" is an answer. */

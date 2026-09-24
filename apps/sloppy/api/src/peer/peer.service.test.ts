@@ -8,6 +8,8 @@ import { type Delegation, SyrService } from "../syr/syr.service";
 import { PeerService } from "./peer.service";
 
 const ALICE = "did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ";
+const OTHER = "did:syr:z6MkrZhTRQ3ndyEtMSqBB8pf2M4LuncUofaPNnnzHrrxEtPe";
+const STRANGER = "mailto:ada@mailbox.example";
 const EXTORTION = "Pay me 5 BTC to see this profile.";
 
 function freePort(): Promise<number> {
@@ -70,6 +72,49 @@ const store = () =>
     if (path === "/public/profile/alice") {
       return { status: 200, body: { data: { did: ALICE, username: "alice" } } };
     }
+    return { status: 404 };
+  });
+
+/** An instance that keeps a follow list, and records every follow written to
+ *  it. */
+const keepsAFollowList = () =>
+  listening((path, origin) => {
+    if (path === "/.well-known/syr") {
+      return {
+        status: 200,
+        body: {
+          name: "syr",
+          public_url: origin,
+          identity_manifest_template: `${origin}/.well-known/syr/{did}`,
+          platform: {
+            consent: `${origin}/api/platform/consent`,
+            token: `${origin}/api/platform/token`,
+            sign: `${origin}/api/platform/sign`,
+            challenge: `${origin}/api/platform/challenge`,
+            delegations: `${origin}/api/platform/delegations`,
+            revoke: `${origin}/api/platform/revoke`,
+          },
+        },
+      };
+    }
+    if (path.startsWith("/.well-known/syr/")) {
+      return {
+        status: 200,
+        body: {
+          version: 1,
+          did: ALICE,
+          provider: origin,
+          endpoints: {
+            profile: `${origin}/public/profile`,
+            uploads: `${origin}/api/uploads`,
+            did_document: `${origin}/.well-known/did.json`,
+            public_following: `${origin}/public/following`,
+          },
+          web_profile: `${origin}/alice`,
+        },
+      };
+    }
+    if (path === "/api/follows") return { status: 204 };
     return { status: 404 };
   });
 
@@ -171,5 +216,45 @@ describe("finding somebody by name", () => {
     );
     await expect(asking).rejects.toThrow(/could not look a name up there/);
     await expect(asking).rejects.not.toThrow(/goes by that name/);
+  });
+});
+
+describe("following somebody", () => {
+  let home: Awaited<ReturnType<typeof keepsAFollowList>>;
+  let peers: PeerService;
+  let reader: Delegation;
+
+  beforeAll(async () => {
+    home = await keepsAFollowList();
+    peers = new PeerService(
+      new AppConfigService(new ConfigService({ PUBLIC_URL: home.origin })),
+      new SyrService(),
+    );
+    reader = {
+      did: ALICE,
+      syr_instance_url: home.origin,
+      delegate_public_key: "z-delegate",
+      access_token: "token",
+    };
+  });
+
+  afterAll(() => home?.close());
+
+  it("writes a syr identity to the reader's own store, as it always did", async () => {
+    await peers.follow(reader, OTHER);
+    expect(home.asked).toContain("/api/follows");
+  });
+
+  // The routes take a principal so that a follow can be undone; what a store
+  // will write down is narrower, and somebody hears that here rather than
+  // meeting the store's own refusal.
+  it("says a follow list cannot hold an email address, and asks no store", async () => {
+    const written = home.asked.filter((path) => path === "/api/follows").length;
+    await expect(peers.follow(reader, STRANGER)).rejects.toThrow(
+      /follow list cannot hold/,
+    );
+    expect(home.asked.filter((path) => path === "/api/follows").length).toBe(
+      written,
+    );
   });
 });

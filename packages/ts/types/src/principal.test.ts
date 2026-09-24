@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { ownedRefFrom, recordIdFromOwnedRef, splitOwnedRef } from "./codecs.js";
 import {
   DidSyrSchema,
+  DomainSchema,
   MailtoSchema,
   OwnedRefSchema,
   PrincipalSchema,
@@ -232,5 +233,43 @@ describe("an email address as an identifier", () => {
     expect(StoreRefSchema.safeParse("mailto:alice@example.com:1").success).toBe(
       false,
     );
+  });
+});
+
+// The right half of an address above and a domain said on its own are one
+// grammar, written once. A test rather than a comment, because two copies of it
+// would drift silently.
+describe("a domain said on its own", () => {
+  it("takes every domain an address is allowed to sit on", () => {
+    fc.assert(
+      fc.property(domain, (host) => {
+        expect(DomainSchema.parse(host)).toBe(host.toLowerCase());
+        expect(MailtoSchema.safeParse(`mailto:alice@${host}`).success).toBe(
+          true,
+        );
+      }),
+    );
+  });
+
+  it("refuses what an address's right half is refused for", () => {
+    for (const host of [
+      "",
+      "localhost",
+      "example",
+      "example.com.",
+      ".example.com",
+      "-example.com",
+      "example..com",
+      "exa mple.com",
+      "[192.0.2.1]",
+      "example.com:443",
+      "example.com/whereabouts",
+      "https://example.com",
+    ]) {
+      expect(DomainSchema.safeParse(host).success).toBe(false);
+      expect(MailtoSchema.safeParse(`mailto:alice@${host}`).success).toBe(
+        false,
+      );
+    }
   });
 });

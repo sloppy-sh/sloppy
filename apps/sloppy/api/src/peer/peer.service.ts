@@ -13,6 +13,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import {
+  DidSyrSchema,
   type FollowedIdentity,
   type PeerChangesQuery,
   type PeerIdentity,
@@ -46,6 +47,12 @@ import {
  *  stranger's branches never needed the list, so the line says what is left. */
 const NO_FOLLOW_LIST =
   "This account cannot keep a list of who you follow. You can still look somebody up by their name or identifier and read what they publish.";
+
+/** Said where the list a store keeps has nowhere to write somebody down: syr's
+ *  follow record names a DID, so an identifier in any other scheme is not a
+ *  refusal that trying again fixes. */
+const NOT_IN_FOLLOW_LIST =
+  "Your follow list cannot hold somebody named by an email address. You can still read what they publish, and pull a branch of theirs.";
 
 /** Said where the instance holding the name answered about it with nobody. */
 const NO_SUCH_NAME =
@@ -88,6 +95,9 @@ export class PeerService {
     }
     if (!(await this.keepsFollows(delegation))) {
       throw new BadRequestException(NO_FOLLOW_LIST);
+    }
+    if (!DidSyrSchema.safeParse(did).success) {
+      throw new BadRequestException(NOT_IN_FOLLOW_LIST);
     }
     const provider = await this.syr.providerFor(
       delegation.syr_instance_url,

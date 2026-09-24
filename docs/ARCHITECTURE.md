@@ -592,24 +592,33 @@ payload has not been altered and never says whose key it is.
 
 ### Where a person's graph is
 
-A `did:syr` resolves: follow the DID, resolve it, and read from whoever serves it. A
-`mailto:` resolves to a KEY and not to a place, so a peer holding one has nowhere to ask
-what that person publishes. **What answers is the person's own declaration.** Where their
-graph is served is something they SAY, so moving instance is one edit of theirs rather than
-a link everybody who follows them has to be handed again.
+**No identifier names a place, a `did:syr` included.** Resolving one reaches that identity's
+own STORE, which is where their graph is served only where a person's store and their graph
+are one instance — § "Federating the graph" is where that guess is made, and shown to the
+reader as one. A `mailto:` resolves to a KEY, so it does not even guess. **What answers, for
+either of them, is the person's own declaration.** Where their graph is served is something
+they SAY, so moving instance is one edit of theirs rather than a link everybody who follows
+them has to be handed again.
 
-`Whereabouts` in `@sloppy/types` is that fact — whose graph, and the instance they say
-answers for it — and it is said from two directions, asked in this order:
+`Whereabouts` in `@sloppy/types` is that fact — whose graph, the domain they say is theirs
+and the instance they say answers for it — and it is said from two directions, asked in this
+order:
 
 1. **A domain they control says it.** By default that is the domain of their own address,
-   which is the same domain Web Key Directory already asks about the addresses at it;
-   somebody whose address sits on a domain that is not theirs names one that is.
+   which is the same domain Web Key Directory already asks about the addresses at it, and
+   somebody already on one says nothing to get it. Everybody else says which domain is
+   theirs — somebody at a mailbox provider, and anybody named a way that carries no address
+   at all — and `Whereabouts.domain` is where they say it, **inside the declaration**. So
+   the second source below hands a reader that domain once and the domain answers from then
+   on, which is what keeps a person who controls one from being stuck on the lesser source
+   for the want of somewhere to name it.
 2. **Else the instance named alongside the identifier**, which serves the declaration its
    subject wrote there: `DeclaredWhereabouts`, one row per person, `created_by` the subject
    because where a person is, is theirs to say. This is the way in for somebody who controls
-   no domain at all, and it is the lesser of the two — the first is a person's own domain
-   saying where they are, and this one is a host saying it. AI.md § "Sloppy's Vocabulary
-   Stays Out of the Identity Store" is the rule that keeps the second from becoming a home.
+   no domain at all, or has not named one yet, and it is the lesser of the two — the first is
+   a person's own domain saying where they are, and this one is a host serving the same words
+   on their behalf. AI.md § "Sloppy's Vocabulary Stays Out of the Identity Store" is the rule
+   that keeps the second from becoming a home.
 
 **One document either way.** `WhereaboutsDocumentSchema` is what a domain serves and what an
 instance serves out of the row, so a reader holds one shape whichever answered and which one
@@ -643,9 +652,11 @@ moved yet — what landed is vocabulary:
   in, and **a version this build cannot name is held rather than refused**; a version it CAN
   name whose shape then refuses to parse is the other answer, and a reader may hold that one
   against the row.
-- **The declaration** above: `Whereabouts`, the document it is served as, and the row an
-  instance keeps on somebody's behalf, swept by `created_by` like every other user-owned
-  table.
+- **The declaration** above: `Whereabouts` — whose graph, the domain they say is theirs and
+  the instance that answers — the document it is served as, and the row an instance keeps on
+  somebody's behalf, swept by `created_by` like every other user-owned table. The row and the
+  request are the document minus its subject, taken off it rather than spelled out again, so
+  the three cannot say different things.
 
 Two things build on it, and neither is written yet.
 
@@ -655,6 +666,12 @@ Two things build on it, and neither is written yet.
   follow through to a held region, including the public publication routes admitting a
   principal. Every address a declaration names is a stranger's, so each fetch goes through
   `api/src/media/remote-host.ts` and answers `unreachable` rather than refusing the person.
+  **A follow list that can hold one is part of the same track.** `POST` and
+  `DELETE /api/following` both take a principal, so nothing can be followed and not
+  unfollowed; what stops there is the store, whose follow record names a DID, and
+  `PeerService.follow` says so in words rather than letting somebody meet the store's own
+  refusal. Lifting that is teaching a store to keep a principal, and it is where the words go
+  when it is.
 - **Binding a signature to its signer.** `peer/attribution.ts` and
   `social/comment-attribution.ts` dispatch on `signature_scheme` and check the signature
   against the key that arrived WITH it, which is why they still say only that the row has not

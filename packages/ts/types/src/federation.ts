@@ -26,12 +26,8 @@ import {
 } from "./published.js";
 
 /**
- * Somebody the reader follows.
- *
- * `did` holds any {@link PrincipalSchema} identifier. The name is what a store,
- * a route and a client all read this field by, so widening it costs nothing
- * where renaming it costs every one of them — the trade `PulledNode.source_did`
- * below already carries.
+ * Somebody the reader follows. `did` holds any {@link PrincipalSchema}
+ * identifier.
  *
  * `provider_url` is the instance recorded beside them: where their identity
  * store answers, and, for an identifier that names no store, the instance a

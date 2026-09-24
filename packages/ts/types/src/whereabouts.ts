@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import {
+  DomainSchema,
   OwnedEntitySchema,
   type Principal,
   PrincipalSchema,
@@ -17,17 +18,23 @@ import { UnaskedAnswerError } from "./published.js";
  * mailbox, so this is a person's own statement about themselves rather than
  * anything read out of what they are called. It is theirs to move, and moving
  * is an edit of it.
+ *
+ * Both fields below are addresses SOMEBODY ELSE chose, so a caller that fetches
+ * either without going through `api/src/media/remote-host.ts` has taken a
+ * stranger's word for where to send this instance.
  */
 export const WhereaboutsSchema = z.object({
   principal: PrincipalSchema,
   /**
-   * The instance they say answers for their graph. **An address somebody else
-   * chose**, like every address a peer supplies: the shape bounds one spelling
-   * of `scheme://host[:port]` and says nothing about what this deployment will
-   * connect to. A caller that fetches one without going through
-   * `api/src/media/remote-host.ts` has taken a stranger's word for where to
-   * send this instance.
+   * The domain they say is theirs, which is where a reader asks first.
+   *
+   * **Absent is the domain of their own address**, so somebody whose address
+   * already sits on a domain of theirs says nothing here; for an identifier
+   * that carries no address it is no domain at all, and `instance` is the whole
+   * of how such a person is reached until they name one.
    */
+  domain: DomainSchema.optional(),
+  /** The instance they say answers for their graph. */
   instance: PeerOriginSchema,
 });
 export type Whereabouts = z.infer<typeof WhereaboutsSchema>;
@@ -51,10 +58,15 @@ export const WhereaboutsDocumentSchema = WhereaboutsSchema.extend({
 });
 export type WhereaboutsDocument = z.infer<typeof WhereaboutsDocumentSchema>;
 
+/** The declaration without its subject: a row's `created_by` is one and a
+ *  request's sender is the other, so neither carries a second copy and neither
+ *  can come apart from the document above. */
+const SaidWhereaboutsSchema = WhereaboutsSchema.omit({ principal: true });
+
 /**
  * Somebody's own declaration, written on the instance they signed in to and
  * served by it on their behalf — the way in for a person who controls no domain
- * at all.
+ * at all, and the way a person who does hands a reader its name the first time.
  *
  * One row per person, so declaring again writes the one that is there, and
  * `created_by` is its SUBJECT: where a person is, is theirs to say, and nobody
@@ -64,22 +76,24 @@ export type WhereaboutsDocument = z.infer<typeof WhereaboutsDocumentSchema>;
  * none answers with none: one that answered for whoever had signed in would be
  * filing people under itself, which is the thing this source is not.
  */
-export const DeclaredWhereaboutsSchema = OwnedEntitySchema.extend({
-  instance: PeerOriginSchema,
-});
+export const DeclaredWhereaboutsSchema = OwnedEntitySchema.extend(
+  SaidWhereaboutsSchema.shape,
+);
 export type DeclaredWhereabouts = z.infer<typeof DeclaredWhereaboutsSchema>;
 
 /** The row said the way the document says it. */
 export function whereaboutsOf(
-  row: Pick<DeclaredWhereabouts, "created_by" | "instance">,
+  row: Pick<DeclaredWhereabouts, "created_by" | "domain" | "instance">,
 ): Whereabouts {
-  return { principal: row.created_by, instance: row.instance };
+  return {
+    principal: row.created_by,
+    domain: row.domain,
+    instance: row.instance,
+  };
 }
 
 /** What a person sends to say where they are. Sending another moves them. */
-export const SetWhereaboutsRequestSchema = z.object({
-  instance: PeerOriginSchema,
-});
+export const SetWhereaboutsRequestSchema = SaidWhereaboutsSchema;
 export type SetWhereaboutsRequest = z.input<typeof SetWhereaboutsRequestSchema>;
 
 /**
@@ -103,5 +117,5 @@ export function parseWhereabouts(
   if (read.data.principal !== principal) {
     throw new UnaskedAnswerError(`about ${read.data.principal}`);
   }
-  return { principal: read.data.principal, instance: read.data.instance };
+  return WhereaboutsSchema.parse(read.data);
 }
