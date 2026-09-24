@@ -6,7 +6,7 @@ import {
   signatureSchemeOf,
   splitOwnedRef,
 } from "@sloppy/types";
-import { verifySignedPayload } from "@sloppy/idp";
+import { signatureChecksOut } from "../identity/signature";
 
 /**
  * Whether the signature a published note carries is one this reader can check
@@ -16,8 +16,8 @@ import { verifySignedPayload } from "@sloppy/idp";
  *
  * **Checking out is not the same as being the author's**, which is why there is
  * no third answer here and nothing may draw one. The key that signed the
- * payload arrives WITH it, and binding that key to the DID would take the
- * author's own instance's delegation listing — a fetch nothing here makes. So a
+ * payload arrives WITH it, and asking who holds that key is a fetch nothing
+ * here makes — `IdentityKeysService` is where that question is asked. So a
  * signature that verifies says the note has not been altered since it was
  * signed, and says nothing about who signed it.
  *
@@ -25,7 +25,7 @@ import { verifySignedPayload } from "@sloppy/idp";
  * signed by a later version of Sloppy, or in a scheme this one cannot name, is
  * held rather than refused.
  */
-export function signatureRefutes(node: PublishedNode): boolean {
+export async function signatureRefutes(node: PublishedNode): Promise<boolean> {
   const { content_signature, signed_payload_json, signing_device_public_key } =
     node;
   if (
@@ -35,7 +35,8 @@ export function signatureRefutes(node: PublishedNode): boolean {
   ) {
     return false;
   }
-  if (signatureSchemeOf(node) !== "ed25519-multibase") return false;
+  const scheme = signatureSchemeOf(node);
+  if (scheme === undefined) return false;
 
   const payload = parseObject(signed_payload_json);
   if (payload === null) return false;
@@ -47,11 +48,12 @@ export function signatureRefutes(node: PublishedNode): boolean {
 
   // The parsed object rather than the schema's output: a signature is over the
   // canonical form of what was sent, and zod strips what it does not declare.
-  return !verifySignedPayload({
+  return !(await signatureChecksOut({
+    scheme,
     payload,
     signature: content_signature,
-    publicKeyMultibase: signing_device_public_key,
-  });
+    publicKey: signing_device_public_key,
+  }));
 }
 
 function aboutThisNode(

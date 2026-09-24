@@ -7,6 +7,7 @@ import {
   sign,
 } from "@sloppy/idp";
 import type { SyrComment } from "@sloppy/types";
+import { createMessage, generateKey, sign as openPgpSign } from "openpgp";
 import { describe, expect, it } from "vitest";
 import { commentRefutes } from "./comment-attribution";
 
@@ -57,59 +58,83 @@ function signedBy(
   };
 }
 
+/** Signed the way somebody with their own OpenPGP key signs one: over the
+ *  same canonical form, and never over the JSON as it happens to be spelled. */
+async function openPgpSignedBy(comment: SyrComment): Promise<SyrComment> {
+  const payload = payloadFor(comment);
+  const pair = await generateKey({
+    type: "curve25519",
+    userIDs: [{ name: "Alice", email: "alice@example.com" }],
+    format: "object",
+  });
+  return {
+    ...comment,
+    signature_scheme: "openpgp",
+    signed_payload_json: JSON.stringify(payload),
+    content_signature: await openPgpSign({
+      message: await createMessage({
+        binary: new TextEncoder().encode(canonicalize(payload as JsonValue)),
+      }),
+      signingKeys: pair.privateKey,
+      detached: true,
+    }),
+    signing_device_public_key: pair.publicKey.armor(),
+  };
+}
+
 describe("what a reader can check about a comment", () => {
-  it("says nothing about one that carries no signature", () => {
-    expect(commentRefutes(unsigned, NOTE)).toBe(false);
+  it("says nothing about one that carries no signature", async () => {
+    expect(await commentRefutes(unsigned, NOTE)).toBe(false);
   });
 
-  it("accepts one signed over the comment it arrived on", () => {
-    expect(commentRefutes(signedBy(unsigned), NOTE)).toBe(false);
+  it("accepts one signed over the comment it arrived on", async () => {
+    expect(await commentRefutes(signedBy(unsigned), NOTE)).toBe(false);
   });
 
-  it("refuses one whose words are not the words that were signed", () => {
+  it("refuses one whose words are not the words that were signed", async () => {
     const rewritten = signedBy({
       ...unsigned,
       content: "I agree with all of it.",
     });
     expect(
-      commentRefutes(
+      await commentRefutes(
         { ...rewritten, content: "Everything here is wrong." },
         NOTE,
       ),
     ).toBe(true);
   });
 
-  it("refuses one carrying a payload about another note", () => {
+  it("refuses one carrying a payload about another note", async () => {
     const elsewhere = signedBy(unsigned, {
       ...payloadFor(unsigned),
       post_id: "01JQXR000000000000000000B2",
     });
-    expect(commentRefutes(elsewhere, NOTE)).toBe(true);
+    expect(await commentRefutes(elsewhere, NOTE)).toBe(true);
   });
 
-  it("refuses one signed in somebody else's name", () => {
+  it("refuses one signed in somebody else's name", async () => {
     const borrowed = signedBy(unsigned, {
       ...payloadFor(unsigned),
       did: NOTE.post_did,
     });
-    expect(commentRefutes(borrowed, NOTE)).toBe(true);
+    expect(await commentRefutes(borrowed, NOTE)).toBe(true);
   });
 
-  it("refuses one whose reply was threaded somewhere else after signing", () => {
+  it("refuses one whose reply was threaded somewhere else after signing", async () => {
     const rethreaded = signedBy(unsigned);
     expect(
-      commentRefutes(
+      await commentRefutes(
         { ...rethreaded, ancestor_chain: [`${VOICE}:elsewhere`] },
         NOTE,
       ),
     ).toBe(true);
   });
 
-  it("refuses one whose signature does not check out", () => {
+  it("refuses one whose signature does not check out", async () => {
     const tampered = signedBy(unsigned);
     const keys = generateKeypair();
     expect(
-      commentRefutes(
+      await commentRefutes(
         {
           ...tampered,
           signing_device_public_key: encodePublicKey(keys.publicKey),
@@ -119,9 +144,9 @@ describe("what a reader can check about a comment", () => {
     ).toBe(true);
   });
 
-  it("refuses a payload that claims to be one and is not", () => {
+  it("refuses a payload that claims to be one and is not", async () => {
     expect(
-      commentRefutes(
+      await commentRefutes(
         {
           ...unsigned,
           content_signature: "zBogus",
@@ -133,9 +158,9 @@ describe("what a reader can check about a comment", () => {
     ).toBe(true);
   });
 
-  it("holds one whose payload it cannot read at all", () => {
+  it("holds one whose payload it cannot read at all", async () => {
     expect(
-      commentRefutes(
+      await commentRefutes(
         {
           ...unsigned,
           content_signature: "zBogus",
@@ -147,13 +172,39 @@ describe("what a reader can check about a comment", () => {
     ).toBe(false);
   });
 
+  it("accepts one its writer signed with their own OpenPGP key", async () => {
+    expect(await commentRefutes(await openPgpSignedBy(unsigned), NOTE)).toBe(
+      false,
+    );
+  });
+
+  it("refuses an OpenPGP signature over other words", async () => {
+    const signed = await openPgpSignedBy(unsigned);
+    expect(
+      await commentRefutes(
+        { ...signed, content: "Everything here is wrong." },
+        NOTE,
+      ),
+    ).toBe(true);
+  });
+
+  it("holds one signed in a scheme this build cannot check", async () => {
+    const signed = signedBy(unsigned);
+    expect(
+      await commentRefutes(
+        { ...signed, signature_scheme: "ml-dsa-87", content_signature: "zNo" },
+        NOTE,
+      ),
+    ).toBe(false);
+  });
+
   // A build that cannot read a payload cannot check one, and a comment signed
   // by a later Sloppy is held rather than dropped.
-  it("holds one signed under a kind it does not know", () => {
+  it("holds one signed under a kind it does not know", async () => {
     const later = signedBy(unsigned, {
       ...payloadFor(unsigned),
       type: "comment@v2",
     });
-    expect(commentRefutes(later, NOTE)).toBe(false);
+    expect(await commentRefutes(later, NOTE)).toBe(false);
   });
 });

@@ -1,7 +1,11 @@
 // What a reader can check about a comment's signature, and nothing more.
 
-import { CommentSignedPayloadV1Schema, type SyrComment } from "@sloppy/types";
-import { verifySignedPayload } from "@sloppy/idp";
+import {
+  CommentSignedPayloadV1Schema,
+  type SyrComment,
+  signatureSchemeOf,
+} from "@sloppy/types";
+import { signatureChecksOut } from "../identity/signature";
 
 /**
  * Whether the signature a comment carries is one this reader can check and
@@ -10,18 +14,19 @@ import { verifySignedPayload } from "@sloppy/idp";
  * and finds it wrong, must not present it as the author's.
  *
  * **Checking out is not the same as being the author's.** The key that signed
- * the payload arrives WITH it, and binding that key to the DID would take the
- * author's own instance's delegation listing, which nothing here fetches. So a
+ * the payload arrives WITH it, and asking who holds that key is a fetch nothing
+ * here makes — `IdentityKeysService` is where that question is asked. So a
  * signature that verifies says the comment has not been altered since it was
  * signed, and says nothing about who signed it.
  *
  * A payload this build does not understand is one it cannot check, so a comment
- * signed by a later version of Sloppy is held rather than dropped.
+ * signed by a later version of Sloppy, or in a scheme this one cannot name, is
+ * held rather than dropped.
  */
-export function commentRefutes(
+export async function commentRefutes(
   comment: SyrComment,
   post: { post_did: string; post_id: string },
-): boolean {
+): Promise<boolean> {
   const { content_signature, signed_payload_json, signing_device_public_key } =
     comment;
   if (
@@ -31,6 +36,8 @@ export function commentRefutes(
   ) {
     return false;
   }
+  const scheme = signatureSchemeOf(comment);
+  if (scheme === undefined) return false;
 
   const payload = parseObject(signed_payload_json);
   if (payload === null) return false;
@@ -44,11 +51,12 @@ export function commentRefutes(
 
   // The parsed object rather than the schema's output: a signature is over the
   // canonical form of what was sent, and zod strips what it does not declare.
-  return !verifySignedPayload({
+  return !(await signatureChecksOut({
+    scheme,
     payload,
     signature: content_signature,
-    publicKeyMultibase: signing_device_public_key,
-  });
+    publicKey: signing_device_public_key,
+  }));
 }
 
 function aboutThisComment(

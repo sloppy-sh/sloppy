@@ -97,7 +97,7 @@ export class PullService {
         }
         throw new ServiceUnavailableException(UNREADABLE);
       }
-      const page = this.take(reading, body, declined, deep);
+      const page = await this.take(reading, body, declined, deep);
       terms ??= {
         publication,
         version: page.version,
@@ -193,12 +193,12 @@ export class PullService {
    * in — which is why the depths are walked before a note is dropped, so the
    * notes under a dropped one still know where they sit.
    */
-  private take(
+  private async take(
     reading: ReturnType<typeof publishedSubtreeReader>,
     body: unknown,
     declined: Set<OwnedRef>,
     deep: Map<OwnedRef, number>,
-  ): PublishedSubtreePage {
+  ): Promise<PublishedSubtreePage> {
     let page: PublishedSubtreePage;
     try {
       page = reading.take(body);
@@ -212,7 +212,7 @@ export class PullService {
     }
     const refuted = new Set<OwnedRef>();
     for (const node of page.nodes) {
-      if (!signatureRefutes(node)) continue;
+      if (!(await signatureRefutes(node))) continue;
       this.logger.warn(`${node.ref} does not carry its author's signature`);
       refuted.add(node.ref);
       declined.add(node.ref);

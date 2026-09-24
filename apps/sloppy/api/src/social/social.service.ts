@@ -182,10 +182,14 @@ export class SocialService {
         this.syr.listPublicComments(voice.where, voice.did, post, voice.reach),
       node,
     );
-    return written
+    const about = written
       .map((held) => held.record)
-      .filter((comment) => this.isAbout(comment, post))
-      .filter((comment) => !commentRefutes(comment, post))
+      .filter((comment) => this.isAbout(comment, post));
+    const refuted = await Promise.all(
+      about.map((comment) => commentRefutes(comment, post)),
+    );
+    return about
+      .filter((_, at) => !refuted[at])
       .map((comment) => this.commentView(comment, node))
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
   }

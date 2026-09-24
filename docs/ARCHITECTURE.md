@@ -539,12 +539,36 @@ the question `peer/attribution.ts` says it cannot answer, and the reason a signa
 checks out says only that the note has not been altered.
 
 One implementation per principal scheme, reached by `bindingFor(principal, bindings)` so a
-caller never learns which schemes exist. `syrKeyBinding` in `@sloppy/idp` is the only one:
-syr answers from the identifier itself, nothing is fetched, and the key it returns is marked
+caller never learns which schemes exist. `syrKeyBinding` in `@sloppy/idp` is one: syr answers
+from the identifier itself, nothing is fetched, and the key it returns is marked
 `signs: "delegations"` — it stands behind the keys that sign content rather than signing any,
 which is precisely why holding it is not yet knowing whose a note is. A `null` answer is a
 binding that did not answer; an empty list is an identifier nobody holds a key for, and that
 is an answer.
+
+`mailtoKeyBinding` in `@sloppy/openpgp` is the other, and it answers by asking. The person's
+own domain first, through Web Key Directory — the advanced form
+`https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>` and then the direct
+one, where `<hash>` is z-base-32 over SHA-1 of the lowercased local part, which is why the
+local part is lowercased at the schema boundary. A public keyserver answers after the domain,
+in the same shape and with the same `BoundKey` out, and the default is one that serves an
+address only to somebody who proved they hold it. The first key found is the answer and
+`BoundKey.from` says which address served it. A key is kept only where a user ID names that
+address and the primary key is neither revoked nor expired, because the question is which key
+speaks for somebody RIGHT NOW; what comes back is marked `signs: "content"`, so unlike syr's
+it is a key a signature is checked against.
+
+**Nothing in `@sloppy/openpgp` fetches.** Every address it builds comes out of a domain
+somebody else chose, so the binding takes a `ReadKeyAt` and the API supplies one that goes
+through `media/remote-host.ts` like every other outbound read — `identity/key-fetch.ts`,
+which bounds the hosts, the time and the bytes, and answers `unreachable` for a refusal
+rather than turning one into a statement about anybody.
+
+`IdentityVouchService` is what a caller asks about a principal, holding one `VouchResolver`
+per scheme the way `bindingFor` holds one binding per scheme. For an email address the
+binding IS the resolution: a key found anywhere is `vouched` with `Vouch.instance` naming
+where, every address answering and none serving one is `anonymous`, and nothing answering is
+`unknown`. So `VouchState` stays three states.
 
 A signed row also says what scheme its signature is in. `signature_scheme` is a bounded
 string rather than an enum on the wire, for the reason `BlockDocumentSchema` carries an
@@ -564,36 +588,22 @@ payload has not been altered and never says whose key it is.
 
 ### What is not done, and what comes next
 
-Nothing RESOLVES a `mailto:` principal. The identifier is theirs to hold, a graph can name
-them in a role, a note can be owned by them, and a session may answer with one; nothing can
-yet say a key is theirs or that anybody stands behind them. A `VouchResolver` asked about one
-answers `unknown`, which grants nothing and takes nothing away.
+Somebody named by an email address is resolved now, and a signature of theirs is checked.
+What is still only a name is a sign-in: nothing MINTS a session for one, because
+`SessionRow.created_by` and the delegation beside it are a syr sign-in. **A viewer is a
+principal** is a door held open, not one walked through.
 
-What the work that does it forks from:
+Two things this deliberately does not do. **A signature check does not bind the key to
+whoever signed it** — `peer/attribution.ts` and `social/comment-attribution.ts` dispatch on
+`signature_scheme` and check the signature against the key that arrived with it, which is why
+they still say only that the row has not been altered. Asking who holds that key is a fetch,
+and a pull that made one per note would aim this instance at a stranger's network once per
+row; `IdentityKeysService` is where a caller asks it deliberately. And **`signature_scheme`
+is absent on every comment today**, because syr's own comment record has no such column, so
+every comment still reads as `ed25519-multibase`, exactly as before.
 
-- **`@sloppy/openpgp`**, above — the check itself, with nothing around it.
-- **`signature_scheme` on a comment.** `SyrCommentSchema` carries the tag beside the three
-  signature columns, so `social/comment-attribution.ts` can ask `signatureSchemeOf` the way
-  `peer/attribution.ts` already does. syr's own comment record has no such column, so the tag
-  is absent on everything today and every comment reads as `ed25519-multibase`, exactly as
-  before.
-- **A viewer is a principal.** Nothing mints one that is not a `did:syr`, because
-  `SessionRow.created_by` and the delegation beside it are a syr sign-in. The widening is a
-  door held open, not one walked through.
-
-Two tracks fork from there, and neither waits on the other.
-
-**The binding.** A `KeyBinding` with `scheme: "mailto"`: Web Key Directory first, the
-advanced form `https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>` then
-the direct one, where `<hash>` is z-base-32 over SHA-1 of the lowercased local part — which
-is why the local part is lowercased at the schema boundary. A public keyserver is the second
-source, with the same shape and the same `BoundKey` out. A key found either way is `vouched`
-and WHICH is `Vouch.instance`, so `VouchState` stays three states. Every address here is one
-somebody else chose, so it leaves through `media/remote-host.ts` like every other. With a
-binding in hand, the scheme dispatch at the two places a signature is checked —
-`peer/attribution.ts` and `social/comment-attribution.ts` — reaches `verifyOpenPgpSignature`.
 The `publicKeyFromDid` calls in `@sloppy/local` — `identity.ts` and `api.ts` — check no
-signature and are not part of this: they derive a key from a `did:syr` for an identity and
+signature and were never part of this: they derive a key from a `did:syr` for an identity and
 for a graph view, which is this question asked of a folder rather than of a person.
 
 **The door.** What lets somebody who is not a syr identity hold a graph on a hosted instance
@@ -604,7 +614,7 @@ there is this track's to decide. The `did:syr` the domain services still declare
 is this track's too, and the paragraph above says what each of those parameters is doing with
 it today.
 
-**Federation is after both**, because every entry into it resolves an identity store: a
+**Federation is after the door**, because every entry into it resolves an identity store: a
 peer's `PublishedIndex` is keyed by the DID an instance was asked about, and following
 somebody or looking them up by name goes the same way. `NodeSignedPayloadV1` is part of it —
 its `did` is a `did:syr`, and `aboutThisNode` compares it to the ref's owner, so a note owned
