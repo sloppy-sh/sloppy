@@ -55,6 +55,65 @@ function bytesOf(payload: string | Uint8Array): Uint8Array {
     : payload;
 }
 
+/**
+ * Whether this key can sign NOW, and signed these exact bytes for something
+ * issued between `notBefore` and `notAfter`.
+ *
+ * Attribution and authentication ask different questions of one signature.
+ * {@link verifyOpenPgpSignature} weighs a key as it stood when the signature
+ * says it was made, which is what reading old content needs: a note somebody
+ * signed in 2019 is still theirs after the key expired. A credential is the
+ * other way round — the key must be one its owner has not retired, and the
+ * signature must have been made for the statement in front of us.
+ *
+ * **A signature's creation time is chosen by whoever makes it**, so the window
+ * is not itself proof of freshness. It is what closes the gap the two rules
+ * leave between them: dated now, a retired key fails because the key is judged
+ * at that instant; dated back inside the key's old validity, it fails the
+ * window. Neither check alone refuses both.
+ */
+export async function verifyOpenPgpCredential(params: {
+  payload: string | Uint8Array;
+  signature: string | Uint8Array;
+  publicKey: string | Uint8Array;
+  notBefore: Date;
+  notAfter: Date;
+}): Promise<boolean> {
+  try {
+    const key = await publicKeyOf(params.publicKey);
+    if (await key.isRevoked()) return false;
+    const expires = await key.getExpirationTime();
+    if (expires instanceof Date && expires <= new Date()) return false;
+
+    const { signatures } = await verify({
+      message: await createMessage({ binary: bytesOf(params.payload) }),
+      signature: await detachedSignature(params.signature),
+      verificationKeys: key,
+      format: "binary",
+    });
+    // Each rejection is handled in the turn it is made, as above: every
+    // callback runs to its first `await` before any of them resumes.
+    const checked = await Promise.all(
+      signatures.map(async (one) => {
+        try {
+          await one.verified;
+          const made = (await one.signature).packets[0]?.created;
+          return (
+            made instanceof Date &&
+            made >= params.notBefore &&
+            made <= params.notAfter
+          );
+        } catch {
+          return false;
+        }
+      }),
+    );
+    return checked.some((ok) => ok);
+  } catch {
+    return false;
+  }
+}
+
 /** The public half alone, so a key handed in with a secret half leaves none of
  *  it here: AI.md § "Sloppy's Vocabulary Stays Out of the Identity Store". */
 async function publicKeyOf(key: string | Uint8Array): Promise<PublicKey> {

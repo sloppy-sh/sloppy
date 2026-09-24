@@ -5,7 +5,6 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from "@nestjs/common";
 import {
   type Address,
@@ -62,6 +61,7 @@ import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
 import { FindRepository } from "./find.repository";
 import { gatedElsewhere, writable } from "./gate";
+import { refuseWithoutIdentityStore } from "./request";
 import { GraphService } from "./graph.service";
 import type {
   AddressHold,
@@ -843,7 +843,7 @@ export class NodeService {
       new Set(going.map((node) => ownedRefFrom(node.id))),
     );
     if (chains.length === 0) return;
-    if (!delegation) throw new UnauthorizedException("Sign in to continue.");
+    if (!delegation) refuseWithoutIdentityStore();
     for (const chain of chains) {
       await this.publications.remove(delegation, chain);
     }
@@ -883,7 +883,7 @@ export class NodeService {
     }
 
     if (request.act.act === "publish") {
-      if (!delegation) throw new UnauthorizedException("Sign in to continue.");
+      if (!delegation) refuseWithoutIdentityStore();
       return this.publishEach(delegation, asked.length, mine);
     }
 
@@ -1005,7 +1005,7 @@ export class NodeService {
     // request and the guard is what says a person may only show their own.
     const series = resolveAppearance(appearance).preview.pictures;
     if (series.length > 0) {
-      if (!delegation) throw new UnauthorizedException("Sign in to continue.");
+      if (!delegation) refuseWithoutIdentityStore();
       for (const picture of series) {
         await this.media.ownPicture(delegation, picture, "block");
       }

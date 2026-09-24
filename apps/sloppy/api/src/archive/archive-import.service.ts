@@ -2,12 +2,7 @@
 // docs/ARCHITECTURE.md § "A graph on disk". `@sloppy/vault` reads the files and
 // re-keys them; everything here is what that means for the graph they keep.
 
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  UnauthorizedException,
-} from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import {
   type ArchivePreview,
   type BlockDocument,
@@ -51,6 +46,7 @@ import {
   vaultToNote,
 } from "@sloppy/vault";
 import { AmendmentRepository } from "../amendment/amendment.repository";
+import { refuseWithoutIdentityStore } from "../node/request";
 import { AssetLinks } from "../media/asset-link";
 import { MediaService } from "../media/media.service";
 import { GraphRepository } from "../node/graph.repository";
@@ -359,7 +355,7 @@ export class ArchiveImportService {
     if (leaving.length === 0) return;
     const chains = await this.publications.rootedIn(did, new Set(leaving));
     if (chains.length === 0) return;
-    if (!delegation) throw new UnauthorizedException("Sign in to continue.");
+    if (!delegation) refuseWithoutIdentityStore();
     for (const chain of chains) {
       await this.publications.remove(delegation, chain);
     }

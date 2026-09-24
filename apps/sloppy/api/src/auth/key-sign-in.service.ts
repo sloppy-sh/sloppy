@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { verifyOpenPgpSignature } from "@sloppy/openpgp";
+import { verifyOpenPgpCredential } from "@sloppy/openpgp";
 import {
   type AnswerChallengeRequest,
   type BoundKey,
@@ -34,16 +34,31 @@ const CHALLENGE_TTL_MS = 10 * 60 * 1000;
  */
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * How far out a signer's own clock is allowed to be. A statement is signed on
+ * whatever machine holds the key, and that machine sets the time the signature
+ * says it was made.
+ */
+const CLOCK_SKEW_MS = 5 * 60 * 1000;
+
 type SignatureCheck = (params: {
   payload: string;
   signature: string;
   publicKey: string;
+  notBefore: Date;
+  notAfter: Date;
 }) => Promise<boolean>;
 
-/** A scheme with no check here authenticates nobody. Nothing in this build
- *  binds a key that signs content in `ed25519-multibase`. */
+/**
+ * A scheme with no check here authenticates nobody. Nothing in this build
+ * binds a key that signs content in `ed25519-multibase`.
+ *
+ * This is a CREDENTIAL check and not the attribution one: a key its owner has
+ * since retired still attributes the content it signed, and must never sign
+ * somebody in today.
+ */
 const CHECKS: Record<SignatureScheme, SignatureCheck | null> = {
-  openpgp: verifyOpenPgpSignature,
+  openpgp: verifyOpenPgpCredential,
   "ed25519-multibase": null,
 };
 
@@ -147,11 +162,24 @@ export class KeySignInService {
     // Somebody signs a file, and a file written by almost anything ends in a
     // newline that the text on screen does not have.
     const payloads = [statement, `${statement}\n`];
+    // A statement this instance did not issue, or issued longer ago than it
+    // stands for, is already refused — so a signature made for the one in hand
+    // cannot be older than that.
+    const notBefore = new Date(Date.now() - CHALLENGE_TTL_MS - CLOCK_SKEW_MS);
+    const notAfter = new Date(Date.now() + CLOCK_SKEW_MS);
     for (const key of keys) {
       const check = CHECKS[key.scheme];
       if (!check) continue;
       for (const payload of payloads) {
-        if (await check({ payload, signature, publicKey: key.key }))
+        if (
+          await check({
+            payload,
+            signature,
+            publicKey: key.key,
+            notBefore,
+            notAfter,
+          })
+        )
           return true;
       }
     }

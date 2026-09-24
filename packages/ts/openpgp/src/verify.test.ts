@@ -6,7 +6,7 @@ import {
   sign,
 } from "openpgp";
 import { beforeAll, describe, expect, it } from "vitest";
-import { verifyOpenPgpSignature } from "./verify.js";
+import { verifyOpenPgpCredential, verifyOpenPgpSignature } from "./verify.js";
 
 type Signer = { privateKey: PrivateKey; publicKey: PublicKey };
 
@@ -187,5 +187,106 @@ describe("verifyOpenPgpSignature", () => {
         publicKey: alice.privateKey.armor(),
       }),
     ).toBe(true);
+  });
+});
+
+describe("a signature offered as a credential", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const WINDOW = 15 * 60 * 1000;
+
+  /** A key made `ageDays` ago that stood for `livesFor` seconds. */
+  async function keyMade(ageDays: number, livesFor: number): Promise<Signer> {
+    return await generateKey({
+      type: "curve25519",
+      userIDs: [{ name: "Alice", email: "alice@example.com" }],
+      date: new Date(Date.now() - ageDays * DAY),
+      keyExpirationTime: livesFor,
+      format: "object",
+    });
+  }
+
+  async function signedAt(pair: Signer, when: Date): Promise<string> {
+    return await sign({
+      message: await createMessage({
+        binary: new TextEncoder().encode(PAYLOAD),
+      }),
+      signingKeys: pair.privateKey,
+      detached: true,
+      date: when,
+    });
+  }
+
+  function windowNow(): { notBefore: Date; notAfter: Date } {
+    return {
+      notBefore: new Date(Date.now() - WINDOW),
+      notAfter: new Date(Date.now() + WINDOW),
+    };
+  }
+
+  it("lets a key its owner still holds sign somebody in", async () => {
+    const pair = await keyMade(30, 365 * 24 * 60 * 60);
+    expect(
+      await verifyOpenPgpCredential({
+        payload: PAYLOAD,
+        signature: await signedAt(pair, new Date()),
+        publicKey: pair.publicKey.armor(),
+        ...windowNow(),
+      }),
+    ).toBe(true);
+  });
+
+  it("refuses a key its owner retired, dated back inside the life it had", async () => {
+    // The key expired eleven months ago; the signature says it was made while
+    // the key still stood, and openpgp weighs a key at the moment a signature
+    // claims. Only the window refuses this one.
+    const pair = await keyMade(365, 30 * 24 * 60 * 60);
+    const inItsLife = new Date(Date.now() - 360 * DAY);
+    const signature = await signedAt(pair, inItsLife);
+
+    expect(
+      await verifyOpenPgpSignature({
+        payload: PAYLOAD,
+        signature,
+        publicKey: pair.publicKey.armor(),
+      }),
+    ).toBe(true);
+
+    expect(
+      await verifyOpenPgpCredential({
+        payload: PAYLOAD,
+        signature,
+        publicKey: pair.publicKey.armor(),
+        ...windowNow(),
+      }),
+    ).toBe(false);
+  });
+
+  it("refuses a key its owner retired however the signature is dated", async () => {
+    const pair = await keyMade(365, 30 * 24 * 60 * 60);
+    // Nothing will sign with it now, so a forgery is what this stands for: the
+    // key alone is asked, and it has expired.
+    await expect(signedAt(pair, new Date())).rejects.toThrow();
+
+    const standing = await keyMade(30, 365 * 24 * 60 * 60);
+    expect(
+      await verifyOpenPgpCredential({
+        payload: PAYLOAD,
+        signature: await signedAt(standing, new Date()),
+        publicKey: pair.publicKey.armor(),
+        ...windowNow(),
+      }),
+    ).toBe(false);
+  });
+
+  it("refuses a signature made for something else, long before this statement", async () => {
+    const pair = await keyMade(30, 365 * 24 * 60 * 60);
+    expect(
+      await verifyOpenPgpCredential({
+        payload: PAYLOAD,
+        signature: await signedAt(pair, new Date(Date.now() - 2 * DAY)),
+        publicKey: pair.publicKey.armor(),
+        ...windowNow(),
+      }),
+    ).toBe(false);
   });
 });

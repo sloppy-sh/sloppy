@@ -46,12 +46,23 @@ export function viewerDid(request: AuthedRequest): Principal {
 export function viewerDelegation(request: AuthedRequest): Delegation {
   const delegation = request.delegation;
   if (delegation) return delegation;
-  if (request.viewer) {
-    throw new ForbiddenException(
-      "Signing in with your own key does not reach that. Sign in with an identity instead — one made here, or the one where yours lives.",
-    );
-  }
+  if (request.viewer) refuseWithoutIdentityStore();
   throw new UnauthorizedException("Sign in to continue.");
+}
+
+/**
+ * What to say to somebody whose session is good but who has no identity store
+ * behind it. **Never a 401**: a client reads that as a credential that has died
+ * and signs them out of one that is perfectly good.
+ *
+ * Reached from inside a service, where `AuthGuard` has already refused anybody
+ * with no session at all, so a missing delegation there is this and nothing
+ * else.
+ */
+export function refuseWithoutIdentityStore(): never {
+  throw new ForbiddenException(
+    "Signing in with your own key does not reach that. Sign in with an identity instead — one made here, or the one where yours lives.",
+  );
 }
 
 export function parseBody<S extends z.ZodType>(
