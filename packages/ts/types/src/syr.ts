@@ -17,6 +17,7 @@ import {
   TimestampSchema,
   UlidSchema,
 } from "./common.js";
+import { SignatureSchemeTagSchema } from "./key-binding.js";
 
 /**
  * What Sloppy asks for. A response may name a scope this version does not,
@@ -369,6 +370,12 @@ export const SyrCommentSchema = z.object({
   content_signature: z.string().optional(),
   signed_payload_json: z.string().optional(),
   signing_device_public_key: z.string().optional(),
+  /**
+   * What scheme those three are in. **Absent is `ed25519-multibase`** — every
+   * comment written before a store could say otherwise — and
+   * `signatureSchemeOf` is the one reader of that.
+   */
+  signature_scheme: SignatureSchemeTagSchema.optional(),
 });
 export type SyrComment = z.infer<typeof SyrCommentSchema>;
 
