@@ -589,11 +589,7 @@ payload has not been altered and never says whose key it is.
 ### What is not done, and what comes next
 
 Somebody named by an email address is resolved now, and a signature of theirs is checked.
-What is still only a name is a sign-in: nothing MINTS a session for one, because
-`SessionRow.created_by` and the delegation beside it are a syr sign-in. **A viewer is a
-principal** is a door held open, not one walked through.
-
-Two things this deliberately does not do. **A signature check does not bind the key to
+Two things it deliberately does not do. **A signature check does not bind the key to
 whoever signed it** — `peer/attribution.ts` and `social/comment-attribution.ts` dispatch on
 `signature_scheme` and check the signature against the key that arrived with it, which is why
 they still say only that the row has not been altered. Asking who holds that key is a fetch,
