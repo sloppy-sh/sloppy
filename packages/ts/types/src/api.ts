@@ -10,6 +10,7 @@ import {
   DidSyrSchema,
   type OwnedRef,
   OwnedRefSchema,
+  PrincipalSchema,
   TimestampSchema,
   UlidSchema,
 } from "./common.js";
@@ -415,12 +416,15 @@ export type ArchivePreview = z.infer<typeof ArchivePreviewSchema>;
 /**
  * Who the API believes is calling.
  *
- * `delegate_public_key` is the PUBLIC half of the key the syr instance signs
- * this platform's content with. Sloppy never holds the private half; code here
- * that wants to sign locally has misread the delegation model.
+ * `did` names them the way a note's owner and a role's member are named: it is
+ * compared, and nothing here resolves it. `syr_instance_url` and
+ * `delegate_public_key` describe a syr sign-in, and `delegate_public_key` is
+ * the PUBLIC half of the key that instance signs this platform's content with.
+ * Sloppy never holds the private half; code here that wants to sign locally has
+ * misread the delegation model.
  */
 export const ViewerSchema = z.object({
-  did: DidSyrSchema,
+  did: PrincipalSchema,
   syr_instance_url: z.url(),
   delegate_public_key: z.string().min(1),
 });
