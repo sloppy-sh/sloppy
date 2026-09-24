@@ -106,8 +106,7 @@ export type KnownIdentity = z.infer<typeof KnownIdentitySchema>;
  * behind somebody.
  *
  * **A principal in a scheme no resolver here answers for is `unknown`**, which
- * grants nothing and takes nothing away. Today that is every scheme but
- * `did:syr`.
+ * grants nothing and takes nothing away.
  *
  * A caller reads {@link Vouch}`.state` and nothing else, so the mandate chain —
  * root, then agent, then whoever holds the grant — lands here as a different
