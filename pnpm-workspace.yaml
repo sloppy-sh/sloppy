@@ -64,6 +64,11 @@ catalog:
   prettier-plugin-svelte: 3.5.1
   prettier-plugin-tailwindcss: 0.7.2
 
+  # Checking an OpenPGP signature — @sloppy/openpgp is the one package that
+  # speaks the dialect. Exact, never a range: what counts as a valid signature
+  # is not something to pick up from a patch release.
+  openpgp: 6.3.1
+
   eslint: 10.4.0
   "@eslint/js": 10.0.1
   eslint-config-prettier: 10.1.8
