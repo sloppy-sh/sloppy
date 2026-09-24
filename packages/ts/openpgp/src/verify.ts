@@ -20,9 +20,10 @@ import {
  * which key it is asking about, so **a signature that checks out says the
  * payload has not been altered, and never whose key this is.**
  *
- * The key is weighed as it stands NOW: one that has expired or been revoked
- * since does not verify, whenever it signed. A detached signature may carry
- * several signatures, and one of them checking out under this key is enough.
+ * The key is weighed as it stood when the signature was made: one that has
+ * expired since still checks out, while a revoked one never does, however old
+ * the signature. A detached signature may carry several signatures, and one of
+ * them checking out under this key is enough.
  */
 export async function verifyOpenPgpSignature(params: {
   payload: string | Uint8Array;

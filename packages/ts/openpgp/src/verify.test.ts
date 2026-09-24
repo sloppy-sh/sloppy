@@ -141,6 +141,44 @@ describe("verifyOpenPgpSignature", () => {
     ).toBe(false);
   });
 
+  it("takes a signature made while the key was still current", async () => {
+    const signedAt = new Date(Date.now() - 600_000);
+    const lapsed = await generateKey({
+      type: "curve25519",
+      userIDs: [{ name: "lapsed", email: "lapsed@example.com" }],
+      format: "object",
+      date: signedAt,
+      keyExpirationTime: 1,
+    });
+    const signature = await sign({
+      message: await createMessage({
+        binary: new TextEncoder().encode(PAYLOAD),
+      }),
+      signingKeys: lapsed.privateKey,
+      detached: true,
+      date: signedAt,
+    });
+    expect(
+      await verifyOpenPgpSignature({
+        payload: PAYLOAD,
+        signature,
+        publicKey: lapsed.publicKey.armor(),
+      }),
+    ).toBe(true);
+  });
+
+  it("refuses a revoked key, however old the signature", async () => {
+    const signature = await detach(alice, PAYLOAD, "armored");
+    const revoked = await alice.privateKey.revoke();
+    expect(
+      await verifyOpenPgpSignature({
+        payload: PAYLOAD,
+        signature,
+        publicKey: revoked.toPublic().armor(),
+      }),
+    ).toBe(false);
+  });
+
   it("takes a key handed in with its secret half", async () => {
     expect(
       await verifyOpenPgpSignature({
