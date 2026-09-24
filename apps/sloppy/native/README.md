@@ -35,13 +35,13 @@ pnpm tauri android init
 
 All from the monorepo-root `.env`; a shell variable of the same name wins.
 
-| Variable                            | Default                                                    | What it decides                                                                                                                            |
-| ----------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `PUBLIC_SLOPPY_API_URL`             | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.                                                                             |
-| `PUBLIC_SLOPPY_APP_ORIGIN`          | `https://sloppy.sh`                                        | Sloppy's own web origin, where an identity store sends somebody back.                                                                      |
-| `SLOPPY_NATIVE_PORT`                | `8040`                                                     | Where the frontend is served while developing. Set it where 8040 is already spoken for; Tauri is told the same one.                        |
-| `SLOPPY_LOCAL_MODE`                 | on                                                         | Open a graph as a folder on the device, with no API to reach. `false` talks to a server, and offers a folder here from the sign-in screen. |
-| `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                                                        | Front the local API on the https origin a physical device needs to reach it.                                                               |
+| Variable                            | Default                                                    | What it decides                                                                                                                                                                                 |
+| ----------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUBLIC_SLOPPY_API_URL`             | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.                                                                                                                                  |
+| `PUBLIC_SLOPPY_APP_ORIGIN`          | `https://sloppy.sh`                                        | Sloppy's own web origin, where an identity store sends somebody back.                                                                                                                           |
+| `SLOPPY_NATIVE_PORT`                | `8040`                                                     | Where the frontend is served while developing. A port something else is holding is stepped over on its own, and Tauri is told wherever it ended up — set this only to ask for a particular one. |
+| `SLOPPY_LOCAL_MODE`                 | on                                                         | Open a graph as a folder on the device, with no API to reach. `false` talks to a server, and offers a folder here from the sign-in screen.                                                      |
+| `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                                                        | Front the local API on the https origin a physical device needs to reach it.                                                                                                                    |
 
 `PUBLIC_SLOPPY_API_URL` is the web shell's variable too — one origin, set once, obeyed by
 both surfaces.

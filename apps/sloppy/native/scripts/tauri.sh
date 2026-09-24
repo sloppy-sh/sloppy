@@ -54,11 +54,34 @@ fi
 export PUBLIC_ENABLE_LOCAL_MODE="$LOCAL_MODE"
 
 # ── Where the frontend is served while developing ────────────────────────────
-# 8040 unless somebody's is spoken for. Vite reads the same variable, and Tauri
-# is told the matching address here, so the two cannot drift — a dev server that
-# moved without telling Tauri would leave it looking at nothing.
-NATIVE_PORT="${SLOPPY_NATIVE_PORT:-$(read_env SLOPPY_NATIVE_PORT)}"
-NATIVE_PORT="${NATIVE_PORT:-8040}"
+# 8040, or the first port after it nothing else is holding. **This one decision
+# reaches both halves**: Vite is handed it and told to take that port and no
+# other, and Tauri is told the matching address, so the dev server can never end
+# up somewhere the window is not looking. Naming SLOPPY_NATIVE_PORT asks for a
+# particular one; it still moves if that one is taken, because a machine where
+# the app will not start is worse than one where it starts somewhere else.
+WANTED_PORT="${SLOPPY_NATIVE_PORT:-$(read_env SLOPPY_NATIVE_PORT)}"
+WANTED_PORT="${WANTED_PORT:-8040}"
+
+# Asked of the operating system rather than of `lsof`, which is not everywhere.
+# **Bound the way Vite binds it — every address, not just the loopback one.**
+# Something holding the wildcard still leaves `127.0.0.1` bindable on macOS, so
+# a loopback probe calls a taken port free and hands Vite the one port it was
+# told it may not move off.
+port_is_free() {
+	node -e 'const s=require("net").createServer();s.once("error",()=>process.exit(1));s.once("listening",()=>s.close(()=>process.exit(0)));s.listen(Number(process.argv[1]))' "$1"
+}
+
+NATIVE_PORT="$WANTED_PORT"
+if [[ "$ACTION" == "dev" ]]; then
+	for _ in $(seq 0 20); do
+		port_is_free "$NATIVE_PORT" && break
+		NATIVE_PORT=$((NATIVE_PORT + 1))
+	done
+	if [[ "$NATIVE_PORT" != "$WANTED_PORT" ]]; then
+		echo "── ${WANTED_PORT} is already in use; serving the app on ${NATIVE_PORT} instead"
+	fi
+fi
 export SLOPPY_NATIVE_PORT="$NATIVE_PORT"
 
 DEV_URL_ARGS=()
