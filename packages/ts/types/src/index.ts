@@ -24,6 +24,7 @@ export * from "./amendment.js";
 export * from "./published.js";
 export * from "./publication.js";
 export * from "./federation.js";
+export * from "./whereabouts.js";
 export * from "./media.js";
 export * from "./profile.js";
 export * from "./emoji.js";

@@ -1550,6 +1550,52 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     ).rejects.toThrow();
   });
 
+  it("holds one declaration of where each person's graph is served", async () => {
+    const declaration = (owner: string, localId: string, instance: string) => ({
+      id: new RecordId("whereabouts", {
+        created_by: owner,
+        id: UlidSchema.parse(localId),
+      }),
+      created_by: owner,
+      instance,
+      created_at: "2026-09-24T00:00:00.000Z",
+      updated_at: "2026-09-24T00:00:00.000Z",
+    });
+
+    const hers = declaration(
+      AVA,
+      "01JWHEREA00000000000000000",
+      "https://sloppy.example",
+    );
+    await expect(db.create(hers.id).content(hers)).resolves.toBeDefined();
+
+    // Moving is an edit of the row she has, never a second answer beside it.
+    const beside = declaration(
+      AVA,
+      "01JWHEREB00000000000000000",
+      "https://elsewhere.example",
+    );
+    await expect(db.create(beside.id).content(beside)).rejects.toThrow(
+      /whereabouts_owner/,
+    );
+    await expect(
+      db.update(hers.id).merge({ instance: "https://elsewhere.example" }),
+    ).resolves.toBeDefined();
+
+    // Where a person is, is theirs to say: the row cannot become somebody
+    // else's.
+    await expect(
+      db.update(hers.id).merge({ created_by: BOB }),
+    ).rejects.toThrow();
+
+    const his = declaration(
+      BOB,
+      "01JWHEREC00000000000000000",
+      "https://his.example",
+    );
+    await expect(db.create(his.id).content(his)).resolves.toBeDefined();
+  });
+
   it("purges one author and leaves the other whole", async () => {
     const before = await db.select<NodeRow>(new Table("node"));
     expect(before.some((row) => row.created_by === BOB)).toBe(true);
@@ -1584,6 +1630,13 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       new Table("known_identity"),
     );
     expect(known.map((row) => row.created_by)).toEqual([BOB]);
+
+    // And what somebody said about where their own graph is goes with them,
+    // there being nothing left to find there.
+    const declared = await db.select<{ created_by: string }>(
+      new Table("whereabouts"),
+    );
+    expect(declared.map((row) => row.created_by)).toEqual([BOB]);
 
     // An offer is swept both ways: the ones standing on AVA's notes go with the
     // graph they stand in, and the one she left on BOB's note goes with her.
