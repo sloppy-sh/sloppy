@@ -491,22 +491,26 @@ driver as a value and is never spelled into a query.
 
 - **Wide — a principal.** What the genealogy and a graph's policy NAME: `created_by` on every
   row, both halves of every ref, a note's `owner`, `authors` and `contributors`, a role's
-  `members`, an override's target, an amendment's `by`, the identity a `Vouch` is about, and
-  the `Viewer.did` a session answers with. These are strings the system compares and never
-  resolves.
+  `members`, an override's target, an amendment's `by`, the identity a `Vouch` is about, the
+  `Viewer.did` a session answers with, a peer's `PublishedIndex` with the follow and
+  peer-lookup queries that reach one, the declaration that says where a graph is served, and
+  `NodeSignedPayloadV2`. These are strings the system compares and never resolves.
 - **Narrow — a `did:syr`.** What this build RESOLVES, FETCHES FROM, or DERIVES A KEY FROM:
-  everything in `syr.ts` and `@sloppy/idp`, `StoreRef` and the two functions that make and
-  split one, the `SessionRow` a delegation is held under, a peer's `PublishedIndex` and the
-  follow and peer-lookup queries that reach one, a comment's author and a reaction's, a
-  profile, an emoji catalog, a folder's own `VaultGraph.owner` and the archive preview that
-  mirrors it.
+  syr's own wire in `syr.ts` and everything in `@sloppy/idp`, `StoreRef` and the two
+  functions that make and split one, the `SessionRow` a delegation is held under, a comment's
+  author and a reaction's, a profile, an emoji catalog, a folder's own `VaultGraph.owner` and
+  the archive preview that mirrors it. `NodeSignedPayloadV1` sits in that file and is narrow
+  with it, which is the whole of why V2 exists beside it.
 
 The test, site by site: **does this value get compared, or does it get dereferenced?** A
 compared one is wide. A dereferenced one is narrow, because dereferencing is per-scheme and
-this build has one scheme's machinery. A parameter follows what it is FOR rather than what
-today's caller happens to hand it: one whose contract is "the person signed in here" stays
-narrow though it is only ever compared, and one whose contract is "who gates this note" or
-"whose graph this copy came from" is wide though every caller today hands it a `did:syr`.
+this build has one scheme's machinery. An identifier CARRIED into a fetch is not thereby
+dereferenced: what names the instance a listing is read from is the origin beside it, named
+by the reader or declared by its subject, and the identifier itself is only ever compared to
+what came back. A parameter follows what it is FOR rather than what today's caller happens
+to hand it: one whose contract is "the person signed in here" stays narrow though it is only
+ever compared, and one whose contract is "who gates this note" or "whose graph this copy came
+from" is wide though every caller today hands it a `did:syr`.
 
 Two of those narrow ones are narrow for a reason worth stating. `VaultGraph.owner` is the
 identity a device writes a folder under, and `makeLocalIdentity()` mints only `did:syr` there,
@@ -586,33 +590,88 @@ whether they agree. Nothing is fetched and no key is discovered: the caller has 
 decided which key it is asking about, which is why a signature that checks out says the
 payload has not been altered and never says whose key it is.
 
-### What is not done, and what comes next
+### Where a person's graph is
 
-Somebody named by an email address is resolved now, and a signature of theirs is checked.
-Two things it deliberately does not do. **A signature check does not bind the key to
-whoever signed it** — `peer/attribution.ts` and `social/comment-attribution.ts` dispatch on
-`signature_scheme` and check the signature against the key that arrived with it, which is why
-they still say only that the row has not been altered. Asking who holds that key is a fetch,
-and a pull that made one per note would aim this instance at a stranger's network once per
-row; `IdentityKeysService` is where a caller asks it deliberately. And **`signature_scheme`
-is absent on every comment today**, because syr's own comment record has no such column, so
-every comment still reads as `ed25519-multibase`, exactly as before.
+A `did:syr` resolves: follow the DID, resolve it, and read from whoever serves it. A
+`mailto:` resolves to a KEY and not to a place, so a peer holding one has nowhere to ask
+what that person publishes. **What answers is the person's own declaration.** Where their
+graph is served is something they SAY, so moving instance is one edit of theirs rather than
+a link everybody who follows them has to be handed again.
+
+`Whereabouts` in `@sloppy/types` is that fact — whose graph, and the instance they say
+answers for it — and it is said from two directions, asked in this order:
+
+1. **A domain they control says it.** By default that is the domain of their own address,
+   which is the same domain Web Key Directory already asks about the addresses at it;
+   somebody whose address sits on a domain that is not theirs names one that is.
+2. **Else the instance named alongside the identifier**, which serves the declaration its
+   subject wrote there: `DeclaredWhereabouts`, one row per person, `created_by` the subject
+   because where a person is, is theirs to say. This is the way in for somebody who controls
+   no domain at all, and it is the lesser of the two — the first is a person's own domain
+   saying where they are, and this one is a host saying it. AI.md § "Sloppy's Vocabulary
+   Stays Out of the Identity Store" is the rule that keeps the second from becoming a home.
+
+**One document either way.** `WhereaboutsDocumentSchema` is what a domain serves and what an
+instance serves out of the row, so a reader holds one shape whichever answered and which one
+did is the resolver's own business. It names its own subject, and `parseWhereabouts` is what
+holds it to the person asked about — the boundary `parsePublishedIndex` is for a listing —
+because a domain answers for every address at it and an instance answers for whoever signed
+in there, so a declaration about somebody else would send a reader wherever the server liked.
+
+**A declaration is an address a stranger chose, twice over.** It names a domain to ask AND an
+instance to read, both supplied by somebody else, so every fetch either one leads to goes
+through `api/src/media/remote-host.ts` like every other outbound read — a declaration that
+names a private address, or redirects into one, is refused there. `PeerOrigin` bounds the
+spelling and nothing else; it is never a permission to connect. § "Federating the graph"
+carries the same rule for the origin a reader names by hand.
+
+### What the vocabulary is for, and what is still to be built on it
+
+Somebody named by an email address is resolved, signs in, and has their signature checked.
+The shapes federation needs to reach one are in hand too, and nothing a person can see has
+moved yet — what landed is vocabulary:
+
+- **The federation shapes take a principal.** `FollowedIdentity`, `FollowRequest`,
+  `PeerPublicationsQuery`, `PeerIdentity` and a peer's `PublishedIndex` each hold any
+  identifier and each KEEP the field name every deployed peer, route and client already
+  reads them by: a published shape is one peers hold copies of, so widening one is
+  protocol-visible and additive, and renaming one would cost every reader on the other side.
+- **`NodeSignedPayloadV2`** carries a principal where V1 carries a `did:syr`, and its
+  address is optional because a note is allowed no label. V1 is untouched and verifies
+  exactly as it did, being what every note signed so far carries. `nodePayloadVersionOf`
+  says which version is in hand, the way `signatureSchemeOf` says which scheme a signature is
+  in, and **a version this build cannot name is held rather than refused**; a version it CAN
+  name whose shape then refuses to parse is the other answer, and a reader may hold that one
+  against the row.
+- **The declaration** above: `Whereabouts`, the document it is served as, and the row an
+  instance keeps on somebody's behalf, swept by `created_by` like every other user-owned
+  table.
+
+Two things build on it, and neither is written yet.
+
+- **Reaching an email person's graph.** The resolver § "Where a person's graph is"
+  describes — their domain first, the instance named alongside second — the route that
+  serves a declaration and the surface somebody edits their own on, and the path from a
+  follow through to a held region, including the public publication routes admitting a
+  principal. Every address a declaration names is a stranger's, so each fetch goes through
+  `api/src/media/remote-host.ts` and answers `unreachable` rather than refusing the person.
+- **Binding a signature to its signer.** `peer/attribution.ts` and
+  `social/comment-attribution.ts` dispatch on `signature_scheme` and check the signature
+  against the key that arrived WITH it, which is why they still say only that the row has not
+  been altered. Asking who holds that key is a fetch, and `IdentityKeysService` is where a
+  caller asks it deliberately — **once per author, never once per note**, because a pull that
+  asked per row would aim this instance at a stranger's network as many times as the region
+  has notes.
+
+Two gaps are outside both of those. **`signature_scheme` is absent on every comment**,
+syr's own comment record having no such column, so every comment reads as
+`ed25519-multibase`. And `syrPostRefFor` hands an identity store the owner half of a note's
+ref as `post_did`, so a note whose ref is owned by an email address still has nowhere to hang
+a conversation.
 
 The `publicKeyFromDid` calls in `@sloppy/local` — `identity.ts` and `api.ts` — check no
 signature and were never part of this: they derive a key from a `did:syr` for an identity and
 for a graph view, which is this question asked of a folder rather than of a person.
-
-**The door** is below, in "Signing in with a key of your own": a session minted for a
-principal that is not a syr identity, and the surface a person signs in through. It reaches
-a key through `bindingFor` and discovers none of its own, so which addresses it can settle a
-sign-in for is whatever bindings this instance holds.
-
-**Federation is after the door**, because every entry into it resolves an identity store: a
-peer's `PublishedIndex` is keyed by the DID an instance was asked about, and following
-somebody or looking them up by name goes the same way. `NodeSignedPayloadV1` is part of it —
-its `did` is a `did:syr`, and `aboutThisNode` compares it to the ref's owner, so a note owned
-by a `mailto:` cannot carry a v1 payload that is about itself. A second payload version is
-what carries one, and the tag above is what says which a reader is holding.
 
 `@sloppy/idp` is not part of any of it. It SERVES syr identities; GPG needs no provider,
 because people already have keys.
@@ -1419,12 +1478,12 @@ conversation is assembled, never a column. Three things about it are load-bearin
   the wire would cost a reader every note in a region the day somebody publishes a
   narrower invitation.
 
-**A DID names a person, never a place.** An identity manifest describes that identity's
-own store — profile, uploads, comments, reactions, who they follow — and says nothing
-about where their GRAPH is served, so following somebody yields nothing to pull and no
-instance to ask, and nothing a peer says about themselves can corroborate one. Where is
-carried rather than resolved: `GET /api/peers/publications` takes a DID and the instance to
-ask, which is this one unless the caller names another — the whole of it for somebody who
+**An identifier names a person, never a place.** An identity manifest describes that
+identity's own store — profile, uploads, comments, reactions, who they follow — and says
+nothing about where their GRAPH is served, so following somebody yields nothing to pull and
+no instance to ask, and nothing a peer says about themselves can corroborate one. Where is
+carried rather than resolved: `GET /api/peers/publications` takes an identifier and the
+instance to ask, which is this one unless the caller names another — the whole of it for somebody who
 keeps their graph here — and answers what that identity publishes there.
 `GET /api/peers/versions` is the same mediation for a publication's history and
 `GET /api/peers/changes` for what its writing did between two of them, both named by the
@@ -1545,14 +1604,16 @@ store keeps a list at all is read off its manifest rather than off a failed requ
 that declares no `public_following` has no follows rather than an error, and somebody using
 it is told they can still pull a branch by its address.
 
-**Where a followed identity's GRAPH is served is a guess, and is shown as one.** A DID
-names a person and never a place, and syr's manifest answers for an identity's own store
-and not for the graph beside it, so asking somebody what they publish starts at the
-instance a region of theirs already came from, else at the provider recorded beside their
-DID. That lands in the field the reader can edit rather than behind the button, because on
-the two of the three deployment modes where a person's store and their graph are one
-instance it is the right answer, and on the third the reader has to be able to see which
-instance was asked before they can name the right one.
+**Where a followed identity's GRAPH is served is a guess, and is shown as one.** No
+identifier names a place, and syr's manifest answers for an identity's own store and not for
+the graph beside it, so asking somebody what they publish starts at the instance a region of
+theirs already came from, else at the provider recorded beside their identifier. That lands
+in the field the reader can edit rather than behind the button, because on the two of the
+three deployment modes where a person's store and their graph are one instance it is the
+right answer, and on the third the reader has to be able to see which instance was asked
+before they can name the right one. What replaces the guess where somebody has made one is
+their own declaration — § "Where a person's graph is" is the shape of it, and the reader that
+asks for it is still to be written.
 
 **A follow is private, and following somebody is not publishing that you did.** Who a
 person reads is theirs. A store's `public_following` endpoint serves the follows its owner
