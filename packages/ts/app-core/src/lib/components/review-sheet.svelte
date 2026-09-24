@@ -11,9 +11,9 @@
 <script lang="ts">
 	// What the code has left behind, as one quiet sheet — DESIGN.md § "What the
 	// code left behind". One signal at a time, and the canvas answers underneath.
-	import type { OwnedRef } from '@sloppy/types';
+	import { compassSlotWords, type OwnedRef } from '@sloppy/types';
 	import type { ReviewSignal, ReviewSignalKind } from '@sloppy/vault';
-	import { COMPASS_WORDS, ResponsiveModal } from '@sloppy/ui';
+	import { ResponsiveModal } from '@sloppy/ui';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import type { NoteLanding } from '../pages/page-state.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -64,7 +64,7 @@
 					actAt: actKey(signal)
 				};
 			}
-			const slot = signal.direction ? COMPASS_WORDS[signal.direction] : undefined;
+			const slot = signal.direction ? compassSlotWords(signal.method, signal.direction) : undefined;
 			return {
 				key: signalKey(signal),
 				...(signal.note === undefined ? {} : { note: signal.note }),
