@@ -95,9 +95,10 @@ export class PullService {
     // writes.
     const deep = new Map<OwnedRef, number>();
     // Where this author's own instance may be asked what keys it has approved:
-    // the address the reader named to pull from, and nothing where they named
-    // none — an origin this instance chose is nobody's word about whose keys
-    // are whose.
+    // the address the READER named, and nothing where they named none. Never
+    // the origin this pull reached, which an author may have declared about
+    // themselves — a principal appointing the instance that vouches for its own
+    // keys is the one thing this must not let through.
     const listedAt: TrustedInstance | undefined =
       request.source_url === undefined
         ? undefined
