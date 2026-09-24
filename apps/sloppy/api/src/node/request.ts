@@ -11,15 +11,22 @@ import {
   DidSyrSchema,
   type OwnedRef,
   OwnedRefSchema,
+  type Principal,
   splitOwnedRef,
 } from "@sloppy/types";
 import type { z } from "zod";
 import type { AuthedRequest } from "../auth/authed-request";
 import type { Delegation } from "../syr/syr.service";
 
-/** `AuthGuard` has already refused a request without one; this is the type
- *  narrowing, not a second check. */
-export function viewerDid(request: AuthedRequest): DidSyr {
+/**
+ * Who is calling, named the way a graph names anybody. It is compared and
+ * written to `created_by`; nothing may resolve it — a route that has to reach
+ * their identity store takes {@link viewerDelegation}, which is a syr sign-in.
+ *
+ * `AuthGuard` has already refused a request without one, so the refusal here is
+ * for the optional field rather than a second check.
+ */
+export function viewerDid(request: AuthedRequest): Principal {
   const did = request.viewer?.did;
   if (!did) throw new UnauthorizedException("Sign in to continue.");
   return did;
@@ -125,7 +132,7 @@ export function requireGraphRef(did: string, localId: string): OwnedRef {
  */
 export function graphOrRefuse(
   raw: string | undefined,
-  did: DidSyr,
+  did: Principal,
 ): OwnedRef | undefined {
   if (!raw) return undefined;
   const parsed = OwnedRefSchema.safeParse(raw);

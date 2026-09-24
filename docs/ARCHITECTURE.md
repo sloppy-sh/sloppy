@@ -516,11 +516,21 @@ questions. `SessionRow.created_by` is the same split at a sign-in: it is a `did:
 Platform Delegation is the only door, while the `Viewer.did` the session answers with is a
 principal, compared against the names written on a graph and resolved by nothing.
 
-**One site hands a wide value into a narrow slot**, and nothing in the types catches it.
-`syrPostRefFor` takes a note's ref and gives an identity store the owner half as `post_did` — the
-identifier a comment and a reaction are filed under. Every ref minted here still holds a `did:syr`
-there, because `created_by` is the signed-in viewer; the door below is what changes that, and a
-note whose ref is owned by an email address has nowhere to hang a conversation until it does.
+**One site hands a wide value into a slot that resolves it**, and nothing in the types catches
+it. `syrPostRefFor` takes a note's ref and gives an identity store the owner half as `post_did` —
+the identifier a comment and a reaction are filed under. Every ref minted here still holds a
+`did:syr` there, because `created_by` is the signed-in viewer; the door below is what changes
+that, and a note whose ref is owned by an email address has nowhere to hang a conversation until
+it does.
+
+**Every authenticated route names its caller through `viewerDid`, which answers with a principal,
+while the services beneath it still declare that caller a `did:syr`** — and since both schemas
+infer to `string`, the compiler says nothing either way. Nothing under there resolves it: it is
+compared, and it is written to `created_by`, which is wide. A route that speaks to an identity
+store takes `viewerDelegation` instead, and that carries the narrow `SessionRow.created_by`. So a
+viewer who is not a syr identity is already served correctly beneath the declaration; widening
+those signatures belongs with the sign-in that mints one, and each is held to the test above — a
+parameter that turns out to dereference is one to narrow rather than widen.
 
 ### Which key speaks for a principal
 
@@ -590,7 +600,9 @@ for a graph view, which is this question asked of a folder rather than of a pers
 rather than only be named in one: a session minted for a `mailto:` principal, and the surface
 a person signs in through. `SessionRow.created_by` is narrow and the two fields beside
 `Viewer.did` describe a syr sign-in, so what a viewer who signed in another way answers with
-there is this track's to decide.
+there is this track's to decide. The `did:syr` the domain services still declare their caller
+is this track's too, and the paragraph above says what each of those parameters is doing with
+it today.
 
 **Federation is after both**, because every entry into it resolves an identity store: a
 peer's `PublishedIndex` is keyed by the DID an instance was asked about, and following
