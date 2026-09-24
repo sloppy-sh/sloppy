@@ -43,7 +43,7 @@
     "@nestjs/testing": "^11.0.1",
     "@types/express": "^5.0.0",
     "@types/node": "^24.10.1",
-    "openpgp": "6.3.1",
+    "openpgp": "catalog:",
     "typescript": "catalog:",
     "vitest": "^4.1.11"
   }
