@@ -53,6 +53,19 @@ fi
 
 export PUBLIC_ENABLE_LOCAL_MODE="$LOCAL_MODE"
 
+# ── Where the frontend is served while developing ────────────────────────────
+# 8040 unless somebody's is spoken for. Vite reads the same variable, and Tauri
+# is told the matching address here, so the two cannot drift — a dev server that
+# moved without telling Tauri would leave it looking at nothing.
+NATIVE_PORT="${SLOPPY_NATIVE_PORT:-$(read_env SLOPPY_NATIVE_PORT)}"
+NATIVE_PORT="${NATIVE_PORT:-8040}"
+export SLOPPY_NATIVE_PORT="$NATIVE_PORT"
+
+DEV_URL_ARGS=()
+if [[ "$ACTION" == "dev" && "$NATIVE_PORT" != "8040" ]]; then
+	DEV_URL_ARGS=(--config "{\"build\":{\"devUrl\":\"http://localhost:${NATIVE_PORT}\"}}")
+fi
+
 # ── A reachable API for a physical device ────────────────────────────────────
 # An https origin, because iOS refuses plain http to a LAN address as readily as
 # to a remote one — docs/ARCHITECTURE.md § "Native shell" carries the why.
@@ -176,8 +189,8 @@ if wants_tunnel; then
 	echo "─────────────────────────────────────────────────────"
 
 	# A child, not exec, so the trap still tears the tunnel down.
-	pnpm exec tauri "$@"
+	pnpm exec tauri "$@" ${DEV_URL_ARGS[@]+"${DEV_URL_ARGS[@]}"}
 	exit $?
 fi
 
-exec pnpm exec tauri "$@"
+exec pnpm exec tauri "$@" ${DEV_URL_ARGS[@]+"${DEV_URL_ARGS[@]}"}

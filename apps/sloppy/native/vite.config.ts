@@ -7,6 +7,9 @@ import { defineConfig } from 'vitest/config';
 // address and point HMR's websocket at it rather than at localhost.
 const host = process.env.TAURI_DEV_HOST;
 
+/** Where the frontend is served while developing. */
+const nativePort = Number(process.env.SLOPPY_NATIVE_PORT ?? 8040);
+
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	// The monorepo root holds the one .env both shells and the API read.
@@ -19,7 +22,12 @@ export default defineConfig({
 	// svelte has no `mount`.
 	resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,
 	server: {
-		port: 8040,
+		// `scripts/tauri.sh` reads the same value and tells Tauri where to look, so
+		// the two cannot drift. Somebody whose 8040 is spoken for sets
+		// SLOPPY_NATIVE_PORT — apps/sloppy/native/README.md.
+		port: nativePort,
+		// Never fall back to another port: Tauri has already been told this one,
+		// and a silent move would point it at nothing.
 		strictPort: true,
 		host: host || false,
 		hmr: host ? { protocol: 'ws', host, port: 8041 } : undefined

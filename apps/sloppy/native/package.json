@@ -6,7 +6,7 @@
 	"license": "UNLICENSED",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev --port 8040 --strictPort",
+		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
@@ -34,7 +34,7 @@
 		"@sloppy/vault": "workspace:*",
 		"@tauri-apps/api": "^2.5.0",
 		"@tauri-apps/plugin-deep-link": "^2.4.0",
-		"@tauri-apps/plugin-http": "^2.5.9",
+		"@tauri-apps/plugin-http": "^2.6.1",
 		"@tauri-apps/plugin-opener": "^2.5.0"
 	},
 	"devDependencies": {
