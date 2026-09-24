@@ -63,18 +63,13 @@ describe('the shapes on offer', () => {
 		expect(new Set(NOTE_TEMPLATES.map((one) => one.name)).size).toBe(ids.length);
 	});
 
-	it('offers the three shapes a project is reasoned in, each asking three things', () => {
-		expect(shape('qec').sections.map((one) => one.heading)).toEqual([
-			'The question',
-			'The evidence',
-			'The conclusion'
-		]);
-		expect(shape('aji').sections.map((one) => one.heading)).toEqual([
-			'The assumption',
-			'The justification',
-			'The implication'
-		]);
+	// A way of reasoning is a compass, not a shape: QEC and AJI are methods the
+	// slots are read in, so nothing here writes those words as headings.
+	it('leaves a way of reasoning to the compass', () => {
 		expect(shape('walkthrough').sections).toHaveLength(3);
+		const headings = NOTE_TEMPLATES.flatMap((one) => one.sections.map((held) => held.heading));
+		expect(headings).not.toContain('The evidence');
+		expect(headings).not.toContain('The assumption');
 	});
 
 	// A shape leaves no trace of itself: the sections are the whole of it, so
