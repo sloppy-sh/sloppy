@@ -148,6 +148,10 @@
 				<span>wrote this{notebook ? ` in ${notebook}` : ''}</span>
 			</p>
 
+			{#if note.attribution === 'unattributed'}
+				<p class="text-sm text-muted-foreground">Nobody could be shown to have written this.</p>
+			{/if}
+
 			{#if note.tags.length > 0}
 				<div class="flex flex-wrap items-center gap-1.5">
 					{#each note.tags as tag (tag)}

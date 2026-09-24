@@ -7,9 +7,7 @@
 	import { session } from '../stores/session.svelte.js';
 	import PersonSurface from './person-surface.svelte';
 
-	let {
-		note
-	}: { note: Pick<NodeView, 'created_by' | 'authors' | 'contributors' | 'attribution'> } = $props();
+	let { note }: { note: Pick<NodeView, 'created_by' | 'authors' | 'contributors'> } = $props();
 
 	let meeting = $state<string | null>(null);
 
@@ -72,10 +70,6 @@
 			{@render chain(helped, null)}
 		{/if}
 	</div>
-
-	{#if note.attribution === 'unattributed'}
-		<p class="text-sm text-muted-foreground">Nobody could be shown to have written this.</p>
-	{/if}
 
 	<PersonSurface bind:did={meeting} />
 {/if}
