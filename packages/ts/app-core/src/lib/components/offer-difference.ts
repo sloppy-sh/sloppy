@@ -6,10 +6,12 @@ import {
 	COMPASS_DIRECTIONS,
 	COMPASS_TYPE,
 	compassOf,
+	DEFAULT_COMPASS_KIND,
 	splitOwnedRef,
 	type BlockDocument,
 	type Compass,
 	type CompassDirection,
+	type CompassKind,
 	type DocumentNode,
 	type EdgeLook,
 	type OwnedRef,
@@ -34,10 +36,19 @@ function same(a: BlockDocument, b: BlockDocument): boolean {
 }
 
 /** What a slot gained and what it no longer holds. */
-export interface CompassApart {
+export interface SlotApart {
 	direction: CompassDirection;
 	gained: OwnedRef[];
 	lost: OwnedRef[];
+}
+
+/** Where an offer would have the note point, and which questions it would have
+ *  the slots read as — the same method on both sides where it leaves that
+ *  alone. */
+export interface CompassApart {
+	was: CompassKind;
+	reads: CompassKind;
+	slots: SlotApart[];
 }
 
 /** The note's compass, wherever in its writing it stands. */
@@ -62,23 +73,27 @@ function withoutSlots(content: BlockDocument): BlockDocument {
 }
 
 /**
- * The slots the offer would change, in the order a compass is read in. A change
- * to where a note points is shown as the slot it moved rather than as a section
- * of changed markup — DESIGN.md § "The compass card".
+ * The slots the offer would change, in the order a compass is read in, and the
+ * method it would read them in. A change to where a note points is shown as the
+ * slot it moved rather than as a section of changed markup — DESIGN.md § "The
+ * compass card".
  */
-export function compassApart(now: WritingSide, offered: WritingSide): CompassApart[] {
+export function compassApart(now: WritingSide, offered: WritingSide): CompassApart {
 	const before = compassIn(now);
 	const after = compassIn(offered);
-	if (!before && !after) return [];
-	const apart: CompassApart[] = [];
+	const slots: SlotApart[] = [];
 	for (const direction of COMPASS_DIRECTIONS) {
 		const was = before?.[direction] ?? [];
 		const is = after?.[direction] ?? [];
 		const gained = is.filter((note) => !was.includes(note));
 		const lost = was.filter((note) => !is.includes(note));
-		if (gained.length > 0 || lost.length > 0) apart.push({ direction, gained, lost });
+		if (gained.length > 0 || lost.length > 0) slots.push({ direction, gained, lost });
 	}
-	return apart;
+	return {
+		was: before?.kind ?? DEFAULT_COMPASS_KIND,
+		reads: after?.kind ?? DEFAULT_COMPASS_KIND,
+		slots
+	};
 }
 
 /** The sections the two sides do not share, and whether the ones they do share
@@ -190,13 +205,14 @@ export function saysAnything(apart: ChangedNote): boolean {
  *  together. */
 export function saysNothing(
 	apart: ChangedNote,
-	compass: readonly CompassApart[],
+	compass: CompassApart,
 	tags: { added: readonly Tag[]; removed: readonly Tag[] },
 	looks: readonly LookApart[]
 ): boolean {
 	return (
 		!saysAnything(apart) &&
-		compass.length === 0 &&
+		compass.slots.length === 0 &&
+		compass.was === compass.reads &&
 		tags.added.length === 0 &&
 		tags.removed.length === 0 &&
 		looks.length === 0
