@@ -48,7 +48,7 @@ export function viewerDelegation(request: AuthedRequest): Delegation {
   if (delegation) return delegation;
   if (request.viewer) {
     throw new ForbiddenException(
-      "That isn't available yet when you sign in with your own key.",
+      "Signing in with your own key does not reach that. Sign in with an identity instead — one made here, or the one where yours lives.",
     );
   }
   throw new UnauthorizedException("Sign in to continue.");

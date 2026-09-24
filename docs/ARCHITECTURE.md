@@ -597,8 +597,8 @@ for a graph view, which is this question asked of a folder rather than of a pers
 
 **The door** is below, in "Signing in with a key of your own": a session minted for a
 principal that is not a syr identity, and the surface a person signs in through. It reaches
-a key through `bindingFor` and discovers none of its own, so until the binding above lands
-there is no scheme it can complete a sign-in in.
+a key through `bindingFor` and discovers none of its own, so which addresses it can settle a
+sign-in for is whatever bindings this instance holds.
 
 **Federation is after both**, because every entry into it resolves an identity store: a
 peer's `PublishedIndex` is keyed by the DID an instance was asked about, and following
@@ -630,8 +630,16 @@ out on the way in, because somebody signs a file and what wrote the file decided
 **`POST /auth/answer` takes the statement and the signature, and settles a session.** The order
 matters: the statement is read, the keys that speak for its principal are asked for, the
 signature is checked, and only then is the statement spent. A paste that went wrong therefore
-costs nothing, and a signature that checked out cannot be presented twice. Both routes are
-public and both are rate-limited per caller, because both answer without a session.
+costs nothing, and a signature that checked out cannot be presented twice. What is pasted may
+be the signature alone or the signed text with the signature in it — the text a signature is
+held to is the statement this instance issued either way. Both routes are public and both are
+rate-limited per caller, because both answer without a session.
+
+**Neither route says whether a key was found for an address.** A refusal reads the same
+whether the signature was wrong, the key was somebody else's, or nobody publishes one for
+that address — so a caller working through addresses learns nothing here. An instance that
+could not reach the binding at all says so instead, because that is somebody's afternoon
+rather than their credential.
 
 **Which key is asked about is `bindingFor`'s answer and nothing else.** Nothing here fetches,
 resolves or discovers a key: a `KeyBinding` is injected, `null` from one is an instance having a
