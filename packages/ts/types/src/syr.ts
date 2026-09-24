@@ -14,6 +14,7 @@ import {
   DidSyrSchema,
   type OwnedRef,
   OwnedRefSchema,
+  PrincipalSchema,
   TimestampSchema,
   UlidSchema,
 } from "./common.js";
@@ -184,6 +185,57 @@ export const NodeSignedPayloadV1Schema = z.object({
   created_at: TimestampSchema,
 });
 export type NodeSignedPayloadV1 = z.infer<typeof NodeSignedPayloadV1Schema>;
+
+/**
+ * The same statement about a note whose author may be named any way a person
+ * can be. V1's `did` is a syr identity and a verifier compares it to the owner
+ * half of the note's ref, so a note owned by a `mailto:` can carry no V1
+ * payload that is about itself; this is what one of those carries instead.
+ * docs/ARCHITECTURE.md § "Who a person is".
+ *
+ * **An absent `address` is a note its author gave no label**, which is an
+ * ordinary note and must be signable as one; it is a claim about a note that
+ * has none, never one that matches whatever a note happens to be at.
+ */
+export const NodeSignedPayloadV2Schema = z.object({
+  type: z.literal("sloppy-node@v2"),
+  principal: PrincipalSchema,
+  /** The ULID half of the node's key. `principal` above is the other half. */
+  node_id: UlidSchema,
+  address: AddressSchema.optional(),
+  title: z.string(),
+  created_at: TimestampSchema,
+});
+export type NodeSignedPayloadV2 = z.infer<typeof NodeSignedPayloadV2Schema>;
+
+/** What a node payload says it is. */
+export const NodePayloadVersionSchema = z.enum([
+  "sloppy-node@v1",
+  "sloppy-node@v2",
+]);
+export type NodePayloadVersion = z.infer<typeof NodePayloadVersionSchema>;
+
+/** Every version of the payload above, told apart by that tag. */
+export const NodeSignedPayloadSchema = z.discriminatedUnion("type", [
+  NodeSignedPayloadV1Schema,
+  NodeSignedPayloadV2Schema,
+]);
+export type NodeSignedPayload = z.infer<typeof NodeSignedPayloadSchema>;
+
+/**
+ * Which version a reader is holding. **`undefined` is a version this build
+ * cannot name** — a payload it cannot check and never one it has found wrong,
+ * the way `signatureSchemeOf` holds a signature in a scheme it has never heard
+ * of. A payload whose version IS named and whose shape then refuses to
+ * parse is the other answer, and a caller may hold that one against the row: it
+ * contradicts what it says it is.
+ */
+export function nodePayloadVersionOf(
+  payload: unknown,
+): NodePayloadVersion | undefined {
+  const named = z.object({ type: NodePayloadVersionSchema }).safeParse(payload);
+  return named.success ? named.data.type : undefined;
+}
 
 /**
  * What a comment is signed with. syr defines this one — it is the payload its

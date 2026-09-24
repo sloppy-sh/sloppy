@@ -12,7 +12,6 @@ import { z } from "zod";
 import { AddressSchema } from "./address.js";
 import { splitOwnedRef } from "./codecs.js";
 import {
-  DidSyrSchema,
   OwnedEntitySchema,
   OwnedRefSchema,
   PrincipalSchema,
@@ -27,17 +26,27 @@ import {
 } from "./published.js";
 
 /**
- * Somebody the reader follows. `provider_url` is where their identity store
- * answers; absent where the reader's own store recorded none, and the DID is
- * then resolved from scratch.
+ * Somebody the reader follows.
+ *
+ * `did` holds any {@link PrincipalSchema} identifier. The name is what a store,
+ * a route and a client all read this field by, so widening it costs nothing
+ * where renaming it costs every one of them — the trade `PulledNode.source_did`
+ * below already carries.
+ *
+ * `provider_url` is the instance recorded beside them: where their identity
+ * store answers, and, for an identifier that names no store, the instance a
+ * reader was given alongside it — the one asked where that person's graph is
+ * when nothing they control says. Absent where the reader's own store recorded
+ * none, and an identifier that resolves is then resolved from scratch.
+ * docs/ARCHITECTURE.md § "Where a person's graph is".
  */
 export const FollowedIdentitySchema = z.object({
-  did: DidSyrSchema,
+  did: PrincipalSchema,
   provider_url: z.url().nullable().optional(),
 });
 export type FollowedIdentity = z.infer<typeof FollowedIdentitySchema>;
 
-export const FollowRequestSchema = z.object({ did: DidSyrSchema });
+export const FollowRequestSchema = z.object({ did: PrincipalSchema });
 export type FollowRequest = z.input<typeof FollowRequestSchema>;
 
 /**
@@ -107,7 +116,7 @@ export function peerOrigin(typed: string): PeerOrigin | null {
 /** What `GET /peers/publications` binds. An absent `source_url` is this
  *  instance, which is the whole of it for somebody who keeps their graph here. */
 export const PeerPublicationsQuerySchema = z.object({
-  did: DidSyrSchema,
+  did: PrincipalSchema,
   source_url: PeerOriginSchema.optional(),
   /** Absent asks for the first page. A zod object strips what it does not
    *  declare, so a listing that goes on is unreachable without this. */
@@ -148,7 +157,7 @@ export const PeerIdentityQuerySchema = z.object({
 export type PeerIdentityQuery = z.input<typeof PeerIdentityQuerySchema>;
 
 /** Who that name turned out to be — the identifier everything else travels by. */
-export const PeerIdentitySchema = z.object({ did: DidSyrSchema });
+export const PeerIdentitySchema = z.object({ did: PrincipalSchema });
 export type PeerIdentity = z.infer<typeof PeerIdentitySchema>;
 
 /**
