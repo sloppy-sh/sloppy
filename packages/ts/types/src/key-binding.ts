@@ -1,5 +1,5 @@
-// Which key speaks for an identifier, and what scheme a signature is in —
-// docs/ARCHITECTURE.md § "Who a person is".
+// Which key speaks for an identifier, what scheme a signature is in, and
+// whose the row it arrived on is — docs/ARCHITECTURE.md § "Who a person is".
 
 import { z } from "zod";
 import type { Principal, PrincipalScheme } from "./common.js";
@@ -106,3 +106,20 @@ export function bindingFor(
   if (scheme === undefined) return undefined;
   return bindings.find((binding) => binding.scheme === scheme);
 }
+
+/**
+ * Whose a signed row is, once the key that signed it has been weighed against
+ * the keys its named author holds.
+ *
+ * - `theirs` — the signature checks out under a key that author holds.
+ * - `unattributed` — it checks out, and nothing shows that author holds the key
+ *   it checks out under. **An instance that did not answer lands here**, so
+ *   this is not an accusation and must never be drawn as one.
+ * - `refuted` — the row does not say what it was signed saying, or it is signed
+ *   under none of the keys its author holds.
+ *
+ * Asked rather than read off a claim, the rule a vouch is held to: no column a
+ * peer can write says this, because a forger would write it.
+ */
+export const AttributionSchema = z.enum(["theirs", "unattributed", "refuted"]);
+export type Attribution = z.infer<typeof AttributionSchema>;
