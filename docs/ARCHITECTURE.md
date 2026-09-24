@@ -539,8 +539,8 @@ parameter that turns out to dereference is one to narrow rather than widen.
 ### Which key speaks for a principal
 
 `KeyBinding` in `key-binding.ts` answers "which key speaks for this identifier right now?" —
-the question `peer/attribution.ts` says it cannot answer, and the reason a signature that
-checks out says only that the note has not been altered.
+the question a signature check cannot answer out of the payload it is checking, and the half
+§ "Whose a signed row is" adds to it.
 
 One implementation per principal scheme, reached by `bindingFor(principal, bindings)` so a
 caller never learns which schemes exist. `syrKeyBinding` in `@sloppy/idp` is one: syr answers
@@ -589,6 +589,43 @@ signature is over, the signature and the public key, in armoured or binary form,
 whether they agree. Nothing is fetched and no key is discovered: the caller has already
 decided which key it is asking about, which is why a signature that checks out says the
 payload has not been altered and never says whose key it is.
+
+### Whose a signed row is
+
+Holding both halves is what lets a reader say "written by Alice" and mean it. `attribution.ts`
+in `api/src/identity` is the one place the two meet, and it answers in three:
+
+- **`theirs`** — the signature checks out under a key that author holds. The key is asked to
+  check the same signature rather than compared to the one on the row, because one spelling of
+  a key is not another and what settles whose a signature is, is which key made it.
+- **`unattributed`** — it checks out, and nobody has been SHOWN to hold the key it checks out
+  under. An instance that did not answer lands here beside an author who publishes no key, and
+  deliberately: neither is evidence against anybody, so **unreachability is never refutation**
+  and no surface may draw it as one.
+- **`refuted`** — the row does not say what it was signed saying, or it is signed under none of
+  the keys its author holds.
+
+**What is asked, and how often.** `IdentityKeysService.contentKeysFor` takes a map keyed by
+principal and answers one keyed the same way, so a page of fifty notes by three people costs
+three asks — a pull that asked per row would aim this instance at a stranger's network once per
+note. `peer/attribution.ts` and `social/comment-attribution.ts` are handed the ask rather than
+making one, and make it **at most once, and only where something on the page carries a
+signature worth weighing**: a region of unsigned notes, which is every note written here so
+far, asks nobody anything. A pull holds that one answer across every page of a region, every
+note in it being answered for by the same person.
+
+**Which keys count.** Only a `BoundKey` whose `signs` is `content`, and only in the signature's
+own scheme: the key a `did:syr` IS stands behind the keys that sign rather than signing, so
+holding it settles nothing. What an identity's instance has approved is the listing
+`delegated-keys.ts` reads, and it is read at a `TrustedInstance` the CALLER names — never at an
+address taken off the content being weighed, which would let a forger appoint the authority on
+its own forgery. Unasked is `null` and is not an author with no key. The answer is worth what
+that address is worth, which is the same bound a vouch is held to.
+
+**What a reader is told.** A note or a comment nothing weighed says nothing either way, which
+is every unsigned one. A refuted note is left out of a pull and a refuted comment is not drawn.
+An unattributed one is drawn, with one line saying nobody could be shown to have written it —
+and that is the whole of what a person reads about any of this.
 
 ### Where a person's graph is
 
@@ -658,7 +695,7 @@ moved yet — what landed is vocabulary:
   request are the document minus its subject, taken off it rather than spelled out again, so
   the three cannot say different things.
 
-Two things build on it, and neither is written yet.
+One thing builds on it and is not written yet.
 
 - **Reaching an email person's graph.** The resolver § "Where a person's graph is"
   describes — their domain first, the instance named alongside second — the route that
@@ -672,15 +709,8 @@ Two things build on it, and neither is written yet.
   `PeerService.follow` says so in words rather than letting somebody meet the store's own
   refusal. Lifting that is teaching a store to keep a principal, and it is where the words go
   when it is.
-- **Binding a signature to its signer.** `peer/attribution.ts` and
-  `social/comment-attribution.ts` dispatch on `signature_scheme` and check the signature
-  against the key that arrived WITH it, which is why they still say only that the row has not
-  been altered. Asking who holds that key is a fetch, and `IdentityKeysService` is where a
-  caller asks it deliberately — **once per author, never once per note**, because a pull that
-  asked per row would aim this instance at a stranger's network as many times as the region
-  has notes.
 
-Two gaps are outside both of those. **`signature_scheme` is absent on every comment**,
+Two gaps are outside it. **`signature_scheme` is absent on every comment**,
 syr's own comment record having no such column, so every comment reads as
 `ed25519-multibase`. And `syrPostRefFor` hands an identity store the owner half of a note's
 ref as `post_did`, so a note whose ref is owned by an email address still has nowhere to hang
@@ -1672,7 +1702,10 @@ pull writes rows:
   as the author's — and not presenting ONE note as its author's is not the same as refusing
   the two hundred that verify. So `attribution.ts` answers per note, the page is written
   without it, and it is not among what the sweep below counts as served, which lets go of a
-  copy the reader can no longer put the author's name to. An answer that is not the branch
+  copy the reader can no longer put the author's name to. **A note nobody could be shown to
+  have written is kept**, its verdict written beside the copy as `pulled_node.attribution` —
+  § "Whose a signed row is" carries the three answers, and the middle one is why an instance
+  having a bad afternoon does not cost a reader the branch. An answer that is not the branch
   that was ASKED for is the other case entirely and is still refused whole: what a peer
   sent about the shape of its own subtree is either the answer to the question or not.
 - **A refresh removes what its region served and the new answer no longer carries.** The
@@ -1739,7 +1772,8 @@ rather than gaps to close:
   the comment, a reader that can and finds it wrong must not present it as the author's,
   and an absent one says nothing either way — a comment whose second step never landed is
   unsigned, not suspect. Nothing may present a comment as attributed on the strength of a
-  signature it has not checked. **A reaction is the other way round:** syr stores the same
+  signature it has not checked: whose it is, is the same three answers a note's signature
+  gets, asked once per voice rather than once per comment. **A reaction is the other way round:** syr stores the same
   three fields on one and its public listing does not serve them, so a reaction never
   arrives with anything to check, and no surface may claim otherwise.
 
