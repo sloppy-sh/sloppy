@@ -144,19 +144,19 @@ describe('where an offer would have the note point', () => {
 	it('names nothing where neither side points anywhere', () => {
 		expect(
 			compassApart(side('', [[ONE, 'As it stands']]), side('', [[ONE, 'As it stands']]))
-		).toEqual([]);
+		).toEqual({ was: 'idea', reads: 'idea', slots: [] });
 	});
 
 	it('names the slot that gained a note, and no other', () => {
 		const apart = compassApart(pointing(ONE, {}), pointing(ONE, { north: [TWO] }));
 
-		expect(apart).toEqual([{ direction: 'north', gained: [TWO], lost: [] }]);
+		expect(apart.slots).toEqual([{ direction: 'north', gained: [TWO], lost: [] }]);
 	});
 
 	it('names a note a slot no longer points at', () => {
 		const apart = compassApart(pointing(ONE, { west: [TWO] }), pointing(ONE, { west: [] }));
 
-		expect(apart).toEqual([{ direction: 'west', gained: [], lost: [TWO] }]);
+		expect(apart.slots).toEqual([{ direction: 'west', gained: [], lost: [TWO] }]);
 	});
 
 	it('reads the slots in the order a compass is read in', () => {
@@ -165,7 +165,7 @@ describe('where an offer would have the note point', () => {
 			pointing(ONE, { west: [TWO], north: [THREE], east: [TWO] })
 		);
 
-		expect(apart.map((slot) => slot.direction)).toEqual(['north', 'east', 'west']);
+		expect(apart.slots.map((slot) => slot.direction)).toEqual(['north', 'east', 'west']);
 	});
 
 	// A slot that gained a note is read as the slot it is, not as a block of
@@ -184,6 +184,25 @@ describe('where an offer would have the note point', () => {
 		const apart = offerDifference({ ref: NOTE }, now, offered);
 
 		expect(saysAnything(apart)).toBe(false);
+		expect(
+			saysNothing(
+				apart,
+				compassApart(now, offered),
+				tagsApart(now, offered),
+				looksApart(now, offered)
+			)
+		).toBe(false);
+	});
+
+	// Reading a note as another method is writing on it, and the slots are
+	// stripped out of the section difference, so it has nowhere else to be said.
+	it('names the method the offer would read the slots as', () => {
+		const now = pointing(ONE, { north: [TWO] });
+		const offered = pointing(ONE, { north: [TWO], kind: 'qec' });
+		const apart = offerDifference({ ref: NOTE }, now, offered);
+
+		expect(compassApart(now, offered)).toEqual({ was: 'idea', reads: 'qec', slots: [] });
+		expect(sectionsApart(now, offered).sections).toEqual([]);
 		expect(
 			saysNothing(
 				apart,
@@ -254,7 +273,7 @@ describe('where an offer would have the note point', () => {
 		};
 
 		expect(sectionsApart(now, offered).sections).toHaveLength(2);
-		expect(compassApart(now, offered)).toEqual([]);
+		expect(compassApart(now, offered).slots).toEqual([]);
 	});
 
 	it('still shows the writing where the section changed around the compass', () => {
@@ -262,7 +281,7 @@ describe('where an offer would have the note point', () => {
 		const offered = pointing(ONE, { north: [TWO] }, 'The decision, sharpened');
 
 		expect(sectionsApart(now, offered).sections).toHaveLength(1);
-		expect(compassApart(now, offered)).toHaveLength(1);
+		expect(compassApart(now, offered).slots).toHaveLength(1);
 	});
 	it('leaves every line alone where the offer names no look at all', () => {
 		const now: WritingSide = {

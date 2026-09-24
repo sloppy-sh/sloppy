@@ -3,8 +3,11 @@ import {
 	citedNotes,
 	compassNode,
 	compassOf,
+	compassSlotWords,
+	COMPASS_DIRECTIONS,
 	type BlockDocument,
 	type CreateBlockRequest,
+	type DocumentNode,
 	type NodeView
 } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
@@ -13,7 +16,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import { Refusal } from '../../refusal.js';
 import BlockStack from './block-stack.svelte';
-import { COMPASS_WORDS } from './compass-node.js';
 import type { NoteReferences } from './contract.js';
 import { docBlocks } from './document.js';
 import {
@@ -86,6 +88,16 @@ function stored() {
 	const sections = docBlocks(writingIn().state.doc);
 	for (const one of sections) {
 		const held = compassOf(one.content);
+		if (held) return held;
+	}
+	return undefined;
+}
+
+/** The compass element itself, as a section hands it to a vault, the API and a
+ *  peer — before anything reading one normalises it. */
+function writtenDown(): DocumentNode | undefined {
+	for (const one of docBlocks(writingIn().state.doc)) {
+		const held = (one.content.content ?? []).find((element) => element.type === 'compass');
 		if (held) return held;
 	}
 	return undefined;
@@ -186,7 +198,8 @@ describe('a compass in the writing', () => {
 		put();
 
 		expect(stored()).toEqual({ north: [], south: [], east: [], west: [] });
-		for (const [direction, { word, asks }] of Object.entries(COMPASS_WORDS)) {
+		for (const direction of COMPASS_DIRECTIONS) {
+			const { word, asks } = compassSlotWords('idea', direction);
 			expect(words(slot(direction).querySelector('.sloppy-compass-word'))).toBe(word);
 			expect(words(slot(direction).querySelector('.sloppy-compass-asks'))).toBe(asks);
 		}
@@ -249,7 +262,7 @@ describe('a compass in the writing', () => {
 		expect(menu()).toHaveLength(0);
 		expect(stored()?.north).toEqual([]);
 		expect(words(slot('north').querySelector('.sloppy-compass-asks'))).toBe(
-			COMPASS_WORDS.north.asks
+			compassSlotWords('idea', 'north').asks
 		);
 	});
 
@@ -319,7 +332,7 @@ describe('a compass in the writing', () => {
 		tap(act('north', 'Take Seed banks out of Part of'));
 		expect(stored()?.north).toEqual([]);
 		expect(words(slot('north').querySelector('.sloppy-compass-asks'))).toBe(
-			COMPASS_WORDS.north.asks
+			compassSlotWords('idea', 'north').asks
 		);
 	});
 
@@ -368,9 +381,136 @@ describe('a compass in the writing', () => {
 		expect(words(slot('north').querySelector('.sloppy-reference'))).toBe('thing');
 		for (const direction of ['south', 'east', 'west'] as const) {
 			expect(words(slot(direction).querySelector('.sloppy-compass-asks'))).toBe(
-				COMPASS_WORDS[direction].asks
+				compassSlotWords('idea', direction).asks
 			);
 		}
+	});
+
+	function chooses(kind: string): void {
+		const held = card().querySelector('.sloppy-compass-method') as HTMLSelectElement;
+		held.value = kind;
+		held.dispatchEvent(new Event('change', { bubbles: true }));
+		flushSync();
+	}
+
+	const asked = (direction: string): string =>
+		words(slot(direction).querySelector('.sloppy-compass-asks'));
+
+	// A person choosing reads the questions, not two acronyms they can only
+	// learn by picking one — DESIGN.md § "The compass card".
+	it('offers each method by the questions it would read the note by', () => {
+		open(graph([]));
+		put();
+
+		const options = [...card().querySelectorAll('.sloppy-compass-method option')].map((one) =>
+			words(one)
+		);
+
+		expect(options).toEqual([
+			'Idea compass — part of, made of, like, instead of',
+			'QEC — the question, the evidence, the conclusion',
+			'AJI — the assumption, the justification, the implication'
+		]);
+	});
+
+	it('reads the same slots as the method the person chose', () => {
+		open(graph([]));
+		put();
+		tap(act('west', 'Cite a note'));
+		chooses('qec');
+
+		expect(card().querySelector('.sloppy-compass-field')).toBeNull();
+
+		expect(words(slot('north').querySelector('.sloppy-compass-word'))).toBe('The question');
+		expect(asked('north')).toBe('What is the question?');
+		expect(asked('east')).toBe('What does the evidence conclude?');
+		expect(slot('west').hidden).toBe(true);
+	});
+
+	// Nothing moves when the method does, so switching back is not a repair.
+	it('leaves every citation where it was through a switch and back', async () => {
+		const seed = note('1b', 'Seed banks');
+		const moon = note('1c', 'Moonlight');
+		open(graph([seed, moon]));
+		put();
+		tap(act('north', 'Cite a note'));
+		type('seed');
+		tap(menu()[0]);
+		tap(act('west', 'Cite a note'));
+		type('moon');
+		tap(menu()[0]);
+		await settled();
+
+		const before = stored();
+		chooses('aji');
+		expect(stored()).toEqual({ ...before, kind: 'aji' });
+
+		chooses('idea');
+		expect(stored()).toEqual(before);
+		expect(kept().kind).toBeNull();
+	});
+
+	// An absent kind is what the idea compass says on the wire, so a compass in
+	// it must reach a vault, the API and a peer carrying none — the node's own
+	// attribute is null there, and a null is not writing.
+	it('writes down the method only where the note is read by another one', async () => {
+		const seed = note('1b', 'Seed banks');
+		open(graph([seed]));
+		put();
+		tap(act('north', 'Cite a note'));
+		type('seed');
+		tap(menu()[0]);
+		await settled();
+
+		const slots = { north: [{ note: seed.ref }], south: [], east: [], west: [] };
+		expect(writtenDown()?.attrs).toEqual(slots);
+
+		chooses('qec');
+		expect(writtenDown()?.attrs).toEqual({ ...slots, kind: 'qec' });
+
+		chooses('idea');
+		expect(writtenDown()?.attrs).toEqual(slots);
+	});
+
+	// A method a later build added is somebody's writing, and this one keeps
+	// what it cannot read.
+	it('writes down a method it has never heard of as it stands', async () => {
+		open(graph([]));
+		writingIn().commands.insertContent({
+			type: 'compass',
+			attrs: { north: [], south: [], east: [], west: [], kind: 'swot' }
+		});
+		flushSync();
+		await settled();
+
+		expect(writtenDown()?.attrs?.kind).toBe('swot');
+	});
+
+	// A slot a method has no question for still holds citations the canvas
+	// draws, so it is never quietly hidden.
+	it('keeps a slot its method does not ask for in sight while it holds notes', async () => {
+		const moon = note('1c', 'Moonlight');
+		open(graph([moon]));
+		put();
+		tap(act('west', 'Cite a note'));
+		type('moon');
+		tap(menu()[0]);
+		await settled();
+
+		chooses('qec');
+
+		expect(slot('west').hidden).toBe(false);
+		expect(words(slot('west').querySelector('.sloppy-compass-word'))).toBe('Instead of');
+		expect(words(slot('west').querySelector('.sloppy-compass-kept'))).toBe(
+			'Still cited. QEC has no question for these — take one out, or switch back.'
+		);
+		expect(words(slot('west').querySelector('.sloppy-reference'))).toBe('Moonlight');
+		expect(act('west', 'Cite a note').hidden).toBe(true);
+
+		tap(act('west', 'Take Moonlight out of Instead of'));
+
+		expect(stored()?.west).toEqual([]);
+		expect(slot('west').hidden).toBe(true);
 	});
 
 	it('offers nothing a slot already points at', async () => {

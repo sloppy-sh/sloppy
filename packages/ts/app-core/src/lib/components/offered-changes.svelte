@@ -69,7 +69,7 @@
 			: null
 	);
 	const tags = $derived(offered ? tagsApart(now, offered) : null);
-	const compass = $derived(offered ? compassApart(now, offered) : []);
+	const compass = $derived(compassApart(now, offered ?? now));
 	const lines = $derived(offered ? looksApart(now, offered) : []);
 
 	$effect(() => {

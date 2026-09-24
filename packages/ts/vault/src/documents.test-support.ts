@@ -114,8 +114,8 @@ const slot = fc.array(fc.constantFrom({ note: REF }, { note: OTHER_REF }), {
 
 /** The four slots the editor writes, and the shapes a hand or a later build
  *  leaves behind — a slot missing, a slot holding something that cites no note,
- *  a place carrying more than the citation — which the vault carries as JSON
- *  rather than as lines. */
+ *  a place carrying more than the citation, a method other than the idea
+ *  compass — which the vault carries as JSON rather than as lines. */
 const compasses: fc.Arbitrary<DocumentNode> = fc.oneof(
   fc.tuple(slot, slot, slot, slot).map(([north, south, east, west]) => ({
     type: "compass",
@@ -148,6 +148,12 @@ const compasses: fc.Arbitrary<DocumentNode> = fc.oneof(
     type: "compass",
     attrs: { north: [], south: [], east: [], west: [], why: "later" },
   }),
+  fc
+    .tuple(fc.constantFrom("qec", "aji", "swot"), slot, slot)
+    .map(([kind, north, west]) => ({
+      type: "compass",
+      attrs: { north, south: [], east: [], west, kind },
+    })),
 );
 
 const leaves: fc.Arbitrary<DocumentNode> = fc.oneof(

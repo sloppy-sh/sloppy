@@ -372,6 +372,10 @@ function writeList(
  * and nothing besides, each a list of refs — is written this way; anything else
  * goes as its JSON, so a document carrying a slot nobody gave it, or a slot
  * holding something that names no note, reads back carrying exactly that.
+ *
+ * A compass in a method other than the idea compass is one of those. A line
+ * saying which method would end the run for a reader that does not know it, and
+ * cut one compass into two — docs/ARCHITECTURE.md § "The compass".
  */
 function writeCompass(attrs: Record<string, unknown>): string | null {
   if (!only(attrs, [...COMPASS_DIRECTIONS])) return null;

@@ -163,16 +163,106 @@ export const DECISION_WHY_HEADING = "Why";
 
 /**
  * The four slots, in the order a compass is written and read in. **These
- * tokens are the wire**; the words a surface draws beside them — "Part of",
- * "Made of", "Like", "Instead of" — are copy, and may change or be translated
- * without moving anything a peer holds.
+ * tokens are the wire**, whichever method a compass is in; the words a surface
+ * draws beside them are copy, and may change or be translated without moving
+ * anything a peer holds.
  */
 export const COMPASS_DIRECTIONS = ["north", "south", "east", "west"] as const;
 export type CompassDirection = (typeof COMPASS_DIRECTIONS)[number];
 
+/** The methods a compass can be read in. A fourth is a token here and a row in
+ *  {@link COMPASS_METHODS}, and moves nothing a peer holds. */
+export const COMPASS_KINDS = ["idea", "qec", "aji"] as const;
+export type CompassKind = (typeof COMPASS_KINDS)[number];
+
+/**
+ * What a compass that does not say is in. **An absent `kind` on the wire means
+ * this**, so every compass written before a note could say which method it was
+ * in, and every one an older build writes, is the idea compass — and a compass
+ * in this method carries no `kind` at all.
+ */
+export const DEFAULT_COMPASS_KIND: CompassKind = "idea";
+
+/** What one method calls a slot, and what it asks while nothing is in it. */
+export interface CompassSlotWords {
+  word: string;
+  asks: string;
+}
+
+/**
+ * One method: what a person chooses it by, and the questions it reads the
+ * slots as. A slot it does not name is one it has no question for — a
+ * three-part method leaves `west` out, and a note carrying citations there
+ * keeps them (DESIGN.md § "The compass card").
+ */
+export interface CompassMethod {
+  name: string;
+  slots: Partial<Record<CompassDirection, CompassSlotWords>>;
+}
+
+const IDEA_SLOTS: Record<CompassDirection, CompassSlotWords> = {
+  north: { word: "Part of", asks: "What larger pattern is this part of?" },
+  south: { word: "Made of", asks: "What is this made of?" },
+  east: { word: "Like", asks: "What else works like this?" },
+  west: { word: "Instead of", asks: "What was chosen instead?" },
+};
+
+/** The words every surface draws beside the slots. They sit here, beside the
+ *  tokens, for the reason {@link DECISION_WHY_HEADING} does: the app and the
+ *  CLI both say them, and two copies would drift. */
+const COMPASS_METHODS: Record<CompassKind, CompassMethod> = {
+  idea: { name: "Idea compass", slots: IDEA_SLOTS },
+  qec: {
+    name: "QEC",
+    slots: {
+      north: { word: "The question", asks: "What is the question?" },
+      south: { word: "The evidence", asks: "What is the evidence?" },
+      east: {
+        word: "The conclusion",
+        asks: "What does the evidence conclude?",
+      },
+    },
+  },
+  aji: {
+    name: "AJI",
+    slots: {
+      north: { word: "The assumption", asks: "What is being assumed?" },
+      south: { word: "The justification", asks: "What justifies it?" },
+      east: { word: "The implication", asks: "What follows if it holds?" },
+    },
+  },
+};
+
+/** The method a compass is in, which an absent kind answers with the idea
+ *  compass. */
+export function compassMethod(kind: CompassKind | undefined): CompassMethod {
+  return COMPASS_METHODS[kind ?? DEFAULT_COMPASS_KIND];
+}
+
+/** The slots a method asks for, in the order a compass is read in. */
+export function compassSlots(
+  kind: CompassKind | undefined,
+): CompassDirection[] {
+  const { slots } = compassMethod(kind);
+  return COMPASS_DIRECTIONS.filter((direction) => slots[direction]);
+}
+
+/** What a slot is called, falling back to the idea compass's word where the
+ *  method has no question for it — a citation is still filed under something. */
+export function compassSlotWords(
+  kind: CompassKind | undefined,
+  direction: CompassDirection,
+): CompassSlotWords {
+  return compassMethod(kind).slots[direction] ?? IDEA_SLOTS[direction];
+}
+
 /** What each slot points at. An empty list is a slot nobody has filled, which
  *  is what an absent one reads as. */
-export type Compass = Record<CompassDirection, OwnedRef[]>;
+export type Compass = Record<CompassDirection, OwnedRef[]> & {
+  /** Which method the slots are read as. Absent is
+   *  {@link DEFAULT_COMPASS_KIND}, and every method reads the same four. */
+  kind?: CompassKind;
+};
 
 /** One filled place in a slot. A slot cites a note under
  *  {@link REFERENCE_NOTE_ATTR}, the same key a sentence cites one under, so
@@ -183,18 +273,24 @@ export interface CompassCitation {
 }
 
 /** The compass node holding these slots, as the editor and the vault write one.
- *  All four are written; an empty slot is an empty list. */
+ *  All four are written; an empty slot is an empty list. The idea compass
+ *  writes no `kind`, because that is what an absent one says. */
 export function compassNode(slots: Compass): DocumentNode {
-  const attrs: Record<string, CompassCitation[]> = {};
+  const attrs: Record<string, CompassCitation[] | CompassKind> = {};
   for (const direction of COMPASS_DIRECTIONS) {
     attrs[direction] = slots[direction].map((note) => ({
       [REFERENCE_NOTE_ATTR]: note,
     }));
   }
+  if (slots.kind && slots.kind !== DEFAULT_COMPASS_KIND) {
+    attrs.kind = slots.kind;
+  }
   return { type: COMPASS_TYPE, attrs };
 }
 
-/** The slots a node holds where it is a compass, absent where it is not. */
+/** The slots a node holds where it is a compass, absent where it is not. A
+ *  `kind` this build does not know reads as the idea compass and is left on
+ *  the node untouched, so a method a later build adds survives being read. */
 function compassAt(held: unknown): Compass | undefined {
   if (held === null || typeof held !== "object") return undefined;
   const node = held as DocumentNode;
@@ -208,6 +304,8 @@ function compassAt(held: unknown): Compass | undefined {
       return ref.success ? [ref.data] : [];
     });
   }
+  const kind = COMPASS_KINDS.find((one) => one === attrs.kind);
+  if (kind && kind !== DEFAULT_COMPASS_KIND) slots.kind = kind;
   return slots;
 }
 

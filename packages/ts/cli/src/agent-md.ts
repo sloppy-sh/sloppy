@@ -69,6 +69,11 @@ like, west what was chosen instead. A direction with nothing in it is left out
 altogether. Filling one is citing the note it names, exactly as naming that note in a
 sentence is.
 
+These lines are the idea compass. A person can read the same four slots as another
+method — a question and its evidence, an assumption and its implication — and a compass
+in one of those is written as its JSON rather than as lines. Leave which method a note is
+in to its author, and write the lines.
+
 ## Changing a note somebody already wrote
 
 Don't write over it. \`sloppy draft\` writes straight onto a note only where the note

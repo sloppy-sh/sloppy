@@ -2769,19 +2769,37 @@ under. An empty list is a slot nobody has filled, which is what an absent one re
 a note points one way and a second one is a hand in the file rather than a second heading.
 
 **The tokens are the wire and the words are copy.** `north`, `south`, `east` and `west`
-are what a file and a peer carry; "Part of", "Made of", "Like" and "Instead of" are what a
-surface draws beside them, and are free to change or be translated without moving anything
-somebody else is holding. Nothing in storage enumerates the four: the compass is an element
-kind like any other, carried by `BlockDocumentSchema` by shape, so a build with no renderer
-for it keeps it whole (§ "Blocks and ink").
+are what a file and a peer carry; the words a surface draws beside them are free to change
+or be translated without moving anything somebody else is holding. Nothing in storage
+enumerates the four: the compass is an element kind like any other, carried by
+`BlockDocumentSchema` by shape, so a build with no renderer for it keeps it whole
+(§ "Blocks and ink").
+
+**A `kind` says which method the four slots are read as, and moves nothing.** The idea
+compass — "Part of", "Made of", "Like", "Instead of" — is what a compass that does not say
+is in, so **an absent `kind` is the idea compass** and one in that method carries no `kind`
+at all: every compass written before methods existed, and every one an older build writes,
+reads exactly as it did. `COMPASS_KINDS` in `@sloppy/types` is the closed set — `idea`,
+`qec` (a question, its evidence, its conclusion) and `aji` (an assumption, its
+justification, its implication) — and a fourth is a token there and a row of copy beside
+it. The slots stay the wire for all of them, which is what makes switching free: no
+citation moves, so switching back finds them where they were. The cost is stated: a
+three-part method carries a fourth slot it has no question for, and the file says `north:`
+where a person reads "The question". A method that has no question for a slot somebody
+filled never hides it — DESIGN.md § "The compass card" rules on what that slot says.
 
 **Its markdown form is the lines themselves** (§ "A graph on disk"): inside the section,
 one line per filled direction, in the fixed order, `north: [[<ref>]] [[<ref>]]`. A
 direction with nothing in it is not written, the reader recognises the block by the TOKENS
 and never by the words, and anything else a compass node carries — a slot nobody gave it, a
-slot naming something that is not a note — goes as its JSON like any other element markdown
-cannot say. The round trip is held to the strong form by the vault's property tests, so a
-graph read out of a folder is the graph that was written into it.
+slot naming something that is not a note, **a method other than the idea compass** — goes
+as its JSON like any other element markdown cannot say. The method goes that way because
+the run of slot lines ends at the first line that is not one: a `kind:` line inside it
+would cut one compass into two for every reader that does not expect it, and one outside it
+would be prose to them. The JSON comment is the hatch this format already has for what it
+cannot say, and a build that has never heard of methods carries one through untouched. The
+round trip is held to the strong form by the vault's property tests, so a graph read out of
+a folder is the graph that was written into it.
 
 **A slot is a citation, and nothing else changes.** `citedNotes` counts a compass ref
 exactly as it counts a note named in a sentence — because it IS that key, rather than a
@@ -2793,8 +2811,10 @@ shape and the compass is not part of it.
 
 **Filling somebody else's slot is an offer, because it is writing.** A compass lives in a
 section, so a change to one on an owned note travels the amendment path every other change
-travels (§ "Whose writing a note carries"); what differs is only how the offer is SHOWN,
-which is the slot that gained a note rather than a diff of a block.
+travels (§ "Whose writing a note carries"); what differs is only how the offer is SHOWN —
+the slot that gained a note, and the method it would be read by where the offer changes
+that — rather than a diff of a block. An offer that changes only the method moves no
+citation, so it is that line with no slot under it.
 
 **The hosted graph carries it with the block.** There is no compass route, no compass
 column and nothing for the API to learn: a section holding one is a section, and it is
@@ -3156,8 +3176,9 @@ no signals table, no cached count and nothing to migrate.
   and the terminal writing the notes read one list: what a build wrote into, what a tool
   keeps, and anything behind a dot is nobody's reading, and is neither written about nor
   asked after.
-- **`compass-gap`** — a slot left empty on a note that holds a compass. A note with no
-  compass is not missing one.
+- **`compass-gap`** — a slot its compass's method asks for and nobody has filled. A note
+  with no compass is not missing one, and a slot a method has no question for is not a gap
+  in it. The signal carries the method, so the row asks the question the note itself shows.
 - **`decision-without-why`** — a decision whose "Why" holds nothing under its heading. A
   note that is not the Decision shape — a compass and that section — is not a decision and
   yields this never.

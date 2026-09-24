@@ -19,8 +19,6 @@ export type TemplateId =
 	| 'source'
 	| 'objection'
 	| 'synthesis'
-	| 'qec'
-	| 'aji'
 	| 'walkthrough'
 	| 'decision';
 
@@ -83,24 +81,6 @@ export const NOTE_TEMPLATES: readonly NoteTemplate[] = [
 			{ heading: 'What the run establishes' },
 			{ heading: 'What it does not' },
 			{ heading: 'Where next' }
-		]
-	},
-	{
-		id: 'qec',
-		name: 'QEC',
-		sections: [
-			{ heading: 'The question' },
-			{ heading: 'The evidence' },
-			{ heading: 'The conclusion' }
-		]
-	},
-	{
-		id: 'aji',
-		name: 'AJI',
-		sections: [
-			{ heading: 'The assumption' },
-			{ heading: 'The justification' },
-			{ heading: 'The implication' }
 		]
 	},
 	{

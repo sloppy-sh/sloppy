@@ -6,10 +6,11 @@
 import {
   anchorsOf,
   type BlockDocument,
-  COMPASS_DIRECTIONS,
   type Compass,
   type CompassDirection,
+  type CompassKind,
   compassOf,
+  compassSlots,
   DECISION_WHY_HEADING,
   type DocumentNode,
   type OwnedRef,
@@ -80,13 +81,15 @@ export type ReviewSignalKind = (typeof REVIEW_SIGNALS)[number];
 /**
  * One thing worth a person's attention. **An absent `note` is a signal about
  * the project** rather than about anything somebody wrote; **an absent `path`
- * is a signal about a note** rather than about a place in the code.
+ * is a signal about a note** rather than about a place in the code; **an absent
+ * `method` is the idea compass**, which is what reads the slot's question.
  */
 export interface ReviewSignal {
   kind: ReviewSignalKind;
   note?: OwnedRef;
   path?: string;
   direction?: CompassDirection;
+  method?: CompassKind;
 }
 
 /** What the review reads off a note. A `VaultNote` and the shape a store holds
@@ -144,9 +147,15 @@ export async function review(input: ReviewInput): Promise<ReviewSignal[]> {
       signals.push({ kind: "anchor-changed", note: note.ref, path });
     }
     if (compass === undefined) continue;
-    for (const direction of COMPASS_DIRECTIONS) {
+    // A slot the note's method has no question for is not a gap in it.
+    for (const direction of compassSlots(compass.kind)) {
       if (compass[direction].length === 0) {
-        signals.push({ kind: "compass-gap", note: note.ref, direction });
+        signals.push({
+          kind: "compass-gap",
+          note: note.ref,
+          direction,
+          ...(compass.kind === undefined ? {} : { method: compass.kind }),
+        });
       }
     }
     if (whyUnwritten(note)) {

@@ -1,4 +1,4 @@
-import type { BlockDocument } from "@sloppy/types";
+import { COMPASS_DIRECTIONS, type BlockDocument } from "@sloppy/types";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { documents } from "./documents.test-support.js";
@@ -340,6 +340,56 @@ describe("a compass in a section", () => {
   it("writes an empty one as itself, because it has no lines", () => {
     const held = compass();
     expect(written(held).text.startsWith("<!-- sloppy:node ")).toBe(true);
+    expect(readBack(held)).toEqual(held);
+  });
+
+  // A compass with no method is the idea compass, which is what every compass
+  // written before there were methods says: the file it makes is the file it
+  // has always made. A kind that says nothing is one of the ways one says it:
+  // an editor attribute has nowhere to be absent, so it holds a null instead.
+  it("writes the lines and nothing besides for a compass with no method", () => {
+    const places = fc.array(fc.constantFrom(TIDES, MOON), { maxLength: 3 });
+    fc.assert(
+      fc.property(
+        fc.record({
+          north: places,
+          south: places,
+          east: places,
+          west: places,
+        }),
+        fc.constantFrom(undefined, null, "", false),
+        (slots, says) => {
+          const lines = COMPASS_DIRECTIONS.filter(
+            (direction) => slots[direction].length > 0,
+          ).map(
+            (direction) =>
+              `${direction}: ${slots[direction].map((ref) => `[[${ref}]]`).join(" ")}`,
+          );
+          fc.pre(lines.length > 0);
+          const cited = Object.fromEntries(
+            COMPASS_DIRECTIONS.map((direction) => [
+              direction,
+              cite(...slots[direction]),
+            ]),
+          );
+          const held = compass(
+            says === undefined ? cited : { ...cited, kind: says },
+          );
+          expect(written(held).text).toBe(lines.join("\n"));
+          expect(readBack(held)).toEqual(compass(cited));
+        },
+      ),
+      { numRuns: 2000 },
+    );
+  });
+
+  // The run of slot lines ends at the first line that is not one, so a line
+  // saying which method would cut one compass into two for a reader that does
+  // not expect it.
+  it("writes a compass in another method as JSON, whole", () => {
+    const held = compass({ kind: "qec", north: cite(TIDES), west: cite(MOON) });
+    expect(written(held).text.startsWith("<!-- sloppy:node ")).toBe(true);
+    expect(written(held).text).not.toContain("north:");
     expect(readBack(held)).toEqual(held);
   });
 

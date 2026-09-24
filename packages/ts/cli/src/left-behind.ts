@@ -5,7 +5,7 @@
 
 import { relative } from "node:path";
 import type { Files } from "@sloppy/local";
-import type { CompassDirection, OwnedRef } from "@sloppy/types";
+import { compassSlotWords, type OwnedRef } from "@sloppy/types";
 import { review, type ReviewSignal } from "@sloppy/vault";
 import { type HeldNote, notesIn } from "./folder.js";
 import { movedSince } from "./moved.js";
@@ -20,15 +20,6 @@ export interface LeftBehindRow {
   title?: string;
   said: string;
 }
-
-/** What an empty slot asks, the same question the note itself shows under it —
- *  DESIGN.md § "The compass card". */
-const SLOT: Record<CompassDirection, string> = {
-  north: "What larger pattern is this part of?",
-  south: "What is this made of?",
-  east: "What else works like this?",
-  west: "What was chosen instead?",
-};
 
 export interface LeftBehindAsked {
   container: Files;
@@ -97,7 +88,7 @@ function saying(signal: ReviewSignal): string {
     case "compass-gap":
       return signal.direction === undefined
         ? "A slot on this one is empty."
-        : SLOT[signal.direction];
+        : compassSlotWords(signal.method, signal.direction).asks;
     case "decision-without-why":
       return "Nothing says why.";
   }

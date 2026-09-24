@@ -1674,33 +1674,55 @@
 		overflow-wrap: anywhere;
 	}
 	/* The note in the middle and the four slots around it — DESIGN.md § "The
-	   compass card". Below this the four stack into one column, north to west. */
+	   compass card". Below this the four stack into one column, north to west,
+	   and a method that asks three things reads as that column at every width. */
 	@container (min-width: 30rem) {
-		:global(.sloppy-compass-slots) {
+		:global(.sloppy-compass-slots[data-rose]) {
 			grid-template-columns: 1fr 1fr 1fr;
 			align-items: start;
 		}
-		:global(.sloppy-compass-note) {
+		:global([data-rose] > .sloppy-compass-note) {
 			grid-column: 2;
 			grid-row: 2;
 			text-align: center;
 		}
-		:global(.sloppy-compass-slot[data-direction='north']) {
+		:global([data-rose] > .sloppy-compass-slot[data-direction='north']) {
 			grid-column: 2;
 			grid-row: 1;
 		}
-		:global(.sloppy-compass-slot[data-direction='west']) {
+		:global([data-rose] > .sloppy-compass-slot[data-direction='west']) {
 			grid-column: 1;
 			grid-row: 2;
 		}
-		:global(.sloppy-compass-slot[data-direction='east']) {
+		:global([data-rose] > .sloppy-compass-slot[data-direction='east']) {
 			grid-column: 3;
 			grid-row: 2;
 		}
-		:global(.sloppy-compass-slot[data-direction='south']) {
+		:global([data-rose] > .sloppy-compass-slot[data-direction='south']) {
 			grid-column: 2;
 			grid-row: 3;
 		}
+	}
+	:global(.sloppy-compass-method) {
+		min-height: 2.25rem;
+		max-width: 100%;
+		margin-bottom: 0.5rem;
+		border: 1px solid var(--border);
+		border-radius: calc(var(--radius) - 2px);
+		background: var(--background);
+		padding: 0.25rem 0.5rem;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-compass-method-said) {
+		margin: 0 0 0.5rem;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-compass-kept) {
+		margin: 0.2rem 0 0;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
 	}
 	:global(.sloppy-compass-word) {
 		margin: 0;

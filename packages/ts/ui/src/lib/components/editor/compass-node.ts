@@ -5,12 +5,18 @@
 
 import {
 	COMPASS_DIRECTIONS,
+	COMPASS_KINDS,
 	COMPASS_TYPE,
+	compassMethod,
 	compassNode,
 	compassOf,
+	compassSlots,
+	compassSlotWords,
+	DEFAULT_COMPASS_KIND,
 	REFERENCE_NOTE_ATTR,
 	type Compass,
 	type CompassDirection,
+	type CompassKind,
 	type DocumentNode,
 	type NodeView,
 	type OwnedRef
@@ -24,16 +30,18 @@ import { citedAs, type ReferenceReader } from './reference-node.js';
 
 export const COMPASS_NODE = COMPASS_TYPE;
 
-/** What each slot is called, and what it asks while nothing is in it. Copy: the
- *  direction tokens are what a file and a peer carry. */
-export const COMPASS_WORDS: Record<CompassDirection, { word: string; asks: string }> = {
-	north: { word: 'Part of', asks: 'What larger pattern is this part of?' },
-	south: { word: 'Made of', asks: 'What is this made of?' },
-	east: { word: 'Like', asks: 'What else works like this?' },
-	west: { word: 'Instead of', asks: 'What was chosen instead?' }
-};
-
 export const EMPTY_COMPASS: Compass = { north: [], south: [], east: [], west: [] };
+
+/** How a compass is written down: what {@link compassNode} writes. The node's
+ *  own `kind` is null under the idea compass — ProseMirror has no absent — and
+ *  a null is not writing. A method this build has not heard of stays where it
+ *  stands. */
+export function storedCompass(node: DocumentNode): DocumentNode {
+	const { kind, ...attrs } = node.attrs ?? {};
+	if (kind === undefined) return node;
+	if (kind && kind !== DEFAULT_COMPASS_KIND) return node;
+	return { ...node, attrs };
+}
 
 /**
  * What a compass needs of the graph around it. Reading and opening are all a
@@ -62,6 +70,20 @@ declare module '@tiptap/core' {
 const SHOWN = 6;
 const SHOWN_ELSEWHERE = 4;
 const COULD_NOT_WRITE = 'That note could not be added. Try again in a moment.';
+
+/** What a slot says while the method has no question for what it holds —
+ *  DESIGN.md § "The compass card". */
+const stillCited = (method: string, canFill: boolean): string =>
+	`Still cited. ${method} has no question for these${
+		canFill ? ' — take one out, or switch back' : ''
+	}.`;
+
+/** What one method is offered as: its name and the questions it would read the
+ *  note by — DESIGN.md § "The compass card". */
+const offeredAs = (kind: CompassKind): string =>
+	`${compassMethod(kind).name} — ${compassSlots(kind)
+		.map((direction) => compassSlotWords(kind, direction).word.toLowerCase())
+		.join(', ')}`;
 
 /** lucide's `x`, written out: nothing here renders through Svelte. */
 const CROSS =
@@ -120,6 +142,11 @@ export function CompassNode(
 					})
 				};
 			}
+			attrs.kind = {
+				default: null,
+				parseHTML: (el) => el.getAttribute('data-kind'),
+				renderHTML: (held) => (held.kind ? { 'data-kind': held.kind } : {})
+			};
 			return attrs;
 		},
 
@@ -151,6 +178,20 @@ export function CompassNode(
 				dom.setAttribute('contenteditable', 'false');
 				dom.setAttribute('role', 'group');
 				dom.setAttribute('aria-label', 'Compass');
+
+				const chosen = document.createElement('select');
+				chosen.className = 'sloppy-compass-method';
+				chosen.setAttribute('aria-label', 'Which questions this compass asks');
+				for (const kind of COMPASS_KINDS) {
+					const option = document.createElement('option');
+					option.value = kind;
+					option.textContent = offeredAs(kind);
+					chosen.append(option);
+				}
+				chosen.addEventListener('change', () => reads(chosen.value as CompassKind));
+				const says = document.createElement('p');
+				says.className = 'sloppy-compass-method-said';
+				dom.append(chosen, says);
 
 				const rows = document.createElement('div');
 				rows.className = 'sloppy-compass-slots';
@@ -189,38 +230,43 @@ export function CompassNode(
 				 *  field somebody is typing in must survive every draw. */
 				const drawn = {} as Record<
 					CompassDirection,
-					{ list: HTMLUListElement; asks: HTMLParagraphElement; add: HTMLButtonElement }
+					{
+						slot: HTMLElement;
+						heading: HTMLHeadingElement;
+						list: HTMLUListElement;
+						asks: HTMLParagraphElement;
+						kept: HTMLParagraphElement;
+						add: HTMLButtonElement;
+					}
 				>;
 
 				for (const direction of COMPASS_DIRECTIONS) {
-					const { word, asks } = COMPASS_WORDS[direction];
 					const slot = document.createElement('section');
 					slot.className = 'sloppy-compass-slot';
 					slot.dataset.direction = direction;
-					slot.setAttribute('aria-label', word);
 
 					const heading = document.createElement('h4');
 					heading.className = 'sloppy-compass-word';
-					heading.textContent = word;
 
 					const list = document.createElement('ul');
 					list.className = 'sloppy-compass-notes';
 
 					const prompt = document.createElement('p');
 					prompt.className = 'sloppy-compass-asks';
-					prompt.textContent = asks;
+
+					const kept = document.createElement('p');
+					kept.className = 'sloppy-compass-kept';
 
 					const add = document.createElement('button');
 					add.type = 'button';
 					add.className = 'sloppy-compass-act';
 					add.textContent = 'Cite a note';
-					add.setAttribute('aria-label', `Cite a note under ${word}`);
 					add.addEventListener('mousedown', (event) => event.preventDefault());
 					add.addEventListener('click', () => openFinder(direction));
 
-					slot.append(heading, list, prompt, add);
+					slot.append(heading, list, prompt, kept, add);
 					rows.append(slot);
-					drawn[direction] = { list, asks: prompt, add };
+					drawn[direction] = { slot, heading, list, asks: prompt, kept, add };
 				}
 
 				const at = (): number | undefined => {
@@ -243,12 +289,29 @@ export function CompassNode(
 						? undefined
 						: (entry as Record<string, unknown>)[REFERENCE_NOTE_ATTR];
 
-				function keep(direction: CompassDirection, slot: unknown[]): void {
+				const wordFor = (direction: CompassDirection): string =>
+					compassSlotWords(held().kind, direction).word;
+
+				function mark(changed: Record<string, unknown>): void {
 					const pos = at();
 					if (pos === undefined || editor.isDestroyed) return;
 					editor.view.dispatch(
-						editor.state.tr.setNodeMarkup(pos, undefined, { ...current.attrs, [direction]: slot })
+						editor.state.tr.setNodeMarkup(pos, undefined, { ...current.attrs, ...changed })
 					);
+				}
+
+				function keep(direction: CompassDirection, slot: unknown[]): void {
+					mark({ [direction]: slot });
+				}
+
+				/** Which questions the compass asks. No citation moves: every method
+				 *  is read off the same four slots, so switching back finds them
+				 *  where they were. */
+				function reads(kind: CompassKind): void {
+					// The picker belongs to the question that opened it, and the new
+					// method may not ask that one.
+					closeFinder();
+					mark({ kind: kind === DEFAULT_COMPASS_KIND ? null : kind });
 				}
 
 				function cite(direction: CompassDirection, note: OwnedRef): void {
@@ -283,7 +346,7 @@ export function CompassNode(
 					refused = null;
 					writing = false;
 					highlighted = 0;
-					field.setAttribute('aria-label', `Cite a note under ${COMPASS_WORDS[direction].word}`);
+					field.setAttribute('aria-label', `Cite a note under ${wordFor(direction)}`);
 					document.addEventListener('keydown', shutOnEscape, { capture: true });
 					draw();
 					field.focus();
@@ -413,10 +476,7 @@ export function CompassNode(
 						off.type = 'button';
 						off.className = 'sloppy-compass-off';
 						off.innerHTML = CROSS;
-						off.setAttribute(
-							'aria-label',
-							`Take ${link.textContent} out of ${COMPASS_WORDS[direction].word}`
-						);
+						off.setAttribute('aria-label', `Take ${link.textContent} out of ${wordFor(direction)}`);
 						off.addEventListener('mousedown', (event) => event.preventDefault());
 						off.addEventListener('click', () => drop(direction, note));
 						row.append(off);
@@ -451,18 +511,35 @@ export function CompassNode(
 				function draw(): void {
 					const slots = held();
 					const canFill = fillable();
+					const method = compassMethod(slots.kind);
 					const own = centre();
 					middle.hidden = own === undefined;
 					standing.textContent = own?.address ?? '';
 					standing.hidden = !own?.address;
 					called.textContent = own ? own.title || 'Untitled' : '';
+					chosen.value = slots.kind ?? DEFAULT_COMPASS_KIND;
+					chosen.hidden = !editor.isEditable;
+					says.textContent = method.name;
+					says.hidden = editor.isEditable || slots.kind === undefined;
+					rows.toggleAttribute('data-rose', compassSlots(slots.kind).length === 4);
 					for (const direction of COMPASS_DIRECTIONS) {
 						const cites = slots[direction];
-						const { list, asks, add } = drawn[direction];
+						const { slot, heading, list, asks, kept, add } = drawn[direction];
+						const words = method.slots[direction];
+						// A slot this method has no question for still holds citations
+						// somebody made, and the canvas still draws them.
+						const carried = words === undefined && cites.length > 0;
+						slot.hidden = words === undefined && cites.length === 0;
+						heading.textContent = compassSlotWords(slots.kind, direction).word;
+						slot.setAttribute('aria-label', heading.textContent);
 						list.replaceChildren(...cites.map((note) => cited(direction, note)));
 						list.hidden = cites.length === 0;
-						asks.hidden = cites.length > 0;
-						add.hidden = !canFill || finding === direction;
+						asks.textContent = words?.asks ?? '';
+						asks.hidden = words === undefined || cites.length > 0;
+						kept.textContent = carried ? stillCited(method.name, canFill) : '';
+						kept.hidden = !carried;
+						add.hidden = !canFill || words === undefined || finding === direction;
+						add.setAttribute('aria-label', `Cite a note under ${heading.textContent}`);
 					}
 					if (finding && canFill) {
 						// `after` re-inserts a node that is already there, and an input
