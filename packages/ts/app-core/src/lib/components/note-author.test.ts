@@ -41,7 +41,14 @@ async function settle(): Promise<void> {
 	}
 }
 
-function show(did: string, over: { authors?: string[]; contributors?: string[] } = {}): void {
+function show(
+	did: string,
+	over: {
+		authors?: string[];
+		contributors?: string[];
+		attribution?: 'theirs' | 'unattributed' | 'refuted';
+	} = {}
+): void {
 	mounted = mount(NoteAuthor, { target, props: { note: { created_by: did, ...over } } });
 	flushSync();
 }
@@ -128,6 +135,27 @@ describe('who wrote the note', () => {
 		expect(new URL(asking!, 'http://api.test').searchParams.get('source_url')).toBe(
 			'https://elsewhere.test'
 		);
+	});
+
+	it('says so where nobody could be shown to have written it', async () => {
+		show(PEER, { attribution: 'unattributed' });
+		await settle();
+		expect(target.textContent).toContain('Charles Babbage');
+		expect(target.textContent).toContain('Nobody could be shown to have written this');
+	});
+
+	// A note carrying no signature is the ordinary case and says nothing either
+	// way, so a reader must not be handed a doubt nobody raised.
+	it('says nothing where nothing was weighed', async () => {
+		show(PEER);
+		await settle();
+		expect(target.textContent).not.toContain('Nobody could be shown');
+	});
+
+	it("says nothing where the signature is its author's own", async () => {
+		show(PEER, { attribution: 'theirs' });
+		await settle();
+		expect(target.textContent).not.toContain('Nobody could be shown');
 	});
 
 	it('says nobody at all until their instance has answered', async () => {
