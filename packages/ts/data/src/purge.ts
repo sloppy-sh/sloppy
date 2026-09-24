@@ -59,6 +59,9 @@ export const STATEMENTS: readonly string[] = [
   // address book, kept by them and about other people, so it goes with them the
   // way a refusal does.
   `DELETE known_identity WHERE ${OWNED};`,
+  // What this person said about where their own graph is served. It says where
+  // to find them, so it goes when there is nothing left to find.
+  `DELETE whereabouts WHERE ${OWNED};`,
   // A held copy of somebody else's region is the reader's row, so it goes with
   // the reader — the author erasing their own identity elsewhere never reaches
   // it, which is the same fact the product states about unpublishing.
@@ -89,6 +92,7 @@ export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "permission_override",
   "graph_role",
   "known_identity",
+  "whereabouts",
   "retired_address",
   "node_alias",
   "graph",

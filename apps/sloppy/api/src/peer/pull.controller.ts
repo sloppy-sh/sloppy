@@ -51,6 +51,7 @@ export class PullController {
     return this.pulls.pull(
       viewerDid(req),
       parseBody(CreatePullRequestSchema, body),
+      req.delegation?.syr_instance_url,
     );
   }
 

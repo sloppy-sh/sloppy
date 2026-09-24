@@ -23,6 +23,7 @@ import {
   TimestampSchema,
 } from "./common.js";
 import { CustomEmojiSchema } from "./emoji.js";
+import { AttributionSchema } from "./key-binding.js";
 
 /**
  * One comment on a note.
@@ -55,6 +56,9 @@ export const NoteCommentSchema = z.object({
   content_signature: z.string().optional(),
   signed_payload_json: z.string().optional(),
   signing_device_public_key: z.string().optional(),
+  /** What the reader made of that signature. **Absent is a comment nothing
+   *  weighed**, which is every unsigned one and says nothing either way. */
+  attribution: AttributionSchema.optional(),
 });
 export type NoteComment = z.infer<typeof NoteCommentSchema>;
 

@@ -10,7 +10,11 @@ import {
 } from "@nestjs/common";
 import { type FollowedIdentity, FollowRequestSchema } from "@sloppy/types";
 import type { AuthedRequest } from "../auth/authed-request";
-import { didOrRefuse, parseBody, viewerDelegation } from "../node/request";
+import {
+  parseBody,
+  principalOrRefuse,
+  viewerDelegation,
+} from "../node/request";
 import { PeerService } from "./peer.service";
 
 /** Who the reader follows. The list is their identity store's, so every route
@@ -33,12 +37,14 @@ export class FollowingController {
     );
   }
 
+  /** Takes whoever `POST` takes: a follow this instance let somebody make has
+   *  to be one they can undo. */
   @Delete(":did")
   @HttpCode(204)
   unfollow(
     @Req() req: AuthedRequest,
     @Param("did") did: string,
   ): Promise<void> {
-    return this.peers.unfollow(viewerDelegation(req), didOrRefuse(did));
+    return this.peers.unfollow(viewerDelegation(req), principalOrRefuse(did));
   }
 }

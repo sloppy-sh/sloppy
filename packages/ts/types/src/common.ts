@@ -52,6 +52,11 @@ export const DidSyrSchema = z
   );
 export type DidSyr = z.infer<typeof DidSyrSchema>;
 
+/** The right-hand half of the address below, and the whole of
+ *  {@link DomainSchema}: a dotted name of at least two labels, lowercase. */
+const DOMAIN =
+  "(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+
 /**
  * An unquoted local part at a dotted domain of letters, digits and hyphens —
  * narrower than RFC 6068's `addr-spec`, and deliberately so. A quoted local
@@ -62,8 +67,9 @@ export type DidSyr = z.infer<typeof DidSyrSchema>;
  * one address two spellings — a principal is compared byte for byte and never
  * parsed into parts.
  */
-const MAILTO =
-  /^mailto:[a-z0-9!#$&'*+=?^_`{|}~-]+(?:\.[a-z0-9!#$&'*+=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const MAILTO = new RegExp(
+  `^mailto:[a-z0-9!#$&'*+=?^_\`{|}~-]+(?:\\.[a-z0-9!#$&'*+=?^_\`{|}~-]+)*@${DOMAIN}$`,
+);
 
 /**
  * Somebody who goes by an email address — `mailto:alice@example.com`.
@@ -82,6 +88,21 @@ export const MailtoSchema = z
     "Expected a mailto: identifier, e.g. mailto:alice@example.com",
   );
 export type Mailto = z.infer<typeof MailtoSchema>;
+
+/**
+ * A domain as somebody writes one down — `example.com` — lowercased on the way
+ * in the way an address above is.
+ *
+ * It is a NAME and nothing more. Nothing here says the domain exists, answers,
+ * or belongs to whoever wrote it down, so a caller asking it a question goes
+ * through the outbound guard first.
+ */
+export const DomainSchema = z
+  .string()
+  .max(253)
+  .toLowerCase()
+  .regex(new RegExp(`^${DOMAIN}$`), "Enter a domain, like example.com");
+export type Domain = z.infer<typeof DomainSchema>;
 
 /**
  * Which scheme an identifier is in. Adding a way for somebody to be named is a

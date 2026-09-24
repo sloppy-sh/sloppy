@@ -12,8 +12,6 @@ import { NodeAppearanceSchema } from "./appearance.js";
 import { splitOwnedRef } from "./codecs.js";
 import { BlockDocumentSchema, citedUploads } from "./document.js";
 import {
-  type DidSyr,
-  DidSyrSchema,
   type OwnedRef,
   OwnedRefSchema,
   type Principal,
@@ -122,19 +120,23 @@ export type PublishedPublication = z.infer<typeof PublishedPublicationSchema>;
 
 /**
  * One page of what an identity publishes on one instance — the answer to "I
- * follow this person, what can I read?", which a DID alone cannot give: nothing
- * in syr's identity manifest names where somebody's graph is served, so the
- * instance is asked and never derived. docs/ARCHITECTURE.md § "Federating the
- * graph".
+ * follow this person, what can I read?", which an identifier alone cannot give:
+ * none of them names a place, so the instance is either named by the reader or
+ * read off what its holder declares, and never derived. docs/ARCHITECTURE.md
+ * § "Federating the graph" and § "Where a person's graph is".
  *
  * A page stands on its own: one entry is one publication, and nothing in it
  * refers to an entry on another page.
  */
 export const PublishedIndexSchema = z.object({
-  /** Whose listing this is. A peer's index is reached by resolving an identity
-   *  store, which only a `did:syr` names, so this is not widened to a
-   *  principal — docs/ARCHITECTURE.md § "Who a person is". */
-  did: DidSyrSchema,
+  /**
+   * Whose listing this is — any {@link PrincipalSchema} identifier. An
+   * identifier that resolves to nowhere is reached by the declaration its
+   * holder makes about where their graph is served, so being named one way
+   * rather than another no longer decides who can be listed;
+   * docs/ARCHITECTURE.md § "Where a person's graph is".
+   */
+  did: PrincipalSchema,
   publications: z
     .array(PublishedPublicationSchema)
     .max(MAX_PUBLISHED_PUBLICATIONS_PER_PAGE),
@@ -392,7 +394,7 @@ export class UnaskedAnswerError extends Error {
 /** One page of a peer's listing, held to the identity it was asked about. */
 export function parsePublishedIndex(
   body: unknown,
-  did: DidSyr,
+  did: Principal,
 ): PublishedIndex {
   const read = PublishedIndexSchema.safeParse(body);
   if (!read.success) {
@@ -422,7 +424,7 @@ export interface PublishedIndexReader {
 }
 
 export function publishedIndexReader(asked: {
-  did: DidSyr;
+  did: Principal;
 }): PublishedIndexReader {
   const held = new Set<OwnedRef>();
   let pages = 0;

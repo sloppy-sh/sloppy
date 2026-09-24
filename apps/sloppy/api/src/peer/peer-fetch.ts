@@ -30,13 +30,84 @@ const UNREACHABLE = "Sloppy could not reach that instance. Try again later.";
 const logger = new Logger("PeerFetch");
 
 /**
- * One JSON answer from a peer's public endpoint, or `null` where the instance
- * says there is nothing at that address.
+ * What one address said when it was asked for a document.
+ *
+ * - `held` — something came back, and it is JSON.
+ * - `none` — the instance says there is nothing at that address. **That is an
+ *   answer**, and it is what lets a caller settle on nobody rather than on not
+ *   knowing.
+ * - `unreachable` — nothing answered. `refused` is this instance declining to
+ *   connect at all, which is the deployment's answer and not the peer's.
+ */
+export type PeerAnswer =
+  | { readonly answer: "held"; readonly body: unknown }
+  | { readonly answer: "none" }
+  | { readonly answer: "unreachable"; readonly refused: boolean };
+
+/** How far an answer may run and how long it may take. Absent is what a page of
+ *  a published branch is read under. */
+export interface AnswerBounds {
+  maxBytes?: number;
+  timeoutMs?: number;
+}
+
+const unreachable = { answer: "unreachable", refused: false } as const;
+
+/**
+ * One JSON answer, for a caller that must tell "there is nothing there" apart
+ * from "nothing answered" — {@link readPeerJson} is the shape for a caller
+ * where either is a refusal in front of a person.
  *
  * A pull is an outbound fetch: nothing about the reader's own request bounds
  * what comes back, so the bytes are counted as they arrive and the read gives
  * up at {@link MAX_PUBLISHED_PAGE_BYTES} rather than at the parse — a count
  * needs a whole body first, and the answer that never ends is the threat.
+ */
+export async function askPeerJson(
+  url: string,
+  policy: HostPolicy,
+  bounds: AnswerBounds = {},
+): Promise<PeerAnswer> {
+  let response: Awaited<ReturnType<typeof fetchReachable>>;
+  try {
+    response = await fetchReachable(url, policy, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(bounds.timeoutMs ?? REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error instanceof ForbiddenException) {
+      logger.warn(`${url} is at an address this instance will not connect to`);
+      return { answer: "unreachable", refused: true };
+    }
+    logger.warn(`${url} did not answer: ${reason(error)}`);
+    return unreachable;
+  }
+
+  if (response.status === 404) {
+    await discard(response);
+    return { answer: "none" };
+  }
+  if (!response.ok) {
+    await discard(response);
+    logger.warn(`${url} answered ${response.status}`);
+    return unreachable;
+  }
+
+  const body = await bounded(response, url, bounds.maxBytes);
+  if (body === null) return unreachable;
+  if (body.trim() === "") return { answer: "none" };
+  try {
+    return { answer: "held", body: JSON.parse(body) };
+  } catch {
+    logger.warn(`${url} answered something that is not JSON`);
+    return unreachable;
+  }
+}
+
+/**
+ * One JSON answer from a peer's public endpoint, or `null` where the instance
+ * says there is nothing at that address.
  *
  * What the far end SAID about a refusal is not passed on: the words in front of
  * a person come from Sloppy, and a peer's server is not one of the servers
@@ -46,39 +117,12 @@ export async function readPeerJson(
   url: string,
   policy: HostPolicy,
 ): Promise<unknown | null> {
-  let response: Awaited<ReturnType<typeof fetchReachable>>;
-  try {
-    response = await fetchReachable(url, policy, {
-      method: "GET",
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch (error) {
-    if (error instanceof ForbiddenException) {
-      throw new BadRequestException(UNREACHABLE);
-    }
-    logger.warn(`${url} did not answer: ${reason(error)}`);
-    throw new ServiceUnavailableException(UNREACHABLE);
-  }
-
-  if (response.status === 404) {
-    await response.body?.cancel().catch(() => undefined);
-    return null;
-  }
-  if (!response.ok) {
-    await response.body?.cancel().catch(() => undefined);
-    logger.warn(`${url} answered ${response.status}`);
-    throw new ServiceUnavailableException(UNREACHABLE);
-  }
-
-  const body = await bounded(response, url);
-  if (body.trim() === "") return null;
-  try {
-    return JSON.parse(body);
-  } catch {
-    logger.warn(`${url} answered something that is not JSON`);
-    throw new ServiceUnavailableException(UNREACHABLE);
-  }
+  const said = await askPeerJson(url, policy);
+  if (said.answer === "held") return said.body;
+  if (said.answer === "none") return null;
+  throw said.refused
+    ? new BadRequestException(UNREACHABLE)
+    : new ServiceUnavailableException(UNREACHABLE);
 }
 
 /**
@@ -118,10 +162,13 @@ export async function tellPeerJson(
   }
 }
 
+/** `null` where the answer ran past what is read, or stopped part way — an
+ *  answer nobody has the whole of is not one. */
 async function bounded(
   response: Awaited<ReturnType<typeof fetchReachable>>,
   url: string,
-): Promise<string> {
+  maxBytes = MAX_PUBLISHED_PAGE_BYTES,
+): Promise<string | null> {
   const stream = response.body;
   if (!stream) return "";
   const reader = stream.getReader();
@@ -133,16 +180,25 @@ async function bounded(
       const { done, value } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
-      if (bytes > MAX_PUBLISHED_PAGE_BYTES) {
+      if (bytes > maxBytes) {
         logger.warn(`${url} was still answering past the size Sloppy reads`);
-        throw new ServiceUnavailableException(UNREACHABLE);
+        return null;
       }
       held += decoder.decode(value, { stream: true });
     }
+  } catch (error) {
+    logger.warn(`${url} stopped part way: ${reason(error)}`);
+    return null;
   } finally {
     await reader.cancel().catch(() => undefined);
   }
   return held + decoder.decode();
+}
+
+async function discard(
+  response: Awaited<ReturnType<typeof fetchReachable>>,
+): Promise<void> {
+  await response.body?.cancel().catch(() => undefined);
 }
 
 /**

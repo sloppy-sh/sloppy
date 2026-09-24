@@ -1,8 +1,17 @@
-import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { describe, expect, it } from "vitest";
 import type { AuthedRequest } from "../auth/authed-request";
 import type { Delegation } from "../syr/syr.service";
-import { viewerDelegation, viewerDid } from "./request";
+import {
+  didOrRefuse,
+  principalOrRefuse,
+  viewerDelegation,
+  viewerDid,
+} from "./request";
 
 const DELEGATION = {
   did: "did:syr:z6MkSomebody",
@@ -39,5 +48,35 @@ describe("what a route is told about its caller", () => {
 
   it("still asks nobody at all to sign in", () => {
     expect(() => viewerDelegation(asking())).toThrow(UnauthorizedException);
+  });
+});
+
+describe("somebody named in a path", () => {
+  const ALICE = "mailto:alice@example.com";
+
+  it("is taken however they are named, where the route is about a person", () => {
+    expect(principalOrRefuse(encodeURIComponent(ALICE))).toBe(ALICE);
+    expect(principalOrRefuse(encodeURIComponent(DELEGATION.did))).toBe(
+      DELEGATION.did,
+    );
+  });
+
+  // The pair `POST /following` and `DELETE /following/:did` are: a follow this
+  // instance takes has to be one it will give back.
+  it("is taken by the same routes that admit them", () => {
+    expect(() => didOrRefuse(encodeURIComponent(ALICE))).toThrow(
+      NotFoundException,
+    );
+  });
+
+  it("is a page that is not there where it is nobody at all", () => {
+    for (const raw of [
+      "",
+      "alice",
+      "did%3Asyr%3A",
+      "https%3A%2F%2Fpeer.example",
+    ]) {
+      expect(() => principalOrRefuse(raw)).toThrow(NotFoundException);
+    }
   });
 });

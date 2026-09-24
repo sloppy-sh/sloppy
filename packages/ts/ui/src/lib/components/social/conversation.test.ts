@@ -117,6 +117,27 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
+describe('whose a comment is', () => {
+	it('says so where nobody could be shown to have written one', () => {
+		show({ comments: [said({ attribution: 'unattributed' })] });
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('A thought back.');
+		expect(text).toContain('Nobody could be shown to have written this');
+	});
+
+	// An unsigned comment is the ordinary state of one and says nothing either
+	// way, so a reader must not be handed a doubt nobody raised.
+	it('says nothing where nothing was weighed', () => {
+		show({ comments: [said()] });
+		expect(document.body.textContent ?? '').not.toContain('Nobody could be shown');
+	});
+
+	it("says nothing where the signature is its writer's own", () => {
+		show({ comments: [said({ attribution: 'theirs' })] });
+		expect(document.body.textContent ?? '').not.toContain('Nobody could be shown');
+	});
+});
+
 describe('a voice nobody could place', () => {
 	it('is called Somebody, with the identity beneath it rather than in its name', () => {
 		show({ comments: [said()] });

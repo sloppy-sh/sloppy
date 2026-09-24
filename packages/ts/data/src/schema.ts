@@ -142,6 +142,7 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS graph_role SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS permission_override SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS known_identity SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS whereabouts SCHEMALESS;
 
 ${MIGRATIONS}
   -- Writable, because a move and a rename both rewrite them;
@@ -264,6 +265,12 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_by ON known_identity TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS principal ON known_identity TYPE string READONLY;
 
+  -- Where somebody says their graph is served, kept for them by an instance
+  -- they signed in to. The owner IS the subject — a person says where they are
+  -- and nobody says it for anybody else — so it is immutable the way every
+  -- other owner column here is.
+  DEFINE FIELD IF NOT EXISTS created_by ON whereabouts TYPE string READONLY;
+
   -- Which foreign row a held row is a copy of, who wrote it, and where they
   -- addressed it. Immutable for the reason created_by is: a row that changed
   -- any of them would quietly become a copy of something else.
@@ -333,6 +340,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_at ON graph_role TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON permission_override TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON known_identity TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON whereabouts TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS updated_at ON graph TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
@@ -352,6 +360,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS updated_at ON graph_role TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON permission_override TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON known_identity TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON whereabouts TYPE string;
 
   -- When a note, and the sections that go with it, were deleted. TYPE string
   -- for the reason the two timestamps above are; option, because absent is a
@@ -436,6 +445,10 @@ ${MIGRATIONS}
   -- One entry per identity per person who wrote it down: resolving it again
   -- writes what is there rather than growing a second answer beside it.
   DEFINE INDEX IF NOT EXISTS known_identity_owner_principal ON known_identity FIELDS created_by, principal UNIQUE;
+  -- One declaration per person: moving instance rewrites this row rather than
+  -- leaving a reader two answers to choose between. It is also the purge's
+  -- reach.
+  DEFINE INDEX IF NOT EXISTS whereabouts_owner ON whereabouts FIELDS created_by UNIQUE;
 
   -- A region, whole or sliced: the leading pair reads a tree, and a trailing
   -- AND depth <= $max bounds it to the levels around a focus. One index rather

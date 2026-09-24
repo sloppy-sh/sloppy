@@ -4,7 +4,7 @@
 import { Injectable } from "@nestjs/common";
 import {
   type Address,
-  type DidSyr,
+  type Principal,
   graphRef,
   MAX_PUBLISHED_CHANGES_PER_PAGE,
   type OwnedRef,
@@ -63,7 +63,7 @@ export class PublishedService {
    * branch is published and read all of it.
    */
   async index(
-    did: DidSyr,
+    did: Principal,
     cursor: string | undefined,
   ): Promise<PublishedIndex> {
     const mark = pageMark(cursor, did);
@@ -109,7 +109,7 @@ export class PublishedService {
   /** `null` where nothing is published there, which is also what a publication
    *  that has been taken down leaves behind. */
   async subtree(
-    did: DidSyr,
+    did: Principal,
     publication: OwnedRef,
     asked: OwnedRef | undefined,
     cursor: string | undefined,
@@ -150,7 +150,7 @@ export class PublishedService {
   }
 
   async versions(
-    did: DidSyr,
+    did: Principal,
     publication: OwnedRef,
     cursor: string | undefined,
   ): Promise<PublishedVersionsPage | null> {
@@ -184,7 +184,7 @@ export class PublishedService {
    * for neither.
    */
   async changes(
-    did: DidSyr,
+    did: Principal,
     publication: OwnedRef,
     from: OwnedRef,
     to: OwnedRef,
@@ -230,7 +230,7 @@ export class PublishedService {
    * own copy of that note says, which is what a reader holding one is holding.
    */
   private async rootAddress(
-    did: DidSyr,
+    did: Principal,
     version: OwnedRef,
     root: OwnedRef,
   ): Promise<Address | undefined> {
@@ -241,7 +241,7 @@ export class PublishedService {
   /** What the author calls the notebook a region's addresses are read in;
    *  `undefined` where they have not named it. */
   private async notebook(
-    did: DidSyr,
+    did: Principal,
     graph: OwnedRef | undefined,
   ): Promise<string | undefined> {
     const of = graphRef(did, graph);
@@ -250,7 +250,7 @@ export class PublishedService {
 
   /** The version a read answers with: the one it names, or the newest. */
   private async reading(
-    did: DidSyr,
+    did: Principal,
     publication: OwnedRef,
     named: OwnedRef | undefined,
   ): Promise<PublicationVersion | null> {
@@ -260,7 +260,7 @@ export class PublishedService {
   }
 
   private async versionIn(
-    did: DidSyr,
+    did: Principal,
     publication: OwnedRef,
     ref: OwnedRef,
   ): Promise<PublicationVersion | null> {
@@ -275,7 +275,7 @@ export class PublishedService {
    * reference still resolves in the page carrying it or in one already sent.
    */
   private async run(
-    did: DidSyr,
+    did: Principal,
     version: OwnedRef,
     of: string,
     mark: PageMark | undefined,
@@ -344,7 +344,7 @@ export class PublishedService {
    * narrower to ask for, and {@link oneNote} pages inside it.
    */
   private async whole(
-    did: DidSyr,
+    did: Principal,
     version: OwnedRef,
     window: readonly SnapshotNode[],
   ): Promise<{
@@ -379,7 +379,7 @@ export class PublishedService {
   /** One note's stack, read in its own order — for a note whose sections do not
    *  fit beside anybody else's. */
   private async oneNote(
-    did: DidSyr,
+    did: Principal,
     version: OwnedRef,
     of: string,
     held: SnapshotNode,
@@ -428,7 +428,7 @@ export class PublishedService {
    * note, so there is nothing narrower to ask for.
    */
   private async comparison(
-    did: DidSyr,
+    did: Principal,
     earlier: { version: OwnedRef; run: readonly SnapshotNode[] },
     later: { version: OwnedRef; run: readonly SnapshotNode[] },
     reach: string | undefined,
@@ -486,7 +486,7 @@ export class PublishedService {
    * Such a pair is read where the LATER row is, which is what has it read once.
    */
   private async paired(
-    did: DidSyr,
+    did: Principal,
     earlier: OwnedRef,
     later: OwnedRef,
     from: readonly SnapshotNode[],
@@ -511,7 +511,7 @@ export class PublishedService {
   }
 
   private async stacks(
-    did: DidSyr,
+    did: Principal,
     version: OwnedRef,
     notes: readonly SnapshotNode[],
   ): Promise<{ stacks: Map<OwnedRef, PublishedBlock[]>; whole: boolean }> {
@@ -531,7 +531,7 @@ export class PublishedService {
   }
 
   private async side(
-    did: DidSyr,
+    did: Principal,
     version: OwnedRef,
     after: string | undefined,
   ): Promise<{ run: SnapshotNode[]; last?: string; more: boolean }> {
@@ -587,7 +587,7 @@ function held(changes: readonly OrderedChange[]): {
 
 /** Where a listing resumes: the label the last one listed carries and the note
  *  it is rooted at, which together are unique to it. */
-function resuming(did: DidSyr, last: Publication): PageMark {
+function resuming(did: Principal, last: Publication): PageMark {
   return {
     of: did,
     ...(last.root_address === undefined ? {} : { at: last.root_address }),

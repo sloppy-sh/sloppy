@@ -185,3 +185,25 @@ describe('the byline on a note somebody else wrote', () => {
 		expect(text).not.toContain('z6Mk');
 	});
 });
+
+describe('what a reader is told about who signed a note they hold', () => {
+	it('says so where nobody could be shown to have written it', async () => {
+		await read(ADA_PERSON, false, { ...NOTE_VIEW, attribution: 'unattributed' });
+
+		expect(document.body.textContent).toContain('Nobody could be shown to have written this');
+	});
+
+	// A copy nothing weighed is the ordinary one, and so is a copy that checks
+	// out: neither hands a reader a doubt nobody raised.
+	it('says nothing where nothing was weighed', async () => {
+		await read(ADA_PERSON);
+
+		expect(document.body.textContent).not.toContain('Nobody could be shown');
+	});
+
+	it("says nothing where the signature is its author's own", async () => {
+		await read(ADA_PERSON, false, { ...NOTE_VIEW, attribution: 'theirs' });
+
+		expect(document.body.textContent).not.toContain('Nobody could be shown');
+	});
+});

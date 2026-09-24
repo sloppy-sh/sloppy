@@ -59,3 +59,26 @@ async function speaksFor(key: Key, address: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * What names this key whatever it was spelled as: the primary key's
+ * fingerprint, lowercase hex.
+ *
+ * Two blocks holding one key — armoured or binary, with a different set of user
+ * IDs or signatures around it — give the same answer, which is what makes this
+ * the honest way to ask whether a key somebody holds is the key a signature was
+ * made with. `null` is bytes no key could be read out of.
+ */
+export async function openPgpFingerprint(
+  key: string | Uint8Array,
+): Promise<string | null> {
+  try {
+    const read =
+      typeof key === "string"
+        ? await readKeys({ armoredKeys: key })
+        : await readKeys({ binaryKeys: key });
+    return read[0]?.getFingerprint() ?? null;
+  } catch {
+    return null;
+  }
+}

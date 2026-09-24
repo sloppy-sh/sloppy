@@ -286,6 +286,9 @@
 					{one.author}
 				</p>
 			{/if}
+			{#if one.attribution === 'unattributed'}
+				<p class="text-xs text-muted-foreground">Nobody could be shown to have written this.</p>
+			{/if}
 			<p class="text-sm whitespace-pre-wrap">{one.content}</p>
 			<div class="flex flex-wrap items-center gap-1">
 				<Button
