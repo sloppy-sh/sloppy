@@ -9,6 +9,7 @@ import {
   AmendmentViewSchema,
   type AnsweredNote,
   AnsweredNoteSchema,
+  type AnswerChallengeRequest,
   type ArchivePreview,
   ArchivePreviewSchema,
   type BlockView,
@@ -87,6 +88,9 @@ import {
   SearchHitSchema,
   type Session,
   SessionSchema,
+  type SignInChallenge,
+  SignInChallengeSchema,
+  type SignInChallengeRequest,
   type StartLoginRequest,
   type TagCount,
   TagCountSchema,
@@ -306,6 +310,27 @@ export class SloppyClient {
   async exchangeSession(request: ExchangeSessionRequest): Promise<Session> {
     return SessionSchema.parse(
       await this.send("POST", "/auth/exchange", request),
+    );
+  }
+
+  /**
+   * The other way in: ask for something to sign as whoever this principal
+   * names. The answer is the whole text a key of theirs must sign, and it says
+   * nothing about whether anybody holds one.
+   */
+  async signInChallenge(
+    request: SignInChallengeRequest,
+  ): Promise<SignInChallenge> {
+    return SignInChallengeSchema.parse(
+      await this.send("POST", "/auth/challenge", request),
+    );
+  }
+
+  /** The signed answer, for a session. `statement` is the text that was signed,
+   *  byte for byte. */
+  async answerChallenge(request: AnswerChallengeRequest): Promise<Session> {
+    return SessionSchema.parse(
+      await this.send("POST", "/auth/answer", request),
     );
   }
 
