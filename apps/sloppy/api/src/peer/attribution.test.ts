@@ -75,6 +75,14 @@ function signedBy(
   };
 }
 
+/** By hand because `JSON.stringify` will not walk this deep either, and
+ *  `JSON.parse` will: what a peer can put on the wire is the bound here. */
+function payloadJsonDeeperThanAReaderCanWalk(node: PublishedNode): string {
+  const nesting = 50_000;
+  const body = JSON.stringify(payloadFor(node));
+  return `${body.slice(0, -1)},"nested":${"[".repeat(nesting)}${"]".repeat(nesting)}}`;
+}
+
 describe("what a reader can check about a published note", () => {
   it("says nothing about a note that carries no signature", async () => {
     expect(await signatureRefutes(unsigned)).toBe(false);
@@ -185,6 +193,16 @@ describe("what a reader can check about a published note", () => {
         title: "Something else entirely",
       }),
     ).toBe(true);
+  });
+
+  it("refuses an OpenPGP note whose payload no reader can canonicalise", async () => {
+    const signed = await openPgpSignedBy(unsigned);
+    await expect(
+      signatureRefutes({
+        ...signed,
+        signed_payload_json: payloadJsonDeeperThanAReaderCanWalk(unsigned),
+      }),
+    ).resolves.toBe(true);
   });
 
   it("holds a note whose payload it cannot read at all", async () => {

@@ -14,30 +14,37 @@ import type { SignatureScheme } from "@sloppy/types";
  * in — so a signer signs the canonical form or signs something no reader
  * reconstructs.
  *
+ * **A verdict is the only thing this answers with**, for any payload a peer
+ * can put on the wire: one no canonical form exists for did not check out, and
+ * callers read a hostile note as a note they refuse rather than as a pull that
+ * throws.
+ *
  * A scheme this build cannot name never reaches here: `signatureSchemeOf`
  * answers `undefined` for one, and its caller holds the row rather than
  * calling a signature it cannot read wrong.
  */
-export function signatureChecksOut(params: {
+export async function signatureChecksOut(params: {
   scheme: SignatureScheme;
   payload: Record<string, unknown>;
   signature: string;
   publicKey: string;
 }): Promise<boolean> {
-  switch (params.scheme) {
-    case "ed25519-multibase":
-      return Promise.resolve(
-        verifySignedPayload({
+  try {
+    switch (params.scheme) {
+      case "ed25519-multibase":
+        return verifySignedPayload({
           payload: params.payload,
           signature: params.signature,
           publicKeyMultibase: params.publicKey,
-        }),
-      );
-    case "openpgp":
-      return verifyOpenPgpSignature({
-        payload: canonicalize(params.payload as JsonValue),
-        signature: params.signature,
-        publicKey: params.publicKey,
-      });
+        });
+      case "openpgp":
+        return await verifyOpenPgpSignature({
+          payload: canonicalize(params.payload as JsonValue),
+          signature: params.signature,
+          publicKey: params.publicKey,
+        });
+    }
+  } catch {
+    return false;
   }
 }
