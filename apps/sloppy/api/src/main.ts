@@ -31,11 +31,16 @@ async function bootstrap(): Promise<void> {
   // One prefix, so the API can share a domain with the web app; clients point
   // at `<origin>/api` and `@sloppy/client`'s `apiUrl` adds the rest.
   //
-  // syr's discovery documents are excluded because a federated consumer
-  // resolves them at the site ROOT — `{origin}/.well-known/syr[/:did]`, never
-  // under /api. The embedded IdP is what will serve them.
+  // The documents below are excluded because a federated consumer resolves them
+  // at the site ROOT, never under /api: syr's own discovery, which the embedded
+  // IdP serves, and the declaration saying where somebody's graph is, which a
+  // reader asks a domain for at the same path.
   app.setGlobalPrefix("api", {
-    exclude: ["/.well-known/syr", "/.well-known/syr/:did"],
+    exclude: [
+      "/.well-known/syr",
+      "/.well-known/syr/:did",
+      "/.well-known/sloppy-whereabouts/:principal",
+    ],
   });
 
   app.enableCors({

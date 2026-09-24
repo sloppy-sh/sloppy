@@ -6,6 +6,23 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppConfigService } from "../config/app-config.service";
 import { type Delegation, SyrService } from "../syr/syr.service";
 import { PeerService } from "./peer.service";
+import type { WhereaboutsRepository } from "./whereabouts.repository";
+import { WhereaboutsService } from "./whereabouts.service";
+
+/** An instance nobody has declared anything on, so every read lands where the
+ *  caller named. */
+function nobodyDeclares(config: AppConfigService): WhereaboutsService {
+  return new WhereaboutsService(config, {
+    find: () => Promise.resolve(null),
+  } as unknown as WhereaboutsRepository);
+}
+
+function reading(publicUrl: string): PeerService {
+  const config = new AppConfigService(
+    new ConfigService({ PUBLIC_URL: publicUrl }),
+  );
+  return new PeerService(config, new SyrService(), nobodyDeclares(config));
+}
 
 const ALICE = "did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ";
 const OTHER = "did:syr:z6MkrZhTRQ3ndyEtMSqBB8pf2M4LuncUofaPNnnzHrrxEtPe";
@@ -146,10 +163,7 @@ describe("finding somebody by name", () => {
     elsewhere = await store();
     here = await silent();
     extortionate = await demanding();
-    peers = new PeerService(
-      new AppConfigService(new ConfigService({ PUBLIC_URL: here.origin })),
-      new SyrService(),
-    );
+    peers = reading(here.origin);
     reader = {
       did: ALICE,
       syr_instance_url: home.origin,
@@ -226,10 +240,7 @@ describe("following somebody", () => {
 
   beforeAll(async () => {
     home = await keepsAFollowList();
-    peers = new PeerService(
-      new AppConfigService(new ConfigService({ PUBLIC_URL: home.origin })),
-      new SyrService(),
-    );
+    peers = reading(home.origin);
     reader = {
       did: ALICE,
       syr_instance_url: home.origin,

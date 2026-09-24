@@ -340,8 +340,16 @@ describe("holding a region of somebody else's graph", () => {
       asked.push(url.pathname + url.search);
 
       // The author's own identity store, which is where the pictures inside
-      // their published notes are read from.
+      // their published notes are read from — and, beside it, what the author
+      // says about where their graph is served, which is what a reader resolves
+      // before asking for anything of theirs.
       const store = {
+        [`/.well-known/sloppy-whereabouts/${encodeURIComponent(AUTHOR)}`]:
+          () => ({
+            type: "sloppy-whereabouts@v1",
+            principal: AUTHOR,
+            instance: peerOrigin,
+          }),
         "/.well-known/syr": () => ({
           name: "syr",
           public_url: peerOrigin,
@@ -448,9 +456,13 @@ describe("holding a region of somebody else's graph", () => {
     expect(region.source_url).toBe(peerOrigin);
     // The reader owns the copy; the author owns the notes.
     expect(region.created_by).toBe(reader.did);
-    expect(asked).toHaveLength(2);
-    // The publication is asked for by its own reference, not by an address.
+    expect(asked).toHaveLength(3);
+    // Where the author says their graph is, before anything of theirs is asked
+    // for; then the publication, by its own reference and not by an address.
     expect(asked[0]).toBe(
+      `/.well-known/sloppy-whereabouts/${encodeURIComponent(AUTHOR)}`,
+    );
+    expect(asked[1]).toBe(
       `/api/public/publications/${encodeURIComponent(AUTHOR)}/${ID.wide}`,
     );
 
@@ -818,6 +830,7 @@ describe("holding a region of somebody else's graph", () => {
 
       expect(chain.versions.map((one) => one.sequence)).toEqual([2, 1]);
       expect(asked).toEqual([
+        `/.well-known/sloppy-whereabouts/${encodeURIComponent(AUTHOR)}`,
         `/api/public/publications/${at(WIDE.publication)}/versions`,
       ]);
     },
@@ -861,7 +874,7 @@ describe("holding a region of somebody else's graph", () => {
       "changed",
       "added",
     ]);
-    expect(asked[0]).toContain(`/changes?from=`);
+    expect(asked[1]).toContain(`/changes?from=`);
   });
 
   scenario(
