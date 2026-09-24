@@ -112,7 +112,7 @@
 	import { drafts } from '../stores/drafts.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
-	import { identity } from '../stores/identity.svelte.js';
+	import { answersReach, identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { offers } from '../stores/offers.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
@@ -3064,7 +3064,7 @@
 				carriedBy={carriedBy ? namedBranch(carriedBy) : null}
 				{narrower}
 				{changedSince}
-				answersReach={identity.kind !== 'local'}
+				answersReach={answersReach(identity.kind)}
 				refused={publishRefusal}
 				onchanges={readChanges}
 				onpending={readPending}

@@ -1,16 +1,25 @@
 /**
  * Where the signed-in person's identity is kept, and what their own store can
  * do with it. A `delegated` identity is held by a store that answers for it in
- * public; a `local` one is held by the provider this instance runs itself.
- * Whether a conversation can be held is asked of that store rather than derived
- * from where it stands — docs/ARCHITECTURE.md § "Federating the graph".
+ * public; a `local` one is held by the provider this instance runs itself; an
+ * `own-key` one is held by no store at all, by somebody who signed in by
+ * signing with a key of their own. Whether a conversation can be held is asked
+ * of that store rather than derived from where it stands —
+ * docs/ARCHITECTURE.md § "Federating the graph".
  */
 
 import type { Converses } from '@sloppy/types';
 import { api } from '../api.js';
 import { session } from './session.svelte.js';
 
-export type IdentityKind = 'local' | 'delegated';
+export type IdentityKind = 'local' | 'delegated' | 'own-key';
+
+/** Whether an answer somebody writes arrives where this person would read it.
+ *  A store this instance does not run is the only place one lands, and an
+ *  identity still being asked about is not yet a no. */
+export function answersReach(kind: IdentityKind | undefined): boolean {
+	return kind !== 'local' && kind !== 'own-key';
+}
 
 /** Two spellings of one instance are one instance, so the comparison is made
  *  on the origin rather than on what either side happened to write. */
@@ -37,14 +46,17 @@ class IdentityStore {
 	#epoch = 0;
 
 	/**
-	 * `undefined` until somebody is signed in and the ask has landed. A surface
-	 * waits for it rather than guessing: drawing a conversation on a guess is
-	 * what puts a control that cannot work in front of somebody.
+	 * `undefined` until somebody is signed in, and until the ask has landed for
+	 * anybody whose identity is kept in a store at all. A surface waits for it
+	 * rather than guessing: drawing a conversation on a guess is what puts a
+	 * control that cannot work in front of somebody.
 	 */
 	get kind(): IdentityKind | undefined {
 		const viewer = session.viewer;
-		if (!viewer || this.#here === undefined) return undefined;
-		return this.#here !== null && sameInstance(viewer.syr_instance_url ?? '', this.#here)
+		if (!viewer) return undefined;
+		if (!viewer.syr_instance_url) return 'own-key';
+		if (this.#here === undefined) return undefined;
+		return this.#here !== null && sameInstance(viewer.syr_instance_url, this.#here)
 			? 'local'
 			: 'delegated';
 	}
