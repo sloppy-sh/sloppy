@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { BlockSchema } from "./block.js";
 import {
   BlockDocumentSchema,
+  type Compass,
+  COMPASS_DIRECTIONS,
+  COMPASS_KINDS,
+  compassMethod,
+  compassSlots,
   citedNotes,
   citedUploads,
   COMPASS_TYPE,
@@ -409,6 +414,74 @@ describe("the compass a section holds", () => {
         west: [{ [REFERENCE_NOTE_ATTR]: MOON }],
       },
     });
+  });
+
+  it("reads a compass that does not say as the idea compass", () => {
+    expect(
+      compassOf(doc([compass({ north: slot(TIDES) })]))?.kind,
+    ).toBeUndefined();
+    expect(compassMethod(undefined)).toEqual(compassMethod("idea"));
+    expect(compassSlots(undefined)).toEqual([...COMPASS_DIRECTIONS]);
+  });
+
+  it("carries the method the compass says it is in", () => {
+    expect(compassOf(doc([compass({ kind: "qec" })]))).toEqual({
+      north: [],
+      south: [],
+      east: [],
+      west: [],
+      kind: "qec",
+    });
+    expect(compassSlots("qec")).toEqual(["north", "south", "east"]);
+  });
+
+  // A method a later build adds must not read as anything this one knows, and
+  // the node keeps it: a reader does not get to normalise it away.
+  it("reads a method it has never heard of as the idea compass", () => {
+    const held: { attrs: Record<string, unknown> } = compass({
+      kind: "swot",
+      north: slot(TIDES),
+    });
+    expect(compassOf(doc([held]))).toEqual({
+      north: [TIDES],
+      south: [],
+      east: [],
+      west: [],
+    });
+    expect(held.attrs.kind).toBe("swot");
+  });
+
+  // Every method reads the same four slots, so switching moves no citation and
+  // switching back is not a repair.
+  it("writes the same slots whichever method it is in", () => {
+    const slots: Compass = {
+      north: [TIDES],
+      south: [],
+      east: [],
+      west: [MOON],
+    };
+    for (const kind of COMPASS_KINDS) {
+      const { attrs } = compassNode({ ...slots, kind });
+      expect(attrs?.north).toEqual([{ [REFERENCE_NOTE_ATTR]: TIDES }]);
+      expect(attrs?.west).toEqual([{ [REFERENCE_NOTE_ATTR]: MOON }]);
+      expect(compassOf(doc([{ type: COMPASS_TYPE, attrs }]))).toEqual(
+        kind === "idea" ? slots : { ...slots, kind },
+      );
+    }
+  });
+
+  // An absent kind is the idea compass, so writing one down would be a second
+  // way to say what every compass written before methods already says.
+  it("writes no method on the idea compass", () => {
+    expect(
+      compassNode({
+        north: [],
+        south: [],
+        east: [],
+        west: [],
+        kind: "idea",
+      }),
+    ).toEqual(compassNode({ north: [], south: [], east: [], west: [] }));
   });
 
   it("reads a slot publishing has withheld as one the reader cannot follow", () => {
