@@ -21,6 +21,7 @@ import {
   type PullView,
   type PublishedSubtreePage,
   type PulledNoteHit,
+  type TrustedInstance,
   UnaskedAnswerError,
   addressDepth,
   orderSiblings,
@@ -93,14 +94,19 @@ export class PullService {
     // parents a page carries rather than read out of an address a person
     // writes.
     const deep = new Map<OwnedRef, number>();
-    // Once for the whole region rather than once a page, let alone once a note:
-    // every note in it is answered for by the same person. A region carrying no
-    // signature asks nobody anything.
+    // Where this author's own instance may be asked what keys it has approved:
+    // the address the reader named to pull from, and nothing where they named
+    // none — an origin this instance chose is nobody's word about whose keys
+    // are whose.
+    const listedAt: TrustedInstance | undefined =
+      request.source_url === undefined
+        ? undefined
+        : { url: request.source_url, word: "typed" };
+    // Asked once for the whole region rather than once a page, let alone once a
+    // note: every note in it is answered for by the same person.
     let asked: Promise<Keyholdings> | undefined;
     const whoHolds = () =>
-      (asked ??= this.keys.contentKeysFor(
-        new Map([[author, { url: origin, word: "typed" as const }]]),
-      ));
+      (asked ??= this.keys.contentKeysFor(new Map([[author, listedAt]])));
     do {
       const body = await readPeerJson(
         subtreeUrl(origin, publication, request.version, cursor),

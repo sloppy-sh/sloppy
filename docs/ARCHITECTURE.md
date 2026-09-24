@@ -612,15 +612,22 @@ note. `peer/attribution.ts` and `social/comment-attribution.ts` are handed the a
 making one, and make it **at most once, and only where something on the page carries a
 signature worth weighing**: a region of unsigned notes, which is every note written here so
 far, asks nobody anything. A pull holds that one answer across every page of a region, every
-note in it being answered for by the same person.
+note in it being answered for by the same person. The asks themselves go out in runs rather
+than all at once, because the people a page names are as many as it has voices.
 
 **Which keys count.** Only a `BoundKey` whose `signs` is `content`, and only in the signature's
 own scheme: the key a `did:syr` IS stands behind the keys that sign rather than signing, so
 holding it settles nothing. What an identity's instance has approved is the listing
-`delegated-keys.ts` reads, and it is read at a `TrustedInstance` the CALLER names — never at an
-address taken off the content being weighed, which would let a forger appoint the authority on
-its own forgery. Unasked is `null` and is not an author with no key. The answer is worth what
-that address is worth, which is the same bound a vouch is held to.
+`delegated-keys.ts` reads, at a `TrustedInstance` the reader named or wrote down and never one
+carried by the content — a principal naming its own instance would be vouching for itself. That
+is the bound a vouch is held to and no more: a reader who names the address a branch came from
+has trusted that host, and the answer is worth what the address is worth. Unasked is `null` and
+is not an author with no key.
+
+**A listing nobody bounded is unasked too.** Every key in it is tried against every signature
+its identity's rows carry, so an unbounded one is a stranger spending this instance's afternoon
+once per note. Past a bounded number the listing answers `null` rather than its first few —
+`identity-keys.service.ts` carries why giving up must never land on `refuted`.
 
 **What a reader is told.** A note or a comment nothing weighed says nothing either way, which
 is every unsigned one. A refuted note is left out of a pull and a refuted comment is not drawn.
@@ -1773,9 +1780,10 @@ rather than gaps to close:
   and an absent one says nothing either way — a comment whose second step never landed is
   unsigned, not suspect. Nothing may present a comment as attributed on the strength of a
   signature it has not checked: whose it is, is the same three answers a note's signature
-  gets, asked once per voice rather than once per comment. **A reaction is the other way round:** syr stores the same
-  three fields on one and its public listing does not serve them, so a reaction never
-  arrives with anything to check, and no surface may claim otherwise.
+  gets, asked once per voice rather than once per comment. **A reaction is the other way
+  round:** syr stores the same three fields on one and its public listing does not serve
+  them, so a reaction never arrives with anything to check, and no surface may claim
+  otherwise.
 
 **A pointer is how a stranger's answer arrives, and it is a claim that is checked before
 it is kept.** Pull-only federation has no relay and no firehose, so an instance is never
