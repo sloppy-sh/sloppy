@@ -422,11 +422,17 @@ export type ArchivePreview = z.infer<typeof ArchivePreviewSchema>;
  * the PUBLIC half of the key that instance signs this platform's content with.
  * Sloppy never holds the private half; code here that wants to sign locally has
  * misread the delegation model.
+ *
+ * **Both are absent, together, for a viewer who signed in by signing with a key
+ * of their own.** There is no instance holding an identity for them and no key
+ * Sloppy may sign with as them, so a surface that wants either asks whether it
+ * is there rather than assuming it, and a route that acts on an identity store
+ * refuses them the way it refuses anybody without a delegation.
  */
 export const ViewerSchema = z.object({
   did: PrincipalSchema,
-  syr_instance_url: z.url(),
-  delegate_public_key: z.string().min(1),
+  syr_instance_url: z.url().optional(),
+  delegate_public_key: z.string().min(1).optional(),
 });
 export type Viewer = z.infer<typeof ViewerSchema>;
 

@@ -44,7 +44,7 @@ class IdentityStore {
 	get kind(): IdentityKind | undefined {
 		const viewer = session.viewer;
 		if (!viewer || this.#here === undefined) return undefined;
-		return this.#here !== null && sameInstance(viewer.syr_instance_url, this.#here)
+		return this.#here !== null && sameInstance(viewer.syr_instance_url ?? '', this.#here)
 			? 'local'
 			: 'delegated';
 	}

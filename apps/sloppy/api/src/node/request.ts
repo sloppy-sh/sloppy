@@ -3,6 +3,7 @@
 
 import {
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -36,11 +37,21 @@ export function viewerDid(request: AuthedRequest): Principal {
  * What a route needs to act on the person's identity store as them. Held apart
  * from {@link viewerDid} because it carries the delegated token: a route that
  * only names the caller must not be handed a credential it could echo.
+ *
+ * A viewer who signed in by signing with a key of their own has no identity
+ * store, and refusing them is not refusing their credential — a 401 is what a
+ * client reads as a session that has died, and it would sign somebody out of
+ * one that is perfectly good.
  */
 export function viewerDelegation(request: AuthedRequest): Delegation {
   const delegation = request.delegation;
-  if (!delegation) throw new UnauthorizedException("Sign in to continue.");
-  return delegation;
+  if (delegation) return delegation;
+  if (request.viewer) {
+    throw new ForbiddenException(
+      "That isn't available yet when you sign in with your own key.",
+    );
+  }
+  throw new UnauthorizedException("Sign in to continue.");
 }
 
 export function parseBody<S extends z.ZodType>(

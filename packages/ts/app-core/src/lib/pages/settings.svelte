@@ -57,10 +57,13 @@
 		!graphHere.open && (session.onDevice ? canSaveFiles : session.signedIn)
 	);
 
-	/** Where a person's identity is kept for them. A graph on this device is
-	 *  written under one this device made, and there is nowhere else it is. */
+	/** Where a person's identity is kept for them, and `null` where there is
+	 *  nowhere: a graph on this device is written under one this device made,
+	 *  and somebody who signed in with a key of their own keeps it themselves. */
 	const instance = $derived(
-		session.viewer && !session.onDevice ? new URL(session.viewer.syr_instance_url).host : null
+		session.viewer?.syr_instance_url && !session.onDevice
+			? new URL(session.viewer.syr_instance_url).host
+			: null
 	);
 	const profile = $derived(people.me);
 	/** With nobody signed in there is no nav pill under the page, and sign-in is
@@ -374,9 +377,11 @@
 							<ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 						</a>
 					{/if}
-					<p class="text-sm text-muted-foreground">
-						Your identity lives at <span class="text-foreground select-text">{instance}</span>.
-					</p>
+					{#if instance}
+						<p class="text-sm text-muted-foreground">
+							Your identity lives at <span class="text-foreground select-text">{instance}</span>.
+						</p>
+					{/if}
 					<Button variant="ghost" onclick={signOut} disabled={leaving} class="h-11 px-0">
 						Sign out
 					</Button>
