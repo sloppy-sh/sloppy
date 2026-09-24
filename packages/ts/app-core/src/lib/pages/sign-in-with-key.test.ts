@@ -136,3 +136,25 @@ describe('signing in with a key of your own', () => {
 		expect(field('own-key-address')).toBeTruthy();
 	});
 });
+
+describe('what somebody is told it takes', () => {
+	it('is closed until they ask, and then names a way that works for any address', async () => {
+		show();
+		await settle();
+
+		expect(target.textContent).not.toContain('keys.openpgp.org');
+
+		const how = [...target.querySelectorAll('button')].find((one) =>
+			one.textContent?.includes('How Sloppy finds your key')
+		);
+		expect(how).toBeDefined();
+		how?.click();
+		flushSync();
+
+		// A person on a provider they do not run needs the keyserver, and a person
+		// with a domain of their own needs to know they may skip it.
+		expect(target.textContent).toContain('keys.openpgp.org');
+		expect(target.textContent).toContain('Gmail');
+		expect(target.textContent).toContain('your own domain');
+	});
+});

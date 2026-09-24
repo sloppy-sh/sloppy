@@ -111,7 +111,7 @@ export class KeySignInService {
     const signature = signatureIn(request.signature);
     if (!(await this.signedBy(keys, read.statement, signature))) {
       throw new UnauthorizedException(
-        "That signature does not check out for that address. Sign the text exactly as it is shown, with a key that address is known by, then paste the signature again.",
+        "Sloppy could not sign you in with that. Either the signature is not over this exact text, or no key for that address is published where Sloppy can look — keys.openpgp.org, or the address's own domain.",
       );
     }
     if (!this.challenges.spend(read.token)) {

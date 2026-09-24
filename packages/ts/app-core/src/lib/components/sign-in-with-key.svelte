@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Signing in with the key somebody already has for an address they already
 	// go by — docs/ARCHITECTURE.md § "Signing in with a key of your own".
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
@@ -16,6 +17,7 @@
 	let working = $state(false);
 	let copied = $state(false);
 	let problem = $state<string | null>(null);
+	let showingHow = $state(false);
 
 	async function ask(event: SubmitEvent) {
 		event.preventDefault();
@@ -84,6 +86,45 @@
 			</p>
 		</div>
 
+		<div class="rounded-md border border-border">
+			<button
+				type="button"
+				class="flex min-h-11 w-full items-center justify-between gap-3 px-3 text-left text-sm hover:bg-muted"
+				aria-expanded={showingHow}
+				aria-controls="how-your-key-is-found"
+				onclick={() => (showingHow = !showingHow)}
+			>
+				<span>How Sloppy finds your key</span>
+				<ChevronDown
+					class="size-4 shrink-0 transition-transform {showingHow ? 'rotate-180' : ''}"
+					aria-hidden="true"
+				/>
+			</button>
+			{#if showingHow}
+				<div id="how-your-key-is-found" class="space-y-3 px-3 pb-3 text-sm text-muted-foreground">
+					<p>
+						Sloppy looks your key up by your address, so the public half has to be somewhere it can
+						be found first. Either one of these is enough:
+					</p>
+					<ul class="list-disc space-y-2 pl-5">
+						<li>
+							<span class="text-foreground">Publish it at keys.openpgp.org.</span> Upload the public half
+							and answer the mail it sends you. This works for an address at any provider — Gmail, Outlook
+							and Yahoo included.
+						</li>
+						<li>
+							<span class="text-foreground">Or serve it from your own domain</span>, if the address
+							is at one you run. Publishing it there means nobody else has to be asked at all.
+						</li>
+					</ul>
+					<p>
+						Nothing of yours is uploaded from this screen, and the half you keep secret never leaves
+						your machine.
+					</p>
+				</div>
+			{/if}
+		</div>
+
 		{#if problem}
 			<p class="text-sm text-destructive" role="alert">{problem}</p>
 		{/if}
@@ -120,6 +161,12 @@
 			/>
 			<p class="text-sm text-muted-foreground">
 				A detached signature, or the whole signed text with the signature in it.
+			</p>
+			<p class="text-sm text-muted-foreground">
+				With GnuPG: save the text to a file and run
+				<code class="rounded bg-muted px-1 py-0.5 text-xs"
+					>gpg --detach-sign --armor --local-user you@example.com the-file</code
+				>, then paste what lands beside it.
 			</p>
 		</div>
 
