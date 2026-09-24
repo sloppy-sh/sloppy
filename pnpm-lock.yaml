@@ -131,6 +131,9 @@ importers:
       '@sloppy/idp':
         specifier: workspace:*
         version: link:../../../packages/ts/idp
+      '@sloppy/openpgp':
+        specifier: workspace:*
+        version: link:../../../packages/ts/openpgp
       '@sloppy/types':
         specifier: workspace:*
         version: link:../../../packages/ts/types
@@ -177,6 +180,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.13.3
+      openpgp:
+        specifier: 6.3.1
+        version: 6.3.1
       typescript:
         specifier: 'catalog:'
         version: 6.0.2

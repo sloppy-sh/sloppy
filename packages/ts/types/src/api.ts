@@ -463,6 +463,42 @@ export type ExchangeSessionRequest = z.input<
   typeof ExchangeSessionRequestSchema
 >;
 
+/** Ask for something to sign, as whoever this names. */
+export const SignInChallengeRequestSchema = z.object({
+  principal: PrincipalSchema,
+});
+export type SignInChallengeRequest = z.input<
+  typeof SignInChallengeRequestSchema
+>;
+
+/**
+ * What a key of that principal's own is asked to sign: the whole text, good
+ * once, and good only until `expires_at`.
+ *
+ * The text names the identity and the instance inside itself, so what a person
+ * reads before signing is what the signature is held to — which is what stops
+ * one Sloppy from passing another's text off as its own.
+ */
+export const SignInChallengeSchema = z.object({
+  statement: z.string().min(1),
+  expires_at: TimestampSchema,
+});
+export type SignInChallenge = z.infer<typeof SignInChallengeSchema>;
+
+/**
+ * The signed answer. `statement` is the text that was signed, byte for byte: a
+ * signature is over bytes, so what is presented is what is checked, and a
+ * statement that does not rebuild into the one this instance issued is refused
+ * before any key is asked about.
+ */
+export const AnswerChallengeRequestSchema = z.object({
+  statement: z.string().min(1).max(4096),
+  signature: z.string().min(1).max(16384),
+});
+export type AnswerChallengeRequest = z.input<
+  typeof AnswerChallengeRequestSchema
+>;
+
 /**
  * Where this Sloppy's own identities live, and where a peer reaches the graph
  * it serves.
