@@ -15,12 +15,14 @@ import {
 import {
   DidSyrSchema,
   type FollowedIdentity,
+  type OwnedRef,
   type PeerChangesQuery,
   type PeerIdentity,
   type PeerIdentityQuery,
   type PeerOrigin,
   type PeerPublicationsQuery,
   type PeerVersionsQuery,
+  type Principal,
   type PublishedChangesPage,
   type PublishedIndex,
   type PublishedVersionsPage,
@@ -29,6 +31,7 @@ import {
   peerOrigin,
   publishedChangesReader,
   publishedVersionsReader,
+  splitOwnedRef,
 } from "@sloppy/types";
 import { AppConfigService } from "../config/app-config.service";
 import type { HostPolicy } from "../media/remote-host";
@@ -36,12 +39,12 @@ import type { Delegation } from "../syr/syr.service";
 import { SyrService } from "../syr/syr.service";
 import {
   changesUrl,
-  hereOrigin,
   peerReach,
   publicationsUrl,
   readPeerJson,
   versionsUrl,
 } from "./peer-fetch";
+import { WhereaboutsService } from "./whereabouts.service";
 
 /** Said where somebody's own store keeps no list of who they follow. Reading a
  *  stranger's branches never needed the list, so the line says what is left. */
@@ -68,6 +71,7 @@ export class PeerService {
   constructor(
     private readonly config: AppConfigService,
     private readonly syr: SyrService,
+    private readonly whereabouts: WhereaboutsService,
   ) {}
 
   /**
@@ -113,14 +117,13 @@ export class PeerService {
     await this.syr.unfollow(delegation, did);
   }
 
-  /**
-   * One page of what an identity publishes on one instance. A DID names a
-   * person and never a place, so the instance is asked and never derived;
-   * absent, it is this one, which is the whole of it for somebody who keeps
-   * their graph here.
-   */
+  /** One page of what an identity publishes, read wherever {@link where} says
+   *  their graph is served. */
   async publications(query: PeerPublicationsQuery): Promise<PublishedIndex> {
-    const origin = query.source_url ?? hereOrigin(this.config);
+    const origin = await this.whereabouts.instanceFor(
+      query.did,
+      query.source_url,
+    );
     const body = await readPeerJson(
       publicationsUrl(origin, query.did, query.cursor),
       peerReach(this.config),
@@ -136,7 +139,10 @@ export class PeerService {
    *  also what a branch taken down leaves behind. */
   async versions(query: PeerVersionsQuery): Promise<PublishedVersionsPage> {
     const publication = query.publication;
-    const origin = query.source_url ?? hereOrigin(this.config);
+    const origin = await this.whereabouts.instanceFor(
+      authorOf(publication),
+      query.source_url,
+    );
     const body = await readPeerJson(
       versionsUrl(origin, publication, query.cursor),
       peerReach(this.config),
@@ -159,7 +165,10 @@ export class PeerService {
    */
   async changes(query: PeerChangesQuery): Promise<PublishedChangesPage> {
     const { publication, from, to } = query;
-    const origin = query.source_url ?? hereOrigin(this.config);
+    const origin = await this.whereabouts.instanceFor(
+      authorOf(publication),
+      query.source_url,
+    );
     const body = await readPeerJson(
       changesUrl(origin, publication, from, to, query.cursor),
       peerReach(this.config),
@@ -214,6 +223,10 @@ export class PeerService {
   private async keepsFollows(delegation: Delegation): Promise<boolean> {
     return this.syr.keepsFollows(delegation.syr_instance_url, delegation.did);
   }
+}
+
+function authorOf(publication: OwnedRef): Principal {
+  return splitOwnedRef(publication).owner;
 }
 
 /** Where the reader's own name is kept, which is the instance a lookup that

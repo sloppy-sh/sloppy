@@ -109,8 +109,9 @@ export function peerOrigin(typed: string): PeerOrigin | null {
   return isPeerOrigin(origin) ? origin : null;
 }
 
-/** What `GET /peers/publications` binds. An absent `source_url` is this
- *  instance, which is the whole of it for somebody who keeps their graph here. */
+/** What `GET /peers/publications` binds. `source_url` names where a declaration
+ *  of theirs is asked for, and where the read lands when none answers; absent,
+ *  it is this instance. docs/ARCHITECTURE.md § "Where a person's graph is". */
 export const PeerPublicationsQuerySchema = z.object({
   did: PrincipalSchema,
   source_url: PeerOriginSchema.optional(),
@@ -191,10 +192,10 @@ export const PullSchema = OwnedEntitySchema.extend({
    *  was last refreshed. */
   comments: CommentAccessSchema,
   /**
-   * The instance that served it, and the one a refresh asks again. A DID does
-   * not answer this: syr's identity manifest names an identity's own store and
-   * nothing about where that identity's graph is served, so where is carried
-   * rather than resolved.
+   * The instance that served it, and where a refresh starts. No identifier
+   * answers this — syr's identity manifest names an identity's own store and
+   * nothing about where that identity's graph is served — so the instance a
+   * copy actually came from is recorded rather than worked out again.
    */
   source_url: PeerOriginSchema,
 });
@@ -205,8 +206,8 @@ export const CreatePullRequestSchema = z.object({
   /** Which snapshot to take. Absent takes the newest, which is what following
    *  somebody's writing means. */
   version: OwnedRefSchema.optional(),
-  /** Where to ask. Absent means this instance, which is the whole of it when
-   *  the author keeps their graph here. */
+  /** Where to ask for the author's declaration, and where to pull from when
+   *  none answers. Absent means this instance. */
   source_url: PeerOriginSchema.optional(),
 });
 export type CreatePullRequest = z.input<typeof CreatePullRequestSchema>;

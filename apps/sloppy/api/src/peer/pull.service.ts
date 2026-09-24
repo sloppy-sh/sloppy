@@ -38,7 +38,8 @@ import {
   type RegionTerms,
   pullRef,
 } from "./pull.repository";
-import { hereOrigin, peerReach, readPeerJson, subtreeUrl } from "./peer-fetch";
+import { peerReach, readPeerJson, subtreeUrl } from "./peer-fetch";
+import { WhereaboutsService } from "./whereabouts.service";
 
 /** What somebody is told when an instance answers something other than the
  *  branch that was asked for. What it actually sent is logged, never passed on. */
@@ -51,6 +52,7 @@ export class PullService {
   constructor(
     private readonly config: AppConfigService,
     private readonly pulls: PullRepository,
+    private readonly whereabouts: WhereaboutsService,
   ) {}
 
   async list(reader: DidSyr): Promise<PullView[]> {
@@ -72,7 +74,10 @@ export class PullService {
     if (author === reader) {
       throw new BadRequestException("That branch is already in your graph.");
     }
-    const origin = request.source_url ?? hereOrigin(this.config);
+    const origin = await this.whereabouts.instanceFor(
+      author,
+      request.source_url,
+    );
     const reading = publishedSubtreeReader({
       publication,
       version: request.version,

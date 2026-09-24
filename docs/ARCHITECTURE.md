@@ -620,9 +620,11 @@ order:
    on their behalf. AI.md § "Sloppy's Vocabulary Stays Out of the Identity Store" is the rule
    that keeps the second from becoming a home.
 
-**One document either way.** `WhereaboutsDocumentSchema` is what a domain serves and what an
-instance serves out of the row, so a reader holds one shape whichever answered and which one
-did is the resolver's own business. It names its own subject, and `parseWhereabouts` is what
+**One document either way, at one address.** `WhereaboutsDocumentSchema` is what a domain
+serves and what an instance serves out of the row, and both serve it at
+`/.well-known/sloppy-whereabouts/<principal>` — at the site root, where a peer resolves syr's
+own documents. So a reader builds one URL and which of the two answered is the resolver's own
+business. It names its own subject, and `parseWhereabouts` is what
 holds it to the person asked about — the boundary `parsePublishedIndex` is for a listing —
 because a domain answers for every address at it and an instance answers for whoever signed
 in there, so a declaration about somebody else would send a reader wherever the server liked.
@@ -633,6 +635,16 @@ through `api/src/media/remote-host.ts` like every other outbound read — a decl
 names a private address, or redirects into one, is refused there. `PeerOrigin` bounds the
 spelling and nothing else; it is never a permission to connect. § "Federating the graph"
 carries the same rule for the origin a reader names by hand.
+
+`peer/whereabouts.ts` is the order and its termination: the domain is asked, then the
+instance, and a domain named by what the instance served is asked ONCE and never followed
+further, so no two declarations can pass a reader back and forth. `whereabouts.service.ts` is
+what asks — reading this instance's own row rather than connecting to itself — and
+`WhereaboutsService.instanceFor` is what every read of somebody's graph goes through.
+**An instance a reader named is where a declaration of theirs is asked for, not where their
+graph is**: it is where a read lands when no declaration answers, so a link somebody was
+handed keeps working, and where one does answer, its author moves by saying so rather than by
+handing every reader a new link. `PUT /api/whereabouts` is where somebody writes their own.
 
 ### What the vocabulary is for, and what is still to be built on it
 
@@ -658,20 +670,21 @@ moved yet — what landed is vocabulary:
   request are the document minus its subject, taken off it rather than spelled out again, so
   the three cannot say different things.
 
-Two things build on it, and neither is written yet.
+Two things build on it. The first is here; the second is not.
 
-- **Reaching an email person's graph.** The resolver § "Where a person's graph is"
-  describes — their domain first, the instance named alongside second — the route that
-  serves a declaration and the surface somebody edits their own on, and the path from a
-  follow through to a held region, including the public publication routes admitting a
-  principal. Every address a declaration names is a stranger's, so each fetch goes through
+- **Reaching an email person's graph — here.** The resolver above is `peer/whereabouts.ts`,
+  the routes that serve a declaration and write one are `peer/whereabouts.controller.ts`, and
+  the public publication routes take a principal, so a peer that has resolved somebody named
+  by an address can read what they publish and pull a branch of it. Every address a
+  declaration names is a stranger's, so each fetch goes through
   `api/src/media/remote-host.ts` and answers `unreachable` rather than refusing the person.
-  **A follow list that can hold one is part of the same track.** `POST` and
-  `DELETE /api/following` both take a principal, so nothing can be followed and not
-  unfollowed; what stops there is the store, whose follow record names a DID, and
-  `PeerService.follow` says so in words rather than letting somebody meet the store's own
-  refusal. Lifting that is teaching a store to keep a principal, and it is where the words go
-  when it is.
+  **Two things are not here.** `POST` and `DELETE /api/following` both take a principal, so
+  nothing can be followed and not unfollowed; what stops there is the store, whose follow
+  record names a DID, and `PeerService.follow` says so in words rather than letting somebody
+  meet the store's own refusal — lifting that is teaching a store to keep a principal, and it
+  is where the words go when it is. And nothing a person can SEE writes a declaration: the
+  route is there and no screen reaches it, so somebody's whereabouts are said through the API
+  until one does.
 - **Binding a signature to its signer.** `peer/attribution.ts` and
   `social/comment-attribution.ts` dispatch on `signature_scheme` and check the signature
   against the key that arrived WITH it, which is why they still say only that the row has not
