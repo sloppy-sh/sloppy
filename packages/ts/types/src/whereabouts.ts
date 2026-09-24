@@ -59,6 +59,10 @@ export type WhereaboutsDocument = z.infer<typeof WhereaboutsDocumentSchema>;
  * One row per person, so declaring again writes the one that is there, and
  * `created_by` is its SUBJECT: where a person is, is theirs to say, and nobody
  * writes anybody else's.
+ *
+ * **No row is somebody who has declared nothing here**, and an instance holding
+ * none answers with none: one that answered for whoever had signed in would be
+ * filing people under itself, which is the thing this source is not.
  */
 export const DeclaredWhereaboutsSchema = OwnedEntitySchema.extend({
   instance: PeerOriginSchema,
