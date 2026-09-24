@@ -32,6 +32,17 @@ export const COMPASS_NODE = COMPASS_TYPE;
 
 export const EMPTY_COMPASS: Compass = { north: [], south: [], east: [], west: [] };
 
+/** How a compass is written down: what {@link compassNode} writes. The node's
+ *  own `kind` is null under the idea compass — ProseMirror has no absent — and
+ *  a null is not writing. A method this build has not heard of stays where it
+ *  stands. */
+export function storedCompass(node: DocumentNode): DocumentNode {
+	const { kind, ...attrs } = node.attrs ?? {};
+	if (kind === undefined) return node;
+	if (kind && kind !== DEFAULT_COMPASS_KIND) return node;
+	return { ...node, attrs };
+}
+
 /**
  * What a compass needs of the graph around it. Reading and opening are all a
  * surface nobody writes on uses, so a reader satisfies this as it stands and

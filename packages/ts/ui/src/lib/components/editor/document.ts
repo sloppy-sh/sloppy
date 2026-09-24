@@ -14,6 +14,7 @@ import {
 } from '@sloppy/types';
 import type { JSONContent } from '@tiptap/core';
 import type { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
+import { COMPASS_NODE, storedCompass } from './compass-node.js';
 import { DIAGRAM_NODE, readsAsDiagram } from './diagram-node.js';
 import { INK_NODE } from './ink-node.js';
 import { MATH_BLOCK_NODE, MATH_NODE, readsAsMath } from './math-node.js';
@@ -22,6 +23,7 @@ import { nextUid, SECTION_NODE } from './section-node.js';
 
 /** How an element is written down, where that is not simply how it stands. */
 const STORED_AS: Partial<Record<string, (node: DocumentNode) => DocumentNode | null>> = {
+	[COMPASS_NODE]: storedCompass,
 	[PICTURE_NODE]: storedPicture
 };
 

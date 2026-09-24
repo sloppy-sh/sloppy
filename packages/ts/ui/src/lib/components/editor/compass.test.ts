@@ -7,6 +7,7 @@ import {
 	COMPASS_DIRECTIONS,
 	type BlockDocument,
 	type CreateBlockRequest,
+	type DocumentNode,
 	type NodeView
 } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
@@ -87,6 +88,16 @@ function stored() {
 	const sections = docBlocks(writingIn().state.doc);
 	for (const one of sections) {
 		const held = compassOf(one.content);
+		if (held) return held;
+	}
+	return undefined;
+}
+
+/** The compass element itself, as a section hands it to a vault, the API and a
+ *  peer — before anything reading one normalises it. */
+function writtenDown(): DocumentNode | undefined {
+	for (const one of docBlocks(writingIn().state.doc)) {
+		const held = (one.content.content ?? []).find((element) => element.type === 'compass');
 		if (held) return held;
 	}
 	return undefined;
@@ -437,6 +448,42 @@ describe('a compass in the writing', () => {
 		chooses('idea');
 		expect(stored()).toEqual(before);
 		expect(kept().kind).toBeNull();
+	});
+
+	// An absent kind is what the idea compass says on the wire, so a compass in
+	// it must reach a vault, the API and a peer carrying none — the node's own
+	// attribute is null there, and a null is not writing.
+	it('writes down the method only where the note is read by another one', async () => {
+		const seed = note('1b', 'Seed banks');
+		open(graph([seed]));
+		put();
+		tap(act('north', 'Cite a note'));
+		type('seed');
+		tap(menu()[0]);
+		await settled();
+
+		const slots = { north: [{ note: seed.ref }], south: [], east: [], west: [] };
+		expect(writtenDown()?.attrs).toEqual(slots);
+
+		chooses('qec');
+		expect(writtenDown()?.attrs).toEqual({ ...slots, kind: 'qec' });
+
+		chooses('idea');
+		expect(writtenDown()?.attrs).toEqual(slots);
+	});
+
+	// A method a later build added is somebody's writing, and this one keeps
+	// what it cannot read.
+	it('writes down a method it has never heard of as it stands', async () => {
+		open(graph([]));
+		writingIn().commands.insertContent({
+			type: 'compass',
+			attrs: { north: [], south: [], east: [], west: [], kind: 'swot' }
+		});
+		flushSync();
+		await settled();
+
+		expect(writtenDown()?.attrs?.kind).toBe('swot');
 	});
 
 	// A slot a method has no question for still holds citations the canvas
