@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import {
   type Address,
+  type Attribution,
   type BlockView,
   type CreatePullRequest,
   type DidSyr,
@@ -31,7 +32,12 @@ import {
   splitOwnedRef,
 } from "@sloppy/types";
 import { AppConfigService } from "../config/app-config.service";
-import { signatureRefutes } from "./attribution";
+import {
+  type AskWhoHolds,
+  IdentityKeysService,
+  type Keyholdings,
+} from "../identity/identity-keys.service";
+import { attributeNodes } from "./attribution";
 import {
   type HeldPage,
   PullRepository,
@@ -51,6 +57,7 @@ export class PullService {
   constructor(
     private readonly config: AppConfigService,
     private readonly pulls: PullRepository,
+    private readonly keys: IdentityKeysService,
   ) {}
 
   async list(reader: DidSyr): Promise<PullView[]> {
@@ -86,6 +93,14 @@ export class PullService {
     // parents a page carries rather than read out of an address a person
     // writes.
     const deep = new Map<OwnedRef, number>();
+    // Once for the whole region rather than once a page, let alone once a note:
+    // every note in it is answered for by the same person. A region carrying no
+    // signature asks nobody anything.
+    let asked: Promise<Keyholdings> | undefined;
+    const whoHolds = () =>
+      (asked ??= this.keys.contentKeysFor(
+        new Map([[author, { url: origin, word: "typed" as const }]]),
+      ));
     do {
       const body = await readPeerJson(
         subtreeUrl(origin, publication, request.version, cursor),
@@ -97,7 +112,13 @@ export class PullService {
         }
         throw new ServiceUnavailableException(UNREADABLE);
       }
-      const page = await this.take(reading, body, declined, deep);
+      const { page, said } = await this.take(
+        reading,
+        body,
+        declined,
+        deep,
+        whoHolds,
+      );
       terms ??= {
         publication,
         version: page.version,
@@ -116,7 +137,7 @@ export class PullService {
         reader,
         author,
         pullRef(region),
-        held(page, author, graphRef(author, page.graph), deep),
+        held(page, author, graphRef(author, page.graph), deep, said),
       );
       cursor = page.next_cursor;
     } while (cursor !== undefined);
@@ -192,13 +213,22 @@ export class PullService {
    * not presenting ONE note as its author's is not refusing the branch it sits
    * in — which is why the depths are walked before a note is dropped, so the
    * notes under a dropped one still know where they sit.
+   *
+   * **A note nobody could be shown to have written is kept**, marked as what it
+   * is: an instance that did not answer about somebody's keys is not evidence
+   * against them, and dropping the branch over it would make their outage the
+   * reader's.
    */
   private async take(
     reading: ReturnType<typeof publishedSubtreeReader>,
     body: unknown,
     declined: Set<OwnedRef>,
     deep: Map<OwnedRef, number>,
-  ): Promise<PublishedSubtreePage> {
+    whoHolds: AskWhoHolds,
+  ): Promise<{
+    page: PublishedSubtreePage;
+    said: ReadonlyMap<OwnedRef, Attribution>;
+  }> {
     let page: PublishedSubtreePage;
     try {
       page = reading.take(body);
@@ -210,18 +240,22 @@ export class PullService {
       }
       throw error;
     }
+    const said = await attributeNodes(page.nodes, whoHolds);
     const refuted = new Set<OwnedRef>();
     for (const node of page.nodes) {
-      if (!(await signatureRefutes(node))) continue;
+      if (said.get(node.ref) !== "refuted") continue;
       this.logger.warn(`${node.ref} does not carry its author's signature`);
       refuted.add(node.ref);
       declined.add(node.ref);
     }
-    if (refuted.size === 0) return page;
+    if (refuted.size === 0) return { page, said };
     return {
-      ...page,
-      nodes: page.nodes.filter((node) => !refuted.has(node.ref)),
-      blocks: page.blocks.filter((block) => !refuted.has(block.node)),
+      page: {
+        ...page,
+        nodes: page.nodes.filter((node) => !refuted.has(node.ref)),
+        blocks: page.blocks.filter((block) => !refuted.has(block.node)),
+      },
+      said,
     };
   }
 
@@ -285,10 +319,12 @@ function held(
   author: Principal,
   graph: OwnedRef,
   deep: Map<OwnedRef, number>,
+  said: ReadonlyMap<OwnedRef, Attribution>,
 ): HeldPage {
   return {
     nodes: page.nodes.map(({ ref, ...node }) => {
       const depth = deep.get(ref) as number;
+      const attribution = said.get(ref);
       return {
         source: ref,
         source_did: author,
@@ -296,6 +332,7 @@ function held(
         ...(node.address === undefined ? {} : { address: node.address }),
         ...(node.aliases ? { aliases: node.aliases } : {}),
         depth,
+        ...(attribution === undefined ? {} : { attribution }),
         node: { ...node },
       };
     }),

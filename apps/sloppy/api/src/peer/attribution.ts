@@ -1,31 +1,68 @@
-// What a reader can check about a published note's signature, and nothing more.
+// Whose a published note is, as far as a reader can be shown.
 
 import {
-  NodeSignedPayloadV1Schema,
+  type Attribution,
+  type NodeSignedPayload,
+  NodeSignedPayloadSchema,
+  type OwnedRef,
+  type Principal,
   type PublishedNode,
+  nodePayloadVersionOf,
   signatureSchemeOf,
   splitOwnedRef,
 } from "@sloppy/types";
-import { signatureChecksOut } from "../identity/signature";
+import { type SignedClaim, attributionOf } from "../identity/attribution";
+import type {
+  AskWhoHolds,
+  Keyholdings,
+} from "../identity/identity-keys.service";
 
 /**
- * Whether the signature a published note carries is one this reader can check
- * and finds wrong. `PublishedNodeSchema` states the rule this implements: a
- * reader that cannot verify a signature still renders the note; one that can,
- * and finds it wrong, must not present it as the author's.
+ * What a reader makes of each signed note on a page — its author's, nobody's
+ * that can be shown, or not the author's at all.
  *
- * **Checking out is not the same as being the author's**, which is why there is
- * no third answer here and nothing may draw one. The key that signed the
- * payload arrives WITH it, and asking who holds that key is a fetch nothing
- * here makes — `IdentityKeysService` is where that question is asked. So a
- * signature that verifies says the note has not been altered since it was
- * signed, and says nothing about who signed it.
+ * **A note carrying no signature is absent from the answer**, which is the
+ * ordinary state of one and says nothing either way. So is one signed in a
+ * scheme, or under a payload version, this build cannot name: what it cannot
+ * check it holds, rather than presenting as altered.
  *
- * A payload this build does not understand is one it cannot check, so a note
- * signed by a later version of Sloppy, or in a scheme this one cannot name, is
- * held rather than refused.
+ * **`ask` is made at most once, and only where a page carries a signature worth
+ * weighing.** It answers for every author at once, so a page of fifty notes by
+ * three people costs three asks and a page of unsigned ones costs none.
  */
-export async function signatureRefutes(node: PublishedNode): Promise<boolean> {
+export async function attributeNodes(
+  nodes: readonly PublishedNode[],
+  ask: AskWhoHolds,
+): Promise<ReadonlyMap<OwnedRef, Attribution>> {
+  const said = new Map<OwnedRef, Attribution>();
+  let held: Keyholdings | undefined;
+  for (const node of nodes) {
+    const read = readSignature(node);
+    if (read === undefined) continue;
+    if (read === "refuted") {
+      said.set(node.ref, "refuted");
+      continue;
+    }
+    held ??= await ask();
+    said.set(
+      node.ref,
+      await attributionOf(read.claim, held.get(read.author) ?? null),
+    );
+  }
+  return said;
+}
+
+/**
+ * What the row alone settles: nothing to weigh, a statement that contradicts
+ * the note it arrived on, or a signature still to be weighed against somebody's
+ * keys.
+ */
+function readSignature(
+  node: PublishedNode,
+):
+  | undefined
+  | "refuted"
+  | { readonly claim: SignedClaim; readonly author: Principal } {
   const { content_signature, signed_payload_json, signing_device_public_key } =
     node;
   if (
@@ -33,36 +70,51 @@ export async function signatureRefutes(node: PublishedNode): Promise<boolean> {
     signed_payload_json === undefined ||
     signing_device_public_key === undefined
   ) {
-    return false;
+    return undefined;
   }
   const scheme = signatureSchemeOf(node);
-  if (scheme === undefined) return false;
+  if (scheme === undefined) return undefined;
 
   const payload = parseObject(signed_payload_json);
-  if (payload === null) return false;
-  if (payload.type !== NodeSignedPayloadV1Schema.shape.type.value) return false;
+  if (payload === null) return undefined;
+  if (nodePayloadVersionOf(payload) === undefined) return undefined;
 
-  const claim = NodeSignedPayloadV1Schema.safeParse(payload);
-  if (!claim.success) return true;
-  if (!aboutThisNode(claim.data, node)) return true;
+  const said = NodeSignedPayloadSchema.safeParse(payload);
+  if (!said.success) return "refuted";
+  const { owner, localId } = splitOwnedRef(node.ref);
+  if (!claimsThisNote(said.data, node, owner, localId)) return "refuted";
 
-  // The parsed object rather than the schema's output: a signature is over the
-  // canonical form of what was sent, and zod strips what it does not declare.
-  return !(await signatureChecksOut({
-    scheme,
-    payload,
-    signature: content_signature,
-    publicKey: signing_device_public_key,
-  }));
+  return {
+    // The parsed object rather than the schema's output: a signature is over
+    // the canonical form of what was sent, and zod strips what it does not
+    // declare.
+    claim: {
+      scheme,
+      payload,
+      signature: content_signature,
+      publicKey: signing_device_public_key,
+    },
+    author: owner,
+  };
 }
 
-function aboutThisNode(
-  claim: ReturnType<typeof NodeSignedPayloadV1Schema.parse>,
+/**
+ * Whether the statement that was signed is about the note it arrived on.
+ *
+ * A `v1` statement names a `did:syr`, so a note owned by an address can carry
+ * none that is about itself and carries a `v2` instead. **A `v2` with no
+ * address is a claim about a note its author gave no label** — it matches one
+ * that has none, and never one that happens to sit at an address.
+ */
+function claimsThisNote(
+  claim: NodeSignedPayload,
   node: PublishedNode,
+  owner: Principal,
+  localId: string,
 ): boolean {
-  const { owner, localId } = splitOwnedRef(node.ref);
+  const who = claim.type === "sloppy-node@v1" ? claim.did : claim.principal;
   return (
-    claim.did === owner &&
+    who === owner &&
     claim.node_id === localId &&
     claim.address === node.address &&
     claim.title === node.title &&
