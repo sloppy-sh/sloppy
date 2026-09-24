@@ -6,16 +6,16 @@ import {
   Query,
 } from "@nestjs/common";
 import {
-  type DidSyr,
   type OwnedRef,
   OwnedRefSchema,
   type PublishedChangesPage,
   type PublishedIndex,
   type PublishedSubtreePage,
   type PublishedVersionsPage,
+  type Principal,
 } from "@sloppy/types";
 import { Public } from "../auth/public.decorator";
-import { didOrRefuse, refOrNull } from "../node/request";
+import { principalOrRefuse, refOrNull } from "../node/request";
 import { PublishedService } from "./published.service";
 
 /**
@@ -33,7 +33,7 @@ export class PublishedController {
     @Param("did") did: string,
     @Query("cursor") cursor?: string,
   ): Promise<PublishedIndex> {
-    return this.published.index(didOrRefuse(did), cursor);
+    return this.published.index(principalOrRefuse(did), cursor);
   }
 
   /** A page of one version; absent, the newest. `null` where nothing is
@@ -85,9 +85,9 @@ export class PublishedController {
   private at(
     did: string,
     localId: string,
-  ): { did: DidSyr; ref: OwnedRef } | null {
+  ): { did: Principal; ref: OwnedRef } | null {
     const ref = refOrNull(did, localId);
-    return ref === null ? null : { did: didOrRefuse(did), ref };
+    return ref === null ? null : { did: principalOrRefuse(did), ref };
   }
 }
 
