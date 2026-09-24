@@ -27,8 +27,7 @@ import type {
  * check it holds, rather than presenting as altered.
  *
  * **`ask` is made at most once, and only where a page carries a signature worth
- * weighing.** It answers for every author at once, so a page of fifty notes by
- * three people costs three asks and a page of unsigned ones costs none.
+ * weighing** — docs/ARCHITECTURE.md § "Whose a signed row is".
  */
 export async function attributeNodes(
   nodes: readonly PublishedNode[],

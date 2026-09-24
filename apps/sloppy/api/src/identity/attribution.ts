@@ -1,5 +1,5 @@
 // Whose a signed row is: the signature weighed against the keys its named
-// author holds. docs/ARCHITECTURE.md § "Who a person is".
+// author holds. docs/ARCHITECTURE.md § "Whose a signed row is".
 
 import type { Attribution, BoundKey, SignatureScheme } from "@sloppy/types";
 import { signatureChecksOut } from "./signature";
@@ -22,9 +22,8 @@ export interface SignedClaim {
  * what settles whose a signature is, is which key it was made with.
  *
  * **`held` being `null` and `held` holding none of this scheme's signing keys
- * come to the same answer**, and deliberately: in neither case has anybody been
- * SHOWN to hold the key, and an instance that did not answer is somebody's
- * afternoon rather than evidence against them.
+ * come to the same answer** — {@link Attribution} carries why neither of them
+ * is an accusation.
  */
 export async function attributionOf(
   claim: SignedClaim,

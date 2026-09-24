@@ -1,3 +1,4 @@
+import { deriveDid, generateKeypair } from "@sloppy/idp";
 import type { DelegationEntry, SyrService } from "../syr/syr.service";
 import type { AppConfigService } from "../config/app-config.service";
 import { describe, expect, it } from "vitest";
@@ -16,18 +17,31 @@ const HERE = {
   publicUrl: "https://sloppy.example",
 } as unknown as AppConfigService;
 
-/** An instance that lists what it has approved, and counts who it was asked
- *  about. */
+/** An instance that lists what it has approved, counting who it was asked
+ *  about and how many of those asks were open at once. */
 function listing(entries: DelegationEntry[] | null) {
   const asked: string[] = [];
+  let open = 0;
+  let mostOpen = 0;
   const syr = {
     providerFor: async (_at: string, did: string) => {
       asked.push(did);
+      open += 1;
+      mostOpen = Math.max(mostOpen, open);
+      await new Promise((settle) => setTimeout(settle, 0));
+      open -= 1;
       return "https://syr.example";
     },
     listDelegations: async () => entries,
   } as unknown as SyrService;
-  return { syr, asked };
+  return { syr, asked, mostOpen: () => mostOpen };
+}
+
+/** As many standing delegations as a listing cares to carry. */
+function manyStanding(howMany: number): DelegationEntry[] {
+  return Array.from({ length: howMany }, (_, at) => ({
+    delegate_public_key: `zDelegate${at}`,
+  }));
 }
 
 function ask(
@@ -74,6 +88,38 @@ describe("what somebody signs content with", () => {
     expect(held.get(SYR)).toEqual([
       expect.objectContaining({ key: "zStands" }),
     ]);
+  });
+
+  it("is unanswered where more keys are listed than a reader will weigh", async () => {
+    const { syr } = listing(manyStanding(1_000));
+    const held = await ask(syr, new Map([[SYR, HERS]]));
+    expect(held.get(SYR)).toBeNull();
+  });
+
+  it("weighs the keys that stand rather than the rows that were listed", async () => {
+    const { syr } = listing([
+      ...manyStanding(1_000).map((entry) => ({
+        ...entry,
+        revoked_at: "2026-01-01T00:00:00Z",
+      })),
+      { delegate_public_key: "zStands" },
+    ]);
+    const held = await ask(syr, new Map([[SYR, HERS]]));
+    expect(held.get(SYR)).toEqual([
+      expect.objectContaining({ key: "zStands" }),
+    ]);
+  });
+
+  it("holds a run of instances open at a time, never a page of them", async () => {
+    const { syr, asked, mostOpen } = listing([
+      { delegate_public_key: "zDelegate" },
+    ]);
+    const everyone = Array.from({ length: 20 }, () =>
+      deriveDid(generateKeypair().publicKey),
+    );
+    await ask(syr, new Map(everyone.map((did) => [did, HERS])));
+    expect(asked).toHaveLength(20);
+    expect(mostOpen()).toBeLessThanOrEqual(8);
   });
 
   it("asks each person's own instance, and nobody else's", async () => {
