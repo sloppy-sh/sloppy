@@ -599,11 +599,15 @@ in `api/src/identity` is the one place the two meet, and it answers in three:
   check the same signature rather than compared to the one on the row, because one spelling of
   a key is not another and what settles whose a signature is, is which key made it.
 - **`unattributed`** — it checks out, and nobody has been SHOWN to hold the key it checks out
-  under. An instance that did not answer lands here beside an author who publishes no key, and
-  deliberately: neither is evidence against anybody, so **unreachability is never refutation**
-  and no surface may draw it as one.
-- **`refuted`** — the row does not say what it was signed saying, or it is signed under none of
-  the keys its author holds.
+  under. An instance that did not answer lands here, so does an author who publishes no key,
+  and so does a key that author has rotated away or revoked: a listing answers what signs NOW
+  and the signature was made THEN. None of the three is evidence against anybody, so
+  **neither unreachability nor staleness is refutation** and no surface may draw either as one.
+- **`refuted`** — the row does not say what it was signed saying. That is the whole of it: a
+  row contradicting its own signed statement is the one thing a reader settles without asking
+  anybody, and **the only thing a copy is destroyed over**. A listing never refutes, because a
+  reader who dropped a note over a key its author retired would cost that author their words
+  for rotating one.
 
 **What is asked, and how often.** `IdentityKeysService.contentKeysFor` takes a map keyed by
 principal and answers one keyed the same way, so a page of fifty notes by three people costs
@@ -627,7 +631,8 @@ is not an author with no key.
 **A listing nobody bounded is unasked too.** Every key in it is tried against every signature
 its identity's rows carry, so an unbounded one is a stranger spending this instance's afternoon
 once per note. Past a bounded number the listing answers `null` rather than its first few —
-`identity-keys.service.ts` carries why giving up must never land on `refuted`.
+`identity-keys.service.ts` carries why giving up must not answer for an author with their own
+key unread.
 
 **What a reader is told.** A note or a comment nothing weighed says nothing either way, which
 is every unsigned one. A refuted note is left out of a pull and a refuted comment is not drawn.

@@ -107,7 +107,8 @@ export class IdentityKeysService {
 
 /** A listing past {@link KEYS_WEIGHED} answers `null` rather than its first
  *  {@link KEYS_WEIGHED}: a key the reader never got to is one an author may
- *  hold, and cutting the list would refute them with their own key unread. */
+ *  hold, and cutting the list would answer for them with their own key
+ *  unread. */
 function fewEnoughToWeigh(
   keys: readonly BoundKey[] | null,
 ): readonly BoundKey[] | null {

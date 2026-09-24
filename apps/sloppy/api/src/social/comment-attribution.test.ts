@@ -122,14 +122,17 @@ describe("what a reader can show about who wrote a comment", () => {
     ).toBe("theirs");
   });
 
-  it("refutes one signed under none of the keys its writer holds", async () => {
-    const somebodyElse = generateKeypair();
+  // A listing is what signs now, and this comment was signed then: a writer who
+  // has rotated their key since must not lose the words they left behind.
+  it("holds one signed under none of the keys its writer holds now", async () => {
+    const retired = generateKeypair();
+    const standing = generateKeypair();
     expect(
       await whose(
-        signedBy(unsigned),
-        holding(VOICE, [approved(encodePublicKey(somebodyElse.publicKey))]),
+        signedBy(unsigned, payloadFor(unsigned), retired),
+        holding(VOICE, [approved(encodePublicKey(standing.publicKey))]),
       ),
-    ).toBe("refuted");
+    ).toBe("unattributed");
   });
 
   it("holds one where the instance did not answer, rather than accusing", async () => {

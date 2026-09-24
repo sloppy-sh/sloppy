@@ -150,14 +150,28 @@ describe("what a reader can show about who wrote a published note", () => {
     ).toBe("theirs");
   });
 
-  it("refutes one signed under none of the keys its author holds", async () => {
-    const somebodyElse = generateKeypair();
+  it("holds one signed under none of the keys its author holds now", async () => {
+    const elsewhere = generateKeypair();
     expect(
       await whose(
         signedBy(unsigned),
-        holding(AUTHOR, [approved(encodePublicKey(somebodyElse.publicKey))]),
+        holding(AUTHOR, [approved(encodePublicKey(elsewhere.publicKey))]),
       ),
-    ).toBe("refuted");
+    ).toBe("unattributed");
+  });
+
+  // What a listing leaves out is every key its holder has retired, so a note
+  // signed before a rotation is signed under one of them. Refuting it would
+  // take an author's words away for changing their key.
+  it("holds one signed under a key its author has since retired", async () => {
+    const retired = generateKeypair();
+    const standing = generateKeypair();
+    expect(
+      await whose(
+        signedBy(unsigned, payloadFor(unsigned), retired),
+        holding(AUTHOR, [approved(encodePublicKey(standing.publicKey))]),
+      ),
+    ).toBe("unattributed");
   });
 
   it("holds one where the instance did not answer, rather than accusing", async () => {
@@ -272,11 +286,11 @@ describe("what a reader can show about who wrote a published note", () => {
     expect(await whose(node, holding(AUTHOR, [key]))).toBe("theirs");
   });
 
-  it("refutes an OpenPGP note signed under a key the author does not hold", async () => {
+  it("holds an OpenPGP note signed under a key the address does not serve", async () => {
     const mine = await openPgpSignedBy(unsigned);
     const theirs = await openPgpSignedBy(unsigned);
     expect(await whose(mine.node, holding(AUTHOR, [theirs.key]))).toBe(
-      "refuted",
+      "unattributed",
     );
   });
 

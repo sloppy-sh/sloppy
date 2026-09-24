@@ -113,10 +113,13 @@ export function bindingFor(
  *
  * - `theirs` — the signature checks out under a key that author holds.
  * - `unattributed` — it checks out, and nothing shows that author holds the key
- *   it checks out under. **An instance that did not answer lands here**, so
- *   this is not an accusation and must never be drawn as one.
- * - `refuted` — the row does not say what it was signed saying, or it is signed
- *   under none of the keys its author holds.
+ *   it checks out under. **An instance that did not answer lands here, and so
+ *   does a key its author has since rotated away**: a listing says what signs
+ *   now and a signature was made then. Not an accusation, and never drawn as
+ *   one.
+ * - `refuted` — the row does not say what it was signed saying. The one thing
+ *   a reader can show without asking anybody, and the only thing a copy is
+ *   dropped over.
  *
  * Asked rather than read off a claim, the rule a vouch is held to: no column a
  * peer can write says this, because a forger would write it.
