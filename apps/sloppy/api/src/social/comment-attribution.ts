@@ -1,32 +1,58 @@
-// What a reader can check about a comment's signature, and nothing more.
+// Whose a comment is, as far as a reader can be shown.
 
 import {
+  type Attribution,
   CommentSignedPayloadV1Schema,
   type SyrComment,
   signatureSchemeOf,
 } from "@sloppy/types";
-import { signatureChecksOut } from "../identity/signature";
+import { type SignedClaim, attributionOf } from "../identity/attribution";
+import type {
+  AskWhoHolds,
+  Keyholdings,
+} from "../identity/identity-keys.service";
 
 /**
- * Whether the signature a comment carries is one this reader can check and
- * finds wrong. It is the rule a published note's signature already carries: a
- * reader that cannot verify one still renders the comment, and one that can,
- * and finds it wrong, must not present it as the author's.
+ * What a reader makes of each signed comment on a note — its author's,
+ * nobody's that can be shown, or not the author's at all. The rule a published
+ * note's signature already carries, answered in the same three ways.
  *
- * **Checking out is not the same as being the author's.** The key that signed
- * the payload arrives WITH it, and asking who holds that key is a fetch nothing
- * here makes — `IdentityKeysService` is where that question is asked. So a
- * signature that verifies says the comment has not been altered since it was
- * signed, and says nothing about who signed it.
+ * **An unsigned comment is absent from the answer**, which is the ordinary
+ * state of one: syr's create route drops the envelope it accepts, so a comment
+ * whose second step never landed is unsigned and not suspect. So is one signed
+ * in a scheme this build cannot name.
  *
- * A payload this build does not understand is one it cannot check, so a comment
- * signed by a later version of Sloppy, or in a scheme this one cannot name, is
- * held rather than dropped.
+ * **`ask` is made at most once, and only where a thread carries a signature
+ * worth weighing** — never once per comment.
  */
-export async function commentRefutes(
+export async function attributeComments(
+  comments: readonly SyrComment[],
+  post: { post_did: string; post_id: string },
+  ask: AskWhoHolds,
+): Promise<readonly (Attribution | undefined)[]> {
+  const said: (Attribution | undefined)[] = [];
+  let held: Keyholdings | undefined;
+  for (const comment of comments) {
+    const read = readSignature(comment, post);
+    if (read === undefined || read === "refuted") {
+      said.push(read);
+      continue;
+    }
+    held ??= await ask();
+    said.push(await attributionOf(read, held.get(comment.did) ?? null));
+  }
+  return said;
+}
+
+/**
+ * What the row alone settles: nothing to weigh, a statement that contradicts
+ * the comment it arrived on, or a signature still to be weighed against
+ * somebody's keys.
+ */
+function readSignature(
   comment: SyrComment,
   post: { post_did: string; post_id: string },
-): Promise<boolean> {
+): undefined | "refuted" | SignedClaim {
   const { content_signature, signed_payload_json, signing_device_public_key } =
     comment;
   if (
@@ -34,32 +60,32 @@ export async function commentRefutes(
     signed_payload_json === undefined ||
     signing_device_public_key === undefined
   ) {
-    return false;
+    return undefined;
   }
   const scheme = signatureSchemeOf(comment);
-  if (scheme === undefined) return false;
+  if (scheme === undefined) return undefined;
 
   const payload = parseObject(signed_payload_json);
-  if (payload === null) return false;
+  if (payload === null) return undefined;
   if (payload.type !== CommentSignedPayloadV1Schema.shape.type.value) {
-    return false;
+    return undefined;
   }
 
   const claim = CommentSignedPayloadV1Schema.safeParse(payload);
-  if (!claim.success) return true;
-  if (!aboutThisComment(claim.data, comment, post)) return true;
+  if (!claim.success) return "refuted";
+  if (!claimsThisComment(claim.data, comment, post)) return "refuted";
 
   // The parsed object rather than the schema's output: a signature is over the
   // canonical form of what was sent, and zod strips what it does not declare.
-  return !(await signatureChecksOut({
+  return {
     scheme,
     payload,
     signature: content_signature,
     publicKey: signing_device_public_key,
-  }));
+  };
 }
 
-function aboutThisComment(
+function claimsThisComment(
   claim: ReturnType<typeof CommentSignedPayloadV1Schema.parse>,
   comment: SyrComment,
   post: { post_did: string; post_id: string },

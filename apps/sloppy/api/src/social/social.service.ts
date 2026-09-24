@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import {
   type AnsweredNote,
+  type Attribution,
   splitOwnedRef,
   asTimestamp,
   type CommentSignedPayloadV1,
@@ -23,16 +24,21 @@ import {
   type SyrEmoji,
   type SyrReaction,
   syrPostRefFor,
+  type TrustedInstance,
   VOICES_PER_NOTE,
 } from "@sloppy/types";
 import type { z } from "zod";
 import { AppConfigService } from "../config/app-config.service";
+import {
+  type AskedAt,
+  IdentityKeysService,
+} from "../identity/identity-keys.service";
 import { AssetLinks } from "../media/asset-link";
 import type { HostPolicy } from "../media/remote-host";
 import { NodeRepository } from "../node/node.repository";
 import { peerReach, tellPeerJson } from "../peer/peer-fetch";
 import { type Delegation, SyrService } from "../syr/syr.service";
-import { commentRefutes } from "./comment-attribution";
+import { attributeComments } from "./comment-attribution";
 import { PointerRepository } from "./pointer.repository";
 import {
   type Refusal,
@@ -98,6 +104,7 @@ export class SocialService {
     private readonly config: AppConfigService,
     private readonly refusals: RefusalRepository,
     private readonly nodes: NodeRepository,
+    private readonly keys: IdentityKeysService,
   ) {}
 
   /** Whether this person's own store can hold a conversation, which a surface
@@ -182,15 +189,15 @@ export class SocialService {
         this.syr.listPublicComments(voice.where, voice.did, post, voice.reach),
       node,
     );
-    const about = written
-      .map((held) => held.record)
-      .filter((comment) => this.isAbout(comment, post));
-    const refuted = await Promise.all(
-      about.map((comment) => commentRefutes(comment, post)),
+    const about = written.filter((held) => this.isAbout(held.record, post));
+    const said = await attributeComments(
+      about.map((held) => held.record),
+      post,
+      () => this.keys.contentKeysFor(whereTheirKeysAreListed(about)),
     );
     return about
-      .filter((_, at) => !refuted[at])
-      .map((comment) => this.commentView(comment, node))
+      .filter((_, at) => said[at] !== "refuted")
+      .map((held, at) => this.commentView(held.record, node, said[at]))
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
@@ -631,7 +638,11 @@ export class SocialService {
     );
   }
 
-  private commentView(comment: SyrComment, node: OwnedRef): NoteComment {
+  private commentView(
+    comment: SyrComment,
+    node: OwnedRef,
+    attribution?: Attribution,
+  ): NoteComment {
     const parent = StoreRefSchema.safeParse(comment.ancestor_chain.at(-1));
     return {
       comment_id: storeRefFor(comment.did, comment.local_id),
@@ -650,6 +661,7 @@ export class SocialService {
       ...(comment.signing_device_public_key
         ? { signing_device_public_key: comment.signing_device_public_key }
         : {}),
+      ...(attribution === undefined ? {} : { attribution }),
     };
   }
 
@@ -782,4 +794,26 @@ async function inRuns<T, R>(
 
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Who to ask about, and where each of their own instances may be asked what
+ * keys it has approved.
+ *
+ * **A store is taken as an address for its OWN identity and nobody else's.**
+ * One that served somebody else's comment says nothing about where that person
+ * keeps their keys, and letting it name the answer would let it appoint the key
+ * its own comment was signed with.
+ */
+function whereTheirKeysAreListed(held: readonly Held<SyrComment>[]): AskedAt {
+  const asked = new Map<string, TrustedInstance | undefined>();
+  for (const { from, record } of held) {
+    const own = from.did === record.did;
+    if (asked.get(record.did) !== undefined && !own) continue;
+    asked.set(
+      record.did,
+      own ? { url: from.where, word: "written_down" } : undefined,
+    );
+  }
+  return asked;
 }

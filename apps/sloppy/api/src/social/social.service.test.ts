@@ -12,6 +12,7 @@ import { DidSyrSchema, type OwnedRef, type RefusedVoice } from "@sloppy/types";
 import { RecordId } from "surrealdb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfigService } from "../config/app-config.service";
+import type { IdentityKeysService } from "../identity/identity-keys.service";
 import { AssetLinks } from "../media/asset-link";
 import type { NodeRepository } from "../node/node.repository";
 import { SyrService } from "../syr/syr.service";
@@ -192,6 +193,12 @@ function assembledFrom(
       allow: async () => undefined,
     } as unknown as RefusalRepository,
     { many: async () => [], ...notes } as unknown as NodeRepository,
+    // Nobody is asked who holds a key here: a signature that checks out under
+    // one nothing serves is a comment kept and drawn as unattributed, which is
+    // what every comment in these tests is.
+    {
+      contentKeysFor: async () => new Map(),
+    } as unknown as IdentityKeysService,
   );
 }
 
