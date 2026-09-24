@@ -48,9 +48,6 @@ catalogs:
     globals:
       specifier: 17.4.0
       version: 17.4.0
-    openpgp:
-      specifier: 6.3.1
-      version: 6.3.1
     prettier:
       specifier: 3.8.1
       version: 3.8.1
@@ -637,7 +634,7 @@ importers:
   packages/ts/openpgp:
     dependencies:
       openpgp:
-        specifier: 'catalog:'
+        specifier: 6.3.1
         version: 6.3.1
     devDependencies:
       '@biomejs/biome':

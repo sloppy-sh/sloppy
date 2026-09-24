@@ -32,7 +32,7 @@
     "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
   },
   "dependencies": {
-    "openpgp": "catalog:"
+    "openpgp": "6.3.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.0",
