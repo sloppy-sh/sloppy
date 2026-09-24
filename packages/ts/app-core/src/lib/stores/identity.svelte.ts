@@ -46,14 +46,15 @@ class IdentityStore {
 	#epoch = 0;
 
 	/**
-	 * `undefined` until somebody is signed in, and until the ask has landed for
-	 * anybody whose identity is kept in a store at all. A surface waits for it
-	 * rather than guessing: drawing a conversation on a guess is what puts a
-	 * control that cannot work in front of somebody.
+	 * `undefined` until somebody is signed in and the ask has landed, and on a
+	 * graph this device keeps, whose identity the device made and this store is
+	 * never asked about. A surface waits for it rather than guessing: drawing a
+	 * conversation on a guess is what puts a control that cannot work in front
+	 * of somebody.
 	 */
 	get kind(): IdentityKind | undefined {
 		const viewer = session.viewer;
-		if (!viewer) return undefined;
+		if (!viewer || session.onDevice) return undefined;
 		if (!viewer.syr_instance_url) return 'own-key';
 		if (this.#here === undefined) return undefined;
 		return this.#here !== null && sameInstance(viewer.syr_instance_url, this.#here)

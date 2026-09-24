@@ -127,6 +127,16 @@ describe('where the signed-in person keeps their identity', () => {
 		expect(identity.kind).toBe('own-key');
 	});
 
+	// A device makes its own identity and names no instance for it, which is not
+	// the same as signing in with a key of one's own.
+	it('says nothing for a graph this device keeps', () => {
+		useFakeApi('local');
+		session.adopt({ ...VIEWER, syr_instance_url: '' }, 'a-session');
+
+		expect(identity.kind).toBeUndefined();
+		expect(answersReach(identity.kind)).toBe(true);
+	});
+
 	it('holds nothing of the last person for the next', async () => {
 		api.on('GET /auth/own-instance', () => ({
 			instance_url: VIEWER.syr_instance_url,
