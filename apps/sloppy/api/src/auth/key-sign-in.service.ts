@@ -47,6 +47,16 @@ const CHECKS: Record<SignatureScheme, SignatureCheck | null> = {
   "ed25519-multibase": null,
 };
 
+const SIGNATURE_ARMOR =
+  /-----BEGIN PGP SIGNATURE-----[\s\S]*?-----END PGP SIGNATURE-----/;
+
+/** The signature in what somebody pasted. A key that hands the text back with
+ *  the signature in it has still signed the text, and what the signature is
+ *  held to is the statement this instance issued either way. */
+function signatureIn(pasted: string): string {
+  return SIGNATURE_ARMOR.exec(pasted)?.[0] ?? pasted;
+}
+
 /**
  * Signing in with a key of your own — docs/ARCHITECTURE.md § "Signing in with a
  * key of your own".
@@ -83,9 +93,10 @@ export class KeySignInService {
     const { principal } = read.claim;
 
     const keys = await this.keysThatSign(principal);
-    if (!(await this.signedBy(keys, read.statement, request.signature))) {
+    const signature = signatureIn(request.signature);
+    if (!(await this.signedBy(keys, read.statement, signature))) {
       throw new UnauthorizedException(
-        "That signature does not match the text. Sign the text exactly as it is shown, and try again.",
+        "That signature does not check out for that address. Sign the text exactly as it is shown, with a key that address is known by, then paste the signature again.",
       );
     }
     if (!this.challenges.spend(read.token)) {
@@ -113,6 +124,8 @@ export class KeySignInService {
     return origin;
   }
 
+  /** Which may be none. Neither door says whether a key was found for an
+   *  address, so no keys meets the same refusal a wrong signature does. */
   private async keysThatSign(
     principal: Principal,
   ): Promise<readonly BoundKey[]> {
@@ -123,13 +136,7 @@ export class KeySignInService {
         "Sloppy could not check your key just now. Try again in a moment.",
       );
     }
-    const signs = held.filter((key) => key.signs === "content");
-    if (signs.length === 0) {
-      throw new UnauthorizedException(
-        "Sloppy could not find a key for that address. Publish your public key for it, then try again.",
-      );
-    }
-    return signs;
+    return held.filter((key) => key.signs === "content");
   }
 
   private async signedBy(

@@ -95,7 +95,7 @@
 {:else}
 	<form class="space-y-4" onsubmit={finish}>
 		<div class="space-y-2">
-			<p class="text-sm">Sign this exactly as it is, then paste what your key gives back.</p>
+			<p class="text-sm">Sign this exactly as it is, then paste the signature back.</p>
 			<pre
 				class="max-h-48 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs break-all whitespace-pre-wrap select-all">{statement}</pre>
 			<Button type="button" variant="outline" class="h-11 w-full" onclick={copy}>
@@ -108,7 +108,7 @@
 		</div>
 
 		<div class="space-y-2">
-			<Label for="own-key-signature">What your key gave back</Label>
+			<Label for="own-key-signature">The signature</Label>
 			<Textarea
 				id="own-key-signature"
 				name="own-key-signature"
@@ -118,6 +118,9 @@
 				class="font-mono text-xs"
 				bind:value={signature}
 			/>
+			<p class="text-sm text-muted-foreground">
+				A detached signature, or the whole signed text with the signature in it.
+			</p>
 		</div>
 
 		{#if problem}

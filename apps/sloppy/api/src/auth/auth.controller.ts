@@ -130,9 +130,9 @@ export class AuthController {
 
   /**
    * Something to sign, for somebody who goes by an address rather than by an
-   * identity Sloppy can delegate to. Nothing here says whether that address is
-   * one anybody holds a key for: an answer that did would be a way to ask this
-   * instance who exists.
+   * identity Sloppy can delegate to. Neither this nor the answer below says
+   * whether a key was found for the address it is given: what comes back when
+   * a sign-in does not settle reads the same either way.
    */
   @Public()
   @HttpCode(200)

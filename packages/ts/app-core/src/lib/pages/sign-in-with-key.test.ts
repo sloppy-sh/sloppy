@@ -103,9 +103,12 @@ describe('signing in with a key of your own', () => {
 		api.on(
 			'POST /auth/answer',
 			() =>
-				new Response(JSON.stringify({ message: 'That signature does not match the text.' }), {
-					status: 401
-				})
+				new Response(
+					JSON.stringify({ message: 'That signature does not check out for that address.' }),
+					{
+						status: 401
+					}
+				)
 		);
 		show();
 
@@ -115,7 +118,7 @@ describe('signing in with a key of your own', () => {
 		await submit();
 
 		expect(session.viewer).toBeNull();
-		expect(target.textContent).toContain('That signature does not match the text.');
+		expect(target.textContent).toContain('That signature does not check out for that address.');
 	});
 
 	it('goes back to the address when somebody starts again', async () => {

@@ -4,6 +4,7 @@ import {
 } from "@nestjs/common";
 import type { BoundKey, KeyBinding, Principal } from "@sloppy/types";
 import {
+  createCleartextMessage,
   createMessage,
   generateKey,
   type PrivateKey,
@@ -44,6 +45,18 @@ async function signed(text: string, key: PrivateKey): Promise<string> {
     signingKeys: key,
     detached: true,
     format: "armored",
+  });
+}
+
+/** What `gpg --clearsign` hands back instead: the text and the signature
+ *  together, which is as readily what somebody pastes. */
+async function signedWithTheText(
+  text: string,
+  key: PrivateKey,
+): Promise<string> {
+  return sign({
+    message: await createCleartextMessage({ text }),
+    signingKeys: key,
   });
 }
 
@@ -102,6 +115,20 @@ async function signInAs(
   });
 }
 
+/** The refusal a door hands back, for comparing one against another. */
+async function refusalOf(
+  keySignIn: KeySignInService,
+  key: PrivateKey,
+): Promise<UnauthorizedException> {
+  try {
+    await signInAs(keySignIn, ALICE, key);
+  } catch (refusal) {
+    if (refusal instanceof UnauthorizedException) return refusal;
+    throw refusal;
+  }
+  throw new Error("The door settled a session it should have refused");
+}
+
 describe("signing in with a key of your own", () => {
   it("settles a session for somebody whose key signs the text", async () => {
     const store = sessions();
@@ -156,6 +183,63 @@ describe("signing in with a key of your own", () => {
 
     await expect(
       signInAs(keySignIn, ALICE, alice.privateKey),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  // Two requests cost nothing, so a refusal that told them apart would be a way
+  // to work through somebody's addresses and learn which of them publish a key.
+  it("refuses a wrong signature and an address with no key in the same words", async () => {
+    const wrongKey = await refusalOf(
+      door([bindingAnswering([contentKey(alice.publicKey)])]),
+      mallory.privateKey,
+    );
+    const noKey = await refusalOf(
+      door([bindingAnswering([])]),
+      alice.privateKey,
+    );
+
+    expect(noKey.getStatus()).toBe(wrongKey.getStatus());
+    expect(noKey.message).toBe(wrongKey.message);
+  });
+
+  it("takes the text and the signature pasted back together", async () => {
+    const keySignIn = door([bindingAnswering([contentKey(alice.publicKey)])]);
+    const { statement } = keySignIn.challenge(ALICE);
+
+    await expect(
+      keySignIn.answer({
+        statement,
+        signature: await signedWithTheText(statement, alice.privateKey),
+      }),
+    ).resolves.toMatchObject({ viewer: { did: ALICE } });
+  });
+
+  // What is pasted is read for the signature in it and never for the text: a
+  // block somebody else signed is refused however good the signature in it is.
+  it("refuses somebody else's key pasted back that way", async () => {
+    const keySignIn = door([bindingAnswering([contentKey(alice.publicKey)])]);
+    const { statement } = keySignIn.challenge(ALICE);
+
+    await expect(
+      keySignIn.answer({
+        statement,
+        signature: await signedWithTheText(statement, mallory.privateKey),
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it("refuses a text signed alongside one that was issued", async () => {
+    const keySignIn = door([bindingAnswering([contentKey(alice.publicKey)])]);
+    const { statement } = keySignIn.challenge(ALICE);
+
+    await expect(
+      keySignIn.answer({
+        statement,
+        signature: await signedWithTheText(
+          `${statement} and something else`,
+          alice.privateKey,
+        ),
+      }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
