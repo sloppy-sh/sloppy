@@ -9,6 +9,7 @@
 	import { page } from '$app/state';
 	import { api } from '../api.js';
 	import OpenHere from '../components/open-here.svelte';
+	import SignInWithKey from '../components/sign-in-with-key.svelte';
 	import { graphHere } from '../graph-here.svelte.js';
 	import { runtime } from '../runtime.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -137,6 +138,14 @@
 				{leaving ? 'Taking you there…' : 'Continue'}
 			</Button>
 		</form>
+
+		<div class="flex items-center gap-3" aria-hidden="true">
+			<span class="h-px flex-1 bg-border"></span>
+			<span class="text-xs text-muted-foreground">or</span>
+			<span class="h-px flex-1 bg-border"></span>
+		</div>
+
+		<SignInWithKey />
 
 		{#if graphHere.offered && !graphHere.open}
 			<div class="flex items-center gap-3" aria-hidden="true">

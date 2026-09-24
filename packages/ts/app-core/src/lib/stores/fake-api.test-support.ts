@@ -360,11 +360,11 @@ export function amending(
 	return held;
 }
 
-export const VIEWER: Viewer = {
+export const VIEWER = {
 	did: DID,
 	syr_instance_url: 'https://syr.test',
 	delegate_public_key: 'z6MkTestDelegateKey'
-};
+} satisfies Viewer;
 
 /** Async so a suite can hold an answer open and let something else happen. */
 export type Route = (url: URL, init: RequestInit | undefined) => unknown;

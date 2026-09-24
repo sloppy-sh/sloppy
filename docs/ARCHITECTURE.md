@@ -47,6 +47,7 @@ sloppy/
 │       ├── data/      @sloppy/data      — SurrealDB table definitions and the per-user purge
 │       ├── graph/     @sloppy/graph     — pixi renderer + graphology model + layout worker
 │       ├── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
+│       ├── openpgp/   @sloppy/openpgp   — checking an OpenPGP signature; the one place that speaks that dialect
 │       ├── vault/     @sloppy/vault     — a graph as files: the vault folder and the archive
 │       ├── local/     @sloppy/local     — the graph served off this device: files, a local identity, the vault client
 │       └── cli/       @sloppy/cli       — the `sloppy` command: a project's notes read, checked and written
@@ -490,13 +491,15 @@ driver as a value and is never spelled into a query.
 
 - **Wide — a principal.** What the genealogy and a graph's policy NAME: `created_by` on every
   row, both halves of every ref, a note's `owner`, `authors` and `contributors`, a role's
-  `members`, an override's target, an amendment's `by`, and the identity a `Vouch` is about.
-  These are strings the system compares and never resolves.
+  `members`, an override's target, an amendment's `by`, the identity a `Vouch` is about, and
+  the `Viewer.did` a session answers with. These are strings the system compares and never
+  resolves.
 - **Narrow — a `did:syr`.** What this build RESOLVES, FETCHES FROM, or DERIVES A KEY FROM:
   everything in `syr.ts` and `@sloppy/idp`, `StoreRef` and the two functions that make and
-  split one, the `Viewer` a session is held under, a peer's `PublishedIndex` and the follow
-  and peer-lookup queries that reach one, a comment's author and a reaction's, a profile, an
-  emoji catalog, a folder's own `VaultGraph.owner` and the archive preview that mirrors it.
+  split one, the `SessionRow` a delegation is held under, a peer's `PublishedIndex` and the
+  follow and peer-lookup queries that reach one, a comment's author and a reaction's, a
+  profile, an emoji catalog, a folder's own `VaultGraph.owner` and the archive preview that
+  mirrors it.
 
 The test, site by site: **does this value get compared, or does it get dereferenced?** A
 compared one is wide. A dereferenced one is narrow, because dereferencing is per-scheme and
@@ -507,15 +510,27 @@ narrow though it is only ever compared, and one whose contract is "who gates thi
 
 Two of those narrow ones are narrow for a reason worth stating. `VaultGraph.owner` is the
 identity a device writes a folder under, and `makeLocalIdentity()` mints only `did:syr` there,
-which is what lets `graphAsItWas` derive a public key from it. `Viewer.did` is who signed in,
-and the only door is Platform Delegation. A note in that folder may still be OWNED by a
-`mailto:` — the folder's owner and a note's owner are different questions.
+which is what lets `graphAsItWas` derive a public key from it. A note in that folder may
+still be OWNED by a `mailto:` — the folder's owner and a note's owner are different
+questions. `SessionRow.created_by` is the same split at a sign-in: it is a `did:syr` because
+Platform Delegation is the only door, while the `Viewer.did` the session answers with is a
+principal, compared against the names written on a graph and resolved by nothing.
 
-**One site hands a wide value into a narrow slot**, and nothing in the types catches it.
-`syrPostRefFor` takes a note's ref and gives an identity store the owner half as `post_did` — the
-identifier a comment and a reaction are filed under. Every ref minted here still holds a `did:syr`
-there, because `created_by` is the signed-in viewer; item 4 below is what changes that, and a note
-whose ref is owned by an email address has nowhere to hang a conversation until it does.
+**One site hands a wide value into a slot that resolves it**, and nothing in the types catches
+it. `syrPostRefFor` takes a note's ref and gives an identity store the owner half as `post_did` —
+the identifier a comment and a reaction are filed under. Every ref minted here still holds a
+`did:syr` there, because `created_by` is the signed-in viewer; the door below is what changes
+that, and a note whose ref is owned by an email address has nowhere to hang a conversation until
+it does.
+
+**Every authenticated route names its caller through `viewerDid`, which answers with a principal,
+while the services beneath it still declare that caller a `did:syr`** — and since both schemas
+infer to `string`, the compiler says nothing either way. Nothing under there resolves it: it is
+compared, and it is written to `created_by`, which is wide. A route that speaks to an identity
+store takes `viewerDelegation` instead, and that carries the narrow `SessionRow.created_by`. So a
+viewer who is not a syr identity is already served correctly beneath the declaration; widening
+those signatures belongs with the sign-in that mints one, and each is held to the test above — a
+parameter that turns out to dereference is one to narrow rather than widen.
 
 ### Which key speaks for a principal
 
@@ -524,12 +539,36 @@ the question `peer/attribution.ts` says it cannot answer, and the reason a signa
 checks out says only that the note has not been altered.
 
 One implementation per principal scheme, reached by `bindingFor(principal, bindings)` so a
-caller never learns which schemes exist. `syrKeyBinding` in `@sloppy/idp` is the only one:
-syr answers from the identifier itself, nothing is fetched, and the key it returns is marked
+caller never learns which schemes exist. `syrKeyBinding` in `@sloppy/idp` is one: syr answers
+from the identifier itself, nothing is fetched, and the key it returns is marked
 `signs: "delegations"` — it stands behind the keys that sign content rather than signing any,
 which is precisely why holding it is not yet knowing whose a note is. A `null` answer is a
 binding that did not answer; an empty list is an identifier nobody holds a key for, and that
 is an answer.
+
+`mailtoKeyBinding` in `@sloppy/openpgp` is the other, and it answers by asking. The person's
+own domain first, through Web Key Directory — the advanced form
+`https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>` and then the direct
+one, where `<hash>` is z-base-32 over SHA-1 of the lowercased local part, which is why the
+local part is lowercased at the schema boundary. A public keyserver answers after the domain,
+in the same shape and with the same `BoundKey` out, and the default is one that serves an
+address only to somebody who proved they hold it. The first key found is the answer and
+`BoundKey.from` says which address served it. A key is kept only where a user ID names that
+address and the primary key is neither revoked nor expired, because the question is which key
+speaks for somebody RIGHT NOW; what comes back is marked `signs: "content"`, so unlike syr's
+it is a key a signature is checked against.
+
+**Nothing in `@sloppy/openpgp` fetches.** Every address it builds comes out of a domain
+somebody else chose, so the binding takes a `ReadKeyAt` and the API supplies one that goes
+through `media/remote-host.ts` like every other outbound read — `identity/key-fetch.ts`,
+which bounds the hosts, the time and the bytes, and answers `unreachable` for a refusal
+rather than turning one into a statement about anybody.
+
+`IdentityVouchService` is what a caller asks about a principal, holding one `VouchResolver`
+per scheme the way `bindingFor` holds one binding per scheme. For an email address the
+binding IS the resolution: a key found anywhere is `vouched` with `Vouch.instance` naming
+where, every address answering and none serving one is `anonymous`, and nothing answering is
+`unknown`. So `VouchState` stays three states.
 
 A signed row also says what scheme its signature is in. `signature_scheme` is a bounded
 string rather than an enum on the wire, for the reason `BlockDocumentSchema` carries an
@@ -539,45 +578,92 @@ is what every signature written before the tag is, and `signatureSchemeOf` is th
 of that. A scheme this build cannot name is one it cannot check, so the note is held rather
 than presented as altered.
 
+Checking a signature in the `openpgp` scheme is `verifyOpenPgpSignature` in
+`@sloppy/openpgp`, the one package in the repo that speaks that dialect, the way
+`@sloppy/idp` is the one that speaks syr's — neither imports the other. It takes the bytes a
+signature is over, the signature and the public key, in armoured or binary form, and answers
+whether they agree. Nothing is fetched and no key is discovered: the caller has already
+decided which key it is asking about, which is why a signature that checks out says the
+payload has not been altered and never says whose key it is.
+
 ### What is not done, and what comes next
 
-Nothing RESOLVES or VERIFIES a `mailto:` principal. The identifier is theirs to hold, a graph
-can name them in a role and a note can be owned by them; nothing can yet say a key is theirs
-or that anybody stands behind them. A `VouchResolver` asked about one answers `unknown`,
-which grants nothing and takes nothing away.
+Somebody named by an email address is resolved now, and a signature of theirs is checked.
+Two things it deliberately does not do. **A signature check does not bind the key to
+whoever signed it** — `peer/attribution.ts` and `social/comment-attribution.ts` dispatch on
+`signature_scheme` and check the signature against the key that arrived with it, which is why
+they still say only that the row has not been altered. Asking who holds that key is a fetch,
+and a pull that made one per note would aim this instance at a stranger's network once per
+row; `IdentityKeysService` is where a caller asks it deliberately. And **`signature_scheme`
+is absent on every comment today**, because syr's own comment record has no such column, so
+every comment still reads as `ed25519-multibase`, exactly as before.
 
-What a second wave adds, in order:
+The `publicKeyFromDid` calls in `@sloppy/local` — `identity.ts` and `api.ts` — check no
+signature and were never part of this: they derive a key from a `did:syr` for an identity and
+for a graph view, which is this question asked of a folder rather than of a person.
 
-1. **A WKD binding** — `KeyBinding` with `scheme: "mailto"`. The advanced form first,
-   `https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>`, then the direct
-   one, where `<hash>` is z-base-32 over SHA-1 of the lowercased local part — which is why
-   the local part is lowercased here. It goes through `media/remote-host.ts` like every other
-   address somebody else chose, and it is a new file and no change to any caller.
-2. **A keyserver binding** beside it, as a second source with the same shape. A key found
-   either way is `vouched`; WHICH is `Vouch.instance`, and that is why `VouchState` stays
-   three states.
-3. **A GPG verifier**, and the scheme dispatch at the two places a signature is checked.
-   `peer/attribution.ts` already reads `signatureSchemeOf` and holds anything but
-   `ed25519-multibase`, so a second verifier is reached from there.
-   `social/comment-attribution.ts` cannot read one: a comment arrives as a `SyrComment`, which
-   carries the three signature columns and no scheme beside them, so every comment is checked
-   as `ed25519-multibase` and one signed in another scheme is presented as not its author's
-   rather than held. A tag on the store's own comment record is what has to land first. The
-   `publicKeyFromDid` calls in `@sloppy/local` — `identity.ts` and `api.ts` — check no
-   signature: they derive a key from a `did:syr` for an identity and for a graph view, which
-   is item 1's question asked of a folder rather than this one.
-4. **A door to sign in by**, which is what widens `Viewer.did`, and with it what lets somebody
-   who is not a syr identity hold a graph on a hosted instance rather than only be named in
-   one.
-5. **Federation, last**, because every entry into it resolves an identity store: a peer's
-   `PublishedIndex` is keyed by the DID an instance was asked about, and following somebody
-   or looking them up by name goes the same way. `NodeSignedPayloadV1` is part of this — its
-   `did` is a `did:syr`, and `aboutThisNode` compares it to the ref's owner, so a note owned
-   by a `mailto:` cannot carry a v1 payload that is about itself. A second payload version is
-   what carries one, and the tag above is what says which a reader is holding.
+**The door** is below, in "Signing in with a key of your own": a session minted for a
+principal that is not a syr identity, and the surface a person signs in through. It reaches
+a key through `bindingFor` and discovers none of its own, so which addresses it can settle a
+sign-in for is whatever bindings this instance holds.
+
+**Federation is after the door**, because every entry into it resolves an identity store: a
+peer's `PublishedIndex` is keyed by the DID an instance was asked about, and following
+somebody or looking them up by name goes the same way. `NodeSignedPayloadV1` is part of it —
+its `did` is a `did:syr`, and `aboutThisNode` compares it to the ref's owner, so a note owned
+by a `mailto:` cannot carry a v1 payload that is about itself. A second payload version is
+what carries one, and the tag above is what says which a reader is holding.
 
 `@sloppy/idp` is not part of any of it. It SERVES syr identities; GPG needs no provider,
 because people already have keys.
+
+### Signing in with a key of your own
+
+The second way in, beside Platform Delegation: somebody who goes by an address they already
+hold a key for signs a short piece of text, and that is the whole of it. They keep the key,
+Sloppy keeps nothing of theirs, and what they get is a graph of their own on the instance
+rather than a name written in somebody else's.
+
+**Sloppy hands out something to sign, and the text says what it is for.** `POST /auth/challenge`
+takes a principal and answers with a statement: the identity, this instance's origin, and one
+opaque line that is an HMAC-signed token over those two. `challenge.ts` is the only writer and
+the only reader of it, and reading REBUILDS rather than parses — the statement a person weighed
+above their signature is therefore exactly the statement the signature is held to, and a
+statement issued by another Sloppy, or altered in any line, is refused before a key is asked
+about. It is good for ten minutes and spent when it is used, held the way `signed-token.ts` holds
+a consent state and bounded the same way. Line endings and a last empty line are taken back
+out on the way in, because somebody signs a file and what wrote the file decided those.
+
+**`POST /auth/answer` takes the statement and the signature, and settles a session.** The order
+matters: the statement is read, the keys that speak for its principal are asked for, the
+signature is checked, and only then is the statement spent. A paste that went wrong therefore
+costs nothing, and a signature that checked out cannot be presented twice. What is pasted may
+be the signature alone or the signed text with the signature in it — the text a signature is
+held to is the statement this instance issued either way. Both routes are public and both are
+rate-limited per caller, because both answer without a session.
+
+**Neither route says whether a key was found for an address.** A refusal reads the same
+whether the signature was wrong, the key was somebody else's, or nobody publishes one for
+that address — so a caller working through addresses learns nothing here. An instance that
+could not reach the binding at all says so instead, because that is somebody's afternoon
+rather than their credential.
+
+**Which key is asked about is `bindingFor`'s answer and nothing else.** Nothing here fetches,
+resolves or discovers a key: a `KeyBinding` is injected, `null` from one is an instance having a
+bad afternoon rather than a statement about anybody, and an empty list is an identity nobody
+holds a key for. **Only a key whose `signs` is `content` authenticates** — the key that stands
+behind the keys that sign is not one that signs. A `BoundKey`'s `scheme` decides which check
+runs, and a scheme this build cannot check authenticates nobody.
+
+**A session settled this way has no identity store behind it.** `SessionRow`'s three delegated
+columns are absent together, `Viewer.syr_instance_url` and `Viewer.delegate_public_key` are
+absent together, and `viewerDelegation` refuses the routes that act on a store — as forbidden,
+never as unauthorized, because a client reads a 401 as a credential that has died and would sign
+somebody out of a session that is perfectly good. Sloppy signs nothing on their behalf and
+could not: it holds no key of theirs, which is the same rule that holds everywhere else.
+
+The expiry is the whole of what ends such a session: there is nobody to ask whether it still
+stands, so it is measured in days rather than carried indefinitely.
 
 ## Who may write where
 

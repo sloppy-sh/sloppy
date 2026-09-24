@@ -1,0 +1,45 @@
+{
+  "name": "@sloppy/openpgp",
+  "version": "0.0.1",
+  "description": "Checking an OpenPGP signature — the adapter that holds every OpenPGP dialect, so nothing else in Sloppy speaks one. See docs/ARCHITECTURE.md § \"Who a person is\".",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.mts",
+        "require": "./dist/index.d.ts"
+      },
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "format": "biome format --write .",
+    "format:check": "biome ci --linter-enabled=false --assist-enabled=false .",
+    "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
+  },
+  "dependencies": {
+    "@noble/hashes": "catalog:",
+    "@sloppy/types": "workspace:*",
+    "openpgp": "catalog:"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "tsdown": "^0.22.14",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  }
+}

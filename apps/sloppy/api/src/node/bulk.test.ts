@@ -6,7 +6,7 @@
 import {
   BadRequestException,
   NotFoundException,
-  UnauthorizedException,
+  ForbiddenException,
 } from "@nestjs/common";
 import {
   type Address,
@@ -274,14 +274,17 @@ describe("one act over the notes somebody chose", () => {
     expect(removed).toHaveLength(2);
   });
 
-  it("refuses to delete a published branch nobody is signed in for", async () => {
+  // Absent here is somebody signed in with a key of their own: the guard has
+  // already refused anybody with no session, so taking a branch down is a thing
+  // their way in does not reach — never a credential that has died.
+  it("tells somebody with no identity store that this is not theirs to reach", async () => {
     const notes = tree("1", "1a");
     const root = ownedRefFrom(notes[0].id);
     const { service, removed, takenDown } = serviceOver(notes, [], [root]);
 
     await expect(
       service.bulk(DID, over([notes[0]], { act: "delete" }), undefined),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(takenDown).toEqual([]);
     expect(removed).toEqual([]);
   });
@@ -458,13 +461,13 @@ describe("publishing the notes somebody chose", () => {
     await expect(asked).rejects.toThrow(/not in your library/);
   });
 
-  it("is refused where nothing signed in is asking", async () => {
+  it("tells somebody with no identity store that publishing is not theirs to reach", async () => {
     const notes = [note("1")];
     const { service, published } = serviceOver(notes);
 
     const asked = service.bulk(DID, over(notes, { act: "publish" }), undefined);
 
-    await expect(asked).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(asked).rejects.toBeInstanceOf(ForbiddenException);
     expect(published).toEqual([]);
   });
 });

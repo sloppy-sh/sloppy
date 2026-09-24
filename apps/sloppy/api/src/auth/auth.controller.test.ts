@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import type { Response } from "express";
@@ -8,6 +9,7 @@ import type { AppConfigService } from "../config/app-config.service";
 import { AuthController } from "./auth.controller";
 import type { AuthService } from "./auth.service";
 import type { AuthedRequest } from "./authed-request";
+import type { KeySignInService } from "./key-sign-in.service";
 import { SESSION_COOKIE } from "./session-cookie";
 
 const DEEP_LINK = "sloppy://auth/callback";
@@ -16,6 +18,7 @@ const CALLBACK = "https://sloppy.sh/api/auth/callback";
 function controller(
   auth: Partial<AuthService>,
   publicUrl = "https://sloppy.sh",
+  keySignIn: Partial<KeySignInService> = {},
 ) {
   return new AuthController(
     {
@@ -24,6 +27,7 @@ function controller(
       issueHandOff: () => "hand-off-token",
       ...auth,
     } as unknown as AuthService,
+    keySignIn as unknown as KeySignInService,
     { publicUrl } as AppConfigService,
   );
 }
@@ -237,5 +241,66 @@ describe("what a person hands somebody who wants to read them", () => {
     const auth = controller({ ownInstanceUrl: () => null }, "not-an-address");
 
     expect(auth.ownInstance()).toEqual({ instance_url: null });
+  });
+});
+
+describe("the door somebody signs their way through", () => {
+  const TEXT = "Sloppy sign-in\n…";
+
+  it("asks for something to sign as the address it was given", () => {
+    const challenge = vi.fn().mockReturnValue({
+      statement: TEXT,
+      expires_at: "2099-01-01T00:00:00.000Z",
+    });
+
+    const answered = controller({}, "https://sloppy.sh", {
+      challenge,
+    }).challenge(asking(), { principal: "mailto:alice@example.com" });
+
+    expect(challenge).toHaveBeenCalledWith("mailto:alice@example.com");
+    expect(answered.statement).toBe(TEXT);
+  });
+
+  it("asks for an address where the body names nobody", () => {
+    expect(() => controller({}).challenge(asking(), {})).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it("passes the signed answer on whole", async () => {
+    const answer = vi.fn().mockResolvedValue({ token: "a-credential" });
+
+    await controller({}, "https://sloppy.sh", { answer }).answer(asking(), {
+      statement: TEXT,
+      signature: "-----BEGIN PGP SIGNATURE-----",
+    });
+
+    expect(answer).toHaveBeenCalledWith({
+      statement: TEXT,
+      signature: "-----BEGIN PGP SIGNATURE-----",
+    });
+  });
+
+  it("asks for a signature where the body carries none", async () => {
+    await expect(
+      controller({}).answer(asking(), { statement: TEXT }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  // Both routes answer without a session and both cost a signature check, so
+  // one caller cannot work through somebody else's addresses on them.
+  it("stops one caller spending the whole door", () => {
+    const challenge = vi
+      .fn()
+      .mockReturnValue({ statement: TEXT, expires_at: "" });
+    const auth = controller({}, "https://sloppy.sh", { challenge });
+    const ask = () =>
+      auth.challenge(asking({ ip: "198.51.100.7" }), {
+        principal: "mailto:alice@example.com",
+      });
+
+    for (let spent = 0; spent < 20; spent++) ask();
+
+    expect(ask).toThrow(HttpException);
   });
 });

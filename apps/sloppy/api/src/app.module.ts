@@ -7,6 +7,7 @@ import { DbModule } from "./db/db.module";
 import { EmojiModule } from "./emoji/emoji.module";
 import { ExportModule } from "./export/export.module";
 import { HealthModule } from "./health/health.module";
+import { IdentityModule } from "./identity/identity.module";
 import { IdpModule } from "./idp/idp.module";
 import { MediaModule } from "./media/media.module";
 import { NodeModule } from "./node/node.module";
@@ -27,6 +28,7 @@ import { SocialModule } from "./social/social.module";
     HealthModule,
     AuthModule,
     IdpModule.forRoot(),
+    IdentityModule,
     NodeModule,
     BlockModule,
     AmendmentModule,

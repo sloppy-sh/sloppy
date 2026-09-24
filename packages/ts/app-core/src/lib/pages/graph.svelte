@@ -145,7 +145,7 @@
 	import { gitSettings } from '../stores/git-settings.svelte.js';
 	import { graphs, projectOf } from '../stores/graphs.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
-	import { identity } from '../stores/identity.svelte.js';
+	import { answersReach, identity } from '../stores/identity.svelte.js';
 	import { nodes, type WritingNote } from '../stores/nodes.svelte.js';
 	import { outlineSections } from '../stores/outline-sections.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
@@ -2546,7 +2546,7 @@
 	{keepsTerms}
 	carriedBy={carriedAbove}
 	narrower={narrowerUnderChosen}
-	answersReach={identity.kind !== 'local'}
+	answersReach={answersReach(identity.kind)}
 	refused={publishRefusal}
 	onpublish={() => actOnThem({ act: 'publish' })}
 />

@@ -42,6 +42,7 @@ x-package-dist: &package-dist
   - idp-dist:/app/packages/ts/idp/dist
   - vault-dist:/app/packages/ts/vault/dist
   - local-dist:/app/packages/ts/local/dist
+  - openpgp-dist:/app/packages/ts/openpgp/dist
   - types-dist:/app/packages/ts/types/dist
   - ui-dist:/app/packages/ts/ui/dist
 
@@ -292,5 +293,6 @@ volumes:
   idp-dist:
   vault-dist:
   local-dist:
+  openpgp-dist:
   types-dist:
   ui-dist:

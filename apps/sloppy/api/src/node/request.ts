@@ -3,6 +3,7 @@
 
 import {
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -11,15 +12,22 @@ import {
   DidSyrSchema,
   type OwnedRef,
   OwnedRefSchema,
+  type Principal,
   splitOwnedRef,
 } from "@sloppy/types";
 import type { z } from "zod";
 import type { AuthedRequest } from "../auth/authed-request";
 import type { Delegation } from "../syr/syr.service";
 
-/** `AuthGuard` has already refused a request without one; this is the type
- *  narrowing, not a second check. */
-export function viewerDid(request: AuthedRequest): DidSyr {
+/**
+ * Who is calling, named the way a graph names anybody. It is compared and
+ * written to `created_by`; nothing may resolve it — a route that has to reach
+ * their identity store takes {@link viewerDelegation}, which is a syr sign-in.
+ *
+ * `AuthGuard` has already refused a request without one, so the refusal here is
+ * for the optional field rather than a second check.
+ */
+export function viewerDid(request: AuthedRequest): Principal {
   const did = request.viewer?.did;
   if (!did) throw new UnauthorizedException("Sign in to continue.");
   return did;
@@ -29,11 +37,32 @@ export function viewerDid(request: AuthedRequest): DidSyr {
  * What a route needs to act on the person's identity store as them. Held apart
  * from {@link viewerDid} because it carries the delegated token: a route that
  * only names the caller must not be handed a credential it could echo.
+ *
+ * A viewer who signed in by signing with a key of their own has no identity
+ * store, and refusing them is not refusing their credential — a 401 is what a
+ * client reads as a session that has died, and it would sign somebody out of
+ * one that is perfectly good.
  */
 export function viewerDelegation(request: AuthedRequest): Delegation {
   const delegation = request.delegation;
-  if (!delegation) throw new UnauthorizedException("Sign in to continue.");
-  return delegation;
+  if (delegation) return delegation;
+  if (request.viewer) refuseWithoutIdentityStore();
+  throw new UnauthorizedException("Sign in to continue.");
+}
+
+/**
+ * What to say to somebody whose session is good but who has no identity store
+ * behind it. **Never a 401**: a client reads that as a credential that has died
+ * and signs them out of one that is perfectly good.
+ *
+ * Reached from inside a service, where `AuthGuard` has already refused anybody
+ * with no session at all, so a missing delegation there is this and nothing
+ * else.
+ */
+export function refuseWithoutIdentityStore(): never {
+  throw new ForbiddenException(
+    "Signing in with your own key does not reach that. Sign in with an identity instead — one made here, or the one where yours lives.",
+  );
 }
 
 export function parseBody<S extends z.ZodType>(
@@ -125,7 +154,7 @@ export function requireGraphRef(did: string, localId: string): OwnedRef {
  */
 export function graphOrRefuse(
   raw: string | undefined,
-  did: DidSyr,
+  did: Principal,
 ): OwnedRef | undefined {
   if (!raw) return undefined;
   const parsed = OwnedRefSchema.safeParse(raw);

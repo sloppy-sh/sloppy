@@ -10,6 +10,7 @@
       "packages/ts/data/**",
       "packages/ts/graph/**",
       "packages/ts/idp/**",
+      "packages/ts/openpgp/**",
       "packages/ts/vault/**",
       "packages/ts/local/**",
       "packages/ts/cli/**",

@@ -10,6 +10,7 @@ import {
   DidSyrSchema,
   type OwnedRef,
   OwnedRefSchema,
+  PrincipalSchema,
   TimestampSchema,
   UlidSchema,
 } from "./common.js";
@@ -415,14 +416,23 @@ export type ArchivePreview = z.infer<typeof ArchivePreviewSchema>;
 /**
  * Who the API believes is calling.
  *
- * `delegate_public_key` is the PUBLIC half of the key the syr instance signs
- * this platform's content with. Sloppy never holds the private half; code here
- * that wants to sign locally has misread the delegation model.
+ * `did` names them the way a note's owner and a role's member are named: it is
+ * compared, and nothing here resolves it. `syr_instance_url` and
+ * `delegate_public_key` describe a syr sign-in, and `delegate_public_key` is
+ * the PUBLIC half of the key that instance signs this platform's content with.
+ * Sloppy never holds the private half; code here that wants to sign locally has
+ * misread the delegation model.
+ *
+ * **Both are absent, together, for a viewer who signed in by signing with a key
+ * of their own.** There is no instance holding an identity for them and no key
+ * Sloppy may sign with as them, so a surface that wants either asks whether it
+ * is there rather than assuming it, and a route that acts on an identity store
+ * refuses them the way it refuses anybody without a delegation.
  */
 export const ViewerSchema = z.object({
-  did: DidSyrSchema,
-  syr_instance_url: z.url(),
-  delegate_public_key: z.string().min(1),
+  did: PrincipalSchema,
+  syr_instance_url: z.url().optional(),
+  delegate_public_key: z.string().min(1).optional(),
 });
 export type Viewer = z.infer<typeof ViewerSchema>;
 
@@ -451,6 +461,42 @@ export const ExchangeSessionRequestSchema = z.object({
 });
 export type ExchangeSessionRequest = z.input<
   typeof ExchangeSessionRequestSchema
+>;
+
+/** Ask for something to sign, as whoever this names. */
+export const SignInChallengeRequestSchema = z.object({
+  principal: PrincipalSchema,
+});
+export type SignInChallengeRequest = z.input<
+  typeof SignInChallengeRequestSchema
+>;
+
+/**
+ * What a key of that principal's own is asked to sign: the whole text, good
+ * once, and good only until `expires_at`.
+ *
+ * The text names the identity and the instance inside itself, so what a person
+ * reads before signing is what the signature is held to — which is what stops
+ * one Sloppy from passing another's text off as its own.
+ */
+export const SignInChallengeSchema = z.object({
+  statement: z.string().min(1),
+  expires_at: TimestampSchema,
+});
+export type SignInChallenge = z.infer<typeof SignInChallengeSchema>;
+
+/**
+ * The signed answer. `statement` is the text that was signed, byte for byte: a
+ * signature is over bytes, so what is presented is what is checked, and a
+ * statement that does not rebuild into the one this instance issued is refused
+ * before any key is asked about.
+ */
+export const AnswerChallengeRequestSchema = z.object({
+  statement: z.string().min(1).max(4096),
+  signature: z.string().min(1).max(16384),
+});
+export type AnswerChallengeRequest = z.input<
+  typeof AnswerChallengeRequestSchema
 >;
 
 /**

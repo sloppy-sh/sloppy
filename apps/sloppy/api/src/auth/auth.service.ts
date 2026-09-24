@@ -1,14 +1,18 @@
-import { randomBytes } from "node:crypto";
-import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import {
+  Inject,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from "@nestjs/common";
 import type { Session, StartLoginRequest } from "@sloppy/types";
 import {
   AppConfigService,
   localIdpEnabled,
 } from "../config/app-config.service";
-import type { DelegationState } from "../syr/syr.service";
+import type { Delegation, DelegationState } from "../syr/syr.service";
 import { SyrService } from "../syr/syr.service";
 import { isAllowedRedirect } from "./redirect-target";
+import { SESSION_SECRET } from "./session-secret";
 import {
   type SessionRow,
   SessionStore,
@@ -64,19 +68,12 @@ export class AuthService {
 
   constructor(
     private readonly app: AppConfigService,
-    config: ConfigService,
+    @Inject(SESSION_SECRET) secret: string,
     private readonly syr: SyrService,
     private readonly sessions: SessionStore,
   ) {
-    const secret = config.get<string>("SLOPPY_SESSION_SECRET");
-    if (!secret) {
-      this.logger.warn(
-        "SLOPPY_SESSION_SECRET is unset; using a key that lasts as long as this process. A sign-in already in flight will not survive a restart.",
-      );
-    }
-    const key = secret ?? randomBytes(32).toString("hex");
-    this.consent = new SignedTokens(key, CONSENT_TTL_MS);
-    this.handOff = new SignedTokens(key, HAND_OFF_TTL_MS);
+    this.consent = new SignedTokens(secret, CONSENT_TTL_MS);
+    this.handOff = new SignedTokens(secret, HAND_OFF_TTL_MS);
   }
 
   /**
@@ -146,9 +143,11 @@ export class AuthService {
     ).toISOString();
     const { credential, row } = await this.sessions.issue({
       did: tokens.did,
-      syr_instance_url: inst,
-      delegate_public_key: tokens.delegate_public_key,
-      access_token: tokens.access_token,
+      delegation: {
+        syr_instance_url: inst,
+        delegate_public_key: tokens.delegate_public_key,
+        access_token: tokens.access_token,
+      },
       expires_at: expiresAt,
     });
     this.logger.log(`Signed in ${tokens.did} via ${inst}`);
@@ -178,11 +177,15 @@ export class AuthService {
       return null;
     }
 
-    if ((await this.stillDelegated(row)) === "ended") {
+    const delegation = delegationOf(row);
+    if (
+      delegation &&
+      (await this.stillDelegated(row, delegation)) === "ended"
+    ) {
       this.logger.log(
         `Delegation ended for ${row.created_by}; sessions closed`,
       );
-      await this.sessions.endAll(row.created_by, row.syr_instance_url);
+      await this.sessions.endAll(row.created_by, delegation.syr_instance_url);
       return null;
     }
 
@@ -193,12 +196,15 @@ export class AuthService {
     await this.sessions.end(credential);
   }
 
-  private stillDelegated(row: SessionRow): Promise<DelegationState> {
+  private stillDelegated(
+    row: SessionRow,
+    delegation: Delegation,
+  ): Promise<DelegationState> {
     const key = row.id.toString();
     const cached = this.rechecks.get(key);
     if (cached && Date.now() - cached.at < RECHECK_MS) return cached.state;
 
-    const state = this.syr.delegationState(delegationOf(row));
+    const state = this.syr.delegationState(delegation);
     this.rechecks.set(key, { at: Date.now(), state });
     for (const [seen, check] of this.rechecks) {
       if (Date.now() - check.at >= RECHECK_MS) this.rechecks.delete(seen);

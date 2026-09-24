@@ -45,7 +45,8 @@ export class AuthGuard implements CanActivate {
         const session = await this.auth.resolve(credential);
         if (session) {
           request.viewer = viewerOf(session);
-          request.delegation = delegationOf(session);
+          const delegation = delegationOf(session);
+          if (delegation) request.delegation = delegation;
         }
       } catch (err) {
         request.sessionUnverified = true;
