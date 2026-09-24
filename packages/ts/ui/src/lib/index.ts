@@ -63,7 +63,6 @@ export { default as TagField } from './components/tags/tag-field.svelte';
 export { default as TagRail } from './components/tags/tag-rail.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';
 export { anchorLabel, codeHref } from './components/editor/code-anchor.js';
-export { COMPASS_WORDS } from './components/editor/compass-node.js';
 export type {
 	BlockStackProps,
 	HeldPicture,

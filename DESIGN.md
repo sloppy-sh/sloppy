@@ -907,11 +907,30 @@ it. It is an element inside a section, like a list or a picture, so it sits wher
 author wrote it and travels with the section the handle reorders — never a block of its
 own, and never something typing conjures (AI.md § "A Block Is a Section").
 
+**The four slots can be read as another method, and the card says which.** Above the card
+sits the choice: the **Idea compass** those four words are, **QEC** — the question, the
+evidence, the conclusion — or **AJI** — the assumption, the justification, the implication.
+It is choosing how to think about the note, not setting a field, so what changes is the
+questions and nothing else: the same slots hold the same citations, and a person who
+switches back finds them where they were. A reader who cannot write sees the method's name
+only where it is not the idea compass, and never an inert control. Three questions read as
+a column at every width rather than as a rose, because the rose is what four questions
+around a note look like.
+
+**A slot the method has no question for keeps what is in it, in plain sight.** Somebody
+fills "Instead of" and then reads the note as QEC: those are still citations, the canvas
+still draws them, so the slot stays on the card under the idea compass's word for it, with
+one line saying it is still cited and that the method has no question for it. It offers no
+way to cite another — that would be filing a note under a question nobody asked — and the
+way out is to take one out here or to switch back. An empty slot the method does not ask
+for is simply not drawn.
+
 **An empty slot asks rather than complains.** Under a slot with nothing in it sits the
 question it answers — "What larger pattern is this part of?", "What is this made of?",
 "What else works like this?", "What was chosen instead?" — in the note's own ink at the body
 size, and nothing else: no red, no "incomplete", no three-of-four counter. A note with one
-slot filled is a note with one slot filled, and the product has no opinion about that.
+slot filled is a note with one slot filled, and the product has no opinion about that. A
+method that asks three things is not a compass missing one.
 
 **A slot is filled the way a sentence cites a note.** Typing in a slot searches the graph
 exactly as `[[` does, and what it writes is a citation. Where the note somebody wants does
