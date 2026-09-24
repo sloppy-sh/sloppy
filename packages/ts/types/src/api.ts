@@ -17,6 +17,7 @@ import {
 import { RefusedVoiceSchema } from "./conversation.js";
 import { looksRead } from "./edge.js";
 import { GraphSchema } from "./graph.js";
+import { AttributionSchema } from "./key-binding.js";
 import { requireNodeConsistent } from "./node.js";
 import { NodeSchema } from "./node.js";
 import {
@@ -50,6 +51,10 @@ export const NodeViewSchema = NodeSchema.omit({ id: true }).extend({
   /** The addresses this note was at before it was moved, each of which still
    *  leads to it. Absent is a note that has never been moved. */
   aliases: z.array(AddressSchema).optional(),
+  /** Whose the signature above makes it. **Absent is a note nothing weighed**
+   *  — one carrying no signature, and every note of the reader's own, neither
+   *  of which a surface may draw as questioned. */
+  attribution: AttributionSchema.optional(),
 });
 export type NodeView = z.infer<typeof NodeViewSchema>;
 
@@ -172,6 +177,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
     signed_payload_json: node.signed_payload_json,
     signing_device_public_key: node.signing_device_public_key,
     signature_scheme: node.signature_scheme,
+    ...(row.attribution === undefined ? {} : { attribution: row.attribution }),
   };
 }
 

@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import {
   type Address,
+  type Attribution,
   type BlockView,
   type CreatePullRequest,
   type DidSyr,
@@ -20,6 +21,7 @@ import {
   type PullView,
   type PublishedSubtreePage,
   type PulledNoteHit,
+  type TrustedInstance,
   UnaskedAnswerError,
   addressDepth,
   orderSiblings,
@@ -31,7 +33,12 @@ import {
   splitOwnedRef,
 } from "@sloppy/types";
 import { AppConfigService } from "../config/app-config.service";
-import { signatureRefutes } from "./attribution";
+import {
+  type AskWhoHolds,
+  IdentityKeysService,
+  type Keyholdings,
+} from "../identity/identity-keys.service";
+import { attributeNodes } from "./attribution";
 import {
   type HeldPage,
   PullRepository,
@@ -53,6 +60,7 @@ export class PullService {
     private readonly config: AppConfigService,
     private readonly pulls: PullRepository,
     private readonly whereabouts: WhereaboutsService,
+    private readonly keys: IdentityKeysService,
   ) {}
 
   async list(reader: DidSyr): Promise<PullView[]> {
@@ -68,7 +76,13 @@ export class PullService {
    * absent version asks for the newest, and the snapshot the reader ends up
    * holding is the one the first page named.
    */
-  async pull(reader: DidSyr, request: CreatePullRequest): Promise<PullView> {
+  async pull(
+    reader: DidSyr,
+    request: CreatePullRequest,
+    /** The reader's own identity store, which is what resolves an author. Absent
+     *  is a reader who signed in with a key of their own and has none. */
+    readerStore?: string,
+  ): Promise<PullView> {
     const publication = request.publication;
     const author = splitOwnedRef(publication).owner;
     if (author === reader) {
@@ -91,6 +105,23 @@ export class PullService {
     // parents a page carries rather than read out of an address a person
     // writes.
     const deep = new Map<OwnedRef, number>();
+    // Where this author's own instance may be asked what keys it has approved:
+    // the reader's OWN store, which resolves the author the way following them
+    // and reading their comments already do. Never the origin this pull
+    // reached — that is where a graph is served, not where an identity's keys
+    // are listed, and an author may have declared it about themselves, so a
+    // principal would be appointing the instance that vouches for its own keys.
+    // A reader who signed in with a key of their own has no store to ask, and
+    // an author whose keys only that store could list stays unattributed.
+    const listedAt: TrustedInstance | undefined =
+      readerStore === undefined
+        ? undefined
+        : { url: readerStore, word: "signed_in" };
+    // Asked once for the whole region rather than once a page, let alone once a
+    // note: every note in it is answered for by the same person.
+    let asked: Promise<Keyholdings> | undefined;
+    const whoHolds = () =>
+      (asked ??= this.keys.contentKeysFor(new Map([[author, listedAt]])));
     do {
       const body = await readPeerJson(
         subtreeUrl(origin, publication, request.version, cursor),
@@ -102,7 +133,13 @@ export class PullService {
         }
         throw new ServiceUnavailableException(UNREADABLE);
       }
-      const page = await this.take(reading, body, declined, deep);
+      const { page, said } = await this.take(
+        reading,
+        body,
+        declined,
+        deep,
+        whoHolds,
+      );
       terms ??= {
         publication,
         version: page.version,
@@ -121,7 +158,7 @@ export class PullService {
         reader,
         author,
         pullRef(region),
-        held(page, author, graphRef(author, page.graph), deep),
+        held(page, author, graphRef(author, page.graph), deep, said),
       );
       cursor = page.next_cursor;
     } while (cursor !== undefined);
@@ -197,13 +234,22 @@ export class PullService {
    * not presenting ONE note as its author's is not refusing the branch it sits
    * in — which is why the depths are walked before a note is dropped, so the
    * notes under a dropped one still know where they sit.
+   *
+   * **A note nobody could be shown to have written is kept**, marked as what it
+   * is: an instance that did not answer about somebody's keys is not evidence
+   * against them, and dropping the branch over it would make their outage the
+   * reader's.
    */
   private async take(
     reading: ReturnType<typeof publishedSubtreeReader>,
     body: unknown,
     declined: Set<OwnedRef>,
     deep: Map<OwnedRef, number>,
-  ): Promise<PublishedSubtreePage> {
+    whoHolds: AskWhoHolds,
+  ): Promise<{
+    page: PublishedSubtreePage;
+    said: ReadonlyMap<OwnedRef, Attribution>;
+  }> {
     let page: PublishedSubtreePage;
     try {
       page = reading.take(body);
@@ -215,18 +261,22 @@ export class PullService {
       }
       throw error;
     }
+    const said = await attributeNodes(page.nodes, whoHolds);
     const refuted = new Set<OwnedRef>();
     for (const node of page.nodes) {
-      if (!(await signatureRefutes(node))) continue;
+      if (said.get(node.ref) !== "refuted") continue;
       this.logger.warn(`${node.ref} does not carry its author's signature`);
       refuted.add(node.ref);
       declined.add(node.ref);
     }
-    if (refuted.size === 0) return page;
+    if (refuted.size === 0) return { page, said };
     return {
-      ...page,
-      nodes: page.nodes.filter((node) => !refuted.has(node.ref)),
-      blocks: page.blocks.filter((block) => !refuted.has(block.node)),
+      page: {
+        ...page,
+        nodes: page.nodes.filter((node) => !refuted.has(node.ref)),
+        blocks: page.blocks.filter((block) => !refuted.has(block.node)),
+      },
+      said,
     };
   }
 
@@ -290,10 +340,12 @@ function held(
   author: Principal,
   graph: OwnedRef,
   deep: Map<OwnedRef, number>,
+  said: ReadonlyMap<OwnedRef, Attribution>,
 ): HeldPage {
   return {
     nodes: page.nodes.map(({ ref, ...node }) => {
       const depth = deep.get(ref) as number;
+      const attribution = said.get(ref);
       return {
         source: ref,
         source_did: author,
@@ -301,6 +353,7 @@ function held(
         ...(node.address === undefined ? {} : { address: node.address }),
         ...(node.aliases ? { aliases: node.aliases } : {}),
         depth,
+        ...(attribution === undefined ? {} : { attribution }),
         node: { ...node },
       };
     }),

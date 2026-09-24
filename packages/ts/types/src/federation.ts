@@ -18,6 +18,7 @@ import {
 } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
 import { requireOwnGraph } from "./graph.js";
+import { AttributionSchema } from "./key-binding.js";
 import {
   CommentAccessSchema,
   PageCursorSchema,
@@ -253,6 +254,14 @@ export const PulledNodeSchema = OwnedEntitySchema.extend({
    * `node.depth` is, bought by the same level-of-detail read.
    */
   depth: z.int().positive(),
+  /**
+   * What the reader made of the signature the copy carries, settled once when
+   * the copy arrived. The reader's own finding and never the author's claim,
+   * which is why it sits here rather than inside `node` — that is carried
+   * untouched. **Absent is a copy nothing weighed**: one whose note carries no
+   * signature, and one taken before a reader asked.
+   */
+  attribution: AttributionSchema.optional(),
   node: PublishedNodeSchema.omit({ ref: true }),
 });
 export type PulledNode = z.infer<typeof PulledNodeSchema>;
