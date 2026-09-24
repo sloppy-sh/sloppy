@@ -577,9 +577,8 @@ What the work that does it forks from:
   `peer/attribution.ts` already does. syr's own comment record has no such column, so the tag
   is absent on everything today and every comment reads as `ed25519-multibase`, exactly as
   before.
-- **A viewer is a principal.** Nothing mints one that is not a `did:syr`, because
-  `SessionRow.created_by` and the delegation beside it are a syr sign-in. The widening is a
-  door held open, not one walked through.
+- **A viewer is a principal.** The door below walks through it: a session settled by a
+  signature carries a `mailto:` in `SessionRow.created_by` and nothing beside it.
 
 Two tracks fork from there, and neither waits on the other.
 
@@ -596,13 +595,10 @@ The `publicKeyFromDid` calls in `@sloppy/local` — `identity.ts` and `api.ts` �
 signature and are not part of this: they derive a key from a `did:syr` for an identity and
 for a graph view, which is this question asked of a folder rather than of a person.
 
-**The door.** What lets somebody who is not a syr identity hold a graph on a hosted instance
-rather than only be named in one: a session minted for a `mailto:` principal, and the surface
-a person signs in through. `SessionRow.created_by` is narrow and the two fields beside
-`Viewer.did` describe a syr sign-in, so what a viewer who signed in another way answers with
-there is this track's to decide. The `did:syr` the domain services still declare their caller
-is this track's too, and the paragraph above says what each of those parameters is doing with
-it today.
+**The door** is below, in "Signing in with a key of your own": a session minted for a
+principal that is not a syr identity, and the surface a person signs in through. It reaches
+a key through `bindingFor` and discovers none of its own, so until the binding above lands
+there is no scheme it can complete a sign-in in.
 
 **Federation is after both**, because every entry into it resolves an identity store: a
 peer's `PublishedIndex` is keyed by the DID an instance was asked about, and following
@@ -613,6 +609,46 @@ what carries one, and the tag above is what says which a reader is holding.
 
 `@sloppy/idp` is not part of any of it. It SERVES syr identities; GPG needs no provider,
 because people already have keys.
+
+### Signing in with a key of your own
+
+The second way in, beside Platform Delegation: somebody who goes by an address they already
+hold a key for signs a short piece of text, and that is the whole of it. They keep the key,
+Sloppy keeps nothing of theirs, and what they get is a graph of their own on the instance
+rather than a name written in somebody else's.
+
+**Sloppy hands out something to sign, and the text says what it is for.** `POST /auth/challenge`
+takes a principal and answers with a statement: the identity, this instance's origin, and one
+opaque line that is an HMAC-signed token over those two. `challenge.ts` is the only writer and
+the only reader of it, and reading REBUILDS rather than parses — the statement a person weighed
+above their signature is therefore exactly the statement the signature is held to, and a
+statement issued by another Sloppy, or altered in any line, is refused before a key is asked
+about. It is good for ten minutes and spent when it is used, held the way `signed-token.ts` holds
+a consent state and bounded the same way. Line endings and a last empty line are taken back
+out on the way in, because somebody signs a file and what wrote the file decided those.
+
+**`POST /auth/answer` takes the statement and the signature, and settles a session.** The order
+matters: the statement is read, the keys that speak for its principal are asked for, the
+signature is checked, and only then is the statement spent. A paste that went wrong therefore
+costs nothing, and a signature that checked out cannot be presented twice. Both routes are
+public and both are rate-limited per caller, because both answer without a session.
+
+**Which key is asked about is `bindingFor`'s answer and nothing else.** Nothing here fetches,
+resolves or discovers a key: a `KeyBinding` is injected, `null` from one is an instance having a
+bad afternoon rather than a statement about anybody, and an empty list is an identity nobody
+holds a key for. **Only a key whose `signs` is `content` authenticates** — the key that stands
+behind the keys that sign is not one that signs. A `BoundKey`'s `scheme` decides which check
+runs, and a scheme this build cannot check authenticates nobody.
+
+**A session settled this way has no identity store behind it.** `SessionRow`'s three delegated
+columns are absent together, `Viewer.syr_instance_url` and `Viewer.delegate_public_key` are
+absent together, and `viewerDelegation` refuses the routes that act on a store — as forbidden,
+never as unauthorized, because a client reads a 401 as a credential that has died and would sign
+somebody out of a session that is perfectly good. Sloppy signs nothing on their behalf and
+could not: it holds no key of theirs, which is the same rule that holds everywhere else.
+
+The expiry is the whole of what ends such a session: there is nobody to ask whether it still
+stands, so it is measured in days rather than carried indefinitely.
 
 ## Who may write where
 
