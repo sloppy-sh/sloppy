@@ -83,6 +83,7 @@ export function compass(filled: Partial<Compass>): DocumentNode {
   for (const direction of COMPASS_DIRECTIONS) {
     slots[direction] = [...(filled[direction] ?? [])];
   }
+  if (filled.kind) slots.kind = filled.kind;
   return compassNode(slots);
 }
 

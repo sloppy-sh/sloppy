@@ -2811,8 +2811,10 @@ shape and the compass is not part of it.
 
 **Filling somebody else's slot is an offer, because it is writing.** A compass lives in a
 section, so a change to one on an owned note travels the amendment path every other change
-travels (§ "Whose writing a note carries"); what differs is only how the offer is SHOWN,
-which is the slot that gained a note rather than a diff of a block.
+travels (§ "Whose writing a note carries"); what differs is only how the offer is SHOWN —
+the slot that gained a note, and the method it would be read by where the offer changes
+that — rather than a diff of a block. An offer that changes only the method moves no
+citation, so it is that line with no slot under it.
 
 **The hosted graph carries it with the block.** There is no compass route, no compass
 column and nothing for the API to learn: a section holding one is a section, and it is

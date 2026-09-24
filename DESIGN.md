@@ -907,9 +907,10 @@ it. It is an element inside a section, like a list or a picture, so it sits wher
 author wrote it and travels with the section the handle reorders — never a block of its
 own, and never something typing conjures (AI.md § "A Block Is a Section").
 
-**The four slots can be read as another method, and the card says which.** Above the card
-sits the choice: the **Idea compass** those four words are, **QEC** — the question, the
-evidence, the conclusion — or **AJI** — the assumption, the justification, the implication.
+**The four slots can be read as another method, and the card says which.** At the top of
+the card sits the choice, each method offered by its questions rather than by its name
+alone: the **Idea compass** those four words are, **QEC** — the question, the evidence, the
+conclusion — or **AJI** — the assumption, the justification, the implication.
 It is choosing how to think about the note, not setting a field, so what changes is the
 questions and nothing else: the same slots hold the same citations, and a person who
 switches back finds them where they were. A reader who cannot write sees the method's name
@@ -943,10 +944,12 @@ west, each a heading with its notes under it. That is also how the card reads in
 outline, where the compass is four labelled lists of links and a screen reader meets them as
 that. Nothing about the four is carried by position alone.
 
-**A slot on somebody else's note is a suggestion.** Filling one where the author has
-reserved their note offers it, the way writing in it does (§ "Whose writing"), and the
-offer reads as what it is — "Part of: gained …" against the slot — rather than as a block
-of changed markup.
+**A slot on somebody else's note is a suggestion, and so is the method.** Filling one where
+the author has reserved their note offers it, the way writing in it does (§ "Whose
+writing"), and the offer reads as what it is — "Part of: gained …" against the slot, and
+"Read as: QEC, not Idea compass" where it would read the note by other questions — rather
+than as a block of changed markup. An offer that changes only the method is that line and
+nothing under it.
 
 ## What the code left behind
 

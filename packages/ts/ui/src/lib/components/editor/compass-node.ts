@@ -67,6 +67,13 @@ const stillCited = (method: string, canFill: boolean): string =>
 		canFill ? ' — take one out, or switch back' : ''
 	}.`;
 
+/** What one method is offered as: its name and the questions it would read the
+ *  note by — DESIGN.md § "The compass card". */
+const offeredAs = (kind: CompassKind): string =>
+	`${compassMethod(kind).name} — ${compassSlots(kind)
+		.map((direction) => compassSlotWords(kind, direction).word.toLowerCase())
+		.join(', ')}`;
+
 /** lucide's `x`, written out: nothing here renders through Svelte. */
 const CROSS =
 	'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
@@ -167,7 +174,7 @@ export function CompassNode(
 				for (const kind of COMPASS_KINDS) {
 					const option = document.createElement('option');
 					option.value = kind;
-					option.textContent = compassMethod(kind).name;
+					option.textContent = offeredAs(kind);
 					chosen.append(option);
 				}
 				chosen.addEventListener('change', () => reads(chosen.value as CompassKind));

@@ -385,6 +385,23 @@ describe('a compass in the writing', () => {
 	const asked = (direction: string): string =>
 		words(slot(direction).querySelector('.sloppy-compass-asks'));
 
+	// A person choosing reads the questions, not two acronyms they can only
+	// learn by picking one — DESIGN.md § "The compass card".
+	it('offers each method by the questions it would read the note by', () => {
+		open(graph([]));
+		put();
+
+		const options = [...card().querySelectorAll('.sloppy-compass-method option')].map((one) =>
+			words(one)
+		);
+
+		expect(options).toEqual([
+			'Idea compass — part of, made of, like, instead of',
+			'QEC — the question, the evidence, the conclusion',
+			'AJI — the assumption, the justification, the implication'
+		]);
+	});
+
 	it('reads the same slots as the method the person chose', () => {
 		open(graph([]));
 		put();
