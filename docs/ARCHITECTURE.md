@@ -47,6 +47,7 @@ sloppy/
 │       ├── data/      @sloppy/data      — SurrealDB table definitions and the per-user purge
 │       ├── graph/     @sloppy/graph     — pixi renderer + graphology model + layout worker
 │       ├── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
+│       ├── openpgp/   @sloppy/openpgp   — checking an OpenPGP signature; the one place that speaks that dialect
 │       ├── vault/     @sloppy/vault     — a graph as files: the vault folder and the archive
 │       ├── local/     @sloppy/local     — the graph served off this device: files, a local identity, the vault client
 │       └── cli/       @sloppy/cli       — the `sloppy` command: a project's notes read, checked and written
@@ -490,13 +491,15 @@ driver as a value and is never spelled into a query.
 
 - **Wide — a principal.** What the genealogy and a graph's policy NAME: `created_by` on every
   row, both halves of every ref, a note's `owner`, `authors` and `contributors`, a role's
-  `members`, an override's target, an amendment's `by`, and the identity a `Vouch` is about.
-  These are strings the system compares and never resolves.
+  `members`, an override's target, an amendment's `by`, the identity a `Vouch` is about, and
+  the `Viewer.did` a session answers with. These are strings the system compares and never
+  resolves.
 - **Narrow — a `did:syr`.** What this build RESOLVES, FETCHES FROM, or DERIVES A KEY FROM:
   everything in `syr.ts` and `@sloppy/idp`, `StoreRef` and the two functions that make and
-  split one, the `Viewer` a session is held under, a peer's `PublishedIndex` and the follow
-  and peer-lookup queries that reach one, a comment's author and a reaction's, a profile, an
-  emoji catalog, a folder's own `VaultGraph.owner` and the archive preview that mirrors it.
+  split one, the `SessionRow` a delegation is held under, a peer's `PublishedIndex` and the
+  follow and peer-lookup queries that reach one, a comment's author and a reaction's, a
+  profile, an emoji catalog, a folder's own `VaultGraph.owner` and the archive preview that
+  mirrors it.
 
 The test, site by site: **does this value get compared, or does it get dereferenced?** A
 compared one is wide. A dereferenced one is narrow, because dereferencing is per-scheme and
@@ -507,15 +510,17 @@ narrow though it is only ever compared, and one whose contract is "who gates thi
 
 Two of those narrow ones are narrow for a reason worth stating. `VaultGraph.owner` is the
 identity a device writes a folder under, and `makeLocalIdentity()` mints only `did:syr` there,
-which is what lets `graphAsItWas` derive a public key from it. `Viewer.did` is who signed in,
-and the only door is Platform Delegation. A note in that folder may still be OWNED by a
-`mailto:` — the folder's owner and a note's owner are different questions.
+which is what lets `graphAsItWas` derive a public key from it. A note in that folder may
+still be OWNED by a `mailto:` — the folder's owner and a note's owner are different
+questions. `SessionRow.created_by` is the same split at a sign-in: it is a `did:syr` because
+Platform Delegation is the only door, while the `Viewer.did` the session answers with is a
+principal, compared against the names written on a graph and resolved by nothing.
 
 **One site hands a wide value into a narrow slot**, and nothing in the types catches it.
 `syrPostRefFor` takes a note's ref and gives an identity store the owner half as `post_did` — the
 identifier a comment and a reaction are filed under. Every ref minted here still holds a `did:syr`
-there, because `created_by` is the signed-in viewer; item 4 below is what changes that, and a note
-whose ref is owned by an email address has nowhere to hang a conversation until it does.
+there, because `created_by` is the signed-in viewer; the door below is what changes that, and a
+note whose ref is owned by an email address has nowhere to hang a conversation until it does.
 
 ### Which key speaks for a principal
 
@@ -539,42 +544,60 @@ is what every signature written before the tag is, and `signatureSchemeOf` is th
 of that. A scheme this build cannot name is one it cannot check, so the note is held rather
 than presented as altered.
 
+Checking a signature in the `openpgp` scheme is `verifyOpenPgpSignature` in
+`@sloppy/openpgp`, the one package in the repo that speaks that dialect, the way
+`@sloppy/idp` is the one that speaks syr's — neither imports the other. It takes the bytes a
+signature is over, the signature and the public key, in armoured or binary form, and answers
+whether they agree. Nothing is fetched and no key is discovered: the caller has already
+decided which key it is asking about, which is why a signature that checks out says the
+payload has not been altered and never says whose key it is.
+
 ### What is not done, and what comes next
 
-Nothing RESOLVES or VERIFIES a `mailto:` principal. The identifier is theirs to hold, a graph
-can name them in a role and a note can be owned by them; nothing can yet say a key is theirs
-or that anybody stands behind them. A `VouchResolver` asked about one answers `unknown`,
-which grants nothing and takes nothing away.
+Nothing RESOLVES a `mailto:` principal. The identifier is theirs to hold, a graph can name
+them in a role, a note can be owned by them, and a session may answer with one; nothing can
+yet say a key is theirs or that anybody stands behind them. A `VouchResolver` asked about one
+answers `unknown`, which grants nothing and takes nothing away.
 
-What a second wave adds, in order:
+What the work that does it forks from:
 
-1. **A WKD binding** — `KeyBinding` with `scheme: "mailto"`. The advanced form first,
-   `https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>`, then the direct
-   one, where `<hash>` is z-base-32 over SHA-1 of the lowercased local part — which is why
-   the local part is lowercased here. It goes through `media/remote-host.ts` like every other
-   address somebody else chose, and it is a new file and no change to any caller.
-2. **A keyserver binding** beside it, as a second source with the same shape. A key found
-   either way is `vouched`; WHICH is `Vouch.instance`, and that is why `VouchState` stays
-   three states.
-3. **A GPG verifier**, and the scheme dispatch at the two places a signature is checked.
-   `peer/attribution.ts` already reads `signatureSchemeOf` and holds anything but
-   `ed25519-multibase`, so a second verifier is reached from there.
-   `social/comment-attribution.ts` cannot read one: a comment arrives as a `SyrComment`, which
-   carries the three signature columns and no scheme beside them, so every comment is checked
-   as `ed25519-multibase` and one signed in another scheme is presented as not its author's
-   rather than held. A tag on the store's own comment record is what has to land first. The
-   `publicKeyFromDid` calls in `@sloppy/local` — `identity.ts` and `api.ts` — check no
-   signature: they derive a key from a `did:syr` for an identity and for a graph view, which
-   is item 1's question asked of a folder rather than this one.
-4. **A door to sign in by**, which is what widens `Viewer.did`, and with it what lets somebody
-   who is not a syr identity hold a graph on a hosted instance rather than only be named in
-   one.
-5. **Federation, last**, because every entry into it resolves an identity store: a peer's
-   `PublishedIndex` is keyed by the DID an instance was asked about, and following somebody
-   or looking them up by name goes the same way. `NodeSignedPayloadV1` is part of this — its
-   `did` is a `did:syr`, and `aboutThisNode` compares it to the ref's owner, so a note owned
-   by a `mailto:` cannot carry a v1 payload that is about itself. A second payload version is
-   what carries one, and the tag above is what says which a reader is holding.
+- **`@sloppy/openpgp`**, above — the check itself, with nothing around it.
+- **`signature_scheme` on a comment.** `SyrCommentSchema` carries the tag beside the three
+  signature columns, so `social/comment-attribution.ts` can ask `signatureSchemeOf` the way
+  `peer/attribution.ts` already does. syr's own comment record has no such column, so the tag
+  is absent on everything today and every comment reads as `ed25519-multibase`, exactly as
+  before.
+- **A viewer is a principal.** Nothing mints one that is not a `did:syr`, because
+  `SessionRow.created_by` and the delegation beside it are a syr sign-in. The widening is a
+  door held open, not one walked through.
+
+Two tracks fork from there, and neither waits on the other.
+
+**The binding.** A `KeyBinding` with `scheme: "mailto"`: Web Key Directory first, the
+advanced form `https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>` then
+the direct one, where `<hash>` is z-base-32 over SHA-1 of the lowercased local part — which
+is why the local part is lowercased at the schema boundary. A public keyserver is the second
+source, with the same shape and the same `BoundKey` out. A key found either way is `vouched`
+and WHICH is `Vouch.instance`, so `VouchState` stays three states. Every address here is one
+somebody else chose, so it leaves through `media/remote-host.ts` like every other. With a
+binding in hand, the scheme dispatch at the two places a signature is checked —
+`peer/attribution.ts` and `social/comment-attribution.ts` — reaches `verifyOpenPgpSignature`.
+The `publicKeyFromDid` calls in `@sloppy/local` — `identity.ts` and `api.ts` — check no
+signature and are not part of this: they derive a key from a `did:syr` for an identity and
+for a graph view, which is this question asked of a folder rather than of a person.
+
+**The door.** What lets somebody who is not a syr identity hold a graph on a hosted instance
+rather than only be named in one: a session minted for a `mailto:` principal, and the surface
+a person signs in through. `SessionRow.created_by` is narrow and the two fields beside
+`Viewer.did` describe a syr sign-in, so what a viewer who signed in another way answers with
+there is this track's to decide.
+
+**Federation is after both**, because every entry into it resolves an identity store: a
+peer's `PublishedIndex` is keyed by the DID an instance was asked about, and following
+somebody or looking them up by name goes the same way. `NodeSignedPayloadV1` is part of it —
+its `did` is a `did:syr`, and `aboutThisNode` compares it to the ref's owner, so a note owned
+by a `mailto:` cannot carry a v1 payload that is about itself. A second payload version is
+what carries one, and the tag above is what says which a reader is holding.
 
 `@sloppy/idp` is not part of any of it. It SERVES syr identities; GPG needs no provider,
 because people already have keys.
