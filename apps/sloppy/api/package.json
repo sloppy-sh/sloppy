@@ -42,6 +42,7 @@
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
     "@types/express": "^5.0.0",
+    "openpgp": "6.3.1",
     "@types/node": "^24.10.1",
     "openpgp": "catalog:",
     "typescript": "catalog:",

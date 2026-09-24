@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
-import { identity } from './identity.svelte.js';
+import { answersReach, identity } from './identity.svelte.js';
 import { session } from './session.svelte.js';
 
 /** The same instance the viewer's identity is on, spelled the other way. A
@@ -115,6 +115,28 @@ describe('where the signed-in person keeps their identity', () => {
 		expect(identity.servedAt).toBeUndefined();
 	});
 
+	// Sloppy holds nothing that answers for them: what they signed in with is a
+	// key of their own, and a surface that read them as delegated would offer
+	// what no store is there to do.
+	it('is its own kind for somebody who signed in with a key of their own', async () => {
+		api.on('GET /auth/own-instance', () => ({ instance_url: null }));
+		session.adopt({ did: 'mailto:alice@example.com' }, 'a-session');
+
+		expect(identity.kind).toBe('own-key');
+		await identity.load();
+		expect(identity.kind).toBe('own-key');
+	});
+
+	// A device makes its own identity and names no instance for it, which is not
+	// the same as signing in with a key of one's own.
+	it('says nothing for a graph this device keeps', () => {
+		useFakeApi('local');
+		session.adopt({ ...VIEWER, syr_instance_url: '' }, 'a-session');
+
+		expect(identity.kind).toBeUndefined();
+		expect(answersReach(identity.kind)).toBe(true);
+	});
+
 	it('holds nothing of the last person for the next', async () => {
 		api.on('GET /auth/own-instance', () => ({
 			instance_url: VIEWER.syr_instance_url,
@@ -205,5 +227,19 @@ describe('whether this person’s own store can hold a conversation', () => {
 
 		expect(identity.converses).toBe(false);
 		expect(api.countOf('GET /converses')).toBe(2);
+	});
+});
+
+describe('where an answer somebody writes arrives', () => {
+	it('is a store this instance does not run, and nowhere else', () => {
+		expect(answersReach('delegated')).toBe(true);
+		expect(answersReach('local')).toBe(false);
+		expect(answersReach('own-key')).toBe(false);
+	});
+
+	// Saying so before the ask lands would put the harder sentence in front of
+	// somebody it is not true of, and then take it back.
+	it('is not yet a no while the identity is still being asked about', () => {
+		expect(answersReach(undefined)).toBe(true);
 	});
 });

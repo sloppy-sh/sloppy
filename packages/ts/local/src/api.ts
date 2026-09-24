@@ -8,6 +8,7 @@ import {
   AddressSchema,
   type AmendmentView,
   type AnsweredNote,
+  type AnswerChallengeRequest,
   type ArchivePreview,
   type BlockDocument,
   type BlockView,
@@ -77,6 +78,8 @@ import {
   type RefusedVoiceView,
   type SearchHit,
   type Session,
+  type SignInChallenge,
+  type SignInChallengeRequest,
   type StartLoginRequest,
   type TagCount,
   type UnpublishedChanges,
@@ -239,6 +242,16 @@ export class LocalApi implements SloppyApi {
   }
 
   async exchangeSession(_request: ExchangeSessionRequest): Promise<Session> {
+    serverOnly("Signing in");
+  }
+
+  async signInChallenge(
+    _request: SignInChallengeRequest,
+  ): Promise<SignInChallenge> {
+    serverOnly("Signing in");
+  }
+
+  async answerChallenge(_request: AnswerChallengeRequest): Promise<Session> {
     serverOnly("Signing in");
   }
 

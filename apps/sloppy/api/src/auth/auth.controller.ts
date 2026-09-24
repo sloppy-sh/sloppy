@@ -6,6 +6,7 @@ import {
   Header,
   HttpCode,
   HttpException,
+  HttpStatus,
   Post,
   Query,
   Req,
@@ -13,11 +14,14 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import {
+  AnswerChallengeRequestSchema,
   type ConsentRedirect,
   ExchangeSessionRequestSchema,
   isPeerOrigin,
   type OwnInstance,
   type Session,
+  type SignInChallenge,
+  SignInChallengeRequestSchema,
   StartLoginRequestSchema,
   type Viewer,
 } from "@sloppy/types";
@@ -27,7 +31,9 @@ import { ownOrigin } from "../media/remote-host";
 import { normalizeInstanceUrl } from "../syr/syr.service";
 import { AuthService, HOME } from "./auth.service";
 import { type AuthedRequest, SESSION_UNVERIFIED } from "./authed-request";
+import { CallerRate, callerOf } from "./caller-rate";
 import { handOffPage } from "./hand-off-page";
+import { KeySignInService } from "./key-sign-in.service";
 import { Public } from "./public.decorator";
 import { isAllowedRedirect, isDeepLink, withParams } from "./redirect-target";
 import {
@@ -36,9 +42,15 @@ import {
   setSessionCookie,
 } from "./session-cookie";
 
+/** Per caller: enough to get a signature wrong a few times and start again,
+ *  not enough to work through somebody else's addresses. */
+const SIGN_INS_AT_ONCE = 20;
+const SIGN_INS_PER_SEC = 0.2;
+
 /**
- * Signing in with the syr identity somebody already has —
- * docs/ARCHITECTURE.md § "Auth: Platform Delegation v0.1".
+ * The two ways in: the syr identity somebody already has, and a key of their
+ * own over an address they already go by — docs/ARCHITECTURE.md § "Auth:
+ * Platform Delegation v0.1" and § "Signing in with a key of your own".
  *
  * The callback below lands on this API and never on a shell, under the origin
  * rule `AuthService.platformOrigin` holds. What happens next depends only on
@@ -53,8 +65,16 @@ import {
  */
 @Controller("auth")
 export class AuthController {
+  /** Both doors below answer without a session and both cost a signature check
+   *  on the way in, so what one caller may spend on them is bounded. */
+  private readonly rate = new CallerRate({
+    capacity: SIGN_INS_AT_ONCE,
+    perSecond: SIGN_INS_PER_SEC,
+  });
+
   constructor(
     private readonly auth: AuthService,
+    private readonly keySignIn: KeySignInService,
     private readonly config: AppConfigService,
   ) {}
 
@@ -106,6 +126,44 @@ export class AuthController {
       }
       throw err;
     }
+  }
+
+  /**
+   * Something to sign, for somebody who goes by an address rather than by an
+   * identity Sloppy can delegate to. Neither this nor the answer below says
+   * whether a key was found for the address it is given: what comes back when
+   * a sign-in does not settle reads the same either way.
+   */
+  @Public()
+  @HttpCode(200)
+  @Post("challenge")
+  challenge(@Req() req: AuthedRequest, @Body() body: unknown): SignInChallenge {
+    this.charge(req);
+    const request = SignInChallengeRequestSchema.safeParse(body ?? {});
+    if (!request.success) {
+      throw new BadRequestException("Enter an email address.");
+    }
+    return this.keySignIn.challenge(request.data.principal);
+  }
+
+  /** The signed answer. A session comes back in the body rather than in a
+   *  cookie: this is asked by the app itself on every surface, never landed on
+   *  as a navigation the way consent is. */
+  @Public()
+  @HttpCode(200)
+  @Post("answer")
+  async answer(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<Session> {
+    this.charge(req);
+    const request = AnswerChallengeRequestSchema.safeParse(body ?? {});
+    if (!request.success) {
+      throw new BadRequestException(
+        "Paste the signature for the text above, then try again.",
+      );
+    }
+    return this.keySignIn.answer(request.data);
   }
 
   @Public()
@@ -203,6 +261,15 @@ export class AuthController {
       );
     }
     return {};
+  }
+
+  private charge(req: AuthedRequest): void {
+    if (!this.rate.take(callerOf(req))) {
+      throw new HttpException(
+        "Too many tries. Wait a moment, then start again.",
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
   }
 
   private get secure(): boolean {

@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import {
-  type DidSyr,
+  type Principal,
   type Timestamp,
   type Viewer,
   nowIso,
@@ -35,24 +35,34 @@ export const SESSION_PURGE_STATEMENTS: readonly string[] = [
 /**
  * An identity and the delegation Sloppy holds for it — and no profile, ever:
  * AI.md § "Sloppy's Vocabulary Stays Out of the Identity Store".
+ *
+ * **The three delegated columns are absent together**, on a session that was
+ * settled by a signature from a key of the person's own: there is no instance
+ * to ask about them, and Sloppy holds nothing it could act as them with. Rows
+ * written before there was another way in carry all three.
  */
 export type SessionRow = {
   id: RecordId;
-  created_by: DidSyr;
-  syr_instance_url: string;
-  delegate_public_key: string;
+  created_by: Principal;
+  syr_instance_url?: string;
+  delegate_public_key?: string;
   /** Authenticates Sloppy AS this person, so it never enters a response. */
-  access_token: string;
+  access_token?: string;
   expires_at: Timestamp;
   created_at: Timestamp;
   updated_at: Timestamp;
 };
 
-export interface NewSession {
-  did: DidSyr;
+/** What Sloppy was given to act as this person, where anything was. */
+export interface SessionDelegation {
   syr_instance_url: string;
   delegate_public_key: string;
   access_token: string;
+}
+
+export interface NewSession {
+  did: Principal;
+  delegation?: SessionDelegation;
   expires_at: Timestamp;
 }
 
@@ -63,20 +73,34 @@ export interface IssuedSession {
 
 /** The public half of a session, which is all a client is ever told. */
 export function viewerOf(session: SessionRow): Viewer {
+  const delegation = delegationOf(session);
   return {
     did: session.created_by,
-    syr_instance_url: session.syr_instance_url,
-    delegate_public_key: session.delegate_public_key,
+    ...(delegation === undefined
+      ? {}
+      : {
+          syr_instance_url: delegation.syr_instance_url,
+          delegate_public_key: delegation.delegate_public_key,
+        }),
   };
 }
 
-/** The half that speaks to the person's instance, credential included. */
-export function delegationOf(session: SessionRow): Delegation {
+/**
+ * The half that speaks to the person's identity store, credential included, or
+ * `undefined` where there is no store behind this session to speak to. Only a
+ * syr sign-in writes those three columns, which is why the `did:syr` a
+ * `Delegation` declares holds here though `created_by` is a principal.
+ */
+export function delegationOf(session: SessionRow): Delegation | undefined {
+  const { syr_instance_url, delegate_public_key, access_token } = session;
+  if (!syr_instance_url || !delegate_public_key || !access_token) {
+    return undefined;
+  }
   return {
     did: session.created_by,
-    syr_instance_url: session.syr_instance_url,
-    delegate_public_key: session.delegate_public_key,
-    access_token: session.access_token,
+    syr_instance_url,
+    delegate_public_key,
+    access_token,
   };
 }
 
@@ -113,9 +137,7 @@ export class SessionStore {
     const row: SessionRow = {
       id: keyFor(credential),
       created_by: session.did,
-      syr_instance_url: session.syr_instance_url,
-      delegate_public_key: session.delegate_public_key,
-      access_token: session.access_token,
+      ...(session.delegation ?? {}),
       expires_at: session.expires_at,
       created_at: now,
       updated_at: now,
@@ -138,7 +160,7 @@ export class SessionStore {
   }
 
   /** Every session this identity holds against this instance, everywhere. */
-  async endAll(did: DidSyr, syrInstanceUrl: string): Promise<void> {
+  async endAll(did: Principal, syrInstanceUrl: string): Promise<void> {
     await this.bounded(
       this.db.handle.query(
         `DELETE ${SESSION_TABLE} WHERE created_by = $did AND syr_instance_url = $instance;`,
@@ -148,7 +170,7 @@ export class SessionStore {
   }
 
   /** Signing in is the sweep: it is the one moment a person's row count grows. */
-  private async dropExpired(did: DidSyr, now: Timestamp): Promise<void> {
+  private async dropExpired(did: Principal, now: Timestamp): Promise<void> {
     await this.bounded(
       this.db.handle.query(
         `DELETE ${SESSION_TABLE} WHERE created_by = $did AND expires_at < $now;`,
