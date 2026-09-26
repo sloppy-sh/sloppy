@@ -10,14 +10,13 @@ import {
   type OwnedRef,
   splitOwnedRef,
   ulid,
+  type WriteDone,
   writesAlone,
 } from "@sloppy/types";
 import { notePath } from "@sloppy/vault";
 import { headingOf } from "./writing.js";
 
-/** What one act of writing came to: written outright, or `offered` to whoever
- *  wrote the note. */
-export type WriteDone = "written" | "offered";
+export type { WriteDone };
 
 export interface WrittenNote {
   title: string;

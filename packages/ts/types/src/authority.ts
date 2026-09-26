@@ -27,6 +27,15 @@ export interface WriteDecision {
   readonly coAuthors: boolean;
 }
 
+/**
+ * What one act of writing came to, as the writer reports it: onto the note, or
+ * standing as an offer on it. It is the verdict above once the write has
+ * happened — `lands` says a write may, `written` says one did, and a note
+ * nobody had written in yet is `written` rather than landed on.
+ */
+export const WRITE_DONE = ["written", "offered"] as const;
+export type WriteDone = (typeof WRITE_DONE)[number];
+
 export interface WriteDecisionInput {
   readonly note: Pick<Node, "created_by" | "owner" | "authors">;
   readonly writer: Principal;
