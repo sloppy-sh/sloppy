@@ -190,14 +190,18 @@ export interface CompassSlotWords {
 }
 
 /**
- * One method: what a person chooses it by, and the questions it reads the
- * slots as. A slot it does not name is one it has no question for — a
- * three-part method leaves `west` out, and a note carrying citations there
- * keeps them (DESIGN.md § "The compass card").
+ * One method: what a person chooses it by, and the questions it reads the four
+ * slots as.
+ *
+ * **Every method names all four.** The compass is two axes, not a dial: north
+ * and south are where a thought comes from and where it leads, east and west
+ * what holds it up and what pushes against it. A method that named only three
+ * would leave a pole of one axis empty, which is the half a person is most
+ * likely to skip and most needs to be asked for.
  */
 export interface CompassMethod {
   name: string;
-  slots: Partial<Record<CompassDirection, CompassSlotWords>>;
+  slots: Record<CompassDirection, CompassSlotWords>;
 }
 
 const IDEA_SLOTS: Record<CompassDirection, CompassSlotWords> = {
@@ -216,10 +220,11 @@ const COMPASS_METHODS: Record<CompassKind, CompassMethod> = {
     name: "QEC",
     slots: {
       north: { word: "The question", asks: "What is the question?" },
-      south: { word: "The evidence", asks: "What is the evidence?" },
-      east: {
-        word: "The conclusion",
-        asks: "What does the evidence conclude?",
+      south: { word: "The conclusion", asks: "What does it conclude?" },
+      east: { word: "The evidence", asks: "What is the evidence for it?" },
+      west: {
+        word: "Counter-evidence",
+        asks: "What evidence points the other way?",
       },
     },
   },
@@ -227,8 +232,12 @@ const COMPASS_METHODS: Record<CompassKind, CompassMethod> = {
     name: "AJI",
     slots: {
       north: { word: "The assumption", asks: "What is being assumed?" },
-      south: { word: "The justification", asks: "What justifies it?" },
-      east: { word: "The implication", asks: "What follows if it holds?" },
+      south: { word: "The implication", asks: "What follows if it holds?" },
+      east: { word: "The justification", asks: "What justifies it?" },
+      west: {
+        word: "The objection",
+        asks: "What is the strongest reason it is wrong?",
+      },
     },
   },
 };
@@ -239,21 +248,13 @@ export function compassMethod(kind: CompassKind | undefined): CompassMethod {
   return COMPASS_METHODS[kind ?? DEFAULT_COMPASS_KIND];
 }
 
-/** The slots a method asks for, in the order a compass is read in. */
-export function compassSlots(
-  kind: CompassKind | undefined,
-): CompassDirection[] {
-  const { slots } = compassMethod(kind);
-  return COMPASS_DIRECTIONS.filter((direction) => slots[direction]);
-}
-
-/** What a slot is called, falling back to the idea compass's word where the
- *  method has no question for it — a citation is still filed under something. */
+/** What a slot is called under this method. Every method names all four, so
+ *  {@link COMPASS_DIRECTIONS} is the reading order for each of them. */
 export function compassSlotWords(
   kind: CompassKind | undefined,
   direction: CompassDirection,
 ): CompassSlotWords {
-  return compassMethod(kind).slots[direction] ?? IDEA_SLOTS[direction];
+  return compassMethod(kind).slots[direction];
 }
 
 /** What each slot points at. An empty list is a slot nobody has filled, which

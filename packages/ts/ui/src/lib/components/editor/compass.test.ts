@@ -408,8 +408,8 @@ describe('a compass in the writing', () => {
 
 		expect(options).toEqual([
 			'Idea compass — part of, made of, like, instead of',
-			'QEC — the question, the evidence, the conclusion',
-			'AJI — the assumption, the justification, the implication'
+			'QEC — the question, the conclusion, the evidence, counter-evidence',
+			'AJI — the assumption, the implication, the justification, the objection'
 		]);
 	});
 
@@ -423,8 +423,12 @@ describe('a compass in the writing', () => {
 
 		expect(words(slot('north').querySelector('.sloppy-compass-word'))).toBe('The question');
 		expect(asked('north')).toBe('What is the question?');
-		expect(asked('east')).toBe('What does the evidence conclude?');
-		expect(slot('west').hidden).toBe(true);
+		// The chain runs down the vertical and the lateral relation across the
+		// horizontal, so the conclusion is south and the evidence east.
+		expect(words(slot('south').querySelector('.sloppy-compass-word'))).toBe('The conclusion');
+		expect(words(slot('east').querySelector('.sloppy-compass-word'))).toBe('The evidence');
+		expect(words(slot('west').querySelector('.sloppy-compass-word'))).toBe('Counter-evidence');
+		expect(slot('west').hidden).toBe(false);
 	});
 
 	// Nothing moves when the method does, so switching back is not a repair.
@@ -488,7 +492,9 @@ describe('a compass in the writing', () => {
 
 	// A slot a method has no question for still holds citations the canvas
 	// draws, so it is never quietly hidden.
-	it('keeps a slot its method does not ask for in sight while it holds notes', async () => {
+	// Every method fills both poles of both axes, so a citation is never left in
+	// a slot the method has no question for.
+	it('asks the opposing pole under every method', async () => {
 		const moon = note('1c', 'Moonlight');
 		open(graph([moon]));
 		put();
@@ -500,17 +506,9 @@ describe('a compass in the writing', () => {
 		chooses('qec');
 
 		expect(slot('west').hidden).toBe(false);
-		expect(words(slot('west').querySelector('.sloppy-compass-word'))).toBe('Instead of');
-		expect(words(slot('west').querySelector('.sloppy-compass-kept'))).toBe(
-			'Still cited. QEC has no question for these — take one out, or switch back.'
-		);
+		expect(words(slot('west').querySelector('.sloppy-compass-word'))).toBe('Counter-evidence');
 		expect(words(slot('west').querySelector('.sloppy-reference'))).toBe('Moonlight');
-		expect(act('west', 'Cite a note').hidden).toBe(true);
-
-		tap(act('west', 'Take Moonlight out of Instead of'));
-
-		expect(stored()?.west).toEqual([]);
-		expect(slot('west').hidden).toBe(true);
+		expect(act('west', 'Cite a note').hidden).toBe(false);
 	});
 
 	it('offers nothing a slot already points at', async () => {

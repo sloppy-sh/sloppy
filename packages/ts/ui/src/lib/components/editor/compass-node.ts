@@ -10,7 +10,6 @@ import {
 	compassMethod,
 	compassNode,
 	compassOf,
-	compassSlots,
 	compassSlotWords,
 	DEFAULT_COMPASS_KIND,
 	REFERENCE_NOTE_ATTR,
@@ -71,19 +70,12 @@ const SHOWN = 6;
 const SHOWN_ELSEWHERE = 4;
 const COULD_NOT_WRITE = 'That note could not be added. Try again in a moment.';
 
-/** What a slot says while the method has no question for what it holds —
- *  DESIGN.md § "The compass card". */
-const stillCited = (method: string, canFill: boolean): string =>
-	`Still cited. ${method} has no question for these${
-		canFill ? ' — take one out, or switch back' : ''
-	}.`;
-
 /** What one method is offered as: its name and the questions it would read the
  *  note by — DESIGN.md § "The compass card". */
 const offeredAs = (kind: CompassKind): string =>
-	`${compassMethod(kind).name} — ${compassSlots(kind)
-		.map((direction) => compassSlotWords(kind, direction).word.toLowerCase())
-		.join(', ')}`;
+	`${compassMethod(kind).name} — ${COMPASS_DIRECTIONS.map((direction) =>
+		compassSlotWords(kind, direction).word.toLowerCase()
+	).join(', ')}`;
 
 /** lucide's `x`, written out: nothing here renders through Svelte. */
 const CROSS =
@@ -235,7 +227,6 @@ export function CompassNode(
 						heading: HTMLHeadingElement;
 						list: HTMLUListElement;
 						asks: HTMLParagraphElement;
-						kept: HTMLParagraphElement;
 						add: HTMLButtonElement;
 					}
 				>;
@@ -254,9 +245,6 @@ export function CompassNode(
 					const prompt = document.createElement('p');
 					prompt.className = 'sloppy-compass-asks';
 
-					const kept = document.createElement('p');
-					kept.className = 'sloppy-compass-kept';
-
 					const add = document.createElement('button');
 					add.type = 'button';
 					add.className = 'sloppy-compass-act';
@@ -264,9 +252,9 @@ export function CompassNode(
 					add.addEventListener('mousedown', (event) => event.preventDefault());
 					add.addEventListener('click', () => openFinder(direction));
 
-					slot.append(heading, list, prompt, kept, add);
+					slot.append(heading, list, prompt, add);
 					rows.append(slot);
-					drawn[direction] = { slot, heading, list, asks: prompt, kept, add };
+					drawn[direction] = { slot, heading, list, asks: prompt, add };
 				}
 
 				const at = (): number | undefined => {
@@ -521,25 +509,19 @@ export function CompassNode(
 					chosen.hidden = !editor.isEditable;
 					says.textContent = method.name;
 					says.hidden = editor.isEditable || slots.kind === undefined;
-					rows.toggleAttribute('data-rose', compassSlots(slots.kind).length === 4);
 					for (const direction of COMPASS_DIRECTIONS) {
 						const cites = slots[direction];
-						const { slot, heading, list, asks, kept, add } = drawn[direction];
+						const { slot, heading, list, asks, add } = drawn[direction];
 						const words = method.slots[direction];
-						// A slot this method has no question for still holds citations
-						// somebody made, and the canvas still draws them.
-						const carried = words === undefined && cites.length > 0;
-						slot.hidden = words === undefined && cites.length === 0;
-						heading.textContent = compassSlotWords(slots.kind, direction).word;
-						slot.setAttribute('aria-label', heading.textContent);
+						slot.hidden = false;
+						heading.textContent = words.word;
+						slot.setAttribute('aria-label', words.word);
 						list.replaceChildren(...cites.map((note) => cited(direction, note)));
 						list.hidden = cites.length === 0;
-						asks.textContent = words?.asks ?? '';
-						asks.hidden = words === undefined || cites.length > 0;
-						kept.textContent = carried ? stillCited(method.name, canFill) : '';
-						kept.hidden = !carried;
-						add.hidden = !canFill || words === undefined || finding === direction;
-						add.setAttribute('aria-label', `Cite a note under ${heading.textContent}`);
+						asks.textContent = words.asks;
+						asks.hidden = cites.length > 0;
+						add.hidden = !canFill || finding === direction;
+						add.setAttribute('aria-label', `Cite a note under ${words.word}`);
 					}
 					if (finding && canFill) {
 						// `after` re-inserts a node that is already there, and an input

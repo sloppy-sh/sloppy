@@ -2780,13 +2780,18 @@ compass — "Part of", "Made of", "Like", "Instead of" — is what a compass tha
 is in, so **an absent `kind` is the idea compass** and one in that method carries no `kind`
 at all: every compass written before methods existed, and every one an older build writes,
 reads exactly as it did. `COMPASS_KINDS` in `@sloppy/types` is the closed set — `idea`,
-`qec` (a question, its evidence, its conclusion) and `aji` (an assumption, its
-justification, its implication) — and a fourth is a token there and a row of copy beside
-it. The slots stay the wire for all of them, which is what makes switching free: no
-citation moves, so switching back finds them where they were. The cost is stated: a
-three-part method carries a fourth slot it has no question for, and the file says `north:`
-where a person reads "The question". A method that has no question for a slot somebody
-filled never hides it — DESIGN.md § "The compass card" rules on what that slot says.
+`qec` and `aji` — and a fourth is a token there and a row of copy beside it. The slots stay
+the wire for all of them, which is what makes switching free: no citation moves, so
+switching back finds them where they were. The cost is stated: the file says `north:` where
+a person reads "The question".
+
+**Every method names all four, because the compass is two axes and not a dial.** North and
+south are where a thought came from and where it leads; east and west are what holds it up
+and what pushes against it. So `qec` reads north as the question, south as the conclusion,
+east as the evidence and west as the counter-evidence; `aji` reads them as the assumption,
+the implication, the justification and the objection. A method naming only three would
+leave one pole of one axis empty — and that pole, the one that argues back, is the half a
+person is most likely to skip and most needs to be asked for.
 
 **Its markdown form is the lines themselves** (§ "A graph on disk"): inside the section,
 one line per filled direction, in the fixed order, `north: [[<ref>]] [[<ref>]]`. A
@@ -3176,9 +3181,10 @@ no signals table, no cached count and nothing to migrate.
   and the terminal writing the notes read one list: what a build wrote into, what a tool
   keeps, and anything behind a dot is nobody's reading, and is neither written about nor
   asked after.
-- **`compass-gap`** — a slot its compass's method asks for and nobody has filled. A note
-  with no compass is not missing one, and a slot a method has no question for is not a gap
-  in it. The signal carries the method, so the row asks the question the note itself shows.
+- **`compass-gap`** — a slot nobody has filled. Every method asks all four, so the gap is
+  the same shape whichever one a note is read by; a note with no compass at all is not
+  missing one. The signal carries the method, so the row asks the question the note itself
+  shows.
 - **`decision-without-why`** — a decision whose "Why" holds nothing under its heading. A
   note that is not the Decision shape — a compass and that section — is not a decision and
   yields this never.

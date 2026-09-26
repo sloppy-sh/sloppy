@@ -1674,31 +1674,30 @@
 		overflow-wrap: anywhere;
 	}
 	/* The note in the middle and the four slots around it — DESIGN.md § "The
-	   compass card". Below this the four stack into one column, north to west,
-	   and a method that asks three things reads as that column at every width. */
+	   compass card". Below this the four stack into one column, north to west. */
 	@container (min-width: 30rem) {
-		:global(.sloppy-compass-slots[data-rose]) {
+		:global(.sloppy-compass-slots) {
 			grid-template-columns: 1fr 1fr 1fr;
 			align-items: start;
 		}
-		:global([data-rose] > .sloppy-compass-note) {
+		:global(.sloppy-compass-note) {
 			grid-column: 2;
 			grid-row: 2;
 			text-align: center;
 		}
-		:global([data-rose] > .sloppy-compass-slot[data-direction='north']) {
+		:global(.sloppy-compass-slot[data-direction='north']) {
 			grid-column: 2;
 			grid-row: 1;
 		}
-		:global([data-rose] > .sloppy-compass-slot[data-direction='west']) {
+		:global(.sloppy-compass-slot[data-direction='west']) {
 			grid-column: 1;
 			grid-row: 2;
 		}
-		:global([data-rose] > .sloppy-compass-slot[data-direction='east']) {
+		:global(.sloppy-compass-slot[data-direction='east']) {
 			grid-column: 3;
 			grid-row: 2;
 		}
-		:global([data-rose] > .sloppy-compass-slot[data-direction='south']) {
+		:global(.sloppy-compass-slot[data-direction='south']) {
 			grid-column: 2;
 			grid-row: 3;
 		}
@@ -1716,11 +1715,6 @@
 	}
 	:global(.sloppy-compass-method-said) {
 		margin: 0 0 0.5rem;
-		font-size: 0.75rem;
-		color: var(--muted-foreground);
-	}
-	:global(.sloppy-compass-kept) {
-		margin: 0.2rem 0 0;
 		font-size: 0.75rem;
 		color: var(--muted-foreground);
 	}

@@ -9,8 +9,8 @@ import {
   type Compass,
   type CompassDirection,
   type CompassKind,
+  COMPASS_DIRECTIONS,
   compassOf,
-  compassSlots,
   DECISION_WHY_HEADING,
   type DocumentNode,
   type OwnedRef,
@@ -148,7 +148,7 @@ export async function review(input: ReviewInput): Promise<ReviewSignal[]> {
     }
     if (compass === undefined) continue;
     // A slot the note's method has no question for is not a gap in it.
-    for (const direction of compassSlots(compass.kind)) {
+    for (const direction of COMPASS_DIRECTIONS) {
       if (compass[direction].length === 0) {
         signals.push({
           kind: "compass-gap",

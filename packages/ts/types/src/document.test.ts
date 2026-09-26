@@ -6,7 +6,6 @@ import {
   COMPASS_DIRECTIONS,
   COMPASS_KINDS,
   compassMethod,
-  compassSlots,
   citedNotes,
   citedUploads,
   COMPASS_TYPE,
@@ -421,7 +420,6 @@ describe("the compass a section holds", () => {
       compassOf(doc([compass({ north: slot(TIDES) })]))?.kind,
     ).toBeUndefined();
     expect(compassMethod(undefined)).toEqual(compassMethod("idea"));
-    expect(compassSlots(undefined)).toEqual([...COMPASS_DIRECTIONS]);
   });
 
   it("carries the method the compass says it is in", () => {
@@ -432,7 +430,18 @@ describe("the compass a section holds", () => {
       west: [],
       kind: "qec",
     });
-    expect(compassSlots("qec")).toEqual(["north", "south", "east"]);
+  });
+
+  // The compass is two axes, so a method that asked only three things would
+  // leave one pole of one axis empty — the half a person is most likely to skip.
+  it("asks every method for all four poles", () => {
+    for (const kind of COMPASS_KINDS) {
+      const { slots } = compassMethod(kind);
+      for (const direction of COMPASS_DIRECTIONS) {
+        expect(slots[direction].word).toBeTruthy();
+        expect(slots[direction].asks).toBeTruthy();
+      }
+    }
   });
 
   // A method a later build adds must not read as anything this one knows, and
