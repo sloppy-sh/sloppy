@@ -46,7 +46,7 @@ const TOOLS: &[Tool] = &[Tool {
         "--allowedTools",
         "Read,Grep,Glob",
         "--disallowedTools",
-        "Bash,Edit,MultiEdit,NotebookEdit,Task,WebFetch,WebSearch,Write",
+        "Bash,Edit,NotebookEdit,Task,WebFetch,WebSearch,Write",
     ],
 }];
 
