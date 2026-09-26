@@ -3235,12 +3235,32 @@ writes about the places that survived, in the order they stand in. Nothing skips
 a run made straight from an intent is a bill somebody did not agree to.
 
 **What comes back is offered, never landed over somebody's writing.** A run writes through
-the same store the app writes through, so it is held to the one rule every write is held
-to (§ "Whose writing a note carries"): a place with no note yet gets one written outright,
+the same store the app writes through, under a writer of its own, so it is held to the one
+rule every write is held to (§ "Whose writing a note carries"): a place with no note yet gets one written outright,
 a note carrying nobody's writing but the tool's is written straight onto, and a note a
 person has written in is offered an amendment that stands until they take it in. Nothing
 here writes a note file by hand — a writer that did would be the one writer in Sloppy that
 the note's own gate does not reach.
+
+**Which way that rule falls is decided by WHO is writing, so the run's writer is named
+here.** It is the identity the container keeps beside the notes: a `LocalApi` over the
+container's own files, which answers with the identity written down in the container's own
+data and mints one there the first time, exactly as `sloppy draft` does from a terminal.
+**It is never the identity the app writes under.** A run given the app's own api would
+write as the person, for whom `writesAlone` is true on every note they have written — so
+every one of those would be written over rather than offered, and the amendment this
+section is built around would never be made. `DocumentingAccess.run` in `@sloppy/app-core`
+carries that obligation where the shell implementing it reads.
+
+**The tool is started, never composed.** The program is the shell's own and fixed there; it
+is started directly rather than handed to a shell to interpret; and nothing a survey
+proposed or a person typed becomes a program name, an option, or the folder a run works in.
+A plan is input the tool reads, all the way down. That is also why the shapes bound what
+they carry rather than trusting the pass that filled them: a survey proposes places by
+reading a repository, and a checked-out tree — a dependency, a fork, somebody's branch — is
+not a thing we vouch for. `ProjectPathSchema` holds every path in these shapes to
+`insideProject`: inside the project, no segment that reads as an option, nothing invisible,
+and bounded.
 
 **Nothing marks a note as a tool's.** No field in the front matter, no tag, no heading: a
 note is read for what it says, and what wrote it leaves no trace of itself (§ "Tooling and
@@ -3285,8 +3305,16 @@ would be deciding it for them.
 
 **A run says what has happened and never guesses at what is left.** `DocumentingProgress`
 carries the stage, the place it is on, and the places behind it — and nothing that would
-have to be estimated. `stopped` with no words is a run the person stopped; `stopped` with
-words is one that could not go on, and those words are the ones a person can act on.
+have to be estimated. `stopped` with no `trouble` is a run the person stopped; `stopped`
+with words is one that could not go on, and those words are the ones a person can act on.
+`progressFits` is the one statement of which of those fields a stage may carry, because a
+shape cannot say it without a refinement and a refinement here would take `.omit()` and
+`.partial()` with it.
+
+**One run at a time on a device, and stopping one finishes before another begins.** `stop`
+resolves after the run underway has settled its own promise, so a surface may ask for a run
+the moment it resolves and a second `run` before that is refused rather than queued. A
+second tool started into the first one's dying is the failure this orders away.
 
 **Agents outside the app are a later wave, and nothing here is in its way.** An MCP server
 reading and writing the same graph would sit where the CLI sits — over `@sloppy/vault` and

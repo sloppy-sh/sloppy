@@ -108,31 +108,36 @@ export interface VaultAccess {
 /**
  * Asking a tool on this device to read the project and write its notes, and
  * watching what comes back — docs/ARCHITECTURE.md § "Asking a tool to write
- * the notes". That a program on the machine does the work is this interface's
- * side of the seam: a page asks for a survey and for a run, and knows nothing
- * else about how either happens.
+ * the notes". A page asks for a survey and for a run, and learns nothing else
+ * about how either happens.
  */
 export interface DocumentingAccess {
-	/** The tools this device can reach. An EMPTY list is a device with none,
-	 *  and the offer says so rather than failing when somebody takes it. */
+	/** The tools this device can reach. An EMPTY list is a device with none. */
 	tools(): Promise<DocumentingTool[]>;
 	/** Read the project against what somebody asked for, and propose the places
-	 *  worth a note. Nothing is written, so this is the pass a person refines
-	 *  before the one that costs them. */
+	 *  worth a note. Nothing is written. */
 	survey(intent: DocumentingIntent): Promise<ProposedPlace[]>;
 	/**
 	 * Write the notes the plan names, in its order, telling `watch` each time
 	 * the answer changes and resolving with the last answer it gave.
 	 *
-	 * A note somebody has written in is never written over: the run offers a
-	 * change on it, which stands until its author takes it in, and `PlaceDone`
-	 * says which of the two happened at each place.
+	 * **A run writes as the notes' own container, and never as the person.**
+	 * Its writer is the identity the container keeps beside the notes — what a
+	 * `LocalApi` over the container's own files answers with, and the one
+	 * `sloppy draft` writes under — never the identity this app writes under: a
+	 * run holding that one lands on every note its person has written instead
+	 * of offering. `PlaceDone` says which of the two happened at each place.
+	 *
+	 * One run at a time: asked while one is underway, this REJECTS rather than
+	 * starting a second or replacing the first.
 	 */
 	run(
 		plan: DocumentingPlan,
 		watch: (progress: DocumentingProgress) => void
 	): Promise<DocumentingProgress>;
-	/** End what is underway here. Nothing underway is not a failure. */
+	/** End what is underway here, resolving once it has ended — after {@link
+	 *  DocumentingAccess.run}'s own promise has settled, so a run may be asked
+	 *  for again the moment this resolves. Nothing underway is not a failure. */
 	stop(): Promise<void>;
 }
 

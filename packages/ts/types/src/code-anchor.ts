@@ -44,17 +44,36 @@ function fragmentOf(held: string): CodeAnchor["fragment"] {
     : { kind: "symbol", name: held };
 }
 
+/** A control or format character makes a path that shows one thing and names
+ *  another, and a newline in one makes a second line wherever it is read. */
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Cs}]/u;
+
+/** A path reaches programs, and every one of them reads a leading dash as an
+ *  option rather than as a name. */
+function readsAsOption(segment: string): boolean {
+  return segment.startsWith("-");
+}
+
 /**
  * Whether a path names somewhere inside the project: said from its root, with
  * `/`, and climbing out of it nowhere. An anchor holds one, and so does a place
- * somebody asks for notes about.
+ * somebody asks for notes about — and both are handed on, so a path that would
+ * read as an option, or that hides what it says, is refused here rather than
+ * wherever it lands.
  */
 export function insideProject(path: string): boolean {
   if (path === "" || path.startsWith("/") || path.includes("\\")) return false;
   if (/^[A-Za-z]:/.test(path)) return false;
+  if (INVISIBLE.test(path)) return false;
   return path
     .split("/")
-    .every((segment) => segment !== "" && segment !== "." && segment !== "..");
+    .every(
+      (segment) =>
+        segment !== "" &&
+        segment !== "." &&
+        segment !== ".." &&
+        !readsAsOption(segment),
+    );
 }
 
 function sameness(anchor: CodeAnchor): string {

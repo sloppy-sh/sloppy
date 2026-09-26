@@ -28,7 +28,8 @@ write one that the app, the other people here and the next agent all read the sa
 person can read and change.** There is no shape here that is yours and not theirs, and
 none that is theirs and not yours — which is why what follows is the whole format rather
 than a subset of it. What separates you from them is not what you may write but what is
-yours to say, and the last two sections are that line.
+yours to say, and "Changing a note somebody already wrote" and "Never write" below are
+that line.
 
 ## One note is one file
 
@@ -56,9 +57,12 @@ connection the writing does not make.
 
 There is no \`address\` above, and you never write one: a number like \`1a1\` is the label its
 author cites the note by, theirs to give and theirs to change. A note may carry other
-fields — the numbers it has been at, who may write in it, how its author asked the mark
-and its lines to be drawn. Those are the app's to write and the author's to change: leave
-every one of them exactly as you found it.
+fields — whose writing it carries, the numbers it has been at, who may write in it, how
+its author asked the mark and its lines to be drawn. Those are the app's to write and the
+author's to change: leave every one of them exactly as you found it. An \`authors\` line is
+the one to be most careful with: where it is missing the note carries its own author's
+writing and nobody else's, so dropping one that names two people takes somebody's name
+off writing they did.
 
 ## A note is a stack of sections
 
@@ -159,9 +163,11 @@ It is a person saying they read it, so it is not yours to write: see below.
 
 ## The shapes a note can start from
 
-The app offers these when somebody starts a note, and they are headings and nothing else
-— no marker, no tag, nothing stored. A note already in one of them keeps its headings, and
-a note you write is welcome to any of them where the shape fits what you found:
+The app offers these when somebody starts a note. A shape is its headings, with an empty
+drawing or an empty compass under the ones marked below — no marker, no tag, nothing
+stored anywhere that says a note is in one. A note already in one of them keeps its
+headings, and a note you write is welcome to any of them where the shape fits what you
+found:
 
 ${SHAPES}
 
