@@ -59,7 +59,10 @@ There is no \`address\` above, and you never write one: a number like \`1a1\` is
 author cites the note by, theirs to give and theirs to change. A note may carry other
 fields — whose writing it carries, the numbers it has been at, who may write in it, how
 its author asked the mark and its lines to be drawn. Those are the app's to write and the
-author's to change: leave every one of them exactly as you found it. An \`authors\` line is
+author's to change: leave every one of them exactly as you found it. Drawing a line between
+two notes is yours to do — that is what \`links\` above is — and saying what the line MEANS
+is not: a label like "grew out of", an arrowhead, a stroke are somebody's own reading of the
+connection, so an \`edges\` entry stays exactly as you found it too. An \`authors\` line is
 the one to be most careful with: where it is missing the note carries its own author's
 writing and nobody else's, so dropping one that names two people takes somebody's name
 off writing they did.
@@ -90,7 +93,8 @@ things to do, and a fence for code:
 
 Inside a line: \`**bold**\`, \`_italic_\`, \`~~struck~~\`, \`code\`, \`[a link](https://example.com)\`,
 \`$e^{i\\pi}$\` for arithmetic and a \`$$\` fence for a line of it on its own, and \`:wave:\` for
-an emoji this graph already knows. A \`mermaid\` fence is a diagram and is drawn as one.
+an emoji this graph already knows — \`::wave::\`, doubled, is the same one drawn large. A
+\`mermaid\` fence is a diagram and is drawn as one.
 
 A backslash at the end of a line breaks the line without ending the paragraph. A comment
 reading \`<!-- sloppy:node … -->\` or \`<!-- sloppy:span … -->\` is something markdown has no

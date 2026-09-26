@@ -1,4 +1,4 @@
-import { MemoryFiles } from "@sloppy/local";
+import { containerDataAt, MemoryFiles } from "@sloppy/local";
 import { encodeText, graphFile, type VaultGraph } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { FINE, NOTHING_DONE, run, TO_FIX } from "./run.js";
@@ -148,5 +148,22 @@ describe("sloppy", () => {
     const { code, out } = await ran(["check", "--help"], new MemoryFiles());
     expect(code).toBe(FINE);
     expect(out.join("\n")).toContain("--json");
+  });
+
+  it("writes as the identity the container keeps, wherever it is run from", async () => {
+    const asked: { root: string; data: string }[] = [];
+    const files = await wrote("Nothing to see.");
+    await run(["check", "/project"], {
+      cwd: "/somewhere/else",
+      told: { out: () => {}, err: () => {} },
+      filesAt: (root, data) => {
+        asked.push({ root, data });
+        return files.at(root);
+      },
+    });
+    expect(asked.length).toBeGreaterThan(0);
+    for (const { root, data } of asked) {
+      expect(data).toBe(containerDataAt(root));
+    }
   });
 });

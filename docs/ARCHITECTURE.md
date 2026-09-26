@@ -3258,8 +3258,12 @@ over rather than offered and the amendment this section is built around is never
 container's**, which is what `keepingDataAt` in `@sloppy/local` makes of any shell's files.
 `Files.at` re-roots the folder and leaves `dataPath` where the app keeps it, so a store
 handed a shell's files rooted at the container answers with the person instead — and on the
-ordinary device, holding one identity, it does so silently. `DocumentingAccess.run` in
-`@sloppy/app-core` carries the obligation where the shell implementing it reads.
+ordinary device, holding one identity, it does so silently. **Where that data goes is
+`containerDataAt` in `@sloppy/local` and is spelled nowhere else**, the CLI included: a
+second folder under one container is a second identity in it, after which each writer
+offers the other amendments to notes no person has ever written in, and nothing fails or
+warns. `DocumentingAccess.run` in `@sloppy/app-core` carries the obligation where the shell
+implementing it reads.
 
 **The tool is started, never composed.** The program is the shell's own and fixed there; it
 is started directly rather than handed to a shell to interpret; and nothing a survey
@@ -3270,6 +3274,15 @@ reading a repository, and a checked-out tree — a dependency, a fork, somebody'
 not a thing we vouch for. `ProjectPathSchema` holds every path in these shapes to
 `insideProject`: inside the project, no segment that reads as an option, nothing invisible,
 and bounded.
+
+**A shape holds nothing until somebody parses it, so the seam names who: the shell
+implementing `DocumentingAccess`, in both directions.** It parses what it is handed before
+it acts on any of it, and parses what it answers with before a page sees it — a place a
+tool emitted and a place a person typed into a field are equally unvouched-for, and both
+reach a program. It rejects what does not parse rather than dropping it, because a run that
+quietly skips a place tells somebody it wrote about one it did not. A page builds a plan
+and spells no check, exactly as a caller of `Files` spells no check that a path stays
+inside the root.
 
 **Nothing marks a note as a tool's.** No field in the front matter, no tag, no heading: a
 note is read for what it says, and what wrote it leaves no trace of itself (§ "Tooling and
@@ -3314,8 +3327,13 @@ would be deciding it for them.
 
 **A run says what has happened and never guesses at what is left.** `DocumentingProgress`
 carries the stage, the place it is on, and the places behind it — and nothing that would
-have to be estimated. `stopped` with no `trouble` is a run the person stopped; `stopped`
+have to be estimated. A run is `reading` until it picks up its first place and `writing`
+from then on rather than from its first write, so `at` names somewhere for the whole of the
+time it is on one. `stopped` with no `trouble` is a run the person stopped; `stopped`
 with words is one that could not go on, and those words are the ones a person can act on.
+**A survey has no such field and needs none**: it answers with places or it rejects, and
+the words it rejects with are what the surface shows — folding trouble into the empty list
+would tell somebody there is nothing worth a note when nothing ran.
 `progressFits` is the one statement of which of those fields a stage may carry, because a
 shape cannot say it without a refinement and a refinement here would take `.omit()` and
 `.partial()` with it.
@@ -3334,8 +3352,9 @@ happened, and it needs no field to be told.
 **Agents outside the app are a later wave, and nothing here is in its way.** An MCP server
 reading and writing the same graph would sit where the CLI sits — over `@sloppy/vault` and
 `@sloppy/local`, holding no vocabulary of its own — and everything above is already that
-shape: the format is in `AGENT.md`, the writing rule is the store's, and the seam carries
-no assumption that the tool is on this machine beyond the shell that reaches it.
+shape: the format is in `AGENT.md`, the writing rule is `writeOnto`'s in `@sloppy/local`,
+and the seam carries no assumption that the tool is on this machine beyond the shell that
+reaches it.
 
 ## The vault's history
 

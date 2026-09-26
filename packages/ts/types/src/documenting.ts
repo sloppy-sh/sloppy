@@ -91,7 +91,8 @@ export type ProposedPlace = z.infer<typeof ProposedPlaceSchema>;
 /**
  * More places than one run should be asked for. A plan longer than this is a
  * survey nobody read, and the run behind it costs somebody real time and real
- * money.
+ * money. A survey answers at most this many for the same reason, which is
+ * `DocumentingAccess.survey`'s to hold since no shape bounds its answer.
  */
 export const MAX_PLACES_PER_RUN = 100;
 
@@ -110,8 +111,11 @@ export type DocumentingPlan = z.infer<typeof DocumentingPlanSchema>;
 
 /**
  * What a run is doing, and the one way it ends early. `reading` is a run that
- * has written nothing yet, `writing` one that has, `done` one that reached the
- * end of its plan, and `stopped` one that did not.
+ * has picked up no place yet; `writing` is one that is on a place, from the
+ * moment it picks that place up rather than from its first write — which is
+ * what makes {@link DocumentingProgressSchema}'s `at` present for the whole of
+ * the time a run is on somewhere. `done` reached the end of its plan, and
+ * `stopped` did not.
  */
 export const DOCUMENTING_STAGES = [
   "reading",

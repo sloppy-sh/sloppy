@@ -5,12 +5,12 @@
 import { basename, dirname, relative, resolve } from "node:path";
 import { SloppyApiError } from "@sloppy/client";
 import {
-  CONTAINER_DIR,
+  containerDataAt,
   containerOf,
   type Files,
   LocalApi,
 } from "@sloppy/local";
-import { SLOPPY_DIR, VaultFormatError } from "@sloppy/vault";
+import { VaultFormatError } from "@sloppy/vault";
 import { check } from "./check.js";
 import { containerAt, heldAt } from "./folder.js";
 import { draft } from "./draft.js";
@@ -158,17 +158,10 @@ function nothingDone(
   return NOTHING_DONE;
 }
 
-/** Where what is nobody else's business goes for a project: inside the
- *  container's own sidecar folder, which is the one place in a repository that
- *  is Sloppy's rather than the person's. */
-function dataFor(root: string): string {
-  return `${root}/${CONTAINER_DIR}/${SLOPPY_DIR}`;
-}
-
 function filesFor(context: CliContext, root: string): Files {
   return (context.filesAt ?? ((at, data) => new NodeFiles({ root: at, data })))(
     root,
-    dataFor(root),
+    containerDataAt(root),
   );
 }
 

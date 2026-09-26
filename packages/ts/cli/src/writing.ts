@@ -91,12 +91,3 @@ export function compass(filled: Partial<Compass>): DocumentNode {
 export function section(said: string, ...held: DocumentNode[]): BlockDocument {
   return { type: "doc", content: [heading(said), ...held] };
 }
-
-/** The words a section opens with, which is how the CLI finds the section it
- *  wrote before and writes that one again rather than a second copy. */
-export function headingOf(content: BlockDocument): string | undefined {
-  const opener = (content.content ?? [])[0];
-  if (!opener || opener.type !== "heading") return undefined;
-  const said = (opener.content ?? []).map((held) => held.text ?? "").join("");
-  return said === "" ? undefined : said;
-}

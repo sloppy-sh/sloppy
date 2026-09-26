@@ -1,11 +1,28 @@
 // Where a project keeps its notes, and where the code it is about is —
 // docs/ARCHITECTURE.md § "A project's container".
 
-import { GRAPH_FILE, type VaultGraph } from "@sloppy/vault";
+import { GRAPH_FILE, SLOPPY_DIR, type VaultGraph } from "@sloppy/vault";
 import type { Files } from "./files.js";
 
 /** What the vault inside a project's root folder is called. */
 export const CONTAINER_DIR = ".sloppy";
+
+/**
+ * Where what is nobody else's business goes for the project rooted at `root`,
+ * spelled as the platform spells `root`: inside the container's own sidecar
+ * folder, the one place in a repository that is Sloppy's rather than the
+ * person's.
+ *
+ * **Everything writing a project's notes as the CONTAINER must root its data
+ * here**, because the identity kept there is who that writing is by: a second
+ * folder is a second identity in one container, and each then offers the other
+ * amendments to notes no person ever wrote in — docs/ARCHITECTURE.md
+ * § "Asking a tool to write the notes". `keepingDataAt` in `./files.js` is what
+ * hands it to a store.
+ */
+export function containerDataAt(root: string): string {
+  return `${root}/${CONTAINER_DIR}/${SLOPPY_DIR}`;
+}
 
 /** The vault inside `root`, or absent where that folder holds no graph — which
  *  is an ordinary folder somebody picked, and not a failure. */

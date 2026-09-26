@@ -115,14 +115,34 @@ export interface VaultAccess {
  * underway here, so either asked while either is underway REJECTS rather than
  * starting a second, queueing it or replacing the first, and {@link
  * DocumentingAccess.stop} ends whichever of the two it is.
+ *
+ * **The IMPLEMENTATION parses, in both directions, and no caller repeats it.**
+ * The members below take and answer plain TypeScript, which holds nothing at
+ * runtime, and every path in these shapes reaches a program: a place a tool
+ * emitted by reading somebody's checked-out tree and a place a person typed
+ * into a field are equally unvouched-for. So a shell parses what it is handed
+ * (`DocumentingIntentSchema`, `DocumentingPlanSchema`) before acting on any of
+ * it, and parses what it answers with (`ProposedPlaceSchema`,
+ * `DocumentingProgressSchema`) before a page sees it — rejecting what does not
+ * parse rather than dropping it, so nobody is told a place was written about
+ * that was not. A page spells no check of its own, the way a caller of `Files`
+ * in `@sloppy/local` spells no check that a path stays inside the root.
  */
 export interface DocumentingAccess {
 	/** The tools this device can reach. An EMPTY list is a device with none. */
 	tools(): Promise<DocumentingTool[]>;
-	/** Read the project against what somebody asked for, and propose the places
-	 *  worth a note. Nothing is written. An EMPTY list is a survey proposing
-	 *  none: one that found nothing worth a note, and one somebody stopped,
-	 *  which proposes none of what it had reached. */
+	/**
+	 * Read the project against what somebody asked for, and propose the places
+	 * worth a note — at most `MAX_PLACES_PER_RUN` of them, which is what a plan
+	 * may carry. Nothing is written.
+	 *
+	 * An EMPTY list is a survey proposing none: one that found nothing worth a
+	 * note, and one somebody stopped, which proposes none of what it had
+	 * reached. **A survey that could not go on REJECTS**, with words for the
+	 * person in its message, which are the ones the surface shows — trouble is
+	 * never folded into the empty list, because that tells somebody there is
+	 * nothing worth writing about when in fact nothing ran.
+	 */
 	survey(intent: DocumentingIntent): Promise<ProposedPlace[]>;
 	/**
 	 * Write the notes the plan names, in its order, telling `watch` each time
@@ -140,10 +160,14 @@ export interface DocumentingAccess {
 	 * minted there the first time — the one `sloppy draft` writes under, and
 	 * never one on the list this app writes under: a run holding that one lands
 	 * on every note its person has written instead of offering. A store reaches
-	 * it by being given files that keep their data there — `keepingDataAt` in
-	 * `@sloppy/local` — because a shell's own files answer with the app's own
-	 * data path however they are re-rooted, so a store handed those writes as
-	 * the person. `PlaceDone` says which of the two happened at each place.
+	 * it by being given files that keep their data at `containerDataAt(project)`
+	 * — `keepingDataAt` in `@sloppy/local`, both from there, and **the path is
+	 * that function's answer and nothing spelled again here**: a second folder
+	 * is a second identity in one container, and the two then offer each other
+	 * amendments to notes no person has written in. A shell's own files answer
+	 * with the app's own data path however they are re-rooted, so a store handed
+	 * those writes as the person. `PlaceDone` says which of the two happened at
+	 * each place.
 	 */
 	run(
 		plan: DocumentingPlan,

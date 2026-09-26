@@ -91,6 +91,23 @@ describe("what AGENT.md teaches", () => {
     expect(compass?.south).toHaveLength(0);
   });
 
+  it("teaches both emoji forms, and the reader reads each as it says", () => {
+    const forms = [...AGENT_MD.matchAll(/`(::?)wave\1`/g)].map((found) =>
+      found[0].slice(1, -1),
+    );
+    expect(forms).toEqual([":wave:", "::wave::"]);
+    for (const [form, sticker] of [
+      [forms[0], undefined],
+      [forms[1], true],
+    ] as const) {
+      const document = fromMarkdown(form, emptySidecars("b"));
+      const emoji = document.content?.[0]?.content?.[0];
+      expect(emoji?.type).toBe("emoji");
+      expect(emoji?.attrs?.name).toBe("wave");
+      expect(emoji?.attrs?.sticker).toBe(sticker);
+    }
+  });
+
   it("carries every shape the app starts a note from", () => {
     for (const shape of NOTE_TEMPLATES) {
       expect(AGENT_MD).toContain(`**${shape.name}**`);
