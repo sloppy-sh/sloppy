@@ -25,12 +25,7 @@ import type {
 	ChatToolAnswer,
 	ChatToolCall,
 	DidSyr,
-	DocumentingIntent,
-	DocumentingPlan,
-	DocumentingProgress,
-	DocumentingTool,
-	OwnedRef,
-	ProposedPlace
+	OwnedRef
 } from '@sloppy/types';
 import type { SloppyApi } from './api.js';
 import { storedOrigin } from './stores/prefs.svelte.js';
@@ -108,84 +103,6 @@ export interface VaultAccess {
 	 *  is a shell that cannot reach a project's own folder, and nothing about
 	 *  opening one is put in front of anybody. */
 	openProject?(): Promise<string | undefined>;
-}
-
-/**
- * Asking a tool on this device to read the project and write its notes, and
- * watching what comes back — docs/ARCHITECTURE.md § "Writing the notes in four
- * steps". **Superseded by {@link ChatAccess}, and going with the four-step
- * surface over it** — nothing new is built against it.
- *
- * **One at a time, counting both.** A survey and a run are the same one thing
- * underway here, so either asked while either is underway REJECTS rather than
- * starting a second, queueing it or replacing the first, and {@link
- * DocumentingAccess.stop} ends whichever of the two it is.
- *
- * **The IMPLEMENTATION parses, in both directions, and no caller repeats it.**
- * The members below take and answer plain TypeScript, which holds nothing at
- * runtime, and every path in these shapes reaches a program: a place a tool
- * emitted by reading somebody's checked-out tree and a place a person typed
- * into a field are equally unvouched-for. So a shell parses what it is handed
- * (`DocumentingIntentSchema`, `DocumentingPlanSchema`) before acting on any of
- * it, and parses what it answers with (`ProposedPlaceSchema`,
- * `DocumentingProgressSchema`) before a page sees it — rejecting what does not
- * parse rather than dropping it, so nobody is told a place was written about
- * that was not. **Two of those checks are not in the shapes**, because a
- * refinement there would take `.omit()` and `.partial()` with it:
- * `placesAreDistinct` over the places of a plan it is handed and of a survey
- * it answers with, and `progressFits` over every progress it reports. A page
- * spells no check of its own, the way a caller of `Files` in `@sloppy/local`
- * spells no check that a path stays inside the root.
- */
-export interface DocumentingAccess {
-	/** The tools this device can reach. An EMPTY list is a device with none. */
-	tools(): Promise<DocumentingTool[]>;
-	/**
-	 * Read the project against what somebody asked for, and propose the places
-	 * worth a note — at most `MAX_PLACES_PER_RUN` of them, which is what a plan
-	 * may carry. Nothing is written.
-	 *
-	 * An EMPTY list is a survey proposing none: one that found nothing worth a
-	 * note, and one somebody stopped, which proposes none of what it had
-	 * reached. **A survey that could not go on REJECTS**, with words for the
-	 * person in its message, which are the ones the surface shows — trouble is
-	 * never folded into the empty list, because that tells somebody there is
-	 * nothing worth writing about when in fact nothing ran.
-	 */
-	survey(intent: DocumentingIntent): Promise<ProposedPlace[]>;
-	/**
-	 * Write the notes the plan names, in its order, telling `watch` each time
-	 * the answer changes and resolving with the last answer it gave.
-	 *
-	 * **A run holds ITSELF to `writesAlone`**, because the store will not: a
-	 * project's container is an open graph, so `writeOutcome` answers `lands`
-	 * for every writer on every note in it. `writeOnto` in `@sloppy/local` is
-	 * that rule written once — it writes onto the note where `writesAlone` is
-	 * true and proposes an amendment where it is not — and a run goes through
-	 * it rather than calling the store directly.
-	 *
-	 * **A run writes as the notes' own container, and never as the person.**
-	 * Its writer is the identity kept in the container's own private data,
-	 * minted there the first time — the one `sloppy draft` writes under, and
-	 * never one on the list this app writes under: a run holding that one lands
-	 * on every note its person has written instead of offering. A store reaches
-	 * it by being given files that keep their data at `containerDataAt(project)`
-	 * — `keepingDataAt` in `@sloppy/local`, both from there, and **the path is
-	 * that function's answer and nothing spelled again here**: a second folder
-	 * is a second identity in one container, and the two then offer each other
-	 * amendments to notes no person has written in. A shell's own files answer
-	 * with the app's own data path however they are re-rooted, so a store handed
-	 * those writes as the person. `PlaceDone` says which of the two happened at
-	 * each place.
-	 */
-	run(
-		plan: DocumentingPlan,
-		watch: (progress: DocumentingProgress) => void
-	): Promise<DocumentingProgress>;
-	/** End what is underway here, resolving once it has ended — after that act's
-	 *  own promise has settled, so another may be asked for the moment this
-	 *  resolves. Nothing underway is not a failure. */
-	stop(): Promise<void>;
 }
 
 /** What {@link ChatAccess.open} is asked for. */
@@ -369,12 +286,6 @@ export interface AppRuntime {
 	 *  that would need one. `CredentialsAccess` in `@sloppy/local` declares
 	 *  every act. */
 	credentials?: CredentialsAccess;
-	/** Asking a tool on this device to write the project's notes — a shell that
-	 *  defines it also defines {@link AppRuntime.project}. Absent → nothing here
-	 *  can run a program of the person's, so nothing about writing the notes
-	 *  this way is put in front of anybody, which is every browser tab.
-	 *  {@link DocumentingAccess} declares every act. */
-	documenting?: DocumentingAccess;
 	/** Chatting with an agent on this device about the project — a shell that
 	 *  defines it also defines {@link AppRuntime.project}. Absent → nothing here
 	 *  can run a program of the person's, so nothing about a chat is put in
@@ -494,7 +405,6 @@ export const runtime = {
 	project: async (): Promise<Files | undefined> => current.project?.(),
 	gitDefaults: (): GitDefaultsAccess | undefined => current.gitDefaults,
 	credentials: (): CredentialsAccess | undefined => current.credentials,
-	documenting: (): DocumentingAccess | undefined => current.documenting,
 	chat: (): ChatAccess | undefined => current.chat,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,

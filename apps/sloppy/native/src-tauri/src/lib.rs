@@ -1,5 +1,4 @@
 mod chat;
-mod documenting;
 mod history;
 mod program;
 mod remotes;
@@ -10,7 +9,7 @@ mod vault;
 use tauri::{Manager, Runtime};
 
 /// The whole of what this shell answers: `Files` and `History` in
-/// `@sloppy/local` and `DocumentingAccess` and `ChatAccess` in
+/// `@sloppy/local` and `ChatAccess` in
 /// `@sloppy/app-core`, which declare every one of them and what its answer
 /// means.
 pub(crate) fn commands<R: Runtime>(
@@ -53,9 +52,6 @@ pub(crate) fn commands<R: Runtime>(
         remotes::history_pull,
         remotes::history_push,
         remotes::files_clone,
-        documenting::documenting_tools,
-        documenting::documenting_ask,
-        documenting::documenting_stop,
         chat::chat_agents,
         chat::chat_open,
         chat::chat_say,
@@ -97,7 +93,6 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol(vault::SCHEME, vault::protocol)
         .setup(|app| {
             app.manage(vault::Folders::new(app.path().app_data_dir()?)?);
-            app.manage(documenting::Running::default());
             app.manage(chat::Chat::default());
 
             // A custom scheme only fires for an installed app: iOS and Android

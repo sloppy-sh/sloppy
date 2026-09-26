@@ -1,6 +1,7 @@
 // An anchor from a note into the code it is about, carried as an ordinary link
 // — docs/ARCHITECTURE.md § "A project's container".
 
+import { z } from "zod";
 import type { BlockDocument } from "./document.js";
 
 /** What a link holds to point at code rather than at a page. */
@@ -75,6 +76,25 @@ export function insideProject(path: string): boolean {
         !readsAsOption(segment),
     );
 }
+
+/** Longer than any path a project holds, and short enough that a place is one
+ *  line wherever it is shown. */
+export const PROJECT_PATH_MAX = 1024;
+
+/**
+ * Somewhere in the project. A path can arrive from a tool reading somebody's
+ * repository rather than from a person typing, so what one may hold is settled
+ * where both ends of a seam parse it: inside the project, nothing that reads as
+ * an option to a program, nothing invisible ({@link insideProject}), and
+ * bounded.
+ */
+export const ProjectPathSchema = z
+  .string()
+  .max(
+    PROJECT_PATH_MAX,
+    `A place's path is at most ${PROJECT_PATH_MAX} characters.`,
+  )
+  .refine(insideProject, "That place is outside this project.");
 
 function sameness(anchor: CodeAnchor): string {
   return JSON.stringify([anchor.path, anchor.fragment ?? null]);

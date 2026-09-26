@@ -3,10 +3,11 @@
 // docs/ARCHITECTURE.md § "Asking a tool to write the notes".
 
 import { z } from "zod";
+import { ProjectPathSchema } from "./code-anchor.js";
 import { AddressSchema } from "./address.js";
 import { WRITE_DONE } from "./authority.js";
 import { OwnedRefSchema, TimestampSchema, UlidSchema } from "./common.js";
-import { ProjectPathSchema } from "./documenting.js";
+
 import { NODE_TITLE_MAX } from "./node.js";
 import { MAX_TAGS_PER_NODE, TagsSchema } from "./tag.js";
 

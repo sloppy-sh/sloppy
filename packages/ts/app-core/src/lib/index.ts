@@ -9,7 +9,6 @@ export type {
 	ChatAccess,
 	ChatAsked,
 	DeploymentMode,
-	DocumentingAccess,
 	KnownFolder,
 	VaultAccess
 } from './runtime.js';

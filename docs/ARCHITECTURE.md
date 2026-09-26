@@ -3412,59 +3412,6 @@ vocabulary of its own — and everything above is already that shape: the format
 `AGENT.md`, the writing rule is `writeOnto`'s, and the acts are `CHAT_TOOL_SPECS` rather
 than anything this shell invented.
 
-## Writing the notes in four steps
-
-**This is the surface the chat replaces, and it is written down here because it still
-ships.** Nothing new is built against it: a change to how a maintainer asks for notes
-belongs in § "Asking a tool to write the notes", and this section goes when the surface
-does. Everything the two share is said there and not repeated here — who a write is by,
-`writeOnto` and the offer rule, `containerDataAt`, `.sloppy/AGENT.md`, the tool started
-rather than composed, and native-only.
-
-**Four stages, in that order, because the cheap one decides what the expensive one does.**
-An INTENT is what somebody asked for, in their own words. A SURVEY reads the project
-against it and proposes places — a folder, a file — each with the reason it was proposed,
-and writes nothing. The person REFINES that list: they take places out, and they add what
-was missed, which arrives carrying no reason because nobody proposed it to them. The RUN
-writes about the places that survived, in the order they stand in. Nothing skips a stage: a
-run made straight from an intent is a bill somebody did not agree to.
-
-**A plan names each place once, and `placesAreDistinct` is where that is said.** Refining
-is somebody adding places by hand to a list a pass over the code proposed, so one arriving
-twice is ordinary; what is not is the run that follows, because the plan is settled before
-any of it is written and the second entry for a path carries no note however many the first
-leaves there. The shape bounds how many places a plan carries and cannot say they are
-distinct, so the predicate sits beside `progressFits` and the seam holds a plan and a
-survey's answer to it.
-
-**A run says what has happened and never guesses at what is left.** `DocumentingProgress`
-carries the stage, the place it is on, and the places behind it — and nothing that would
-have to be estimated. A run is `reading` until it picks up its first place and `writing`
-from then on rather than from its first write, so `at` names somewhere for the whole of the
-time it is on one. `stopped` with no `trouble` is a run the person stopped; `stopped` with
-words is one that could not go on, and those words are the ones a person can act on. **A
-survey has no such field and needs none**: it answers with places or it rejects, and the
-words it rejects with are what the surface shows — folding trouble into the empty list would
-tell somebody there is nothing worth a note when nothing ran. `progressFits` is the one
-statement of which of those fields a stage may carry, because a shape cannot say it without
-a refinement and a refinement here would take `.omit()` and `.partial()` with it.
-
-**One thing at a time on a device, counting the survey, and stopping it finishes before
-another begins.** A survey and a run are each a tool started here, so either asked while
-either is underway is refused rather than queued or made to replace the first. `stop` ends
-whichever is underway and resolves after that act has settled its own promise, so a surface
-may ask again the moment it resolves. **A survey somebody stopped proposes nothing**: half a
-pass over a repository is not a proposal, so it answers with the empty list a survey that
-found nothing worth a note answers with.
-
-**The shapes are `documenting.ts` in `@sloppy/types` and the seam is
-`AppRuntime.documenting`.** `DocumentingIntent`, `ProposedPlace`, `DocumentingPlan` and
-`DocumentingProgress` are what both ends hold; `DocumentingAccess` in `@sloppy/app-core`'s
-runtime is the whole of what a page may ask for — the tools this device can reach, a survey,
-a run it watches, and an end to whatever is underway. `DOCUMENTING_TOOLS` is the set of
-tools, `DocumentingIntent.tool` carries which one was asked for, and `documentingToolName`
-is the one copy of what each is called where somebody reads it.
-
 ## The vault's history
 
 **The folder is a git repository, and that is the whole of the history.** A folder of
