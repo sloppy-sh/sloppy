@@ -72,15 +72,17 @@ const ALSO_LOOKED_IN: &[&str] = &["~/AppData/Roaming/npm", "~/.bun/bin", "~/.loc
 /// enough that a person reads it in one go.
 const SAID_MAX: usize = 400;
 
-/// What one line of an answer may run to, and what the whole of one may. A
-/// program past either is not answering, and its run is ended rather than what
-/// it writes being held here and sent on to the page.
-const LINE_MAX: usize = 64 * 1024;
+/// What an answer may run to, the whole of it and so any one line of it: the
+/// tool is asked for JSON, which carries its own newlines escaped, so an
+/// answer arrives as a single line. A program past this is not answering, and
+/// its run is ended rather than what it writes being held here and sent on to
+/// the page.
 const HEARD_MAX: usize = 1024 * 1024;
 
 const NO_PROGRAM: &str = "Sloppy could not start that tool. Check it is installed, then try again.";
 const ALREADY: &str = "Sloppy is already reading this project. Wait for it to finish, or stop it.";
 const DIDNT_FINISH: &str = "That did not finish. Try again.";
+const TOO_MUCH: &str = "That answer was too long to read. Ask for less, then try again.";
 
 /// What a person is told where a run could not start or could not go on.
 #[derive(Debug)]
@@ -230,7 +232,7 @@ fn ask(
         return Ok(Answer { stopped: true });
     }
     if !heard {
-        return Err(RunError::new(DIDNT_FINISH));
+        return Err(RunError::new(TOO_MUCH));
     }
     if ended.finished {
         return Ok(Answer { stopped: false });
@@ -241,7 +243,7 @@ fn ask(
 }
 
 /// Every line the program writes out, handed on as it arrives. `false` is a
-/// program that went past `LINE_MAX` or `HEARD_MAX`.
+/// program that went past `HEARD_MAX`.
 fn hear(out: ChildStdout, said: &dyn Fn(String)) -> bool {
     let mut reader = BufReader::new(out);
     let mut line = Vec::new();
@@ -261,16 +263,16 @@ fn hear(out: ChildStdout, said: &dyn Fn(String)) -> bool {
     }
 }
 
-/// One line, never holding more than `LINE_MAX` of it. `None` is a line that
+/// One line, never holding more than `HEARD_MAX` of it. `None` is a line that
 /// ran past that; `Some(0)` is the end of what the program had to say, which
 /// is what a read it could not finish is taken for too.
 fn a_line<R: BufRead>(reader: &mut R, line: &mut Vec<u8>) -> Option<usize> {
     line.clear();
     match (&mut *reader)
-        .take(LINE_MAX as u64 + 1)
+        .take(HEARD_MAX as u64 + 1)
         .read_until(b'\n', line)
     {
-        Ok(read) if read > LINE_MAX => None,
+        Ok(read) if read > HEARD_MAX => None,
         Ok(read) => Some(read),
         Err(_) => Some(0),
     }
@@ -300,7 +302,7 @@ fn start(program: &Path, args: &[&str], at: &Path, prompt: &str) -> Result<Child
 }
 
 /// The first thing the program said about its own trouble, drained as it runs
-/// so that a full pipe cannot hold the program up. A line past `LINE_MAX` is
+/// so that a full pipe cannot hold the program up. A line past `HEARD_MAX` is
 /// drained in pieces, and nothing after it is a sentence a person is shown.
 fn drained(from: Option<ChildStderr>) -> Option<JoinHandle<Option<String>>> {
     let from = from?;
@@ -735,19 +737,45 @@ mod tests {
 
         let (heard, answer) = asked(&program, &at, "");
 
-        assert_eq!(answer.unwrap_err().said(), DIDNT_FINISH);
-        assert!(heard.len() * 35 <= HEARD_MAX + LINE_MAX);
+        assert_eq!(answer.unwrap_err().said(), TOO_MUCH);
+        let held: usize = heard.iter().map(|line| line.len() + 1).sum();
+        assert!(held <= HEARD_MAX);
+    }
+
+    /// The tool is asked for JSON, which carries its newlines escaped, so the
+    /// whole of an answer is one line and a long one is an ordinary answer.
+    #[cfg(unix)]
+    #[test]
+    fn a_whole_answer_on_one_line_is_heard_out() {
+        let at = scratch("one-line");
+        let much = 200 * 1024;
+        let program = stub(
+            &at,
+            "tool",
+            &format!("head -c {much} /dev/zero | tr '\\0' 'a'"),
+        );
+
+        let (heard, answer) = asked(&program, &at, "");
+
+        assert!(!answer.expect("a run").stopped);
+        assert_eq!(heard.len(), 1);
+        assert_eq!(heard[0].len(), much);
     }
 
     #[cfg(unix)]
     #[test]
     fn one_line_longer_than_an_answer_ends_the_run_rather_than_being_held() {
         let at = scratch("long-line");
-        let program = stub(&at, "tool", "head -c 200000 /dev/zero | tr '\\0' 'a'");
+        let much = HEARD_MAX + 1024;
+        let program = stub(
+            &at,
+            "tool",
+            &format!("head -c {much} /dev/zero | tr '\\0' 'a'"),
+        );
 
         let (heard, answer) = asked(&program, &at, "");
 
-        assert_eq!(answer.unwrap_err().said(), DIDNT_FINISH);
+        assert_eq!(answer.unwrap_err().said(), TOO_MUCH);
         assert!(heard.is_empty());
     }
 

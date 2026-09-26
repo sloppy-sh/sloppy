@@ -16,7 +16,7 @@ import {
 	type OwnedRef,
 	type ProposedPlace
 } from '@sloppy/types';
-import { emptySidecars, fromMarkdown, toMarkdown } from '@sloppy/vault';
+import { emptySidecars, fromMarkdown, toMarkdown, type Sidecars } from '@sloppy/vault';
 import type { NoteAsWritten, SaidNote } from './documenting-tool';
 
 /** A store over the notes for the project rooted at `root`, writing as the
@@ -84,16 +84,14 @@ function noteOver(notes: readonly NoteHere[], path: string): OwnedRef | undefine
 	return over?.ref;
 }
 
-/** A note as the tool is shown it. */
-export async function noteAsWritten(api: LocalApi, note: NodeView): Promise<NoteAsWritten> {
-	const blocks = await api.listBlocks(note.ref);
-	return {
-		title: note.title,
-		sections: blocks.map((block) => {
-			const id = splitOwnedRef(block.ref).localId;
-			return { id, markdown: toMarkdown(block.content, emptySidecars(id)) };
-		})
-	};
+/** The note a place already has, and what the markdown the tool is shown
+ *  cannot carry: a drawing's strokes and a picture's size are in `aside`
+ *  rather than in `shown`, so what the tool hands back is only read back with
+ *  the `aside` it was shown from. */
+export interface StandingNote {
+	note: NodeView;
+	shown: NoteAsWritten;
+	aside: Sidecars;
 }
 
 /** The note this place already has, whether the plan named it or the notes
@@ -102,13 +100,24 @@ export async function standingNote(
 	api: LocalApi,
 	notes: readonly NoteHere[],
 	place: ProposedPlace
-): Promise<NodeView | undefined> {
+): Promise<StandingNote | undefined> {
 	for (const ref of [place.note, noteAbout(notes, place.path)]) {
 		if (ref === undefined) continue;
 		const held = await api.getNode(ref);
-		if (held) return held;
+		if (held) return await asWritten(api, held);
 	}
 	return undefined;
+}
+
+async function asWritten(api: LocalApi, note: NodeView): Promise<StandingNote> {
+	const blocks = await api.listBlocks(note.ref);
+	const aside = emptySidecars(splitOwnedRef(note.ref).localId);
+	const sections = blocks.map((block) => {
+		const id = splitOwnedRef(block.ref).localId;
+		// A drawing's files are named after the section it is in, not the note.
+		return { id, markdown: toMarkdown(block.content, { ...aside, block: id }) };
+	});
+	return { note, shown: { title: note.title, sections }, aside };
 }
 
 /** What the run leaves at a place. Absent is a place the tool had nothing to
@@ -121,14 +130,15 @@ export async function writeNote(
 	api: LocalApi,
 	here: ContainerNotes,
 	place: ProposedPlace,
-	standing: NodeView | undefined,
+	standing: StandingNote | undefined,
 	said: SaidNote
 ): Promise<NoteLeft | undefined> {
 	if (said.sections.length === 0) return undefined;
-	const sections = said.sections.map((markdown) => fromMarkdown(markdown, emptySidecars(ulid())));
+	const aside = standing?.aside ?? emptySidecars(ulid());
+	const sections = said.sections.map((markdown) => fromMarkdown(markdown, aside));
 	if (standing) {
-		const { done } = await writeOnto(api, standing, sections);
-		return { ref: standing.ref, done };
+		const { done } = await writeOnto(api, standing.note, sections);
+		return { ref: standing.note.ref, done };
 	}
 	const under = noteOver(here.notes, place.path) ?? here.branch;
 	const note = await api.createNode({

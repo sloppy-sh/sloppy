@@ -1,8 +1,15 @@
 import type { DocumentingAccess } from '@sloppy/app-core';
 import { LocalApi, MemoryFiles, type Files } from '@sloppy/local';
-import type { BlockDocument, DocumentingProgress, OwnedRef } from '@sloppy/types';
+import {
+	splitOwnedRef,
+	type BlockDocument,
+	type DocumentingProgress,
+	type OwnedRef
+} from '@sloppy/types';
+import { inkImagePath, inkStem, mediaPath } from '@sloppy/vault';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { tauriDocumenting, type Lines } from './documenting';
+import { containerApi } from './documenting-notes';
 
 const PROJECT = '/work/compiler';
 const PARSER = 'src/parser.ts';
@@ -78,6 +85,25 @@ function about(heading: string, path: string): BlockDocument {
 					{ type: 'text', text: path, marks: [{ type: 'link', attrs: { href: `code:${path}` } }] }
 				]
 			}
+		]
+	};
+}
+
+const UPLOAD = '01J0000000000000000000000A';
+const STROKES = [{ points: [{ x: 1, y: 2, pressure: 0.5, t: 0 }], width: 2 }];
+
+/** A section holding what markdown has no syntax for: a drawing's strokes,
+ *  and how big a picture is. */
+function drawnIn(heading: string): BlockDocument {
+	return {
+		type: 'doc',
+		content: [
+			{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: heading }] },
+			{
+				type: 'ink',
+				attrs: { strokes: STROKES, width: 400, height: 300, description: 'the shape' }
+			},
+			{ type: 'picture', attrs: { upload_id: UPLOAD, alt: 'a photo', width: 800, height: 600 } }
 		]
 	};
 }
@@ -372,6 +398,42 @@ describe('a run', () => {
 
 		const note = await theirs().getNode(done.places[0].note!.ref);
 		expect(note?.parent).toBeUndefined();
+	});
+
+	/** A drawing is strokes, and markdown carries a picture of them and no
+	 *  more: a tool that leaves the line alone leaves the drawing alone. */
+	it('keeps the drawing and the picture a section already holds', async () => {
+		const api = containerApi(PROJECT, device());
+		const note = await api.createNode({
+			from: { relation: 'free' },
+			title: 'The reader',
+			tags: []
+		});
+		const block = await api.createBlock({ node: note.ref, content: drawnIn('What it does') });
+		const stem = inkStem(splitOwnedRef(block.ref).localId, 0);
+		answers = [
+			JSON.stringify({
+				sections: [
+					`## What it does\n\nIt reads a file.\n\n![the shape](${inkImagePath(stem)})\n\n![a photo](${mediaPath(UPLOAD)})`
+				]
+			})
+		];
+
+		const done = await documenting().run(
+			{ intent: { said: '' }, places: [{ path: PARSER, note: note.ref }] },
+			() => {}
+		);
+
+		expect(done.places[0].note).toEqual({ ref: note.ref, done: 'written' });
+		const [written] = await sectionsOf(note.ref);
+		expect(written.content).toContainEqual({
+			type: 'ink',
+			attrs: { strokes: STROKES, width: 400, height: 300, description: 'the shape' }
+		});
+		expect(written.content).toContainEqual({
+			type: 'picture',
+			attrs: { upload_id: UPLOAD, alt: 'a photo', width: 800, height: 600 }
+		});
 	});
 
 	/** A note that is there keeps its title, so the answer shape does not ask

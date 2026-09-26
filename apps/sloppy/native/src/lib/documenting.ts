@@ -30,7 +30,6 @@ import { notePrompt, noteSaid, placesSaid, surveyPrompt } from './documenting-to
 import {
 	containerApi,
 	noteAbout,
-	noteAsWritten,
 	notesHere,
 	pathsWritten,
 	standingNote,
@@ -142,7 +141,7 @@ class TauriDocumenting implements DocumentingAccess {
 					const said = await this.ask(
 						tool,
 						where,
-						notePrompt(asked.intent, place, standing && (await noteAsWritten(api, standing)))
+						notePrompt(asked.intent, place, standing?.shown)
 					);
 					if (said === undefined) return told({ stage: 'stopped', places: [...places] });
 					const answer = noteSaid(said);
