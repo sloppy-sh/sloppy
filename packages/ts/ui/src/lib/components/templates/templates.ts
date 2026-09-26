@@ -1,103 +1,26 @@
-// The shapes a note can start from, and what writing one onto a note does —
-// docs/ARCHITECTURE.md § "Blocks and ink".
+// Writing a shape's sections onto a note. The shapes themselves are
+// `NOTE_TEMPLATES` in `@sloppy/types`, which the app and `.sloppy/AGENT.md`
+// both read — docs/ARCHITECTURE.md § "Blocks and ink".
 
 import {
 	compassNode,
-	DECISION_WHY_HEADING,
 	type BlockDocument,
 	type BlockView,
 	type CreateBlockRequest,
 	type DocumentNode,
 	type NodePlacement,
-	type OwnedRef
+	type NoteTemplate,
+	type OwnedRef,
+	type SectionOpening,
+	type TemplateId
 } from '@sloppy/types';
 import { EMPTY_COMPASS } from '../editor/compass-node.js';
 
-export type TemplateId =
-	| 'claim'
-	| 'question'
-	| 'source'
-	| 'objection'
-	| 'synthesis'
-	| 'walkthrough'
-	| 'decision';
-
-/** What a seeded section opens on. Absent is somewhere to write. */
-export type SectionOpening = 'writing' | 'drawing' | 'compass';
-
-export interface TemplateSection {
-	heading: string;
-	opens?: SectionOpening;
-}
-
-export interface NoteTemplate {
-	/** Names this shape in a list of them, and reaches no further. */
-	id: TemplateId;
-	name: string;
-	sections: readonly TemplateSection[];
-}
+export type { NoteTemplate, SectionOpening, TemplateId, TemplateSection } from '@sloppy/types';
+export { NOTE_TEMPLATES } from '@sloppy/types';
 
 /** A drawing's own coordinates, which a reader scales into its own width. */
 const SKETCH = { width: 600, height: 200 };
-
-export const NOTE_TEMPLATES: readonly NoteTemplate[] = [
-	{
-		id: 'claim',
-		name: 'Claim',
-		sections: [
-			{ heading: 'The claim in one sentence' },
-			{ heading: 'What makes me believe it' },
-			{ heading: 'What would change my mind' },
-			{ heading: 'Draw the mechanism', opens: 'drawing' }
-		]
-	},
-	{
-		id: 'question',
-		name: 'Question',
-		sections: [
-			{ heading: 'The question, sharpened' },
-			{ heading: 'What hangs on it' },
-			{ heading: "Where I've looked" }
-		]
-	},
-	{
-		id: 'source',
-		name: 'Source',
-		sections: [
-			{ heading: 'What it says in my words' },
-			{ heading: 'Quotes worth keeping, with locators' },
-			{ heading: 'What I take from it' }
-		]
-	},
-	{
-		id: 'objection',
-		name: 'Objection',
-		sections: [{ heading: 'The objection' }, { heading: 'What survives if I am right' }]
-	},
-	{
-		id: 'synthesis',
-		name: 'Synthesis',
-		sections: [
-			{ heading: 'What the run establishes' },
-			{ heading: 'What it does not' },
-			{ heading: 'Where next' }
-		]
-	},
-	{
-		id: 'walkthrough',
-		name: 'Walkthrough',
-		sections: [
-			{ heading: 'Start here' },
-			{ heading: 'The path it takes' },
-			{ heading: 'Where it can go wrong' }
-		]
-	},
-	{
-		id: 'decision',
-		name: 'Decision',
-		sections: [{ heading: 'Where this sits', opens: 'compass' }, { heading: DECISION_WHY_HEADING }]
-	}
-];
 
 /** What a section opens with under its name. */
 function opening(opens: SectionOpening | undefined): DocumentNode {
