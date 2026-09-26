@@ -9,9 +9,9 @@
 
 import type { OwnedRef } from '@sloppy/types';
 
-/** A part of a note somebody was sent to: its compass card, or the section a
- *  decision gives its reason in. */
-export type NoteLanding = 'compass' | 'why';
+/** A part of a note somebody was sent to: its compass card, the section a
+ *  decision gives its reason in, or the changes standing offered on it. */
+export type NoteLanding = 'compass' | 'why' | 'offers';
 
 declare global {
 	namespace App {

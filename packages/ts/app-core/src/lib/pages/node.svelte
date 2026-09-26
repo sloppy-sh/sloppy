@@ -1614,12 +1614,23 @@
 
 	/** The section an act sent the reader to, where this note holds one. */
 	const landingAt = $derived.by(() => {
-		if (landOn === undefined) return undefined;
-		const found =
-			landOn === 'compass'
-				? blocks.find((one) => compassOf(one.content) !== undefined)
-				: blocks.find((one) => headsWhy(one.content));
-		return found?.ref;
+		if (landOn === 'compass')
+			return blocks.find((one) => compassOf(one.content) !== undefined)?.ref;
+		if (landOn === 'why') return blocks.find((one) => headsWhy(one.content))?.ref;
+		return undefined;
+	});
+
+	/** An act that sent the reader to what is offered here opens it for them,
+	 *  once the offers on this note are known one way or the other. */
+	let sentToOffers: OwnedRef | null = null;
+
+	$effect(() => {
+		const opening = landOn === 'offers' && side === 'note' && standing.length > 0 ? ref : null;
+		untrack(() => {
+			if (opening === null || sentToOffers === opening) return;
+			sentToOffers = opening;
+			readingOffers = true;
+		});
 	});
 
 	/** The one act already answered, so a save that rewrites the stack does not

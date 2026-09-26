@@ -42,6 +42,7 @@
 	import Maximize from '@lucide/svelte/icons/maximize';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Network from '@lucide/svelte/icons/network';
+	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Search from '@lucide/svelte/icons/search';
@@ -127,6 +128,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import DocumentingSheet from '../components/documenting-sheet.svelte';
 	import EdgeSheet from '../components/edge-sheet.svelte';
 	import OpenHere from '../components/open-here.svelte';
 	import PersonSurface from '../components/person-surface.svelte';
@@ -141,6 +143,7 @@
 	import { canvasInk } from '../stores/canvas-ink.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
+	import { documenting } from '../stores/documenting.svelte.js';
 	import { find } from '../stores/find.svelte.js';
 	import { gitSettings } from '../stores/git-settings.svelte.js';
 	import { graphs, projectOf } from '../stores/graphs.svelte.js';
@@ -406,6 +409,8 @@
 		deleted.clear();
 		review.clear();
 		reviewing = false;
+		documenting.clear();
+		writingNotes = false;
 		readProjectFiles();
 		closeUndrawn();
 	}
@@ -414,6 +419,7 @@
 	 *  and `null` before the shell has answered. */
 	let projectFiles = $state.raw<Awaited<ReturnType<typeof runtime.project>> | null>(null);
 	let reviewing = $state(false);
+	let writingNotes = $state(false);
 
 	/** An answer about the folder that was is not about the folder that is. */
 	let askedFor = 0;
@@ -444,7 +450,13 @@
 	 *  been asked it. */
 	$effect(() => {
 		review.forget(graphs.current);
+		documenting.forget(graphs.current);
 	});
+
+	function askForNotes(): void {
+		writingNotes = true;
+		void documenting.opened(graphs.current);
+	}
 
 	/** What the code has left behind, asked for the graph on screen — DESIGN.md
 	 *  § "What the code left behind". A field that could not be read whole has no
@@ -2424,6 +2436,12 @@
 										What the code left behind
 									</DropdownMenu.Item>
 								{/if}
+								{#if projectFiles && documenting.reaches}
+									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={askForNotes}>
+										<NotebookPen class="size-4 text-muted-foreground" />
+										Write notes about the code
+									</DropdownMenu.Item>
+								{/if}
 								{#if graphHistory.keeps}
 									<DropdownMenu.Item
 										class="min-h-11 gap-2"
@@ -2805,6 +2823,14 @@
 	onOpen={(ref, at) => show(ref, null, at)}
 	onWrote={(ref) => show(ref, { from: null, shape: null })}
 />
+
+{#if projectFiles && documenting.reaches}
+	<DocumentingSheet
+		bind:open={writingNotes}
+		project={projectFiles}
+		onOpen={(ref, at) => show(ref, null, at)}
+	/>
+{/if}
 
 {#if lineAt}
 	{#key opening}
