@@ -100,6 +100,37 @@ describe("the folder a shell opened", () => {
     return { api: new LocalApi(files), files, store };
   }
 
+  // The container sits inside somebody's repository, so a key minted there is a
+  // key committed unless the history is told to pass over it — and only
+  // `sloppy init` used to tell it.
+  it("tells a project's history to pass over its keys, however the container arrived", async () => {
+    const held = opened("/Users/me/code");
+    await held.api.openProject("/Users/me/code");
+
+    const ignore = held.store.get("/Users/me/code/.sloppy/.gitignore");
+    expect(ignore).toBeDefined();
+    const lines = new TextDecoder().decode(ignore).split("\n");
+    expect(lines).toContain("*.key");
+    expect(lines).toContain("identities.json");
+  });
+
+  it("adds the missing lines to a container that already had none", async () => {
+    const store = new Map<string, Uint8Array>();
+    store.set(
+      "/Users/me/old/.sloppy/.gitignore",
+      new TextEncoder().encode("notes-i-wrote-myself\n"),
+    );
+    const held = opened("/Users/me/old", store);
+    await held.api.openProject("/Users/me/old");
+
+    const lines = new TextDecoder()
+      .decode(held.store.get("/Users/me/old/.sloppy/.gitignore"))
+      .split("\n");
+    // What somebody wrote themselves stays theirs.
+    expect(lines).toContain("notes-i-wrote-myself");
+    expect(lines).toContain("*.key");
+  });
+
   it("becomes the graph, named after itself, where it holds none", async () => {
     const held = opened("/Users/me/garden");
 

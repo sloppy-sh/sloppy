@@ -132,6 +132,7 @@ import {
   VaultFormatError,
 } from "@sloppy/vault";
 import { CONTAINER_DIR, containerOf } from "./container.js";
+import { keepOut } from "./kept-out.js";
 import { type Files, MemoryFiles } from "./files.js";
 import {
   LocalGraph,
@@ -1703,6 +1704,10 @@ export class LocalApi implements SloppyApi {
             ? await LocalGraph.open(at)
             : await this.startGraphIn(at, root, project);
       this.opened.set(root, graph);
+      // Every way in, not only the one that makes it: a container an app
+      // started, or one made before these lines existed, holds a key the
+      // moment anything writes as the container itself.
+      if (graph.projectRoot) await keepOut(graph.files);
       if (!written) await this.rememberVault(root);
       return graph;
     })();

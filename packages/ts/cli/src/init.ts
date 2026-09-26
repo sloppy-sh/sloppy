@@ -17,6 +17,7 @@ import {
   LocalApi,
   readCarriedIdentity,
   VAULTS_FILE,
+  keepOut,
 } from "@sloppy/local";
 import type { BlockDocument, OwnedRef } from "@sloppy/types";
 import { decodeText, encodeText, GRAPH_FILE } from "@sloppy/vault";
@@ -33,32 +34,6 @@ import { anchor, bullets, compass, paragraph, section } from "./writing.js";
 
 /** Where an agent working in this project finds how to write in it. */
 export const AGENT_FILE = "AGENT.md";
-
-/**
- * What this device keeps to itself, as the project's history is told to pass
- * over it — the same list docs/ARCHITECTURE.md § "The vault's history" names,
- * and the files this device's own store writes beside them. The container sits
- * inside somebody's repository, so without these a key is committed, and a key
- * committed is a key pushed. `*.key` covers every key rather than the two
- * named ones: a key this build has not named yet is the one mistake with no
- * way back. A note's ink and what each picture was called sit in the same
- * folder and are the graph's own — they belong in the history with the notes.
- */
-const KEPT_OUT = [
-  "*.key",
-  "*.key.pub",
-  "*.picture",
-  IDENTITIES_FILE,
-  IDENTITY_FILE,
-  VAULTS_FILE,
-  CREDENTIALS_FILE,
-  GIT_DEFAULTS_FILE,
-  "sloppy-identity*",
-  `/${BIN_FILE}`,
-  `/${BIN_DIR}/`,
-];
-
-const IGNORE_FILE = ".gitignore";
 
 export interface InitResult {
   /** Whether the notes were started here, rather than already being here. */
@@ -190,20 +165,4 @@ function partSections(part: ProjectPart, top: OwnedRef): BlockDocument[] {
           ),
         ]),
   ];
-}
-
-/** The project's history told to pass over what is this device's alone. A file
- *  somebody wrote themselves stays theirs: the lines that are not there are
- *  added, and nothing already in it is touched. */
-async function keepOut(container: Files): Promise<void> {
-  const bytes = await container.read(IGNORE_FILE);
-  const held = bytes ? decodeText(bytes) : "";
-  const lines = held.split("\n").map((line) => line.trim());
-  const missing = KEPT_OUT.filter((line) => !lines.includes(line));
-  if (missing.length === 0) return;
-  const before = held === "" || held.endsWith("\n") ? held : `${held}\n`;
-  await container.write(
-    IGNORE_FILE,
-    encodeText(`${before}${missing.join("\n")}\n`),
-  );
 }
