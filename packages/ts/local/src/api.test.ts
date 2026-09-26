@@ -131,6 +131,19 @@ describe("the folder a shell opened", () => {
     expect(lines).toContain("*.key");
   });
 
+  // The tool that writes the notes is told to read this before anything else,
+  // and a container the app started never had one.
+  it("leaves an agent what it needs to read, however the container arrived", async () => {
+    const held = opened("/Users/me/code");
+    await held.api.openProject("/Users/me/code");
+
+    const agent = held.store.get("/Users/me/code/.sloppy/AGENT.md");
+    expect(agent).toBeDefined();
+    const said = new TextDecoder().decode(agent);
+    expect(said).toContain("compass");
+    expect(said).toContain("tags");
+  });
+
   it("becomes the graph, named after itself, where it holds none", async () => {
     const held = opened("/Users/me/garden");
 

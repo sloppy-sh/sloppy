@@ -9,6 +9,7 @@ export * from "./vaults.js";
 export * from "./container.js";
 export * from "./write-onto.js";
 export * from "./kept-out.js";
+export * from "./agent-md.js";
 export * from "./graph.js";
 export * from "./history.js";
 export * from "./memory-history.js";

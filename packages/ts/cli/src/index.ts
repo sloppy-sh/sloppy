@@ -9,5 +9,4 @@ export * from "./check.js";
 export * from "./init.js";
 export * from "./draft.js";
 export * from "./left-behind.js";
-export * from "./agent-md.js";
 export * from "./run.js";

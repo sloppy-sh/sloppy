@@ -1,6 +1,6 @@
-// `.sloppy/AGENT.md`, as `sloppy init` writes it — the file an agent working in
-// somebody's project finds where it already looks. docs/ARCHITECTURE.md
-// § "Tooling and the review".
+// `.sloppy/AGENT.md`, written wherever a project's notes are reached — the file
+// an agent working in somebody's project finds where it already looks.
+// docs/ARCHITECTURE.md § "Tooling and the review".
 
 import {
   COMPASS_DIRECTIONS,
@@ -10,6 +10,9 @@ import {
   NOTE_TEMPLATES,
   type TemplateSection,
 } from "@sloppy/types";
+
+/** What it is called inside the container. */
+export const AGENT_FILE = "AGENT.md";
 
 function opened(section: TemplateSection): string {
   if (section.opens === "drawing") return " (a drawing)";

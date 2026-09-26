@@ -10,10 +10,11 @@ import {
   holdDeviceIdentity,
   LocalApi,
   readCarriedIdentity,
+  AGENT_FILE,
+  AGENT_MD,
 } from "@sloppy/local";
 import type { BlockDocument, OwnedRef } from "@sloppy/types";
 import { encodeText, GRAPH_FILE } from "@sloppy/vault";
-import { AGENT_MD } from "./agent-md.js";
 import { type HeldNote, noteForProject, notesIn, reaches } from "./folder.js";
 import {
   type ProjectPart,
@@ -25,7 +26,6 @@ import { fileOf, type WrittenNote, writeNote } from "./writer.js";
 import { anchor, bullets, compass, paragraph, section } from "./writing.js";
 
 /** Where an agent working in this project finds how to write in it. */
-export const AGENT_FILE = "AGENT.md";
 
 export interface InitResult {
   /** Whether the notes were started here, rather than already being here. */
