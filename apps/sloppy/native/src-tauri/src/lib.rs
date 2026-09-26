@@ -1,6 +1,7 @@
 mod chat;
 mod documenting;
 mod history;
+mod program;
 mod remotes;
 mod signing;
 mod tools;

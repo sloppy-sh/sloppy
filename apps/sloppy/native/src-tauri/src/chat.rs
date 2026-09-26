@@ -14,29 +14,27 @@
 //! will serve, and words; the words reach the agent on its own input rather
 //! than as an argument.
 
-use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::io::{BufRead, BufReader, Read as _, Write as _};
+use std::io::{BufReader, Write as _};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::thread::JoinHandle;
 
 use serde::Serialize;
 use serde_json::Value;
 use tauri::ipc::Channel;
 use tauri::State;
 
+use crate::program::{a_line, drained, end_it, started, trimmed};
 use crate::tools::{Advertised, Answered, Called, Endpoint};
-use crate::vault::{settled, FileError, Folders};
+use crate::vault::{FileError, Folders};
 
 struct Agent {
     /// The value `ChatAgent` in `@sloppy/types` carries.
     id: &'static str,
     program: &'static str,
     /// Where a person names the program themselves, for a machine keeping it
-    /// somewhere `ALSO_LOOKED_IN` does not reach.
+    /// somewhere the folders looked in do not reach.
     env: &'static str,
     args: &'static [&'static str],
 }
@@ -64,30 +62,6 @@ const AGENTS: &[Agent] = &[Agent {
         "--strict-mcp-config",
     ],
 }];
-
-/// An app started from the Finder or the Dock is given launchd's PATH, which
-/// names none of the folders a person installs a tool into, so these are looked
-/// in whether or not the PATH says to.
-#[cfg(not(windows))]
-const ALSO_LOOKED_IN: &[&str] = &[
-    "~/.local/bin",
-    "~/bin",
-    "~/.bun/bin",
-    "~/.deno/bin",
-    "~/.volta/bin",
-    "~/.yarn/bin",
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-    "/bin",
-];
-
-#[cfg(windows)]
-const ALSO_LOOKED_IN: &[&str] = &["~/AppData/Roaming/npm", "~/.bun/bin", "~/.local/bin"];
-
-/// Long enough for a sentence a program says about its own trouble, short
-/// enough that a person reads it in one go.
-const SAID_MAX: usize = 400;
 
 /// What one line the agent writes out may run to. A session has no total of its
 /// own — a chat runs as long as somebody keeps talking — so the bound is per
@@ -253,6 +227,26 @@ impl Chat {
     }
 }
 
+/// What the session is called, in the one form the agent takes: sixteen random
+/// bytes spelled as a version-4 UUID.
+fn named() -> String {
+    use ssh_key::rand_core::{OsRng, RngCore as _};
+
+    let mut held = [0u8; 16];
+    OsRng.fill_bytes(&mut held);
+    held[6] = (held[6] & 0x0f) | 0x40;
+    held[8] = (held[8] & 0x3f) | 0x80;
+    let spelled: String = held.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &spelled[..8],
+        &spelled[8..12],
+        &spelled[12..16],
+        &spelled[16..20],
+        &spelled[20..],
+    )
+}
+
 /// One more than the session before it, so that no two are the same.
 fn marked() -> u64 {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -283,13 +277,13 @@ fn open(
         }),
     )
     .map_err(|_| ChatError::new(DIDNT_START))?;
-    let mut child = start(program, agent.args, &endpoint.config(), at)?;
+    let mut child = start(program, agent.args, &named(), &endpoint.config(), at)?;
     let saying = child
         .stdin
         .take()
         .ok_or_else(|| ChatError::new(DIDNT_START))?;
     let out = child.stdout.take();
-    let trouble = drained(child.stderr.take());
+    let trouble = drained(child.stderr.take(), LINE_MAX);
     let mark = marked();
     chat.holds(Session {
         mark,
@@ -317,17 +311,26 @@ fn open(
     Ok(())
 }
 
-fn start(program: &Path, args: &[&str], config: &str, at: &Path) -> Result<Child, ChatError> {
+/// `session` and `config` are this one session's, so they are given here rather
+/// than standing in the agent's own options.
+fn start(
+    program: &Path,
+    args: &[&str],
+    session: &str,
+    config: &str,
+    at: &Path,
+) -> Result<Child, ChatError> {
     let mut how = Command::new(program);
     how.args(args)
+        .arg("--session-id")
+        .arg(session)
         .arg("--mcp-config")
         .arg(config)
         .current_dir(at)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    apart(&mut how);
-    how.spawn().map_err(|_| ChatError::new(NO_PROGRAM))
+    started(&mut how).map_err(|_| ChatError::new(NO_PROGRAM))
 }
 
 /// Every line the agent writes out, handed on as it arrives. `false` is a line
@@ -336,7 +339,7 @@ fn hear(out: ChildStdout, heard: &(dyn Fn(Heard) + Send + Sync)) -> bool {
     let mut reader = BufReader::new(out);
     let mut line = Vec::new();
     loop {
-        let Some(read) = a_line(&mut reader, &mut line) else {
+        let Some(read) = a_line(&mut reader, &mut line, LINE_MAX) else {
             return false;
         };
         if read == 0 {
@@ -348,178 +351,8 @@ fn hear(out: ChildStdout, heard: &(dyn Fn(Heard) + Send + Sync)) -> bool {
     }
 }
 
-/// One line, never holding more than `LINE_MAX` of it. `None` is a line that
-/// ran past that; `Some(0)` is the end of what the program had to say, which is
-/// what a read it could not finish is taken for too.
-fn a_line<R: BufRead>(reader: &mut R, line: &mut Vec<u8>) -> Option<usize> {
-    line.clear();
-    match (&mut *reader)
-        .take(LINE_MAX as u64 + 1)
-        .read_until(b'\n', line)
-    {
-        Ok(read) if read > LINE_MAX => None,
-        Ok(read) => Some(read),
-        Err(_) => Some(0),
-    }
-}
-
-fn trimmed(line: &[u8]) -> &[u8] {
-    let held = line.strip_suffix(b"\n").unwrap_or(line);
-    held.strip_suffix(b"\r").unwrap_or(held)
-}
-
-/// The first thing the program said about its own trouble, drained as it runs
-/// so that a full pipe cannot hold the program up. A line past `LINE_MAX` is
-/// drained in pieces, and nothing after it is a sentence a person is shown.
-fn drained(from: Option<ChildStderr>) -> Option<JoinHandle<Option<String>>> {
-    let from = from?;
-    Some(thread::spawn(move || {
-        let mut reader = BufReader::new(from);
-        let mut line = Vec::new();
-        let mut found: Option<String> = None;
-        let mut listening = true;
-        loop {
-            let Some(read) = a_line(&mut reader, &mut line) else {
-                listening = false;
-                continue;
-            };
-            if read == 0 {
-                return found;
-            }
-            if !listening {
-                continue;
-            }
-            let said = String::from_utf8_lossy(trimmed(&line));
-            let said = said.trim();
-            if found.is_none() && !said.is_empty() {
-                found = Some(said.chars().take(SAID_MAX).collect());
-            }
-        }
-    }))
-}
-
-/// Where the program is on this machine, and nothing where it is not: a name no
-/// folder holds, a folder of that name and a file this app may not run are all
-/// the same answer.
 fn found(agent: &Agent) -> Option<PathBuf> {
-    found_in(
-        agent.program,
-        std::env::var_os(agent.env).as_deref(),
-        &looked_in(),
-    )
-}
-
-/// `named` is a person's own answer and is taken whole; without one it is the
-/// first spelling of `program` any of `folders` holds.
-fn found_in(program: &str, named: Option<&OsStr>, folders: &[PathBuf]) -> Option<PathBuf> {
-    if let Some(named) = named.filter(|held| !held.is_empty()) {
-        let at = settled(&PathBuf::from(named));
-        return absolute_and_runnable(&at).then_some(at);
-    }
-    for folder in folders {
-        for name in spellings(program) {
-            let at = settled(&folder.join(name));
-            if absolute_and_runnable(&at) {
-                return Some(at);
-            }
-        }
-    }
-    None
-}
-
-/// The PATH this process was given and `ALSO_LOOKED_IN` after it, each folder
-/// once and in that order.
-fn looked_in() -> Vec<PathBuf> {
-    let told = std::env::var_os("PATH").unwrap_or_default();
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
-    let also = ALSO_LOOKED_IN
-        .iter()
-        .filter_map(|at| match at.strip_prefix("~/") {
-            Some(under) => home.as_ref().map(|home| PathBuf::from(home).join(under)),
-            None => Some(PathBuf::from(at)),
-        });
-    let mut seen = HashSet::new();
-    std::env::split_paths(&told)
-        .chain(also)
-        .filter(|folder| !folder.as_os_str().is_empty() && seen.insert(folder.clone()))
-        .collect()
-}
-
-/// Whether this is a program that can be run, and one spelling of it.
-///
-/// **A relative path is refused rather than resolved.** What can be run is
-/// asked of this process's own folder, and what runs is started in the folder
-/// somebody opened — so a relative spelling is two different files, and which
-/// one runs is Rust's own documented "platform specific and unstable". The
-/// folder a person opened would then decide what executes.
-fn absolute_and_runnable(at: &Path) -> bool {
-    at.is_absolute() && runnable(at)
-}
-
-#[cfg(unix)]
-fn runnable(at: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    std::fs::metadata(at)
-        .map(|held| held.is_file() && held.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn runnable(at: &Path) -> bool {
-    at.is_file()
-}
-
-/// What a program of this name is called where it is installed. An npm install
-/// on Windows leaves a `.cmd` and nothing under the bare name.
-#[cfg(windows)]
-fn spellings(program: &str) -> Vec<String> {
-    ["exe", "cmd", "bat"]
-        .iter()
-        .map(|ending| format!("{program}.{ending}"))
-        .chain([program.to_owned()])
-        .collect()
-}
-
-#[cfg(not(windows))]
-fn spellings(program: &str) -> Vec<String> {
-    vec![program.to_owned()]
-}
-
-/// Start the program on its own, so that ending it can reach what it starts.
-#[cfg(unix)]
-fn apart(how: &mut Command) {
-    use std::os::unix::process::CommandExt as _;
-
-    how.process_group(0);
-}
-
-#[cfg(not(unix))]
-fn apart(_how: &mut Command) {}
-
-/// An agent reads a project by starting programs of its own, and a person who
-/// ends a chat means all of them.
-#[cfg(unix)]
-fn end_it(child: &mut Child) {
-    // `apart` made the program its own group leader, so its pid is the group's.
-    unsafe { libc::killpg(child.id() as libc::pid_t, libc::SIGKILL) };
-    let _ = child.kill();
-}
-
-#[cfg(windows)]
-fn end_it(child: &mut Child) {
-    let _ = Command::new("taskkill")
-        .args(["/PID", &child.id().to_string(), "/T", "/F"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    let _ = child.kill();
-}
-
-#[cfg(not(any(unix, windows)))]
-fn end_it(child: &mut Child) {
-    let _ = child.kill();
+    crate::program::found(agent.program, std::env::var_os(agent.env).as_deref())
 }
 
 /// The agents this device can reach. An empty list is a device with none.
@@ -631,94 +464,6 @@ mod tests {
         file
     }
 
-    /// The PATH a bundled app is given names none of the folders a person
-    /// installs a tool into, so a folder is enough to be found in.
-    #[cfg(unix)]
-    #[test]
-    fn a_program_is_found_in_a_folder_it_is_installed_in() {
-        let at = scratch("installed");
-        let program = stub(&at, "agent", "echo hi");
-
-        assert_eq!(found_in("agent", None, &[at]), Some(settled(&program)));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_file_this_app_may_not_run_is_not_a_program() {
-        let at = scratch("unrunnable");
-        fs::write(at.join("agent"), "#!/bin/sh\n").expect("the file");
-        fs::create_dir_all(at.join("folder")).expect("the folder");
-        let folders = [at];
-
-        assert_eq!(found_in("agent", None, &folders), None);
-        assert_eq!(found_in("folder", None, &folders), None);
-    }
-
-    /// Somebody who keeps it somewhere nothing looks names it themselves.
-    #[cfg(unix)]
-    #[test]
-    fn a_program_a_person_names_is_taken_over_the_folders() {
-        let named_at = scratch("named");
-        let looked = scratch("looked");
-        let named = stub(&named_at, "elsewhere", "echo hi");
-        stub(&looked, "agent", "echo hi");
-        let folders = [looked];
-
-        assert_eq!(
-            found_in("agent", Some(named.as_os_str()), &folders),
-            Some(settled(&named))
-        );
-    }
-
-    /// What can be run is asked of this process's own folder and what runs is
-    /// started in the folder somebody opened, so a relative spelling would be
-    /// two different files and the folder a person opened would pick which.
-    /// Nothing here moves this process's own folder: that is shared by every
-    /// test running beside it.
-    #[cfg(unix)]
-    #[test]
-    fn a_program_spelled_relatively_is_refused_rather_than_resolved() {
-        let at = scratch("relative");
-        stub(&at, "agent", "echo hi");
-        let folder = at.file_name().expect("a name");
-
-        assert!(!absolute_and_runnable(Path::new("agent")));
-        assert!(!absolute_and_runnable(Path::new("./agent")));
-        assert_eq!(
-            found_in("agent", Some(OsStr::new("./agent")), &[]),
-            found_in(
-                "agent",
-                Some(OsStr::new("./agent")),
-                &[PathBuf::from(folder)]
-            ),
-        );
-    }
-
-    /// Everything `found_in` answers is one absolute spelling, whichever way it
-    /// was asked for.
-    #[cfg(unix)]
-    #[test]
-    fn what_is_found_is_always_one_absolute_spelling() {
-        let at = scratch("absolute");
-        let program = stub(&at, "agent", "echo hi");
-        let over_path = found_in("agent", None, &[at]).expect("over the folders");
-        let named = found_in("agent", Some(program.as_os_str()), &[]).expect("named");
-
-        for found in [over_path, named] {
-            assert!(found.is_absolute());
-            assert_eq!(found, settled(&program));
-        }
-    }
-
-    #[test]
-    fn where_it_is_looked_for_names_each_folder_once() {
-        let folders = looked_in();
-        let mut seen = HashSet::new();
-
-        assert!(folders.iter().all(|folder| seen.insert(folder.clone())));
-        assert!(!folders.is_empty());
-    }
-
     /// Nothing underway is not a failure, and nothing is said into a chat that
     /// is over.
     #[test]
@@ -777,13 +522,16 @@ mod tests {
         }
     }
 
+    /// Long enough that a machine running the whole suite at once cannot make a
+    /// session that ended look like one that never did, and shorter than the
+    /// stubs that sit out a session, which a run reaching this never did.
     #[cfg(unix)]
-    fn waits(until: impl Fn() -> bool) {
+    fn waits(what: &str, until: impl Fn() -> bool) {
         let started = Instant::now();
         while !until() {
             assert!(
-                started.elapsed() < Duration::from_secs(10),
-                "it never happened"
+                started.elapsed() < Duration::from_secs(20),
+                "{what} never happened"
             );
             thread::sleep(Duration::from_millis(10));
         }
@@ -799,7 +547,7 @@ mod tests {
 
         open(&STUB, &program, &at, &[], thread.sink(), chat).expect("a session");
 
-        waits(|| thread.overs().len() == 1);
+        waits("the end", || thread.overs().len() == 1);
         assert_eq!(thread.lines(), ["one", "two"]);
         assert_eq!(thread.overs(), [(false, None)]);
     }
@@ -813,11 +561,11 @@ mod tests {
         let thread = Thread::default();
         let chat = Chat::default();
         open(&STUB, &program, &at, &[], thread.sink(), chat.clone()).expect("a session");
-        waits(|| !thread.lines().is_empty());
+        waits("a line", || !thread.lines().is_empty());
 
         chat.close();
 
-        waits(|| thread.overs().len() == 1);
+        waits("the end", || thread.overs().len() == 1);
         assert_eq!(thread.overs(), [(true, None)]);
     }
 
@@ -833,15 +581,64 @@ mod tests {
         let thread = Thread::default();
         let chat = Chat::default();
         open(&STUB, &first, &at, &[], thread.sink(), chat.clone()).expect("one session");
-        waits(|| thread.lines() == ["one"]);
+        waits("the first line", || thread.lines() == ["one"]);
 
         open(&STUB, &second, &at, &[], thread.sink(), chat.clone()).expect("another");
 
-        waits(|| thread.overs().len() == 1);
+        waits("the end", || thread.overs().len() == 1);
         assert_eq!(thread.overs(), [(true, None)]);
         assert!(chat.says("{}").is_ok(), "the session standing was reaped");
         chat.close();
-        waits(|| thread.overs().len() == 2);
+        waits("the second end", || thread.overs().len() == 2);
+    }
+
+    /// An agent reads a project by starting programs of its own, and a person
+    /// who ends the chat means all of them — one left running goes on reading
+    /// somebody's code after they closed the thread it was answering in.
+    #[cfg(unix)]
+    #[test]
+    fn ending_a_chat_ends_what_the_agent_started() {
+        let at = scratch("children");
+        let left = at.join("left-behind");
+        let program = stub(
+            &at,
+            "agent",
+            &format!(
+                "echo started; for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do (sleep 1; echo late >> {}) & done; wait",
+                left.display()
+            ),
+        );
+        let thread = Thread::default();
+        let chat = Chat::default();
+        open(&STUB, &program, &at, &[], thread.sink(), chat.clone()).expect("a session");
+        waits("a line", || !thread.lines().is_empty());
+
+        chat.close();
+
+        waits("the end", || thread.overs().len() == 1);
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(!left.exists(), "what the agent started outlived the chat");
+    }
+
+    /// The agent takes one form of name and nothing else, so a session it is
+    /// refused would be a chat that never starts.
+    #[test]
+    fn a_session_is_named_in_the_form_the_agent_takes() {
+        let named = named();
+        let parts: Vec<&str> = named.split('-').collect();
+
+        assert_eq!(
+            parts.iter().map(|part| part.len()).collect::<Vec<_>>(),
+            [8, 4, 4, 4, 12]
+        );
+        assert!(named
+            .chars()
+            .all(|held| held == '-' || held.is_ascii_hexdigit() && !held.is_ascii_uppercase()));
+        assert!(parts[2].starts_with('4'));
+        assert!(["8", "9", "a", "b"]
+            .iter()
+            .any(|held| parts[3].starts_with(held)));
+        assert_ne!(named, self::named());
     }
 
     /// An agent that loops, or another program that happens to answer to the
@@ -861,7 +658,7 @@ mod tests {
 
         open(&STUB, &program, &at, &[], thread.sink(), chat).expect("a session");
 
-        waits(|| thread.overs().len() == 1);
+        waits("the end", || thread.overs().len() == 1);
         assert!(thread.lines().is_empty());
         assert_eq!(thread.overs(), [(false, Some(TOO_MUCH.to_owned()))]);
     }

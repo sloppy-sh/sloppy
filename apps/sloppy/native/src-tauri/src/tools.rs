@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 use std::io::Read as _;
+use std::net::IpAddr;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -168,7 +169,7 @@ fn serve(
     waiting: &Waiting,
     called: &(dyn Fn(Called) + Send + Sync),
 ) {
-    if request.url() != PATH || !carries(&request, bearer) {
+    if request.url() != PATH || !from_the_loopback(&request) || !carries(&request, bearer) {
         let _ = request.respond(Response::empty(404));
         return;
     }
@@ -281,10 +282,44 @@ fn answered(request: Request, id: Value, answer: Result<Value, (i64, String)>) {
 
 fn carries(request: &Request, bearer: &str) -> bool {
     let named = format!("Bearer {bearer}");
+    said(request, "Authorization").as_deref() == Some(named.as_str())
+}
+
+/// Whether this is a caller on the machine the endpoint stands on.
+///
+/// **A name somebody else owns can be made to resolve to 127.0.0.1**, which is
+/// how a page in the person's own browser reaches a server bound to the
+/// loopback. What such a page cannot do is spell the `Host` it asks for or hide
+/// the origin it came from, so a request naming anything but the loopback, or
+/// coming from a page at all, is not this endpoint's caller.
+fn from_the_loopback(request: &Request) -> bool {
+    let host = said(request, "Host").is_some_and(|host| the_loopback(&host));
+    let origin = said(request, "Origin")
+        .map(|origin| origin.strip_prefix("http://").is_some_and(the_loopback))
+        .unwrap_or(true);
+    host && origin
+}
+
+/// Whether an authority — a host and the port it was reached on — is this
+/// machine talking to itself.
+fn the_loopback(authority: &str) -> bool {
+    let host = match authority.strip_prefix('[') {
+        Some(rest) => rest.split(']').next().unwrap_or_default(),
+        None => authority.split(':').next().unwrap_or_default(),
+    };
+    host == "localhost"
+        || host
+            .parse::<IpAddr>()
+            .map(|at| at.is_loopback())
+            .unwrap_or(false)
+}
+
+fn said(request: &Request, field: &'static str) -> Option<String> {
     request
         .headers()
         .iter()
-        .any(|header| header.field.equiv("Authorization") && header.value.as_str().trim() == named)
+        .find(|header| header.field.equiv(field))
+        .map(|header| header.value.as_str().trim().to_owned())
 }
 
 /// A name nothing can guess. The endpoint stands on the loopback, which every
@@ -326,17 +361,32 @@ mod tests {
         )
     }
 
+    /// How a request is spelled where a test asks in somebody else's name.
+    /// Every field left out is the one this endpoint's own caller sends.
+    #[derive(Default)]
+    struct As<'a> {
+        authorization: Option<&'a str>,
+        host: Option<&'a str>,
+        origin: Option<&'a str>,
+    }
+
     /// One request, answered. `None` where the answer carried no body.
-    fn ask_at(url: &str, authorization: &str, body: &str) -> (u16, Option<Value>) {
+    fn ask_at(url: &str, bearer: &str, how: &As, body: &str) -> (u16, Option<Value>) {
         let at = url.trim_start_matches("http://");
         let (host, path) = at.split_once('/').expect("a path");
         let mut socket = TcpStream::connect(host).expect("the endpoint");
-        write!(
-            socket,
-            "POST /{path} HTTP/1.1\r\nHost: {host}\r\nAuthorization: {authorization}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        )
-        .expect("to ask");
+        let mut asking = format!(
+            "POST /{path} HTTP/1.1\r\nHost: {}\r\nAuthorization: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
+            how.host.unwrap_or(host),
+            how.authorization.unwrap_or(bearer),
+            body.len(),
+        );
+        if let Some(origin) = how.origin {
+            asking.push_str(&format!("Origin: {origin}\r\n"));
+        }
+        asking.push_str("\r\n");
+        asking.push_str(body);
+        socket.write_all(asking.as_bytes()).expect("to ask");
         let mut reader = BufReader::new(socket);
         let mut status = String::new();
         reader.read_line(&mut status).expect("an answer");
@@ -363,9 +413,9 @@ mod tests {
         (code, serde_json::from_slice(&rest).ok())
     }
 
-    fn asked(endpoint: &Endpoint, authorization: Option<&str>, body: &str) -> (u16, Option<Value>) {
+    fn asked(endpoint: &Endpoint, how: As, body: &str) -> (u16, Option<Value>) {
         let (url, bearer) = reached(endpoint);
-        ask_at(url.as_str(), authorization.unwrap_or(&bearer), body)
+        ask_at(&url, &bearer, &how, body)
     }
 
     fn quiet() -> Arc<dyn Fn(Called) + Send + Sync> {
@@ -378,7 +428,7 @@ mod tests {
 
         let (_, answer) = asked(
             &endpoint,
-            None,
+            As::default(),
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
         );
 
@@ -396,11 +446,94 @@ mod tests {
 
         let (code, _) = asked(
             &endpoint,
-            Some("Bearer not-the-one"),
+            As {
+                authorization: Some("Bearer not-the-one"),
+                ..As::default()
+            },
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
         );
 
         assert_eq!(code, 404);
+    }
+
+    /// A name somebody else owns, pointed at 127.0.0.1, is how a page reaches a
+    /// server bound to the loopback — and the name it asked for comes with it.
+    #[test]
+    fn a_caller_asking_for_another_host_is_not_answered() {
+        let endpoint = Endpoint::start(&advertised(), quiet()).expect("the endpoint");
+
+        let (code, _) = asked(
+            &endpoint,
+            As {
+                host: Some("notes.example:8080"),
+                ..As::default()
+            },
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+        );
+
+        assert_eq!(code, 404);
+    }
+
+    /// The agent is a program on this machine and says no origin. A page says
+    /// its own, whatever name it reached the loopback by.
+    #[test]
+    fn a_caller_from_a_page_somewhere_else_is_not_answered() {
+        let endpoint = Endpoint::start(&advertised(), quiet()).expect("the endpoint");
+        let asking = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+
+        let (elsewhere, _) = asked(
+            &endpoint,
+            As {
+                origin: Some("https://notes.example"),
+                ..As::default()
+            },
+            asking,
+        );
+        let (here, _) = asked(
+            &endpoint,
+            As {
+                origin: Some("http://127.0.0.1:1234"),
+                ..As::default()
+            },
+            asking,
+        );
+
+        assert_eq!(elsewhere, 404);
+        assert_eq!(here, 200);
+    }
+
+    /// The endpoint stands for as long as the session does, and a call still
+    /// waiting on the person when one ends is told so rather than left holding
+    /// the conversation open on an answer that is never coming.
+    #[test]
+    fn a_call_waiting_when_the_session_ends_is_told_so() {
+        let (says, hears) = mpsc::channel();
+        let endpoint = Endpoint::start(
+            &advertised(),
+            Arc::new(move |called: Called| {
+                let _ = says.send(called);
+            }),
+        )
+        .expect("the endpoint");
+        let (url, bearer) = reached(&endpoint);
+        let asking = thread::spawn(move || {
+            ask_at(
+                &url,
+                &bearer,
+                &As::default(),
+                r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read_note","arguments":{}}}"#,
+            )
+        });
+        hears
+            .recv_timeout(Duration::from_secs(20))
+            .expect("the call");
+
+        drop(endpoint);
+
+        let (_, answer) = asking.join().expect("the asking");
+        let result = answer.expect("an answer")["result"].clone();
+        assert_eq!(result["content"][0]["text"], UNANSWERED);
+        assert_eq!(result["isError"], true);
     }
 
     #[test]
@@ -409,7 +542,7 @@ mod tests {
 
         let (_, answer) = asked(
             &endpoint,
-            None,
+            As::default(),
             r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#,
         );
 
@@ -425,7 +558,7 @@ mod tests {
 
         let (code, body) = asked(
             &endpoint,
-            None,
+            As::default(),
             r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
         );
 
@@ -439,7 +572,7 @@ mod tests {
 
         let (_, answer) = asked(
             &endpoint,
-            None,
+            As::default(),
             r#"{"jsonrpc":"2.0","id":7,"method":"resources/list"}"#,
         );
 
@@ -465,12 +598,13 @@ mod tests {
             ask_at(
                 &url,
                 &bearer,
+                &As::default(),
                 r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"write_note","arguments":{"about":"src/parser"}}}"#,
             )
         });
 
         let called = hears
-            .recv_timeout(Duration::from_secs(10))
+            .recv_timeout(Duration::from_secs(20))
             .expect("the call");
         assert_eq!(called.act, "write_note");
         assert_eq!(called.arguments["about"], "src/parser");
