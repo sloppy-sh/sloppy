@@ -16,12 +16,22 @@ import {
   ChatToolAnswerSchema,
   ChatToolCallSchema,
   ChatTurnSchema,
+  CHAT_ANSWER_MAX,
+  CHAT_SECTION_MAX,
+  listingAnswer,
   ListedNoteSchema,
   MAX_SECTIONS_PER_WRITE,
+  MOST_NOTES_LISTED,
+  MOST_SECTIONS_READ,
+  noteAnswer,
+  NoteReadSchema,
+  NotesListedSchema,
   NoteWrittenSchema,
   ReadNoteArgumentsSchema,
   turnFits,
   WriteNoteArgumentsSchema,
+  type ListedNote,
+  type NoteSection,
 } from "./chat.js";
 import { WRITE_DONE } from "./authority.js";
 
@@ -180,6 +190,117 @@ describe("what a call comes to", () => {
   });
 });
 
+describe("what one answer carries", () => {
+  const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  const ulid = (n: number): string =>
+    `01JQ7X3K9M2N4P5R6S7T8V9W${CROCKFORD[(n >> 5) & 31]}${CROCKFORD[n & 31]}`;
+  const listed = (n: number, about?: string[]): ListedNote =>
+    ListedNoteSchema.parse({
+      note: `did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/${ulid(n)}`,
+      title: `What src/place-${n} does`,
+      tags: ["parsing"],
+      about: about ?? [`src/place-${n}`],
+    });
+  const section = (n: number, markdown: string): NoteSection => ({
+    id: ulid(n),
+    markdown,
+  });
+  const wide = (n: number): string[] =>
+    Array.from({ length: 32 }, (_, at) => `src/${"a".repeat(200)}/${n}-${at}`);
+
+  it("carries every note where they all fit, and says nothing of more", () => {
+    const answer = listingAnswer([listed(0), listed(1)]);
+    const held = NotesListedSchema.parse(JSON.parse(answer.said));
+
+    expect(ChatToolAnswerSchema.safeParse(answer).success).toBe(true);
+    expect(held.notes).toHaveLength(2);
+    expect(held.more).toBeUndefined();
+    expect(answer.trouble).toBeUndefined();
+  });
+
+  it("carries as many notes as it reads to, and says how many it left", () => {
+    const notes = Array.from({ length: MOST_NOTES_LISTED + 50 }, (_, n) =>
+      listed(n),
+    );
+
+    const held = NotesListedSchema.parse(JSON.parse(listingAnswer(notes).said));
+
+    expect(held.notes).toHaveLength(MOST_NOTES_LISTED);
+    expect(held.more).toBe(50);
+    expect(held.notes[0]).toEqual(notes[0]);
+  });
+
+  it("stops at what one answer holds, not only at what it reads to", () => {
+    const notes = Array.from({ length: MOST_NOTES_LISTED }, (_, n) =>
+      listed(n, wide(n)),
+    );
+
+    const answer = listingAnswer(notes);
+    const held = NotesListedSchema.parse(JSON.parse(answer.said));
+
+    expect(answer.said.length).toBeLessThanOrEqual(CHAT_ANSWER_MAX);
+    expect(held.notes.length).toBeLessThan(notes.length);
+    expect(held.notes.length + (held.more ?? 0)).toBe(notes.length);
+  });
+
+  it("reads a note holding more sections than one write puts in it", () => {
+    const sections = Array.from(
+      { length: MAX_SECTIONS_PER_WRITE + 1 },
+      (_, n) => section(n, `## A section\n\nThe ${n}th of them.`),
+    );
+
+    const held = NoteReadSchema.parse(
+      JSON.parse(noteAnswer(listed(0), sections).said),
+    );
+
+    expect(held.sections).toHaveLength(sections.length);
+    expect(held.more).toBeUndefined();
+  });
+
+  it("carries as many sections as a read reads to, and says how many it left", () => {
+    const sections = Array.from({ length: MOST_SECTIONS_READ + 40 }, (_, n) =>
+      section(n, `## A section\n\nThe ${n}th of them.`),
+    );
+
+    const held = NoteReadSchema.parse(
+      JSON.parse(noteAnswer(listed(0), sections).said),
+    );
+
+    expect(held.sections).toHaveLength(MOST_SECTIONS_READ);
+    expect(held.more).toBe(40);
+  });
+
+  it("carries what one answer holds of a long note, from the first", () => {
+    const sections = Array.from({ length: 20 }, (_, n) =>
+      section(n, "a".repeat(CHAT_SECTION_MAX)),
+    );
+
+    const answer = noteAnswer(listed(0), sections);
+    const held = NoteReadSchema.parse(JSON.parse(answer.said));
+
+    expect(ChatToolAnswerSchema.safeParse(answer).success).toBe(true);
+    expect(answer.trouble).toBeUndefined();
+    expect(held.sections.length).toBeGreaterThan(0);
+    expect(held.sections.length + (held.more ?? 0)).toBe(sections.length);
+    expect(held.sections[0]).toEqual(sections[0]);
+  });
+
+  it("comes to trouble where nothing under the bound is left of the note", () => {
+    const everywhere = listed(
+      0,
+      Array.from(
+        { length: 64 },
+        (_, n) => `src/${"a".repeat(1018)}${String(n).padStart(2, "0")}`,
+      ),
+    );
+
+    const answer = noteAnswer(everywhere, []);
+
+    expect(answer.trouble).toBe(true);
+    expect(ChatToolAnswerSchema.safeParse(answer).success).toBe(true);
+  });
+});
+
 describe("the blocks a turn carries", () => {
   it("takes what the agent said and what it was thinking", () => {
     expect(
@@ -274,7 +395,7 @@ describe("a turn", () => {
 });
 
 describe("what a page is told", () => {
-  it("reads every one of the six, and nothing else", () => {
+  it("reads every one of them, and nothing else", () => {
     const events = [
       { event: "started", session: "s-1", model: "a model", tools: ["Read"] },
       {
@@ -290,7 +411,8 @@ describe("what a page is told", () => {
       },
       { event: "settled", call: "call-1", allowed: true },
       { event: "ended" },
-      { event: "trouble", said: "That did not finish. Try again." },
+      { event: "over" },
+      { event: "over", said: "That did not finish. Try again." },
     ];
 
     for (const event of events) {
@@ -317,10 +439,16 @@ describe("what a page is told", () => {
     expect(ended.event === "ended" && ended.stopped).toBeUndefined();
   });
 
-  it("refuses trouble with nothing to say", () => {
-    expect(
-      ChatEventSchema.safeParse({ event: "trouble", said: "" }).success,
-    ).toBe(false);
+  it("says a session nothing went wrong in had nothing to say", () => {
+    const over = ChatEventSchema.parse({ event: "over" });
+
+    expect(over.event === "over" && over.said).toBeUndefined();
+  });
+
+  it("refuses a session that could not go on with nothing to say", () => {
+    expect(ChatEventSchema.safeParse({ event: "over", said: "" }).success).toBe(
+      false,
+    );
   });
 });
 

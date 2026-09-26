@@ -92,6 +92,11 @@ export const MOST_NOTES_LISTED = 200;
 /** More sections than one note is written in at a time. */
 export const MAX_SECTIONS_PER_WRITE = 32;
 
+/** What one answer carries of a note holding more sections than that. Nothing
+ *  bounds the sections a NOTE holds, so this bounds the ANSWER — a note is
+ *  never too long to read, only too long to hand over whole. */
+export const MOST_SECTIONS_READ = 200;
+
 /** Long enough for one section of a note, in markdown. */
 export const CHAT_SECTION_MAX = 16384;
 
@@ -164,14 +169,14 @@ export interface ChatToolSpec {
 export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   list_notes: {
     description:
-      "List the notes this project already has: each one's ref, title, address, tags, and the places in the code it is about.",
+      "List the notes this project already has: each one's ref, title, address, tags, and the places in the code it is about. A long list answers with as much of itself as fits and says how many notes it left.",
     label: "Reading the notes",
     arguments: ListNotesArgumentsSchema,
     writes: false,
   },
   read_note: {
     description:
-      "Read one note whole — its title, tags, the places it is about, and every section in it as markdown.",
+      "Read one note whole — its title, tags, the places it is about, and its sections as markdown. A long note answers with as much of itself as fits and says how many sections it left.",
     label: "Reading a note",
     arguments: ReadNoteArgumentsSchema,
     writes: false,
@@ -248,10 +253,25 @@ export const NoteSectionSchema = z.object({
 });
 export type NoteSection = z.infer<typeof NoteSectionSchema>;
 
+/** One note read whole, or as much of it as one answer carries —
+ *  {@link noteAnswer} is what composes one. */
 export const NoteReadSchema = ListedNoteSchema.extend({
-  sections: z.array(NoteSectionSchema).max(MAX_SECTIONS_PER_WRITE),
+  sections: z.array(NoteSectionSchema).max(MOST_SECTIONS_READ),
+  /** **Absent is the whole note.** A count is how many further sections the
+   *  note holds that this answer does not carry. */
+  more: z.int().min(1).optional(),
 });
 export type NoteRead = z.infer<typeof NoteReadSchema>;
+
+/** The notes a project has, or as many of them as one answer carries —
+ *  {@link listingAnswer} is what composes one. */
+export const NotesListedSchema = z.object({
+  notes: z.array(ListedNoteSchema).max(MOST_NOTES_LISTED),
+  /** **Absent is every note there is.** A count is how many further notes the
+   *  project has that this answer does not carry. */
+  more: z.int().min(1).optional(),
+});
+export type NotesListed = z.infer<typeof NotesListedSchema>;
 
 /**
  * What one write came to. `offered` is a note somebody has written in: the
@@ -405,6 +425,50 @@ export const ChatToolAnswerSchema = z.object({
 });
 export type ChatToolAnswer = z.infer<typeof ChatToolAnswerSchema>;
 
+const NOTE_TOO_LONG = "That note is too long to read.";
+
+/**
+ * The notes a project has, as the agent is handed them: JSON, carrying as many
+ * as {@link CHAT_ANSWER_MAX} holds and saying how many it left. **Every
+ * listing an act answers with is composed here** — docs/ARCHITECTURE.md
+ * § "Asking a tool to write the notes".
+ */
+export function listingAnswer(notes: readonly ListedNote[]): ChatToolAnswer {
+  let kept = notes.slice(0, MOST_NOTES_LISTED);
+  for (;;) {
+    const said = JSON.stringify(
+      withMore({ notes: kept }, notes.length - kept.length),
+    );
+    if (said.length <= CHAT_ANSWER_MAX || kept.length === 0) return { said };
+    kept = kept.slice(0, -1);
+  }
+}
+
+/**
+ * One note as the agent is handed it, by the rule {@link listingAnswer} holds a
+ * listing to: its sections from the first, as many as one answer carries, and
+ * how many it left. **A note whose title, tags and places alone run past the
+ * bound comes to trouble**, nothing under it being left to carry.
+ */
+export function noteAnswer(
+  note: ListedNote,
+  sections: readonly NoteSection[],
+): ChatToolAnswer {
+  let kept = sections.slice(0, MOST_SECTIONS_READ);
+  for (;;) {
+    const said = JSON.stringify(
+      withMore({ ...note, sections: kept }, sections.length - kept.length),
+    );
+    if (said.length <= CHAT_ANSWER_MAX) return { said };
+    if (kept.length === 0) return { said: NOTE_TOO_LONG, trouble: true };
+    kept = kept.slice(0, -1);
+  }
+}
+
+function withMore<T extends object>(held: T, more: number): T {
+  return more > 0 ? { ...held, more } : held;
+}
+
 const StartedEventSchema = z.object({
   event: z.literal("started"),
   session: ChatSessionIdSchema,
@@ -452,11 +516,13 @@ const EndedEventSchema = z.object({
   stopped: z.boolean().optional(),
 });
 
-const TroubleEventSchema = z.object({
-  event: z.literal("trouble"),
-  /** Why it could not go on, in words for the person — the agent's own where
-   *  it gave some. The session is over after this. */
-  said: z.string().min(1).max(CHAT_TROUBLE_MAX),
+const OverEventSchema = z.object({
+  event: z.literal("over"),
+  /** Why the session could not go on, in words for the person — the agent's
+   *  own where it gave some. **Absent is a session that simply ended**: one
+   *  closed here, one another was opened over, one the agent finished. Nothing
+   *  is said to the person about those, and nothing went wrong. */
+  said: z.string().min(1).max(CHAT_TROUBLE_MAX).optional(),
 });
 
 /**
@@ -470,7 +536,7 @@ export const ChatEventSchema = z.discriminatedUnion("event", [
   AskingEventSchema,
   SettledEventSchema,
   EndedEventSchema,
-  TroubleEventSchema,
+  OverEventSchema,
 ]);
 export type ChatEvent = z.infer<typeof ChatEventSchema>;
 

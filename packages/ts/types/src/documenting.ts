@@ -1,6 +1,6 @@
 // What somebody asks for when they want a project's notes written, what a
 // survey proposes back, and what a run is doing while it writes —
-// docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+// docs/ARCHITECTURE.md § "Writing the notes in four steps".
 
 import { z } from "zod";
 import { WRITE_DONE } from "./authority.js";

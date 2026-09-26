@@ -1,6 +1,6 @@
 <script lang="ts">
-	// Asking for a project's notes to be written, in the four steps
-	// docs/ARCHITECTURE.md § "Asking a tool to write the notes" sets: the words,
+	// Asking for a project's notes to be written, in the order
+	// docs/ARCHITECTURE.md § "Writing the notes in four steps" sets: the words,
 	// the places proposed back, the list somebody settles, and the run.
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';

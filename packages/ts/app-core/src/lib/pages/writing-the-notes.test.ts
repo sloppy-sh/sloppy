@@ -1,5 +1,5 @@
 // Asking for a project's notes from the graph, and reading what comes back —
-// docs/ARCHITECTURE.md § "Asking a tool to write the notes". Nothing here
+// docs/ARCHITECTURE.md § "Writing the notes in four steps". Nothing here
 // starts a tool: the seam is a stand-in.
 
 import 'fake-indexeddb/auto';

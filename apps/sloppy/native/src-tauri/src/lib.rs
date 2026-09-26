@@ -59,7 +59,7 @@ pub(crate) fn commands<R: Runtime>(
         chat::chat_open,
         chat::chat_say,
         chat::chat_answer,
-        chat::chat_stop,
+        chat::chat_close,
     ]
 }
 

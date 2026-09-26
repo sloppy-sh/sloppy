@@ -58,8 +58,8 @@ tauri-plugin-fs = "2"
 # loopback, bound to a port the machine chooses.
 tiny_http = "0.12"
 
-# A tool the app starts reads the project by starting programs of its own, so
-# stopping a run signals the whole group rather than the program alone —
+# A program the app starts reads the project by starting programs of its own, so
+# ending one signals the whole group rather than the program alone —
 # docs/ARCHITECTURE.md § "Asking a tool to write the notes".
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

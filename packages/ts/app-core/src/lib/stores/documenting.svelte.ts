@@ -1,6 +1,6 @@
 /**
- * Asking a tool on this device to write a project's notes — four steps, in the
- * order docs/ARCHITECTURE.md § "Asking a tool to write the notes" sets them:
+ * Asking a tool on this device to write a project's notes, in the order
+ * docs/ARCHITECTURE.md § "Writing the notes in four steps" sets them:
  * what somebody asked for, the places a pass over the code proposes, the list
  * they settle, and the run.
  *

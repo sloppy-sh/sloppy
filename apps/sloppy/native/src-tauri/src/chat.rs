@@ -202,8 +202,9 @@ impl Chat {
         Ok(())
     }
 
-    /// End what is underway. Nothing underway is not a failure.
-    pub fn stop(&self) {
+    /// End the session, and with it whatever the agent was doing. No session
+    /// is not a failure.
+    pub fn close(&self) {
         let mut held = self.0.lock().unwrap();
         let Some(session) = held.as_mut() else {
             return;
@@ -588,9 +589,13 @@ pub fn chat_answer(
 
 /// End the session. It is over once `Heard::Over` reaches the page, which is
 /// what a caller waiting on the end waits for.
+///
+/// **Not the end of a TURN.** A person who stops the turn underway keeps the
+/// session, and that end is said to the agent on its own input like everything
+/// else it is told — `ChatAccess` in `@sloppy/app-core` declares both acts.
 #[tauri::command]
-pub fn chat_stop(chat: State<'_, Chat>) {
-    chat.stop();
+pub fn chat_close(chat: State<'_, Chat>) {
+    chat.close();
 }
 
 #[cfg(test)]
@@ -720,7 +725,7 @@ mod tests {
     fn a_chat_that_is_over_is_said_so_rather_than_failing_quietly() {
         let chat = Chat::default();
 
-        chat.stop();
+        chat.close();
 
         assert_eq!(chat.says("{}").unwrap_err().said(), NOTHING_OPEN);
         assert!(chat.ends(marked()).stopped);
@@ -810,7 +815,7 @@ mod tests {
         open(&STUB, &program, &at, &[], thread.sink(), chat.clone()).expect("a session");
         waits(|| !thread.lines().is_empty());
 
-        chat.stop();
+        chat.close();
 
         waits(|| thread.overs().len() == 1);
         assert_eq!(thread.overs(), [(true, None)]);
@@ -835,7 +840,7 @@ mod tests {
         waits(|| thread.overs().len() == 1);
         assert_eq!(thread.overs(), [(true, None)]);
         assert!(chat.says("{}").is_ok(), "the session standing was reaped");
-        chat.stop();
+        chat.close();
         waits(|| thread.overs().len() == 2);
     }
 

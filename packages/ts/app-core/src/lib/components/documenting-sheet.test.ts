@@ -1,5 +1,5 @@
 // The surface a maintainer asks a project's notes to be written from —
-// docs/ARCHITECTURE.md § "Asking a tool to write the notes". Nothing here
+// docs/ARCHITECTURE.md § "Writing the notes in four steps". Nothing here
 // starts a tool: the seam is a stand-in throughout.
 
 import 'fake-indexeddb/auto';

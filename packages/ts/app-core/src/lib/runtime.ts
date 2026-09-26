@@ -112,8 +112,9 @@ export interface VaultAccess {
 
 /**
  * Asking a tool on this device to read the project and write its notes, and
- * watching what comes back. **Superseded by {@link ChatAccess}, and going with
- * the four-step surface over it** — nothing new is built against it.
+ * watching what comes back — docs/ARCHITECTURE.md § "Writing the notes in four
+ * steps". **Superseded by {@link ChatAccess}, and going with the four-step
+ * surface over it** — nothing new is built against it.
  *
  * **One at a time, counting both.** A survey and a run are the same one thing
  * underway here, so either asked while either is underway REJECTS rather than
@@ -203,10 +204,12 @@ export interface ChatAsked {
  *
  * **One session at a time, and {@link ChatAccess.open} REPLACES.** A person
  * sees one chat, so opening a session ends whatever stood — there is no second
- * thread for a run to go on into unseen. {@link ChatAccess.say} while a turn is
- * underway REJECTS, because the agent is answering the last thing it was told.
- * {@link ChatAccess.stop} ends the turn underway and the session stands, so the
- * next `say` goes on with it.
+ * thread for a session to go on into unseen. {@link ChatAccess.say} while a
+ * turn is underway REJECTS, because the agent is answering the last thing it
+ * was told. {@link ChatAccess.stop} ends the turn underway and the session
+ * stands, so the next `say` goes on with it; {@link ChatAccess.close} ends the
+ * session itself. **`over` is what says a session ended**, whichever of the two
+ * ended it and whether or not anything went wrong, and `say` after one rejects.
  *
  * **The IMPLEMENTATION parses, in both directions, and no caller repeats it.**
  * The members below take and answer plain TypeScript, which holds nothing at
@@ -278,6 +281,11 @@ export interface ChatAccess {
 	 *  and the next {@link ChatAccess.say} goes on with it. Nothing underway is
 	 *  not a failure. */
 	stop(): Promise<void>;
+	/** End the session, resolving once it has ended. What the agent was doing
+	 *  goes with it and a page is told `over`; there is nothing to go on with,
+	 *  so the next thing a page asks for is {@link ChatAccess.open}. No session
+	 *  is not a failure. */
+	close(): Promise<void>;
 }
 
 export interface AppRuntime {

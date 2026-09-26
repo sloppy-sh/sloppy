@@ -2,7 +2,7 @@
  * What a tool is asked for, and how what it answers is read back. The format a
  * note is written in is `.sloppy/AGENT.md` in the project itself, which the
  * tool is told to read: there is one copy of that text and it is not here —
- * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+ * docs/ARCHITECTURE.md § "Writing the notes in four steps".
  */
 
 import {

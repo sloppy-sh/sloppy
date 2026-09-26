@@ -1,5 +1,5 @@
 // Asking a tool on this device to write a project's notes — docs/ARCHITECTURE.md
-// § "Asking a tool to write the notes". Four steps in order, one ask at a time,
+// § "Writing the notes in four steps". Four steps in order, one ask at a time,
 // and no tool started here: every run below is a stand-in.
 
 import type {

@@ -3327,15 +3327,34 @@ reason AI.md § "A Block Is a Section" gives about a note's own elements; a bloc
 we DO know and whose bounds it breaks is refused rather than carried as an unknown one. An
 event is composed by the shell rather than read off anything, so a page renders by
 exhausting the six of them: a session started, a block arriving or growing, a call waiting
-on the person, that question settled, a turn ended, and a session that could not go on. A
-block arriving again at a place already held is that block GROWN, and replaces it, which is
-the whole of how writing draws itself as it arrives.
+on the person, that question settled, a turn ended, and the session over. A block arriving
+again at a place already held is that block GROWN, and replaces it, which is the whole of
+how writing draws itself as it arrives.
+
+**What an answer runs to is decided once, in `@sloppy/types`.** A listing and a note read
+whole are each composed by `listingAnswer` and `noteAnswer` there, which carry as much as
+`CHAT_ANSWER_MAX` holds and say how much they left — because the shapes bound one note and
+the seam bounds one answer, and neither can say what happens when a project has more notes,
+or a note more sections, than fit. Nothing in these shapes bounds a NOTE: a person adds
+sections by hand and a write appends after the rest, so a read that refused a long note
+would refuse exactly the notes worth reading. An agent handed a cut answer with nothing said
+reads it as the whole of them, which is why the count it left is in the answer itself.
 
 **One session at a time on a device, and opening one replaces what stood.** A person sees
 one chat, so there is no second thread for a session to go on into unseen. Saying something
 while a turn is underway is refused rather than queued — the agent is answering the last
-thing it was told — and stopping ends the turn and leaves the session standing, so the next
-thing said goes on with it.
+thing it was told.
+
+**Stopping ends the TURN and closing ends the SESSION, and the two are different acts on
+different channels.** A person who stops means the thing being done now: they keep the
+conversation and say the next thing, which is the only reading under which stopping is
+cheap enough to be worth reaching for. That end is said to the agent on its own input,
+where everything else it is told goes, so it is `chat.ts`'s dialect like every other line
+and `chat.rs` reads none of it. Closing means the program: `chat_close` in `chat.rs` takes
+its input away and ends the group it started, and `Heard::Over` is what comes back. **The
+page is told `over` whichever way a session ended** — closed here, replaced by another, the
+agent finished, or trouble it could not go on past, which is the one of the four that
+carries words for the person.
 
 **Nothing marks a note as an agent's.** No field in the front matter, no tag, no heading: a
 note is read for what it says, and what wrote it leaves no trace of itself (§ "Tooling and
@@ -3368,8 +3387,9 @@ native shell, which is what puts nothing in front of a reader in a tab.
 is what it is told; `ChatToolCall` and `ChatToolAnswer` are one act asked for and answered;
 `CHAT_TOOL_SPECS` is the acts themselves. `ChatAccess` in `@sloppy/app-core`'s runtime is
 the whole of what a page may ask for — the agents this device can reach, a session, a thing
-said into it, an answer for the person, and an end to the turn underway. **A page never
-learns that a program is involved**: it says something and is told what happened.
+said into it, an answer for the person, an end to the turn underway and an end to the
+session. **A page never learns that a program is involved**: it says something and is told
+what happened.
 
 **Which agent does it is a value, never a branch.** `CHAT_AGENTS` is the set,
 `ChatAsked.agent` carries which one was asked for — absent is whichever this device has,
@@ -3391,6 +3411,59 @@ reach would sit where the CLI sits — over `@sloppy/vault` and `@sloppy/local`,
 vocabulary of its own — and everything above is already that shape: the format is in
 `AGENT.md`, the writing rule is `writeOnto`'s, and the acts are `CHAT_TOOL_SPECS` rather
 than anything this shell invented.
+
+## Writing the notes in four steps
+
+**This is the surface the chat replaces, and it is written down here because it still
+ships.** Nothing new is built against it: a change to how a maintainer asks for notes
+belongs in § "Asking a tool to write the notes", and this section goes when the surface
+does. Everything the two share is said there and not repeated here — who a write is by,
+`writeOnto` and the offer rule, `containerDataAt`, `.sloppy/AGENT.md`, the tool started
+rather than composed, and native-only.
+
+**Four stages, in that order, because the cheap one decides what the expensive one does.**
+An INTENT is what somebody asked for, in their own words. A SURVEY reads the project
+against it and proposes places — a folder, a file — each with the reason it was proposed,
+and writes nothing. The person REFINES that list: they take places out, and they add what
+was missed, which arrives carrying no reason because nobody proposed it to them. The RUN
+writes about the places that survived, in the order they stand in. Nothing skips a stage: a
+run made straight from an intent is a bill somebody did not agree to.
+
+**A plan names each place once, and `placesAreDistinct` is where that is said.** Refining
+is somebody adding places by hand to a list a pass over the code proposed, so one arriving
+twice is ordinary; what is not is the run that follows, because the plan is settled before
+any of it is written and the second entry for a path carries no note however many the first
+leaves there. The shape bounds how many places a plan carries and cannot say they are
+distinct, so the predicate sits beside `progressFits` and the seam holds a plan and a
+survey's answer to it.
+
+**A run says what has happened and never guesses at what is left.** `DocumentingProgress`
+carries the stage, the place it is on, and the places behind it — and nothing that would
+have to be estimated. A run is `reading` until it picks up its first place and `writing`
+from then on rather than from its first write, so `at` names somewhere for the whole of the
+time it is on one. `stopped` with no `trouble` is a run the person stopped; `stopped` with
+words is one that could not go on, and those words are the ones a person can act on. **A
+survey has no such field and needs none**: it answers with places or it rejects, and the
+words it rejects with are what the surface shows — folding trouble into the empty list would
+tell somebody there is nothing worth a note when nothing ran. `progressFits` is the one
+statement of which of those fields a stage may carry, because a shape cannot say it without
+a refinement and a refinement here would take `.omit()` and `.partial()` with it.
+
+**One thing at a time on a device, counting the survey, and stopping it finishes before
+another begins.** A survey and a run are each a tool started here, so either asked while
+either is underway is refused rather than queued or made to replace the first. `stop` ends
+whichever is underway and resolves after that act has settled its own promise, so a surface
+may ask again the moment it resolves. **A survey somebody stopped proposes nothing**: half a
+pass over a repository is not a proposal, so it answers with the empty list a survey that
+found nothing worth a note answers with.
+
+**The shapes are `documenting.ts` in `@sloppy/types` and the seam is
+`AppRuntime.documenting`.** `DocumentingIntent`, `ProposedPlace`, `DocumentingPlan` and
+`DocumentingProgress` are what both ends hold; `DocumentingAccess` in `@sloppy/app-core`'s
+runtime is the whole of what a page may ask for — the tools this device can reach, a survey,
+a run it watches, and an end to whatever is underway. `DOCUMENTING_TOOLS` is the set of
+tools, `DocumentingIntent.tool` carries which one was asked for, and `documentingToolName`
+is the one copy of what each is called where somebody reads it.
 
 ## The vault's history
 
