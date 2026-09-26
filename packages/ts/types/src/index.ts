@@ -20,6 +20,7 @@ export * from "./authority.js";
 export * from "./document.js";
 export * from "./template.js";
 export * from "./code-anchor.js";
+export * from "./documenting.js";
 export * from "./block.js";
 export * from "./amendment.js";
 export * from "./published.js";

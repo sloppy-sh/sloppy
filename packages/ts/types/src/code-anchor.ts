@@ -44,7 +44,12 @@ function fragmentOf(held: string): CodeAnchor["fragment"] {
     : { kind: "symbol", name: held };
 }
 
-function insideProject(path: string): boolean {
+/**
+ * Whether a path names somewhere inside the project: said from its root, with
+ * `/`, and climbing out of it nowhere. An anchor holds one, and so does a place
+ * somebody asks for notes about.
+ */
+export function insideProject(path: string): boolean {
   if (path === "" || path.startsWith("/") || path.includes("\\")) return false;
   if (/^[A-Za-z]:/.test(path)) return false;
   return path
