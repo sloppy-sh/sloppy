@@ -19,8 +19,8 @@ import {
 } from '@sloppy/local';
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { tauriChat } from './chat';
 import { SIGN_IN_CALLBACK } from './deep-link';
-import { tauriDocumenting } from './documenting';
 import { tauriFiles, tauriHistory, tauriOpenFile, tauriSaveFile } from './files';
 import { tauriIdentities } from './identity';
 import {
@@ -93,6 +93,14 @@ function fresh(files: Files): LocalApi {
  *  asks about are the same one. */
 function serving(files: Files): LocalApi {
 	return served ?? fresh(files);
+}
+
+/** The code the graph in front of somebody is written about, rooted at the
+ *  project. `undefined` is a graph that is nobody's project. */
+function projectHere(files: Files): Promise<Files | undefined> {
+	return serving(files)
+		.projectFolder()
+		.catch(() => undefined);
 }
 
 async function ownerOf(files: Files, folder: string): Promise<ReturnType<typeof whoWrites>> {
@@ -270,16 +278,8 @@ export function initNativeRuntime(): void {
 							: {})
 					},
 					history: () => (vaultRoot ? tauriHistory(vaultRoot) : undefined),
-					project: () =>
-						serving(device)
-							.projectFolder()
-							.catch(() => undefined),
-					documenting: tauriDocumenting(async () => {
-						const project = await serving(device)
-							.projectFolder()
-							.catch(() => undefined);
-						return project && { root: project.root, files: device };
-					})
+					project: () => projectHere(device),
+					chat: tauriChat(async () => (await projectHere(device))?.root)
 				}
 			: {})
 	});

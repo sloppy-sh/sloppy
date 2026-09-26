@@ -29,8 +29,8 @@ let picking: 'answers' | 'fails' = 'answers';
 const askedFor: (string | undefined)[] = [];
 /** Each act asked of the history, with the folder it was asked about. */
 const historyAsked: [string, string][] = [];
-/** The folder each ask to read the project named. */
-const askedToRead: string[] = [];
+/** The folder each chat was started in. */
+const chattedIn: string[] = [];
 
 vi.mock('@tauri-apps/api/core', () => ({
 	// What a tool's answer is streamed back over, which outside a running app
@@ -80,13 +80,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 				);
 				return null;
 			}
-			case 'documenting_tools':
+			case 'chat_agents':
 				return ['claude_code'];
-			case 'documenting_ask': {
-				askedToRead.push(args?.root as string);
-				(args?.said as { onmessage: (line: string) => void }).onmessage('{"places":[]}');
-				return { stopped: false };
-			}
+			case 'chat_open':
+				chattedIn.push(args?.root as string);
+				return null;
 			case 'files_list': {
 				const under = `${args?.root as string}/`;
 				return [...held.keys()]
@@ -143,7 +141,7 @@ describe('the native shell in local mode', () => {
 		picks = '/Users/me/garden';
 		picking = 'answers';
 		historyAsked.length = 0;
-		askedToRead.length = 0;
+		chattedIn.length = 0;
 		resetApi.mockClear();
 	});
 
@@ -295,24 +293,32 @@ describe('the native shell in local mode', () => {
 		expect(historyAsked).toContainEqual(['history_head', '/Users/me/compiler/.sloppy']);
 	});
 
-	it('asks a tool on this computer to read the project the notes are about', async () => {
+	it('chats with an agent on this computer about the project the notes are about', async () => {
 		await launch();
 		projectAt('/Users/me/compiler');
 		await registered.vault?.open();
 
-		expect(await registered.documenting?.tools()).toEqual(['claude_code']);
-		expect(await registered.documenting?.survey({ said: 'What matters here' })).toEqual([]);
-		expect(askedToRead).toEqual(['/Users/me/compiler']);
+		expect(await registered.chat?.agents()).toEqual(['claude_code']);
+		await registered.chat?.open(
+			{},
+			() => {},
+			async () => ({ said: '' })
+		);
+		expect(chattedIn).toEqual(['/Users/me/compiler']);
 	});
 
-	it("has nothing to ask a tool about a graph that is nobody's project", async () => {
+	it("has nowhere to start a chat about a graph that is nobody's project", async () => {
 		await launch();
 
 		await registered.vault?.open();
 
-		await expect(registered.documenting?.survey({ said: '' })).rejects.toThrow(
-			'Open the project these notes are about first.'
-		);
+		await expect(
+			registered.chat?.open(
+				{},
+				() => {},
+				async () => ({ said: '' })
+			)
+		).rejects.toThrow('Open the project these notes are about first.');
 	});
 
 	it('asks where a desktop can ask', async () => {
@@ -478,7 +484,7 @@ describe('the folders this device keeps its graphs in', () => {
 		picking = 'answers';
 		broughtOver.length = 0;
 		historyAsked.length = 0;
-		askedToRead.length = 0;
+		chattedIn.length = 0;
 		resetApi.mockClear();
 	});
 
