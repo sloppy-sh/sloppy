@@ -2,12 +2,33 @@
 // somebody's project finds where it already looks. docs/ARCHITECTURE.md
 // § "Tooling and the review".
 
+import { NOTE_TEMPLATES, type TemplateSection } from "@sloppy/types";
+
+function opened(section: TemplateSection): string {
+  if (section.opens === "drawing") return " (a drawing)";
+  return section.opens === "compass" ? " (a compass)" : "";
+}
+
+/** The shapes the app starts a note from, as their headings in order. */
+const SHAPES = NOTE_TEMPLATES.map(
+  (shape) =>
+    `- **${shape.name}** — ${shape.sections
+      .map((section) => `${section.heading}${opened(section)}`)
+      .join("; ")}`,
+).join("\n");
+
 /** The file's whole text, ending in a newline. */
 export const AGENT_MD = `# Writing notes in this project
 
 The notes in this folder are a Sloppy graph kept beside the code it is about. They are
 ordinary markdown files: anything can read them, and what follows is what it takes to
 write one that the app, the other people here and the next agent all read the same way.
+
+**Everything a person can write in a note, you can write, and everything you write, a
+person can read and change.** There is no shape here that is yours and not theirs, and
+none that is theirs and not yours — which is why what follows is the whole format rather
+than a subset of it. What separates you from them is not what you may write but what is
+yours to say, and the last two sections are that line.
 
 ## One note is one file
 
@@ -28,11 +49,16 @@ write one that the app, the other people here and the next agent all read the sa
 
 \`ref\` is the note, and the only thing that identifies it: it is what every link holds
 and what a reader elsewhere resolves. \`parent\` is what the note sprang out of — leave it
-off on a note that starts a line of thought of its own. \`checked\` names the commit the
-note's reasoning was last read against, and is written by the person who read it.
+off on a note that starts a line of thought of its own. \`title\` is the one line a mark on
+the canvas is read by. \`links\` are lines somebody drew between this note and another by
+hand; naming a note in the writing already draws one, so a \`links\` entry is for a
+connection the writing does not make.
 
 There is no \`address\` above, and you never write one: a number like \`1a1\` is the label its
-author cites the note by, theirs to give and theirs to change.
+author cites the note by, theirs to give and theirs to change. A note may carry other
+fields — the numbers it has been at, who may write in it, how its author asked the mark
+and its lines to be drawn. Those are the app's to write and the author's to change: leave
+every one of them exactly as you found it.
 
 ## A note is a stack of sections
 
@@ -40,6 +66,38 @@ author cites the note by, theirs to give and theirs to change.
 that section's writing, in markdown. A section is one somebody added on purpose, so a
 new thought is a new section and a new sentence is not: write the paragraphs, the lists
 and the code of one thought into one section.
+
+## What a section can hold
+
+Ordinary markdown, read strictly. Headings \`## \` through \`###### \`, paragraphs, \`***\` for
+a rule, \`> \` for a quotation, \`- \` and \`1. \` for lists, \`- [ ] \` and \`- [x] \` for a list of
+things to do, and a fence for code:
+
+    ## What it does
+
+    It reads a file and hands back the sections, in order.
+
+    - [x] the reader
+    - [ ] the writer
+
+    \`\`\`ts
+    const note = fromMarkdown(text, sidecars);
+    \`\`\`
+
+Inside a line: \`**bold**\`, \`_italic_\`, \`~~struck~~\`, \`code\`, \`[a link](https://example.com)\`,
+\`$e^{i\\pi}$\` for arithmetic and a \`$$\` fence for a line of it on its own, and \`:wave:\` for
+an emoji this graph already knows. A \`mermaid\` fence is a diagram and is drawn as one.
+
+A backslash at the end of a line breaks the line without ending the paragraph. A comment
+reading \`<!-- sloppy:node … -->\` or \`<!-- sloppy:span … -->\` is something markdown has no
+syntax for, written as its own JSON: leave those exactly as they are, whether or not you
+recognise what is in them.
+
+## Naming another note
+
+\`[what it is called](sloppy:<ref>)\` inside a sentence. That is a citation: the canvas
+draws a line for it, and the note at the other end is reachable from this one. A link to
+anywhere else on the web is an ordinary markdown link and stays one.
 
 ## Pointing at code
 
@@ -69,10 +127,54 @@ like, west what was chosen instead. A direction with nothing in it is left out
 altogether. Filling one is citing the note it names, exactly as naming that note in a
 sentence is.
 
-These lines are the idea compass. A person can read the same four slots as another
-method — a question and its evidence, an assumption and its implication — and a compass
-in one of those is written as its JSON rather than as lines. Leave which method a note is
-in to its author, and write the lines.
+## Reading a compass another way
+
+Those four words are one method of three, and the four tokens are the same in all of
+them. \`kind\` is what says which: absent is the **idea** compass above, \`inquiry\` reads
+north as the question, south as the conclusion, east as the evidence and west as the
+evidence pointing the other way, and \`argument\` reads them as the assumption, the
+implication, the justification and the objection.
+
+A compass in a method other than the idea compass cannot be written as lines — a \`kind:\`
+line would cut it in two for a reader that does not expect one — so it goes as its JSON:
+
+    <!-- sloppy:node {"type":"compass","attrs":{"north":[{"note":"did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ8B4D5F6G7H8J9K0M1N2P3Q"}],"south":[],"east":[],"west":[],"kind":"inquiry"}} -->
+
+Which method a note is read by is its author's choice. Where one already says, keep it;
+where none does, write the lines.
+
+## Tags
+
+A plain word on the note, lowercased, and nothing declares one first: \`parsing\`,
+\`protocol\`, \`question\`. They classify across the whole graph rather than down it, so
+reach for the words this graph already carries before adding one nobody here uses. A tag
+is somebody's own vocabulary, and a note carries as many as it needs.
+
+## Saying a note has been read against the code
+
+\`checked\` names the commit a note's reasoning was last read against. **Absent means
+nobody has read it yet**, which is never the same as out of date — the app asks about a
+note whose code has moved SINCE it was read, and says nothing about one nobody has got to.
+It is a person saying they read it, so it is not yours to write: see below.
+
+## The shapes a note can start from
+
+The app offers these when somebody starts a note, and they are headings and nothing else
+— no marker, no tag, nothing stored. A note already in one of them keeps its headings, and
+a note you write is welcome to any of them where the shape fits what you found:
+
+${SHAPES}
+
+A **Decision** is the one shape the app reads back: a compass and a section headed "Why"
+together are what make a note one. So never write that pair — see below.
+
+## Pictures and drawings
+
+\`![what it shows](media/<id>.png)\` is a picture somebody added, and
+\`![what it shows](.sloppy/ink/<name>.svg)\` is something they drew by hand; the drawing
+itself is a file beside the note. Both are theirs. Move one within a note if the writing
+around it moves, and otherwise leave the line, the file and the folder alone: a redrawn
+path is a drawing thrown away, and nothing gives it back.
 
 ## Changing a note somebody already wrote
 
@@ -87,6 +189,10 @@ not. A note you write where there was none is yours to write outright.
   the author's own thinking, and an agent that supplies one puts words in their mouth.
   Write what you found as candidates, under a "Candidates" heading in the note's own
   writing, and leave the compass to a person.
+- **\`checked\`.** It says a person has read the note against the code. Writing it would
+  silence the one question the app asks them.
+- **A tag that says a tool wrote the note.** What wrote a note leaves no trace of itself
+  in it; the note is read for what it says.
 - **A second note about a file that already has one.** Offer a change to the note that
   is there instead.
 - **Anything in the code.** Sloppy reads this project and never writes in it; the only
