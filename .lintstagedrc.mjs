@@ -25,6 +25,16 @@ const ROOT = import.meta.dirname;
  */
 const GENERATED = new Set(["pnpm-lock.yaml"]);
 
+/**
+ * A notes container, which the store writes and rewrites.
+ *
+ * Owned by a formatter it fights the store: Prettier rewrites a note at commit,
+ * the app writes it back in the shape it reads, and the next commit is a
+ * whole-file diff again. A container can sit anywhere in a repository, so this
+ * matches the directory rather than one path.
+ */
+const CONTAINER_DIR = ".sloppy";
+
 /** Nearest ancestor of `dir` (inclusive) containing a package.json, or null. */
 function nearestPackage(dir) {
   const { root } = path.parse(dir);
@@ -78,6 +88,8 @@ const BIOME_DIRS = biomeDirs();
 
 const inBiome = (f) => BIOME_DIRS.some((d) => f.includes(d));
 const isGenerated = (f) => GENERATED.has(path.relative(ROOT, f));
+const inContainer = (f) =>
+  path.relative(ROOT, f).split(path.sep).includes(CONTAINER_DIR);
 
 /**
  * A symlink is an alias for a file a formatter is already handed under its real
@@ -102,7 +114,9 @@ function pkgRoot(file) {
 }
 
 export default (allFiles) => {
-  const owned = allFiles.filter((f) => !isGenerated(f) && !isSymlink(f));
+  const owned = allFiles.filter(
+    (f) => !isGenerated(f) && !inContainer(f) && !isSymlink(f),
+  );
   const biome = owned.filter(
     (f) => inBiome(f) && /\.(ts|js|mjs|cjs|json)$/.test(f),
   );
