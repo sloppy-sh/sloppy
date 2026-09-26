@@ -30,6 +30,7 @@
 		"@saurl/tauri-plugin-safe-area-insets-css-api": "^0.1.0",
 		"@sloppy/app-core": "workspace:*",
 		"@sloppy/local": "workspace:*",
+		"@sloppy/types": "workspace:*",
 		"@sloppy/ui": "workspace:*",
 		"@sloppy/vault": "workspace:*",
 		"@tauri-apps/api": "^2.5.0",

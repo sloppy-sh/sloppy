@@ -4109,6 +4109,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "git2",
+ "libc",
  "percent-encoding",
  "serde",
  "serde_json",
