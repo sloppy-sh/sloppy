@@ -1,25 +1,16 @@
-// Asking for a project's notes from the graph, and reading what comes back —
-// docs/ARCHITECTURE.md § "Writing the notes in four steps". Nothing here
-// starts a tool: the seam is a stand-in.
+// Opening a chat about the project from the graph it is in —
+// docs/ARCHITECTURE.md § "Asking a tool to write the notes". Nothing here
+// starts a program: the seam is a stand-in.
 
 import 'fake-indexeddb/auto';
 import { MemoryFiles } from '@sloppy/local';
-import type {
-	BlockDocument,
-	BlockView,
-	DocumentingPlan,
-	DocumentingProgress,
-	DocumentingTool,
-	NodeView,
-	OwnedRef,
-	ProposedPlace
-} from '@sloppy/types';
+import type { ChatAgent, NodeView, OwnedRef } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initRuntime, type DocumentingAccess } from '../runtime.js';
+import { type ChatAccess, initRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { canvasInk } from '../stores/canvas-ink.svelte.js';
-import { documenting } from '../stores/documenting.svelte.js';
+import { chat } from '../stores/chat.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
@@ -30,9 +21,6 @@ import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
 import {
-	AT,
-	amending,
-	amendment,
 	DID,
 	homeOf,
 	node,
@@ -73,7 +61,6 @@ const Graph = (await import('./graph.svelte')).default;
 const HOME = homeOf(DID);
 const PROJECT = '/home/ada/garden';
 const PARSER = ref(1);
-const SOMEBODY = 'did:syr:z6MkrAnotherPersonWritingHereAAAAAAAAAAAAAAAA';
 
 function segments(of: OwnedRef): string {
 	const cut = of.lastIndexOf('/');
@@ -81,44 +68,32 @@ function segments(of: OwnedRef): string {
 }
 const path = (of: OwnedRef) => `/nodes/${segments(of)}`;
 
-let seeded = 400;
-function section(of: OwnedRef, content: BlockDocument): BlockView {
-	seeded += 1;
-	return {
-		ref: ref(seeded),
-		node: of,
-		created_by: DID,
-		created_at: AT,
-		updated_at: AT,
-		ord: 'a0',
-		content
-	} as unknown as BlockView;
-}
+class Stub implements ChatAccess {
+	agent: readonly ChatAgent[] = ['claude_code'];
+	readonly said: string[] = [];
 
-class Stub implements DocumentingAccess {
-	readonly plans: DocumentingPlan[] = [];
-	tool: readonly DocumentingTool[] = ['claude_code'];
-	proposes: ProposedPlace[] = [{ path: 'src/parser.ts', reason: 'The whole of the reading' }];
-	reports: DocumentingProgress[] = [{ stage: 'done', places: [] }];
-
-	tools(): Promise<DocumentingTool[]> {
-		return Promise.resolve([...this.tool]);
+	agents(): Promise<ChatAgent[]> {
+		return Promise.resolve([...this.agent]);
 	}
 
-	survey(): Promise<ProposedPlace[]> {
-		return Promise.resolve(this.proposes);
+	open(): Promise<void> {
+		return Promise.resolve();
 	}
 
-	run(
-		plan: DocumentingPlan,
-		watch: (progress: DocumentingProgress) => void
-	): Promise<DocumentingProgress> {
-		this.plans.push(plan);
-		for (const progress of this.reports) watch(progress);
-		return Promise.resolve(this.reports[this.reports.length - 1]);
+	say(said: string): Promise<void> {
+		this.said.push(said);
+		return Promise.resolve();
+	}
+
+	settle(): Promise<void> {
+		return Promise.resolve();
 	}
 
 	stop(): Promise<void> {
+		return Promise.resolve();
+	}
+
+	close(): Promise<void> {
 		return Promise.resolve();
 	}
 }
@@ -159,12 +134,6 @@ function labelled(label: string): HTMLButtonElement {
 	return found as HTMLButtonElement;
 }
 
-function named(words: string): HTMLButtonElement | undefined {
-	return [...document.body.querySelectorAll('button')].find(
-		(one) => one.textContent?.trim() === words
-	);
-}
-
 const offeredInMenu = (): string[] =>
 	[...document.body.querySelectorAll('[role="menuitem"]')].map(
 		(row) => row.textContent?.trim() ?? ''
@@ -195,21 +164,7 @@ function installGraph(): void {
 	});
 	api.on('GET /publications', () => []);
 	for (const one of held) api.on(`GET ${path(one.ref)}`, () => one);
-	api.on(`GET ${path(PARSER)}/blocks`, () => [
-		section(PARSER, { type: 'doc', content: [{ type: 'paragraph' }] })
-	]);
-	amending(
-		api,
-		{
-			[PARSER]: [
-				amendment(500, PARSER, SOMEBODY, {
-					title: 'The parser',
-					message: 'What the reading does, section by section'
-				})
-			]
-		},
-		() => held[0]
-	);
+	api.on(`GET ${path(PARSER)}/blocks`, () => []);
 }
 
 async function open(): Promise<void> {
@@ -230,7 +185,7 @@ beforeEach(async () => {
 	publications.clear();
 	find.clear();
 	graphs.clear();
-	documenting.clear();
+	chat.clear();
 	offers.clear();
 	files = new MemoryFiles({ root: PROJECT, store: new Map(), data: '/data' });
 	await files.write('src/parser.ts', new TextEncoder().encode('export const one = 1;\n'));
@@ -243,7 +198,7 @@ beforeEach(async () => {
 	initRuntime({
 		apiHost: () => 'http://api.test',
 		project: async () => serving,
-		documenting: stub
+		chat: stub
 	});
 	seamSettledAgain();
 	target = document.createElement('div');
@@ -253,26 +208,25 @@ beforeEach(async () => {
 afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
-	documenting.clear();
+	chat.clear();
 	offers.clear();
 	session.clear();
-	initRuntime({ apiHost: () => '', project: undefined, documenting: undefined });
+	initRuntime({ apiHost: () => '', project: undefined, chat: undefined });
 	seamSettledAgain();
 	target.remove();
 	document.body.innerHTML = '';
 });
 
-describe('where the offer to write the notes stands', () => {
+describe('where the offer to chat stands', () => {
 	it('is on a graph that is a project, beside what the code left behind', async () => {
 		await open();
 		labelled('More').click();
 		await settle();
 
-		expect(offeredInMenu()).toContain('Write notes about the code');
+		expect(offeredInMenu()).toContain('Chat about the code');
 	});
 
-	it('is nowhere on a graph that is nobody\u2019s project', async () => {
-		serving = undefined;
+	it('has taken the place of the four steps that stood there', async () => {
 		await open();
 		labelled('More').click();
 		await settle();
@@ -280,67 +234,39 @@ describe('where the offer to write the notes stands', () => {
 		expect(offeredInMenu()).not.toContain('Write notes about the code');
 	});
 
-	it('is nowhere on a device that cannot reach a tool at all', async () => {
+	it('is nowhere on a graph that is nobody’s project', async () => {
+		serving = undefined;
+		await open();
+		labelled('More').click();
+		await settle();
+
+		expect(offeredInMenu()).not.toContain('Chat about the code');
+	});
+
+	it('is nowhere on a device that cannot reach an agent at all', async () => {
 		initRuntime({
 			apiHost: () => 'http://api.test',
 			project: async () => serving,
-			documenting: undefined
+			chat: undefined
 		});
 		seamSettledAgain();
 		await open();
 		labelled('More').click();
 		await settle();
 
-		expect(offeredInMenu()).not.toContain('Write notes about the code');
+		expect(offeredInMenu()).not.toContain('Chat about the code');
 	});
 });
 
-describe('the whole of the asking', () => {
-	async function ask(): Promise<void> {
+describe('the chat itself', () => {
+	it('opens on nothing said and nothing asked of the agent', async () => {
 		await open();
 		labelled('More').click();
 		await settle();
-		menuItem('Write notes about the code').click();
-		await settle();
-		named('Look over the code')?.click();
-		await settle();
-	}
-
-	it('shows what was proposed and writes nothing until it is settled', async () => {
-		await ask();
-
-		expect(screen()).toContain('The whole of the reading');
-		expect(stub.plans).toHaveLength(0);
-	});
-
-	it('reads what came back as an offered change on the note', async () => {
-		stub.reports = [
-			{
-				stage: 'done',
-				places: [{ path: 'src/parser.ts', note: { ref: PARSER, done: 'offered' } }]
-			}
-		];
-		await ask();
-		named('Write these notes')?.click();
+		menuItem('Chat about the code').click();
 		await settle();
 
-		const row = [...document.body.querySelectorAll('button')].find((one) =>
-			one.textContent?.includes('A change is offered on it')
-		);
-		expect(row).toBeDefined();
-		row?.click();
-		await settle();
-
-		expect(screen()).toContain('Offered changes');
-		expect(screen()).toContain('What the reading does, section by section');
-
-		const offer = [...document.body.querySelectorAll('button')].find((one) =>
-			one.textContent?.includes('What the reading does, section by section')
-		);
-		offer?.click();
-		await settle();
-
-		expect(screen()).toContain('Take it in');
-		expect(screen()).toContain('Turn it down');
+		expect(screen()).toContain('Say what you want written about');
+		expect(stub.said).toEqual([]);
 	});
 });
