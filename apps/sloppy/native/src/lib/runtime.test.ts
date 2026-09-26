@@ -29,8 +29,15 @@ let picking: 'answers' | 'fails' = 'answers';
 const askedFor: (string | undefined)[] = [];
 /** Each act asked of the history, with the folder it was asked about. */
 const historyAsked: [string, string][] = [];
+/** The folder each ask to read the project named. */
+const askedToRead: string[] = [];
 
 vi.mock('@tauri-apps/api/core', () => ({
+	// What a tool's answer is streamed back over, which outside a running app
+	// is nothing more than the callback the shell sets on it.
+	Channel: class {
+		onmessage: (line: string) => void = () => {};
+	},
 	convertFileSrc: (path: string, scheme: string) => `${scheme}://localhost/${path}`,
 	invoke: async (command: string, args?: Record<string, unknown>) => {
 		const at = `${args?.root as string}/${args?.path as string}`;
@@ -73,6 +80,13 @@ vi.mock('@tauri-apps/api/core', () => ({
 				);
 				return null;
 			}
+			case 'documenting_tools':
+				return ['claude_code'];
+			case 'documenting_ask': {
+				askedToRead.push(args?.root as string);
+				(args?.said as { onmessage: (line: string) => void }).onmessage('{"places":[]}');
+				return { stopped: false };
+			}
 			case 'files_list': {
 				const under = `${args?.root as string}/`;
 				return [...held.keys()]
@@ -88,6 +102,23 @@ vi.mock('@tauri-apps/api/core', () => ({
 /** A graph written in `folder`, as the app writes one once it is opened. */
 function wroteIn(folder: string): void {
 	held.set(`${folder}/graph.json`, '');
+}
+
+/** A project whose notes are in the container inside it, for somebody to pick. */
+function projectAt(root: string): void {
+	picks = root;
+	held.set(
+		`${root}/.sloppy/graph.json`,
+		btoa(
+			JSON.stringify({
+				format: 1,
+				graph: '01ARZ3NDEKTSV4RRFFQ69G5FAY',
+				name: 'The compiler',
+				owner: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK',
+				project: '..'
+			})
+		)
+	);
 }
 
 /** A launch of the app on `platform`, as the Tauri CLI spells it: fresh module
@@ -112,6 +143,7 @@ describe('the native shell in local mode', () => {
 		picks = '/Users/me/garden';
 		picking = 'answers';
 		historyAsked.length = 0;
+		askedToRead.length = 0;
 		resetApi.mockClear();
 	});
 
@@ -251,19 +283,7 @@ describe('the native shell in local mode', () => {
 
 	it('serves a project by the notes inside it, and reads their states there', async () => {
 		await launch();
-		picks = '/Users/me/compiler';
-		held.set(
-			'/Users/me/compiler/.sloppy/graph.json',
-			btoa(
-				JSON.stringify({
-					format: 1,
-					graph: '01ARZ3NDEKTSV4RRFFQ69G5FAY',
-					name: 'The compiler',
-					owner: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK',
-					project: '..'
-				})
-			)
-		);
+		projectAt('/Users/me/compiler');
 
 		await registered.vault?.open();
 
@@ -273,6 +293,26 @@ describe('the native shell in local mode', () => {
 		expect(servedFrom()).toBe('/Users/me/compiler');
 		expect(await registered.history?.()?.currentCommit()).toBe('a1b2c3');
 		expect(historyAsked).toContainEqual(['history_head', '/Users/me/compiler/.sloppy']);
+	});
+
+	it('asks a tool on this computer to read the project the notes are about', async () => {
+		await launch();
+		projectAt('/Users/me/compiler');
+		await registered.vault?.open();
+
+		expect(await registered.documenting?.tools()).toEqual(['claude_code']);
+		expect(await registered.documenting?.survey({ said: 'What matters here' })).toEqual([]);
+		expect(askedToRead).toEqual(['/Users/me/compiler']);
+	});
+
+	it("has nothing to ask a tool about a graph that is nobody's project", async () => {
+		await launch();
+
+		await registered.vault?.open();
+
+		await expect(registered.documenting?.survey({ said: '' })).rejects.toThrow(
+			'Open the project these notes are about first.'
+		);
 	});
 
 	it('asks where a desktop can ask', async () => {
@@ -438,6 +478,7 @@ describe('the folders this device keeps its graphs in', () => {
 		picking = 'answers';
 		broughtOver.length = 0;
 		historyAsked.length = 0;
+		askedToRead.length = 0;
 		resetApi.mockClear();
 	});
 

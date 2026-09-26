@@ -20,6 +20,7 @@ import {
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { SIGN_IN_CALLBACK } from './deep-link';
+import { tauriDocumenting } from './documenting';
 import { tauriFiles, tauriHistory, tauriOpenFile, tauriSaveFile } from './files';
 import { tauriIdentities } from './identity';
 import {
@@ -272,7 +273,13 @@ export function initNativeRuntime(): void {
 					project: () =>
 						serving(device)
 							.projectFolder()
-							.catch(() => undefined)
+							.catch(() => undefined),
+					documenting: tauriDocumenting(async () => {
+						const project = await serving(device)
+							.projectFolder()
+							.catch(() => undefined);
+						return project && { root: project.root, files: device };
+					})
 				}
 			: {})
 	});

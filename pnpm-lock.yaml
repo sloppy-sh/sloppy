@@ -219,6 +219,9 @@ importers:
       '@sloppy/local':
         specifier: workspace:*
         version: link:../../../packages/ts/local
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../../../packages/ts/types
       '@sloppy/ui':
         specifier: workspace:*
         version: link:../../../packages/ts/ui
