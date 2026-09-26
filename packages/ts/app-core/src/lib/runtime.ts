@@ -18,7 +18,15 @@ import type {
 	History,
 	IdentityAccess
 } from '@sloppy/local';
-import type { DidSyr, OwnedRef } from '@sloppy/types';
+import type {
+	DidSyr,
+	DocumentingIntent,
+	DocumentingPlan,
+	DocumentingProgress,
+	DocumentingTool,
+	OwnedRef,
+	ProposedPlace
+} from '@sloppy/types';
 import type { SloppyApi } from './api.js';
 import { storedOrigin } from './stores/prefs.svelte.js';
 
@@ -95,6 +103,37 @@ export interface VaultAccess {
 	 *  is a shell that cannot reach a project's own folder, and nothing about
 	 *  opening one is put in front of anybody. */
 	openProject?(): Promise<string | undefined>;
+}
+
+/**
+ * Asking a tool on this device to read the project and write its notes, and
+ * watching what comes back — docs/ARCHITECTURE.md § "Asking a tool to write
+ * the notes". That a program on the machine does the work is this interface's
+ * side of the seam: a page asks for a survey and for a run, and knows nothing
+ * else about how either happens.
+ */
+export interface DocumentingAccess {
+	/** The tools this device can reach. An EMPTY list is a device with none,
+	 *  and the offer says so rather than failing when somebody takes it. */
+	tools(): Promise<DocumentingTool[]>;
+	/** Read the project against what somebody asked for, and propose the places
+	 *  worth a note. Nothing is written, so this is the pass a person refines
+	 *  before the one that costs them. */
+	survey(intent: DocumentingIntent): Promise<ProposedPlace[]>;
+	/**
+	 * Write the notes the plan names, in its order, telling `watch` each time
+	 * the answer changes and resolving with the last answer it gave.
+	 *
+	 * A note somebody has written in is never written over: the run offers a
+	 * change on it, which stands until its author takes it in, and `PlaceDone`
+	 * says which of the two happened at each place.
+	 */
+	run(
+		plan: DocumentingPlan,
+		watch: (progress: DocumentingProgress) => void
+	): Promise<DocumentingProgress>;
+	/** End what is underway here. Nothing underway is not a failure. */
+	stop(): Promise<void>;
 }
 
 export interface AppRuntime {
@@ -178,6 +217,12 @@ export interface AppRuntime {
 	 *  that would need one. `CredentialsAccess` in `@sloppy/local` declares
 	 *  every act. */
 	credentials?: CredentialsAccess;
+	/** Asking a tool on this device to write the project's notes — a shell that
+	 *  defines it also defines {@link AppRuntime.project}. Absent → nothing here
+	 *  can run a program of the person's, so nothing about writing the notes
+	 *  this way is put in front of anybody, which is every browser tab.
+	 *  {@link DocumentingAccess} declares every act. */
+	documenting?: DocumentingAccess;
 	/** How a stored picture's address becomes one this page can load. Absent →
 	 *  the API's proxy, so viewing somebody else's note never reaches their
 	 *  instance from here. A shell serving a graph off the device answers with
@@ -291,6 +336,7 @@ export const runtime = {
 	project: async (): Promise<Files | undefined> => current.project?.(),
 	gitDefaults: (): GitDefaultsAccess | undefined => current.gitDefaults,
 	credentials: (): CredentialsAccess | undefined => current.credentials,
+	documenting: (): DocumentingAccess | undefined => current.documenting,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,
 	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc
