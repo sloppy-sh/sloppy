@@ -20,6 +20,11 @@ const UNWRITTEN = 'Sloppy could not write those notes just now. Try again.';
  *  and `over` is a run that has ended either way. */
 export type DocumentingStep = 'intent' | 'surveying' | 'refining' | 'running' | 'over';
 
+/** What this device has to ask. `null` is a device that has not been asked, and
+ *  `'untold'` one whose answer did not arrive — which is not the answer a device
+ *  with no tool gives. */
+export type DocumentingTools = readonly DocumentingTool[] | 'untold' | null;
+
 class DocumentingStore {
 	#step = $state<DocumentingStep>('intent');
 	#said = $state('');
@@ -27,9 +32,9 @@ class DocumentingStore {
 	#progress = $state.raw<DocumentingProgress | null>(null);
 	#trouble = $state.raw<string | null>(null);
 	#stopping = $state(false);
-	/** `null` until this device has been asked, which is when somebody opens the
-	 *  surface — asking sooner would start a tool nobody asked for. */
-	#tools = $state.raw<readonly DocumentingTool[] | null>(null);
+	/** Unasked until somebody opens the surface — asking sooner would start a
+	 *  tool nobody asked for. */
+	#tools = $state.raw<DocumentingTools>(null);
 	#of = $state.raw<OwnedRef | null>(null);
 	/** An answer that lands after somebody stopped, or after another ask began,
 	 *  is not an answer to what is on screen. */
@@ -44,8 +49,7 @@ class DocumentingStore {
 		return seam().documenting() !== undefined;
 	}
 
-	/** The tools this device has, or `null` before it has been asked. */
-	get tools(): readonly DocumentingTool[] | null {
+	get tools(): DocumentingTools {
 		return this.#tools;
 	}
 
@@ -88,10 +92,21 @@ class DocumentingStore {
 	async opened(graph: OwnedRef): Promise<void> {
 		if (this.#of !== null && this.#of !== graph) this.clear();
 		this.#of = graph;
+		const held = this.#tools;
+		if (held === null || held === 'untold') await this.lookForTools();
+	}
+
+	/** Ask this device what it has. An ask that goes wrong is told apart from a
+	 *  device with no tool, which would send somebody to install one they have. */
+	async lookForTools(): Promise<void> {
 		const access = seam().documenting();
-		if (!access || this.#tools !== null) return;
-		const held = await access.tools().catch(() => []);
-		this.#tools = held;
+		if (!access) return;
+		this.#tools = null;
+		try {
+			this.#tools = await access.tools();
+		} catch {
+			this.#tools = 'untold';
+		}
 	}
 
 	/** Back to the words, keeping them, so somebody can ask for something else. */

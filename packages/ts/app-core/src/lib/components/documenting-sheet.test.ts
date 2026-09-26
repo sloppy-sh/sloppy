@@ -40,6 +40,8 @@ class Stub implements DocumentingAccess {
 	readonly plans: DocumentingPlan[] = [];
 	stops = 0;
 	tool: readonly DocumentingTool[] = ['claude_code'];
+	/** Set while this device is to reject the ask rather than answer it. */
+	untold = false;
 	proposes: ProposedPlace[] = [];
 	reports: DocumentingProgress[] = [{ stage: 'done', places: [] }];
 	/** Set while a run is to hang, so the surface can be read mid-run. */
@@ -47,6 +49,7 @@ class Stub implements DocumentingAccess {
 	#waiting: (() => void) | null = null;
 
 	tools(): Promise<DocumentingTool[]> {
+		if (this.untold) return Promise.reject(new Error('no bridge'));
 		return Promise.resolve([...this.tool]);
 	}
 
@@ -205,6 +208,31 @@ describe('a device with nothing to ask', () => {
 		expect(named('Look over the code')).toBeUndefined();
 		expect(field('What you want written about, and why')).toBeNull();
 	});
+
+	it('looks again for one somebody has just installed', async () => {
+		stub.tool = [];
+		await documenting.opened(HOME);
+		show();
+		await settle();
+
+		stub.tool = ['claude_code'];
+		named('Look again')?.click();
+		await settle();
+
+		expect(field('What you want written about, and why')).not.toBeNull();
+	});
+
+	it('says an ask that went nowhere went nowhere, not that there is nothing', async () => {
+		stub.untold = true;
+		await documenting.opened(HOME);
+		show();
+		await settle();
+
+		expect(screen()).toContain('could not tell');
+		expect(screen()).not.toContain('not on this machine');
+		expect(screen()).not.toContain('bridge');
+		expect(named('Look again')).toBeDefined();
+	});
 });
 
 describe('saying what you want', () => {
@@ -228,6 +256,20 @@ describe('saying what you want', () => {
 		await settle();
 
 		expect(stub.surveys).toEqual([{ said: 'How the reading works' }]);
+	});
+
+	it('keeps what was typed when somebody dismisses the sheet and opens it again', async () => {
+		await documenting.opened(HOME);
+		show();
+		await settle();
+		type(field('What you want written about, and why'), 'Half a thought');
+
+		if (mounted) unmount(mounted, { outro: false });
+		mounted = undefined;
+		show();
+		await settle();
+
+		expect(field('What you want written about, and why')?.value).toBe('Half a thought');
 	});
 });
 

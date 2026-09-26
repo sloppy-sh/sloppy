@@ -50,16 +50,11 @@
 	const progress = $derived(documenting.progress);
 	const running = $derived(step === 'surveying' || step === 'running');
 
-	let said = $state(untrack(() => documenting.said));
 	let looking = $state('');
 	/** Every place in the project somebody could add, `null` until it has been
 	 *  read. */
 	let inTheProject = $state.raw<string[] | null>(null);
 	let readFrom: Files | null = null;
-
-	$effect(() => {
-		if (open) untrack(() => (said = documenting.said));
-	});
 
 	$effect(() => {
 		const held = project;
@@ -113,11 +108,6 @@
 		looking = '';
 	}
 
-	function askFor(): void {
-		documenting.say(said);
-		void documenting.survey();
-	}
-
 	const DESCRIPTIONS: Partial<Record<DocumentingStep, string>> = {
 		intent: 'Say what you want written about, and why.',
 		refining: 'Take out what you would rather not have written about, and add what is missing.',
@@ -132,20 +122,27 @@
 	<div class="space-y-4 px-2 pt-4 pb-2">
 		{#if tools === null}
 			<Skeleton class="h-11 w-full" />
-		{:else if tools.length === 0}
+		{:else if tools === 'untold' || tools.length === 0}
 			<p class="px-1 py-2 text-sm text-muted-foreground">
-				Sloppy asks {TOOLS_IT_ASKS} to write these notes, and it is not on this machine.
+				{tools === 'untold'
+					? `Sloppy could not tell whether ${TOOLS_IT_ASKS} is on this machine.`
+					: `Sloppy asks ${TOOLS_IT_ASKS} to write these notes, and it is not on this machine. Install it, then look again.`}
 			</p>
+			<Button variant="outline" class="h-11 w-full" onclick={() => void documenting.lookForTools()}>
+				Look again
+			</Button>
 		{:else if step === 'intent'}
 			<Textarea
-				bind:value={said}
+				bind:value={() => documenting.said, (words) => documenting.say(words)}
 				rows={4}
 				maxlength={DOCUMENTING_INTENT_MAX}
 				class="min-h-24"
 				aria-label="What you want written about, and why"
 				placeholder="What this project is, and what somebody new would need to understand first."
 			/>
-			<Button class="h-11 w-full" onclick={askFor}>Look over the code</Button>
+			<Button class="h-11 w-full" onclick={() => void documenting.survey()}>
+				Look over the code
+			</Button>
 		{:else if step === 'surveying'}
 			<div class="space-y-2" role="status" aria-label="Looking over the code">
 				<p class="px-1 text-sm text-muted-foreground">Looking over the code.</p>
@@ -168,9 +165,7 @@
 									<p class="text-sm text-muted-foreground">{place.reason}</p>
 								{/if}
 								{#if place.note}
-									<p class="text-xs text-muted-foreground">
-										Changes the note already here, for you to take in.
-									</p>
+									<p class="text-xs text-muted-foreground">Changes the note already here.</p>
 								{/if}
 							</div>
 							<Button

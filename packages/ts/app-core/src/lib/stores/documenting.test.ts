@@ -27,6 +27,9 @@ interface Held {
 class Stub implements DocumentingAccess {
 	readonly held: Held = { surveys: [], plans: [], stops: 0 };
 	tool: readonly DocumentingTool[] = ['claude_code'];
+	/** Set while this device is to reject the ask rather than answer it. */
+	untold = false;
+	asks = 0;
 	/** What the next survey answers with, or what it rejects with — the native
 	 *  shell's bare line, or a refusal already carrying words. */
 	proposes: ProposedPlace[] | Refusal | string = [];
@@ -37,6 +40,8 @@ class Stub implements DocumentingAccess {
 	#waiting: (() => void) | null = null;
 
 	tools(): Promise<DocumentingTool[]> {
+		this.asks += 1;
+		if (this.untold) return Promise.reject(new Error('no bridge'));
 		return Promise.resolve([...this.tool]);
 	}
 
@@ -115,6 +120,27 @@ describe('what this device can be asked', () => {
 		stub.tool = [];
 		await documenting.opened(HOME);
 		expect(documenting.tools).toEqual([]);
+	});
+
+	it('says an ask that went nowhere is not a device with nothing on it', async () => {
+		stub.untold = true;
+		await documenting.opened(HOME);
+		expect(documenting.tools).toBe('untold');
+
+		stub.untold = false;
+		await documenting.lookForTools();
+		expect(documenting.tools).toEqual(['claude_code']);
+	});
+
+	it('asks again where the last ask could not answer, and not where it did', async () => {
+		stub.untold = true;
+		await documenting.opened(HOME);
+		stub.untold = false;
+		await documenting.opened(HOME);
+		expect(stub.asks).toBe(2);
+
+		await documenting.opened(HOME);
+		expect(stub.asks).toBe(2);
 	});
 });
 
