@@ -2703,7 +2703,9 @@ other — no column and no row — and it is also an edge: `citedNotes` in `@slo
 the notes a document names, and `node.references` is that read. It writes no `links` entry,
 which stays what a hand drew; DESIGN.md § Edges rules on both.
 
-**A shape leaves no trace of itself.** `templates.ts` in `@sloppy/ui` turns a shape into
+**A shape leaves no trace of itself.** `NOTE_TEMPLATES` in `@sloppy/types` is the shapes
+themselves — a name and its headings, read by the app and by `.sloppy/AGENT.md` alike, so
+the two cannot come to offer different ones; `templates.ts` in `@sloppy/ui` turns one into
 a list of documents and `writeTemplate` creates one row for each, after whatever the note
 already holds — so a seeded section is an ordinary block the moment it exists. Nothing
 records which shape a note came from: there is nothing to validate a note against later,
@@ -3161,10 +3163,14 @@ and what `draft` reads to know that a note pointing at a package's entry point i
 PACKAGE — so a detailed note about that file is written under it rather than into it.
 
 **`.sloppy/AGENT.md` is what an agent finds where it already looks.** `sloppy init` commits
-it, and it says the file shapes — one note per file, the front matter, the sections, the
-compass block, `code:` anchors — the rule that an existing note is changed through an offer,
-what an agent may never write, and the commands above. `AGENT_MD` in `@sloppy/cli` is the
-one copy of that text.
+it, and it carries the WHOLE format: one note per file, the front matter, the sections, the
+markdown a section holds, citations, `code:` anchors, the compass and its three methods,
+tags, `checked`, the shapes a note starts from, and the pictures and drawings an agent moves
+and never redraws. Then the rule that an existing note is changed through an offer, what an
+agent may never write, and the commands above. It is the whole format because an agent that
+can write only a subset of it produces notes a person cannot finish (§ "Asking a tool to
+write the notes"). `AGENT_MD` in `@sloppy/cli` is the one copy of that text, and the shapes
+in it come from `NOTE_TEMPLATES` in `@sloppy/types`, which the app writes from too.
 
 **The review is derived, never stored, and computed in one place.** `review()` in
 `@sloppy/vault` is given the notes, the project's top-level paths and a way to ask what has
@@ -3211,6 +3217,82 @@ as the folder still holds, since a file rewritten elsewhere may hold none of the
 stood after. **The note says "also written somewhere else" only where both versions of a
 section really do stand in it**, and says it the way anything else that happened to the note
 is said: nothing of the person's was lost, and nothing is theirs to fix.
+
+## Asking a tool to write the notes
+
+**`@sloppy/cli` is the container without a window; this is the window.** An agent working
+in a repository can already start a container and write notes into it, and a maintainer
+standing in front of the app cannot ask for the same thing. What this adds is the person:
+they say what they want written about, they are shown what a pass over the code proposes,
+they settle that list, and what comes back is theirs to take in or turn down.
+
+**Four stages, in that order, because the cheap one decides what the expensive one does.**
+An INTENT is what somebody asked for, in their own words. A SURVEY reads the project
+against it and proposes places — a folder, a file — each with the reason it was proposed,
+and writes nothing. The person REFINES that list: they take places out, and they add what
+was missed, which arrives carrying no reason because nobody proposed it to them. The RUN
+writes about the places that survived, in the order they stand in. Nothing skips a stage:
+a run made straight from an intent is a bill somebody did not agree to.
+
+**What comes back is offered, never landed over somebody's writing.** A run writes through
+the same store the app writes through, so it is held to the one rule every write is held
+to (§ "Whose writing a note carries"): a place with no note yet gets one written outright,
+a note carrying nobody's writing but the tool's is written straight onto, and a note a
+person has written in is offered an amendment that stands until they take it in. Nothing
+here writes a note file by hand — a writer that did would be the one writer in Sloppy that
+the note's own gate does not reach.
+
+**Nothing marks a note as a tool's.** No field in the front matter, no tag, no heading: a
+note is read for what it says, and what wrote it leaves no trace of itself (§ "Tooling and
+the review", where the same rule decides how `init`'s notes are told apart). `PlaceDone`
+says what the run left at each place, and that answer lives in the run rather than on the
+note.
+
+**`.sloppy/AGENT.md` is what the tool reads, and it carries the whole format.** Every
+element a person can put in a note — the sections, the compass and its three methods, the
+citations, the `code:` anchors, the tags, the shapes a note starts from, the pictures and
+the drawings — is written down there, because an agent that can only write a subset of the
+format produces notes a person cannot finish, and a person editing a note must not be
+writing something the next pass cannot read. `AGENT_MD` in `@sloppy/cli` is the one copy of
+that text, and the shapes it teaches come from `NOTE_TEMPLATES` in `@sloppy/types` so the
+file and the app cannot drift apart.
+
+**Native only, and the web app grows no button for it.** A browser tab cannot run a program
+on somebody's machine, and the hosted API must never run one on a server — a graph anybody
+can reach is not a shell anybody may have. `AppRuntime.documenting` is absent everywhere but
+the native shell, which is what puts nothing in front of a reader in a tab.
+
+**The shapes are `documenting.ts` in `@sloppy/types` and the seam is
+`AppRuntime.documenting`.** `DocumentingIntent`, `ProposedPlace`, `DocumentingPlan` and
+`DocumentingProgress` are what both ends hold; `DocumentingAccess` in `@sloppy/app-core`'s
+runtime is the whole of what a page may ask for — the tools this device can reach, a survey,
+a run it watches, and an end to whatever is underway. **A page never learns that a program
+is involved**: it asks for a survey and gets places, asks for a run and gets progress and
+then offers.
+
+**Which tool does the writing is a value, never a branch.** `DOCUMENTING_TOOLS` is the set,
+`DocumentingIntent.tool` carries which one was asked for — absent is whichever this device
+has, which is the whole answer while it has one — and `documentingToolName` is the one copy
+of what each is called where somebody reads it. A second tool is a value there and a way for
+the shell to reach it, and touches no shape and no surface. A device with none is an empty
+list from `tools()`, which is what lets the offer say so plainly instead of failing when
+somebody takes it.
+
+**How much detail somebody wants is part of what they said.** There is no depth field: the
+point of putting a tool behind this rather than a template engine is that it reads the code
+and decides what a place warrants, and a surface that set the depth on somebody's behalf
+would be deciding it for them.
+
+**A run says what has happened and never guesses at what is left.** `DocumentingProgress`
+carries the stage, the place it is on, and the places behind it — and nothing that would
+have to be estimated. `stopped` with no words is a run the person stopped; `stopped` with
+words is one that could not go on, and those words are the ones a person can act on.
+
+**Agents outside the app are a later wave, and nothing here is in its way.** An MCP server
+reading and writing the same graph would sit where the CLI sits — over `@sloppy/vault` and
+`@sloppy/local`, holding no vocabulary of its own — and everything above is already that
+shape: the format is in `AGENT.md`, the writing rule is the store's, and the seam carries
+no assumption that the tool is on this machine beyond the shell that reaches it.
 
 ## The vault's history
 
