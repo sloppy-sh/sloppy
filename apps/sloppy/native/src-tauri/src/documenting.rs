@@ -283,12 +283,17 @@ fn end_it(child: &mut Child) {
 
 /// The tools this device can reach. An empty list is a device with none.
 #[tauri::command]
-pub fn documenting_tools() -> Vec<&'static str> {
-    TOOLS
-        .iter()
-        .filter(|tool| reachable(tool.program))
-        .map(|tool| tool.id)
-        .collect()
+pub async fn documenting_tools() -> Vec<&'static str> {
+    // Asking after a program starts one, which is too long to hold the page up.
+    tauri::async_runtime::spawn_blocking(|| {
+        TOOLS
+            .iter()
+            .filter(|tool| reachable(tool.program))
+            .map(|tool| tool.id)
+            .collect()
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]
