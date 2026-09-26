@@ -70,8 +70,17 @@ export function notePrompt(
 			`Point the note at the code it is about: a code: link to ${place.path}.`
 		].join('\n'),
 		standing === undefined ? 'There is no note about this place yet.' : asItReads(standing),
-		'Answer with JSON and nothing else, in this shape:\n\n{"title":"What the reader does","sections":["## What it does\\n\\nIt reads a file and hands back the sections, in order."]}\n\nEach section is one section of the note, in markdown, and opens with a `## ` heading. An empty "sections" list is a place you found nothing worth saying about, which is an answer.'
+		answerShape(standing)
 	].join('\n\n');
+}
+
+/** What a note is answered with. A note that is already there keeps the title
+ *  it has, so one is not asked for where nothing could be done with it. */
+function answerShape(standing: NoteAsWritten | undefined): string {
+	const sections =
+		'"sections":["## What it does\\n\\nIt reads a file and hands back the sections, in order."]';
+	const shape = standing ? `{${sections}}` : `{"title":"What the reader does",${sections}}`;
+	return `Answer with JSON and nothing else, in this shape:\n\n${shape}\n\nEach section is one section of the note, in markdown, and opens with a \`## \` heading. An empty "sections" list is a place you found nothing worth saying about, which is an answer.`;
 }
 
 function asItReads(standing: NoteAsWritten): string {

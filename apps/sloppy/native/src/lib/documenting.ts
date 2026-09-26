@@ -111,9 +111,9 @@ class TauriDocumenting implements DocumentingAccess {
 		const where = await this.project();
 		const tool = await this.toolFor(asked);
 		return this.holding(async () => {
-			const notes = await notesHere(containerApi(where.root, where.files));
-			const said = await this.ask(tool, where, surveyPrompt(asked, pathsWritten(notes)));
-			return said === undefined ? [] : proposed(said, notes);
+			const here = await notesHere(containerApi(where.root, where.files));
+			const said = await this.ask(tool, where, surveyPrompt(asked, pathsWritten(here.notes)));
+			return said === undefined ? [] : proposed(said, here.notes);
 		});
 	}
 
@@ -129,7 +129,7 @@ class TauriDocumenting implements DocumentingAccess {
 		const tool = await this.toolFor(asked.intent);
 		return this.holding(async () => {
 			const api = containerApi(where.root, where.files);
-			const notes = await notesHere(api);
+			const here = await notesHere(api);
 			const places: PlaceDone[] = [];
 			const told = telling(watch);
 			told({ stage: 'reading', places: [] });
@@ -138,7 +138,7 @@ class TauriDocumenting implements DocumentingAccess {
 				told({ stage: 'writing', at: place.path, places: [...places] });
 				let done: PlaceDone;
 				try {
-					const standing = await standingNote(api, notes, place);
+					const standing = await standingNote(api, here.notes, place);
 					const said = await this.ask(
 						tool,
 						where,
@@ -147,7 +147,7 @@ class TauriDocumenting implements DocumentingAccess {
 					if (said === undefined) return told({ stage: 'stopped', places: [...places] });
 					const answer = noteSaid(said);
 					if (answer === undefined) throw refuse(UNREADABLE);
-					const note = await writeNote(api, notes, place, standing, answer);
+					const note = await writeNote(api, here, place, standing, answer);
 					done = { path: place.path, ...(note === undefined ? {} : { note }) };
 				} catch (thrown) {
 					return told({ stage: 'stopped', places: [...places], trouble: why(thrown) });
@@ -166,7 +166,9 @@ class TauriDocumenting implements DocumentingAccess {
 		await held.done;
 	}
 
-	/** Start the tool and hear it out, or nothing where somebody stopped it. */
+	/** Start the tool and hear it out, or nothing where somebody stopped it.
+	 *  Nothing is started once they have: the check and the call are one turn,
+	 *  so a stop lands either side of the tool and never inside it. */
 	private async ask(
 		tool: DocumentingTool,
 		where: ProjectHere,
@@ -175,6 +177,7 @@ class TauriDocumenting implements DocumentingAccess {
 		const heard: string[] = [];
 		const said = this.lines();
 		said.onmessage = (line) => heard.push(line);
+		if (this.asked) return undefined;
 		const answer = await this.call<{ stopped: boolean }>(ASK, {
 			tool,
 			root: where.root,

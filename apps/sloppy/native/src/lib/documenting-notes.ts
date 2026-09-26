@@ -25,21 +25,40 @@ export function containerApi(root: string, files: Files): LocalApi {
 	return new LocalApi(keepingDataAt(files.at(root), containerDataAt(root)));
 }
 
-/** One note in the container, and the code it points at. */
+/** One note in the container, the code it points at, and the note it hangs
+ *  under. */
 export interface NoteHere {
 	ref: OwnedRef;
+	origin: OwnedRef;
 	paths: string[];
 }
 
-export async function notesHere(api: LocalApi): Promise<NoteHere[]> {
+/** The container as a run found it. */
+export interface ContainerNotes {
+	notes: NoteHere[];
+	/** What the notes about this project's code hang under — the project's own
+	 *  note in a container `sloppy init` started. Absent where nothing here
+	 *  points at code, and where two branches of notes do, which a run has no
+	 *  way to choose between. */
+	branch?: OwnedRef;
+}
+
+export async function notesHere(api: LocalApi): Promise<ContainerNotes> {
 	const held = new Map<OwnedRef, NoteHere>();
 	for (const branch of await api.listNodes({})) {
 		for (const note of await api.listNodes({ origin: branch.ref })) {
 			if (held.has(note.ref)) continue;
-			held.set(note.ref, { ref: note.ref, paths: await anchorsIn(api, note.ref) });
+			held.set(note.ref, {
+				ref: note.ref,
+				origin: note.origin,
+				paths: await anchorsIn(api, note.ref)
+			});
 		}
 	}
-	return [...held.values()];
+	const notes = [...held.values()];
+	const origins = new Set(notes.filter((one) => one.paths.length > 0).map((one) => one.origin));
+	const [branch] = origins;
+	return { notes, ...(origins.size === 1 ? { branch } : {}) };
 }
 
 /** Every path the notes reach, so a survey proposes no second note about one. */
@@ -52,8 +71,8 @@ export function noteAbout(notes: readonly NoteHere[], path: string): OwnedRef | 
 	return notes.find((held) => held.paths.includes(path))?.ref;
 }
 
-/** The note a new one about `path` is written under: the one about the nearest
- *  folder above it, and nothing where no note reaches that far. */
+/** The note about the nearest folder above `path`, and nothing where no note
+ *  reaches that far. */
 function noteOver(notes: readonly NoteHere[], path: string): OwnedRef | undefined {
 	let over: { ref: OwnedRef; at: string } | undefined;
 	for (const held of notes) {
@@ -93,11 +112,14 @@ export async function standingNote(
 }
 
 /** What the run leaves at a place. Absent is a place the tool had nothing to
- *  say about, which is an answer. `notes` gains what a new note is about, so
- *  the rest of the run reads the container as it now stands. */
+ *  say about, which is an answer. A new note hangs under the note about the
+ *  nearest folder above it, and otherwise under the container's own branch —
+ *  docs/ARCHITECTURE.md § "Tooling and the review" is the shape it joins.
+ *  `here` gains what a new note is about, so the rest of the run reads the
+ *  container as it now stands. */
 export async function writeNote(
 	api: LocalApi,
-	notes: NoteHere[],
+	here: ContainerNotes,
 	place: ProposedPlace,
 	standing: NodeView | undefined,
 	said: SaidNote
@@ -108,7 +130,7 @@ export async function writeNote(
 		const { done } = await writeOnto(api, standing, sections);
 		return { ref: standing.ref, done };
 	}
-	const under = noteOver(notes, place.path);
+	const under = noteOver(here.notes, place.path) ?? here.branch;
 	const note = await api.createNode({
 		from: under === undefined ? { relation: 'free' } : { relation: 'under', note: under },
 		title: said.title ?? place.path,
@@ -123,7 +145,11 @@ export async function writeNote(
 		});
 		after = block.ref;
 	}
-	notes.push({ ref: note.ref, paths: pathsIn(sections, place.path) });
+	here.notes.push({
+		ref: note.ref,
+		origin: note.origin,
+		paths: pathsIn(sections, place.path)
+	});
 	return { ref: note.ref, done: 'written' };
 }
 

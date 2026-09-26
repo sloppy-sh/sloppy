@@ -7,9 +7,11 @@
 //! folder somebody picked and a prompt, and the prompt reaches the tool on its
 //! own input rather than as an argument.
 
-use std::io::{BufRead, BufReader, Write as _};
-use std::path::Path;
-use std::process::{Child, ChildStderr, Command, Stdio};
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::io::{BufRead, BufReader, Read as _, Write as _};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -24,6 +26,9 @@ struct Tool {
     /// The value `DocumentingTool` in `@sloppy/types` carries.
     id: &'static str,
     program: &'static str,
+    /// Where a person names the program themselves, for a machine keeping it
+    /// somewhere `ALSO_LOOKED_IN` does not reach.
+    env: &'static str,
     args: &'static [&'static str],
 }
 
@@ -33,6 +38,7 @@ struct Tool {
 const TOOLS: &[Tool] = &[Tool {
     id: "claude_code",
     program: "claude",
+    env: "SLOPPY_DOCUMENTING_CLAUDE_CODE",
     args: &[
         "--print",
         "--allowedTools",
@@ -42,9 +48,35 @@ const TOOLS: &[Tool] = &[Tool {
     ],
 }];
 
+/// An app started from the Finder or the Dock is given launchd's PATH, which
+/// names none of the folders a person installs a tool into, so these are looked
+/// in whether or not the PATH says to.
+#[cfg(not(windows))]
+const ALSO_LOOKED_IN: &[&str] = &[
+    "~/.local/bin",
+    "~/bin",
+    "~/.bun/bin",
+    "~/.deno/bin",
+    "~/.volta/bin",
+    "~/.yarn/bin",
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+];
+
+#[cfg(windows)]
+const ALSO_LOOKED_IN: &[&str] = &["~/AppData/Roaming/npm", "~/.bun/bin", "~/.local/bin"];
+
 /// Long enough for a sentence a program says about its own trouble, short
 /// enough that a person reads it in one go.
 const SAID_MAX: usize = 400;
+
+/// What one line of an answer may run to, and what the whole of one may. A
+/// program past either is not answering, and its run is ended rather than what
+/// it writes being held here and sent on to the page.
+const LINE_MAX: usize = 64 * 1024;
+const HEARD_MAX: usize = 1024 * 1024;
 
 const NO_PROGRAM: &str = "Sloppy could not start that tool. Check it is installed, then try again.";
 const ALREADY: &str = "Sloppy is already reading this project. Wait for it to finish, or stop it.";
@@ -157,11 +189,20 @@ impl Running {
             end_it(child);
         }
     }
+
+    /// End what is underway without it counting as somebody having stopped it,
+    /// so that a program nobody can hear out is reaped rather than waited on.
+    fn cut(&self) {
+        let mut held = self.0.lock().unwrap();
+        if let Some(child) = held.as_mut().and_then(|started| started.child.as_mut()) {
+            end_it(child);
+        }
+    }
 }
 
 /// `said` is given each line the tool writes out, as it arrives.
 fn ask(
-    program: &str,
+    program: &Path,
     args: &[&str],
     at: &Path,
     prompt: &str,
@@ -179,16 +220,17 @@ fn ask(
     let out = child.stdout.take();
     let trouble = drained(child.stderr.take());
     running.holds(child);
-    if let Some(out) = out {
-        for line in BufReader::new(out).lines() {
-            let Ok(line) = line else { break };
-            said(line);
-        }
+    let heard = out.map(|out| hear(out, said)).unwrap_or(true);
+    if !heard {
+        running.cut();
     }
     let ended = running.ends();
     let said_why = trouble.and_then(|held| held.join().ok()).flatten();
     if ended.stopped {
         return Ok(Answer { stopped: true });
+    }
+    if !heard {
+        return Err(RunError::new(DIDNT_FINISH));
     }
     if ended.finished {
         return Ok(Answer { stopped: false });
@@ -198,7 +240,48 @@ fn ask(
     ))
 }
 
-fn start(program: &str, args: &[&str], at: &Path, prompt: &str) -> Result<Child, RunError> {
+/// Every line the program writes out, handed on as it arrives. `false` is a
+/// program that went past `LINE_MAX` or `HEARD_MAX`.
+fn hear(out: ChildStdout, said: &dyn Fn(String)) -> bool {
+    let mut reader = BufReader::new(out);
+    let mut line = Vec::new();
+    let mut all = 0usize;
+    loop {
+        let Some(read) = a_line(&mut reader, &mut line) else {
+            return false;
+        };
+        if read == 0 {
+            return true;
+        }
+        all += read;
+        if all > HEARD_MAX {
+            return false;
+        }
+        said(String::from_utf8_lossy(trimmed(&line)).into_owned());
+    }
+}
+
+/// One line, never holding more than `LINE_MAX` of it. `None` is a line that
+/// ran past that; `Some(0)` is the end of what the program had to say, which
+/// is what a read it could not finish is taken for too.
+fn a_line<R: BufRead>(reader: &mut R, line: &mut Vec<u8>) -> Option<usize> {
+    line.clear();
+    match (&mut *reader)
+        .take(LINE_MAX as u64 + 1)
+        .read_until(b'\n', line)
+    {
+        Ok(read) if read > LINE_MAX => None,
+        Ok(read) => Some(read),
+        Err(_) => Some(0),
+    }
+}
+
+fn trimmed(line: &[u8]) -> &[u8] {
+    let held = line.strip_suffix(b"\n").unwrap_or(line);
+    held.strip_suffix(b"\r").unwrap_or(held)
+}
+
+fn start(program: &Path, args: &[&str], at: &Path, prompt: &str) -> Result<Child, RunError> {
     let mut how = Command::new(program);
     how.args(args)
         .current_dir(at)
@@ -217,32 +300,110 @@ fn start(program: &str, args: &[&str], at: &Path, prompt: &str) -> Result<Child,
 }
 
 /// The first thing the program said about its own trouble, drained as it runs
-/// so that a full pipe cannot hold the program up.
+/// so that a full pipe cannot hold the program up. A line past `LINE_MAX` is
+/// drained in pieces, and nothing after it is a sentence a person is shown.
 fn drained(from: Option<ChildStderr>) -> Option<JoinHandle<Option<String>>> {
     let from = from?;
     Some(thread::spawn(move || {
+        let mut reader = BufReader::new(from);
+        let mut line = Vec::new();
         let mut found: Option<String> = None;
-        for line in BufReader::new(from).lines() {
-            let Ok(line) = line else { break };
-            let said = line.trim();
+        let mut listening = true;
+        loop {
+            let Some(read) = a_line(&mut reader, &mut line) else {
+                listening = false;
+                continue;
+            };
+            if read == 0 {
+                return found;
+            }
+            if !listening {
+                continue;
+            }
+            let said = String::from_utf8_lossy(trimmed(&line));
+            let said = said.trim();
             if found.is_none() && !said.is_empty() {
                 found = Some(said.chars().take(SAID_MAX).collect());
             }
         }
-        found
     }))
 }
 
-/// Whether this machine has the program: a name it has nothing under, a folder
-/// and a file it may not run are all the same answer.
-fn reachable(program: &str) -> bool {
-    Command::new(program)
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok()
+/// Where the program is on this machine, and nothing where it is not: a name
+/// no folder holds, a folder of that name and a file this app may not run are
+/// all the same answer.
+fn found(tool: &Tool) -> Option<PathBuf> {
+    found_in(
+        tool.program,
+        std::env::var_os(tool.env).as_deref(),
+        &looked_in(),
+    )
+}
+
+/// `named` is a person's own answer and is taken whole; without one it is the
+/// first spelling of `program` any of `folders` holds.
+fn found_in(program: &str, named: Option<&OsStr>, folders: &[PathBuf]) -> Option<PathBuf> {
+    if let Some(named) = named.filter(|held| !held.is_empty()) {
+        let at = PathBuf::from(named);
+        return runnable(&at).then_some(at);
+    }
+    for folder in folders {
+        for name in spellings(program) {
+            let at = folder.join(name);
+            if runnable(&at) {
+                return Some(at);
+            }
+        }
+    }
+    None
+}
+
+/// The PATH this process was given and `ALSO_LOOKED_IN` after it, each
+/// folder once and in that order.
+fn looked_in() -> Vec<PathBuf> {
+    let told = std::env::var_os("PATH").unwrap_or_default();
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    let also = ALSO_LOOKED_IN
+        .iter()
+        .filter_map(|at| match at.strip_prefix("~/") {
+            Some(under) => home.as_ref().map(|home| PathBuf::from(home).join(under)),
+            None => Some(PathBuf::from(at)),
+        });
+    let mut seen = HashSet::new();
+    std::env::split_paths(&told)
+        .chain(also)
+        .filter(|folder| !folder.as_os_str().is_empty() && seen.insert(folder.clone()))
+        .collect()
+}
+
+#[cfg(unix)]
+fn runnable(at: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    std::fs::metadata(at)
+        .map(|held| held.is_file() && held.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn runnable(at: &Path) -> bool {
+    at.is_file()
+}
+
+/// What a program of this name is called where it is installed. An npm install
+/// on Windows leaves a `.cmd` and nothing under the bare name.
+#[cfg(windows)]
+fn spellings(program: &str) -> Vec<String> {
+    ["exe", "cmd", "bat"]
+        .iter()
+        .map(|ending| format!("{program}.{ending}"))
+        .chain([program.to_owned()])
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn spellings(program: &str) -> Vec<String> {
+    vec![program.to_owned()]
 }
 
 /// Start the program on its own, so that ending it can reach what it starts.
@@ -284,11 +445,11 @@ fn end_it(child: &mut Child) {
 /// The tools this device can reach. An empty list is a device with none.
 #[tauri::command]
 pub async fn documenting_tools() -> Vec<&'static str> {
-    // Asking after a program starts one, which is too long to hold the page up.
+    // Looking for a program is a walk over folders, off the page's thread.
     tauri::async_runtime::spawn_blocking(|| {
         TOOLS
             .iter()
-            .filter(|tool| reachable(tool.program))
+            .filter(|tool| found(tool).is_some())
             .map(|tool| tool.id)
             .collect()
     })
@@ -311,11 +472,11 @@ pub async fn documenting_ask(
         .ok_or_else(|| RunError::new(NO_PROGRAM))?;
     let at = folders.opened(&root)?.to_path_buf();
     let running = running.inner().clone();
-    let (program, args) = (held.program, held.args);
     tauri::async_runtime::spawn_blocking(move || {
+        let program = found(held).ok_or_else(|| RunError::new(NO_PROGRAM))?;
         ask(
-            program,
-            args,
+            &program,
+            held.args,
             &at,
             &prompt,
             &|line| {
@@ -358,18 +519,18 @@ mod tests {
     /// A program standing in for the tool, so that no test asks the real one
     /// anything.
     #[cfg(unix)]
-    fn stub(at: &Path, name: &str, script: &str) -> String {
+    fn stub(at: &Path, name: &str, script: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt as _;
 
         let file = at.join(name);
         fs::write(&file, format!("#!/bin/sh\n{script}\n")).expect("the stub");
         fs::set_permissions(&file, fs::Permissions::from_mode(0o755)).expect("a stub to run");
-        file.to_string_lossy().into_owned()
+        file
     }
 
     /// What the tool said, and how the run came out.
     #[cfg(unix)]
-    fn asked(program: &str, at: &Path, prompt: &str) -> (Vec<String>, Result<Answer, RunError>) {
+    fn asked(program: &Path, at: &Path, prompt: &str) -> (Vec<String>, Result<Answer, RunError>) {
         let heard = Mutex::new(Vec::new());
         let answer = ask(
             program,
@@ -436,7 +597,7 @@ mod tests {
     fn a_program_this_machine_has_not_got_is_said_plainly() {
         let at = scratch("missing");
 
-        let (_, answer) = asked(&at.join("nothing-here").to_string_lossy(), &at, "");
+        let (_, answer) = asked(&at.join("nothing-here"), &at, "");
 
         assert_eq!(answer.unwrap_err().said(), NO_PROGRAM);
     }
@@ -487,7 +648,7 @@ mod tests {
         });
         waits(|| !heard.lock().unwrap().is_empty());
 
-        let refused = ask("/bin/echo", &[], &at, "", &|_| {}, &running).unwrap_err();
+        let refused = ask(Path::new("/bin/echo"), &[], &at, "", &|_| {}, &running).unwrap_err();
 
         running.stop();
         first.join().expect("the first run").expect("an answer");
@@ -562,6 +723,93 @@ mod tests {
     #[test]
     fn stopping_nothing_is_an_answer() {
         Running::default().stop();
+    }
+
+    /// A tool that loops, or another program that happens to answer to the same
+    /// name, must not be able to fill this app's memory or the page's.
+    #[cfg(unix)]
+    #[test]
+    fn a_program_that_never_stops_talking_is_ended_rather_than_heard_out() {
+        let at = scratch("flood");
+        let program = stub(&at, "tool", "yes aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+        let (heard, answer) = asked(&program, &at, "");
+
+        assert_eq!(answer.unwrap_err().said(), DIDNT_FINISH);
+        assert!(heard.len() * 35 <= HEARD_MAX + LINE_MAX);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn one_line_longer_than_an_answer_ends_the_run_rather_than_being_held() {
+        let at = scratch("long-line");
+        let program = stub(&at, "tool", "head -c 200000 /dev/zero | tr '\\0' 'a'");
+
+        let (heard, answer) = asked(&program, &at, "");
+
+        assert_eq!(answer.unwrap_err().said(), DIDNT_FINISH);
+        assert!(heard.is_empty());
+    }
+
+    /// The PATH a bundled app is given names none of the folders a person
+    /// installs a tool into, so a folder is enough to be found in.
+    #[cfg(unix)]
+    #[test]
+    fn a_program_is_found_in_a_folder_it_is_installed_in() {
+        let at = scratch("installed");
+        let program = stub(&at, "tool", "echo hi");
+
+        assert_eq!(found_in("tool", None, &[at]), Some(program));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_first_folder_holding_it_is_the_one() {
+        let first = scratch("first");
+        let second = scratch("second");
+        let program = stub(&first, "tool", "echo hi");
+        stub(&second, "tool", "echo hi");
+
+        assert_eq!(found_in("tool", None, &[first, second]), Some(program));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_this_app_may_not_run_is_not_a_program() {
+        let at = scratch("unrunnable");
+        fs::write(at.join("tool"), "#!/bin/sh\n").expect("the file");
+        fs::create_dir_all(at.join("folder")).expect("the folder");
+        let folders = [at];
+
+        assert_eq!(found_in("tool", None, &folders), None);
+        assert_eq!(found_in("folder", None, &folders), None);
+    }
+
+    /// Somebody who keeps it somewhere nothing looks names it themselves.
+    #[cfg(unix)]
+    #[test]
+    fn a_program_a_person_names_is_taken_over_the_folders() {
+        let named_at = scratch("named");
+        let looked = scratch("looked");
+        let named = stub(&named_at, "elsewhere", "echo hi");
+        stub(&looked, "tool", "echo hi");
+        let nowhere = looked.join("nothing-here");
+        let folders = [looked];
+
+        assert_eq!(
+            found_in("tool", Some(named.as_os_str()), &folders),
+            Some(named)
+        );
+        assert_eq!(found_in("tool", Some(nowhere.as_os_str()), &folders), None);
+    }
+
+    #[test]
+    fn where_it_is_looked_for_names_each_folder_once() {
+        let folders = looked_in();
+        let mut seen = HashSet::new();
+
+        assert!(folders.iter().all(|folder| seen.insert(folder.clone())));
+        assert!(!folders.is_empty());
     }
 
     #[cfg(unix)]

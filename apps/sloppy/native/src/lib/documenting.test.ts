@@ -346,6 +346,45 @@ describe('a run', () => {
 		const note = await theirs().getNode(done.places[0].note!.ref);
 		expect(note?.parent).toBe(over);
 	});
+
+	it("writes a new note under the one this project's notes hang under", async () => {
+		const top = await theirNote('The compiler', 'README.md');
+		answers = [said('The reader', 'It reads.')];
+
+		const done = await documenting().run(
+			{ intent: { said: '' }, places: [{ path: PARSER }] },
+			() => {}
+		);
+
+		const note = await theirs().getNode(done.places[0].note!.ref);
+		expect(note?.parent).toBe(top);
+	});
+
+	it('opens a branch where two branches of notes already point at code', async () => {
+		await theirNote('The compiler', 'README.md');
+		await theirNote('The garden', 'docs/garden.md');
+		answers = [said('The reader', 'It reads.')];
+
+		const done = await documenting().run(
+			{ intent: { said: '' }, places: [{ path: PARSER }] },
+			() => {}
+		);
+
+		const note = await theirs().getNode(done.places[0].note!.ref);
+		expect(note?.parent).toBeUndefined();
+	});
+
+	/** A note that is there keeps its title, so the answer shape does not ask
+	 *  for one the write would drop. */
+	it('asks a note that is already there for its sections and not its title', async () => {
+		const note = await theirNote('The reader', PARSER);
+		answers = [said('The reader', 'Now it does more.')];
+
+		await documenting().run({ intent: { said: '' }, places: [{ path: PARSER, note }] }, () => {});
+
+		expect(asks[0].prompt).toContain('{"sections":');
+		expect(asks[0].prompt).not.toContain('"title"');
+	});
 });
 
 describe('one thing at a time', () => {
@@ -399,7 +438,7 @@ describe('one thing at a time', () => {
 			.run(
 				{ intent: { said: '' }, places: [{ path: 'src/a.ts' }, { path: 'src/b.ts' }] },
 				(progress) => {
-					if (progress.at === 'src/a.ts') void access.stop();
+					if (progress.at === 'src/b.ts') void access.stop();
 				}
 			)
 			.then((progress) => (done = progress));
@@ -409,5 +448,26 @@ describe('one thing at a time', () => {
 		expect(done?.stage).toBe('stopped');
 		expect(done?.places.map((one) => one.path)).toEqual(['src/a.ts']);
 		expect(asks).toHaveLength(1);
+	});
+
+	/** A stop that lands while a run is reading the notes for a place must not
+	 *  pay for that place's tool anyway. */
+	it('starts nothing for the place it was stopped on', async () => {
+		const access = documenting();
+		answers = [JSON.stringify({ title: 'One', sections: ['## What it does\n\na'] })];
+		let done: DocumentingProgress | undefined;
+
+		await access
+			.run(
+				{ intent: { said: '' }, places: [{ path: 'src/a.ts' }, { path: 'src/b.ts' }] },
+				(progress) => {
+					if (progress.at === 'src/a.ts') void access.stop();
+				}
+			)
+			.then((progress) => (done = progress));
+
+		expect(done?.stage).toBe('stopped');
+		expect(done?.places).toEqual([]);
+		expect(asks).toEqual([]);
 	});
 });
