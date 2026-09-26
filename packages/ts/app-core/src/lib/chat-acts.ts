@@ -16,6 +16,7 @@ import {
 	type BlockDocument,
 	type ChatToolAnswer,
 	type ChatToolCall,
+	CODE_SCHEME,
 	type ListedNote,
 	listingAnswer,
 	type NodeView,
@@ -136,7 +137,7 @@ async function startNote(
 		tags: [...tags]
 	});
 	let after: OwnedRef | undefined;
-	for (const content of sections) {
+	for (const content of bodyAbout(about, sections)) {
 		const block = await api.createBlock({
 			node: note.ref,
 			content,
@@ -145,6 +146,34 @@ async function startNote(
 		after = block.ref;
 	}
 	return note.ref;
+}
+
+/** A note started about a place opens with an anchor to it where its sections
+ *  reach it nowhere: the places a note is about are read back off its anchors
+ *  and off nothing else, so one carrying none is about nowhere. */
+function bodyAbout(about: string, sections: readonly BlockDocument[]): BlockDocument[] {
+	const reaches = sections.some((content) =>
+		anchorsOf(content).some((anchor) => anchor.path === about)
+	);
+	return reaches ? [...sections] : [pointingAt(about), ...sections];
+}
+
+function pointingAt(about: string): BlockDocument {
+	return {
+		type: 'doc',
+		content: [
+			{
+				type: 'paragraph',
+				content: [
+					{
+						type: 'text',
+						text: about,
+						marks: [{ type: 'link', attrs: { href: `${CODE_SCHEME}${about}` } }]
+					}
+				]
+			}
+		]
+	};
 }
 
 async function tagNote(

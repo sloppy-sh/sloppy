@@ -83,6 +83,11 @@
 		if (!held) return undefined;
 		return held.title.trim() === '' ? undefined : held.title;
 	}
+
+	function read(note: OwnedRef, at: NoteLanding | undefined): void {
+		open = false;
+		onOpen(note, at);
+	}
 </script>
 
 <ResponsiveModal
@@ -117,7 +122,7 @@
 					</p>
 				{/if}
 
-				<ChatThread turns={chat.turns} {onOpen} />
+				<ChatThread turns={chat.turns} onOpen={read} />
 
 				{#if asking}
 					<div class="rounded-lg border border-primary/50 bg-primary/5 p-3" role="alert">

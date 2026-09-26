@@ -101,7 +101,7 @@ describe('writing a note', () => {
 		expect(read.sections[0].markdown).toContain('It reads');
 	});
 
-	it('writes onto the note the place already has rather than a second one', async () => {
+	it('writes onto the note that points at the place rather than a second one', async () => {
 		const first = NoteWrittenSchema.parse(
 			JSON.parse(await answer(writes(PARSER, [ABOUT_THE_PARSER])))
 		);
@@ -117,6 +117,25 @@ describe('writing a note', () => {
 			JSON.parse(await answer({ call: 'c3', act: 'list_notes', arguments: {} }))
 		);
 		expect(listed.notes).toHaveLength(1);
+	});
+
+	it('holds the place a note it started is about, so the next write lands on it', async () => {
+		const first = NoteWrittenSchema.parse(
+			JSON.parse(
+				await answer(writes(PARSER, ['## Why\n\nBecause it is bounded.'], { title: 'The parser' }))
+			)
+		);
+		const again = NoteWrittenSchema.parse(
+			JSON.parse(await answer(writes(PARSER, ['## How\n\nBy one table.'])))
+		);
+
+		expect(again.note).toBe(first.note);
+		const listed = NotesListedSchema.parse(
+			JSON.parse(await answer({ call: 'c3', act: 'list_notes', arguments: {} }))
+		);
+		expect(listed.notes).toHaveLength(1);
+		expect(listed.notes[0].title).toBe('The parser');
+		expect(listed.notes[0].about).toEqual([PARSER]);
 	});
 
 	// A project's container is an open graph, so the store would let this land.

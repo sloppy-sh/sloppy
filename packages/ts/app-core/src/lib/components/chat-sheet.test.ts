@@ -356,6 +356,7 @@ describe('an act in the thread', () => {
 		await settle();
 
 		expect(opened).toEqual([{ note: PARSER }]);
+		expect(document.body.querySelector('[aria-label="What you want written about"]')).toBeNull();
 	});
 
 	it('sends somebody to what is offered on a note they have written in', async () => {
