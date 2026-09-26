@@ -4,7 +4,13 @@
 export { api, createRemoteApi, resetApi, ServerRequiredError, serverOnly } from './api.js';
 export type { SloppyApi } from './api.js';
 export { initRuntime, runtime, updateRuntime } from './runtime.js';
-export type { AppRuntime, DeploymentMode, KnownFolder, VaultAccess } from './runtime.js';
+export type {
+	AppRuntime,
+	DeploymentMode,
+	DocumentingAccess,
+	KnownFolder,
+	VaultAccess
+} from './runtime.js';
 export { keyboard, trackKeyboard } from './keyboard.svelte.js';
 export type { KeyboardChange } from './keyboard.svelte.js';
 export { deviceStore } from './device-store.js';
