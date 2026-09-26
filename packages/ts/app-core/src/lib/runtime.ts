@@ -128,6 +128,13 @@ export interface DocumentingAccess {
 	 * Write the notes the plan names, in its order, telling `watch` each time
 	 * the answer changes and resolving with the last answer it gave.
 	 *
+	 * **A run holds ITSELF to `writesAlone`**, because the store will not: a
+	 * project's container is an open graph, so `writeOutcome` answers `lands`
+	 * for every writer on every note in it. `writeOnto` in `@sloppy/local` is
+	 * that rule written once — it writes onto the note where `writesAlone` is
+	 * true and proposes an amendment where it is not — and a run goes through
+	 * it rather than calling the store directly.
+	 *
 	 * **A run writes as the notes' own container, and never as the person.**
 	 * Its writer is the identity kept in the container's own private data,
 	 * minted there the first time — the one `sloppy draft` writes under, and

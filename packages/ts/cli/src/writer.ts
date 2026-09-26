@@ -1,7 +1,7 @@
 // Writing a note from the terminal, through the same client the app writes
 // through — docs/ARCHITECTURE.md § "Tooling and the review".
 
-import type { LocalApi } from "@sloppy/local";
+import { type LocalApi, writeOnto as writeOntoNote } from "@sloppy/local";
 import {
   type BlockDocument,
   type BlockView,
@@ -65,73 +65,13 @@ export async function writeNote(
  * person has written in is offered an amendment, standing until they take it
  * in.
  */
+/** A note written onto, through the one rule a machine writer is held to —
+ *  {@link writeOnto} in `@sloppy/local`. The file is this package's to name. */
 export async function writeOnto(
   api: LocalApi,
   note: NodeView,
   sections: readonly BlockDocument[],
 ): Promise<WrittenNote> {
-  const writer = await api.writer;
-  const held = await api.listBlocks(note.ref);
-  const written = { title: note.title, file: fileOf(note.ref) };
-  if (!writesAlone(note, writer)) {
-    await api.proposeAmendment({
-      note: note.ref,
-      title: note.title,
-      tags: [...note.tags],
-      blocks: offered(note.ref, held, sections),
-    });
-    return { ...written, done: "offered" };
-  }
-  let after = held[held.length - 1]?.ref;
-  for (const content of sections) {
-    const standing = held.find(
-      (block) => sameSection(sections, block.content) === content,
-    );
-    if (standing) {
-      await api.updateBlock(standing.ref, { content });
-      continue;
-    }
-    const block = await api.createBlock({
-      node: note.ref,
-      content,
-      ...(after === undefined ? {} : { after }),
-    });
-    after = block.ref;
-  }
-  return { ...written, done: "written" };
-}
-
-/** The note's body as the offer would have it, whole: an offer proposes every
- *  section, so one it does not name is one it takes away. */
-function offered(
-  note: OwnedRef,
-  held: readonly BlockView[],
-  sections: readonly BlockDocument[],
-): { ref: OwnedRef; content: BlockDocument }[] {
-  const written = new Set<BlockDocument>();
-  const body = held.map((block) => {
-    const drafted = sameSection(sections, block.content);
-    if (drafted === undefined)
-      return { ref: block.ref, content: block.content };
-    written.add(drafted);
-    return { ref: block.ref, content: drafted };
-  });
-  const did = splitOwnedRef(note).owner;
-  for (const content of sections) {
-    if (written.has(content)) continue;
-    body.push({ ref: `${did}/${ulid()}`, content });
-  }
-  return body;
-}
-
-/** The drafted section that stands for one the note holds: the one under the
- *  same heading. A section the CLI headed with nothing stands for none. */
-function sameSection(
-  sections: readonly BlockDocument[],
-  held: BlockDocument,
-): BlockDocument | undefined {
-  const said = headingOf(held);
-  return said === undefined
-    ? undefined
-    : sections.find((content) => headingOf(content) === said);
+  const done = await writeOntoNote(api, note, sections);
+  return { ...done, file: fileOf(note.ref) };
 }

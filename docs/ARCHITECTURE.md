@@ -3234,13 +3234,19 @@ was missed, which arrives carrying no reason because nobody proposed it to them.
 writes about the places that survived, in the order they stand in. Nothing skips a stage:
 a run made straight from an intent is a bill somebody did not agree to.
 
-**What comes back is offered, never landed over somebody's writing.** A run writes through
-the same store the app writes through, under a writer of its own, so it is held to the one
-rule every write is held to (§ "Whose writing a note carries"): a place with no note yet gets one written outright,
-a note carrying nobody's writing but the tool's is written straight onto, and a note a
-person has written in is offered an amendment that stands until they take it in. Nothing
-here writes a note file by hand — a writer that did would be the one writer in Sloppy that
-the note's own gate does not reach.
+**What comes back is offered, never landed over somebody's writing — and the run is what
+holds itself to that.** The store does not: a project's container is an open graph, so its
+notes carry no owner, and § "Whose writing a note carries" answers `lands` for every writer
+on every one of them. The rule that tells the two apart is `writesAlone` — it lands only
+where the note carries nobody's writing but this writer's — and a machine writer is held to
+it BY ITSELF, which is what its own doc says. `writeOnto` in `@sloppy/local` is that rule
+written once: `writesAlone` true and it writes onto the note, false and it proposes an
+amendment instead. The CLI writes through it and so does a run, so the two cannot drift.
+
+So: a place with no note yet gets one written outright, a note carrying nobody's writing
+but the tool's is written straight onto, and a note a person has written in is offered an
+amendment that stands until they take it in. Nothing here writes a note file by hand — a
+writer that did would be the one writer in Sloppy held to nothing at all.
 
 **Which way that rule falls is decided by WHO is writing, so the run's writer is named
 here.** It is the identity kept in the container's own private data, minted there the first
