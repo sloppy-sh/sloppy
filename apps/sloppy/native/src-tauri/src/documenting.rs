@@ -16,6 +16,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 
+use crate::vault::settled;
+
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::State;
@@ -346,13 +348,13 @@ fn found(tool: &Tool) -> Option<PathBuf> {
 /// first spelling of `program` any of `folders` holds.
 fn found_in(program: &str, named: Option<&OsStr>, folders: &[PathBuf]) -> Option<PathBuf> {
     if let Some(named) = named.filter(|held| !held.is_empty()) {
-        let at = PathBuf::from(named);
-        return runnable(&at).then_some(at);
+        let at = settled(&PathBuf::from(named));
+        return absolute_and_runnable(&at).then_some(at);
     }
     for folder in folders {
         for name in spellings(program) {
-            let at = folder.join(name);
-            if runnable(&at) {
+            let at = settled(&folder.join(name));
+            if absolute_and_runnable(&at) {
                 return Some(at);
             }
         }
@@ -376,6 +378,17 @@ fn looked_in() -> Vec<PathBuf> {
         .chain(also)
         .filter(|folder| !folder.as_os_str().is_empty() && seen.insert(folder.clone()))
         .collect()
+}
+
+/// Whether this is a program that can be run, and one spelling of it.
+///
+/// **A relative path is refused rather than resolved.** What can be run is
+/// asked of this process's own folder, and what runs is started in the folder
+/// somebody opened — so a relative spelling is two different files, and which
+/// one runs is Rust's own documented "platform specific and unstable". The
+/// folder a person opened would then decide what executes.
+fn absolute_and_runnable(at: &Path) -> bool {
+    at.is_absolute() && runnable(at)
 }
 
 #[cfg(unix)]
@@ -787,7 +800,7 @@ mod tests {
         let at = scratch("installed");
         let program = stub(&at, "tool", "echo hi");
 
-        assert_eq!(found_in("tool", None, &[at]), Some(program));
+        assert_eq!(found_in("tool", None, &[at]), Some(settled(&program)));
     }
 
     #[cfg(unix)]
@@ -798,7 +811,10 @@ mod tests {
         let program = stub(&first, "tool", "echo hi");
         stub(&second, "tool", "echo hi");
 
-        assert_eq!(found_in("tool", None, &[first, second]), Some(program));
+        assert_eq!(
+            found_in("tool", None, &[first, second]),
+            Some(settled(&program))
+        );
     }
 
     #[cfg(unix)]
@@ -811,6 +827,29 @@ mod tests {
 
         assert_eq!(found_in("tool", None, &folders), None);
         assert_eq!(found_in("folder", None, &folders), None);
+    }
+
+    /// What can be run is asked of this process's own folder and what runs is
+    /// started in the folder somebody opened, so a relative spelling would be
+    /// two different files and the folder a person opened would pick which. A
+    /// program is settled to one absolute spelling before it is either.
+    #[cfg(unix)]
+    #[test]
+    fn a_program_spelled_relatively_is_settled_before_it_is_run() {
+        let at = scratch("relative");
+        let program = stub(&at, "tool", "echo hi");
+        let here = std::env::current_dir().expect("a folder");
+        std::env::set_current_dir(&at).expect("to move");
+
+        let named = found_in("tool", Some(OsStr::new("./tool")), &[]);
+        let over_path = found_in("tool", None, &[PathBuf::from(".")]);
+
+        std::env::set_current_dir(here).expect("to move back");
+        for found in [named, over_path] {
+            let found = found.expect("the program");
+            assert!(found.is_absolute());
+            assert_eq!(found, settled(&program));
+        }
     }
 
     /// Somebody who keeps it somewhere nothing looks names it themselves.
@@ -826,7 +865,7 @@ mod tests {
 
         assert_eq!(
             found_in("tool", Some(named.as_os_str()), &folders),
-            Some(named)
+            Some(settled(&named))
         );
         assert_eq!(found_in("tool", Some(nowhere.as_os_str()), &folders), None);
     }
