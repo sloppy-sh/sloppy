@@ -154,8 +154,13 @@ pub(crate) fn started(how: &mut Command) -> std::io::Result<Child> {
 /// that child holds the pipes open, which is a run nothing is ever heard to end
 /// on. Reaping the program is what says no further child can appear, so the
 /// second sweep is the last one needed.
+///
+/// **The program is taken whole, and that is what keeps the sweep this run's.**
+/// Reaping gives the number back, so a program ended a second time would
+/// signal whatever holds it by then; a caller that cannot end one twice cannot
+/// reach another run's children.
 #[cfg(unix)]
-pub(crate) fn end_it(child: &mut Child) {
+pub(crate) fn end_it(mut child: Child) {
     // `started` made the program its own group leader, so its pid is the
     // group's, and a group is nobody else's for as long as it holds anyone.
     let group = child.id() as libc::pid_t;
@@ -166,7 +171,7 @@ pub(crate) fn end_it(child: &mut Child) {
 }
 
 #[cfg(windows)]
-pub(crate) fn end_it(child: &mut Child) {
+pub(crate) fn end_it(mut child: Child) {
     use std::process::Stdio;
 
     let _ = Command::new("taskkill")
@@ -179,7 +184,7 @@ pub(crate) fn end_it(child: &mut Child) {
 }
 
 #[cfg(not(any(unix, windows)))]
-pub(crate) fn end_it(child: &mut Child) {
+pub(crate) fn end_it(mut child: Child) {
     let _ = child.kill();
 }
 

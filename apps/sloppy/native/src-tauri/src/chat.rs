@@ -131,7 +131,9 @@ struct Session {
     /// the session where another is opened over it, so it names the one it is
     /// reading rather than acting on whatever stands.
     mark: u64,
-    child: Child,
+    /// Taken by whoever ends the session, which reaps the program; absent is a
+    /// session already ended.
+    child: Option<Child>,
     /// Taken once, when the session ends: what the agent is said into.
     saying: Option<ChildStdin>,
     /// Dropped with the session, which closes the socket it stood on.
@@ -149,9 +151,8 @@ impl Chat {
     /// Hand over a started session, ending whatever stood.
     fn holds(&self, session: Session) {
         let standing = self.0.lock().unwrap().replace(session);
-        if let Some(mut standing) = standing {
-            end_it(&mut standing.child);
-            let _ = standing.child.wait();
+        if let Some(child) = standing.and_then(|mut standing| standing.child.take()) {
+            end_it(child);
         }
     }
 
@@ -187,7 +188,9 @@ impl Chat {
         // Closing the agent's input first lets one that is between turns finish
         // rather than be cut off mid-sentence.
         session.saying.take();
-        end_it(&mut session.child);
+        if let Some(child) = session.child.take() {
+            end_it(child);
+        }
     }
 
     /// End the session marked `mark` without it counting as somebody having
@@ -199,7 +202,9 @@ impl Chat {
             return;
         };
         session.saying.take();
-        end_it(&mut session.child);
+        if let Some(child) = session.child.take() {
+            end_it(child);
+        }
     }
 
     /// Give the place back once the program is reaped, and say how it left off.
@@ -218,11 +223,10 @@ impl Chat {
         session.saying.take();
         Ended {
             stopped: session.stopped,
-            finished: session
-                .child
-                .wait()
-                .map(|how| how.success())
-                .unwrap_or(false),
+            finished: match session.child.as_mut() {
+                Some(child) => child.wait().map(|how| how.success()).unwrap_or(false),
+                None => false,
+            },
         }
     }
 }
@@ -287,7 +291,7 @@ fn open(
     let mark = marked();
     chat.holds(Session {
         mark,
-        child,
+        child: Some(child),
         saying: Some(saying),
         endpoint,
         stopped: false,
@@ -563,6 +567,25 @@ mod tests {
         open(&STUB, &program, &at, &[], thread.sink(), chat.clone()).expect("a session");
         waits("a line", || !thread.lines().is_empty());
 
+        chat.close();
+
+        waits("the end", || thread.overs().len() == 1);
+        assert_eq!(thread.overs(), [(true, None)]);
+    }
+
+    /// The end is there to be tapped until it reaches the page, so a person
+    /// ends a chat twice and the second is the same one end.
+    #[cfg(unix)]
+    #[test]
+    fn a_chat_ended_twice_ends_once() {
+        let at = scratch("twice");
+        let program = stub(&at, "agent", "echo starting; sleep 30");
+        let thread = Thread::default();
+        let chat = Chat::default();
+        open(&STUB, &program, &at, &[], thread.sink(), chat.clone()).expect("a session");
+        waits("a line", || !thread.lines().is_empty());
+
+        chat.close();
         chat.close();
 
         waits("the end", || thread.overs().len() == 1);

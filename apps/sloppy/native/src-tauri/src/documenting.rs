@@ -98,7 +98,8 @@ pub struct Running(Arc<Mutex<Option<Started>>>);
 
 #[derive(Default)]
 struct Started {
-    /// Absent between taking the place and the program starting in it.
+    /// Absent before the program starts in the place, and once whoever ends
+    /// the run has taken it, which reaps it.
     child: Option<Child>,
     stopped: bool,
 }
@@ -122,15 +123,15 @@ impl Running {
 
     /// Hand the started program over, ended straight away where somebody asked
     /// for the run to end while it was starting.
-    fn holds(&self, mut child: Child) {
+    fn holds(&self, child: Child) {
         let mut held = self.0.lock().unwrap();
         let Some(started) = held.as_mut() else {
-            end_it(&mut child);
-            let _ = child.wait();
+            end_it(child);
             return;
         };
         if started.stopped {
-            end_it(&mut child);
+            end_it(child);
+            return;
         }
         started.child = Some(child);
     }
@@ -161,7 +162,7 @@ impl Running {
             return;
         };
         started.stopped = true;
-        if let Some(child) = started.child.as_mut() {
+        if let Some(child) = started.child.take() {
             end_it(child);
         }
     }
@@ -170,7 +171,7 @@ impl Running {
     /// so that a program nobody can hear out is reaped rather than waited on.
     fn cut(&self) {
         let mut held = self.0.lock().unwrap();
-        if let Some(child) = held.as_mut().and_then(|started| started.child.as_mut()) {
+        if let Some(child) = held.as_mut().and_then(|started| started.child.take()) {
             end_it(child);
         }
     }
@@ -492,6 +493,35 @@ mod tests {
         });
         waits(|| !heard.lock().unwrap().is_empty());
 
+        running.stop();
+
+        assert!(run.join().expect("the run").expect("an answer").stopped);
+    }
+
+    /// Stopping is there to be tapped until the run comes back, so a person
+    /// stops it twice and the second is the same one stop.
+    #[cfg(unix)]
+    #[test]
+    fn a_run_stopped_twice_stops_once() {
+        let at = scratch("twice");
+        let program = stub(&at, "tool", "echo starting; sleep 30");
+        let running = Running::default();
+        let held = running.clone();
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let saying = heard.clone();
+        let run = thread::spawn(move || {
+            ask(
+                &program,
+                &[],
+                &at,
+                "",
+                &|line| saying.lock().unwrap().push(line),
+                &held,
+            )
+        });
+        waits(|| !heard.lock().unwrap().is_empty());
+
+        running.stop();
         running.stop();
 
         assert!(run.join().expect("the run").expect("an answer").stopped);
