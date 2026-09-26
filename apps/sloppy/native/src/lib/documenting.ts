@@ -18,6 +18,7 @@ import {
 	placesAreDistinct,
 	progressFits,
 	ProposedPlaceSchema,
+	tagsAmong,
 	type DocumentingIntent,
 	type DocumentingPlan,
 	type DocumentingProgress,
@@ -33,6 +34,7 @@ import {
 	notesHere,
 	pathsWritten,
 	standingNote,
+	tagsHere,
 	writeNote,
 	type NoteHere
 } from './documenting-notes';
@@ -110,8 +112,13 @@ class TauriDocumenting implements DocumentingAccess {
 		const where = await this.project();
 		const tool = await this.toolFor(asked);
 		return this.holding(async () => {
-			const here = await notesHere(containerApi(where.root, where.files));
-			const said = await this.ask(tool, where, surveyPrompt(asked, pathsWritten(here.notes)));
+			const api = containerApi(where.root, where.files);
+			const here = await notesHere(api);
+			const said = await this.ask(
+				tool,
+				where,
+				surveyPrompt(asked, pathsWritten(here.notes), await tagsHere(api))
+			);
 			return said === undefined ? [] : proposed(said, here.notes);
 		});
 	}
@@ -129,6 +136,7 @@ class TauriDocumenting implements DocumentingAccess {
 		return this.holding(async () => {
 			const api = containerApi(where.root, where.files);
 			const here = await notesHere(api);
+			const vocabulary = await tagsHere(api);
 			const places: PlaceDone[] = [];
 			const told = telling(watch);
 			told({ stage: 'reading', places: [] });
@@ -141,7 +149,7 @@ class TauriDocumenting implements DocumentingAccess {
 					const said = await this.ask(
 						tool,
 						where,
-						notePrompt(asked.intent, place, standing?.shown)
+						notePrompt(asked.intent, place, standing?.shown, vocabulary)
 					);
 					if (said === undefined) return told({ stage: 'stopped', places: [...places] });
 					const answer = noteSaid(said);
@@ -245,9 +253,18 @@ function proposed(said: string, notes: readonly NoteHere[]): ProposedPlace[] {
 	for (const one of places) {
 		if (held.has(one.path)) continue;
 		const note = noteAbout(notes, one.path);
+		// A word a tool made up that nobody could write is one tag fewer, never
+		// a survey nobody can read: `tagsAmong` drops it where the shape throws.
+		const tags = tagsAmong(one.tags ?? []);
 		held.set(
 			one.path,
-			checked(() => ProposedPlaceSchema.parse({ ...one, ...(note === undefined ? {} : { note }) }))
+			checked(() =>
+				ProposedPlaceSchema.parse({
+					...one,
+					...(note === undefined ? {} : { note }),
+					...(tags.length === 0 ? {} : { tags })
+				})
+			)
 		);
 		if (held.size === MAX_PLACES_PER_RUN) break;
 	}

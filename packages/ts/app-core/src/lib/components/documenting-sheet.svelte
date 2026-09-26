@@ -108,6 +108,11 @@
 		looking = '';
 	}
 
+	const chip =
+		'inline-flex min-h-9 items-center gap-1 rounded-full border border-border pl-3 text-sm';
+	const chipOff =
+		'inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-out hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
+
 	const DESCRIPTIONS: Partial<Record<DocumentingStep, string>> = {
 		intent: 'Say what you want written about, and why.',
 		refining: 'Take out what you would rather not have written about, and add what is missing.',
@@ -166,6 +171,23 @@
 								{/if}
 								{#if place.note}
 									<p class="text-xs text-muted-foreground">Changes the note already here.</p>
+								{/if}
+								{#if place.tags && place.tags.length > 0}
+									<ul class="mt-1 flex flex-wrap items-center gap-1.5">
+										{#each place.tags as tag (tag)}
+											<li class={chip}>
+												{tag}
+												<button
+													type="button"
+													class={chipOff}
+													aria-label="Do not tag {place.path} {tag}"
+													onclick={() => documenting.untag(place.path, tag)}
+												>
+													<X class="size-3.5" />
+												</button>
+											</li>
+										{/each}
+									</ul>
 								{/if}
 							</div>
 							<Button
@@ -265,6 +287,25 @@
 										</span>
 									{/if}
 								</button>
+								{#if done.note.suggested && done.note.suggested.length > 0}
+									<div class="space-y-2 px-2 pb-2">
+										<p class="text-xs text-muted-foreground">
+											Tags it suggests. Nothing goes on until you say so.
+										</p>
+										<ul class="flex flex-wrap items-center gap-1.5">
+											{#each done.note.suggested as tag (tag)}
+												<li class="{chip} pr-3">{tag}</li>
+											{/each}
+										</ul>
+										<Button
+											variant="outline"
+											class="h-11 w-full"
+											onclick={() => void documenting.takeIn(done)}
+										>
+											Tag it {done.note.suggested.join(', ')}
+										</Button>
+									</div>
+								{/if}
 							{:else}
 								<div class="flex min-h-11 flex-col justify-center px-2 py-2">
 									<p class="text-sm break-all">{done.path}</p>

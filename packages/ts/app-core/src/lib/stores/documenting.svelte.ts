@@ -8,13 +8,22 @@
  * both directions, and rejects with words this store shows.
  */
 
-import type { DocumentingProgress, DocumentingTool, OwnedRef, ProposedPlace } from '@sloppy/types';
+import type {
+	DocumentingProgress,
+	DocumentingTool,
+	OwnedRef,
+	PlaceDone,
+	ProposedPlace,
+	Tag
+} from '@sloppy/types';
 import { seam } from '../seam.svelte.js';
 import { wordsFor } from './errors.js';
 import { graphs } from './graphs.svelte.js';
+import { nodes } from './nodes.svelte.js';
 
 const UNREAD = 'Sloppy could not read the code just now. Try again.';
 const UNWRITTEN = 'Sloppy could not write those notes just now. Try again.';
+const UNTAGGED = 'Sloppy could not put those tags on just now. Try again.';
 
 /** What the surface is asking for. `refining` is the list somebody settles,
  *  and `over` is a run that has ended either way. */
@@ -158,6 +167,57 @@ class DocumentingStore {
 	add(path: string): void {
 		if (this.#places.some((place) => place.path === path)) return;
 		this.#places = [...this.#places, { path }];
+	}
+
+	/** Take a tag off a place, so the run does not put it on. What survives here
+	 *  is what the person allowed. */
+	untag(path: string, tag: Tag): void {
+		this.#places = this.#places.map((place) => {
+			if (place.path !== path || place.tags === undefined) return place;
+			const kept = place.tags.filter((held) => held !== tag);
+			const next = { ...place };
+			if (kept.length === 0) delete next.tags;
+			else next.tags = kept;
+			return next;
+		});
+	}
+
+	/**
+	 * Put the tags a run suggested on the note, as the person. They are their
+	 * own write on their own note — the run left them beside the result rather
+	 * than on it — and they go on alongside whatever the note already carries.
+	 */
+	async takeIn(done: PlaceDone): Promise<void> {
+		const suggested = done.note?.suggested;
+		if (!done.note || suggested === undefined || suggested.length === 0) return;
+		const note = done.note.ref;
+		try {
+			// The request carries the whole set, so a note this device has not read
+			// is read first: writing without its tags would take them off.
+			const held = nodes.get(note) ?? (await nodes.fetch(note));
+			if (!held) throw new Error('no such note');
+			await nodes.update(note, { tags: [...held.tags, ...suggested] });
+		} catch (error) {
+			this.#trouble = wordsFor(error) ?? UNTAGGED;
+			return;
+		}
+		this.#trouble = null;
+		this.#tookIn(done.path);
+	}
+
+	/** The place's suggestion is spent once it is on the note. */
+	#tookIn(path: string): void {
+		const progress = this.#progress;
+		if (progress === null) return;
+		this.#progress = {
+			...progress,
+			places: progress.places.map((done) => {
+				if (done.path !== path || !done.note) return done;
+				const note = { ...done.note };
+				delete note.suggested;
+				return { ...done, note };
+			})
+		};
 	}
 
 	/** The place one step earlier or later in the order the run will write in. */

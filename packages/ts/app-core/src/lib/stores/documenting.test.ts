@@ -14,7 +14,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initRuntime, updateRuntime, type DocumentingAccess } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { documenting } from './documenting.svelte.js';
-import { HOME, homeOf, ref } from './fake-api.test-support.js';
+import { nodes } from './nodes.svelte.js';
+import { session } from './session.svelte.js';
+import {
+	type FakeApi,
+	HOME,
+	homeOf,
+	node,
+	ref,
+	useFakeApi,
+	VIEWER
+} from './fake-api.test-support.js';
 
 const ELSEWHERE = homeOf('did:syr:z6MkjSomebodyElsesGraphAAAAAAAAAAAAAAAAAAAAAA');
 
@@ -384,5 +394,183 @@ describe('another graph', () => {
 
 		expect(stub.held.stops).toBe(1);
 		expect(documenting.step).toBe('intent');
+	});
+});
+
+describe('the tags on a plan', () => {
+	const PARSER = 'src/parser.ts';
+	const VAULT = 'src/vault.ts';
+
+	async function refining(places: ProposedPlace[]): Promise<void> {
+		stub.proposes = places;
+		await documenting.opened(HOME);
+		await documenting.survey();
+	}
+
+	it('proposes what the survey gave each place', async () => {
+		await refining([{ path: PARSER, tags: ['parsing'] }]);
+
+		expect(documenting.places).toEqual([{ path: PARSER, tags: ['parsing'] }]);
+	});
+
+	it('takes one off without taking the place off', async () => {
+		await refining([{ path: PARSER, tags: ['parsing', 'protocol'] }]);
+
+		documenting.untag(PARSER, 'parsing');
+
+		expect(documenting.places).toEqual([{ path: PARSER, tags: ['protocol'] }]);
+	});
+
+	it('leaves a place carrying no tags at all once the last one goes', async () => {
+		await refining([{ path: PARSER, tags: ['parsing'] }]);
+
+		documenting.untag(PARSER, 'parsing');
+
+		expect(documenting.places).toEqual([{ path: PARSER }]);
+	});
+
+	it('takes it off the one place, and off nowhere else', async () => {
+		await refining([
+			{ path: PARSER, tags: ['parsing'] },
+			{ path: VAULT, tags: ['parsing'] }
+		]);
+
+		documenting.untag(PARSER, 'parsing');
+
+		expect(documenting.places).toEqual([{ path: PARSER }, { path: VAULT, tags: ['parsing'] }]);
+	});
+
+	it('runs on what survived, which is what the person allowed', async () => {
+		await refining([{ path: PARSER, tags: ['parsing', 'protocol'] }]);
+		documenting.untag(PARSER, 'protocol');
+
+		await documenting.run();
+
+		expect(stub.held.plans[0].places).toEqual([{ path: PARSER, tags: ['parsing'] }]);
+	});
+});
+
+describe('the tags a run suggested', () => {
+	const PARSER = 'src/parser.ts';
+	const NOTE = ref(1);
+	/** The two path segments `@sloppy/client` binds a reference as. */
+	const WRITING_IT = `PATCH /nodes/${encodeURIComponent(NOTE.slice(0, NOTE.lastIndexOf('/')))}/${encodeURIComponent(NOTE.slice(NOTE.lastIndexOf('/') + 1))}`;
+	let api: FakeApi;
+
+	/** A run that left one note, with `suggested` beside it. */
+	async function over(suggested?: string[]): Promise<void> {
+		stub.reports = [
+			{
+				stage: 'done',
+				places: [
+					{
+						path: PARSER,
+						note: {
+							ref: NOTE,
+							done: 'written',
+							...(suggested === undefined ? {} : { suggested })
+						}
+					}
+				]
+			}
+		];
+		stub.proposes = [{ path: PARSER }];
+		await documenting.opened(HOME);
+		await documenting.survey();
+		await documenting.run();
+	}
+
+	function left(): string[] | undefined {
+		return documenting.progress?.places[0].note?.suggested;
+	}
+
+	beforeEach(() => {
+		nodes.clear();
+		api = useFakeApi();
+		updateRuntime({ documenting: stub });
+		seamSettledAgain();
+		session.adopt(VIEWER, 'a-session');
+		api.on('GET /nodes', () => [node(1, '1', { tags: ['protocol'] })]);
+	});
+
+	afterEach(() => {
+		nodes.clear();
+		session.clear();
+	});
+
+	it('puts them on the note beside what it already carries', async () => {
+		await nodes.load();
+		const asked: unknown[] = [];
+		api.on(WRITING_IT, (_url, init) => {
+			asked.push(JSON.parse(String(init?.body)));
+			return node(1, '1', { tags: ['parsing', 'protocol'] });
+		});
+		await over(['parsing']);
+
+		await documenting.takeIn(documenting.progress!.places[0]);
+
+		expect(asked).toEqual([{ tags: ['protocol', 'parsing'] }]);
+		expect(nodes.get(NOTE)?.tags).toEqual(['parsing', 'protocol']);
+	});
+
+	it('stops offering them once they are on', async () => {
+		await nodes.load();
+		api.on(WRITING_IT, () => node(1, '1', { tags: ['parsing', 'protocol'] }));
+		await over(['parsing']);
+		expect(left()).toEqual(['parsing']);
+
+		await documenting.takeIn(documenting.progress!.places[0]);
+
+		expect(left()).toBeUndefined();
+		expect(documenting.trouble).toBeNull();
+	});
+
+	it('leaves them standing, and says so, where the note could not be written', async () => {
+		await nodes.load();
+		api.on(WRITING_IT, () => new Response('nope', { status: 500 }));
+		await over(['parsing']);
+
+		await documenting.takeIn(documenting.progress!.places[0]);
+
+		expect(left()).toEqual(['parsing']);
+		expect(documenting.trouble).not.toBeNull();
+	});
+
+	it('reads a note this device has not, so putting one on takes none off', async () => {
+		const wrote: unknown[] = [];
+		api.on(WRITING_IT.replace('PATCH', 'GET'), () => node(1, '1', { tags: ['protocol'] }));
+		api.on(WRITING_IT, (_url, init) => {
+			wrote.push(JSON.parse(String(init?.body)));
+			return node(1, '1', { tags: ['parsing', 'protocol'] });
+		});
+		await over(['parsing']);
+		expect(nodes.get(NOTE)).toBeUndefined();
+
+		await documenting.takeIn(documenting.progress!.places[0]);
+
+		expect(wrote).toEqual([{ tags: ['protocol', 'parsing'] }]);
+	});
+
+	it('says so and leaves the suggestion where the note is not there at all', async () => {
+		await over(['parsing']);
+
+		await documenting.takeIn(documenting.progress!.places[0]);
+
+		expect(left()).toEqual(['parsing']);
+		expect(documenting.trouble).not.toBeNull();
+	});
+
+	it('asks for nothing where the run suggested none', async () => {
+		await nodes.load();
+		let asked = 0;
+		api.on(WRITING_IT, () => {
+			asked += 1;
+			return node(1, '1');
+		});
+		await over();
+
+		await documenting.takeIn(documenting.progress!.places[0]);
+
+		expect(asked).toBe(0);
 	});
 });

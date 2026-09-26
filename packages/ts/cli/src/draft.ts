@@ -6,7 +6,7 @@
 // reading, and a reading is the person's.
 
 import { type Files, LocalApi } from "@sloppy/local";
-import type { BlockDocument, DocumentNode, OwnedRef } from "@sloppy/types";
+import type { BlockDocument, DocumentNode, OwnedRef, Tag } from "@sloppy/types";
 import { decodeText } from "@sloppy/vault";
 import { noteAbout, noteForProject, noteReaching, notesIn } from "./folder.js";
 import { type ModuleFacts, readModule } from "./modules.js";
@@ -47,9 +47,13 @@ export interface DraftAsked {
   api: LocalApi;
   /** The files to write about, as paths from the project root. */
   paths: readonly string[];
+  /** Tags to put on every note this writes, alongside whatever each already
+   *  carries. Absent tags none of them. */
+  tags?: readonly Tag[];
 }
 
 export async function draft(asked: DraftAsked): Promise<DraftResult> {
+  const tags = asked.tags ?? [];
   const notes = await notesIn(asked.container);
   const parts = await projectParts(asked.project);
   const top = noteForProject(notes, {
@@ -99,7 +103,10 @@ export async function draft(asked: DraftAsked): Promise<DraftResult> {
         missed.push({ path, said: "The note about it is not here any more." });
         continue;
       }
-      written.push({ ...(await writeOnto(asked.api, held, sections)), path });
+      written.push({
+        ...(await writeOnto(asked.api, held, sections, tags)),
+        path,
+      });
       continue;
     }
     const under = above?.note.ref ?? top;
@@ -110,6 +117,7 @@ export async function draft(asked: DraftAsked): Promise<DraftResult> {
           : { relation: "under", note: under },
       title: path,
       sections,
+      tags,
     });
     // A file written about in this same run is a candidate for the next one.
     about.push({ ref: note.ref, title: note.title, anchors: [path] });

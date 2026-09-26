@@ -314,6 +314,49 @@ describe("sloppy draft", () => {
     expect((await ran(["check"])).code).toBe(FINE);
   });
 
+  it("tags every note it writes with what --tag named", async () => {
+    await aProject();
+    await ran(["init"]);
+
+    const { code } = await ran([
+      "draft",
+      "--tag",
+      "Parsing, protocol",
+      "packages/one/src/index.ts",
+    ]);
+
+    expect(code).toBe(FINE);
+    const note = await noteSaying("title: packages/one/src/index.ts");
+    expect(note).toContain("tags:\n  - parsing\n  - protocol\n");
+  });
+
+  it("adds a tag to a note it has already written, and keeps the first", async () => {
+    await aProject();
+    await ran(["init"]);
+    await ran(["draft", "--tag=parsing", "packages/one/src/index.ts"]);
+
+    await ran(["draft", "--tag=protocol", "packages/one/src/index.ts"]);
+
+    const note = await noteSaying("title: packages/one/src/index.ts");
+    expect(note).toContain("tags:\n  - parsing\n  - protocol\n");
+  });
+
+  it("says which word is not a tag, and writes nothing", async () => {
+    await aProject();
+    await ran(["init"]);
+    const before = await notes();
+
+    const { code, err } = await ran([
+      "draft",
+      `--tag=${"x".repeat(65)}`,
+      "packages/one/src/index.ts",
+    ]);
+
+    expect(code).toBe(NOTHING_DONE);
+    expect(err.join(" ")).toContain("at most 64 characters");
+    expect(await notes()).toEqual(before);
+  });
+
   it("writes the same note again rather than a second one", async () => {
     await aProject();
     await ran(["init"]);

@@ -4,6 +4,7 @@ import {
   MAX_TAGS_PER_NODE,
   TAG_HUE_SLOTS,
   TAG_MAX_LENGTH,
+  tagsAmong,
   TagsSchema,
 } from "./tag.js";
 
@@ -166,5 +167,45 @@ describe("the hue a selected tag borrows", () => {
   it("has no slot for a tag nobody selected", () => {
     expect(assignTagHueSlots([]).size).toBe(0);
     expect(assignTagHueSlots(["biology"]).get("seed")).toBeUndefined();
+  });
+});
+
+describe("the tags among what a machine answered", () => {
+  it("keeps the ones that are tags and drops the rest", () => {
+    expect(tagsAmong(["parsing", "", "  ", "identity"])).toEqual([
+      "identity",
+      "parsing",
+    ]);
+  });
+
+  it("reads one the way a person typing it would be read", () => {
+    expect(tagsAmong(["  Machine   Learning "])).toEqual(["machine learning"]);
+  });
+
+  it("collapses two spellings of one tag into one tag", () => {
+    expect(tagsAmong(["Parsing", "parsing", "PARSING"])).toEqual(["parsing"]);
+  });
+
+  it("drops a word too long to be a tag rather than the answer with it", () => {
+    const tag = "x".repeat(TAG_MAX_LENGTH + 1);
+    expect(tagsAmong([tag, "parsing"])).toEqual(["parsing"]);
+  });
+
+  it("drops one nobody could tell from another, keeping the invisible that sits inside a word", () => {
+    expect(tagsAmong(["a\u0000b", "persian\u200cword", "\u200b"])).toEqual([
+      "persian\u200cword",
+    ]);
+  });
+
+  it("keeps no more than a note can carry", () => {
+    const said = Array.from(
+      { length: MAX_TAGS_PER_NODE + 10 },
+      (_, at) => `tag-${String(at).padStart(3, "0")}`,
+    );
+    expect(tagsAmong(said)).toHaveLength(MAX_TAGS_PER_NODE);
+  });
+
+  it("answers with nothing where nothing was said", () => {
+    expect(tagsAmong([])).toEqual([]);
   });
 });

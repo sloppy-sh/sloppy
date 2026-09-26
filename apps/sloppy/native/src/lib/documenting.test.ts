@@ -533,3 +533,102 @@ describe('one thing at a time', () => {
 		expect(asks).toEqual([]);
 	});
 });
+
+describe('the tags a run puts on', () => {
+	const said = (tags: string[]) =>
+		JSON.stringify({
+			title: 'The reader',
+			sections: [`## What it does\n\nIt reads [${PARSER}](code:${PARSER}).`],
+			tags
+		});
+
+	/** The tags on the note a run left at its one place. */
+	async function tagsLeft(done: DocumentingProgress): Promise<string[]> {
+		const ref = done.places[0].note?.ref;
+		return [...((ref === undefined ? undefined : await theirs().getNode(ref))?.tags ?? [])];
+	}
+
+	it('asks the survey for them, and proposes what it answered', async () => {
+		answers = ['{"places":[{"path":"src/parser.ts","reason":"The reader.","tags":["Parsing"]}]}'];
+
+		const places = await documenting().survey({ said: '' });
+
+		expect(places).toEqual([{ path: PARSER, reason: 'The reader.', tags: ['parsing'] }]);
+		expect(asks[0].prompt).toContain('Tag each place with the system it belongs to');
+	});
+
+	it('proposes the places without a word nobody could write as a tag', async () => {
+		answers = ['{"places":[{"path":"src/parser.ts","tags":["parsing","   ",17]}]}'];
+
+		expect(await documenting().survey({ said: '' })).toEqual([{ path: PARSER, tags: ['parsing'] }]);
+	});
+
+	it('shows a survey the words this graph already classifies by', async () => {
+		const note = await theirNote('The reader', PARSER);
+		await theirs().updateNode(note, { tags: ['protocol'] });
+		answers = ['{"places":[]}'];
+
+		await documenting().survey({ said: '' });
+
+		expect(asks[0].prompt).toContain('- protocol');
+	});
+
+	it('puts the ones the plan carries on the note it writes', async () => {
+		answers = [said([])];
+
+		const done = await documenting().run(
+			{ intent: { said: '' }, places: [{ path: PARSER, tags: ['parsing'] }] },
+			() => {}
+		);
+
+		expect(await tagsLeft(done)).toEqual(['parsing']);
+		expect(done.places[0].note?.suggested).toBeUndefined();
+	});
+
+	it('puts none on where the plan carries none', async () => {
+		answers = [said([])];
+
+		const done = await documenting().run(
+			{ intent: { said: '' }, places: [{ path: PARSER }] },
+			() => {}
+		);
+
+		expect(await tagsLeft(done)).toEqual([]);
+	});
+
+	it('hands back a tag it found while reading rather than putting it on', async () => {
+		answers = [said(['parsing', 'protocol'])];
+
+		const done = await documenting().run(
+			{ intent: { said: '' }, places: [{ path: PARSER, tags: ['parsing'] }] },
+			() => {}
+		);
+
+		expect(await tagsLeft(done)).toEqual(['parsing']);
+		expect(done.places[0].note?.suggested).toEqual(['protocol']);
+	});
+
+	it('suggests nothing it was allowed already, or the note already carries', async () => {
+		const note = await theirNote('The reader', PARSER);
+		await theirs().updateNode(note, { tags: ['protocol'] });
+		answers = [said(['parsing', 'protocol'])];
+
+		const done = await documenting().run(
+			{ intent: { said: '' }, places: [{ path: PARSER, note, tags: ['parsing'] }] },
+			() => {}
+		);
+
+		expect(done.places[0].note?.suggested).toBeUndefined();
+	});
+
+	it('tells the tool which tags are allowed on the note it is writing', async () => {
+		answers = [said([])];
+
+		await documenting().run(
+			{ intent: { said: '' }, places: [{ path: PARSER, tags: ['parsing'] }] },
+			() => {}
+		);
+
+		expect(asks[0].prompt).toContain('These tags are allowed on this note and go on it: parsing.');
+	});
+});

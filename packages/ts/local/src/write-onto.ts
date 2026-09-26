@@ -7,6 +7,8 @@ import {
   type NodeView,
   type OwnedRef,
   splitOwnedRef,
+  type Tag,
+  TagsSchema,
   ulid,
   type WriteDone,
   writesAlone,
@@ -30,22 +32,33 @@ export function headingOf(content: BlockDocument): string | undefined {
   return said === "" ? undefined : said;
 }
 
+/**
+ * `tags` go ON the note alongside the ones it carries. A machine writer names
+ * a scope it found; taking one off is the note's author's, so nothing here
+ * removes a tag, and a tag already there is left where it is.
+ */
 export async function writeOnto(
   api: LocalApi,
   note: NodeView,
   sections: readonly BlockDocument[],
+  tags: readonly Tag[] = [],
 ): Promise<WrittenOnto> {
   const writer = await api.writer;
   const held = await api.listBlocks(note.ref);
   const written = { title: note.title };
+  const carries = TagsSchema.parse([...note.tags, ...tags]);
   if (!writesAlone(note, writer)) {
     await api.proposeAmendment({
       note: note.ref,
       title: note.title,
-      tags: [...note.tags],
+      tags: carries,
       blocks: offered(note.ref, held, sections),
     });
     return { ...written, done: "offered" };
+  }
+  // Both are sets and one holds the other, so a longer union is a tag gained.
+  if (carries.length !== note.tags.length) {
+    await api.updateNode(note.ref, { tags: carries });
   }
   let after = held[held.length - 1]?.ref;
   for (const content of sections) {

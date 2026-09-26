@@ -6,6 +6,7 @@ import { z } from "zod";
 import { WRITE_DONE } from "./authority.js";
 import { insideProject } from "./code-anchor.js";
 import { OwnedRefSchema } from "./common.js";
+import { TagsSchema } from "./tag.js";
 
 /** The tools that can be asked to do the writing. */
 export const DOCUMENTING_TOOLS = ["claude_code"] as const;
@@ -85,6 +86,13 @@ export const ProposedPlaceSchema = z.object({
    *  the run writes one; present is a note the run changes, which stands as an
    *  offer wherever somebody has written in it. */
   note: OwnedRefSchema.optional(),
+  /**
+   * The tags the note about this place is to carry, naming the system it
+   * belongs to so that selecting one picks that system out across the whole
+   * graph. A survey proposes them and the person settles them, so what is here
+   * when the run starts is what they allowed. **Absent is a place with none.**
+   */
+  tags: TagsSchema.optional(),
 });
 export type ProposedPlace = z.infer<typeof ProposedPlaceSchema>;
 
@@ -133,6 +141,12 @@ export const NoteLeftSchema = z.object({
    *  identity rather than as the person, so a note they have written in takes
    *  an offer, standing until they take it in or turn it down. */
   done: z.enum(WRITE_DONE),
+  /**
+   * Tags the run found a use for while reading and did NOT put on, because
+   * nobody had allowed them. **Absent is a run that suggested none.** Putting
+   * one on is the person's own write, on their own note, afterwards.
+   */
+  suggested: TagsSchema.optional(),
 });
 export type NoteLeft = z.infer<typeof NoteLeftSchema>;
 

@@ -9,12 +9,14 @@ import { containerDataAt, keepingDataAt, LocalApi, writeOnto, type Files } from 
 import {
 	anchorsOf,
 	splitOwnedRef,
+	tagsAmong,
 	ulid,
 	type BlockDocument,
 	type NodeView,
 	type NoteLeft,
 	type OwnedRef,
-	type ProposedPlace
+	type ProposedPlace,
+	type Tag
 } from '@sloppy/types';
 import { emptySidecars, fromMarkdown, toMarkdown, type Sidecars } from '@sloppy/vault';
 import type { NoteAsWritten, SaidNote } from './documenting-tool';
@@ -24,6 +26,10 @@ import type { NoteAsWritten, SaidNote } from './documenting-tool';
 export function containerApi(root: string, files: Files): LocalApi {
 	return new LocalApi(keepingDataAt(files.at(root), containerDataAt(root)));
 }
+
+/** More of a graph's vocabulary than a prompt needs: past this a tool is
+ *  reading a list rather than choosing from one. */
+const MOST_TAGS_SHOWN = 40;
 
 /** One note in the container, the code it points at, and the note it hangs
  *  under. */
@@ -136,15 +142,20 @@ export async function writeNote(
 	if (said.sections.length === 0) return undefined;
 	const aside = standing?.aside ?? emptySidecars(ulid());
 	const sections = said.sections.map((markdown) => fromMarkdown(markdown, aside));
+	const allowed = place.tags ?? [];
+	const suggested = tagsAmong(said.tags ?? []).filter(
+		(tag) => !allowed.includes(tag) && !(standing?.note.tags ?? []).includes(tag)
+	);
+	const beside = suggested.length === 0 ? {} : { suggested };
 	if (standing) {
-		const { done } = await writeOnto(api, standing.note, sections);
-		return { ref: standing.note.ref, done };
+		const { done } = await writeOnto(api, standing.note, sections, allowed);
+		return { ref: standing.note.ref, done, ...beside };
 	}
 	const under = noteOver(here.notes, place.path) ?? here.branch;
 	const note = await api.createNode({
 		from: under === undefined ? { relation: 'free' } : { relation: 'under', note: under },
 		title: said.title ?? place.path,
-		tags: []
+		tags: [...allowed]
 	});
 	let after: OwnedRef | undefined;
 	for (const content of sections) {
@@ -160,7 +171,14 @@ export async function writeNote(
 		origin: note.origin,
 		paths: pathsIn(sections, place.path)
 	});
-	return { ref: note.ref, done: 'written' };
+	return { ref: note.ref, done: 'written', ...beside };
+}
+
+/** The tags this container already classifies by, the most used first, so a
+ *  tool is shown the vocabulary rather than inventing a second name for a
+ *  scope that has one. */
+export async function tagsHere(api: LocalApi): Promise<Tag[]> {
+	return (await api.listTags()).slice(0, MOST_TAGS_SHOWN).map((held) => held.tag);
 }
 
 async function anchorsIn(api: LocalApi, note: OwnedRef): Promise<string[]> {

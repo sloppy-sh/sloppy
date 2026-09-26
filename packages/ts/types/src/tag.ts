@@ -58,6 +58,24 @@ export const TagsSchema = z
 export type Tags = z.infer<typeof TagsSchema>;
 
 /**
+ * The tags among some strings, dropping what is not one and keeping at most
+ * {@link MAX_TAGS_PER_NODE}.
+ *
+ * For reading what a machine answered, where {@link TagsSchema} is the wrong
+ * shape: one word it made up that nobody can write is one tag fewer, and never
+ * an answer nobody can read.
+ */
+export function tagsAmong(said: readonly string[]): Tag[] {
+  const held = new Set<Tag>();
+  for (const one of said) {
+    const tag = TagSchema.safeParse(one);
+    if (tag.success) held.add(tag.data);
+    if (held.size === MAX_TAGS_PER_NODE) break;
+  }
+  return [...held].sort();
+}
+
+/**
  * The hue slots a selected tag borrows, drawn as `--facet-1 … --facet-8` in
  * `@sloppy/ui`'s `app.css`. DESIGN.md § "Hue — the tags you selected, and only
  * those" is the contract, and `token-contrast.test.ts` holds this list against

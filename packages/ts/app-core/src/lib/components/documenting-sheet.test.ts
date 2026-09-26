@@ -438,3 +438,100 @@ describe('what a person is told', () => {
 		}
 	});
 });
+
+describe('the tags on the list somebody settles', () => {
+	const PATH = 'src/parser.ts';
+
+	it('shows what each place would be tagged', async () => {
+		await atTheList([{ path: PATH, tags: ['parsing', 'protocol'] }]);
+
+		expect(screen()).toContain('parsing');
+		expect(screen()).toContain('protocol');
+	});
+
+	it('takes one off without taking the place off', async () => {
+		await atTheList([{ path: PATH, tags: ['parsing', 'protocol'] }]);
+
+		labelled(`Do not tag ${PATH} parsing`)?.click();
+		await settle();
+
+		expect(screen()).toContain(PATH);
+		expect(screen()).not.toContain('parsing');
+		expect(screen()).toContain('protocol');
+	});
+
+	it('runs on the tags that survived', async () => {
+		await atTheList([{ path: PATH, tags: ['parsing', 'protocol'] }]);
+		labelled(`Do not tag ${PATH} protocol`)?.click();
+		await settle();
+
+		named('Write these notes')?.click();
+		await settle();
+
+		expect(stub.plans[0].places).toEqual([{ path: PATH, tags: ['parsing'] }]);
+	});
+
+	it('shows no tags on a place nothing was suggested for', async () => {
+		await atTheList([{ path: PATH }]);
+
+		expect(labelled(`Do not tag ${PATH} parsing`)).toBeUndefined();
+	});
+});
+
+describe('the tags a run suggests at the end', () => {
+	const PATH = 'src/parser.ts';
+
+	beforeEach(async () => {
+		api.on('GET /nodes', () => [node(1, '1', { title: 'The parser', tags: ['protocol'] })]);
+		await nodes.load({ graph: HOME });
+		await atTheList([{ path: PATH }]);
+		stub.reports = [
+			{
+				stage: 'done',
+				places: [
+					{
+						path: PATH,
+						note: { ref: PARSER, done: 'written', suggested: ['parsing'] }
+					}
+				]
+			}
+		];
+	});
+
+	it('shows them, and says nothing is on until the person says so', async () => {
+		named('Write these notes')?.click();
+		await settle();
+
+		expect(screen()).toContain('Tags it suggests. Nothing goes on until you say so.');
+		expect(named('Tag it parsing')).toBeDefined();
+	});
+
+	it('puts them on the note when the person asks, and stops offering', async () => {
+		const wrote: unknown[] = [];
+		api.on(
+			`PATCH /nodes/${encodeURIComponent(PARSER.slice(0, PARSER.lastIndexOf('/')))}/${encodeURIComponent(PARSER.slice(PARSER.lastIndexOf('/') + 1))}`,
+			(_url, init) => {
+				wrote.push(JSON.parse(String(init?.body)));
+				return node(1, '1', { title: 'The parser', tags: ['parsing', 'protocol'] });
+			}
+		);
+		named('Write these notes')?.click();
+		await settle();
+
+		named('Tag it parsing')?.click();
+		await settle();
+
+		expect(wrote).toEqual([{ tags: ['protocol', 'parsing'] }]);
+		expect(named('Tag it parsing')).toBeUndefined();
+	});
+
+	it('offers nothing where the run suggested none', async () => {
+		stub.reports = [
+			{ stage: 'done', places: [{ path: PATH, note: { ref: PARSER, done: 'written' } }] }
+		];
+		named('Write these notes')?.click();
+		await settle();
+
+		expect(screen()).not.toContain('Tags it suggests.');
+	});
+});

@@ -177,6 +177,12 @@ A plain word on the note, lowercased, and nothing declares one first: \`parsing\
 reach for the words this graph already carries before adding one nobody here uses. A tag
 is somebody's own vocabulary, and a note carries as many as it needs.
 
+**A tag names what the note is ABOUT** — the system, the layer, the scope — which is what
+makes selecting one pick out everything about that system however far apart those notes
+sit. That is the whole use of the axis, and naming the systems you find as you read them
+is work only somebody reading the code can do. **A tag that records how the note came to
+be written is the opposite of one**, and never goes on: see below.
+
 ## Saying a note has been read against the code
 
 \`checked\` names the commit a note's reasoning was last read against. **Absent means
@@ -225,8 +231,9 @@ on is somebody's writing nothing can give back.
   writing, and leave the compass to a person.
 - **\`checked\`.** It says a person has read the note against the code. Writing it would
   silence the one question the app asks them.
-- **A tag that says a tool wrote the note.** What wrote a note leaves no trace of itself
-  in it; the note is read for what it says.
+- **A tag about the note rather than about the code** — that a tool wrote it, when, or in
+  what pass. What wrote a note leaves no trace of itself in it; the note is read for what
+  it says, and a tag naming the system it is about is wanted for exactly that reason.
 - **A second note about a file that already has one.** Offer a change to the note that
   is there instead.
 - **Anything in the code.** Sloppy reads this project and never writes in it; the only
@@ -238,6 +245,7 @@ on is somebody's writing nothing can give back.
 
     sloppy init [dir]      start the notes in a project, and write what the tree can tell
     sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
+    sloppy draft --tag a,b [paths…]  the same, tagging each note it writes
     sloppy review          what the code has left behind
     sloppy check           read every note and say what doesn't hold
 
@@ -246,4 +254,8 @@ Each takes \`--json\` and answers in JSON instead of lines.
 \`draft\` reads a TypeScript or JavaScript file by the line for what it imports and what
 it hands out, and anchors each name it finds. A file in any other language gets an anchor
 to the file and none inside it, so the names in it are yours to write.
+
+\`--tag\` puts those tags on every note that run writes, beside the ones each already
+carries; it takes none off. Name the system the files are part of, so one run tags one
+scope.
 `;

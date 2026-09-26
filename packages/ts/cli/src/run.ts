@@ -10,6 +10,7 @@ import {
   type Files,
   LocalApi,
 } from "@sloppy/local";
+import { type Tag, TagSchema } from "@sloppy/types";
 import { VaultFormatError } from "@sloppy/vault";
 import { check } from "./check.js";
 import { containerAt, heldAt } from "./folder.js";
@@ -30,7 +31,7 @@ export const TO_FIX = 1;
 export const NOTHING_DONE = 2;
 
 /** The options that take the word after them as their value. */
-const VALUED = new Set(["identity"]);
+const VALUED = new Set(["identity", "tag"]);
 
 export interface Told {
   out(line: string): void;
@@ -92,6 +93,7 @@ const USAGE = [
   "  sloppy check [dir]     read every note and say what doesn't hold",
   "",
   "  --identity <file>      write as the identity in that file, rather than one made here",
+  "  --tag <a,b>            tag every note it writes, alongside what each already carries",
   "  --strict               let a review say there is something to fix",
   "  --json                 answer in JSON instead of lines",
   "  --help                 this",
@@ -321,11 +323,16 @@ async function drafting(
     }
     inside.push(path.split("\\").join("/"));
   }
+  const tags = tagsAsked(asked);
+  if (typeof tags === "string") {
+    return nothingDone("draft", context.told, json, tags);
+  }
   const done = await draft({
     container,
     project,
     api: new LocalApi(found.files),
     paths: inside,
+    tags,
   });
   const missed = [...outside, ...done.missed];
   if (json) {
@@ -339,6 +346,22 @@ async function drafting(
   }
   for (const one of missed) context.told.out(`${one.path}: ${one.said}`);
   return missed.length === 0 ? FINE : TO_FIX;
+}
+
+/** The tags `--tag` named, or the words to say where one of them is not a tag
+ *  — a person typing a tag hears about it rather than losing it quietly. */
+function tagsAsked(asked: Asked): Tag[] | string {
+  const said = asked.options.get("tag");
+  if (said === undefined) return [];
+  if (said === true) return "Say which tags: --tag one,two";
+  const held: Tag[] = [];
+  for (const one of said.split(",")) {
+    if (one.trim() === "") continue;
+    const tag = TagSchema.safeParse(one);
+    if (!tag.success) return tag.error.issues[0].message;
+    held.push(tag.data);
+  }
+  return held;
 }
 
 async function reviewing(
