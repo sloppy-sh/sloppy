@@ -149,7 +149,7 @@ const compasses: fc.Arbitrary<DocumentNode> = fc.oneof(
     attrs: { north: [], south: [], east: [], west: [], why: "later" },
   }),
   fc
-    .tuple(fc.constantFrom("qec", "aji", "swot"), slot, slot)
+    .tuple(fc.constantFrom("inquiry", "argument", "swot"), slot, slot)
     .map(([kind, north, west]) => ({
       type: "compass",
       attrs: { north, south: [], east: [], west, kind },

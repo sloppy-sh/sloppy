@@ -387,7 +387,11 @@ describe("a compass in a section", () => {
   // saying which method would cut one compass into two for a reader that does
   // not expect it.
   it("writes a compass in another method as JSON, whole", () => {
-    const held = compass({ kind: "qec", north: cite(TIDES), west: cite(MOON) });
+    const held = compass({
+      kind: "inquiry",
+      north: cite(TIDES),
+      west: cite(MOON),
+    });
     expect(written(held).text.startsWith("<!-- sloppy:node ")).toBe(true);
     expect(written(held).text).not.toContain("north:");
     expect(readBack(held)).toEqual(held);

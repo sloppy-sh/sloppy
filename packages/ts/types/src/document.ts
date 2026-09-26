@@ -172,7 +172,7 @@ export type CompassDirection = (typeof COMPASS_DIRECTIONS)[number];
 
 /** The methods a compass can be read in. A fourth is a token here and a row in
  *  {@link COMPASS_METHODS}, and moves nothing a peer holds. */
-export const COMPASS_KINDS = ["idea", "qec", "aji"] as const;
+export const COMPASS_KINDS = ["idea", "inquiry", "argument"] as const;
 export type CompassKind = (typeof COMPASS_KINDS)[number];
 
 /**
@@ -216,8 +216,8 @@ const IDEA_SLOTS: Record<CompassDirection, CompassSlotWords> = {
  *  CLI both say them, and two copies would drift. */
 const COMPASS_METHODS: Record<CompassKind, CompassMethod> = {
   idea: { name: "Idea compass", slots: IDEA_SLOTS },
-  qec: {
-    name: "QEC",
+  inquiry: {
+    name: "Inquiry compass",
     slots: {
       north: { word: "The question", asks: "What is the question?" },
       south: { word: "The conclusion", asks: "What does it conclude?" },
@@ -228,8 +228,8 @@ const COMPASS_METHODS: Record<CompassKind, CompassMethod> = {
       },
     },
   },
-  aji: {
-    name: "AJI",
+  argument: {
+    name: "Argument compass",
     slots: {
       north: { word: "The assumption", asks: "What is being assumed?" },
       south: { word: "The implication", asks: "What follows if it holds?" },

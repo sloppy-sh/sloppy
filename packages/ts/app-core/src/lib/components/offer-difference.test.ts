@@ -198,10 +198,10 @@ describe('where an offer would have the note point', () => {
 	// stripped out of the section difference, so it has nowhere else to be said.
 	it('names the method the offer would read the slots as', () => {
 		const now = pointing(ONE, { north: [TWO] });
-		const offered = pointing(ONE, { north: [TWO], kind: 'qec' });
+		const offered = pointing(ONE, { north: [TWO], kind: 'inquiry' });
 		const apart = offerDifference({ ref: NOTE }, now, offered);
 
-		expect(compassApart(now, offered)).toEqual({ was: 'idea', reads: 'qec', slots: [] });
+		expect(compassApart(now, offered)).toEqual({ was: 'idea', reads: 'inquiry', slots: [] });
 		expect(sectionsApart(now, offered).sections).toEqual([]);
 		expect(
 			saysNothing(

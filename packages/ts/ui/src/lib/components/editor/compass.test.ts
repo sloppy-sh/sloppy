@@ -408,8 +408,8 @@ describe('a compass in the writing', () => {
 
 		expect(options).toEqual([
 			'Idea compass — part of, made of, like, instead of',
-			'QEC — the question, the conclusion, the evidence, counter-evidence',
-			'AJI — the assumption, the implication, the justification, the objection'
+			'Inquiry compass — the question, the conclusion, the evidence, counter-evidence',
+			'Argument compass — the assumption, the implication, the justification, the objection'
 		]);
 	});
 
@@ -417,7 +417,7 @@ describe('a compass in the writing', () => {
 		open(graph([]));
 		put();
 		tap(act('west', 'Cite a note'));
-		chooses('qec');
+		chooses('inquiry');
 
 		expect(card().querySelector('.sloppy-compass-field')).toBeNull();
 
@@ -446,8 +446,8 @@ describe('a compass in the writing', () => {
 		await settled();
 
 		const before = stored();
-		chooses('aji');
-		expect(stored()).toEqual({ ...before, kind: 'aji' });
+		chooses('argument');
+		expect(stored()).toEqual({ ...before, kind: 'argument' });
 
 		chooses('idea');
 		expect(stored()).toEqual(before);
@@ -469,8 +469,8 @@ describe('a compass in the writing', () => {
 		const slots = { north: [{ note: seed.ref }], south: [], east: [], west: [] };
 		expect(writtenDown()?.attrs).toEqual(slots);
 
-		chooses('qec');
-		expect(writtenDown()?.attrs).toEqual({ ...slots, kind: 'qec' });
+		chooses('inquiry');
+		expect(writtenDown()?.attrs).toEqual({ ...slots, kind: 'inquiry' });
 
 		chooses('idea');
 		expect(writtenDown()?.attrs).toEqual(slots);
@@ -503,7 +503,7 @@ describe('a compass in the writing', () => {
 		tap(menu()[0]);
 		await settled();
 
-		chooses('qec');
+		chooses('inquiry');
 
 		expect(slot('west').hidden).toBe(false);
 		expect(words(slot('west').querySelector('.sloppy-compass-word'))).toBe('Counter-evidence');

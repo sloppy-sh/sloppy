@@ -423,12 +423,12 @@ describe("the compass a section holds", () => {
   });
 
   it("carries the method the compass says it is in", () => {
-    expect(compassOf(doc([compass({ kind: "qec" })]))).toEqual({
+    expect(compassOf(doc([compass({ kind: "inquiry" })]))).toEqual({
       north: [],
       south: [],
       east: [],
       west: [],
-      kind: "qec",
+      kind: "inquiry",
     });
   });
 

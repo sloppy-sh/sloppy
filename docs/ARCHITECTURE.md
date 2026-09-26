@@ -2780,15 +2780,15 @@ compass — "Part of", "Made of", "Like", "Instead of" — is what a compass tha
 is in, so **an absent `kind` is the idea compass** and one in that method carries no `kind`
 at all: every compass written before methods existed, and every one an older build writes,
 reads exactly as it did. `COMPASS_KINDS` in `@sloppy/types` is the closed set — `idea`,
-`qec` and `aji` — and a fourth is a token there and a row of copy beside it. The slots stay
+`inquiry` and `argument` — and a fourth is a token there and a row of copy beside it. The slots stay
 the wire for all of them, which is what makes switching free: no citation moves, so
 switching back finds them where they were. The cost is stated: the file says `north:` where
 a person reads "The question".
 
 **Every method names all four, because the compass is two axes and not a dial.** North and
 south are where a thought came from and where it leads; east and west are what holds it up
-and what pushes against it. So `qec` reads north as the question, south as the conclusion,
-east as the evidence and west as the counter-evidence; `aji` reads them as the assumption,
+and what pushes against it. So `inquiry` reads north as the question, south as the conclusion,
+east as the evidence and west as the counter-evidence; `argument` reads them as the assumption,
 the implication, the justification and the objection. A method naming only three would
 leave one pole of one axis empty — and that pole, the one that argues back, is the half a
 person is most likely to skip and most needs to be asked for.
