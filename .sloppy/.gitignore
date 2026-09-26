@@ -1,0 +1,11 @@
+*.key
+*.key.pub
+*.picture
+identities.json
+identity.json
+vaults.json
+credentials.json
+git.json
+sloppy-identity*
+/.sloppy/bin.json
+/.sloppy/bin/
