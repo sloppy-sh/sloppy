@@ -52,6 +52,11 @@ tauri-plugin-dialog = "2"
 # What somebody picked on Android is not a path, so reading it is this rather
 # than std::fs.
 tauri-plugin-fs = "2"
+# The endpoint an agent calls Sloppy's own acts over. Blocking and
+# thread-per-request, which is how everything else in this crate is written, so
+# it needs no async runtime beside Tauri's and no TLS: the socket is the
+# loopback, bound to a port the machine chooses.
+tiny_http = "0.12"
 
 # A tool the app starts reads the project by starting programs of its own, so
 # stopping a run signals the whole group rather than the program alone —

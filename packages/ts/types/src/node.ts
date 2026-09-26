@@ -23,6 +23,10 @@ import { TagsSchema } from "./tag.js";
  *  from. */
 export const CommitIdSchema = z.string().min(1).max(128);
 
+/** Long enough for a sentence somebody titles a note with, short enough to
+ *  read beside the others in a list. */
+export const NODE_TITLE_MAX = 512;
+
 export const NodeSchema = OwnedEntitySchema.extend({
   /**
    * Which of its author's graphs this note is in, and so which context its
@@ -67,7 +71,7 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * taken. Absent, and empty, are none.
    */
   contributors: z.array(PrincipalSchema).optional(),
-  title: z.string().max(512).default(""),
+  title: z.string().max(NODE_TITLE_MAX).default(""),
   tags: TagsSchema.default([]),
   /**
    * Associative links, the ones genealogy does not carry. A target may belong
@@ -346,7 +350,7 @@ export const CreateNodeRequestSchema = z.strictObject(
      * branch's own number already, and a request carrying both is refused.
      */
     address: AddressSchema.optional(),
-    title: z.string().max(512).default(""),
+    title: z.string().max(NODE_TITLE_MAX).default(""),
     tags: TagsSchema.default([]),
   },
   { error: "Sloppy is out of date. Update it and try again." },
@@ -402,7 +406,7 @@ export type SetAddressRequest = z.input<typeof SetAddressRequestSchema>;
  * {@link MoveNoteRequestSchema}.
  */
 export const UpdateNodeRequestSchema = z.object({
-  title: z.string().max(512).optional(),
+  title: z.string().max(NODE_TITLE_MAX).optional(),
   /** The WHOLE set, never a delta: a tag absent from it is a tag removed. */
   tags: TagsSchema.optional(),
   links: z.array(OwnedRefSchema).optional(),

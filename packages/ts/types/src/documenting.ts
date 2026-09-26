@@ -57,7 +57,7 @@ export const PROJECT_PATH_MAX = 1024;
  * the project, nothing that reads as an option to a program, nothing invisible
  * ({@link insideProject}), and bounded.
  */
-const ProjectPathSchema = z
+export const ProjectPathSchema = z
   .string()
   .max(
     PROJECT_PATH_MAX,

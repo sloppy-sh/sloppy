@@ -1,14 +1,17 @@
+mod chat;
 mod documenting;
 mod history;
 mod remotes;
 mod signing;
+mod tools;
 mod vault;
 
 use tauri::{Manager, Runtime};
 
 /// The whole of what this shell answers: `Files` and `History` in
-/// `@sloppy/local` and `DocumentingAccess` in `@sloppy/app-core`, which declare
-/// every one of them and what its answer means.
+/// `@sloppy/local` and `DocumentingAccess` and `ChatAccess` in
+/// `@sloppy/app-core`, which declare every one of them and what its answer
+/// means.
 pub(crate) fn commands<R: Runtime>(
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
@@ -52,6 +55,11 @@ pub(crate) fn commands<R: Runtime>(
         documenting::documenting_tools,
         documenting::documenting_ask,
         documenting::documenting_stop,
+        chat::chat_agents,
+        chat::chat_open,
+        chat::chat_say,
+        chat::chat_answer,
+        chat::chat_stop,
     ]
 }
 
@@ -89,6 +97,7 @@ pub fn run() {
         .setup(|app| {
             app.manage(vault::Folders::new(app.path().app_data_dir()?)?);
             app.manage(documenting::Running::default());
+            app.manage(chat::Chat::default());
 
             // A custom scheme only fires for an installed app: iOS and Android
             // take it from the generated manifests and macOS from the bundled

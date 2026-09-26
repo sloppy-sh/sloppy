@@ -3225,44 +3225,71 @@ is said: nothing of the person's was lost, and nothing is theirs to fix.
 **`@sloppy/cli` is the container without a window; this is the window.** An agent working
 in a repository can already start a container and write notes into it, and a maintainer
 standing in front of the app cannot ask for the same thing. What this adds is the person:
-they say what they want written about, they are shown what a pass over the code proposes,
-they settle that list, and what comes back is theirs to take in or turn down.
+they open a chat about the project in front of them, say what they want written about, and
+watch it happen — the files being read, the thinking, and every one of Sloppy's own acts
+the agent calls, arriving in the thread as each one happens.
 
-**Four stages, in that order, because the cheap one decides what the expensive one does.**
-An INTENT is what somebody asked for, in their own words. A SURVEY reads the project
-against it and proposes places — a folder, a file — each with the reason it was proposed,
-and writes nothing. The person REFINES that list: they take places out, and they add what
-was missed, which arrives carrying no reason because nobody proposed it to them. The RUN
-writes about the places that survived, in the order they stand in. Nothing skips a stage:
-a run made straight from an intent is a bill somebody did not agree to.
+**Nothing here is a stage somebody is walked through.** They say a thing, they are shown
+what came of it, and they say the next thing — which is the only shape that lets somebody
+change their mind halfway through a pass over a repository, and the only one in which the
+expensive part is visible while it is still worth stopping.
 
-**A plan names each place once, and `placesAreDistinct` is where that is said.** Refining
-is somebody adding places by hand to a list a pass over the code proposed, so one of them
-arriving twice is ordinary; what is not is the run that follows, because the plan is
-settled before any of it is written and the second entry for a path carries no note
-however many the first leaves there. Walking it writes a second note about a file that
-already has one, which is what `.sloppy/AGENT.md` tells a tool never to do. The shape
-bounds how many places a plan carries and cannot say they are distinct, so the predicate
-sits beside `progressFits` and the seam holds a plan and a survey's answer to it.
+**The agent runs on this machine, and Sloppy holds the conversation.** One program,
+started in the project's folder, with the whole conversation on one pair of pipes: what
+somebody says goes onto its own input rather than into an argument, and every line it
+writes out comes straight back. `chat.rs` in the native shell starts it, carries the lines
+and ends it; `chat.ts` beside it is the one place that knows what a line MEANS, so an agent
+that speaks another dialect costs nothing above that file.
 
-**What comes back is offered, never landed over somebody's writing — and the run is what
-holds itself to that.** The store does not: a project's container is an open graph, so its
-notes carry no owner, and § "Whose writing a note carries" answers `lands` for every writer
-on every one of them. The rule that tells the two apart is `writesAlone` — it lands only
-where the note carries nobody's writing but this writer's — and a machine writer is held to
-it BY ITSELF, which is what its own doc says. `writeOnto` in `@sloppy/local` is that rule
-written once: `writesAlone` true and it writes onto the note, false and it proposes an
-amendment instead. The CLI writes through it and so does a run, so the two cannot drift.
+**Sloppy's own acts reach the agent over an endpoint this app serves.** `tools.rs` binds
+the loopback on a port the machine chooses, answers only a caller carrying a name minted
+for that one session, and serves exactly the acts it was handed at the start.
+`advertisedChatTools` in `@sloppy/types` is where those come from, so what the agent is
+shown and what its calls are held to cannot be two different things, and the endpoint holds
+no vocabulary of its own — a new act costs it nothing. **The name it answers to never
+reaches the webview**: the page composes no part of what starts the program.
+
+**A call arrives in Rust and is DONE in the webview, because the webview is the one
+writer.** The note store is TypeScript over the container's files, and a second process
+writing that container would be a second writer in it — a second identity, after which each
+one offers the other amendments to notes no person has ever written in, and nothing fails
+or warns. So the call is forwarded to the page, the page does the work through the same
+store every other write in this app goes through, and what it answers with goes back out to
+the agent. It also means nothing new has to be installed for a chat to write a note.
+
+**The acts are the smallest set that makes the chat useful and no more**: the notes this
+project already has, with their addresses, titles, tags and the places they are about; one
+of them read whole; a note written about a place; tags put on a note. Two of them read and
+two of them write, and `chatToolWrites` is the one statement of which is which — every
+surface that needs to know asks it rather than listing names.
+
+**Every act that WRITES is behind the person's own answer, asked in the thread.** The
+question names what is about to happen — the note, the place — and the call resolves on
+what they say and on nothing else. A reading act is never asked about, because nothing of
+theirs changes. **The gate is Sloppy's, in Sloppy's words, so it holds whatever is on the
+other end**: an agent's own permission prompt is not one Sloppy can see, put in its own
+words, or rely on being there at all. A call turned down never reaches the store, and the
+agent is told the person turned it down rather than being left waiting — a chat in which
+one side is blocked on an answer that will never come has stopped without saying so.
+
+**What comes back is offered, never landed over somebody's writing — and the writer is
+what holds itself to that.** The store does not: a project's container is an open graph, so
+its notes carry no owner, and § "Whose writing a note carries" answers `lands` for every
+writer on every one of them. The rule that tells the two apart is `writesAlone` — it lands
+only where the note carries nobody's writing but this writer's — and a machine writer is
+held to it BY ITSELF. `writeOnto` in `@sloppy/local` is that rule written once:
+`writesAlone` true and it writes onto the note, false and it proposes an amendment instead.
+The CLI writes through it and so does a call from a chat, so the two cannot drift.
 
 So: a place with no note yet gets one written outright, a note carrying nobody's writing
-but the tool's is written straight onto, and a note a person has written in is offered an
-amendment that stands until they take it in. Nothing here writes a note file by hand — a
+but the container's is written straight onto, and a note a person has written in is offered
+an amendment that stands until they take it in. Nothing here writes a note file by hand — a
 writer that did would be the one writer in Sloppy held to nothing at all.
 
-**Which way that rule falls is decided by WHO is writing, so the run's writer is named
-here.** It is the identity kept in the container's own private data, minted there the first
-time — what `sloppy draft` writes under from a terminal. **It is never one on the list the
-app writes under.** A run given the app's own api writes as the person, for whom
+**Which way that rule falls is decided by WHO is writing, so the writer is named here.** It
+is the identity kept in the container's own private data, minted there the first time —
+what `sloppy draft` writes under from a terminal. **It is never one on the list the app
+writes under.** A page serving a call with the app's own api writes as the person, for whom
 `writesAlone` is true on every note they have written, so every one of those is written
 over rather than offered and the amendment this section is built around is never made.
 **A store reaches the container's identity only by being given files whose own data is the
@@ -3270,38 +3297,52 @@ container's**, which is what `keepingDataAt` in `@sloppy/local` makes of any she
 `Files.at` re-roots the folder and leaves `dataPath` where the app keeps it, so a store
 handed a shell's files rooted at the container answers with the person instead — and on the
 ordinary device, holding one identity, it does so silently. **Where that data goes is
-`containerDataAt` in `@sloppy/local` and is spelled nowhere else**, the CLI included: a
-second folder under one container is a second identity in it, after which each writer
-offers the other amendments to notes no person has ever written in, and nothing fails or
-warns. `DocumentingAccess.run` in `@sloppy/app-core` carries the obligation where the shell
-implementing it reads.
+`containerDataAt` in `@sloppy/local` and is spelled nowhere else**, the CLI included.
+`ChatAccess` in `@sloppy/app-core` carries the obligation where the page serving a call
+reads.
 
-**The tool is started, never composed.** The program is the shell's own and fixed there; it
-is started directly rather than handed to a shell to interpret; and nothing a survey
-proposed or a person typed becomes a program name, an option, or the folder a run works in.
-A plan is input the tool reads, all the way down. That is also why the shapes bound what
-they carry rather than trusting the pass that filled them: a survey proposes places by
-reading a repository, and a checked-out tree — a dependency, a fork, somebody's branch — is
-not a thing we vouch for. `ProjectPathSchema` holds every path in these shapes to
-`insideProject`: inside the project, no segment that reads as an option, nothing invisible,
-and bounded.
+**The program is started, never composed.** It is the shell's own and fixed there; it is
+started directly rather than handed to a shell to interpret; and nothing a person typed or
+an agent answered becomes a program name, an option, or the folder the session runs in.
+That is also why the shapes bound what they carry: a call is composed by a program reading
+a checked-out tree — a dependency, a fork, somebody's branch — which is not a thing we
+vouch for. `ProjectPathSchema` holds every path in these shapes to `insideProject`: inside
+the project, no segment that reads as an option, nothing invisible, and bounded.
 
 **A shape holds nothing until somebody parses it, so the seam names who: the shell
-implementing `DocumentingAccess`, in both directions.** It parses what it is handed before
-it acts on any of it, and parses what it answers with before a page sees it — a place a
-tool emitted and a place a person typed into a field are equally unvouched-for, and both
-reach a program. It rejects what does not parse rather than dropping it, because a run that
-quietly skips a place tells somebody it wrote about one it did not. A page builds a plan
-and spells no check, exactly as a caller of `Files` spells no check that a path stays
-inside the root.
+implementing `ChatAccess`, in both directions.** It parses every event before a page sees
+one, holds the arguments an event carries to `argumentsFit`, and parses what a page hands
+back before any of it reaches the agent. **A call reaches the page with its arguments
+already parsed**, against the act's own schema in `CHAT_TOOL_SPECS` — which is STRICTER
+than the JSON Schema the agent was advertised, because `insideProject` is a check no JSON
+Schema carries, so a place is inside the project by the time a page reads one. A call whose
+arguments do not parse never reaches the page at all: the agent is told what the shape
+refused it for, as trouble, so that it can call again. A page spells no check of its own,
+exactly as a caller of `Files` spells no check that a path stays inside the root.
 
-**Nothing marks a note as a tool's.** No field in the front matter, no tag, no heading: a
+**What a turn is MADE of is an open set; what a page is TOLD is a closed one.** A block —
+what was said, what was thought, a call, what a call came to — arrives from the agent, so a
+kind this build has no renderer for is carried untouched rather than refused, for the
+reason AI.md § "A Block Is a Section" gives about a note's own elements; a block whose kind
+we DO know and whose bounds it breaks is refused rather than carried as an unknown one. An
+event is composed by the shell rather than read off anything, so a page renders by
+exhausting the six of them: a session started, a block arriving or growing, a call waiting
+on the person, that question settled, a turn ended, and a session that could not go on. A
+block arriving again at a place already held is that block GROWN, and replaces it, which is
+the whole of how writing draws itself as it arrives.
+
+**One session at a time on a device, and opening one replaces what stood.** A person sees
+one chat, so there is no second thread for a session to go on into unseen. Saying something
+while a turn is underway is refused rather than queued — the agent is answering the last
+thing it was told — and stopping ends the turn and leaves the session standing, so the next
+thing said goes on with it.
+
+**Nothing marks a note as an agent's.** No field in the front matter, no tag, no heading: a
 note is read for what it says, and what wrote it leaves no trace of itself (§ "Tooling and
-the review", where the same rule decides how `init`'s notes are told apart). `PlaceDone`
-says what the run left at each place, and that answer lives in the run rather than on the
-note.
+the review", where the same rule decides how `init`'s notes are told apart). What a call
+came to is said in the thread, and lives there rather than on the note.
 
-**`.sloppy/AGENT.md` is what the tool reads, and it carries the whole format.** Every
+**`.sloppy/AGENT.md` is what the agent reads, and it carries the whole format.** Every
 element a person can put in a note — the sections, the compass and its three methods, the
 citations, the `code:` anchors, the tags, the shapes a note starts from, the pictures and
 the drawings — is written down there, because an agent that can only write a subset of the
@@ -3310,71 +3351,46 @@ writing something the next pass cannot read. `AGENT_MD` in `@sloppy/cli` is the 
 that text, and the shapes and the methods it teaches come from `@sloppy/types` so the file
 and the app cannot drift apart.
 
-**It also says which of two situations the tool is in, because the same file serves both.**
+**It also says which of two situations the agent is in, because the same file serves both.**
 An agent working in the repository on its own writes the note files, which is what that
-format is for; a tool the app asked hands its writing back instead and writes none, so the
+format is for; an agent in a chat writes none — it calls an act and the page writes — so the
 offer rule above is applied to it. Nothing else could tell the two apart from inside the
-file, and a tool that wrote into `notes/` under a run would be past `writeOnto` and past
-everything this section rests on.
+file, and an agent that wrote into `notes/` would be past `writeOnto` and past everything
+this section rests on.
 
 **Native only, and the web app grows no button for it.** A browser tab cannot run a program
 on somebody's machine, and the hosted API must never run one on a server — a graph anybody
-can reach is not a shell anybody may have. `AppRuntime.documenting` is absent everywhere but
-the native shell, which is what puts nothing in front of a reader in a tab.
+can reach is not a shell anybody may have. `AppRuntime.chat` is absent everywhere but the
+native shell, which is what puts nothing in front of a reader in a tab.
 
-**The shapes are `documenting.ts` in `@sloppy/types` and the seam is
-`AppRuntime.documenting`.** `DocumentingIntent`, `ProposedPlace`, `DocumentingPlan` and
-`DocumentingProgress` are what both ends hold; `DocumentingAccess` in `@sloppy/app-core`'s
-runtime is the whole of what a page may ask for — the tools this device can reach, a survey,
-a run it watches, and an end to whatever is underway. **A page never learns that a program
-is involved**: it asks for a survey and gets places, asks for a run and gets progress and
-then offers.
+**The shapes are `chat.ts` in `@sloppy/types` and the seam is `AppRuntime.chat`.**
+`ChatSession`, `ChatTurn` and the blocks it carries are what a surface holds; `ChatEvent`
+is what it is told; `ChatToolCall` and `ChatToolAnswer` are one act asked for and answered;
+`CHAT_TOOL_SPECS` is the acts themselves. `ChatAccess` in `@sloppy/app-core`'s runtime is
+the whole of what a page may ask for — the agents this device can reach, a session, a thing
+said into it, an answer for the person, and an end to the turn underway. **A page never
+learns that a program is involved**: it says something and is told what happened.
 
-**Which tool does the writing is a value, never a branch.** `DOCUMENTING_TOOLS` is the set,
-`DocumentingIntent.tool` carries which one was asked for — absent is whichever this device
-has, which is the whole answer while it has one — and `documentingToolName` is the one copy
-of what each is called where somebody reads it. A second tool is a value there and a way for
-the shell to reach it, and touches no shape and no surface. A device with none is an empty
-list from `tools()`, which is what lets the offer say so plainly instead of failing when
+**Which agent does it is a value, never a branch.** `CHAT_AGENTS` is the set,
+`ChatAsked.agent` carries which one was asked for — absent is whichever this device has,
+which is the whole answer while it has one — and `chatAgentName` is the one copy of what
+each is called where somebody reads it. A second agent is a value there and a way for the
+shell to reach it, and touches no shape and no surface. A device with none is an empty list
+from `agents()`, which is what lets the offer say so plainly instead of failing when
 somebody takes it.
 
 **How much detail somebody wants is part of what they said.** There is no depth field: the
-point of putting a tool behind this rather than a template engine is that it reads the code
-and decides what a place warrants, and a surface that set the depth on somebody's behalf
-would be deciding it for them.
+point of putting an agent behind this rather than a template engine is that it reads the
+code and decides what a place warrants, and a surface that set the depth on somebody's
+behalf would be deciding it for them.
 
-**A run says what has happened and never guesses at what is left.** `DocumentingProgress`
-carries the stage, the place it is on, and the places behind it — and nothing that would
-have to be estimated. A run is `reading` until it picks up its first place and `writing`
-from then on rather than from its first write, so `at` names somewhere for the whole of the
-time it is on one. `stopped` with no `trouble` is a run the person stopped; `stopped`
-with words is one that could not go on, and those words are the ones a person can act on.
-**A survey has no such field and needs none**: it answers with places or it rejects, and
-the words it rejects with are what the surface shows — folding trouble into the empty list
-would tell somebody there is nothing worth a note when nothing ran.
-`progressFits` is the one statement of which of those fields a stage may carry, because a
-shape cannot say it without a refinement and a refinement here would take `.omit()` and
-`.partial()` with it. It says both halves of `at` — a run that is writing names where, and
-one that is not names nowhere — so a surface reading a progress that fits has somewhere to
-show for every `writing` it is handed.
-
-**One thing at a time on a device, counting the survey, and stopping it finishes before
-another begins.** A survey and a run are each a tool started here, so either asked while
-either is underway is refused rather than queued or made to replace the first — a second
-tool started into the first one's dying is the failure this orders away. `stop` ends
-whichever is underway and resolves after that act has settled its own promise, so a surface
-may ask again the moment it resolves. **A survey somebody stopped proposes nothing**: a
-survey ends in a proposal or in none, and half a pass over a repository is not a proposal,
-so it answers with the empty list a survey that found nothing worth a note answers with.
-The surface asked for the stop, so it is already the one place that knows which of the two
-happened, and it needs no field to be told.
-
-**Agents outside the app are a later wave, and nothing here is in its way.** An MCP server
-reading and writing the same graph would sit where the CLI sits — over `@sloppy/vault` and
-`@sloppy/local`, holding no vocabulary of its own — and everything above is already that
-shape: the format is in `AGENT.md`, the writing rule is `writeOnto`'s in `@sloppy/local`,
-and the seam carries no assumption that the tool is on this machine beyond the shell that
-reaches it.
+**A standing agent outside the app is a later wave, and nothing here is in its way.** The
+endpoint above is not one: it is served by the app for the one session it started, on a
+port the machine chose, and it goes when that session does. A server other agents could
+reach would sit where the CLI sits — over `@sloppy/vault` and `@sloppy/local`, holding no
+vocabulary of its own — and everything above is already that shape: the format is in
+`AGENT.md`, the writing rule is `writeOnto`'s, and the acts are `CHAT_TOOL_SPECS` rather
+than anything this shell invented.
 
 ## The vault's history
 

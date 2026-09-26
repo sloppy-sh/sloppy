@@ -6,6 +6,8 @@ export type { SloppyApi } from './api.js';
 export { initRuntime, runtime, updateRuntime } from './runtime.js';
 export type {
 	AppRuntime,
+	ChatAccess,
+	ChatAsked,
 	DeploymentMode,
 	DocumentingAccess,
 	KnownFolder,

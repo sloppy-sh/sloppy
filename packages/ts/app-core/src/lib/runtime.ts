@@ -19,6 +19,11 @@ import type {
 	IdentityAccess
 } from '@sloppy/local';
 import type {
+	ChatAgent,
+	ChatCallId,
+	ChatEvent,
+	ChatToolAnswer,
+	ChatToolCall,
 	DidSyr,
 	DocumentingIntent,
 	DocumentingPlan,
@@ -107,9 +112,8 @@ export interface VaultAccess {
 
 /**
  * Asking a tool on this device to read the project and write its notes, and
- * watching what comes back — docs/ARCHITECTURE.md § "Asking a tool to write
- * the notes". A page asks for a survey and for a run, and learns nothing else
- * about how either happens.
+ * watching what comes back. **Superseded by {@link ChatAccess}, and going with
+ * the four-step surface over it** — nothing new is built against it.
  *
  * **One at a time, counting both.** A survey and a run are the same one thing
  * underway here, so either asked while either is underway REJECTS rather than
@@ -180,6 +184,99 @@ export interface DocumentingAccess {
 	/** End what is underway here, resolving once it has ended — after that act's
 	 *  own promise has settled, so another may be asked for the moment this
 	 *  resolves. Nothing underway is not a failure. */
+	stop(): Promise<void>;
+}
+
+/** What {@link ChatAccess.open} is asked for. */
+export interface ChatAsked {
+	/** Which agent is to do it. **Absent is whichever one this device has**,
+	 *  which is the whole answer while it has one. */
+	agent?: ChatAgent;
+}
+
+/**
+ * Chatting with an agent on this device about the project in front of
+ * somebody — docs/ARCHITECTURE.md § "Asking a tool to write the notes". A page
+ * opens a session, says things into it, is told what the agent is doing, is
+ * asked to do Sloppy's own acts when the agent calls one, and answers for the
+ * person when one of those acts would write.
+ *
+ * **One session at a time, and {@link ChatAccess.open} REPLACES.** A person
+ * sees one chat, so opening a session ends whatever stood — there is no second
+ * thread for a run to go on into unseen. {@link ChatAccess.say} while a turn is
+ * underway REJECTS, because the agent is answering the last thing it was told.
+ * {@link ChatAccess.stop} ends the turn underway and the session stands, so the
+ * next `say` goes on with it.
+ *
+ * **The IMPLEMENTATION parses, in both directions, and no caller repeats it.**
+ * The members below take and answer plain TypeScript, which holds nothing at
+ * runtime, and a tool call is composed by a program reading somebody's
+ * checked-out tree. So a shell parses every event against `ChatEventSchema`
+ * before a page sees it, holds the arguments it carries to `argumentsFit`, and
+ * parses what a page hands back (`ChatToolAnswerSchema`) and what a person
+ * typed (`CHAT_ASKED_MAX`) before acting on any of it. A page spells no check
+ * of its own; `ChatTurn`, `ChatSession` and `turnFits` are the surface's own
+ * vocabulary and cross nothing.
+ *
+ * **A call reaches {@link ChatAccess.open}'s `serve` with its arguments
+ * already parsed**, against the act's own schema in `CHAT_TOOL_SPECS` — which
+ * is stricter than the JSON Schema the agent was advertised, so a place is
+ * inside the project by the time a page reads it. A call whose arguments do not
+ * parse never reaches the page: the shell answers the AGENT with what the shape
+ * refused it for, as trouble, so the agent can call again — dropping it instead
+ * would leave the agent waiting on an answer that never comes.
+ *
+ * **The person's answer gates every act that writes, and the gate is
+ * Sloppy's.** Where `chatToolWrites` is true of the act, the shell tells the
+ * page `asking` and calls `serve` only once {@link ChatAccess.settle} has
+ * allowed it; a call turned down never reaches `serve` at all, and the agent is
+ * told the person turned it down. A reading act reaches `serve` straight away
+ * and is never asked about. Whatever is on the other end, the gate holds: an
+ * agent's own permission prompt is not one Sloppy can see, ask in its own
+ * words, or rely on.
+ *
+ * **A page serving a writing act writes as the project's CONTAINER, and never
+ * as the person.** `containerDataAt` in `@sloppy/local` is where that store's
+ * data goes and is spelled nowhere else, `writeOnto` beside it is the one write
+ * path — it lands where `writesAlone` is true and offers an amendment where
+ * somebody else has written in the note — and nothing writes a note file by
+ * hand. A store rooted anywhere else writes as whoever is signed in here, for
+ * whom `writesAlone` is true on every note they have written, so every one of
+ * them is written over rather than offered.
+ */
+export interface ChatAccess {
+	/** The agents this device can reach. An EMPTY list is a device with none,
+	 *  and the offer says so rather than failing when somebody takes it. */
+	agents(): Promise<ChatAgent[]>;
+	/**
+	 * Start a session, ending whatever stood. It resolves once the session is
+	 * ready to be said into; `started` reaches `hear` when the agent has said
+	 * what it is and what tools it has, which is after the first turn begins.
+	 *
+	 * **A device with no agent REJECTS**, with words for the person in its
+	 * message, which are the ones the surface shows.
+	 *
+	 * `serve` is the page doing one of Sloppy's own acts and answering for it.
+	 * It is asked once per call, and what it resolves with is what the agent
+	 * reads; it REJECTS where the act could not be done, and the shell tells
+	 * the agent so in the words of the rejection rather than leaving it
+	 * waiting.
+	 */
+	open(
+		asked: ChatAsked,
+		hear: (event: ChatEvent) => void,
+		serve: (call: ChatToolCall) => Promise<ChatToolAnswer>
+	): Promise<void>;
+	/** Say something into the session, which begins a turn. It resolves when the
+	 *  agent has been told, NOT when the turn ends — `ended` says that. */
+	say(said: string): Promise<void>;
+	/** The person's answer to a call that would write. Answering one that is not
+	 *  waiting is not a failure; a `settled` event follows either way, so a page
+	 *  closes the question on being told rather than on its own act. */
+	settle(call: ChatCallId, allowed: boolean): Promise<void>;
+	/** End the turn underway, resolving once it has ended. The session stands,
+	 *  and the next {@link ChatAccess.say} goes on with it. Nothing underway is
+	 *  not a failure. */
 	stop(): Promise<void>;
 }
 
@@ -270,6 +367,12 @@ export interface AppRuntime {
 	 *  this way is put in front of anybody, which is every browser tab.
 	 *  {@link DocumentingAccess} declares every act. */
 	documenting?: DocumentingAccess;
+	/** Chatting with an agent on this device about the project — a shell that
+	 *  defines it also defines {@link AppRuntime.project}. Absent → nothing here
+	 *  can run a program of the person's, so nothing about a chat is put in
+	 *  front of anybody, which is every browser tab. {@link ChatAccess}
+	 *  declares every act. */
+	chat?: ChatAccess;
 	/** How a stored picture's address becomes one this page can load. Absent →
 	 *  the API's proxy, so viewing somebody else's note never reaches their
 	 *  instance from here. A shell serving a graph off the device answers with
@@ -384,6 +487,7 @@ export const runtime = {
 	gitDefaults: (): GitDefaultsAccess | undefined => current.gitDefaults,
 	credentials: (): CredentialsAccess | undefined => current.credentials,
 	documenting: (): DocumentingAccess | undefined => current.documenting,
+	chat: (): ChatAccess | undefined => current.chat,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,
 	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc
