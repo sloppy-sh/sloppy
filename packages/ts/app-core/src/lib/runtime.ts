@@ -125,8 +125,12 @@ export interface VaultAccess {
  * it, and parses what it answers with (`ProposedPlaceSchema`,
  * `DocumentingProgressSchema`) before a page sees it — rejecting what does not
  * parse rather than dropping it, so nobody is told a place was written about
- * that was not. A page spells no check of its own, the way a caller of `Files`
- * in `@sloppy/local` spells no check that a path stays inside the root.
+ * that was not. **Two of those checks are not in the shapes**, because a
+ * refinement there would take `.omit()` and `.partial()` with it:
+ * `placesAreDistinct` over the places of a plan it is handed and of a survey
+ * it answers with, and `progressFits` over every progress it reports. A page
+ * spells no check of its own, the way a caller of `Files` in `@sloppy/local`
+ * spells no check that a path stays inside the root.
  */
 export interface DocumentingAccess {
 	/** The tools this device can reach. An EMPTY list is a device with none. */

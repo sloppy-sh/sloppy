@@ -2,12 +2,31 @@
 // somebody's project finds where it already looks. docs/ARCHITECTURE.md
 // § "Tooling and the review".
 
-import { NOTE_TEMPLATES, type TemplateSection } from "@sloppy/types";
+import {
+  COMPASS_DIRECTIONS,
+  COMPASS_KINDS,
+  compassMethod,
+  DEFAULT_COMPASS_KIND,
+  NOTE_TEMPLATES,
+  type TemplateSection,
+} from "@sloppy/types";
 
 function opened(section: TemplateSection): string {
   if (section.opens === "drawing") return " (a drawing)";
   return section.opens === "compass" ? " (a compass)" : "";
 }
+
+/** Each method a compass can be read in, in the words the app asks its slots
+ *  for, so this file and the app cannot come to teach different ones. */
+const METHODS = COMPASS_KINDS.map((kind) => {
+  const method = compassMethod(kind);
+  const says = kind === DEFAULT_COMPASS_KIND ? "no `kind`" : `\`${kind}\``;
+  const slots = COMPASS_DIRECTIONS.map((direction) => {
+    const { word, asks } = method.slots[direction];
+    return `  - ${direction} is **${word}** — ${asks}`;
+  }).join("\n");
+  return `- **${method.name}**, written with ${says}:\n${slots}`;
+}).join("\n");
 
 /** The shapes the app starts a note from, as their headings in order. */
 const SHAPES = NOTE_TEMPLATES.map(
@@ -130,18 +149,15 @@ like a list or a picture, and a section can hold one along with everything else:
     east: [[did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ8B4D5F6G7H8J9K0M1N2P6T]]
     west: [[did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ8B4D5F6G7H8J9K0M1N2P7V]]
 
-North is the larger thing this is part of, south what it is made of, east what it is
-like, west what was chosen instead. A direction with nothing in it is left out
-altogether. Filling one is citing the note it names, exactly as naming that note in a
-sentence is.
+A direction with nothing in it is left out altogether. Filling one is citing the note it
+names, exactly as naming that note in a sentence is. What the four directions ASK is the
+method the note is read in, and there are three of them.
 
-## Reading a compass another way
+## The three methods
 
-Those four words are one method of three, and the four tokens are the same in all of
-them. \`kind\` is what says which: absent is the **idea** compass above, \`inquiry\` reads
-north as the question, south as the conclusion, east as the evidence and west as the
-evidence pointing the other way, and \`argument\` reads them as the assumption, the
-implication, the justification and the objection.
+The four tokens are the same in all three, and \`kind\` is what says which:
+
+${METHODS}
 
 A compass in a method other than the idea compass cannot be written as lines — a \`kind:\`
 line would cut it in two for a reader that does not expect one — so it goes as its JSON:
@@ -192,6 +208,11 @@ Don't write over it. \`sloppy draft\` writes straight onto a note only where the
 carries nobody's writing but its own; on any note a person has written in — alone or
 beside it — it writes your version as an offer, and the note's author takes it in or does
 not. A note you write where there was none is yours to write outright.
+
+**Where the app asked you for this rather than a person at a terminal, write no file at
+all**: hand your writing back to whatever asked for it, and that rule is applied on that
+side. A tool that writes into \`notes/\` itself is held to none of this, and what it lands
+on is somebody's writing nothing can give back.
 
 ## Never write
 

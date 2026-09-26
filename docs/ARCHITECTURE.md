@@ -3169,8 +3169,10 @@ tags, `checked`, the shapes a note starts from, and the pictures and drawings an
 and never redraws. Then the rule that an existing note is changed through an offer, what an
 agent may never write, and the commands above. It is the whole format because an agent that
 can write only a subset of it produces notes a person cannot finish (§ "Asking a tool to
-write the notes"). `AGENT_MD` in `@sloppy/cli` is the one copy of that text, and the shapes
-in it come from `NOTE_TEMPLATES` in `@sloppy/types`, which the app writes from too.
+write the notes"). `AGENT_MD` in `@sloppy/cli` is the one copy of that text; the shapes in
+it come from `NOTE_TEMPLATES` in `@sloppy/types` and the methods from `compassMethod`
+beside them, so the file teaches what the app offers and a fourth method or a renamed slot
+cannot leave it saying the old thing.
 
 **The review is derived, never stored, and computed in one place.** `review()` in
 `@sloppy/vault` is given the notes, the project's top-level paths and a way to ask what has
@@ -3234,6 +3236,15 @@ was missed, which arrives carrying no reason because nobody proposed it to them.
 writes about the places that survived, in the order they stand in. Nothing skips a stage:
 a run made straight from an intent is a bill somebody did not agree to.
 
+**A plan names each place once, and `placesAreDistinct` is where that is said.** Refining
+is somebody adding places by hand to a list a pass over the code proposed, so one of them
+arriving twice is ordinary; what is not is the run that follows, because the plan is
+settled before any of it is written and the second entry for a path carries no note
+however many the first leaves there. Walking it writes a second note about a file that
+already has one, which is what `.sloppy/AGENT.md` tells a tool never to do. The shape
+bounds how many places a plan carries and cannot say they are distinct, so the predicate
+sits beside `progressFits` and the seam holds a plan and a survey's answer to it.
+
 **What comes back is offered, never landed over somebody's writing — and the run is what
 holds itself to that.** The store does not: a project's container is an open graph, so its
 notes carry no owner, and § "Whose writing a note carries" answers `lands` for every writer
@@ -3296,8 +3307,15 @@ citations, the `code:` anchors, the tags, the shapes a note starts from, the pic
 the drawings — is written down there, because an agent that can only write a subset of the
 format produces notes a person cannot finish, and a person editing a note must not be
 writing something the next pass cannot read. `AGENT_MD` in `@sloppy/cli` is the one copy of
-that text, and the shapes it teaches come from `NOTE_TEMPLATES` in `@sloppy/types` so the
-file and the app cannot drift apart.
+that text, and the shapes and the methods it teaches come from `@sloppy/types` so the file
+and the app cannot drift apart.
+
+**It also says which of two situations the tool is in, because the same file serves both.**
+An agent working in the repository on its own writes the note files, which is what that
+format is for; a tool the app asked hands its writing back instead and writes none, so the
+offer rule above is applied to it. Nothing else could tell the two apart from inside the
+file, and a tool that wrote into `notes/` under a run would be past `writeOnto` and past
+everything this section rests on.
 
 **Native only, and the web app grows no button for it.** A browser tab cannot run a program
 on somebody's machine, and the hosted API must never run one on a server — a graph anybody
@@ -3336,7 +3354,9 @@ the words it rejects with are what the surface shows — folding trouble into th
 would tell somebody there is nothing worth a note when nothing ran.
 `progressFits` is the one statement of which of those fields a stage may carry, because a
 shape cannot say it without a refinement and a refinement here would take `.omit()` and
-`.partial()` with it.
+`.partial()` with it. It says both halves of `at` — a run that is writing names where, and
+one that is not names nowhere — so a surface reading a progress that fits has somewhere to
+show for every `writing` it is handed.
 
 **One thing at a time on a device, counting the survey, and stopping it finishes before
 another begins.** A survey and a run are each a tool started here, so either asked while

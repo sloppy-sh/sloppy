@@ -9,6 +9,7 @@ import {
   documentingToolName,
   MAX_PLACES_PER_RUN,
   PlaceDoneSchema,
+  placesAreDistinct,
   progressFits,
   PROJECT_PATH_MAX,
   ProposedPlaceSchema,
@@ -113,6 +114,18 @@ describe("a plan", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("names each place once, whatever else the entries carry", () => {
+    expect(placesAreDistinct([])).toBe(true);
+    expect(placesAreDistinct([place, { path: "src/api" }])).toBe(true);
+    expect(placesAreDistinct([place, place])).toBe(false);
+    expect(
+      placesAreDistinct([
+        { path: "src", reason: "the one nothing is written about" },
+        { path: "src", note: NOTE },
+      ]),
+    ).toBe(false);
+  });
 });
 
 describe("where a run has got to", () => {
@@ -159,9 +172,9 @@ describe("where a run has got to", () => {
     ).toBe(false);
   });
 
-  it("is on a place only while writing, and says trouble only where stopped", () => {
+  it("is on a place exactly while writing, and says trouble only where stopped", () => {
     for (const stage of DOCUMENTING_STAGES) {
-      expect(progressFits({ stage, places: [] })).toBe(true);
+      expect(progressFits({ stage, places: [] })).toBe(stage !== "writing");
       expect(progressFits({ stage, places: [], at: "src" })).toBe(
         stage === "writing",
       );

@@ -1,4 +1,7 @@
 import {
+  COMPASS_DIRECTIONS,
+  COMPASS_KINDS,
+  compassMethod,
   compassOf,
   NOTE_TEMPLATES,
   OwnedRefSchema,
@@ -81,8 +84,19 @@ describe("what AGENT.md teaches", () => {
     expect(compass?.kind).toBeUndefined();
   });
 
+  it("reads every method in the words the app asks its slots for", () => {
+    for (const kind of COMPASS_KINDS) {
+      const method = compassMethod(kind);
+      expect(AGENT_MD).toContain(`**${method.name}**`);
+      for (const direction of COMPASS_DIRECTIONS) {
+        const { word, asks } = method.slots[direction];
+        expect(AGENT_MD).toContain(`${direction} is **${word}** — ${asks}`);
+      }
+    }
+  });
+
   it("shows another method that reads back in that method", () => {
-    const text = example("Reading a compass another way");
+    const text = example("The three methods");
     const document = fromMarkdown(text, emptySidecars("b"));
     expect(toMarkdown(document, emptySidecars("b"))).toBe(text);
     const compass = compassOf(document);

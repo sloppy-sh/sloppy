@@ -97,7 +97,8 @@ export type ProposedPlace = z.infer<typeof ProposedPlaceSchema>;
 export const MAX_PLACES_PER_RUN = 100;
 
 /** What the run is to do, as the person settled it: their words, and the
- *  places they kept or added, in the order those will be written. */
+ *  places they kept or added, each of them once ({@link placesAreDistinct}),
+ *  in the order those will be written. */
 export const DocumentingPlanSchema = z.object({
   intent: DocumentingIntentSchema,
   places: z
@@ -162,13 +163,26 @@ export const DocumentingProgressSchema = z.object({
 });
 export type DocumentingProgress = z.infer<typeof DocumentingProgressSchema>;
 
-/** Whether what a progress carries fits the stage it names: a place only while
- *  a run is writing, words about trouble only where it stopped. The shape
- *  cannot say it — a refinement here would take `.omit()` and `.partial()`
- *  with it — so both ends of the seam are held to this instead. */
+/** Whether what a progress carries fits the stage it names: a place while a
+ *  run is writing and only then, words about trouble only where it stopped.
+ *  The shape cannot say it — a refinement here would take `.omit()` and
+ *  `.partial()` with it — so both ends of the seam are held to this instead. */
 export function progressFits(progress: DocumentingProgress): boolean {
   return (
-    (progress.at === undefined || progress.stage === "writing") &&
+    (progress.at !== undefined) === (progress.stage === "writing") &&
     (progress.trouble === undefined || progress.stage === "stopped")
   );
+}
+
+/**
+ * Whether a list of places names each of them once. A plan is settled before
+ * the run, so a second entry for a path carries no note however many the first
+ * leaves there, and a run walking the plan writes a second note about a file
+ * that already has one. A survey's answer and a plan are both held to this,
+ * for the reason {@link progressFits} is: the shape bounds how many places
+ * there are and cannot say they are distinct. Two paths that differ as strings
+ * are two places — {@link insideProject} leaves one spelling of each.
+ */
+export function placesAreDistinct(places: readonly ProposedPlace[]): boolean {
+  return new Set(places.map((place) => place.path)).size === places.length;
 }

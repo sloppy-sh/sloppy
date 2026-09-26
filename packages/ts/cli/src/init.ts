@@ -5,22 +5,14 @@
 // and why are the person's to write, and nothing here writes a word of them.
 
 import {
-  BIN_DIR,
-  BIN_FILE,
   containerOf,
-  CREDENTIALS_FILE,
   type Files,
-  GIT_DEFAULTS_FILE,
   holdDeviceIdentity,
-  IDENTITIES_FILE,
-  IDENTITY_FILE,
   LocalApi,
   readCarriedIdentity,
-  VAULTS_FILE,
-  keepOut,
 } from "@sloppy/local";
 import type { BlockDocument, OwnedRef } from "@sloppy/types";
-import { decodeText, encodeText, GRAPH_FILE } from "@sloppy/vault";
+import { encodeText, GRAPH_FILE } from "@sloppy/vault";
 import { AGENT_MD } from "./agent-md.js";
 import { type HeldNote, noteForProject, notesIn, reaches } from "./folder.js";
 import {
@@ -73,7 +65,6 @@ export async function init(asked: InitAsked): Promise<InitResult> {
   if (!container || !project) {
     throw new InitRefused("These notes are not about any code.");
   }
-  await keepOut(container);
   if (!(await container.exists(AGENT_FILE))) {
     await container.write(AGENT_FILE, encodeText(AGENT_MD));
   }
