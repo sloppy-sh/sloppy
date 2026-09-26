@@ -3243,14 +3243,17 @@ here writes a note file by hand — a writer that did would be the one writer in
 the note's own gate does not reach.
 
 **Which way that rule falls is decided by WHO is writing, so the run's writer is named
-here.** It is the identity the container keeps beside the notes: a `LocalApi` over the
-container's own files, which answers with the identity written down in the container's own
-data and mints one there the first time, exactly as `sloppy draft` does from a terminal.
-**It is never the identity the app writes under.** A run given the app's own api would
-write as the person, for whom `writesAlone` is true on every note they have written — so
-every one of those would be written over rather than offered, and the amendment this
-section is built around would never be made. `DocumentingAccess.run` in `@sloppy/app-core`
-carries that obligation where the shell implementing it reads.
+here.** It is the identity kept in the container's own private data, minted there the first
+time — what `sloppy draft` writes under from a terminal. **It is never one on the list the
+app writes under.** A run given the app's own api writes as the person, for whom
+`writesAlone` is true on every note they have written, so every one of those is written
+over rather than offered and the amendment this section is built around is never made.
+**A store reaches the container's identity only by being given files whose own data is the
+container's**, which is what `keepingDataAt` in `@sloppy/local` makes of any shell's files.
+`Files.at` re-roots the folder and leaves `dataPath` where the app keeps it, so a store
+handed a shell's files rooted at the container answers with the person instead — and on the
+ordinary device, holding one identity, it does so silently. `DocumentingAccess.run` in
+`@sloppy/app-core` carries the obligation where the shell implementing it reads.
 
 **The tool is started, never composed.** The program is the shell's own and fixed there; it
 is started directly rather than handed to a shell to interpret; and nothing a survey
@@ -3311,10 +3314,16 @@ with words is one that could not go on, and those words are the ones a person ca
 shape cannot say it without a refinement and a refinement here would take `.omit()` and
 `.partial()` with it.
 
-**One run at a time on a device, and stopping one finishes before another begins.** `stop`
-resolves after the run underway has settled its own promise, so a surface may ask for a run
-the moment it resolves and a second `run` before that is refused rather than queued. A
-second tool started into the first one's dying is the failure this orders away.
+**One thing at a time on a device, counting the survey, and stopping it finishes before
+another begins.** A survey and a run are each a tool started here, so either asked while
+either is underway is refused rather than queued or made to replace the first — a second
+tool started into the first one's dying is the failure this orders away. `stop` ends
+whichever is underway and resolves after that act has settled its own promise, so a surface
+may ask again the moment it resolves. **A survey somebody stopped proposes nothing**: a
+survey ends in a proposal or in none, and half a pass over a repository is not a proposal,
+so it answers with the empty list a survey that found nothing worth a note answers with.
+The surface asked for the stop, so it is already the one place that knows which of the two
+happened, and it needs no field to be told.
 
 **Agents outside the app are a later wave, and nothing here is in its way.** An MCP server
 reading and writing the same graph would sit where the CLI sits — over `@sloppy/vault` and

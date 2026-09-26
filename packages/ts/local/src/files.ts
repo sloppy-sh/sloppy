@@ -82,6 +82,34 @@ export function joinPath(root: string, path: string): string {
 }
 
 /**
+ * The same files, answering {@link Files.dataPath} with `data` and carrying
+ * that across {@link Files.at} — which a shell's own files do not: `at` re-roots
+ * the folder and leaves the data where the app keeps it.
+ *
+ * A store built over this holds its identity where `data` names rather than
+ * alongside the ones the app writes under, which is what a write that must be
+ * OFFERED to a person rather than landed on their notes needs —
+ * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+ */
+export function keepingDataAt(files: Files, data: string): Files {
+  const clone = files.clone?.bind(files);
+  return {
+    root: files.root,
+    read: (path) => files.read(path),
+    write: (path, bytes) => files.write(path, bytes),
+    list: (path) => files.list(path),
+    remove: (path) => files.remove(path),
+    exists: (path) => files.exists(path),
+    mkdir: (path) => files.mkdir(path),
+    at: (root) => keepingDataAt(files.at(root), data),
+    url: (path) => files.url(path),
+    pickFolder: (asking) => files.pickFolder(asking),
+    ...(clone === undefined ? {} : { clone }),
+    dataPath: async () => data,
+  };
+}
+
+/**
  * Files held in memory, for a test and for a surface that wants somewhere to
  * write that is nowhere. `at` shares the store, so two roots over one
  * `MemoryFiles` see each other's writes exactly as two folders on a disk do.

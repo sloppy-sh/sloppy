@@ -13,7 +13,7 @@ import { decodeText, encodeText } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { LocalApi } from "./api.js";
 import type { Fetching } from "./delegation.js";
-import { MemoryFiles } from "./files.js";
+import { keepingDataAt, MemoryFiles } from "./files.js";
 import { LocalGraph } from "./graph.js";
 import {
   CARRIED_FILE,
@@ -114,6 +114,39 @@ describe("the identities this device holds", () => {
     const held = files();
     const first = await openLocalIdentity(held);
     expect((await openLocalIdentity(held)).did).toBe(first.did);
+  });
+
+  it("is the container's own where the files keep their data there", async () => {
+    const held = files();
+    const mine = await openLocalIdentity(held);
+
+    const container = keepingDataAt(
+      held.at("/p/.sloppy"),
+      "/p/.sloppy/.sloppy",
+    );
+    const its = await openLocalIdentity(container);
+
+    expect(its.did).not.toBe(mine.did);
+    expect((await readIdentities(held)).identities).toEqual([
+      expect.objectContaining({ did: mine.did }),
+    ]);
+    expect((await readIdentities(container)).identities).toEqual([
+      expect.objectContaining({ did: its.did }),
+    ]);
+  });
+
+  it("stays the container's own wherever those files are re-rooted", async () => {
+    const held = files();
+    const container = keepingDataAt(
+      held.at("/p/.sloppy"),
+      "/p/.sloppy/.sloppy",
+    );
+    const its = await openLocalIdentity(container);
+
+    expect((await openLocalIdentity(container.at("notes"))).did).toBe(its.did);
+    expect((await openLocalIdentity(held.at("/p/.sloppy"))).did).not.toBe(
+      its.did,
+    );
   });
 
   it("names the key it signs with rather than carrying it", async () => {

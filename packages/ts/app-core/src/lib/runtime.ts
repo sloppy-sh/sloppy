@@ -110,34 +110,41 @@ export interface VaultAccess {
  * watching what comes back — docs/ARCHITECTURE.md § "Asking a tool to write
  * the notes". A page asks for a survey and for a run, and learns nothing else
  * about how either happens.
+ *
+ * **One at a time, counting both.** A survey and a run are the same one thing
+ * underway here, so either asked while either is underway REJECTS rather than
+ * starting a second, queueing it or replacing the first, and {@link
+ * DocumentingAccess.stop} ends whichever of the two it is.
  */
 export interface DocumentingAccess {
 	/** The tools this device can reach. An EMPTY list is a device with none. */
 	tools(): Promise<DocumentingTool[]>;
 	/** Read the project against what somebody asked for, and propose the places
-	 *  worth a note. Nothing is written. */
+	 *  worth a note. Nothing is written. An EMPTY list is a survey proposing
+	 *  none: one that found nothing worth a note, and one somebody stopped,
+	 *  which proposes none of what it had reached. */
 	survey(intent: DocumentingIntent): Promise<ProposedPlace[]>;
 	/**
 	 * Write the notes the plan names, in its order, telling `watch` each time
 	 * the answer changes and resolving with the last answer it gave.
 	 *
 	 * **A run writes as the notes' own container, and never as the person.**
-	 * Its writer is the identity the container keeps beside the notes — what a
-	 * `LocalApi` over the container's own files answers with, and the one
-	 * `sloppy draft` writes under — never the identity this app writes under: a
-	 * run holding that one lands on every note its person has written instead
-	 * of offering. `PlaceDone` says which of the two happened at each place.
-	 *
-	 * One run at a time: asked while one is underway, this REJECTS rather than
-	 * starting a second or replacing the first.
+	 * Its writer is the identity kept in the container's own private data,
+	 * minted there the first time — the one `sloppy draft` writes under, and
+	 * never one on the list this app writes under: a run holding that one lands
+	 * on every note its person has written instead of offering. A store reaches
+	 * it by being given files that keep their data there — `keepingDataAt` in
+	 * `@sloppy/local` — because a shell's own files answer with the app's own
+	 * data path however they are re-rooted, so a store handed those writes as
+	 * the person. `PlaceDone` says which of the two happened at each place.
 	 */
 	run(
 		plan: DocumentingPlan,
 		watch: (progress: DocumentingProgress) => void
 	): Promise<DocumentingProgress>;
-	/** End what is underway here, resolving once it has ended — after {@link
-	 *  DocumentingAccess.run}'s own promise has settled, so a run may be asked
-	 *  for again the moment this resolves. Nothing underway is not a failure. */
+	/** End what is underway here, resolving once it has ended — after that act's
+	 *  own promise has settled, so another may be asked for the moment this
+	 *  resolves. Nothing underway is not a failure. */
 	stop(): Promise<void>;
 }
 
