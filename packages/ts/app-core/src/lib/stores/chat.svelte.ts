@@ -15,7 +15,6 @@ import {
 	type ChatToolAnswer,
 	type ChatToolCall,
 	type ChatToolName,
-	chatToolWrites,
 	type ChatTurn,
 	type OwnedRef
 } from '@sloppy/types';
@@ -65,6 +64,9 @@ class ChatStore {
 	#asking = $state.raw<ChatAsking | null>(null);
 	#settling = $state(false);
 	#stopping = $state(false);
+	/** Whether a write was allowed in the turn underway, which is what the
+	 *  canvas has not read yet when it ends. */
+	#wrote = false;
 	#trouble = $state.raw<string | null>(null);
 	/** An event that lands after this chat was let go of, or after another
 	 *  graph's was opened, is not an event about what is on screen. */
@@ -223,6 +225,7 @@ class ChatStore {
 		this.#writing = false;
 		this.#asking = null;
 		this.#settling = false;
+		this.#wrote = false;
 		this.#trouble = null;
 	}
 
@@ -239,6 +242,7 @@ class ChatStore {
 				this.#asking = { call: event.call, act: event.act, arguments: event.arguments };
 				break;
 			case 'settled':
+				if (event.allowed) this.#wrote = true;
 				if (this.#asking?.call === event.call) this.#asking = null;
 				break;
 			case 'ended':
@@ -246,12 +250,14 @@ class ChatStore {
 				this.#writing = false;
 				// A question the turn ended under is one nobody can answer now.
 				this.#asking = null;
+				this.#readTheFolderAgain();
 				break;
 			case 'over':
 				this.#standing = false;
 				this.#running = false;
 				this.#writing = false;
 				this.#asking = null;
+				this.#readTheFolderAgain();
 				this.#trouble = event.said ?? null;
 				break;
 		}
@@ -269,17 +275,19 @@ class ChatStore {
 		this.#turns = turns;
 	}
 
-	/**
-	 * One of Sloppy's own acts, done here. A write leaves a note the canvas has
-	 * not read yet, so the folder is read again before the agent is answered
-	 * and the person can open what landed.
-	 */
+	/** A note a turn wrote is one somebody can open, which it is not until the
+	 *  canvas has read the folder it landed in. */
+	#readTheFolderAgain(): void {
+		if (!this.#wrote) return;
+		this.#wrote = false;
+		void graphs.readFolderAgain().catch(() => {});
+	}
+
+	/** One of Sloppy's own acts, done here and answered to the agent. */
 	async #serve(call: ChatToolCall): Promise<ChatToolAnswer> {
 		const project = await runtime.project();
 		if (!project) throw new Error(NO_PROJECT);
-		const answer = await serveChatCall(project, call);
-		if (chatToolWrites(call.act) && answer.trouble !== true) await graphs.readFolderAgain();
-		return answer;
+		return await serveChatCall(project, call);
 	}
 }
 
