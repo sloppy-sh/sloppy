@@ -51,9 +51,6 @@ export interface Prefs {
 	/** Whether the graph is read as a walk through the notes rather than drawn on
 	 *  the canvas — DESIGN.md § Persistence. */
 	walking: boolean;
-	/** Whether what an agent writes into the project's notes lands without being
-	 *  asked about each time. False asks before every write. */
-	writesWithoutAsking: boolean;
 	/** Whether the app is keeping a record of what it does, for somebody about
 	 *  to say what went wrong — `stores/what-happened.svelte.ts`. */
 	recordsWhatHappens: boolean;
@@ -132,7 +129,6 @@ function defaults(): Prefs {
 		alsoOnCanvas: [],
 		wallpapers: {},
 		walking: false,
-		writesWithoutAsking: false,
 		recordsWhatHappens: false,
 		readingWidth: null,
 		chatWidth: null,
@@ -257,7 +253,6 @@ class PrefsStore {
 			alsoOnCanvas: refsIn(saved.alsoOnCanvas),
 			wallpapers: sanitizeWallpapers(saved.wallpapers),
 			walking: saved.walking === true,
-			writesWithoutAsking: saved.writesWithoutAsking === true,
 			recordsWhatHappens: saved.recordsWhatHappens === true,
 			readingWidth: widthIn(saved.readingWidth),
 			chatWidth: widthIn(saved.chatWidth),

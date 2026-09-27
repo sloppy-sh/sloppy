@@ -183,26 +183,12 @@ describe('the saved look', () => {
 			alsoOnCanvas: [],
 			wallpapers: {},
 			walking: false,
-			writesWithoutAsking: false,
 			recordsWhatHappens: false,
 			readingWidth: null,
 			chatWidth: null,
 			chatModel: {},
 			origin: null
 		});
-	});
-
-	// A standing answer about what an agent may write is the person's, so it is
-	// still standing the next time the app opens — and asking again is the
-	// default nobody has to find.
-	it('remembers that writes were allowed without asking, and asks by default', () => {
-		prefs.init();
-		expect(prefs.current.writesWithoutAsking).toBe(false);
-
-		prefs.set('writesWithoutAsking', true);
-		prefs.init();
-
-		expect(prefs.current.writesWithoutAsking).toBe(true);
 	});
 
 	// PRODUCT.md § "Accessibility & Inclusion": reading the graph as an outline

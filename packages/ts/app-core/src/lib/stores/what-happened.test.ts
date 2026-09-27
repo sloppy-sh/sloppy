@@ -191,7 +191,7 @@ describe('the record', () => {
 });
 
 describe('a chat in the record', () => {
-	it('carries the turn, the question, the answer and what the act came to', async () => {
+	it('carries the turn, the act and what it came to', async () => {
 		whatHappened.record(true);
 		await chat.lookForAgents();
 		await chat.say('what is in here?');
@@ -201,16 +201,12 @@ describe('a chat in the record', () => {
 			model: 'opus',
 			tools: ['write_note']
 		});
-		stub.tell({ event: 'asking', call: CALL, act: 'write_note', arguments: {} });
-		await chat.settle(CALL, true);
 		acting.answer = { said: '{"note":"…"}', touched: [ref(1)] };
 		await stub.serve(writing({ title: 'A note' }));
 		stub.tell({ event: 'ended' });
 
 		expect(said()).toContain('a turn began');
 		expect(said()).toContain('the chat opened with Opus');
-		expect(said()).toContain('writing a note is waiting to be answered');
-		expect(said()).toContain('writing a note was allowed');
 		expect(said()).toContain('writing a note began');
 		expect(said()).toContain('writing a note is done, leaving 1 note different');
 		expect(said()).not.toContain('write_note');

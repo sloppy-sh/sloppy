@@ -311,8 +311,17 @@
 	 *  the canvas writes while it is up. */
 	let asWas = $state<{ commit: string; message: string; notes: NodeView[] } | null>(null);
 	/** Two states set against each other, drawn on whichever of them is on the
-	 *  canvas. */
-	let comparing = $state<{ says: string; difference: GraphDifference } | null>(null);
+	 *  canvas. `inWords` is where the same comparison is read as words, for a
+	 *  surface that keeps them somewhere else. */
+	let comparing = $state<{
+		says: string;
+		difference: GraphDifference;
+		inWords?: () => void;
+	} | null>(null);
+	/** The version of the draft the canvas is drawing, while it is drawing it.
+	 *  The chat asks for no draft as it mounts and every time it opens or
+	 *  closes, and that is no reason to put away what the reader has open. */
+	let draftAt = $state.raw<string | null>(null);
 	/** The held note being read, which the canvas also opens around. */
 	let reached = $state<OwnedRef | null>(null);
 	/** The held note whose sections are still on their way. */
@@ -2282,14 +2291,17 @@
 							What changed
 							<span class="text-muted-foreground">· {comparing.says}</span>
 						</p>
+						{#if comparing.inWords}
+							{@const inWords = comparing.inWords}
+							<Button variant="ghost" class="ms-auto h-9 shrink-0 rounded-full" onclick={inWords}>
+								In words
+							</Button>
+						{/if}
 						<Button
-							variant="ghost"
-							class="ms-auto h-9 shrink-0 rounded-full"
-							onclick={() => (showingHistory = true)}
+							variant="outline"
+							class="h-9 shrink-0 rounded-full {comparing.inWords ? '' : 'ms-auto'}"
+							onclick={backToNow}
 						>
-							In words
-						</Button>
-						<Button variant="outline" class="h-9 shrink-0 rounded-full" onclick={backToNow}>
 							Your graph now
 						</Button>
 						{#if walkingNow}
@@ -2612,7 +2624,11 @@
 		comparing =
 			shown === null || !comparingStates(shown.difference)
 				? null
-				: { says: shown.says, difference: shown.difference };
+				: {
+						says: shown.says,
+						difference: shown.difference,
+						inWords: () => (showingHistory = true)
+					};
 	}}
 />
 
@@ -2825,7 +2841,19 @@
 />
 
 {#if projectFiles && chat.reaches}
-	<ChatPanel bind:open={chatting} onOpen={(ref, at) => show(ref, null, at)} />
+	<ChatPanel
+		bind:open={chatting}
+		onOpen={(ref, at) => show(ref, null, at)}
+		onShowDraft={(shown) => {
+			const drawn = shown !== null && comparingStates(shown.difference) ? shown : null;
+			const onCanvas = draftAt !== null && asWas?.commit === draftAt;
+			draftAt = drawn && drawn.at;
+			if (drawn === null && !onCanvas) return;
+			stopActing();
+			asWas = drawn && { commit: drawn.at, message: drawn.says, notes: [...drawn.notes] };
+			comparing = drawn && { says: drawn.says, difference: drawn.difference };
+		}}
+	/>
 {/if}
 
 {#if lineAt}

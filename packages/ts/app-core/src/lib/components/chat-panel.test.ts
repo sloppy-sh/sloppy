@@ -4,7 +4,7 @@
 
 import 'fake-indexeddb/auto';
 import { MemoryFiles } from '@sloppy/local';
-import { CHAT_ATTACHMENT_MAX, chatCard, DELETED_KEPT_FOR_DAYS } from '@sloppy/types';
+import { CHAT_ATTACHMENT_MAX, chatCard } from '@sloppy/types';
 import type {
 	ChatActDone,
 	ChatAgent,
@@ -55,7 +55,6 @@ vi.mock('../chat-acts.js', () => ({
 
 const HOME = homeOf(DID);
 const PARSER = ref(1);
-const VAULT = ref(2);
 
 class Stub implements ChatAccess {
 	agent: readonly ChatAgent[] = ['claude_code'];
@@ -90,23 +89,11 @@ class Stub implements ChatAccess {
 		return Promise.resolve();
 	}
 
-	/** Set while an answer is to hang on its way out, which is what a real one
-	 *  does: the shell serves the act before it resolves. */
-	settleHangs = false;
-	#hanging: (() => void)[] = [];
-
+	/** Nothing calls this any more; it is here because the seam still declares
+	 *  it, and `answered` is what a test reads to prove nothing did. */
 	settle(call: ChatCallId, allowed: boolean): Promise<void> {
 		this.answered.push({ call, allowed });
-		this.tell({ event: 'settled', call, allowed });
-		if (!this.settleHangs) return Promise.resolve();
-		return new Promise<void>((done) => this.#hanging.push(done));
-	}
-
-	/** Let every answer that was hanging land. */
-	letAnswersLand(): void {
-		const held = this.#hanging;
-		this.#hanging = [];
-		for (const done of held) done();
+		return Promise.resolve();
 	}
 
 	stop(): Promise<void> {
@@ -241,9 +228,6 @@ beforeEach(async () => {
 	nodes.clear();
 	chat.clear();
 	offers.clear();
-	// A standing answer outlives a chat on purpose, so it is taken back here
-	// rather than leaking into the next test.
-	prefs.set('writesWithoutAsking', false);
 	prefs.set('chatModel', {});
 	opened = [];
 	acting.answer = { said: '{}' };
@@ -552,292 +536,44 @@ describe('an act in the thread', () => {
 	});
 });
 
-describe('the answer a write waits on', () => {
-	async function asking(): Promise<void> {
-		await saying();
-		stub.tell({
-			event: 'asking',
-			call: 'c9',
-			act: 'write_note',
-			arguments: {
-				about: 'src/parser.ts',
-				title: 'The parser',
-				sections: ['## Why\n\nBecause.'],
-				tags: ['parser']
-			}
-		});
-		await settle();
-	}
-
-	it('lays out what would land, and writes nothing until it is answered', async () => {
-		await asking();
-
-		expect(screen()).toContain('The parser');
-		expect(screen()).toContain('Place src/parser.ts');
-		expect(screen()).toContain('Tags parser');
-		expect(named('Allow')).toBeDefined();
-		expect(stub.answered).toEqual([]);
-	});
-
-	it('lets it through on Allow, and closes the question', async () => {
-		await asking();
-		named('Allow')?.click();
-		await settle();
-
-		expect(stub.answered).toEqual([{ call: 'c9', allowed: true }]);
-		expect(named('Allow')).toBeUndefined();
-	});
-
-	it('turns it down, and the agent is told so', async () => {
-		await asking();
-		named('Don’t')?.click();
-		await settle();
-
-		expect(stub.answered).toEqual([{ call: 'c9', allowed: false }]);
-		expect(named('Allow')).toBeUndefined();
-	});
-
-	it('says which note would go where before anything is carried', async () => {
-		await saying();
-		stub.tell({
-			event: 'asking',
-			call: 'c9',
-			act: 'move_note',
-			arguments: { note: VAULT, to: PARSER, relation: 'under' }
-		});
-		await settle();
-
-		expect(screen()).toContain('1a · The vault');
-		expect(screen()).toContain('Under 1 · The parser');
-		expect(screen()).toContain('With it Everything written under it');
-		expect(stub.answered).toEqual([]);
-	});
-
-	it('carries nothing where the person turns a move down', async () => {
-		await saying();
-		stub.tell({
-			event: 'asking',
-			call: 'c9',
-			act: 'move_note',
-			arguments: { note: VAULT, to: PARSER, relation: 'after' }
-		});
-		await settle();
-		named('Don’t')?.click();
-		await settle();
-
-		expect(stub.answered).toEqual([{ call: 'c9', allowed: false }]);
-		expect(named('Allow')).toBeUndefined();
-	});
-
-	it('names the tags that would come off, which is the destructive half', async () => {
-		await saying();
-		stub.tell({
-			event: 'asking',
-			call: 'c9',
-			act: 'tag_note',
-			arguments: { note: PARSER, tags: ['lexing'], off: ['reading'] }
-		});
-		await settle();
-
-		expect(screen()).toContain('1 · The parser');
-		expect(screen()).toContain('On lexing');
-		expect(screen()).toContain('Off reading');
-	});
-
-	it('says an untagging as taking off, where nothing goes on', async () => {
-		await saying();
-		stub.tell({
-			event: 'asking',
-			call: 'c9',
-			act: 'tag_note',
-			arguments: { note: PARSER, off: ['reading'] }
-		});
-		await settle();
-
-		expect(screen()).toContain('Off reading');
-		expect(screen()).not.toContain('On ');
-	});
-
-	/** A second write in the same reply, which is what a person documenting
-	 *  more than one file is answering for. */
-	async function alsoWants(call: string): Promise<void> {
-		stub.tell({
-			event: 'asking',
+describe('a write with nothing in its way', () => {
+	/** The gate is gone: a session works in a draft, so an act that writes is
+	 *  done when it is called and nobody is interrupted. */
+	function writing(call: string, about: string): ChatToolCall {
+		return {
 			call,
 			act: 'write_note',
-			arguments: { about: 'src/vault.ts', sections: ['## Why\n\nBecause.'] }
-		});
-		await settle();
+			arguments: { about, sections: ['## Why\n\nBecause.'] }
+		} as ChatToolCall;
 	}
 
-	it('lets the rest of the reply through once, without asking again', async () => {
-		await asking();
-		named('Allow the rest of this reply')?.click();
-		await settle();
-
-		await alsoWants('c10');
-
-		expect(stub.answered).toEqual([
-			{ call: 'c9', allowed: true },
-			{ call: 'c10', allowed: true }
-		]);
-		expect(screen()).not.toContain('src/vault.ts');
-	});
-
-	it('asks again on the next reply, because that allowance went with the last one', async () => {
-		await asking();
-		named('Allow the rest of this reply')?.click();
-		await settle();
-		stub.tell({ event: 'ended', stopped: false });
-		await settle();
-
-		await saying('And the vault');
-		await alsoWants('c11');
-
-		expect(screen()).toContain('Place src/vault.ts');
-		expect(stub.answered).toEqual([{ call: 'c9', allowed: true }]);
-	});
-
-	it('stops asking altogether when told to, and says that it has', async () => {
-		await asking();
-		named('Stop asking')?.click();
-		await settle();
-		stub.tell({ event: 'ended', stopped: false });
-		await settle();
-
-		await saying('And the vault');
-		await alsoWants('c12');
-
-		expect(stub.answered).toEqual([
-			{ call: 'c9', allowed: true },
-			{ call: 'c12', allowed: true }
-		]);
-		expect(screen()).not.toContain('src/vault.ts');
-		expect(screen()).toContain('Notes are written without asking.');
-	});
-
-	it('asks again once the person takes that back', async () => {
-		await asking();
-		named('Stop asking')?.click();
-		await settle();
-		named('Ask me again')?.click();
-		await settle();
-		stub.tell({ event: 'ended', stopped: false });
-		await settle();
-
-		await saying('And the vault');
-		await alsoWants('c13');
-
-		expect(screen()).toContain('Place src/vault.ts');
-		expect(stub.answered).toEqual([{ call: 'c9', allowed: true }]);
-	});
-
-	it('says which number would go on the note, and which would come off', async () => {
+	it('is served and answered with no question put in front of anybody', async () => {
 		await saying();
-		stub.tell({
-			event: 'asking',
-			call: 'c9',
-			act: 'number_note',
-			arguments: { note: PARSER, address: '2b' }
-		});
-		await settle();
-		expect(screen()).toContain('Number 2b');
 
-		stub.tell({ event: 'asking', call: 'c10', act: 'number_note', arguments: { note: PARSER } });
-		await settle();
-		expect(screen()).toContain('Number None');
+		const answer = await stub.serve(writing('c9', 'src/parser.ts'));
+
+		expect(answer).toEqual({ said: '{}' });
+		expect(acting.called.map((one) => one.act)).toEqual(['write_note']);
 		expect(stub.answered).toEqual([]);
+		expect(named('Allow')).toBeUndefined();
+		expect(named('Don\u2019t')).toBeUndefined();
+		expect(named('Allow the rest of this reply')).toBeUndefined();
+		expect(named('Stop asking')).toBeUndefined();
+		expect(screen()).not.toContain('Nothing is written until you say so.');
 	});
 
-	it('names the lines that would go, which is the destructive half', async () => {
-		await saying();
-		stub.tell({
-			event: 'asking',
-			call: 'c9',
-			act: 'link_notes',
-			arguments: { note: PARSER, to: [VAULT], off: [VAULT] }
-		});
-		await settle();
+	/** The endpoint serves each call on a thread of its own, so a pass over a
+	 *  repository calls several at once. Every one of them lands. */
+	it('serves every act of a reply that calls them together', async () => {
+		await saying('Document the packages');
 
-		expect(screen()).toContain('To 1a \u00b7 The vault');
-		expect(screen()).toContain('Off 1a \u00b7 The vault');
-	});
-
-	it('says what would be written on a line, and what would come off it', async () => {
-		await saying();
-		stub.tell({
-			event: 'asking',
-			call: 'c9',
-			act: 'style_edge',
-			arguments: { note: PARSER, to: VAULT, label: 'grew out of' }
-		});
-		await settle();
-		expect(screen()).toContain('1 \u00b7 The parser \u2192 1a \u00b7 The vault');
-		expect(screen()).toContain('Words grew out of');
-
-		stub.tell({
-			event: 'asking',
-			call: 'c10',
-			act: 'style_edge',
-			arguments: { note: PARSER, to: VAULT, off: ['label', 'direction', 'stroke'] }
-		});
-		await settle();
-		expect(screen()).toContain('Words None');
-		expect(screen()).toContain('Arrow None');
-		expect(screen()).toContain('Line None');
-	});
-
-	it('says the mark is what would change, and what would come back off it', async () => {
-		await saying();
-		stub.tell({
-			event: 'asking',
-			call: 'c9',
-			act: 'style_note',
-			arguments: { note: PARSER, ring_weight: 'heavy', off: ['mark_radius'] }
-		});
-		await settle();
-
-		expect(screen()).toContain('Ring Heavy');
-		expect(screen()).toContain('Size None');
-	});
-
-	it('says a note goes to the bin with everything beneath it, and how long there is to put it back', async () => {
-		await saying();
-		stub.tell({ event: 'asking', call: 'c9', act: 'delete_note', arguments: { note: PARSER } });
-		await settle();
-
-		expect(screen()).toContain('1 \u00b7 The parser');
-		expect(screen()).toContain(
-			`It goes, and so does everything written under it. You can put it back from Your graphs for ${DELETED_KEPT_FOR_DAYS} days.`
+		const answers = await Promise.all(
+			['c1', 'c2', 'c3'].map((call) => stub.serve(writing(call, `packages/${call}`)))
 		);
+
+		expect(answers).toHaveLength(3);
+		expect(acting.called).toHaveLength(3);
 		expect(stub.answered).toEqual([]);
-	});
-
-	/** Every act that writes stands behind the same question, whatever it
-	 *  writes — the parity is in what an agent CAN do, never in what it does
-	 *  unasked. */
-	it('waits on the person for every act that would write', async () => {
-		const asks: { act: ChatToolName; arguments: unknown }[] = [
-			{ act: 'number_note', arguments: { note: PARSER, address: '2b' } },
-			{ act: 'link_notes', arguments: { note: PARSER, to: [VAULT] } },
-			{ act: 'style_edge', arguments: { note: PARSER, to: VAULT, label: 'grew out of' } },
-			{ act: 'style_note', arguments: { note: PARSER, ring_weight: 'heavy' } },
-			{ act: 'delete_note', arguments: { note: PARSER } }
-		];
-		for (const [at, asked] of asks.entries()) {
-			const call = `w${at}`;
-			await saying();
-			stub.tell({ event: 'asking', call, ...asked });
-			await settle();
-
-			expect(named('Allow')).toBeDefined();
-			expect(stub.answered.find((one) => one.call === call)).toBeUndefined();
-			named('Allow')?.click();
-			await settle();
-			expect(stub.answered.at(-1)).toEqual({ call, allowed: true });
-			stub.tell({ event: 'ended', stopped: false });
-			await settle();
-		}
 	});
 });
 
@@ -1026,9 +762,8 @@ describe('keeping an answer', () => {
 		expect(screen()).toContain('Place src/lexer.ts');
 	});
 
-	// The person's own question is not the agent's: nothing the agent does with
-	// its turn is an answer to it, and the agent raising one of its own puts a
-	// second card up rather than swapping this one under the same buttons.
+	// The person's own question is the one question left in the thread, and
+	// nothing the agent does with its turn is an answer to it.
 	it('stands until they answer it, whatever the agent does meanwhile', async () => {
 		await answered();
 		named('Keep as a note')?.click();
@@ -1037,27 +772,21 @@ describe('keeping an answer', () => {
 		type('And the lexer?');
 		labelled('Send')?.click();
 		await settle();
-		stub.tell({
-			event: 'asking',
+		acting.answer = { said: '{}' };
+		await stub.serve({
 			call: 'c9',
 			act: 'write_note',
 			arguments: { about: 'src/lexer.ts', sections: ['## The lexer\n\nIt reads characters.'] }
-		});
-		await settle();
-
-		expect(named('Allow')).toBeDefined();
-		expect(named('Keep it')).toBeDefined();
-
-		stub.tell({ event: 'settled', call: 'c9', allowed: false });
+		} as ChatToolCall);
 		stub.tell({ event: 'ended' });
 		await settle();
 
-		expect(named('Allow')).toBeUndefined();
+		expect(named('Keep it')).toBeDefined();
 		acting.answer = { said: '{}', told: 'Kept.', touched: [PARSER] };
 		named('Keep it')?.click();
 		await settle();
 
-		expect(acting.called.map((one) => one.act)).toEqual(['write_note']);
+		expect(acting.called.map((one) => one.act)).toEqual(['write_note', 'write_note']);
 		expect(screen()).toContain('Kept.');
 	});
 });
@@ -1202,66 +931,5 @@ describe('starting again', () => {
 
 		expect(screen()).toContain('microphone on your keyboard');
 		expect(labelled('Record')).toBeUndefined();
-	});
-});
-
-describe('two acts the agent calls at once', () => {
-	/** The agent asks for two writes without waiting for the first, which the
-	 *  endpoint serves on a thread each, so both questions arrive together. */
-	async function bothAsked(): Promise<void> {
-		await saying('Document the packages');
-		stub.settleHangs = true;
-		for (const call of ['c1', 'c2'] as ChatCallId[]) {
-			stub.tell({
-				event: 'asking',
-				call,
-				act: 'write_note',
-				arguments: { about: `packages/${call}`, sections: ['## Why\n\nBecause.'] }
-			});
-		}
-		await settle();
-	}
-
-	it('answers both where writes land without asking', async () => {
-		prefs.set('writesWithoutAsking', true);
-
-		await bothAsked();
-		stub.letAnswersLand();
-		await settle();
-
-		// Before this, one answer was refused because the other was in flight,
-		// and nothing ever answered that call: the agent waited it out.
-		expect(stub.answered).toEqual([
-			{ call: 'c1', allowed: true },
-			{ call: 'c2', allowed: true }
-		]);
-	});
-
-	it('answers both where a reply has been allowed whole', async () => {
-		await saying('Document the packages');
-		stub.tell({
-			event: 'asking',
-			call: 'c0' as ChatCallId,
-			act: 'write_note',
-			arguments: { about: 'packages/one', sections: ['## Why\n\nBecause.'] }
-		});
-		await settle();
-		named('Allow the rest of this reply')?.click();
-		await settle();
-
-		stub.settleHangs = true;
-		for (const call of ['c1', 'c2'] as ChatCallId[]) {
-			stub.tell({
-				event: 'asking',
-				call,
-				act: 'write_note',
-				arguments: { about: `packages/${call}`, sections: ['## Why\n\nBecause.'] }
-			});
-		}
-		await settle();
-		stub.letAnswersLand();
-		await settle();
-
-		expect(stub.answered.map((one) => one.call)).toEqual(['c0', 'c1', 'c2']);
 	});
 });
