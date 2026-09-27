@@ -51,6 +51,9 @@ export interface Prefs {
 	 *  still safe to hand over: the surface bounds it against the window it is
 	 *  actually in. */
 	readingWidth: number | null;
+	/** How much room the reader has taken for the chat docked beside the graph,
+	 *  in px, on the same terms as {@link Prefs.readingWidth}. */
+	chatWidth: number | null;
 	/** The Sloppy this device talks to, as an origin — docs/ARCHITECTURE.md
 	 *  § "Deployment modes". Null is the one the app came with, which is what
 	 *  the shell names. */
@@ -116,6 +119,7 @@ function defaults(): Prefs {
 		walking: false,
 		writesWithoutAsking: false,
 		readingWidth: null,
+		chatWidth: null,
 		origin: null
 	};
 }
@@ -224,6 +228,7 @@ class PrefsStore {
 			walking: saved.walking === true,
 			writesWithoutAsking: saved.writesWithoutAsking === true,
 			readingWidth: widthIn(saved.readingWidth),
+			chatWidth: widthIn(saved.chatWidth),
 			origin: asOrigin(saved.origin)
 		};
 		this.apply();

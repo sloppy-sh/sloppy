@@ -1,34 +1,8 @@
 <script lang="ts" module>
 	import { noteLabel, type OwnedRef } from '@sloppy/types';
 
-	/** Below this the panel would leave the graph beside it too little to read. */
-	const DOCK_FROM_PX = 900;
-
 	/** How tall the strip stands. */
 	const STRIP = '2.75rem';
-
-	/** The widest a note's own writing column grows, in px, and the room the
-	 *  panel keeps either side of it (`pl-4` and `pr-[max(1rem,…)]` below). The
-	 *  note reads the column back as `--reading-column`, so the words and the
-	 *  wall stop at one number rather than two — DESIGN.md § Layout. */
-	const COLUMN = 672;
-	const GUTTERS = 32;
-
-	/** What a docked panel may take, in px: never narrower than a note reads well
-	 *  in, never wider than the point its column stops growing, and never so wide
-	 *  that the graph beside it stops being a graph. */
-	const LEAST = 352;
-	const MOST = COLUMN + GUTTERS;
-	const GRAPH_KEEPS = 448;
-
-	function widthWithin(room: number): { least: number; most: number } {
-		return { least: LEAST, most: Math.max(LEAST, Math.min(MOST, room - GRAPH_KEEPS)) };
-	}
-
-	function dockedWidth(want: number, room: number): number {
-		const { least, most } = widthWithin(room);
-		return Math.min(most, Math.max(least, Math.round(want)));
-	}
 
 	/** One note open in the panel. The address leads where there is one, because
 	 *  it is what a person cites; a note with none is read by its title. */
@@ -43,16 +17,13 @@
 </script>
 
 <script lang="ts">
-	// The surface a note is read and worked in — DESIGN.md § Layout. Docked
-	// beside the graph where there is room for both, a full-height sheet where
-	// there is not, and a strip across its head once several notes are open.
+	// The surface a note is read and worked in — DESIGN.md § Layout. A dock
+	// beside the graph, and a strip across its head once several notes are open.
 	import X from '@lucide/svelte/icons/x';
 	import type { Snippet } from 'svelte';
-	import { untrack } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { cn } from '$lib/utils.js';
-	import ResponsiveModal from './responsive-modal.svelte';
+	import SideDock, { DOCK_COLUMN } from './side-dock.svelte';
 
 	let {
 		open = $bindable(false),
@@ -90,68 +61,16 @@
 		children: Snippet;
 	} = $props();
 
-	const room = new MediaQuery(`(min-width: ${DOCK_FROM_PX}px)`);
-	// Fixed for as long as something is open in it: a presentation that moved
-	// under a mounted editor would tear it down mid-edit and lose the caret.
-	let docked = $state(untrack(() => room.current));
-	$effect(() => {
-		if (!open) docked = room.current;
-	});
-
-	let panel = $state<HTMLElement | null>(null);
 	let head = $state<HTMLElement | null>(null);
 	let headHeight = $state(0);
 	const stripped = $derived(tabs.length > 1);
 	const headed = $derived(stripped || !!says);
-
-	/** The window the panel bounds itself against. */
-	let across = $state(0);
-	/** What the panel measures, for the widths that are the stylesheet's. */
-	let standing = $state(0);
-	/** The width the reader has dragged to. It stands ahead of {@link width},
-	 *  which answers a frame later — the panel must not snap back in that frame. */
-	let dragged = $state<number | null>(null);
-	let dragging = $state(false);
-	let grabbedAt = 0;
-	let grabbedWidth = 0;
-	/** What the panel stood at when the wall was grabbed, and whether the grab
-	 *  became a drag. A press that never moved is put back: a width nobody chose,
-	 *  written down, would pin a panel that had been sizing itself to the
-	 *  window. */
-	let ungrabbed: number | null = null;
-	let moved = false;
-
-	const wanted = $derived(dragged ?? width);
-	const stands = $derived(across > 0 && wanted !== null ? dockedWidth(wanted, across) : null);
-	const bounds = $derived(widthWithin(across || DOCK_FROM_PX));
 
 	/** The strip scrolls sideways, so the tab being read is brought into it: a tab
 	 *  opened past its edge is otherwise open with nothing on screen to say so. */
 	const keepInView = (showing: boolean) => (tab: Element) => {
 		if (showing) tab.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
 	};
-
-	const handle = (v: boolean) => {
-		open = v;
-		onOpenChange?.(v);
-	};
-
-	$effect(() => {
-		if (!docked || !open) return;
-		const from = untrack(() => document.activeElement);
-		panel?.focus();
-		return () => {
-			const ours = panel?.contains(document.activeElement) ?? false;
-			if (ours && from instanceof HTMLElement && from.isConnected) from.focus();
-		};
-	});
-
-	$effect(() => {
-		const measure = () => (across = window.innerWidth);
-		measure();
-		window.addEventListener('resize', measure);
-		return () => window.removeEventListener('resize', measure);
-	});
 
 	// Measured rather than assumed: the head stands as tall as everything in it,
 	// which is the strip and whatever the surface has to say — DESIGN.md
@@ -170,92 +89,6 @@
 		observer.observe(el);
 		return () => observer.disconnect();
 	});
-
-	// The panel owes the width it takes to whatever it is beside — DESIGN.md
-	// § "The four inset vars". The canvas there resizes to its parent on a window
-	// `resize` and nothing else, and the window did not change: only the box the
-	// panel left it.
-	let taken = '';
-	function takes(width: string): void {
-		if (width === taken) return;
-		taken = width;
-		const root = document.documentElement;
-		if (width) root.style.setProperty('--reading-dock-inset-right', width);
-		else root.style.removeProperty('--reading-dock-inset-right');
-		window.dispatchEvent(new Event('resize'));
-	}
-
-	$effect(() => {
-		const el = panel;
-		if (!docked || !open || !el) return;
-		const measure = () => (standing = el.offsetWidth);
-		measure();
-		const observer = new ResizeObserver(measure);
-		observer.observe(el);
-		return () => {
-			observer.disconnect();
-			takes('');
-		};
-	});
-
-	// `stands` is read here rather than measured, so a width the reader is still
-	// dragging reaches the chrome beside the panel in the frame it is applied.
-	$effect(() => {
-		if (!docked || !open || !panel) return;
-		takes(`${stands ?? standing}px`);
-	});
-
-	function startDrag(event: PointerEvent): void {
-		if (event.button !== 0) return;
-		// The wall lies over the edge of the canvas, and what starts on the wall is
-		// the wall's — never a pan of the graph underneath it.
-		event.preventDefault();
-		event.stopPropagation();
-		grabbedAt = event.clientX;
-		grabbedWidth = stands ?? standing;
-		ungrabbed = dragged;
-		moved = false;
-		dragging = true;
-		dragged = dockedWidth(grabbedWidth, across);
-		(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-	}
-
-	function onDrag(event: PointerEvent): void {
-		if (!dragging) return;
-		if (event.clientX !== grabbedAt) moved = true;
-		dragged = dockedWidth(grabbedWidth + (grabbedAt - event.clientX), across);
-	}
-
-	function endDrag(): void {
-		if (!dragging) return;
-		dragging = false;
-		if (!moved) {
-			dragged = ungrabbed;
-			return;
-		}
-		if (dragged !== null) onWidthChange?.(dragged);
-	}
-
-	/** What one press of an arrow key is worth, in px. */
-	const STEP = 24;
-
-	function onWallKey(event: KeyboardEvent): void {
-		const at = stands ?? standing;
-		const to =
-			event.key === 'ArrowLeft'
-				? at + STEP
-				: event.key === 'ArrowRight'
-					? at - STEP
-					: event.key === 'Home'
-						? bounds.least
-						: event.key === 'End'
-							? bounds.most
-							: null;
-		if (to === null) return;
-		event.preventDefault();
-		dragged = dockedWidth(to, across);
-		onWidthChange?.(dragged);
-	}
 </script>
 
 {#snippet strip()}
@@ -314,8 +147,15 @@
 	</nav>
 {/snippet}
 
-{#snippet body()}
-	<div style="--reading-column: {COLUMN}px;{headed ? ` --reading-head: ${headHeight}px` : ''}">
+<SideDock
+	bind:open
+	{onOpenChange}
+	{title}
+	{width}
+	{onWidthChange}
+	wall="How much room the note takes"
+>
+	<div style="--reading-column: {DOCK_COLUMN}px;{headed ? ` --reading-head: ${headHeight}px` : ''}">
 		<!-- What the surface has to say about the strip keeps the strip's place:
 		     the row that asks for a note is a scroll down inside a long note, and a
 		     refusal left back up there is one nobody reads. -->
@@ -327,66 +167,4 @@
 		{/if}
 		{@render children()}
 	</div>
-{/snippet}
-
-{#if docked}
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-	<aside
-		bind:this={panel}
-		tabindex="-1"
-		aria-label={title}
-		inert={!open}
-		style="top: calc(var(--app-chrome-top, 0px) + env(safe-area-inset-top, 0px));{stands
-			? ` width: ${stands}px`
-			: ''}"
-		onkeydown={(e) => {
-			if (e.key === 'Escape') handle(false);
-		}}
-		class={cn(
-			'fixed right-0 bottom-0 z-40 flex w-[clamp(22rem,38vw,34rem)] flex-col border-l border-border bg-background shadow-lg transition-[transform,opacity] duration-200 ease-out outline-none motion-reduce:transition-none',
-			open ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-full opacity-0'
-		)}
-	>
-		<div
-			class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-[max(1rem,env(safe-area-inset-right))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+1rem)] pl-4"
-		>
-			{@render body()}
-		</div>
-
-		<!-- Last in the panel, so the way out of the note is what a keyboard reader
-		     reaches first. A separator a reader can focus and move IS a widget; the
-		     rule reads the role as decoration either way. -->
-		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-		<div
-			role="separator"
-			tabindex="0"
-			aria-orientation="vertical"
-			aria-label="How much room the note takes"
-			aria-valuenow={stands ?? standing}
-			aria-valuemin={bounds.least}
-			aria-valuemax={bounds.most}
-			onpointerdown={startDrag}
-			onpointermove={onDrag}
-			onpointerup={endDrag}
-			onpointercancel={endDrag}
-			onlostpointercapture={endDrag}
-			onkeydown={onWallKey}
-			class="group absolute inset-y-0 -left-3 z-10 flex w-6 cursor-col-resize touch-none items-center justify-center focus-visible:outline-none"
-		>
-			<!-- A grip at rest, because the tablet this docks on has no hover. -->
-			<span
-				class={cn(
-					'transition-[background-color,height,width] duration-150 ease-out motion-reduce:transition-none',
-					dragging
-						? 'h-full w-0.5 bg-ring'
-						: 'h-10 w-1 rounded-full bg-border group-hover:bg-muted-foreground/60 group-focus-visible:bg-ring'
-				)}
-			></span>
-		</div>
-	</aside>
-{:else}
-	<ResponsiveModal {open} onOpenChange={handle} {title} headed={false} fill>
-		{@render body()}
-	</ResponsiveModal>
-{/if}
+</SideDock>

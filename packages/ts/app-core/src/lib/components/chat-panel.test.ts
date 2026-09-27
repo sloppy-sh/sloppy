@@ -30,7 +30,7 @@ import {
 } from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
-import ChatSheet from './chat-sheet.svelte';
+import ChatPanel from './chat-panel.svelte';
 
 const HOME = homeOf(DID);
 const PARSER = ref(1);
@@ -96,17 +96,28 @@ class Stub implements ChatAccess {
 	}
 }
 
+/** A phone, and a desk wide enough for a graph with the chat docked beside it. */
+const PHONE = 390;
+const DESK = 1440;
+
 function stubViewport(width: number): void {
+	Object.defineProperty(globalThis, 'innerWidth', {
+		configurable: true,
+		writable: true,
+		value: width
+	});
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
 		writable: true,
-		value: (query: string) => ({
-			matches: /max-width:\s*(\d+)px/.test(query)
-				? width <= Number(/max-width:\s*(\d+)px/.exec(query)?.[1])
-				: false,
-			addEventListener: () => {},
-			removeEventListener: () => {}
-		})
+		value: (query: string) => {
+			const most = /max-width:\s*(\d+)px/.exec(query);
+			const least = /min-width:\s*(\d+)px/.exec(query);
+			return {
+				matches: most ? width <= Number(most[1]) : least ? width >= Number(least[1]) : false,
+				addEventListener: () => {},
+				removeEventListener: () => {}
+			};
+		}
 	});
 }
 
@@ -126,6 +137,14 @@ const labelled = (label: string): HTMLButtonElement | undefined =>
 	[...document.body.querySelectorAll('button')].find(
 		(one) => one.getAttribute('aria-label') === label
 	);
+
+/** Whether the chat is still there to be said into. */
+const composerThere = (): boolean =>
+	document.body.querySelector('[aria-label="What you want written about"]') !== null;
+
+/** What `<html>` is told everything docked on the right takes, together. */
+const dockInset = () =>
+	document.documentElement.style.getPropertyValue('--reading-dock-inset-right');
 
 const composer = (): HTMLTextAreaElement => {
 	const found = document.body.querySelector<HTMLTextAreaElement>(
@@ -149,7 +168,7 @@ let mounted: ReturnType<typeof mount> | undefined;
 let opened: { note: OwnedRef; at?: NoteLanding }[];
 
 function show(): void {
-	mounted = mount(ChatSheet, {
+	mounted = mount(ChatPanel, {
 		target,
 		props: {
 			open: true,
@@ -184,7 +203,7 @@ beforeEach(async () => {
 	await nodes.load({ graph: HOME });
 	initRuntime({ apiHost: () => 'http://api.test', chat: stub });
 	seamSettledAgain();
-	stubViewport(390);
+	stubViewport(PHONE);
 	Object.defineProperty(globalThis, 'ResizeObserver', {
 		configurable: true,
 		writable: true,
@@ -212,6 +231,64 @@ afterEach(() => {
 	seamSettledAgain();
 	target.remove();
 	document.body.innerHTML = '';
+});
+
+// DESIGN.md § Layout: the chat is a dock beside the graph, so a person can read
+// the note it wrote while the conversation is still in front of them.
+describe('where the chat stands', () => {
+	afterEach(() => prefs.set('chatWidth', null));
+
+	it('docks beside the graph where there is room, rather than standing over it', async () => {
+		prefs.set('chatWidth', 400);
+		stubViewport(DESK);
+		await chat.opened(HOME);
+		show();
+		await settle();
+
+		expect(document.body.querySelector('aside[aria-label="Chat about the code"]')).not.toBeNull();
+		expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+		expect(dockInset()).toBe('400px');
+	});
+
+	it('is the whole screen on a phone, where there is no graph to stand beside', async () => {
+		prefs.set('chatWidth', 400);
+		await chat.opened(HOME);
+		show();
+		await settle();
+
+		expect(document.body.querySelector('aside[aria-label="Chat about the code"]')).toBeNull();
+		expect(document.body.querySelector('[data-slot="modal-grabber"]')).not.toBeNull();
+		expect(dockInset()).toBe('');
+	});
+
+	it('gives the graph its width back when it is put away', async () => {
+		prefs.set('chatWidth', 400);
+		stubViewport(DESK);
+		await chat.opened(HOME);
+		show();
+		await settle();
+		expect(dockInset()).toBe('400px');
+
+		labelled('Close the chat')?.click();
+		await settle();
+
+		expect(dockInset()).toBe('');
+	});
+
+	it('moves the wall between it and the graph by the arrow keys', async () => {
+		prefs.set('chatWidth', 400);
+		stubViewport(DESK);
+		await chat.opened(HOME);
+		show();
+		await settle();
+
+		const wall = document.body.querySelector<HTMLElement>('[role="separator"]');
+		wall?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+		await settle();
+
+		expect(dockInset()).toBe('424px');
+		expect(prefs.current.chatWidth).toBe(424);
+	});
 });
 
 describe('a device with nothing to chat to', () => {
@@ -360,7 +437,6 @@ describe('an act in the thread', () => {
 		await settle();
 
 		expect(opened).toEqual([{ note: PARSER }]);
-		expect(document.body.querySelector('[aria-label="What you want written about"]')).toBeNull();
 	});
 
 	it('sends somebody to what is offered on a note they have written in', async () => {
@@ -526,6 +602,60 @@ describe('the answer a write waits on', () => {
 
 		expect(screen()).toContain('It wants to write');
 		expect(stub.answered).toEqual([{ call: 'c9', allowed: true }]);
+	});
+});
+
+// The point of a side view is reading the note while the conversation stays up.
+// Two full-height sheets cannot both be on a phone, so there the chat steps
+// aside and the note is what was asked for.
+describe('opening a note the chat wrote', () => {
+	afterEach(() => prefs.set('chatWidth', null));
+
+	async function wrote(): Promise<void> {
+		await saying();
+		stub.tell({
+			event: 'block',
+			at: 0,
+			block: {
+				kind: 'tool_call',
+				call: 'c1',
+				tool: 'write_note',
+				act: 'write_note',
+				arguments: { about: 'src/parser.ts', sections: ['## Why\n\nBecause.'] }
+			}
+		});
+		stub.tell({
+			event: 'block',
+			at: 1,
+			block: {
+				kind: 'tool_result',
+				call: 'c1',
+				said: JSON.stringify({ note: PARSER, done: 'written' })
+			}
+		});
+		await settle();
+	}
+
+	it('leaves the conversation up where the chat is docked beside the graph', async () => {
+		prefs.set('chatWidth', 400);
+		stubViewport(DESK);
+		await wrote();
+
+		named('Open 1 \u00b7 The parser')?.click();
+		await settle();
+
+		expect(opened).toEqual([{ note: PARSER }]);
+		expect(composerThere()).toBe(true);
+	});
+
+	it('steps aside on a phone, where the note is the whole screen', async () => {
+		await wrote();
+
+		named('Open 1 \u00b7 The parser')?.click();
+		await settle();
+
+		expect(opened).toEqual([{ note: PARSER }]);
+		expect(composerThere()).toBe(false);
 	});
 });
 

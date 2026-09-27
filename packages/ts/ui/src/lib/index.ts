@@ -15,6 +15,7 @@ export type {
 
 export { overlay } from './components/overlay.svelte.js';
 export { default as ResponsiveModal } from './components/responsive-modal.svelte';
+export { default as SideDock } from './components/side-dock.svelte';
 export { default as ReadingPanel } from './components/reading-panel.svelte';
 export { default as NoteMenu, type NoteMenuItem } from './components/note-menu.svelte';
 export { default as ConfirmModal } from './components/confirm/confirm-modal.svelte';

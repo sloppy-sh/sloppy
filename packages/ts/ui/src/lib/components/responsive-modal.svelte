@@ -23,6 +23,7 @@
 		description,
 		headed = true,
 		fill = false,
+		scrolls = true,
 		class: className,
 		onOpenAutoFocus,
 		children
@@ -38,6 +39,9 @@
 		/** A surface come to read and work in rather than answer: a sheet at every
 		 *  width, standing the whole screen, its body scrolling under the grabber. */
 		fill?: boolean;
+		/** False where the body scrolls its own parts rather than being scrolled
+		 *  whole — a thread over a composer that stays put. {@link fill} only. */
+		scrolls?: boolean;
 		/** Extra classes for the sheet / dialog surface. */
 		class?: string;
 		/** Where the caret goes as the surface arrives. Refuse the event's default
@@ -149,7 +153,10 @@
 			{#if fill}
 				<div
 					class={cn(
-						'min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain',
+						'min-h-0 flex-1',
+						scrolls
+							? 'overflow-x-hidden overflow-y-auto overscroll-contain'
+							: 'flex flex-col overflow-hidden',
 						SHEET_GUTTERS
 					)}
 				>

@@ -166,6 +166,7 @@ describe('the saved look', () => {
 				wallpapers: 'a picture',
 				walking: 'yes',
 				readingWidth: 'wide',
+				chatWidth: 'narrow',
 				origin: 'nowhere at all/ /'
 			})
 		);
@@ -183,6 +184,7 @@ describe('the saved look', () => {
 			walking: false,
 			writesWithoutAsking: false,
 			readingWidth: null,
+			chatWidth: null,
 			origin: null
 		});
 	});

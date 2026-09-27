@@ -128,7 +128,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import ChatSheet from '../components/chat-sheet.svelte';
+	import ChatPanel from '../components/chat-panel.svelte';
 	import EdgeSheet from '../components/edge-sheet.svelte';
 	import OpenHere from '../components/open-here.svelte';
 	import PersonSurface from '../components/person-surface.svelte';
@@ -2825,7 +2825,7 @@
 />
 
 {#if projectFiles && chat.reaches}
-	<ChatSheet bind:open={chatting} onOpen={(ref, at) => show(ref, null, at)} />
+	<ChatPanel bind:open={chatting} onOpen={(ref, at) => show(ref, null, at)} />
 {/if}
 
 {#if lineAt}

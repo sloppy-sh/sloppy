@@ -1024,31 +1024,43 @@ leaves the highlight where it was — the question is still the one being asked.
   inset) holds the core destinations. ≥44px targets, keyboard-reachable, `aria-label`led.
   The pill publishes its own height as `--sysnav-inset-bottom` and is suppressed while a
   modal is open.
-- **A note opens into a reading surface.** `ReadingPanel` is that surface, and it has two
+- **What stands beside the graph is a dock, and `SideDock` is the one of them.** It has two
   presentations from one bound `open`: **docked beside the graph at ≥900px**, where the canvas
-  keeps its pan, its pinch, its choosing and its menu beside an open note; and a **full-height
-  modal sheet below that width**, phone and portrait tablet alike, so a note is a page rather
-  than a peep-hole. The branch is fixed for as long as a note is open — a rotation mid-edit
-  never remounts the editor and loses a caret — and is read again from the viewport once the
-  surface is empty.
+  keeps its pan, its pinch, its choosing and its menu beside whatever is open; and a
+  **full-height modal sheet below that width**, phone and portrait tablet alike, so what it
+  holds is a page rather than a peep-hole. The branch is fixed for as long as something is
+  open in it — a rotation mid-edit never remounts the editor and loses a caret — and is read
+  again from the viewport once the dock is empty. **Two things dock today**: a note opened to
+  read, which is `ReadingPanel` — the dock plus the strip across its head; and the chat with
+  an agent about the project, which is the dock plus the thread and the composer. Anything
+  else that wants to stand beside the graph is a third use of the same dock, never a second
+  copy of it.
+- **Both may stand at once, and they stack.** You read the note while you chat about it, so
+  the chat is outermost — it is the companion that stays — and a note opened to read sits
+  between it and the graph. A second dock opens beside the first only where the graph would
+  still keep its own room; where it would not, it is the sheet, exactly as one dock is below
+  the docking width. Two sheets never stand together: below that width the note is what was
+  asked for, and the chat steps aside with its conversation kept.
 - **A docked panel is a layout, not a modal**: no scrim, no focus trap, nothing else on the
   page taken away while it stands, and a drag begun on the canvas is still the canvas's. It is
   put away by the way out at its head, and by Escape from inside it — outside it, Escape
-  belongs to whatever the canvas is in the middle of. Beside means beside, so it publishes the
-  width it takes as `--reading-dock-inset-right` and the page it stands next to gives that
-  width up rather than going on drawing its chrome underneath.
-- **The wall between a docked note and the graph is the reader's to move.** A person who
+  belongs to whatever the canvas is in the middle of. Beside means beside, so what is docked
+  publishes the width it takes as `--reading-dock-inset-right` — everything docked on the
+  right, together — and the page it stands next to gives that width up rather than going on
+  drawing its chrome underneath.
+- **The wall between a dock and the graph is the reader's to move.** A person who
   came to write takes as much room as they want for it, by dragging that inner edge or by
   moving a separator they can focus with the arrow keys. It shows a grip at rest rather than
   one that appears under a pointer, and the target around that grip is one a finger can hit:
-  the tablet it docks on has no hover. It is bounded at both ends — never narrower than a
-  note reads well in, never wider than the point the words themselves stop widening, and
-  never so wide that what it is docked against stops being a
-  graph — and it publishes every width it passes through rather than only the
+  the tablet it docks on has no hover. It is bounded at both ends — never narrower than words
+  read well in, never wider than the point they themselves stop widening, and never so wide
+  that what it is docked against stops being a graph, which the two of them answer between
+  them: each is bounded against what the window has left once the other has taken its room
+  — and it publishes every width it passes through rather than only the
   one it comes to rest at, because the nav pill, the bar over a chosen set and the card
-  beside a mark all place themselves against that number. Below the dock width the note is
-  the whole screen and there is no wall, because there is nothing left to take room from.
-  How much room was taken is this device's, kept beside the theme (§ Persistence).
+  beside a mark all place themselves against that number. Below the dock width what it holds
+  is the whole screen and there is no wall, because there is nothing left to take room from.
+  How much room each was given is this device's, kept beside the theme (§ Persistence).
 - **The note's way out and its acts keep their place** at the head of the surface however
   far the note runs. The way back out of a long note must never be a scroll away, and
   neither may the acts, because that is where a refused one answers. **The address is read
@@ -1211,13 +1223,16 @@ wherever the surface draws no head at all, so a note read on its own keeps its h
 top of whatever is scrolling it — the fallback is that height to the pixel, which is why
 every reader of it is written `var(--reading-head, 0px)`.
 
-`--reading-dock-inset-right` is the same bargain turned sideways: the reading panel docked
-beside the graph publishes the width it occupies, and what stands next to it subtracts that
-width instead of drawing underneath — the page's own box, and the nav pill, which re-centres
-over what is left rather than being taken away. Any full-bleed layer on a page that can be
-docked beside — a drawn ground, a bar pinned across the foot, a card raised beside a mark —
-is placed against that box, or it runs on under the panel while the page it belongs to stops
-at the edge.
+`--reading-dock-inset-right` is the same bargain turned sideways: what is docked beside the
+graph publishes the width it occupies, and what stands next to it subtracts that width
+instead of drawing underneath — the page's own box, and the nav pill, which re-centres over
+what is left rather than being taken away. **The number is everything docked on the right,
+together**, so a note and the chat standing side by side owe one sum and no reader of the var
+has to know how many panels drew it; `SideDock` is where they are added up, because two
+components each setting one var would race and whichever drew last would win. Any full-bleed
+layer on a page that can be docked beside — a drawn ground, a bar pinned across the foot, a
+card raised beside a mark — is placed against that box, or it runs on under the panel while
+the page it belongs to stops at the edge.
 
 `--chosen-bar-inset-bottom` is the bar of chosen notes owing what it stands on, published BY
 the bar and unset wherever it is down. It is measured off the bar's whole box, so the row of
@@ -1563,7 +1578,7 @@ The same store holds the view choices that are nobody's business but this device
 tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
 it (§ "The wallpaper"), which graph the reader is in and which they have stood up beside it
 (§ "Several graphs on one canvas"), whether it is read as an outline rather than drawn, and
-how much room a docked note was last given. None of them is an attribute on `<html>`, so
+how much room each dock beside it was last given. None of them is an attribute on `<html>`, so
 none is a thing the boot script has to know: the canvas reads them once it is up, and a
 first paint with the right theme is all that flash-of-the-wrong anything is about. None of
 them reaches a note either — a peer pulling a subtree receives nothing of how it was read.

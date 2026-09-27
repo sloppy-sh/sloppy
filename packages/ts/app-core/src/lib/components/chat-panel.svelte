@@ -1,11 +1,13 @@
 <script lang="ts">
 	// Chatting with an agent about the project's notes — docs/ARCHITECTURE.md
-	// § "Asking a tool to write the notes". The thread, the composer, and the
-	// question standing in front of every act that would write.
+	// § "Asking a tool to write the notes". A dock beside the graph, holding the
+	// thread, the composer, and the question standing in front of every act that
+	// would write.
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Square from '@lucide/svelte/icons/square';
+	import X from '@lucide/svelte/icons/x';
 	import { CHAT_AGENTS, CHAT_ASKED_MAX, chatAgentName, type OwnedRef } from '@sloppy/types';
-	import { ResponsiveModal, scrollFade } from '@sloppy/ui';
+	import { scrollFade, SideDock } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { Textarea } from '@sloppy/ui/textarea';
@@ -13,6 +15,7 @@
 	import type { NoteLanding } from '../pages/page-state.js';
 	import { chat } from '../stores/chat.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { prefs } from '../stores/prefs.svelte.js';
 	import ChatThread from './chat-thread.svelte';
 
 	let {
@@ -34,6 +37,7 @@
 	const asking = $derived(chat.asking);
 	const asked = $derived(asking ? readCall(asking.call, asking.act, asking.arguments) : null);
 
+	let docked = $state(false);
 	let said = $state('');
 	let field = $state.raw<HTMLTextAreaElement | null>(null);
 	let thread = $state.raw<HTMLElement | null>(null);
@@ -85,18 +89,41 @@
 	}
 
 	function read(note: OwnedRef, at: NoteLanding | undefined): void {
-		open = false;
+		// Docked, the note opens beside the conversation and it stays. Narrower
+		// than that, both are the whole screen, and the note is what was asked for.
+		if (!docked) open = false;
 		onOpen(note, at);
 	}
 </script>
 
-<ResponsiveModal
+<SideDock
 	bind:open
+	onDocked={(is) => (docked = is)}
 	title="Chat about the code"
-	description="Nothing is written until you say so."
-	class="sm:max-w-2xl"
+	wall="How much room the chat takes"
+	outer={1}
+	scrolls={false}
+	width={prefs.current.chatWidth}
+	onWidthChange={(px) => prefs.set('chatWidth', px)}
 >
-	<div class="flex max-h-[72dvh] min-h-0 flex-col gap-3 px-2 pt-3">
+	<div class="flex min-h-0 flex-1 flex-col gap-3 pt-2">
+		<div class="flex shrink-0 items-start gap-2">
+			<div class="min-w-0 flex-1 px-1">
+				<h2 class="truncate text-sm font-medium">Chat about the code</h2>
+				{#if !chat.writesWithoutAsking}
+					<p class="text-xs text-muted-foreground">Nothing is written until you say so.</p>
+				{/if}
+			</div>
+			<Button
+				variant="ghost"
+				class="size-9 shrink-0"
+				aria-label="Close the chat"
+				onclick={() => (open = false)}
+			>
+				<X class="size-4" />
+			</Button>
+		</div>
+
 		{#if agents === null}
 			<Skeleton class="h-11 w-full" />
 		{:else if agents === 'untold' || agents.length === 0}
@@ -243,4 +270,4 @@
 			</form>
 		{/if}
 	</div>
-</ResponsiveModal>
+</SideDock>
