@@ -23,6 +23,7 @@ use git2::{
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::draft::of_a_draft;
 use crate::signing::{Signed, SigningConfig, Trust};
 use crate::vault::{settled, FileError, Folders, Opened};
 
@@ -120,6 +121,10 @@ fn no_branch(name: &str) -> HistoryError {
 
 fn already_called(name: &str) -> HistoryError {
     HistoryError::new(format!("There is already one called {name}."))
+}
+
+fn wont_work(name: &str) -> HistoryError {
+    HistoryError::new(format!("{name} will not work as a name. Try another."))
 }
 
 fn mid_merge() -> HistoryError {
@@ -1002,6 +1007,9 @@ fn names_at(repo: &Repository) -> Result<BTreeMap<Oid, Vec<String>>, HistoryErro
             if kind == BranchType::Remote && name.ends_with("/HEAD") {
                 continue;
             }
+            if kind == BranchType::Local && of_a_draft(name) {
+                continue;
+            }
             held.entry(head).or_default().push(name.to_owned());
         }
     }
@@ -1136,6 +1144,9 @@ pub fn branches(vault: &Opened) -> Result<Vec<Branch>, HistoryError> {
         let (Some(name), Some(head)) = (branch.name()?, branch.get().target()) else {
             continue;
         };
+        if of_a_draft(name) {
+            continue;
+        }
         let mut one = Branch::here(name, head, branch.is_head());
         if let Some((ahead, behind, upstream)) = against(repo, name) {
             one.upstream = Some(upstream);
@@ -1160,6 +1171,9 @@ pub fn branches(vault: &Opened) -> Result<Vec<Branch>, HistoryError> {
 }
 
 pub fn branch(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
+    if of_a_draft(name) {
+        return Err(wont_work(name));
+    }
     let kept = at(vault)?;
     let repo = kept.repo();
     if repo.find_branch(name, BranchType::Local).is_ok() {
@@ -1172,13 +1186,16 @@ pub fn branch(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
     };
     let made = repo
         .branch(name, &head, false)
-        .map_err(|_| HistoryError::new(format!("{name} will not work as a name. Try another.")))?;
+        .map_err(|_| wont_work(name))?;
     Ok(Branch::here(name, head.id(), made.is_head()))
 }
 
 /// A branch at a commit somewhere back in the history. The folder stays where
 /// it is.
 pub fn branch_at(vault: &Opened, name: &str, commit: &str) -> Result<Branch, HistoryError> {
+    if of_a_draft(name) {
+        return Err(wont_work(name));
+    }
     let kept = at(vault)?;
     let repo = kept.repo();
     if repo.find_branch(name, BranchType::Local).is_ok() {
@@ -1190,11 +1207,14 @@ pub fn branch_at(vault: &Opened, name: &str, commit: &str) -> Result<Branch, His
         .map_err(|_| not_here())?;
     let made = repo
         .branch(name, &held, false)
-        .map_err(|_| HistoryError::new(format!("{name} will not work as a name. Try another.")))?;
+        .map_err(|_| wont_work(name))?;
     Ok(Branch::here(name, held.id(), made.is_head()))
 }
 
 pub fn delete_branch(vault: &Opened, name: &str) -> Result<(), HistoryError> {
+    if of_a_draft(name) {
+        return Err(no_branch(name));
+    }
     let kept = at(vault)?;
     let repo = kept.repo();
     let mut held = repo
@@ -1397,6 +1417,9 @@ fn branch_head(repo: &Repository, name: &str) -> Option<Oid> {
 }
 
 pub fn switch_to(vault: &Opened, name: &str) -> Result<(), HistoryError> {
+    if of_a_draft(name) {
+        return Err(no_branch(name));
+    }
     let mut kept = at(vault)?;
     let Some(head) = branch_head(kept.repo(), name) else {
         return Err(no_branch(name));
@@ -1455,6 +1478,9 @@ fn one_version_each(kept: &Kept, index: &Index) -> Result<Vec<String>, HistoryEr
 }
 
 pub fn merge_in(vault: &Opened, data: &Path, name: &str) -> Result<Merged, HistoryError> {
+    if of_a_draft(name) {
+        return Err(no_branch(name));
+    }
     let mut kept = at(vault)?;
     let Some(head) = branch_head(kept.repo(), name) else {
         return Err(no_branch(name));
