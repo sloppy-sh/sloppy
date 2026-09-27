@@ -4,7 +4,13 @@
 // answers the person is its own, and this is what is drawn from it.
 
 import 'fake-indexeddb/auto';
-import { chatCard, type ChatActDone, type ChatTurn, type OwnedRef } from '@sloppy/types';
+import {
+	chatCard,
+	type ChatActDone,
+	type ChatCard,
+	type ChatTurn,
+	type OwnedRef
+} from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DID, homeOf, node, ref, useFakeApi, VIEWER } from '../stores/fake-api.test-support.js';
@@ -43,18 +49,24 @@ let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let opened: OwnedRef[];
 let keeps: { at: number; said: string }[];
+let answers: boolean[];
 let acts: Map<string, ChatActDone>;
 let kept: Map<number, ChatActDone>;
 
-function show(turns: readonly ChatTurn[], live = false): void {
+function show(
+	turns: readonly ChatTurn[],
+	over: { live?: boolean; keeping?: { at: number; card?: ChatCard } } = {}
+): void {
 	mounted = mount(ChatThread, {
 		target,
 		props: {
 			turns,
-			live,
+			live: over.live ?? false,
+			keeping: over.keeping ?? null,
 			done: (call: string) => acts.get(call),
 			kept: (at: number) => kept.get(at),
 			onKeep: (at: number, said: string) => keeps.push({ at, said }),
+			onKept: (allowed: boolean) => answers.push(allowed),
 			onOpen: (note: OwnedRef) => opened.push(note)
 		}
 	});
@@ -65,6 +77,7 @@ beforeEach(async () => {
 	nodes.clear();
 	opened = [];
 	keeps = [];
+	answers = [];
 	acts = new Map();
 	kept = new Map();
 	const api = useFakeApi();
@@ -176,9 +189,26 @@ describe('keeping an answer', () => {
 	});
 
 	it('offers nothing on an answer that is still arriving', () => {
-		show([said], true);
+		show([said], { live: true });
 
 		expect(named('Keep as a note')).toBeUndefined();
+	});
+
+	it('stands the question at the turn it would keep, and the offer at the rest', () => {
+		show([said, agent([{ kind: 'said', said: 'And the lexer reads the characters.' }])], {
+			keeping: {
+				at: 0,
+				card: chatCard('note', 'The parser', [{ label: 'Place', value: 'src/parser.ts' }])
+			}
+		});
+
+		expect(screen()).toContain('src/parser.ts');
+		expect(named('Keep as a note')).toBeDefined();
+
+		named('Keep it')?.click();
+		flushSync();
+
+		expect(answers).toEqual([true]);
 	});
 
 	it('stands what came of keeping it where the offer was', () => {

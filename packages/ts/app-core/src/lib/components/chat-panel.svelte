@@ -45,6 +45,8 @@
 	 *  are, since there is nothing in it to lay out. */
 	const SOMETHING = 'It wants to change the notes.';
 
+	const ITS_OWN = 'its own choice';
+
 	/** How tall the composer grows before it scrolls instead. */
 	const COMPOSER_MAX = 160;
 
@@ -52,8 +54,13 @@
 	const asking = $derived(chat.asking);
 	const asked = $derived(asking ? readCall(asking.call, asking.act, asking.arguments) : null);
 	const shown = $derived(askedShown(asked, nameOf));
+	const keeping = $derived(chat.keeping);
+	const keepShown = $derived(
+		keeping ? askedShown(readCall(keeping.call, keeping.act, keeping.arguments), nameOf) : null
+	);
 	const models = $derived(chat.models);
 	const picked = $derived(models.find((one) => one.model === chat.model));
+	const answering = $derived(chat.answeringWith);
 
 	let docked = $state(false);
 	let said = $state('');
@@ -209,10 +216,15 @@
 				<ChatThread
 					turns={chat.turns}
 					live={chat.running}
-					busy={asking !== null || chat.settling}
+					busy={asking !== null || chat.settling || keeping !== null || chat.keepSettling}
 					done={(call) => chat.done(call)}
 					kept={(at) => chat.kept(at)}
+					keeping={keeping
+						? { at: keeping.at, ...(keepShown === null ? {} : { card: keepShown.card }) }
+						: null}
+					settling={chat.keepSettling}
 					onKeep={keep}
+					onKept={(allowed) => void chat.keepIt(allowed)}
 					onOpen={(note) => void read(note)}
 				/>
 
@@ -243,29 +255,27 @@
 								Don’t
 							</Button>
 						</div>
-						{#if asking.keeping === undefined}
-							<div class="mt-1 flex flex-wrap gap-1">
-								<Button
-									variant="ghost"
-									class="h-11 flex-1 text-xs whitespace-normal"
-									disabled={chat.settling}
-									onclick={() => void chat.settle(asking.call, true, true)}
-								>
-									Allow the rest of this reply
-								</Button>
-								<Button
-									variant="ghost"
-									class="h-11 flex-1 text-xs whitespace-normal"
-									disabled={chat.settling}
-									onclick={() => {
-										chat.askBeforeWriting(false);
-										void chat.settle(asking.call, true);
-									}}
-								>
-									Stop asking
-								</Button>
-							</div>
-						{/if}
+						<div class="mt-1 flex flex-wrap gap-1">
+							<Button
+								variant="ghost"
+								class="h-11 flex-1 text-xs whitespace-normal"
+								disabled={chat.settling}
+								onclick={() => void chat.settle(asking.call, true, true)}
+							>
+								Allow the rest of this reply
+							</Button>
+							<Button
+								variant="ghost"
+								class="h-11 flex-1 text-xs whitespace-normal"
+								disabled={chat.settling}
+								onclick={() => {
+									chat.askBeforeWriting(false);
+									void chat.settle(asking.call, true);
+								}}
+							>
+								Stop asking
+							</Button>
+						</div>
 					</div>
 				{/if}
 
@@ -398,10 +408,10 @@
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
 				{/if}
-				{#if chat.answeringWith}
+				{#if answering}
 					<p class="min-w-0 flex-1 text-xs text-muted-foreground">
-						{chat.answeringWith.name} is answering this one. Start again to use {picked?.name ??
-							'its own choice'}.
+						This one is being answered with {answering === 'its own' ? ITS_OWN : answering.name}.
+						Start again to use {picked?.name ?? ITS_OWN}.
 					</p>
 				{/if}
 			</div>

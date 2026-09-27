@@ -3,6 +3,7 @@
 
 import { decodeText, encodeText } from "@sloppy/vault";
 import { BIN_DIR, BIN_FILE } from "./vault-paths.js";
+import { ATTACHED_DIR } from "./container.js";
 import { CREDENTIALS_FILE } from "./credentials.js";
 import type { Files } from "./files.js";
 import { GIT_DEFAULTS_FILE } from "./git-defaults.js";
@@ -18,7 +19,9 @@ const IGNORE_FILE = ".gitignore";
  * `*.key` covers every key rather than the two named ones: a key this build has
  * not named yet is the one mistake with no way back. A note's ink and what each
  * picture was called sit in the same folder and are the graph's own — they
- * belong in the history with the notes.
+ * belong in the history with the notes. What somebody handed the chat does not:
+ * a photo taken to ask a question about it is theirs and this device's, and
+ * committing it puts it somewhere they cannot take it back from.
  */
 export const KEPT_OUT = [
   "*.key",
@@ -32,6 +35,7 @@ export const KEPT_OUT = [
   "sloppy-identity*",
   `/${BIN_FILE}`,
   `/${BIN_DIR}/`,
+  `/${ATTACHED_DIR}/`,
 ];
 
 /**

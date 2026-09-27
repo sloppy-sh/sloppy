@@ -28,7 +28,10 @@
 		busy = false,
 		done,
 		kept,
+		keeping = null,
+		settling = false,
 		onKeep,
+		onKept,
 		onOpen
 	}: {
 		turns: readonly ChatTurn[];
@@ -41,7 +44,13 @@
 		done: (call: ChatCallId) => ChatActDone | undefined;
 		/** What came of keeping the answer in the turn at this place. */
 		kept: (at: number) => ChatActDone | undefined;
+		/** The answer somebody asked to keep, standing at the turn it would
+		 *  keep. The card is absent where the write does not read as one. */
+		keeping?: { at: number; card?: Card } | null;
+		/** Whether that keep is being written and has not landed yet. */
+		settling?: boolean;
 		onKeep: (at: number, said: string) => void;
+		onKept?: (allowed: boolean) => void;
 		/** Read a note an act left. */
 		onOpen: (note: OwnedRef) => void;
 	} = $props();
@@ -61,17 +70,14 @@
 		const ours = done(row.call.call);
 		// A tool of the agent's own answers the agent and nobody else, so its
 		// writing is the whole of what there is to show of it.
-		if (!ours) return row.answer ? toolOutcome(undefined, row.answer) : {};
+		if (!ours) return row.answer ? toolOutcome(row.answer) : {};
 		const only = onlyNoteOf(ours);
 		return { ...cameOf(ours), ...(only === undefined ? {} : { note: only }) };
 	}
 
 	function cameOf(act: ChatActDone): Came {
 		const said =
-			act.told ??
-			(act.trouble === true
-				? toolOutcome(undefined, { said: act.said, trouble: true }).said
-				: undefined);
+			act.told ?? (act.trouble === true ? toolOutcome({ said: act.said }).said : undefined);
 		return {
 			...(said === undefined ? {} : { said }),
 			...(act.trouble === undefined ? {} : { trouble: act.trouble }),
@@ -170,7 +176,7 @@
 				</div>
 			{:else}
 				{@const answer = saidIn(rows)}
-				{@const keeping = kept(index)}
+				{@const came = kept(index)}
 				<div class="space-y-2">
 					{#each rows as row (row.key)}
 						{#if row.kind === 'said'}
@@ -219,8 +225,27 @@
 					{/each}
 
 					{#if answer.trim() !== '' && !(live && index === drawn.length - 1)}
-						{#if keeping}
-							{@render outcome(cameOf(keeping), onlyNoteOf(keeping))}
+						{#if came}
+							{@render outcome(cameOf(came), onlyNoteOf(came))}
+						{:else if keeping?.at === index}
+							<div class="rounded-lg border border-primary/50 bg-primary/5 p-3">
+								{#if keeping.card}
+									<ChatCard card={keeping.card} />
+								{/if}
+								<div class="mt-3 flex gap-2">
+									<Button class="h-11 flex-1" disabled={settling} onclick={() => onKept?.(true)}>
+										Keep it
+									</Button>
+									<Button
+										variant="outline"
+										class="h-11 flex-1"
+										disabled={settling}
+										onclick={() => onKept?.(false)}
+									>
+										Don’t
+									</Button>
+								</div>
+							</div>
 						{:else}
 							<Button
 								variant="ghost"

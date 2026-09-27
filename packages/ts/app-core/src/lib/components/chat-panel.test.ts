@@ -922,7 +922,7 @@ describe('keeping an answer', () => {
 		await settle();
 
 		expect(screen()).toContain('Place src/parser.ts');
-		expect(named('Allow')).toBeDefined();
+		expect(named('Keep it')).toBeDefined();
 		// Letting a whole reply through is an answer to the agent, and this is
 		// the person's own act.
 		expect(named('Allow the rest of this reply')).toBeUndefined();
@@ -934,7 +934,7 @@ describe('keeping an answer', () => {
 		acting.answer = { said: '{}', told: 'Kept.', touched: [PARSER] };
 		named('Keep as a note')?.click();
 		await settle();
-		named('Allow')?.click();
+		named('Keep it')?.click();
 		await settle();
 
 		expect(acting.called.map((one) => one.act)).toEqual(['write_note']);
@@ -962,9 +962,7 @@ describe('keeping an answer', () => {
 		expect(named('Allow')).toBeUndefined();
 	});
 
-	// A second turn under a standing question would raise a question over it,
-	// and the first would be answered by nobody.
-	it('waits on the question it raised before it takes anything else', async () => {
+	it('offers it on one answer at a time, so there is no question of which', async () => {
 		await answered();
 		type('And the lexer?');
 		labelled('Send')?.click();
@@ -985,13 +983,43 @@ describe('keeping an answer', () => {
 		keeps()[1].click();
 		await settle();
 
-		expect(keeps().map((one) => one.disabled)).toEqual([true, true]);
-		type('And what about the parser?');
-		composer().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		expect(keeps().map((one) => one.disabled)).toEqual([true]);
+		expect(screen()).toContain('Place src/lexer.ts');
+	});
+
+	// The person's own question is not the agent's: nothing the agent does with
+	// its turn is an answer to it, and the agent raising one of its own puts a
+	// second card up rather than swapping this one under the same buttons.
+	it('stands until they answer it, whatever the agent does meanwhile', async () => {
+		await answered();
+		named('Keep as a note')?.click();
 		await settle();
 
-		expect(stub.said).toHaveLength(2);
+		type('And the lexer?');
+		labelled('Send')?.click();
+		await settle();
+		stub.tell({
+			event: 'asking',
+			call: 'c9',
+			act: 'write_note',
+			arguments: { about: 'src/lexer.ts', sections: ['## The lexer\n\nIt reads characters.'] }
+		});
+		await settle();
+
 		expect(named('Allow')).toBeDefined();
+		expect(named('Keep it')).toBeDefined();
+
+		stub.tell({ event: 'settled', call: 'c9', allowed: false });
+		stub.tell({ event: 'ended' });
+		await settle();
+
+		expect(named('Allow')).toBeUndefined();
+		acting.answer = { said: '{}', told: 'Kept.', touched: [PARSER] };
+		named('Keep it')?.click();
+		await settle();
+
+		expect(acting.called.map((one) => one.act)).toEqual(['write_note']);
+		expect(screen()).toContain('Kept.');
 	});
 });
 
@@ -1039,6 +1067,21 @@ describe('putting a file in front of it', () => {
 		expect(await files.list('.sloppy/attached')).toEqual([]);
 	});
 
+	it('takes what was never said off the project when the conversation is let go', async () => {
+		await open();
+		type('What is in here?');
+		labelled('Send')?.click();
+		await settle();
+		chose(new File(['a picture'], 'the board.png'));
+		await settle();
+		expect(await files.list('.sloppy/attached')).toHaveLength(1);
+
+		named('Start again')?.click();
+		await settle();
+
+		expect(await files.list('.sloppy/attached')).toEqual([]);
+	});
+
 	it('says plainly that one is too big to send, and sends the rest', async () => {
 		await open();
 		const huge = new File(['x'], 'the film.mov');
@@ -1082,8 +1125,21 @@ describe('which model answers', () => {
 		chat.setModel('haiku');
 		await settle();
 
-		expect(screen()).toContain('Sonnet is answering this one.');
+		expect(screen()).toContain('This one is being answered with Sonnet.');
 		expect(screen()).toContain('Start again to use Haiku.');
+	});
+
+	// Picking after a while is the commonest way round, and the one the notice
+	// exists for: the composer reads the pick, and this says what the standing
+	// conversation is still on.
+	it('says so where the chat was started before anybody picked', async () => {
+		await saying('What is in here?');
+
+		chat.setModel('sonnet');
+		await settle();
+
+		expect(screen()).toContain('This one is being answered with its own choice.');
+		expect(screen()).toContain('Start again to use Sonnet.');
 	});
 });
 

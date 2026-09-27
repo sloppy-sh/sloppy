@@ -7,7 +7,7 @@
  * rejects with the words this store shows.
  */
 
-import { CONTAINER_DIR } from '@sloppy/local';
+import { ATTACHED_DIR, CONTAINER_DIR } from '@sloppy/local';
 import {
 	CHAT_ASKED_MAX,
 	CHAT_ATTACHED_NAME_MAX,
@@ -50,7 +50,7 @@ const NO_PROJECT = 'There is no project open here, so there are no notes to work
 
 /** Where what somebody attached is written: the chat's own folder inside the
  *  project, which is where the agent reads it from. */
-const ATTACHED_AT = `${CONTAINER_DIR}/attached`;
+const ATTACHED_AT = `${CONTAINER_DIR}/${ATTACHED_DIR}`;
 
 /** What a file with no name of its own is called. */
 const UNNAMED = 'A file';
@@ -66,9 +66,13 @@ export interface ChatAsking {
 	call: ChatCallId;
 	act: ChatToolName;
 	arguments: unknown;
-	/** Which turn's answer this would keep. **Absent is the agent asking**, and
-	 *  only those are answered for a whole reply at once. */
-	keeping?: number;
+}
+
+/** An answer somebody asked to keep as a note, waiting on their say-so. It is
+ *  the person's own act, so nothing the agent's turn does answers it. */
+export interface ChatKeeping extends ChatAsking {
+	/** Where the turn whose answer it would keep stands. */
+	at: number;
 }
 
 function agentTurn(): ChatTurn {
@@ -110,6 +114,8 @@ class ChatStore {
 	#running = $state(false);
 	#asking = $state.raw<ChatAsking | null>(null);
 	#settling = $state(false);
+	#keeping = $state.raw<ChatKeeping | null>(null);
+	#keepSettling = $state(false);
 	#stopping = $state(false);
 	/** What each of Sloppy's own acts came to, for the person — the agent read
 	 *  its own half and this is the rest of it. */
@@ -160,7 +166,7 @@ class ChatStore {
 		return this.#running;
 	}
 
-	/** The act waiting on the person, or `null` while none is. */
+	/** The agent's act waiting on the person, or `null` while none is. */
 	get asking(): ChatAsking | null {
 		return this.#asking;
 	}
@@ -168,6 +174,17 @@ class ChatStore {
 	/** Whether their answer has been given and has not landed yet. */
 	get settling(): boolean {
 		return this.#settling;
+	}
+
+	/** The answer somebody asked to keep, waiting on their say-so. */
+	get keeping(): ChatKeeping | null {
+		return this.#keeping;
+	}
+
+	/** Whether the note they asked to keep is being written and has not landed
+	 *  yet. */
+	get keepSettling(): boolean {
+		return this.#keepSettling;
 	}
 
 	/** Whether what this reply writes has been allowed already, so the rest of
@@ -229,12 +246,18 @@ class ChatStore {
 		prefs.set('chatModel', held);
 	}
 
-	/** The model the conversation on screen is being answered with, where that
-	 *  is not the one they have picked. Absent while the two agree, and before
-	 *  anything has been said. */
-	get answeringWith(): ChatModel | undefined {
-		if (!this.#standing || this.#openedWith === this.model) return undefined;
-		return this.models.find((one) => one.model === this.#openedWith);
+	/**
+	 * What the conversation on screen is being answered with, where that is not
+	 * what they have picked: the model, or `'its own'` where it was opened
+	 * before anybody picked one. Absent while the two agree, before anything
+	 * has been said, and where it was opened with a model this agent no longer
+	 * offers, which there is nothing to call in front of somebody.
+	 */
+	get answeringWith(): ChatModel | 'its own' | undefined {
+		const opened = this.#openedWith;
+		if (!this.#standing || opened === this.model) return undefined;
+		if (opened === undefined) return 'its own';
+		return this.models.find((one) => one.model === opened);
 	}
 
 	/** What somebody has put in front of the agent alongside what they are
@@ -277,9 +300,9 @@ class ChatStore {
 	/**
 	 * Say something, which begins a turn — starting the session where none
 	 * stands. Nothing is said while the agent is still answering the last turn,
-	 * nor while a question stands: the turn it would begin could raise a second
-	 * one over the first, and the answer to that one would go nowhere. Neither
-	 * is the empty string with nothing attached.
+	 * nor while a question of the agent's stands: the turn it would begin could
+	 * raise a second one over the first, and the answer to that one would go
+	 * nowhere. Neither is the empty string with nothing attached.
 	 */
 	async say(words: string): Promise<void> {
 		const access = seam().chat();
@@ -371,29 +394,46 @@ class ChatStore {
 	/**
 	 * Keep the answer in the turn at `at` as a note. It is the person's own
 	 * write, so it goes through the act the agent's writes go through and stands
-	 * behind the same question — the card is where they read where it would land
-	 * and turn it down. It is asked whatever {@link ChatStore.writesWithoutAsking}
-	 * says, because that answer is about what the AGENT writes unasked.
+	 * behind the same card — where they read what would land and turn it down.
+	 * It is asked whatever {@link ChatStore.writesWithoutAsking} says, because
+	 * that answer is about what the AGENT writes unasked.
 	 */
 	keep(at: number, asked: WriteNoteArguments): void {
-		if (this.#asking !== null || this.#settling) return;
-		this.#asking = { call: ulid(), act: 'write_note', arguments: asked, keeping: at };
+		if (this.#keeping !== null || this.#keepSettling) return;
+		this.#keeping = { call: ulid(), act: 'write_note', arguments: asked, at };
+	}
+
+	/** Their answer to keeping it. */
+	async keepIt(allowed: boolean): Promise<void> {
+		const keeping = this.#keeping;
+		if (keeping === null || this.#keepSettling) return;
+		this.#keeping = null;
+		if (!allowed) return;
+		this.#keepSettling = true;
+		try {
+			const done = await this.#act({
+				call: keeping.call,
+				act: 'write_note',
+				arguments: keeping.arguments as WriteNoteArguments
+			});
+			this.#kept.set(keeping.at, done);
+		} catch (error) {
+			this.#kept.set(keeping.at, { said: '', trouble: true, told: wordsFor(error) ?? UNKEPT });
+		} finally {
+			this.#keepSettling = false;
+			this.#readAgain();
+		}
 	}
 
 	/**
-	 * The person's answer to an act that would write. The agent's question
-	 * closes on being told it has settled, never on this act alone.
+	 * The person's answer to an act of the agent's that would write. Its
+	 * question closes on being told it has settled, never on this act alone.
 	 *
 	 * `andTheRest` allows everything else the reply underway writes, so a person
 	 * documenting thirty files answers once rather than thirty times.
 	 */
 	async settle(call: ChatCallId, allowed: boolean, andTheRest = false): Promise<void> {
 		if (this.#settling) return;
-		const asking = this.#asking;
-		if (asking?.call === call && asking.keeping !== undefined) {
-			await this.#keepIt(asking, asking.keeping, allowed);
-			return;
-		}
 		const access = seam().chat();
 		if (!access) return;
 		if (allowed && andTheRest) this.#allowedThisTurn = true;
@@ -449,14 +489,28 @@ class ChatStore {
 		this.#writing = false;
 		this.#asking = null;
 		this.#settling = false;
+		this.#keeping = null;
+		this.#keepSettling = false;
 		this.#allowedThisTurn = false;
 		this.#done.clear();
 		this.#kept.clear();
 		this.#touched = [];
 		this.#blind = false;
-		this.#attached = [];
+		this.#letAttachedGo();
 		this.#openedWith = undefined;
 		this.#trouble = null;
+	}
+
+	/** What was put in front of a conversation that is being let go was never
+	 *  said, so nothing reads it again and it comes off the project with it. */
+	#letAttachedGo(): void {
+		const held = this.#attached;
+		this.#attached = [];
+		if (held.length === 0) return;
+		void runtime
+			.project()
+			.then((project) => Promise.all(held.map((one) => project?.remove(one.path))))
+			.catch(() => {});
 	}
 
 	#heard(epoch: number, event: ChatEvent): void {
@@ -543,25 +597,6 @@ class ChatStore {
 			else this.#touched = [...this.#touched, ...done.touched];
 		}
 		return done;
-	}
-
-	async #keepIt(asking: ChatAsking, at: number, allowed: boolean): Promise<void> {
-		this.#asking = null;
-		if (!allowed) return;
-		this.#settling = true;
-		try {
-			const done = await this.#act({
-				call: asking.call,
-				act: 'write_note',
-				arguments: asking.arguments as WriteNoteArguments
-			});
-			this.#kept.set(at, done);
-		} catch (error) {
-			this.#kept.set(at, { said: '', trouble: true, told: wordsFor(error) ?? UNKEPT });
-		} finally {
-			this.#settling = false;
-			this.#readAgain();
-		}
 	}
 }
 

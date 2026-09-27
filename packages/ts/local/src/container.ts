@@ -7,6 +7,12 @@ import type { Files } from "./files.js";
 /** What the vault inside a project's root folder is called. */
 export const CONTAINER_DIR = ".sloppy";
 
+/** Where what somebody put in front of the chat is written, inside the
+ *  container — docs/ARCHITECTURE.md § "Asking a tool to write the notes". It is
+ *  neither the person's code nor a note, so `KEPT_OUT` holds it out of the
+ *  history with everything else there that is this device's alone. */
+export const ATTACHED_DIR = "attached";
+
 /**
  * Where what is nobody else's business goes for the project rooted at `root`,
  * spelled as the platform spells `root`: inside the container's own sidecar

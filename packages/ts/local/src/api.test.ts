@@ -112,6 +112,10 @@ describe("the folder a shell opened", () => {
     const lines = new TextDecoder().decode(ignore).split("\n");
     expect(lines).toContain("*.key");
     expect(lines).toContain("identities.json");
+    // What somebody hands the chat is theirs and this device's: a photo taken
+    // to ask a question about it is not a note, and committing it puts it
+    // somewhere they cannot take it back from.
+    expect(lines).toContain("/attached/");
   });
 
   it("adds the missing lines to a container that already had none", async () => {
