@@ -136,12 +136,17 @@ already carries is **cited** — \`[what it is called](sloppy:<ref>)\` — never
 time. Two notes saying the same thing come apart as the code moves, and the next reader is
 left guessing which of them is still true.
 
-Keeping them true as the code changes is the same work:
+Keeping them true as the code changes is the same work, and it stops at the same line.
+Neither of these goes as an offer — where a note hangs and which tags it carries are its
+author's — so both are for a note you wrote where there was none, and on anybody else's you
+write down what you found and leave the change to them.
 
-- **Move a note where what it sprang out of turns out to be something else.** That is its
-  \`parent\`, and everything that sprang from the note goes with it.
 - **Take a tag off where it has stopped being true of the note.** A tag that names a system
   the note is no longer about picks out the wrong set for everyone who selects it.
+- **Move a note where what it sprang out of turns out to be something else.** That is its
+  \`parent\`, and everything that sprang from the note goes with it — while the note carries
+  no number. A move gives a numbered one the next number in the run it joins, and a number
+  is never yours to write.
 
 ## Pointing at code
 

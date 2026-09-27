@@ -3166,16 +3166,16 @@ PACKAGE — so a detailed note about that file is written under it rather than i
 it, and it carries the WHOLE format: one note per file, the front matter, the sections, the
 markdown a section holds, citations, `code:` anchors, the compass and its three methods,
 tags, `checked`, the shapes a note starts from, and the pictures and drawings an agent moves
-and never redraws. Then the doctrine that keeps the notes from saying one thing twice — a
-fact the graph already carries is cited, a note is moved where what it sprang out of turns
-out to be something else, a tag comes off where it has stopped being true — the rule that
-an existing note is changed through an offer, what an agent may never write, and the
-commands above. It is the whole format because an agent that
-can write only a subset of it produces notes a person cannot finish (§ "Asking a tool to
-write the notes"). `AGENT_MD` in `@sloppy/local` is the one copy of that text; the shapes in
-it come from `NOTE_TEMPLATES` in `@sloppy/types` and the methods from `compassMethod`
-beside them, so the file teaches what the app offers and a fourth method or a renamed slot
-cannot leave it saying the old thing.
+and never redraws. Then the doctrine that keeps the notes from saying one thing twice — look
+before writing, cite what the graph already carries, and keep a note true by carrying it to
+what it really sprang out of or taking off a tag that has stopped being true, each of those
+two where the note is the agent's own to keep true — the rule that an existing note is
+changed through an offer, what an agent may never write, and the commands above. It is the
+whole format because an agent that can write only a subset of it produces notes a person
+cannot finish (§ "Asking a tool to write the notes"). `AGENT_MD` in `@sloppy/local` is the
+one copy of that text; the shapes in it come from `NOTE_TEMPLATES` in `@sloppy/types` and
+the methods from `compassMethod` beside them, so the file teaches what the app offers and a
+fourth method or a renamed slot cannot leave it saying the old thing.
 
 **The review is derived, never stored, and computed in one place.** `review()` in
 `@sloppy/vault` is given the notes, the project's top-level paths and a way to ask what has
@@ -3286,7 +3286,11 @@ stand behind the question a write stands behind and never a weaker one, and the 
 names which tags would come off, because that is the half a person would want back.
 **The address stays the person's.** No act names one: a move takes no number, the
 Folgezettel rule gives the note what it takes next, and every address it leaves keeps
-leading to it.
+leading to it. `.sloppy/AGENT.md` holds the same two acts to the line that file already
+draws — an agent editing the files by hand keeps its own notes true and leaves somebody
+else's to them, because neither act can go as an offer — and stops short of a numbered
+note, since the number a move gives one next is worked out from the run it joins and is
+never an agent's to write.
 
 **Every act that WRITES is behind the person's own answer, asked in the thread.** The
 question names what is about to happen — the note, the place — and the call resolves on
@@ -3357,14 +3361,14 @@ again at a place already held is that block GROWN, and replaces it, which is the
 how writing draws itself as it arrives.
 
 **What an answer runs to is decided once, in `@sloppy/types`.** A listing, a search and a
-note read whole are each composed by `listingAnswer`, `foundAnswer` and `noteAnswer`
-there, one rule under all three, which carry as much as
-`CHAT_ANSWER_MAX` holds and say how much they left — because the shapes bound one note and
-the seam bounds one answer, and neither can say what happens when a project has more notes,
-or a note more sections, than fit. Nothing in these shapes bounds a NOTE: a person adds
-sections by hand and a write appends after the rest, so a read that refused a long note
-would refuse exactly the notes worth reading. An agent handed a cut answer with nothing said
-reads it as the whole of them, which is why the count it left is in the answer itself.
+note read whole are each composed by `listingAnswer`, `foundAnswer` and `noteAnswer` there,
+one rule under all three, which carry as much as `CHAT_ANSWER_MAX` holds and say how much
+they left — because the shapes bound one note and the seam bounds one answer, and neither
+can say what happens when a project has more notes, or a note more sections, than fit.
+Nothing in these shapes bounds a NOTE: a person adds sections by hand and a write appends
+after the rest, so a read that refused a long note would refuse exactly the notes worth
+reading. An agent handed a cut answer with nothing said reads it as the whole of them,
+which is why the count it left is in the answer itself.
 
 **One session at a time on a device, and opening one replaces what stood.** A person sees
 one chat, so there is no second thread for a session to go on into unseen. Saying something
@@ -3392,9 +3396,9 @@ element a person can put in a note — the sections, the compass and its three m
 citations, the `code:` anchors, the tags, the shapes a note starts from, the pictures and
 the drawings — is written down there, because an agent that can only write a subset of the
 format produces notes a person cannot finish, and a person editing a note must not be
-writing something the next pass cannot read. `AGENT_MD` in `@sloppy/local` is the one copy of
-that text, and the shapes and the methods it teaches come from `@sloppy/types` so the file
-and the app cannot drift apart.
+writing something the next pass cannot read. `AGENT_MD` in `@sloppy/local` is the one copy
+of that text, and the shapes and the methods it teaches come from `@sloppy/types` so the
+file and the app cannot drift apart.
 
 **It also says which of two situations the agent is in, because the same file serves both.**
 An agent working in the repository on its own writes the note files, which is what that
