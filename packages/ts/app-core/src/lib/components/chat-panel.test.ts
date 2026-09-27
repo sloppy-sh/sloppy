@@ -10,6 +10,7 @@ import type {
 	ChatEvent,
 	ChatToolAnswer,
 	ChatToolCall,
+	ChatToolName,
 	OwnedRef
 } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
@@ -699,6 +700,116 @@ describe('the answer a write waits on', () => {
 
 		expect(screen()).toContain('It wants to write');
 		expect(stub.answered).toEqual([{ call: 'c9', allowed: true }]);
+	});
+
+	it('says which number would go on the note, and which would come off', async () => {
+		await saying();
+		stub.tell({
+			event: 'asking',
+			call: 'c9',
+			act: 'number_note',
+			arguments: { note: PARSER, address: '2b' }
+		});
+		await settle();
+		expect(screen()).toContain('It wants to number 1 \u00b7 The parser 2b.');
+
+		stub.tell({ event: 'asking', call: 'c10', act: 'number_note', arguments: { note: PARSER } });
+		await settle();
+		expect(screen()).toContain('It wants to take the number off 1 \u00b7 The parser.');
+		expect(stub.answered).toEqual([]);
+	});
+
+	it('names the lines that would go, which is the destructive half', async () => {
+		await saying();
+		stub.tell({
+			event: 'asking',
+			call: 'c9',
+			act: 'link_notes',
+			arguments: { note: PARSER, to: [VAULT], off: [VAULT] }
+		});
+		await settle();
+
+		expect(screen()).toContain(
+			'It wants to draw a line from 1 \u00b7 The parser to 1a \u00b7 The vault, and take the line to 1a \u00b7 The vault off it.'
+		);
+	});
+
+	it('says what would be written on a line, and what would come off it', async () => {
+		await saying();
+		stub.tell({
+			event: 'asking',
+			call: 'c9',
+			act: 'style_edge',
+			arguments: { note: PARSER, to: VAULT, label: 'grew out of' }
+		});
+		await settle();
+		expect(screen()).toContain(
+			'It wants to write \u201cgrew out of\u201d on the line between 1 \u00b7 The parser and 1a \u00b7 The vault.'
+		);
+
+		stub.tell({
+			event: 'asking',
+			call: 'c10',
+			act: 'style_edge',
+			arguments: { note: PARSER, to: VAULT, off: ['label', 'direction', 'stroke'] }
+		});
+		await settle();
+		expect(screen()).toContain(
+			'It wants to take the look off the line between 1 \u00b7 The parser and 1a \u00b7 The vault.'
+		);
+	});
+
+	it('says the mark is what would change, and what would come back off it', async () => {
+		await saying();
+		stub.tell({
+			event: 'asking',
+			call: 'c9',
+			act: 'style_note',
+			arguments: { note: PARSER, ring_weight: 'heavy', off: ['mark_radius'] }
+		});
+		await settle();
+
+		expect(screen()).toContain('It wants to change how 1 \u00b7 The parser is drawn.');
+		expect(screen()).toContain('It would take the size back off it.');
+	});
+
+	it('says a note goes to the bin with everything beneath it, and can come back', async () => {
+		await saying();
+		stub.tell({ event: 'asking', call: 'c9', act: 'delete_note', arguments: { note: PARSER } });
+		await settle();
+
+		expect(screen()).toContain(
+			'It wants to put 1 \u00b7 The parser, and everything beneath it, in the bin.'
+		);
+		expect(screen()).toContain('You can take it back out.');
+		expect(stub.answered).toEqual([]);
+	});
+
+	/** Every act that writes stands behind the same question, whatever it
+	 *  writes — the parity is in what an agent CAN do, never in what it does
+	 *  unasked. */
+	it('waits on the person for every act that would write', async () => {
+		const asks: { act: ChatToolName; arguments: unknown }[] = [
+			{ act: 'number_note', arguments: { note: PARSER, address: '2b' } },
+			{ act: 'link_notes', arguments: { note: PARSER, to: [VAULT] } },
+			{ act: 'style_edge', arguments: { note: PARSER, to: VAULT, label: 'grew out of' } },
+			{ act: 'style_note', arguments: { note: PARSER, ring_weight: 'heavy' } },
+			{ act: 'delete_note', arguments: { note: PARSER } }
+		];
+		for (const [at, asked] of asks.entries()) {
+			const call = `w${at}`;
+			await saying();
+			stub.tell({ event: 'asking', call, ...asked });
+			await settle();
+
+			expect(named('Allow')).toBeDefined();
+			expect(stub.answered.find((one) => one.call === call)).toBeUndefined();
+			named('Allow')?.click();
+			await settle();
+			expect(stub.answered.at(-1)).toEqual({ call, allowed: true });
+			stub.tell({ event: 'ended', stopped: false });
+			await settle();
+		}
 	});
 });
 

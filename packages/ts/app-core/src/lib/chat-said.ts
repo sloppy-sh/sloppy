@@ -15,11 +15,17 @@ import {
 	ChatToolCallSchema,
 	type ChatToolName,
 	type ChatTurn,
+	type EdgeLookChannel,
+	type LinkNotesArguments,
 	ListedNoteSchema,
+	type MarkChannel,
 	NotesFoundSchema,
 	NotesListedSchema,
 	NoteWrittenSchema,
 	type OwnedRef,
+	type StyleEdgeArguments,
+	type StyleNoteArguments,
+	type TagNoteArguments,
 	type ToolCallBlock
 } from '@sloppy/types';
 import type { NoteLanding } from './pages/page-state.js';
@@ -32,6 +38,126 @@ const SHOWN_MAX = 120;
 export function readCall(call: ChatCallId, act: ChatToolName, args: unknown): ChatToolCall | null {
 	const read = ChatToolCallSchema.safeParse({ call, act, arguments: args ?? {} });
 	return read.success ? read.data : null;
+}
+
+/** A note as somebody cites it, where the surface asking has seen it: the
+ *  address they navigate by and what it is called. */
+export type NameOf = (note: OwnedRef) => string | undefined;
+
+/** What the words on a line are called in front of a person, in the order a
+ *  question says them. */
+const LINE_CHANNELS: readonly [EdgeLookChannel, string][] = [
+	['label', 'the words'],
+	['direction', 'the arrow'],
+	['stroke', 'the way it is drawn']
+];
+
+/** What a mark's channels are called in front of a person, in the order a
+ *  question says them. */
+const MARK_CHANNELS: readonly [MarkChannel, string][] = [
+	['ring_weight', 'the ring'],
+	['ring_style', 'the ring style'],
+	['mark_radius', 'the size']
+];
+
+const SOMETHING = 'It wants to change the notes.';
+
+/**
+ * The question standing in front of an act that would write: what would happen
+ * and to which note, in words a person can answer. The destructive half is
+ * named outright — which tags come off, which lines go, which note is binned —
+ * because that is the half they would want back. `null` is a call that does not
+ * fit the act it names, which is asked about in the plainest words there are.
+ */
+export function askedOf(call: ChatToolCall | null, nameOf: NameOf): string {
+	const named = (note: OwnedRef, otherwise: string) => nameOf(note) ?? otherwise;
+	switch (call?.act) {
+		case 'write_note': {
+			const { about, title, tags, address } = call.arguments;
+			const held = title ? `It wants to write “${title}”, about ${about}.` : undefined;
+			return [
+				held ?? `It wants to write the note about ${about}.`,
+				tags && tags.length > 0 ? `It would tag it ${tags.join(', ')}.` : '',
+				address === undefined ? '' : `It would number it ${address}.`
+			]
+				.filter((said) => said !== '')
+				.join(' ');
+		}
+		case 'move_note': {
+			const { note, to, relation, address } = call.arguments;
+			const under = relation === 'under' ? 'under' : 'after';
+			const carried = `It wants to move ${named(note, 'a note')} ${under} ${named(to, 'another note')}, with everything beneath it.`;
+			return address === undefined ? carried : `${carried} It would number it ${address}.`;
+		}
+		case 'tag_note':
+			return taggingOf(call.arguments, named);
+		case 'number_note': {
+			const { note, address } = call.arguments;
+			const held = named(note, 'a note');
+			return address === undefined
+				? `It wants to take the number off ${held}.`
+				: `It wants to number ${held} ${address}.`;
+		}
+		case 'link_notes':
+			return liningOf(call.arguments, named);
+		case 'style_edge':
+			return lookingOf(call.arguments, named);
+		case 'style_note':
+			return drawingOf(call.arguments, named);
+		case 'delete_note':
+			return `It wants to put ${named(call.arguments.note, 'a note')}, and everything beneath it, in the bin. You can take it back out.`;
+		default:
+			return SOMETHING;
+	}
+}
+
+type Named = (note: OwnedRef, otherwise: string) => string;
+
+function taggingOf(asked: TagNoteArguments, named: Named): string {
+	const on = asked.tags ?? [];
+	const off = asked.off ?? [];
+	const held = named(asked.note, 'a note');
+	if (on.length === 0 && off.length === 0) return SOMETHING;
+	if (on.length === 0) return `It wants to take ${off.join(', ')} off ${held}.`;
+	const puts = `It wants to put ${on.join(', ')} on ${held}`;
+	return off.length === 0 ? `${puts}.` : `${puts}, and take ${off.join(', ')} off it.`;
+}
+
+function liningOf(asked: LinkNotesArguments, named: Named): string {
+	const held = named(asked.note, 'a note');
+	const drawn = (asked.to ?? []).map((one) => named(one, 'another note')).join(', ');
+	const gone = (asked.off ?? []).map((one) => named(one, 'another note')).join(', ');
+	if (drawn === '' && gone === '') return SOMETHING;
+	if (drawn === '') return `It wants to take the line between ${held} and ${gone} off.`;
+	const draws = `It wants to draw a line from ${held} to ${drawn}`;
+	return gone === '' ? `${draws}.` : `${draws}, and take the line to ${gone} off it.`;
+}
+
+function lookingOf(asked: StyleEdgeArguments, named: Named): string {
+	const between = `the line between ${named(asked.note, 'a note')} and ${named(asked.to, 'another note')}`;
+	const off = new Set<string>(asked.off ?? []);
+	// Clearing the words is said as taking them off, whichever way it is asked.
+	if (asked.label === '') off.add('label');
+	if (off.size === LINE_CHANNELS.length) return `It wants to take the look off ${between}.`;
+	const taken = LINE_CHANNELS.filter(([channel]) => off.has(channel)).map(([, says]) => says);
+	const said = asked.label
+		? `It wants to write “${asked.label}” on ${between}.`
+		: `It wants to change how ${between} reads.`;
+	return taken.length === 0 ? said : `${said} It would take ${taken.join(', ')} off it.`;
+}
+
+function drawingOf(asked: StyleNoteArguments, named: Named): string {
+	const held = named(asked.note, 'a note');
+	const off = new Set<string>(asked.off ?? []);
+	const taken = MARK_CHANNELS.filter(([channel]) => off.has(channel)).map(([, says]) => says);
+	const sets =
+		asked.ring_weight !== undefined ||
+		asked.ring_style !== undefined ||
+		asked.mark_radius !== undefined;
+	if (!sets && taken.length === 0) return SOMETHING;
+	if (!sets) return `It wants to take ${taken.join(', ')} back off ${held}.`;
+	const said = `It wants to change how ${held} is drawn.`;
+	return taken.length === 0 ? said : `${said} It would take ${taken.join(', ')} back off it.`;
 }
 
 /** What one block of a turn is drawn as. A kind this build has no row for is
@@ -131,9 +257,17 @@ export function toolLine(block: ToolCallBlock): ToolLine {
 			return { doing, subject: held.arguments.words };
 		case 'read_note':
 		case 'move_note':
+		case 'link_notes':
+		case 'style_edge':
+		case 'style_note':
+		case 'delete_note':
 			return { doing, note: held.arguments.note };
 		case 'write_note':
 			return { doing, subject: held.arguments.about };
+		case 'number_note': {
+			const subject = held.arguments.address;
+			return { doing, ...(subject === undefined ? {} : { subject }), note: held.arguments.note };
+		}
 		case 'tag_note': {
 			// What comes OFF is said in the question the person answers, not here.
 			const subject = (held.arguments.tags ?? []).join(', ');
@@ -168,10 +302,16 @@ export function toolOutcome(
 			return { said: notesFound(result.said) };
 		case 'read_note':
 		case 'move_note':
-		case 'tag_note': {
+		case 'tag_note':
+		case 'number_note':
+		case 'link_notes':
+		case 'style_edge':
+		case 'style_note': {
 			const note = noteIn(result.said);
 			return note === undefined ? {} : { note };
 		}
+		case 'delete_note':
+			return { said: 'In the bin, with everything beneath it.' };
 		case 'write_note': {
 			const written = read(result.said, NoteWrittenSchema);
 			if (!written) return {};

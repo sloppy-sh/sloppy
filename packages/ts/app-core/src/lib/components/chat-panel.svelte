@@ -11,7 +11,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { Textarea } from '@sloppy/ui/textarea';
-	import { readCall } from '../chat-said.js';
+	import { askedOf, readCall } from '../chat-said.js';
 	import type { NoteLanding } from '../pages/page-state.js';
 	import { chat } from '../stores/chat.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -36,14 +36,7 @@
 	const agents = $derived(chat.agents);
 	const asking = $derived(chat.asking);
 	const asked = $derived(asking ? readCall(asking.call, asking.act, asking.arguments) : null);
-	/** A tagging that would change something, which is what the question has
-	 *  words for. */
-	const tagging = $derived.by(() => {
-		if (asked?.act !== 'tag_note') return null;
-		const on = asked.arguments.tags ?? [];
-		const off = asked.arguments.off ?? [];
-		return on.length === 0 && off.length === 0 ? null : { note: asked.arguments.note, on, off };
-	});
+	const question = $derived(askedOf(asked, nameOf));
 
 	let docked = $state(false);
 	let said = $state('');
@@ -165,37 +158,7 @@
 
 				{#if asking}
 					<div class="rounded-lg border border-primary/50 bg-primary/5 p-3" role="alert">
-						<p class="text-sm">
-							{#if asked?.act === 'write_note'}
-								{#if asked.arguments.title}
-									It wants to write “{asked.arguments.title}”, about {asked.arguments.about}.
-								{:else}
-									It wants to write the note about {asked.arguments.about}.
-								{/if}
-								{#if asked.arguments.tags && asked.arguments.tags.length > 0}
-									It would tag it {asked.arguments.tags.join(', ')}.
-								{/if}
-							{:else if asked?.act === 'move_note'}
-								{@const held = nameOf(asked.arguments.note)}
-								{@const landing = nameOf(asked.arguments.to)}
-								It wants to move {held ?? 'a note'}
-								{asked.arguments.relation === 'under' ? 'under' : 'after'}
-								{landing ?? 'another note'}, with everything beneath it.
-							{:else if tagging}
-								{@const held = nameOf(tagging.note) ?? 'a note'}
-								{#if tagging.on.length > 0}
-									It wants to put {tagging.on.join(', ')} on {held}{tagging.off.length > 0
-										? ','
-										: '.'}
-								{/if}
-								{#if tagging.off.length > 0}
-									{tagging.on.length > 0 ? 'and take' : 'It wants to take'}
-									{tagging.off.join(', ')} off {tagging.on.length > 0 ? 'it' : held}.
-								{/if}
-							{:else}
-								It wants to change the notes.
-							{/if}
-						</p>
+						<p class="text-sm">{question}</p>
 						<div class="mt-3 flex gap-2">
 							<Button
 								class="h-11 flex-1"

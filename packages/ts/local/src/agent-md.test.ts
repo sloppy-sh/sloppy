@@ -12,6 +12,7 @@ import {
   fromMarkdown,
   splitNoteFile,
   toMarkdown,
+  vaultToNote,
 } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { AGENT_MD } from "./agent-md.js";
@@ -51,6 +52,26 @@ describe("what AGENT.md teaches", () => {
     expect(front.get("tags")).toEqual([{ plain: "parsing" }]);
     expect(OwnedRefSchema.safeParse(front.get("ref")).success).toBe(true);
     expect(body).toEqual([""]);
+  });
+
+  /** The number, the look on a line and the look on the mark are the agent's to
+   *  write now, so the file teaches them by showing what the reader reads. */
+  it("shows a number, a line's look and a mark's look that read back", () => {
+    const note = vaultToNote({
+      markdown: `${example("One note is one file")}\n`,
+    });
+
+    const [drawn] = note.links ?? [];
+    expect(OwnedRefSchema.safeParse(drawn).success).toBe(true);
+    expect(note.address).toBe("1a1");
+    expect(note.edges).toEqual([
+      { to: drawn, label: "grew out of", direction: "to", stroke: "dashed" },
+    ]);
+    expect(note.appearance).toEqual({
+      ring_weight: "heavy",
+      ring_style: "dashed",
+      mark_radius: "large",
+    });
   });
 
   it("shows writing that reads back and writes back unchanged", () => {

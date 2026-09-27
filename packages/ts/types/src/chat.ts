@@ -5,8 +5,21 @@
 import { z } from "zod";
 import { ProjectPathSchema } from "./code-anchor.js";
 import { AddressSchema } from "./address.js";
+import {
+  MARK_RADII,
+  type NodeAppearance,
+  RING_STYLES,
+  RING_WEIGHTS,
+} from "./appearance.js";
 import { WRITE_DONE } from "./authority.js";
 import { OwnedRefSchema, TimestampSchema, UlidSchema } from "./common.js";
+import {
+  EDGE_DIRECTIONS,
+  EDGE_LABEL_MAX,
+  EDGE_STROKES,
+  type EdgeLook,
+  EdgeLookSchema,
+} from "./edge.js";
 
 import { NODE_TITLE_MAX } from "./node.js";
 import { MAX_TAGS_PER_NODE, TagsSchema } from "./tag.js";
@@ -86,6 +99,11 @@ export const CHAT_TOOLS = [
   "write_note",
   "move_note",
   "tag_note",
+  "number_note",
+  "link_notes",
+  "style_edge",
+  "style_note",
+  "delete_note",
 ] as const;
 export type ChatToolName = (typeof CHAT_TOOLS)[number];
 
@@ -165,6 +183,9 @@ export const WriteNoteArgumentsSchema = z.object({
   under: OwnedRefSchema.optional().describe(
     "The note this one springs out of, where a note is being started. Leave it out and it springs out of the note about the nearest folder above the place. A note already there is written onto where it stands; move_note is what carries one somewhere else.",
   ),
+  address: AddressSchema.optional().describe(
+    "The number to write on the note, like 1a1, which is what a person cites it by. It springs from the number of the note above it, or is a whole number where the note springs from nothing. Leave it out and a note being started takes the next number in the run it joins, and a note already there keeps the one it has.",
+  ),
 });
 export type WriteNoteArguments = z.infer<typeof WriteNoteArgumentsSchema>;
 
@@ -178,6 +199,9 @@ export const MoveNoteArgumentsSchema = z.object({
     .describe(
       "'under' where the note sprang out of that one, 'after' where it continues the run that one is in.",
     ),
+  address: AddressSchema.optional().describe(
+    "The number the note takes where it lands, like 1a1. It springs from the number of the note it lands under, or is a whole number where it lands as a branch. Leave it out and it takes the next number in the run it joins. Either way the number it leaves keeps leading to it.",
+  ),
 });
 export type MoveNoteArguments = z.infer<typeof MoveNoteArgumentsSchema>;
 
@@ -199,6 +223,121 @@ export const TagNoteArgumentsSchema = z.object({
     ),
 });
 export type TagNoteArguments = z.infer<typeof TagNoteArgumentsSchema>;
+
+export const NumberNoteArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe("The note, as a listing of them gives it."),
+  address: AddressSchema.optional().describe(
+    "The number to write on it, like 1a1. It springs from the number of the note above it, no other note in this graph may be at it, and the number it leaves keeps leading to it. Leave it out to take the number it has off it.",
+  ),
+});
+export type NumberNoteArguments = z.infer<typeof NumberNoteArgumentsSchema>;
+
+/** More lines than one act draws out of one note. */
+export const MOST_LINES_DRAWN = 64;
+
+export const LinkNotesArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe("The note the lines are drawn from."),
+  to: z
+    .array(OwnedRefSchema)
+    .max(MOST_LINES_DRAWN)
+    .optional()
+    .describe(
+      "The notes to draw a line to, beside the lines this note already carries. Leave it out to take lines off and draw none.",
+    ),
+  off: z
+    .array(OwnedRefSchema)
+    .max(MOST_LINES_DRAWN)
+    .optional()
+    .describe(
+      "The notes whose line to this one has stopped being true, taken off it. A note named in both loses its line.",
+    ),
+});
+export type LinkNotesArguments = z.infer<typeof LinkNotesArgumentsSchema>;
+
+/** What a look on a line is made of, beside the note at the other end. */
+const EDGE_LOOK_CHANNELS = [
+  "label",
+  "direction",
+  "stroke",
+] as const satisfies readonly (keyof EdgeLook)[];
+export type EdgeLookChannel = (typeof EDGE_LOOK_CHANNELS)[number];
+
+export const StyleEdgeArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe(
+    "The note at this end of the line, as a listing of them gives it. The arrowhead is read against it.",
+  ),
+  to: OwnedRefSchema.describe("The note at the other end."),
+  label: z
+    .string()
+    .trim()
+    .max(EDGE_LABEL_MAX)
+    .optional()
+    .describe(
+      "What the line says, like 'grew out of'. Leave it out and whatever the line says stays.",
+    ),
+  direction: z
+    .enum(EDGE_DIRECTIONS)
+    .optional()
+    .describe(
+      "Where the arrowhead sits: 'to' points at the other note, 'from' back at this one, 'both' draws one at each end.",
+    ),
+  stroke: z
+    .enum(EDGE_STROKES)
+    .optional()
+    .describe("How broken the line is drawn."),
+  off: z
+    .array(z.enum(EDGE_LOOK_CHANNELS))
+    .max(EDGE_LOOK_CHANNELS.length)
+    .optional()
+    .describe(
+      "What to take back off the line. Naming all three leaves it drawn as the graph draws it.",
+    ),
+});
+export type StyleEdgeArguments = z.infer<typeof StyleEdgeArgumentsSchema>;
+
+/** The channels of a note's look this act sets. The pictures a mark wears are
+ *  the person's own uploads, so they are not among them. */
+const MARK_CHANNELS = [
+  "ring_weight",
+  "ring_style",
+  "mark_radius",
+] as const satisfies readonly (keyof NodeAppearance)[];
+export type MarkChannel = (typeof MARK_CHANNELS)[number];
+
+export const StyleNoteArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe("The note, as a listing of them gives it."),
+  ring_weight: z
+    .enum(RING_WEIGHTS)
+    .optional()
+    .describe(
+      "How heavy a ring the mark wears. 'none' is the mark an unstyled note draws.",
+    ),
+  ring_style: z
+    .enum(RING_STYLES)
+    .optional()
+    .describe(
+      "How broken the ring is. A broken ring reads as a draft, and says nothing on a mark wearing no ring.",
+    ),
+  mark_radius: z
+    .enum(MARK_RADII)
+    .optional()
+    .describe("How big the mark is drawn."),
+  off: z
+    .array(z.enum(MARK_CHANNELS))
+    .max(MARK_CHANNELS.length)
+    .optional()
+    .describe(
+      "What to take back off the mark. Naming all of them leaves it drawn as the graph draws an unstyled note; a picture on the mark is not one of these and stays.",
+    ),
+});
+export type StyleNoteArguments = z.infer<typeof StyleNoteArgumentsSchema>;
+
+export const DeleteNoteArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe(
+    "The note to put in the bin, as a listing of them gives it. Everything beneath it goes with it, and a person can take it back out.",
+  ),
+});
+export type DeleteNoteArguments = z.infer<typeof DeleteNoteArgumentsSchema>;
 
 export interface ChatToolSpec {
   /** One line for the agent, in the words it is being asked in. */
@@ -240,14 +379,14 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   },
   write_note: {
     description:
-      "Write the note about a place in the project, starting one where there is none. Search first: what this graph already says is cited, never written again. The person is asked before anything lands.",
+      "Write the note about a place in the project, starting one where there is none. Search first: what this graph already says is cited, never written again, and a relation between two notes goes on the line between them rather than into a sentence about it. The person is asked before anything lands.",
     label: "Writing a note",
     arguments: WriteNoteArgumentsSchema,
     writes: true,
   },
   move_note: {
     description:
-      "Carry a note to what it really sprang out of, or after the note it continues. Everything beneath it goes with it, the address it leaves keeps leading to it, and the number it takes next is Sloppy's to give. The person is asked first.",
+      "Carry a note to what it really sprang out of, or after the note it continues. Everything beneath it goes with it, and the address it leaves keeps leading to it. The person is asked first.",
     label: "Moving a note",
     arguments: MoveNoteArgumentsSchema,
     writes: true,
@@ -257,6 +396,41 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
       "Put tags on a note, naming the systems it belongs to, and take off the ones that have stopped being true of it. The person is asked first, and is told which would come off.",
     label: "Tagging a note",
     arguments: TagNoteArgumentsSchema,
+    writes: true,
+  },
+  number_note: {
+    description:
+      "Write the number a person cites a note by — 1a1 — or take the one it has off it. Read the notes first: the number springs from the number of the note above it, and no other note in this graph may be at it. The person is asked first.",
+    label: "Numbering a note",
+    arguments: NumberNoteArgumentsSchema,
+    writes: true,
+  },
+  link_notes: {
+    description:
+      "Draw a line between two notes, and take one off. Read the notes first: a line that is already there is not drawn again, and naming a note in the writing draws one already, so this is for a connection the writing does not make. What the line MEANS goes on the line with style_edge, never into prose about it. The person is asked first, and is told which lines would go.",
+    label: "Linking notes",
+    arguments: LinkNotesArgumentsSchema,
+    writes: true,
+  },
+  style_edge: {
+    description:
+      "Say what the line between two notes reads as: the words on it, which end the arrowhead sits at, how broken it is drawn. It is a look on whatever line is already there — genealogy, run, citation or one drawn by hand — and draws nothing where there is no line, so draw the line first. The person is asked first.",
+    label: "Labelling a line",
+    arguments: StyleEdgeArgumentsSchema,
+    writes: true,
+  },
+  style_note: {
+    description:
+      "Say how a note's mark is drawn on the canvas: the ring it wears, how broken that ring is, how big the mark is. Shape only — the colour on the canvas answers the reader's own question and is never a note's to set. The person is asked first.",
+    label: "Drawing a mark",
+    arguments: StyleNoteArgumentsSchema,
+    writes: true,
+  },
+  delete_note: {
+    description:
+      "Put a note in the bin, with everything beneath it. A person can take it back out. Read the note first: what a note says is worth citing from somewhere else more often than it is worth losing. The person is asked first.",
+    label: "Putting a note in the bin",
+    arguments: DeleteNoteArgumentsSchema,
     writes: true,
   },
 };
@@ -309,6 +483,11 @@ export const ListedNoteSchema = z.object({
   parent: OwnedRefSchema.optional(),
   tags: TagsSchema,
   about: z.array(ProjectPathSchema).max(ABOUT_MAX),
+  /** The lines drawn between this note and another by hand. **Absent is a note
+   *  with none**, and the lines the genealogy, the run and the writing draw are
+   *  not among them — those are read off the parent, the addresses and the
+   *  citations in the writing. */
+  links: z.array(OwnedRefSchema).max(MOST_LINES_DRAWN).optional(),
 });
 export type ListedNote = z.infer<typeof ListedNoteSchema>;
 
@@ -337,6 +516,10 @@ export type NoteSection = z.infer<typeof NoteSectionSchema>;
 /** One note read whole, or as much of it as one answer carries —
  *  {@link noteAnswer} is what composes one. */
 export const NoteReadSchema = ListedNoteSchema.extend({
+  /** The looks this note sets on its lines, one per note at the other end.
+   *  **Absent is a note that sets none**, which is a line drawn as the graph
+   *  draws it — and the other end may still set one. */
+  edges: z.array(EdgeLookSchema).max(MOST_LINES_DRAWN).optional(),
   sections: z.array(NoteSectionSchema).max(MOST_SECTIONS_READ),
   /** **Absent is the whole note.** A count is how many further sections the
    *  note holds that this answer does not carry. */
@@ -375,6 +558,13 @@ export const NoteWrittenSchema = z.object({
   done: z.enum(WRITE_DONE),
 });
 export type NoteWritten = z.infer<typeof NoteWrittenSchema>;
+
+/** A note put in the bin, as it stood when it went. Everything beneath it went
+ *  with it, and a person can take it back out. */
+export const NoteBinnedSchema = z.object({
+  binned: ListedNoteSchema,
+});
+export type NoteBinned = z.infer<typeof NoteBinnedSchema>;
 
 /** The kinds of block a turn is made of. **An OPEN set**: a kind this build
  *  has no renderer for is carried untouched rather than refused, for the
@@ -512,6 +702,31 @@ export const ChatToolCallSchema = z.discriminatedUnion("act", [
     act: z.literal("tag_note"),
     arguments: TagNoteArgumentsSchema,
   }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("number_note"),
+    arguments: NumberNoteArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("link_notes"),
+    arguments: LinkNotesArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("style_edge"),
+    arguments: StyleEdgeArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("style_note"),
+    arguments: StyleNoteArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("delete_note"),
+    arguments: DeleteNoteArgumentsSchema,
+  }),
 ]);
 export type ChatToolCall = z.infer<typeof ChatToolCallSchema>;
 
@@ -563,7 +778,7 @@ export function foundAnswer(found: readonly FoundNote[]): ChatToolAnswer {
  * under it being left to carry.
  */
 export function noteAnswer(
-  note: ListedNote,
+  note: Omit<NoteRead, "sections" | "more">,
   sections: readonly NoteSection[],
 ): ChatToolAnswer {
   return asMuchAsFits(

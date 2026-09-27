@@ -60,11 +60,21 @@ that line.
     ---
     ref: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W0X
     parent: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W1Y
+    address: 1a1
     title: What the markdown reader does
     tags:
       - parsing
     links:
       - did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z
+    edges:
+      - to: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z
+        label: grew out of
+        direction: to
+        stroke: dashed
+    appearance:
+      ring_weight: heavy
+      ring_style: dashed
+      mark_radius: large
     created: 2026-09-18T10:00:00.000Z
     updated: 2026-09-18T10:00:00.000Z
     checked: 9f1c0f2e4b6a8d0c2e4f6a8b0d2c4e6f8a0b2c4d
@@ -77,17 +87,24 @@ the canvas is read by. \`links\` are lines somebody drew between this note and a
 hand; naming a note in the writing already draws one, so a \`links\` entry is for a
 connection the writing does not make.
 
-There is no \`address\` above, and you never write one: a number like \`1a1\` is the label its
-author cites the note by, theirs to give and theirs to change. A note may carry other
-fields — whose writing it carries, the numbers it has been at, who may write in it, how
-its author asked the mark and its lines to be drawn. Those are the app's to write and the
-author's to change: leave every one of them exactly as you found it. Drawing a line between
-two notes is yours to do — that is what \`links\` above is — and saying what the line MEANS
-is not: a label like "grew out of", an arrowhead, a stroke are somebody's own reading of the
-connection, so an \`edges\` entry stays exactly as you found it too. An \`authors\` line is
-the one to be most careful with: where it is missing the note carries its own author's
-writing and nobody else's, so dropping one that names two people takes somebody's name
-off writing they did.
+\`address\` is the number a person cites the note by. **Write one on a note you write**: it
+springs from the number of the note above it, takes the next letter or number free in the
+run it joins, and no other note in this graph may be at it — leave it off where the note
+above carries none. **A number on a note already there is not yours to change**: the one it
+gives up has to go on leading to it, which does not happen in a file edited by hand. Write
+down what you found and leave that to its author.
+
+\`edges\` says what a line MEANS — the words on it, which end the arrowhead sits at, how
+broken it is drawn — and \`appearance\` says how the mark itself is drawn. Both are yours on
+a note you wrote and stay exactly as you found them on anybody else's. A look draws on a
+line that is already there and nothing where there is none, so an \`edges\` entry names a
+note this one is already joined to.
+
+A note may carry other fields — whose writing it carries, the numbers it has been at, who
+may write in it. Those are the app's to write and the author's to change: leave every one
+of them exactly as you found it. An \`authors\` line is the one to be most careful with:
+where it is missing the note carries its own author's writing and nobody else's, so
+dropping one that names two people takes somebody's name off writing they did.
 
 ## A note is a stack of sections
 

@@ -5,6 +5,7 @@ import { LocalApi, MemoryFiles } from '@sloppy/local';
 import {
 	type ChatToolCall,
 	ListedNoteSchema,
+	NoteBinnedSchema,
 	NoteReadSchema,
 	NotesFoundSchema,
 	NotesListedSchema,
@@ -32,7 +33,7 @@ async function answer(call: ChatToolCall): Promise<string> {
 function writes(
 	about: string,
 	sections: string[],
-	beside: { title?: string; tags?: string[]; under?: OwnedRef } = {}
+	beside: { title?: string; tags?: string[]; under?: OwnedRef; address?: string } = {}
 ): ChatToolCall {
 	return { call: 'c1', act: 'write_note', arguments: { about, sections, ...beside } };
 }
@@ -422,5 +423,437 @@ describe('carrying a note somewhere else', () => {
 
 		expect(said.trouble).toBe(true);
 		expect(said.said).not.toBe('');
+	});
+});
+
+describe('numbering a note', () => {
+	it('writes the number a person cites it by, and takes it off again', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		const numbered = ListedNoteSchema.parse(
+			JSON.parse(
+				await answer({ call: 'c2', act: 'number_note', arguments: { note, address: '7' } })
+			)
+		);
+		const bare = ListedNoteSchema.parse(
+			JSON.parse(await answer({ call: 'c3', act: 'number_note', arguments: { note } }))
+		);
+
+		expect(numbered.address).toBe('7');
+		expect(bare.address).toBeUndefined();
+	});
+
+	it('leaves the number it gave up leading to it, so a citation still lands', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		await answer({ call: 'c2', act: 'number_note', arguments: { note, address: '7' } });
+		await answer({ call: 'c3', act: 'number_note', arguments: { note, address: '8' } });
+
+		const found = NotesFoundSchema.parse(
+			JSON.parse(await answer({ call: 'c4', act: 'search_notes', arguments: { words: '7' } }))
+		);
+
+		expect(found.found.map((one) => one.note)).toEqual([note]);
+	});
+
+	it('hands back what the graph refused, rather than numbering it anyway', async () => {
+		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		await answer({ call: 'c2', act: 'number_note', arguments: { note: folder, address: '1' } });
+
+		const said = await serveChatCall(files, {
+			call: 'c3',
+			act: 'number_note',
+			arguments: { note, address: '1' }
+		});
+
+		expect(said.trouble).toBe(true);
+		expect(said.said).not.toBe('');
+		expect((await containerApi(files).getNode(note))?.address).toBeUndefined();
+	});
+
+	it('answers a numbering of a note that is not there with words the agent can act on', async () => {
+		const said = await serveChatCall(files, {
+			call: 'c1',
+			act: 'number_note',
+			arguments: { note: `${SOMEBODY}/01J0000000000000000000000A`, address: '1' }
+		});
+
+		expect(said.trouble).toBe(true);
+		expect(said.said).toContain('no note');
+	});
+});
+
+describe('drawing a line between two notes', () => {
+	/** Two notes, and a line the person drew by hand between the second and a
+	 *  third, which no act below names. */
+	async function drawn(): Promise<{ parser: OwnedRef; seeds: OwnedRef; theirs: OwnedRef }> {
+		const parser = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		const seeds = await wrote(writes(PLACES_FILE, ['## Why\n\nWhere each name was.'], {}));
+		const theirs = await wrote(writes(READING_DOC, ['## Why\n\nRead this first.'], {}));
+		await containerApi(files).updateNode(parser, { links: [theirs] });
+		return { parser, seeds, theirs };
+	}
+
+	it('draws the line, and leaves the one already there alone', async () => {
+		const { parser, seeds, theirs } = await drawn();
+
+		const listed = ListedNoteSchema.parse(
+			JSON.parse(
+				await answer({ call: 'c4', act: 'link_notes', arguments: { note: parser, to: [seeds] } })
+			)
+		);
+
+		expect([...(listed.links ?? [])].sort()).toEqual([seeds, theirs].sort());
+	});
+
+	it('takes the line named off, and no other', async () => {
+		const { parser, seeds, theirs } = await drawn();
+		await answer({ call: 'c4', act: 'link_notes', arguments: { note: parser, to: [seeds] } });
+
+		const listed = ListedNoteSchema.parse(
+			JSON.parse(
+				await answer({ call: 'c5', act: 'link_notes', arguments: { note: parser, off: [seeds] } })
+			)
+		);
+
+		expect(listed.links).toEqual([theirs]);
+	});
+
+	it('answers a line to a note that is not there without drawing any of them', async () => {
+		const { parser, seeds } = await drawn();
+
+		const said = await serveChatCall(files, {
+			call: 'c4',
+			act: 'link_notes',
+			arguments: { note: parser, to: [seeds, `${SOMEBODY}/01J0000000000000000000000A`] }
+		});
+
+		expect(said.trouble).toBe(true);
+		expect((await containerApi(files).getNode(parser))?.links).not.toContain(seeds);
+	});
+
+	it('draws no line from a note to itself', async () => {
+		const { parser } = await drawn();
+
+		const said = await serveChatCall(files, {
+			call: 'c4',
+			act: 'link_notes',
+			arguments: { note: parser, to: [parser] }
+		});
+
+		expect(said.trouble).toBe(true);
+	});
+
+	it('says a linking that would change nothing changed nothing', async () => {
+		const { parser } = await drawn();
+
+		const said = await serveChatCall(files, {
+			call: 'c4',
+			act: 'link_notes',
+			arguments: { note: parser }
+		});
+
+		expect(said.trouble).toBe(true);
+	});
+});
+
+describe('what a line reads as', () => {
+	async function twoNotes(): Promise<{ parser: OwnedRef; seeds: OwnedRef }> {
+		const parser = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		const seeds = await wrote(writes(PLACES_FILE, ['## Why\n\nWhere each name was.'], {}));
+		return { parser, seeds };
+	}
+
+	it('writes the words on the line, and reads them back off the note', async () => {
+		const { parser, seeds } = await twoNotes();
+
+		await answer({
+			call: 'c4',
+			act: 'style_edge',
+			arguments: { note: parser, to: seeds, label: 'grew out of', direction: 'to' }
+		});
+
+		const read = NoteReadSchema.parse(
+			JSON.parse(await answer({ call: 'c5', act: 'read_note', arguments: { note: parser } }))
+		);
+		expect(read.edges).toEqual([{ to: seeds, label: 'grew out of', direction: 'to' }]);
+	});
+
+	it('leaves the line with one look, whichever end of it the agent names', async () => {
+		const { parser, seeds } = await twoNotes();
+		await answer({
+			call: 'c4',
+			act: 'style_edge',
+			arguments: { note: parser, to: seeds, label: 'grew out of' }
+		});
+
+		await answer({
+			call: 'c5',
+			act: 'style_edge',
+			arguments: { note: seeds, to: parser, stroke: 'dashed', direction: 'to' }
+		});
+
+		const api = containerApi(files);
+		expect((await api.getNode(seeds))?.edges).toBeUndefined();
+		// The arrowhead turns with the end the look is written on, so it still
+		// points at the note the agent named.
+		expect((await api.getNode(parser))?.edges).toEqual([
+			{ to: seeds, label: 'grew out of', direction: 'from', stroke: 'dashed' }
+		]);
+	});
+
+	it('takes the channels named back off and leaves the rest of the look', async () => {
+		const { parser, seeds } = await twoNotes();
+		await answer({
+			call: 'c4',
+			act: 'style_edge',
+			arguments: { note: parser, to: seeds, label: 'grew out of', stroke: 'dotted' }
+		});
+
+		await answer({
+			call: 'c5',
+			act: 'style_edge',
+			arguments: { note: parser, to: seeds, off: ['label'] }
+		});
+
+		expect((await containerApi(files).getNode(parser))?.edges).toEqual([
+			{ to: seeds, stroke: 'dotted' }
+		]);
+	});
+
+	it('leaves the line drawn as the graph draws it where every channel comes off', async () => {
+		const { parser, seeds } = await twoNotes();
+		await answer({
+			call: 'c4',
+			act: 'style_edge',
+			arguments: { note: parser, to: seeds, label: 'grew out of', stroke: 'dotted' }
+		});
+
+		await answer({
+			call: 'c5',
+			act: 'style_edge',
+			arguments: { note: parser, to: seeds, off: ['label', 'direction', 'stroke'] }
+		});
+
+		expect((await containerApi(files).getNode(parser))?.edges).toBeUndefined();
+	});
+
+	it('answers a look on a line to a note that is not there', async () => {
+		const { parser } = await twoNotes();
+
+		const said = await serveChatCall(files, {
+			call: 'c4',
+			act: 'style_edge',
+			arguments: {
+				note: parser,
+				to: `${SOMEBODY}/01J0000000000000000000000A`,
+				label: 'grew out of'
+			}
+		});
+
+		expect(said.trouble).toBe(true);
+	});
+
+	it('says a look that names no channel changed nothing', async () => {
+		const { parser, seeds } = await twoNotes();
+
+		const said = await serveChatCall(files, {
+			call: 'c4',
+			act: 'style_edge',
+			arguments: { note: parser, to: seeds }
+		});
+
+		expect(said.trouble).toBe(true);
+	});
+});
+
+describe('how a note is drawn', () => {
+	it('sets the channels named and leaves the picture its author put on the mark', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		await containerApi(files).updateNode(note, { appearance: { preview: 'up1' } });
+
+		await answer({
+			call: 'c2',
+			act: 'style_note',
+			arguments: { note, ring_weight: 'heavy', ring_style: 'dashed' }
+		});
+
+		expect((await containerApi(files).getNode(note))?.appearance).toEqual({
+			preview: 'up1',
+			ring_weight: 'heavy',
+			ring_style: 'dashed'
+		});
+	});
+
+	it('draws the mark at the step it names, over the fine size a person set', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		await containerApi(files).updateNode(note, { appearance: { mark_scale: 1.9 } });
+
+		await answer({
+			call: 'c2',
+			act: 'style_note',
+			arguments: { note, mark_radius: 'small' }
+		});
+
+		expect((await containerApi(files).getNode(note))?.appearance).toEqual({
+			mark_radius: 'small'
+		});
+	});
+
+	it('leaves the note unstyled where every channel it carries comes off', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		await answer({
+			call: 'c2',
+			act: 'style_note',
+			arguments: { note, ring_weight: 'heavy', mark_radius: 'large' }
+		});
+
+		await answer({
+			call: 'c3',
+			act: 'style_note',
+			arguments: { note, off: ['ring_weight', 'ring_style', 'mark_radius'] }
+		});
+
+		expect((await containerApi(files).getNode(note))?.appearance).toBeUndefined();
+	});
+
+	it('says a look that names no channel changed nothing', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		const said = await serveChatCall(files, {
+			call: 'c2',
+			act: 'style_note',
+			arguments: { note }
+		});
+
+		expect(said.trouble).toBe(true);
+	});
+});
+
+describe('putting a note in the bin', () => {
+	it('answers the note as it stood, and the notes here no longer hold it', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		const binned = NoteBinnedSchema.parse(
+			JSON.parse(await answer({ call: 'c2', act: 'delete_note', arguments: { note } }))
+		);
+
+		expect(binned.binned.note).toBe(note);
+		expect(binned.binned.title).toBe('The parser');
+		const listed = NotesListedSchema.parse(
+			JSON.parse(await answer({ call: 'c3', act: 'list_notes', arguments: {} }))
+		);
+		expect(listed.notes.map((one) => one.note)).not.toContain(note);
+	});
+
+	it('leaves it where a person can take it back out', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		await answer({ call: 'c2', act: 'delete_note', arguments: { note } });
+
+		const api = containerApi(files);
+		expect((await api.deletedBranches()).map((one) => one.ref)).toContain(note);
+		await api.restoreBranch(note);
+		expect((await api.getNode(note))?.title).toBe('The parser');
+	});
+
+	it('answers a note that is not there with words the agent can act on', async () => {
+		const said = await serveChatCall(files, {
+			call: 'c1',
+			act: 'delete_note',
+			arguments: { note: `${SOMEBODY}/01J0000000000000000000000A` }
+		});
+
+		expect(said.trouble).toBe(true);
+		expect(said.said).toContain('no note');
+	});
+});
+
+describe('the number a note is written or carried at', () => {
+	it('leaves a written note with none where the write names none', async () => {
+		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		const api = containerApi(files);
+		expect((await api.getNode(folder))?.address).toBeUndefined();
+		expect((await api.getNode(note))?.address).toBeUndefined();
+	});
+
+	it('numbers a note the write names one for', async () => {
+		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+		await answer({ call: 'c2', act: 'number_note', arguments: { note: folder, address: '1' } });
+
+		const note = await wrote(
+			writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser', address: '1a' })
+		);
+
+		expect((await containerApi(files).getNode(note))?.address).toBe('1a');
+	});
+
+	it('hands back what the graph refused a number, and writes no note', async () => {
+		await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+
+		const said = await serveChatCall(
+			files,
+			writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser', address: '1a' })
+		);
+
+		expect(said.trouble).toBe(true);
+		expect(said.said).not.toBe('');
+		const listed = NotesListedSchema.parse(
+			JSON.parse(await answer({ call: 'c3', act: 'list_notes', arguments: {} }))
+		);
+		expect(listed.notes).toHaveLength(1);
+	});
+
+	it('numbers the note a write lands on, where the write names a number', async () => {
+		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+		await answer({ call: 'c2', act: 'number_note', arguments: { note: folder, address: '1' } });
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		await answer(writes(PARSER, ['## How\n\nBy one table.'], { address: '1a' }));
+
+		expect((await containerApi(files).getNode(note))?.address).toBe('1a');
+	});
+
+	it('writes nothing where the graph refuses the number a write names', async () => {
+		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+		await answer({ call: 'c2', act: 'number_note', arguments: { note: folder, address: '1' } });
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		// Numbered by the rule when it was written, under a folder note at 1.
+		expect((await containerApi(files).getNode(note))?.address).toBe('1a');
+
+		const said = await serveChatCall(
+			files,
+			writes(PARSER, ['## How\n\nBy one table.'], { address: '1' })
+		);
+
+		expect(said.trouble).toBe(true);
+		const read = NoteReadSchema.parse(
+			JSON.parse(await answer({ call: 'c4', act: 'read_note', arguments: { note } }))
+		);
+		expect(read.sections.map((one) => one.markdown).join('')).not.toContain('By one table');
+		expect(read.address).toBe('1a');
+	});
+
+	it('carries a note to the number the move names', async () => {
+		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+		const parser = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		const api = containerApi(files);
+		await api.setAddress(folder, '1');
+		await api.setAddress(parser, '1a');
+		const reading = await wrote(writes(READING_DOC, ['## Why\n\nRead this first.'], {}));
+
+		const moved = ListedNoteSchema.parse(
+			JSON.parse(
+				await answer({
+					call: 'c4',
+					act: 'move_note',
+					arguments: { note: reading, to: parser, relation: 'under', address: '1a4' }
+				})
+			)
+		);
+
+		expect(moved.address).toBe('1a4');
 	});
 });

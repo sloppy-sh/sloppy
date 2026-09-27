@@ -3260,13 +3260,34 @@ or warns. So the call is forwarded to the page, the page does the work through t
 store every other write in this app goes through, and what it answers with goes back out to
 the agent. It also means nothing new has to be installed for a chat to write a note.
 
-**The acts are the smallest set that makes the chat useful and no more**: the notes this
-project already has, with their addresses, titles, tags, what each springs out of and the
+**The acts reach what a person can do to a note, and stop there.** A shorter list is not a
+safeguard: somebody who hands three hundred files to a tool and then has to draw every
+relation themselves has offloaded nothing, and the gate is the person's answer rather than
+a narrower vocabulary. So: the notes this project already has, with their addresses,
+titles, tags, the lines drawn between them by hand, what each springs out of and the
 places they are about; the notes some words reach, with the writing around what matched;
-one of them read whole; a note written about a place; a note carried under or after
-another; tags put on a note and taken off it. Three of them read and three of them write,
-and `chatToolWrites` is the one statement of which is which — every surface that needs to
-know asks it rather than listing names.
+one of them read whole, with the looks it sets on its lines; a note written about a place;
+a note carried under or after another; tags put on a note and taken off it; the number a
+person cites a note by, written or taken off; a line drawn between two notes and taken
+off; what a line says and how it and a mark are drawn; a note put in the bin. Three of
+them read and eight of them write, and `chatToolWrites` is the one statement of which is
+which — every surface that needs to know asks it rather than listing names.
+
+**Three things a person can write are deliberately not among them.** `checked` is a person
+saying they have read a note against the code, and an agent writing it silences the one
+question the app asks them (§ "Tooling and the review"). `owner` is who GATES a note's
+writing, which is an authority change and not a look. And the compass's west and a "Why"
+are what was decided against and the reason for it — the author's own thinking, which
+`.sloppy/AGENT.md` keeps out of an agent's hands for the same reason wherever it writes.
+
+**An act holds no rule of its own.** Every rule about addresses, aliases, cycles,
+ownership and offers lives in `@sloppy/local` and is tested there, so an act calls it,
+catches what it refuses, and hands the agent those words to act on — a second copy of any
+of that would be a rule that can disagree with itself. What an act DOES spell is what the
+agent is spared: a link, a tag and a look on a line are each a whole set on the wire, so
+every act naming one takes what to put on and what to take off, and composes the set from
+what the note carries. An agent that had to send the whole set would drop the line a person
+drew and never know it had.
 
 **Searching is what keeps the notes from saying one thing twice.** An agent that cannot ask
 what is already written writes it again, and two notes about one fact come apart the moment
@@ -3284,13 +3305,15 @@ makes a note say less. Neither can be offered the way writing is — an amendmen
 of writing its author takes in, and there is no such thing for where a note hangs — so both
 stand behind the question a write stands behind and never a weaker one, and the question
 names which tags would come off, because that is the half a person would want back.
-**The address stays the person's.** No act names one: a move takes no number, the
-Folgezettel rule gives the note what it takes next, and every address it leaves keeps
-leading to it. `.sloppy/AGENT.md` holds the same two acts to the line that file already
-draws — an agent editing the files by hand keeps its own notes true and leaves somebody
-else's to them, because neither act can go as an offer — and stops short of a numbered
-note, since the number a move gives one next is worked out from the run it joins and is
-never an agent's to write.
+**The address is the person's label, and a tool they set to work may write one for them**
+(AI.md § "The Genealogy Is the Protocol"). A write and a move each take a number or leave
+it out, and left out is what has always happened: the Folgezettel rule gives the note what
+it takes next. Nothing here checks a number it is given — `setAddress` and `moveNote` in
+`@sloppy/local` hold every rule that matters, refuse in words, and the agent is handed
+those. `.sloppy/AGENT.md` draws its own line for an agent editing the files by hand: it
+numbers a note it writes, and leaves the number on a note already there alone, because the
+number that note gives up has to go on leading to it and that does not happen in a file
+edited by hand.
 
 **Every act that WRITES is behind the person's own answer, asked in the thread.** The
 question names what is about to happen — the note, the place — and the call resolves on
@@ -3393,10 +3416,11 @@ came to is said in the thread, and lives there rather than on the note.
 
 **`.sloppy/AGENT.md` is what the agent reads, and it carries the whole format.** Every
 element a person can put in a note — the sections, the compass and its three methods, the
-citations, the `code:` anchors, the tags, the shapes a note starts from, the pictures and
-the drawings — is written down there, because an agent that can only write a subset of the
-format produces notes a person cannot finish, and a person editing a note must not be
-writing something the next pass cannot read. `AGENT_MD` in `@sloppy/local` is the one copy
+citations, the `code:` anchors, the tags, the number a note is cited by, the lines drawn
+between notes and what a line and a mark are drawn as, the shapes a note starts from, the
+pictures and the drawings — is written down there, because an agent that can only write a
+subset of the format produces notes a person cannot finish, and a person editing a note
+must not be writing something the next pass cannot read. `AGENT_MD` in `@sloppy/local` is the one copy
 of that text, and the shapes and the methods it teaches come from `@sloppy/types` so the
 file and the app cannot drift apart.
 

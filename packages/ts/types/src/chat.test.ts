@@ -18,21 +18,27 @@ import {
   ChatTurnSchema,
   CHAT_ANSWER_MAX,
   CHAT_SECTION_MAX,
+  DeleteNoteArgumentsSchema,
   foundAnswer,
+  LinkNotesArgumentsSchema,
   listingAnswer,
   ListedNoteSchema,
   MAX_SECTIONS_PER_WRITE,
+  MOST_LINES_DRAWN,
   MOST_NOTES_FOUND,
   MOST_NOTES_LISTED,
   MOST_SECTIONS_READ,
   MoveNoteArgumentsSchema,
   noteAnswer,
+  NumberNoteArgumentsSchema,
   NoteReadSchema,
   NotesFoundSchema,
   NotesListedSchema,
   NoteWrittenSchema,
   ReadNoteArgumentsSchema,
   SearchNotesArgumentsSchema,
+  StyleEdgeArgumentsSchema,
+  StyleNoteArgumentsSchema,
   TagNoteArgumentsSchema,
   turnFits,
   WriteNoteArgumentsSchema,
@@ -67,9 +73,18 @@ describe("the acts Sloppy hands an agent", () => {
   });
 
   it("puts the writing ones behind the person and leaves reading alone", () => {
-    expect(chatToolWrites("write_note")).toBe(true);
-    expect(chatToolWrites("move_note")).toBe(true);
-    expect(chatToolWrites("tag_note")).toBe(true);
+    for (const act of [
+      "write_note",
+      "move_note",
+      "tag_note",
+      "number_note",
+      "link_notes",
+      "style_edge",
+      "style_note",
+      "delete_note",
+    ] as const) {
+      expect(chatToolWrites(act)).toBe(true);
+    }
     expect(chatToolWrites("list_notes")).toBe(false);
     expect(chatToolWrites("search_notes")).toBe(false);
     expect(chatToolWrites("read_note")).toBe(false);
@@ -109,12 +124,31 @@ describe("the acts Sloppy hands an agent", () => {
       "write_note.sections",
       "write_note.tags",
       "write_note.under",
+      "write_note.address",
       "move_note.note",
       "move_note.to",
       "move_note.relation",
+      "move_note.address",
       "tag_note.note",
       "tag_note.tags",
       "tag_note.off",
+      "number_note.note",
+      "number_note.address",
+      "link_notes.note",
+      "link_notes.to",
+      "link_notes.off",
+      "style_edge.note",
+      "style_edge.to",
+      "style_edge.label",
+      "style_edge.direction",
+      "style_edge.stroke",
+      "style_edge.off",
+      "style_note.note",
+      "style_note.ring_weight",
+      "style_note.ring_style",
+      "style_note.mark_radius",
+      "style_note.off",
+      "delete_note.note",
     ]);
   });
 
@@ -179,7 +213,7 @@ describe("what a call may carry", () => {
     }
   });
 
-  it("carries a note under or after another, and names no address", () => {
+  it("carries a note under or after another", () => {
     const under = MoveNoteArgumentsSchema.parse({
       note: NOTE,
       to: OTHER,
@@ -187,6 +221,7 @@ describe("what a call may carry", () => {
     });
 
     expect(under.relation).toBe("under");
+    expect(under.address).toBeUndefined();
     expect(
       MoveNoteArgumentsSchema.safeParse({
         note: NOTE,
@@ -194,15 +229,101 @@ describe("what a call may carry", () => {
         relation: "beside",
       }).success,
     ).toBe(false);
+  });
+
+  it("takes the number a person cites a note by, held to the grammar", () => {
+    for (const shape of [
+      MoveNoteArgumentsSchema,
+      WriteNoteArgumentsSchema,
+      NumberNoteArgumentsSchema,
+    ]) {
+      const asked = { note: NOTE, to: OTHER, relation: "after", about: "src" };
+      expect(
+        shape.parse({ ...asked, sections: [], address: "1a1" }),
+      ).toMatchObject({ address: "1a1" });
+      expect(
+        shape.safeParse({ ...asked, sections: [], address: "0a" }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("leaves a note with no number where a numbering names none", () => {
+    expect(NumberNoteArgumentsSchema.parse({ note: NOTE }).address).toBe(
+      undefined,
+    );
+  });
+
+  it("draws lines and takes them off, each by the ref at the other end", () => {
+    const asked = LinkNotesArgumentsSchema.parse({
+      note: NOTE,
+      to: [OTHER],
+      off: [OTHER],
+    });
+
+    expect(asked.to).toEqual([OTHER]);
+    expect(asked.off).toEqual([OTHER]);
     expect(
-      "address" in
-        MoveNoteArgumentsSchema.parse({
-          note: NOTE,
-          to: OTHER,
-          relation: "after",
-          address: "1a1",
-        }),
+      LinkNotesArgumentsSchema.safeParse({ note: NOTE, to: ["1a1"] }).success,
     ).toBe(false);
+    expect(
+      LinkNotesArgumentsSchema.safeParse({
+        note: NOTE,
+        to: Array.from({ length: MOST_LINES_DRAWN + 1 }, () => OTHER),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("says what a line reads as, in the channels a look is made of", () => {
+    const asked = StyleEdgeArgumentsSchema.parse({
+      note: NOTE,
+      to: OTHER,
+      label: "  grew out of  ",
+      direction: "to",
+      stroke: "dashed",
+    });
+
+    expect(asked.label).toBe("grew out of");
+    expect(
+      StyleEdgeArgumentsSchema.safeParse({
+        note: NOTE,
+        to: OTHER,
+        direction: "sideways",
+      }).success,
+    ).toBe(false);
+    expect(
+      StyleEdgeArgumentsSchema.parse({
+        note: NOTE,
+        to: OTHER,
+        off: ["label", "direction", "stroke"],
+      }).off,
+    ).toEqual(["label", "direction", "stroke"]);
+  });
+
+  it("says how a mark is drawn, in the shape channels and no colour", () => {
+    const asked = StyleNoteArgumentsSchema.parse({
+      note: NOTE,
+      ring_weight: "heavy",
+      ring_style: "dashed",
+      mark_radius: "large",
+    });
+
+    expect(asked.ring_weight).toBe("heavy");
+    for (const said of [
+      { ring_weight: "glowing" },
+      { mark_radius: "enormous" },
+      { off: ["preview"] },
+    ]) {
+      expect(
+        StyleNoteArgumentsSchema.safeParse({ note: NOTE, ...said }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("puts one note in the bin, by its ref", () => {
+    expect(DeleteNoteArgumentsSchema.parse({ note: NOTE }).note).toBe(NOTE);
+    expect(DeleteNoteArgumentsSchema.safeParse({ note: "1a1" }).success).toBe(
+      false,
+    );
   });
 
   it("writes a note under a named one, and under none where it says none", () => {
