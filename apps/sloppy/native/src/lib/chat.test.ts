@@ -1,10 +1,34 @@
 import { whatHappened, type ChatAccess } from '@sloppy/app-core';
-import { CHAT_TOOLS, type ChatEvent, type ChatToolAnswer, type ChatToolCall } from '@sloppy/types';
+import {
+	CHAT_TOOLS,
+	draftBranch,
+	type ChatEvent,
+	type ChatToolAnswer,
+	type ChatToolCall,
+	type StandingDraft
+} from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { tauriChat, type Telling, type Told } from './chat';
+import { tauriDrafts, type DraftAccess } from './draft';
+import { tauriFiles } from './files';
 
 const PROJECT = '/work/compiler';
+const NOTES = `${PROJECT}/.sloppy`;
 const PARSER = 'src/parser.ts';
+
+/** Where this app keeps its own copies, as `draft_start` answers them. */
+const COPIES = '/data/drafts';
+const STOOD = '01JAPART000000000000000000';
+
+function copy(id: string): StandingDraft {
+	return {
+		id,
+		root: `${COPIES}/${id}`,
+		vault: `${COPIES}/${id}/.sloppy`,
+		branch: draftBranch(id),
+		from: 'f0f0f0'
+	};
+}
 
 /** The agents this device has, as `chat_agents` answers. */
 let here: string[];
@@ -22,6 +46,15 @@ let closes: number;
 /** What the session is told over, which the shell takes and the tests speak
  *  into. */
 let channel: Telling;
+
+/** The notes the drafts are of, and the copies standing, as `draft_standing`
+ *  answers them. */
+let notes: string | undefined;
+let standing: StandingDraft[];
+let started: { root: string; id: string }[];
+let discarded: { root: string; id: string }[];
+/** Where a history a draft was reached through was rooted. */
+let headsAt: string[];
 
 /** Every call that reached the page's act, and what that act answers with —
  *  the acts themselves are `chat-acts.ts` in `@sloppy/app-core`, so what is
@@ -74,6 +107,21 @@ const call = async <T>(command: string, args?: Record<string, unknown>): Promise
 			closes += 1;
 			queueMicrotask(() => tells({ from: 'over', stopped: true, trouble: null }));
 			return undefined as T;
+		case 'draft_standing':
+			return standing as T;
+		case 'draft_start': {
+			const made = copy(held.id as string);
+			started.push({ root: held.root as string, id: made.id });
+			standing = [made];
+			return made as T;
+		}
+		case 'draft_discard':
+			discarded.push({ root: held.root as string, id: held.id as string });
+			standing = standing.filter((one) => one.id !== held.id);
+			return undefined as T;
+		case 'history_head':
+			headsAt.push(held.root as string);
+			return null as T;
 	}
 	throw new Error(`no such command: ${command}`);
 };
@@ -90,8 +138,16 @@ function calls(act: string, args: unknown, id = 'c1'): void {
 	tells({ from: 'called', call: id, act, arguments: args });
 }
 
+function drafts(): DraftAccess {
+	return tauriDrafts(
+		() => notes,
+		tauriFiles('', call, (path) => path),
+		call
+	);
+}
+
 function chat(): ChatAccess {
-	return tauriChat(project, call, () => channel);
+	return tauriChat(project, drafts(), call, () => channel);
 }
 
 /** A session open and saying nothing yet, with everything it tells the page
@@ -101,17 +157,6 @@ async function opened(): Promise<{ access: ChatAccess; heard: ChatEvent[] }> {
 	const access = chat();
 	await access.open({}, (event) => heard.push(event), serve);
 	return { access, heard };
-}
-
-/** The person's answer to the question in the thread, given once it is there. */
-async function answersIt(
-	access: ChatAccess,
-	heard: readonly ChatEvent[],
-	allowed: boolean,
-	call = 'c1'
-): Promise<void> {
-	await until(() => heard.some((event) => event.event === 'asking' && event.call === call));
-	await access.settle(call, allowed);
 }
 
 async function until(held: () => boolean): Promise<void> {
@@ -169,6 +214,11 @@ beforeEach(() => {
 	channel = { onmessage: () => {} };
 	served = [];
 	serving = async () => ({ said: 'Written to The reader.' });
+	notes = NOTES;
+	standing = [];
+	started = [];
+	discarded = [];
+	headsAt = [];
 });
 
 describe('the agents this device can reach', () => {
@@ -196,17 +246,18 @@ describe('the agents this device can reach', () => {
 });
 
 describe('a session', () => {
-	it('starts the agent in the project, handing it every act Sloppy has', async () => {
+	it('starts the agent in a copy of the project, handing it every act Sloppy has', async () => {
 		await opened();
 
 		expect(opens[0].agent).toBe('claude_code');
-		expect(opens[0].root).toBe(PROJECT);
+		expect(opens[0].root).toBe(standing[0].root);
 		expect(opens[0].tools.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
 	});
 
 	it('says there is no project to chat about where none is open', async () => {
 		const access = tauriChat(
 			async () => undefined,
+			drafts(),
 			call,
 			() => channel
 		);
@@ -214,6 +265,15 @@ describe('a session', () => {
 		await expect(access.open({}, () => {}, serve)).rejects.toThrow(
 			'Open the project these notes are about first.'
 		);
+		expect(started).toEqual([]);
+	});
+
+	it('starts the agent in the project itself where this shell keeps no draft', async () => {
+		const access = tauriChat(project, undefined, call, () => channel);
+
+		await access.open({}, () => {}, serve);
+
+		expect(opens[0].root).toBe(PROJECT);
 	});
 
 	it("says what somebody typed onto the agent's own input", async () => {
@@ -451,7 +511,7 @@ describe('what the agent says', () => {
 });
 
 describe("Sloppy's own acts", () => {
-	it('hands a reading act over with no question, and answers the agent with it', async () => {
+	it('hands a reading act over, and answers the agent with what it came to', async () => {
 		serving = async () => ({ said: '{"notes":[]}' });
 		const { heard } = await opened();
 
@@ -460,7 +520,7 @@ describe("Sloppy's own acts", () => {
 		await until(() => answers.length === 1);
 		expect(served).toEqual([{ call: 'c1', act: 'list_notes', arguments: {} }]);
 		expect(answers[0]).toEqual({ call: 'c1', said: '{"notes":[]}', trouble: false });
-		expect(heard.filter((event) => event.event === 'asking')).toEqual([]);
+		expect(heard).toEqual([]);
 	});
 
 	it("tells the agent what the act's own shape refused, and hands nothing over", async () => {
@@ -517,54 +577,99 @@ describe("Sloppy's own acts", () => {
 });
 
 describe('a write', () => {
-	it('reaches the act only once the person has allowed it', async () => {
-		const { access, heard } = await opened();
+	it('lands like a reading act, with nothing asked of anybody', async () => {
+		const { heard } = await opened();
 
 		calls('write_note', { about: PARSER, ...WROTE });
 
-		await until(() => heard.some((event) => event.event === 'asking'));
-		expect(heard.at(-1)).toEqual({
-			event: 'asking',
-			call: 'c1',
-			act: 'write_note',
-			arguments: { about: PARSER, ...WROTE }
-		});
-		expect(served).toEqual([]);
-
-		await access.settle('c1', true);
-
 		await until(() => answers.length === 1);
-		expect(heard).toContainEqual({ event: 'settled', call: 'c1', allowed: true });
 		expect(served).toEqual([
 			{ call: 'c1', act: 'write_note', arguments: { about: PARSER, ...WROTE } }
 		]);
-		expect(answers[0].said).toBe('Written to The reader.');
+		expect(answers[0]).toEqual({ call: 'c1', said: 'Written to The reader.', trouble: false });
+		expect(heard).toEqual([]);
 	});
 
-	it('never reaches the act where the person turned it down', async () => {
-		const { access, heard } = await opened();
-		calls('write_note', { about: PARSER, ...WROTE });
+	it('answers every one of them, however many arrive at once', async () => {
+		await opened();
 
-		await answersIt(access, heard, false);
+		calls('write_note', { about: PARSER, ...WROTE }, 'c1');
+		calls('write_note', { about: 'src/lexer.ts', ...WROTE }, 'c2');
+		calls('write_note', { about: 'src/emit.ts', ...WROTE }, 'c3');
 
-		await until(() => answers.length === 1);
-		expect(heard).toContainEqual({ event: 'settled', call: 'c1', allowed: false });
-		expect(served).toEqual([]);
-		expect(answers[0]).toMatchObject({ trouble: true });
-		expect(answers[0].said).toContain('turned that down');
+		await until(() => answers.length === 3);
+		expect(answers.map((one) => one.call)).toEqual(['c1', 'c2', 'c3']);
+		expect(served).toHaveLength(3);
+	});
+});
+
+describe('the draft a chat works in', () => {
+	it('is taken of the notes where none is standing', async () => {
+		await opened();
+
+		expect(started).toEqual([{ root: NOTES, id: standing[0].id }]);
+		expect(standing[0].root).toBe(`${COPIES}/${standing[0].id}`);
 	});
 
-	it('answers a call nobody answered where the session ended under the question', async () => {
-		const { access, heard } = await opened();
-		calls('write_note', { about: PARSER, ...WROTE });
-		await until(() => heard.some((event) => event.event === 'asking'));
+	it('works in the one already standing rather than taking a second', async () => {
+		standing = [copy(STOOD)];
 
+		await opened();
+
+		expect(started).toEqual([]);
+		expect(opens[0].root).toBe(`${COPIES}/${STOOD}`);
+	});
+
+	it('takes one copy where a page and a session ask for it at once', async () => {
+		const held = drafts();
+
+		const [one, other] = await Promise.all([held.start(), held.start()]);
+
+		expect(started).toHaveLength(1);
+		expect(one).toEqual(other);
+	});
+
+	it('says what to do rather than taking a copy of nothing', async () => {
+		notes = undefined;
+		const held = drafts();
+
+		expect(await held.standing()).toBeUndefined();
+		await expect(held.start()).rejects.toThrow('Open the notes you want a draft of first.');
+	});
+
+	it('reaches the copy at the project and its states at the notes inside it', async () => {
+		const held = drafts();
+		const draft = await held.start();
+
+		expect(held.files(draft).root).toBe(draft.root);
+		await held.history(draft).currentCommit();
+
+		expect(headsAt).toEqual([draft.vault]);
+	});
+
+	it('stands through the turn being stopped and the session being closed', async () => {
+		const { access } = await opened();
+		const draft = standing[0];
+		await access.say('go');
+
+		const stopping = access.stop();
+		await until(() => lines.length === 2);
+		says(RESULT);
+		await stopping;
 		await access.close();
 
-		await until(() => answers.length === 1);
-		expect(heard.map((event) => event.event)).toEqual(['asking', 'settled', 'over']);
-		expect(served).toEqual([]);
-		expect(answers[0]).toMatchObject({ trouble: true });
+		expect(discarded).toEqual([]);
+		expect(await access.drafts?.standing()).toEqual(draft);
+	});
+
+	it('is gone once the person discards it', async () => {
+		const { access } = await opened();
+		const draft = standing[0];
+
+		await access.drafts?.discard(draft);
+
+		expect(discarded).toEqual([{ root: NOTES, id: draft.id }]);
+		expect(await access.drafts?.standing()).toBeUndefined();
 	});
 });
 

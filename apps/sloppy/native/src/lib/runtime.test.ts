@@ -31,6 +31,8 @@ const askedFor: (string | undefined)[] = [];
 const historyAsked: [string, string][] = [];
 /** The folder each chat was started in. */
 const chattedIn: string[] = [];
+/** The copy standing for each folder's notes, as `draft.rs` answers them. */
+const copies = new Map<string, Record<string, string>>();
 
 vi.mock('@tauri-apps/api/core', () => ({
 	// What a tool's answer is streamed back over, which outside a running app
@@ -79,6 +81,22 @@ vi.mock('@tauri-apps/api/core', () => ({
 					)
 				);
 				return null;
+			}
+			case 'draft_standing': {
+				const standing = copies.get(args?.root as string);
+				return standing ? [standing] : [];
+			}
+			case 'draft_start': {
+				const id = args?.id as string;
+				const made = {
+					id,
+					root: `/data/drafts/${id}`,
+					vault: `/data/drafts/${id}/.sloppy`,
+					branch: `sloppy/draft/${id}`,
+					from: 'a1b2c3'
+				};
+				copies.set(args?.root as string, made);
+				return made;
 			}
 			case 'chat_agents':
 				return ['claude_code'];
@@ -142,6 +160,7 @@ describe('the native shell in local mode', () => {
 		picking = 'answers';
 		historyAsked.length = 0;
 		chattedIn.length = 0;
+		copies.clear();
 		resetApi.mockClear();
 	});
 
@@ -293,7 +312,7 @@ describe('the native shell in local mode', () => {
 		expect(historyAsked).toContainEqual(['history_head', '/Users/me/compiler/.sloppy']);
 	});
 
-	it('chats with an agent on this computer about the project the notes are about', async () => {
+	it('chats with an agent on this computer in a copy of the project', async () => {
 		await launch();
 		projectAt('/Users/me/compiler');
 		await registered.vault?.open();
@@ -304,7 +323,13 @@ describe('the native shell in local mode', () => {
 			() => {},
 			async () => ({ said: '' })
 		);
-		expect(chattedIn).toEqual(['/Users/me/compiler']);
+
+		// The copy is taken of the notes, and the agent is started in it rather
+		// than in the folder somebody has open.
+		const draft = await registered.chat?.drafts?.standing();
+		expect(copies.get('/Users/me/compiler/.sloppy')).toBeDefined();
+		expect(chattedIn).toEqual([draft?.root]);
+		expect(chattedIn[0]).not.toBe('/Users/me/compiler');
 	});
 
 	it("has nowhere to start a chat about a graph that is nobody's project", async () => {
@@ -485,6 +510,7 @@ describe('the folders this device keeps its graphs in', () => {
 		broughtOver.length = 0;
 		historyAsked.length = 0;
 		chattedIn.length = 0;
+		copies.clear();
 		resetApi.mockClear();
 	});
 

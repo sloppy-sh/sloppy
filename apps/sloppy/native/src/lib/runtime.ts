@@ -21,6 +21,7 @@ import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { tauriChat } from './chat';
 import { SIGN_IN_CALLBACK } from './deep-link';
+import { tauriDrafts } from './draft';
 import { tauriFiles, tauriHistory, tauriOpenFile, tauriSaveFile } from './files';
 import { tauriIdentities } from './identity';
 import {
@@ -279,7 +280,10 @@ export function initNativeRuntime(): void {
 					},
 					history: () => (vaultRoot ? tauriHistory(vaultRoot) : undefined),
 					project: () => projectHere(device),
-					chat: tauriChat(async () => (await projectHere(device))?.root)
+					chat: tauriChat(
+						async () => (await projectHere(device))?.root,
+						tauriDrafts(() => vaultRoot, device)
+					)
 				}
 			: {})
 	});

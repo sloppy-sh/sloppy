@@ -15,17 +15,14 @@ import {
 } from '@sloppy/app-core';
 import {
 	advertisedChatTools,
-	argumentsFit,
 	CHAT_AGENTS,
 	CHAT_ASKED_MAX,
 	chatAgentName,
 	ChatEventSchema,
 	ChatToolAnswerSchema,
 	ChatToolCallSchema,
-	chatToolWrites,
 	ulid,
 	type ChatAgent,
-	type ChatCallId,
 	type ChatEvent,
 	type ChatToolAnswer,
 	type ChatToolCall
@@ -33,6 +30,7 @@ import {
 import { chatBrief } from '@sloppy/local';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { AgentStream } from './chat-stream';
+import type { DraftAccess } from './draft';
 import type { Invoke } from './files';
 
 /** The commands `src-tauri` answers. */
@@ -49,11 +47,9 @@ const SAY_SOMETHING = 'Say what you want written about.';
 const TOO_MUCH = 'That is too long to send in one go. Shorten it and try again.';
 const DIDNT_WORK = 'That did not work. Try again.';
 
-/** What an act that could not be read or was turned down tells the AGENT, which
- *  reads these and acts on them. */
+/** What an act that could not be read or could not be done tells the AGENT,
+ *  which reads these and acts on them. */
 const UNREADABLE_CALL = 'Sloppy could not read that call.';
-const TURNED_DOWN =
-	'The person turned that down. Do not try it again as it stands — ask them what they want instead.';
 const DIDNT_ANSWER = 'Sloppy could not do that.';
 
 /** What a session is told, as `src-tauri/src/chat.rs` writes it. */
@@ -109,9 +105,6 @@ interface Turn extends Settling {
  *  while its own program is still being reaped. */
 class Session {
 	readonly stream = new AgentStream();
-	/** Every call waiting on the person, by the answer that closes the question
-	 *  in the thread. */
-	readonly asking = new Map<ChatCallId, (allowed: boolean) => void>();
 	readonly over = settling();
 	turn?: Turn;
 	gone = false;
@@ -136,15 +129,10 @@ class Session {
 		turn.ends();
 	}
 
-	/** The session is over: nothing it was doing goes on, and every call waiting
-	 *  on the person is answered by its ending. */
+	/** The session is over: nothing it was doing goes on. */
 	letGo(trouble?: string): void {
 		if (this.gone) return;
 		this.gone = true;
-		for (const [call, answer] of [...this.asking]) {
-			this.asking.delete(call);
-			answer(false);
-		}
 		this.ends();
 		this.tell({ event: 'over', ...(trouble === undefined ? {} : { said: trouble }) });
 		this.over.ends();
@@ -156,6 +144,7 @@ class TauriChat implements ChatAccess {
 
 	constructor(
 		private readonly here: () => Promise<string | undefined>,
+		readonly drafts: DraftAccess | undefined,
 		private readonly call: Invoke,
 		private readonly telling: () => Telling
 	) {}
@@ -167,7 +156,10 @@ class TauriChat implements ChatAccess {
 
 	async open(asked: ChatAsked, hear: (event: ChatEvent) => void, serve: Serving): Promise<void> {
 		const agent = await this.agentFor(asked.agent);
-		const root = await this.project();
+		// A chat is about a project, so there being none is refused before a copy
+		// is taken — and the agent works in the copy, never in the folder itself.
+		const here = await this.project();
+		const root = (await this.drafts?.start())?.root ?? here;
 		this.replaces();
 		const session = new Session(hear, serve);
 		const told = this.telling();
@@ -207,12 +199,9 @@ class TauriChat implements ChatAccess {
 		});
 	}
 
-	async settle(call: ChatCallId, allowed: boolean): Promise<void> {
-		const answer = this.held?.asking.get(call);
-		if (!answer) return;
-		this.held?.asking.delete(call);
-		answer(allowed);
-	}
+	/** @deprecated Nothing is asked, so there is nothing to answer —
+	 *  `ChatAccess.settle` in `@sloppy/app-core` says what it was. */
+	async settle(): Promise<void> {}
 
 	async stop(): Promise<void> {
 		const session = this.held;
@@ -263,7 +252,8 @@ class TauriChat implements ChatAccess {
 	 * One of Sloppy's own acts, from the call arriving to the agent being told
 	 * what it came to. A call whose arguments the act's own shape refuses is
 	 * never served; the agent is told what it was refused for so that it can
-	 * call again.
+	 * call again. **A writing act is served like a reading one** — it lands in
+	 * the draft, which is what a person reads before any of it reaches theirs.
 	 */
 	private async does(
 		session: Session,
@@ -286,29 +276,8 @@ class TauriChat implements ChatAccess {
 			await this.answers(one.call, { said: refused, trouble: true });
 			return;
 		}
-		const call = held.data;
-		if (chatToolWrites(call.act)) {
-			session.tell({
-				event: 'asking',
-				call: call.call,
-				act: call.act,
-				...(argumentsFit(one.arguments) ? { arguments: one.arguments } : {})
-			});
-			const allowed = await new Promise<boolean>((resolve) =>
-				session.asking.set(call.call, (answer) => {
-					// Told before anything else the answer sets off, so that a page
-					// closes the question ahead of a session ending under it.
-					session.tell({ event: 'settled', call: call.call, allowed: answer });
-					resolve(answer);
-				})
-			);
-			if (!allowed) {
-				await this.answers(one.call, { said: TURNED_DOWN, trouble: true });
-				return;
-			}
-		}
 		try {
-			await this.answers(one.call, await session.serve(call));
+			await this.answers(one.call, await session.serve(held.data));
 		} catch {
 			// An act says what it could not do in its own answer, so nothing
 			// thrown past that has words the agent could act on.
@@ -368,12 +337,13 @@ function anInterrupt(): unknown {
 	return { type: 'control_request', request_id: ulid(), request: { subtype: 'interrupt' } };
 }
 
-/** `here` is the folder holding the code the notes are about, which is where
- *  the agent is started. */
+/** `here` is the folder holding the code the notes are about, and `drafts` is
+ *  where the copy of it the agent is started in comes from. */
 export function tauriChat(
 	here: () => Promise<string | undefined>,
+	drafts?: DraftAccess,
 	call: Invoke = invoke,
 	telling: () => Telling = () => new Channel<Told>()
 ): ChatAccess {
-	return new TauriChat(here, call, telling);
+	return new TauriChat(here, drafts, call, telling);
 }

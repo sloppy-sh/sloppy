@@ -149,7 +149,7 @@ class TauriFiles implements Files {
 
 /** An act `src-tauri` would not take. The bridge carries JSON, so what it
  *  answers is the sentence itself rather than the error `History` promises. */
-function refusal(reason: unknown): HistoryError {
+export function refusal(reason: unknown): HistoryError {
 	if (reason instanceof HistoryError) return reason;
 	if (typeof reason === 'string') return new HistoryError(reason);
 	return new HistoryError('That did not work. Try again.');
