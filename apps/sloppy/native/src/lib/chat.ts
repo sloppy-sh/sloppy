@@ -199,10 +199,6 @@ class TauriChat implements ChatAccess {
 		});
 	}
 
-	/** @deprecated Nothing is asked, so there is nothing to answer —
-	 *  `ChatAccess.settle` in `@sloppy/app-core` says what it was. */
-	async settle(): Promise<void> {}
-
 	async stop(): Promise<void> {
 		const session = this.held;
 		const turn = session?.turn;

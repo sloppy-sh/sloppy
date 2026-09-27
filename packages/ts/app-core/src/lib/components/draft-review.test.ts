@@ -84,7 +84,6 @@ const chatting: ChatAccess = {
 		hear = heard;
 	},
 	say: async () => {},
-	settle: async () => {},
 	stop: async () => {},
 	close: async () => {
 		sessions.closed += 1;

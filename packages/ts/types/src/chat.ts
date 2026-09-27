@@ -1050,24 +1050,6 @@ const BlockEventSchema = z.object({
   block: ChatBlockSchema,
 });
 
-const AskingEventSchema = z.object({
-  event: z.literal("asking"),
-  call: ChatCallIdSchema,
-  act: z.enum(CHAT_TOOLS),
-  /** Carried untouched, as on a tool call block, and bounded by
-   *  {@link argumentsFit}. It is what the question in the thread is written
-   *  from, so this event stands on its own and never waits on a block. */
-  arguments: z.unknown().optional(),
-});
-
-const SettledEventSchema = z.object({
-  event: z.literal("settled"),
-  call: ChatCallIdSchema,
-  /** What the call was answered with. **False is a call turned down**, and a
-   *  call nobody answered because the session ended under the question. */
-  allowed: z.boolean(),
-});
-
 const EndedEventSchema = z.object({
   event: z.literal("ended"),
   /** **Absent is a turn that finished.** True is one the person stopped, which
@@ -1092,8 +1074,6 @@ const OverEventSchema = z.object({
 export const ChatEventSchema = z.discriminatedUnion("event", [
   StartedEventSchema,
   BlockEventSchema,
-  AskingEventSchema,
-  SettledEventSchema,
   EndedEventSchema,
   OverEventSchema,
 ]);

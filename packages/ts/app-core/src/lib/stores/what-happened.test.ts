@@ -7,7 +7,6 @@ import { MemoryFiles } from '@sloppy/local';
 import type {
 	ChatActDone,
 	ChatAgent,
-	ChatCallId,
 	ChatEvent,
 	ChatToolAnswer,
 	ChatToolCall
@@ -51,11 +50,6 @@ class Stub implements ChatAccess {
 	}
 
 	say(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	settle(call: ChatCallId, allowed: boolean): Promise<void> {
-		this.tell({ event: 'settled', call, allowed });
 		return Promise.resolve();
 	}
 

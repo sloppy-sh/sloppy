@@ -3367,7 +3367,6 @@ describe('the chat about the code, beside an open note', () => {
 		agents: async () => [],
 		open: async () => {},
 		say: async () => {},
-		settle: async () => {},
 		stop: async () => {},
 		close: async () => {}
 	};

@@ -20,7 +20,6 @@ import type {
 } from '@sloppy/local';
 import type {
 	ChatAgent,
-	ChatCallId,
 	ChatEvent,
 	ChatToolAnswer,
 	ChatToolCall,
@@ -200,9 +199,7 @@ export interface ChatAsked {
  * copy of the folder, kept apart from the one in front of somebody until they
  * have read it — so a write costs them no answer while it runs and costs the
  * run no wait. {@link ChatAccess.drafts} is where a draft comes from and
- * {@link DraftAccess} is what a page does with one. {@link ChatAccess.settle}
- * and the `asking` and `settled` events are what the question used to be and
- * are on their way out; nothing new calls one.
+ * {@link DraftAccess} is what a page does with one.
  *
  * **A page serving a writing act writes as the project's CONTAINER, and never
  * as the person.** `containerDataAt` in `@sloppy/local` is where that store's
@@ -245,10 +242,6 @@ export interface ChatAccess {
 	 *  agent has been told, NOT when the turn ends — `ended` says that. Saying
 	 *  nothing REJECTS. */
 	say(said: string): Promise<void>;
-	/** @deprecated The question a write used to wait on. A session works on a
-	 *  draft now, so nothing asks and nothing calls this; it is declared until
-	 *  every shell and page has let go of it. */
-	settle(call: ChatCallId, allowed: boolean): Promise<void>;
 	/** End the turn underway, resolving once it has ended. The session stands,
 	 *  and the next {@link ChatAccess.say} goes on with it. Nothing underway is
 	 *  not a failure. */

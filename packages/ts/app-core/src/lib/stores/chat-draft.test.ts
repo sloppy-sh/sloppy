@@ -90,7 +90,6 @@ const chatting: ChatAccess = {
 	agents: async () => ['claude_code'] as ChatAgent[],
 	open: async () => {},
 	say: async () => {},
-	settle: async () => {},
 	stop: async () => {},
 	close: async () => {},
 	drafts

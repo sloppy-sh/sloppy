@@ -664,13 +664,6 @@ describe("what a page is told", () => {
         at: 0,
         block: { kind: "said", said: "Reading the parser." },
       },
-      {
-        event: "asking",
-        call: "call-1",
-        act: "write_note",
-        arguments: { about: "src" },
-      },
-      { event: "settled", call: "call-1", allowed: true },
       { event: "ended" },
       { event: "over" },
       { event: "over", said: "That did not finish. Try again." },
