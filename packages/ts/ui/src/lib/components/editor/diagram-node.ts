@@ -5,7 +5,7 @@
 import { InputRule, Node, mergeAttributes } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
 import { DIAGRAM_LANGUAGES } from '@sloppy/types';
-import { MERMAID, drawDiagram, drawsDiagrams, whenThemeChanges } from './diagrams.js';
+import { MERMAID, NOT_DRAWN, drawDiagram, drawsDiagrams, whenThemeChanges } from './diagrams.js';
 import { placeBlock, replaceBlock } from './placement.js';
 
 export const DIAGRAM_NODE = 'diagram';
@@ -26,15 +26,11 @@ declare module '@tiptap/core' {
 	}
 }
 
-const NOT_DRAWN = "This diagram didn't come out.";
 /** A language this build has no renderer for; the source is shown instead. */
 const NOT_DRAWN_HERE = "This kind of diagram isn't drawn here.";
 
 /** How long the writing rests before the diagram is drawn again. */
 const SETTLE_AFTER_MS = 400;
-
-/** Mermaid names the SVG it draws, and no two on a page may share a name. */
-let named = 0;
 
 export const DiagramNode = Node.create({
 	name: DIAGRAM_NODE,
@@ -148,7 +144,7 @@ export const DiagramNode = Node.create({
 					return;
 				}
 				try {
-					const svg = await drawDiagram(language, written, `sloppy-diagram-${++named}`);
+					const svg = await drawDiagram(language, written);
 					if (mine !== drawing) return;
 					picture.classList.remove('is-plain');
 					picture.innerHTML = svg;

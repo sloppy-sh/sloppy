@@ -8,6 +8,7 @@ import HeldStack from './held-stack.svelte';
 vi.mock('mermaid', () => ({
 	default: {
 		initialize: () => {},
+		parse: async () => ({ diagramType: 'flowchart-v2' }),
 		render: async (id: string) => ({ svg: `<svg data-drawn="${id}"><g></g></svg>` })
 	}
 }));

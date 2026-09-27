@@ -18,9 +18,12 @@ const drawings = vi.hoisted(() => ({
 vi.mock('mermaid', () => ({
 	default: {
 		initialize: () => {},
+		parse: async () => {
+			if (drawings.fails) throw new Error('Parse error on line 2:\nand more about it');
+			return { diagramType: 'flowchart-v2' };
+		},
 		render: async (id: string, source: string) => {
 			drawings.asked.push(source);
-			if (drawings.fails) throw new Error('Parse error on line 2:\nand more about it');
 			return { svg: `<svg data-drawn="${id}"><g></g></svg>` };
 		}
 	}
