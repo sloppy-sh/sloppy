@@ -3,6 +3,7 @@
 // starts a program: the seam is a stand-in throughout.
 
 import 'fake-indexeddb/auto';
+import { DELETED_KEPT_FOR_DAYS } from '@sloppy/types';
 import type {
 	ChatAgent,
 	ChatBlock,
@@ -773,15 +774,15 @@ describe('the answer a write waits on', () => {
 		expect(screen()).toContain('It would take the size back off it.');
 	});
 
-	it('says a note goes to the bin with everything beneath it, and can come back', async () => {
+	it('says a note goes to the bin with everything beneath it, and how long there is to put it back', async () => {
 		await saying();
 		stub.tell({ event: 'asking', call: 'c9', act: 'delete_note', arguments: { note: PARSER } });
 		await settle();
 
+		expect(screen()).toContain('It wants to put 1 \u00b7 The parser in the bin.');
 		expect(screen()).toContain(
-			'It wants to put 1 \u00b7 The parser, and everything beneath it, in the bin.'
+			`It goes, and so does everything written under it. You can put it back from Your graphs for ${DELETED_KEPT_FOR_DAYS} days.`
 		);
-		expect(screen()).toContain('You can take it back out.');
 		expect(stub.answered).toEqual([]);
 	});
 

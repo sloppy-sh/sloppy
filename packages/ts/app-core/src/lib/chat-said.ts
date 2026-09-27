@@ -28,6 +28,7 @@ import {
 	type TagNoteArguments,
 	type ToolCallBlock
 } from '@sloppy/types';
+import { deletionCost } from './deletion.js';
 import type { NoteLanding } from './pages/page-state.js';
 
 /** Past this a line in the thread is something to scroll rather than read. */
@@ -104,8 +105,10 @@ export function askedOf(call: ChatToolCall | null, nameOf: NameOf): string {
 			return lookingOf(call.arguments, named);
 		case 'style_note':
 			return drawingOf(call.arguments, named);
-		case 'delete_note':
-			return `It wants to put ${named(call.arguments.note, 'a note')}, and everything beneath it, in the bin. You can take it back out.`;
+		case 'delete_note': {
+			const { note } = call.arguments;
+			return `It wants to put ${named(note, 'a note')} in the bin. ${deletionCost([note])}`;
+		}
 		default:
 			return SOMETHING;
 	}
