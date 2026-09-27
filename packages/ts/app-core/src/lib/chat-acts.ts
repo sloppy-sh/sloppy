@@ -13,6 +13,10 @@
 
 import { containerDataAt, type Files, keepingDataAt, LocalApi, writeOnto } from '@sloppy/local';
 import {
+	sectionHeadings,
+	CARD_ROWS,
+	CARD_NONE,
+	A_NOTE,
 	anchorsOf,
 	type BlockDocument,
 	CHAT_TOLD_MAX,
@@ -94,29 +98,11 @@ const TOO_MANY_HERE = 'Too many notes here to read at once.';
 const TOO_MANY_FOUND = 'Too many notes carry those words.';
 const TOO_LONG_TO_READ = 'That note is too long to read in one go.';
 
-/** What a card's rows are labelled — the words the question in front of the
- *  act is asked in, so one card reads the same on both sides of it. */
-const PLACE = 'Place';
-const UNDER = 'Under';
-const AFTER = 'After';
-const ON = 'On';
-const TAGS = 'Tags';
-const OFF = 'Off';
-const NUMBER = 'Number';
-const ALSO_AT = 'Also at';
-const SECTIONS = 'Sections';
-const WITH_IT = 'With it';
-const TO = 'To';
-const WORDS = 'Words';
-const ARROW = 'Arrow';
-const LINE = 'Line';
 const RING = 'Ring';
 const RING_STYLE = 'Ring style';
 const SIZE = 'Size';
 
 /** A channel taken back off reads as what the graph draws without it. */
-const NONE = 'None';
-const UNTITLED = 'Untitled';
 
 /** A store over the notes for the project `files` is rooted at, writing as the
  *  container rather than as whoever is signed in here. */
@@ -677,7 +663,7 @@ function shortly(told: string): string {
 /** A note as somebody cites it: the number they navigate by and what it is
  *  called. */
 function heads(note: Pick<NodeView, 'address' | 'title'>): string {
-	const title = note.title.trim() || UNTITLED;
+	const title = note.title.trim() || A_NOTE;
 	return note.address === undefined ? title : `${note.address} · ${title}`;
 }
 
@@ -720,22 +706,12 @@ function writeCard(
 ): ChatCard {
 	const tags = [...new Set([...(note?.tags ?? []), ...tagsAmong(asked.tags ?? [])])];
 	return chatCard('note', note ? heads(note) : asked.title?.trim() || asked.about, [
-		...cardRow(PLACE, asked.about),
-		...cardRow(NUMBER, note?.address ?? asked.address),
-		...cardRow(TAGS, tags.join(', ')),
-		...cardRow(UNDER, under),
-		...cardRow(SECTIONS, sectionsSaid(asked.sections))
+		...cardRow(CARD_ROWS.place, asked.about),
+		...cardRow(CARD_ROWS.number, note?.address ?? asked.address),
+		...cardRow(CARD_ROWS.tags, tags.join(', ')),
+		...cardRow(CARD_ROWS.under, under),
+		...cardRow(CARD_ROWS.sections, sectionHeadings(asked.sections))
 	]);
-}
-
-/** What the sections of a write are called, which is the heading each one
- *  opens with. */
-function sectionsSaid(sections: readonly string[]): string {
-	return sections
-		.map((markdown) => markdown.trimStart().split('\n')[0].trim())
-		.filter((first) => first.startsWith('## '))
-		.map((first) => first.slice('## '.length).trim())
-		.join(', ');
 }
 
 function moveCard(
@@ -746,29 +722,32 @@ function moveCard(
 	address: string | undefined
 ): ChatCard {
 	return chatCard('note', heads(note), [
-		...cardRow(relation === 'under' ? UNDER : AFTER, to && heads(to)),
-		...cardRow(NUMBER, address),
-		...cardRow(ALSO_AT, (note.aliases ?? []).join(', ')),
-		...cardRow(WITH_IT, going === 0 ? undefined : notesSaid(going))
+		...cardRow(relation === 'under' ? CARD_ROWS.under : CARD_ROWS.after, to && heads(to)),
+		...cardRow(CARD_ROWS.number, address),
+		...cardRow(CARD_ROWS.alsoAt, (note.aliases ?? []).join(', ')),
+		...cardRow(CARD_ROWS.withIt, going === 0 ? undefined : notesSaid(going))
 	]);
 }
 
 function tagCard(note: NodeView, on: readonly Tag[], off: readonly Tag[]): ChatCard {
 	return chatCard('note', heads(note), [
-		...cardRow(ON, on.join(', ')),
-		...cardRow(OFF, off.join(', '))
+		...cardRow(CARD_ROWS.on, on.join(', ')),
+		...cardRow(CARD_ROWS.off, off.join(', '))
 	]);
 }
 
 function numberCard(note: NodeView, address: string | undefined): ChatCard {
 	return chatCard('note', heads(note), [
-		...cardRow(NUMBER, address ?? NONE),
-		...cardRow(ALSO_AT, (note.aliases ?? []).join(', '))
+		...cardRow(CARD_ROWS.number, address ?? CARD_NONE),
+		...cardRow(CARD_ROWS.alsoAt, (note.aliases ?? []).join(', '))
 	]);
 }
 
 function linkCard(note: NodeView, to: string, off: string): ChatCard {
-	return chatCard('line', heads(note), [...cardRow(TO, to), ...cardRow(OFF, off)]);
+	return chatCard('line', heads(note), [
+		...cardRow(CARD_ROWS.to, to),
+		...cardRow(CARD_ROWS.off, off)
+	]);
 }
 
 function lineCard(note: NodeView, other: NodeView, asked: StyleEdgeArguments): ChatCard {
@@ -777,18 +756,18 @@ function lineCard(note: NodeView, other: NodeView, asked: StyleEdgeArguments): C
 		channel: EdgeLookChannel,
 		value: T | undefined,
 		said: (held: T) => string
-	) => (gone.has(channel) ? NONE : value === undefined ? undefined : said(value));
+	) => (gone.has(channel) ? CARD_NONE : value === undefined ? undefined : said(value));
 	return chatCard('line', `${heads(note)} → ${heads(other)}`, [
 		...cardRow(
-			WORDS,
+			CARD_ROWS.words,
 			set('label', asked.label || undefined, (held) => held)
 		),
 		...cardRow(
-			ARROW,
+			CARD_ROWS.arrow,
 			set('direction', asked.direction, (held) => arrowSaid(held, note, other))
 		),
 		...cardRow(
-			LINE,
+			CARD_ROWS.line,
 			set('stroke', asked.stroke, (held) => EDGE_STROKE_LABELS[held])
 		)
 	]);
@@ -814,7 +793,7 @@ function markCard(note: NodeView, asked: StyleNoteArguments): ChatCard {
 		channel: MarkChannel,
 		value: T | undefined,
 		words: Record<T, string>
-	) => (gone.has(channel) ? NONE : value === undefined ? undefined : words[value]);
+	) => (gone.has(channel) ? CARD_NONE : value === undefined ? undefined : words[value]);
 	return chatCard('mark', heads(note), [
 		...cardRow(RING, set('ring_weight', asked.ring_weight, RING_WEIGHT_LABELS)),
 		...cardRow(RING_STYLE, set('ring_style', asked.ring_style, RING_STYLE_LABELS)),
@@ -824,8 +803,8 @@ function markCard(note: NodeView, asked: StyleNoteArguments): ChatCard {
 
 function binCard(note: NodeView, about: readonly string[], going: number): ChatCard {
 	return chatCard('note', heads(note), [
-		...cardRow(PLACE, about.join(', ')),
-		...cardRow(TAGS, [...note.tags].join(', ')),
-		...cardRow(WITH_IT, going === 0 ? undefined : notesSaid(going))
+		...cardRow(CARD_ROWS.place, about.join(', ')),
+		...cardRow(CARD_ROWS.tags, [...note.tags].join(', ')),
+		...cardRow(CARD_ROWS.withIt, going === 0 ? undefined : notesSaid(going))
 	]);
 }

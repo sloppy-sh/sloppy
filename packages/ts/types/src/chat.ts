@@ -886,6 +886,48 @@ export function chatCard(
   };
 }
 
+/**
+ * What a card's rows are labelled. One card is drawn twice — as the question
+ * in front of an act that would write, and as the record of what it did — and
+ * these are what keep the two reading the same.
+ */
+export const CARD_ROWS = {
+  place: "Place",
+  under: "Under",
+  after: "After",
+  on: "On",
+  tags: "Tags",
+  off: "Off",
+  number: "Number",
+  alsoAt: "Also at",
+  sections: "Sections",
+  withIt: "With it",
+  to: "To",
+  words: "Words",
+  arrow: "Arrow",
+  line: "Line",
+} as const;
+
+/** What a note nothing can name is called, in both readings of a card. */
+export const A_NOTE = "A note";
+
+/** What a channel taken back off reads as: whatever the graph draws without it. */
+export const CARD_NONE = "None";
+
+/**
+ * The sections a write names, as their headings read. A section written with
+ * no heading names nothing, and leading blank lines are not one — which is why
+ * this is one function rather than each side of the card writing its own.
+ */
+export function sectionHeadings(sections: readonly string[]): string {
+  return sections
+    .map((markdown) => markdown.trimStart().split("\n")[0].trim())
+    .filter((first) => first.startsWith("## "))
+    .map((first) => first.slice("## ".length).trim())
+    .filter((heading) => heading !== "")
+    .join(", ");
+}
+
 /** More notes than one act names what it did to. A move or a delete carries
  *  everything beneath a note with it, and past this the act says nothing and
  *  the whole folder is read again — {@link ChatActDoneSchema}. */

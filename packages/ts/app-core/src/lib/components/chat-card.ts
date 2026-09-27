@@ -8,8 +8,12 @@
  */
 
 import {
+	A_NOTE,
+	CARD_NONE,
+	CARD_ROWS,
 	cardRow,
 	chatCard,
+	sectionHeadings,
 	type ChatCard,
 	type ChatToolCall,
 	type EdgeDirection,
@@ -26,13 +30,7 @@ import {
 import type { NameOf } from '../chat-said.js';
 import { deletionCost } from '../deletion.js';
 
-/** A note the surface asking has never seen, which is every note the agent is
- *  about to start. */
-const A_NOTE = 'A note';
 const ANOTHER = 'another note';
-
-/** A channel taken back off reads as what the graph draws without it. */
-const NONE = 'None';
 
 /** What a question puts in front of the person. */
 export interface AskedShown {
@@ -53,11 +51,11 @@ export function askedShown(call: ChatToolCall | null, nameOf: NameOf): AskedShow
 			const { about, title, tags, address, under, sections } = call.arguments;
 			return {
 				card: chatCard('note', title ?? about, [
-					...cardRow('Place', about),
-					...cardRow('Number', address),
-					...cardRow('Tags', (tags ?? []).join(', ')),
-					...cardRow('Under', under === undefined ? undefined : named(under, ANOTHER)),
-					...cardRow('Sections', headingsIn(sections))
+					...cardRow(CARD_ROWS.place, about),
+					...cardRow(CARD_ROWS.number, address),
+					...cardRow(CARD_ROWS.tags, (tags ?? []).join(', ')),
+					...cardRow(CARD_ROWS.under, under === undefined ? undefined : named(under, ANOTHER)),
+					...cardRow(CARD_ROWS.sections, sectionHeadings(sections))
 				])
 			};
 		}
@@ -65,9 +63,9 @@ export function askedShown(call: ChatToolCall | null, nameOf: NameOf): AskedShow
 			const { note, to, relation, address } = call.arguments;
 			return {
 				card: chatCard('note', named(note, A_NOTE), [
-					...cardRow(relation === 'under' ? 'Under' : 'After', named(to, ANOTHER)),
-					...cardRow('Number', address),
-					...cardRow('With it', 'Everything written under it')
+					...cardRow(relation === 'under' ? CARD_ROWS.under : CARD_ROWS.after, named(to, ANOTHER)),
+					...cardRow(CARD_ROWS.number, address),
+					...cardRow(CARD_ROWS.withIt, 'Everything written under it')
 				])
 			};
 		}
@@ -75,15 +73,17 @@ export function askedShown(call: ChatToolCall | null, nameOf: NameOf): AskedShow
 			const { note, tags, off } = call.arguments;
 			return {
 				card: chatCard('note', named(note, A_NOTE), [
-					...cardRow('On', (tags ?? []).join(', ')),
-					...cardRow('Off', (off ?? []).join(', '))
+					...cardRow(CARD_ROWS.on, (tags ?? []).join(', ')),
+					...cardRow(CARD_ROWS.off, (off ?? []).join(', '))
 				])
 			};
 		}
 		case 'number_note': {
 			const { note, address } = call.arguments;
 			return {
-				card: chatCard('note', named(note, A_NOTE), [...cardRow('Number', address ?? NONE)])
+				card: chatCard('note', named(note, A_NOTE), [
+					...cardRow(CARD_ROWS.number, address ?? CARD_NONE)
+				])
 			};
 		}
 		case 'link_notes': {
@@ -92,8 +92,8 @@ export function askedShown(call: ChatToolCall | null, nameOf: NameOf): AskedShow
 				(refs ?? []).map((one) => named(one, ANOTHER)).join(', ');
 			return {
 				card: chatCard('line', named(note, A_NOTE), [
-					...cardRow('To', others(to)),
-					...cardRow('Off', others(off))
+					...cardRow(CARD_ROWS.to, others(to)),
+					...cardRow(CARD_ROWS.off, others(off))
 				])
 			};
 		}
@@ -104,11 +104,11 @@ export function askedShown(call: ChatToolCall | null, nameOf: NameOf): AskedShow
 			const gone = new Set<EdgeLookChannel>(off ?? []);
 			return {
 				card: chatCard('line', `${here} → ${there}`, [
-					...cardRow('Words', gone.has('label') || label === '' ? NONE : label),
+					...cardRow(CARD_ROWS.words, gone.has('label') || label === '' ? CARD_NONE : label),
 					...cardRow(
 						'Arrow',
 						gone.has('direction')
-							? NONE
+							? CARD_NONE
 							: direction === undefined
 								? undefined
 								: arrowSays(direction, here, there)
@@ -116,7 +116,7 @@ export function askedShown(call: ChatToolCall | null, nameOf: NameOf): AskedShow
 					...cardRow(
 						'Line',
 						gone.has('stroke')
-							? NONE
+							? CARD_NONE
 							: stroke === undefined
 								? undefined
 								: EDGE_STROKE_LABELS[stroke]
@@ -131,7 +131,7 @@ export function askedShown(call: ChatToolCall | null, nameOf: NameOf): AskedShow
 				channel: MarkChannel,
 				value: T | undefined,
 				words: Record<T, string>
-			) => (gone.has(channel) ? NONE : value === undefined ? undefined : words[value]);
+			) => (gone.has(channel) ? CARD_NONE : value === undefined ? undefined : words[value]);
 			return {
 				card: chatCard('mark', named(note, A_NOTE), [
 					...cardRow('Ring', set('ring_weight', ring_weight, RING_WEIGHT_LABELS)),
@@ -152,16 +152,4 @@ export function askedShown(call: ChatToolCall | null, nameOf: NameOf): AskedShow
 function arrowSays(direction: EdgeDirection, here: string, there: string): string {
 	if (direction === 'both') return 'Both ends';
 	return `Points at ${direction === 'to' ? there : here}`;
-}
-
-/** The sections a write names, as somebody reads them off the note afterwards:
- *  each one's heading, and nothing where they are written without one. */
-function headingsIn(sections: readonly string[]): string {
-	return sections
-		.map((markdown) => {
-			const first = markdown.split('\n', 1)[0].trim();
-			return first.startsWith('## ') ? first.slice(3).trim() : '';
-		})
-		.filter((heading) => heading !== '')
-		.join(', ');
 }

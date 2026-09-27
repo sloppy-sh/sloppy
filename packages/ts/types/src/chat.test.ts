@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  sectionHeadings,
+  CARD_ROWS,
   advertisedChatTools,
   argumentsFit,
   CHAT_AGENTS,
@@ -837,5 +839,37 @@ describe("what a person reads of an act", () => {
         touched: Array.from({ length: MOST_NOTES_TOUCHED + 1 }, () => NOTE),
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("what both readings of a card share", () => {
+  it("names a section by its heading, however it is spaced", () => {
+    // The question is drawn from the call and the record from the outcome, so
+    // a second reader here showed the person a blank row before the write and
+    // the heading after it.
+    for (const opens of ["", "\n", "\n\n", "  \n"]) {
+      expect(sectionHeadings([`${opens}## Why\n\nBecause.`]), opens).toBe(
+        "Why",
+      );
+    }
+  });
+
+  it("says nothing for a section written without one", () => {
+    expect(sectionHeadings(["Just words."])).toBe("");
+    expect(sectionHeadings(["### Too deep to be a section"])).toBe("");
+    expect(sectionHeadings([])).toBe("");
+  });
+
+  it("names them in the order they were written", () => {
+    expect(sectionHeadings(["## What it does", "## Why", "no heading"])).toBe(
+      "What it does, Why",
+    );
+  });
+
+  it("labels a row once, for both readings to use", () => {
+    expect(new Set(Object.values(CARD_ROWS)).size).toBe(
+      Object.values(CARD_ROWS).length,
+    );
+    for (const said of Object.values(CARD_ROWS)) expect(said.trim()).toBe(said);
   });
 });
