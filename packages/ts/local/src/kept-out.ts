@@ -2,6 +2,7 @@
 // somebody's repository — docs/ARCHITECTURE.md § "A project's container".
 
 import { decodeText, encodeText } from "@sloppy/vault";
+import { ATTACHED_KEPT_OUT } from "./container.js";
 import { BIN_DIR, BIN_FILE } from "./vault-paths.js";
 import { CREDENTIALS_FILE } from "./credentials.js";
 import type { Files } from "./files.js";
@@ -18,7 +19,8 @@ const IGNORE_FILE = ".gitignore";
  * `*.key` covers every key rather than the two named ones: a key this build has
  * not named yet is the one mistake with no way back. A note's ink and what each
  * picture was called sit in the same folder and are the graph's own — they
- * belong in the history with the notes.
+ * belong in the history with the notes. What somebody put in front of an agent
+ * does not: it is the chat's, and the project's history is the code's.
  */
 export const KEPT_OUT = [
   "*.key",
@@ -32,6 +34,7 @@ export const KEPT_OUT = [
   "sloppy-identity*",
   `/${BIN_FILE}`,
   `/${BIN_DIR}/`,
+  ATTACHED_KEPT_OUT,
 ];
 
 /**

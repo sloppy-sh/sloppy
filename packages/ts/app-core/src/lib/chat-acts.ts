@@ -5,39 +5,58 @@
  * project container's own identity rather than the person's, and every write
  * goes through `writeOnto`.
  *
- * What an answer RUNS TO is `listingAnswer`'s, `foundAnswer`'s and
- * `noteAnswer`'s in `@sloppy/types`, so nothing here decides how much of a
- * project one call carries.
+ * An act answers two readers: `said` is the agent's, and the line, the card and
+ * the notes it left different are the person's. What an answer RUNS TO is
+ * `listingAnswer`'s, `foundAnswer`'s and `noteAnswer`'s in `@sloppy/types`, so
+ * nothing here decides how much of a project one call carries.
  */
 
 import { containerDataAt, type Files, keepingDataAt, LocalApi, writeOnto } from '@sloppy/local';
 import {
 	anchorsOf,
 	type BlockDocument,
+	CHAT_TOLD_MAX,
+	type ChatActDone,
+	type ChatCard,
+	cardRow,
+	chatCard,
 	type ChatToolAnswer,
 	type ChatToolCall,
 	CODE_SCHEME,
+	type DeleteNoteArguments,
+	type EdgeDirection,
 	type EdgeLook,
+	type EdgeLookChannel,
+	type EdgeStroke,
 	type FoundNote,
 	foundAnswer,
+	type LinkNotesArguments,
 	type ListedNote,
 	listingAnswer,
 	lookBetween,
+	type MarkChannel,
+	type MarkRadius,
+	MOST_NOTES_TOUCHED,
+	type MoveNoteArguments,
 	type NodeAppearance,
 	type NodeView,
 	noteAnswer,
 	type NoteBinned,
 	type NoteSection,
 	type NoteWritten,
+	type NumberNoteArguments,
 	type OwnedRef,
 	type SearchHit,
 	splitOwnedRef,
 	type StyleEdgeArguments,
 	type StyleNoteArguments,
 	type Tag,
+	type TagNoteArguments,
 	tagsAmong,
-	ulid
+	ulid,
+	type WriteNoteArguments
 } from '@sloppy/types';
+import { RING_STYLE_LABELS, RING_WEIGHT_LABELS } from '@sloppy/ui';
 import { emptySidecars, fromMarkdown, toMarkdown } from '@sloppy/vault';
 import { wordsFor } from './stores/errors.js';
 
@@ -58,6 +77,61 @@ const NOTHING_DRAWN = 'That named nothing to draw and nothing to take off.';
 const NOT_LOOKED = 'That line was left as it was.';
 const NOT_DRAWN = 'That mark was left as it was.';
 
+/** The person's half of what the agent was told above: the same fact, without
+ *  the sentence telling an agent what to call next. */
+const NO_NOTE_TOLD = 'That note is not here.';
+const NO_OTHER_NOTE_TOLD = 'The note at the other end is not here.';
+const NO_PARENT_TOLD = 'There is no note here to write that one under.';
+const NOTHING_WRITTEN_TOLD = 'Nothing to write.';
+const NOTHING_TAGGED_TOLD = 'No tags named.';
+const NOTHING_LINKED_TOLD = 'No lines named.';
+const NOTHING_DRAWN_TOLD = 'Nothing named to draw.';
+const NOT_TO_ITSELF_TOLD = 'A note draws no line to itself.';
+const TOO_MANY_HERE = 'Too many notes here to read at once.';
+const TOO_MANY_FOUND = 'Too many notes carry those words.';
+const TOO_LONG_TO_READ = 'That note is too long to read in one go.';
+
+/** What a card's rows are labelled — the words the question in front of the
+ *  act is asked in, so one card reads the same on both sides of it. */
+const PLACE = 'Place';
+const UNDER = 'Under';
+const AFTER = 'After';
+const ON = 'On';
+const TAGS = 'Tags';
+const OFF = 'Off';
+const NUMBER = 'Number';
+const ALSO_AT = 'Also at';
+const SECTIONS = 'Sections';
+const WITH_IT = 'With it';
+const TO = 'To';
+const WORDS = 'Words';
+const ARROW = 'Arrow';
+const LINE = 'Line';
+const RING = 'Ring';
+const RING_STYLE = 'Ring style';
+const SIZE = 'Size';
+
+/** A channel taken back off reads as what the graph draws without it. */
+const NONE = 'None';
+const UNTITLED = 'Untitled';
+
+/** What a line's break and a mark's size are called in front of a person. The
+ *  stored vocabulary is an open set, so a look from a newer Sloppy has no word
+ *  here and its row is left out. */
+const STROKE_WORDS: Record<EdgeStroke, string> = {
+	solid: 'Solid',
+	dashed: 'Dashed',
+	dotted: 'Dotted'
+};
+
+const SIZE_WORDS: Record<MarkRadius, string> = {
+	small: 'Small',
+	regular: 'Medium',
+	large: 'Large',
+	huge: 'Huge',
+	giant: 'Giant'
+};
+
 /** A store over the notes for the project `files` is rooted at, writing as the
  *  container rather than as whoever is signed in here. */
 export function containerApi(files: Files): LocalApi {
@@ -65,14 +139,28 @@ export function containerApi(files: Files): LocalApi {
 }
 
 /** One of Sloppy's own acts, done and answered. The arguments arrived parsed;
- *  what this answers with is what the agent reads. */
-export async function serveChatCall(files: Files, call: ChatToolCall): Promise<ChatToolAnswer> {
+ *  `said` is what the agent reads and the rest is the person's. */
+export async function serveChatCall(files: Files, call: ChatToolCall): Promise<ChatActDone> {
 	const api = containerApi(files);
 	switch (call.act) {
-		case 'list_notes':
-			return listingAnswer((await notesHere(api)).map((held) => asListed(held.note, held.about)));
-		case 'search_notes':
-			return foundAnswer((await api.searchNotes(call.arguments.words)).map(asFound));
+		case 'list_notes': {
+			const here = await notesHere(api);
+			const answer = listingAnswer(here.map((held) => asListed(held.note, held.about)));
+			return {
+				...answer,
+				told: answer.trouble ? TOO_MANY_HERE : notesHereTold(here.length),
+				touched: []
+			};
+		}
+		case 'search_notes': {
+			const hits = (await api.searchNotes(call.arguments.words)).map(asFound);
+			const answer = foundAnswer(hits);
+			return {
+				...answer,
+				told: answer.trouble ? TOO_MANY_FOUND : notesFoundTold(hits.length),
+				touched: []
+			};
+		}
 		case 'read_note':
 			return await readNote(api, call.arguments.note);
 		case 'write_note':
@@ -123,7 +211,7 @@ function asListed(note: NodeView, about: readonly string[]): ListedNote {
 	};
 }
 
-/** One note as an act that wrote on it answers with. */
+/** One note as an act that wrote on it answers the agent with. */
 async function listedAnswer(api: LocalApi, note: NodeView): Promise<ChatToolAnswer> {
 	return { said: JSON.stringify(asListed(note, await anchorsIn(api, note.ref))) };
 }
@@ -137,33 +225,31 @@ function asFound(hit: SearchHit): FoundNote {
 	};
 }
 
-async function readNote(api: LocalApi, ref: OwnedRef): Promise<ChatToolAnswer> {
+async function readNote(api: LocalApi, ref: OwnedRef): Promise<ChatActDone> {
 	const note = await api.getNode(ref);
-	if (!note) return { said: NO_NOTE, trouble: true };
+	if (!note) return trouble(NO_NOTE, NO_NOTE_TOLD);
 	const aside = emptySidecars(splitOwnedRef(note.ref).localId);
 	const sections: NoteSection[] = (await api.listBlocks(note.ref)).map((block) => {
 		const id = splitOwnedRef(block.ref).localId;
 		// A drawing's files are named after the section it is in, not the note.
 		return { id, markdown: toMarkdown(block.content, { ...aside, block: id }) };
 	});
-	return noteAnswer(
+	const answer = noteAnswer(
 		{
 			...asListed(note, await anchorsIn(api, note.ref)),
 			...(note.edges === undefined || note.edges.length === 0 ? {} : { edges: [...note.edges] })
 		},
 		sections
 	);
+	return { ...answer, told: answer.trouble ? TOO_LONG_TO_READ : heads(note), touched: [] };
 }
 
-async function writeNote(
-	api: LocalApi,
-	asked: Extract<ChatToolCall, { act: 'write_note' }>['arguments']
-): Promise<ChatToolAnswer> {
-	if (asked.sections.length === 0) return { said: NOTHING_WRITTEN, trouble: true };
+async function writeNote(api: LocalApi, asked: WriteNoteArguments): Promise<ChatActDone> {
+	if (asked.sections.length === 0) return trouble(NOTHING_WRITTEN, NOTHING_WRITTEN_TOLD);
 	const here = await notesHere(api);
 	const standing = here.find((held) => held.about.includes(asked.about))?.note;
 	if (!standing && asked.under !== undefined && !(await api.getNode(asked.under))) {
-		return { said: NO_PARENT, trouble: true };
+		return trouble(NO_PARENT, NO_PARENT_TOLD);
 	}
 	const tags = tagsAmong(asked.tags ?? []);
 	const aside = emptySidecars(
@@ -176,15 +262,18 @@ async function writeNote(
 		if (standing && asked.address !== undefined) {
 			await api.setAddress(standing.ref, asked.address);
 		}
-		const written = standing
+		const written: NoteWritten = standing
 			? { note: standing.ref, done: (await writeOnto(api, standing, sections, tags)).done }
-			: {
-					note: await startNote(api, here, asked, sections, tags),
-					done: 'written' as const
-				};
-		return { said: JSON.stringify(written satisfies NoteWritten) };
+			: { note: await startNote(api, here, asked, sections, tags), done: 'written' };
+		const note = await api.getNode(written.note);
+		return {
+			said: JSON.stringify(written),
+			told: written.done === 'offered' ? 'Offered on a note somebody else wrote.' : 'Written.',
+			card: writeCard(asked, note ?? undefined, headingIn(here, note?.parent)),
+			touched: [written.note]
+		};
 	} catch (error) {
-		return { said: wordsFor(error) ?? NOT_WRITTEN, trouble: true };
+		return troubleWriting(error, NOT_WRITTEN);
 	}
 }
 
@@ -197,7 +286,7 @@ async function writeNote(
 async function startNote(
 	api: LocalApi,
 	here: readonly NoteHere[],
-	asked: Extract<ChatToolCall, { act: 'write_note' }>['arguments'],
+	asked: WriteNoteArguments,
 	sections: readonly BlockDocument[],
 	tags: readonly Tag[]
 ): Promise<OwnedRef> {
@@ -251,11 +340,9 @@ function pointingAt(about: string): BlockDocument {
 
 /** A note carried somewhere else, by the rule `moveNote` in `@sloppy/local`
  *  holds a move to. */
-async function moveNote(
-	api: LocalApi,
-	asked: Extract<ChatToolCall, { act: 'move_note' }>['arguments']
-): Promise<ChatToolAnswer> {
-	if (!(await api.getNode(asked.note))) return { said: NO_NOTE, trouble: true };
+async function moveNote(api: LocalApi, asked: MoveNoteArguments): Promise<ChatActDone> {
+	if (!(await api.getNode(asked.note))) return trouble(NO_NOTE, NO_NOTE_TOLD);
+	const to = await api.getNode(asked.to);
 	try {
 		const carried = await api.moveNote(
 			asked.note,
@@ -263,64 +350,109 @@ async function moveNote(
 			asked.address
 		);
 		const moved = carried.find((one) => one.ref === asked.note);
-		if (!moved) return { said: NOT_CARRIED, trouble: true };
-		return await listedAnswer(api, moved);
+		if (!moved) return trouble(NOT_CARRIED);
+		const going = carried.length - 1;
+		return {
+			...(await listedAnswer(api, moved)),
+			told: going === 0 ? 'Carried.' : `Carried, with ${notesSaid(going)} beneath it.`,
+			card: moveCard(moved, asked.relation, to ?? undefined, going, moved.address),
+			...touchedBy(carried.map((one) => one.ref))
+		};
 	} catch (error) {
-		return { said: wordsFor(error) ?? NOT_CARRIED, trouble: true };
+		return troubleWriting(error, NOT_CARRIED);
 	}
 }
 
 /** A tag named both to put on and to take off comes off. */
-async function tagNote(
-	api: LocalApi,
-	asked: Extract<ChatToolCall, { act: 'tag_note' }>['arguments']
-): Promise<ChatToolAnswer> {
+async function tagNote(api: LocalApi, asked: TagNoteArguments): Promise<ChatActDone> {
 	const on = tagsAmong(asked.tags ?? []);
-	const off = new Set<string>(tagsAmong(asked.off ?? []));
-	if (on.length === 0 && off.size === 0) return { said: NOTHING_TAGGED, trouble: true };
+	const off = tagsOff(asked);
+	if (on.length === 0 && off.length === 0) return trouble(NOTHING_TAGGED, NOTHING_TAGGED_TOLD);
 	const note = await api.getNode(asked.note);
-	if (!note) return { said: NO_NOTE, trouble: true };
-	const tags = [...new Set([...note.tags, ...on])].filter((tag) => !off.has(tag));
+	if (!note) return trouble(NO_NOTE, NO_NOTE_TOLD);
+	const tags = tagsCarried(note, asked);
 	const written = await api.updateNode(asked.note, { tags });
-	return await listedAnswer(api, written);
+	return {
+		...(await listedAnswer(api, written)),
+		told: taggedTold(on.length > 0, off.length > 0),
+		card: tagCard(written, on, off),
+		touched: [written.ref]
+	};
+}
+
+function tagsOff(asked: TagNoteArguments): Tag[] {
+	return tagsAmong(asked.off ?? []);
+}
+
+/** The tags a note is left carrying: the ones it has and the ones going on,
+ *  less the ones coming off. */
+function tagsCarried(note: NodeView, asked: TagNoteArguments): Tag[] {
+	const off = new Set<string>(tagsOff(asked));
+	const on = tagsAmong(asked.tags ?? []);
+	return [...new Set([...note.tags, ...on])].filter((tag) => !off.has(tag));
+}
+
+function taggedTold(on: boolean, off: boolean): string {
+	if (!on) return 'Tags taken off.';
+	return off ? 'Tagged, and tags taken off.' : 'Tagged.';
 }
 
 /** The label a person cites a note by, written or taken off. Every rule it is
  *  held to — unique in its graph, springing from the note above, the number it
  *  leaves still leading to it — is `setAddress` in `@sloppy/local`, which
  *  refuses in words the agent is handed. */
-async function numberNote(
-	api: LocalApi,
-	asked: Extract<ChatToolCall, { act: 'number_note' }>['arguments']
-): Promise<ChatToolAnswer> {
-	if (!(await api.getNode(asked.note))) return { said: NO_NOTE, trouble: true };
+async function numberNote(api: LocalApi, asked: NumberNoteArguments): Promise<ChatActDone> {
+	if (!(await api.getNode(asked.note))) return trouble(NO_NOTE, NO_NOTE_TOLD);
 	try {
-		return await listedAnswer(api, await api.setAddress(asked.note, asked.address ?? null));
+		const written = await api.setAddress(asked.note, asked.address ?? null);
+		return {
+			...(await listedAnswer(api, written)),
+			told: asked.address === undefined ? numberOffTold(written) : `Numbered ${asked.address}.`,
+			card: numberCard(written, asked.address),
+			touched: [written.ref]
+		};
 	} catch (error) {
-		return { said: wordsFor(error) ?? NOT_NUMBERED, trouble: true };
+		return troubleWriting(error, NOT_NUMBERED);
 	}
 }
 
+/** A number taken off a note still leads to it, which is the half somebody
+ *  would otherwise go looking for. */
+function numberOffTold(note: NodeView): string {
+	const led = note.aliases ?? [];
+	return led.length === 0
+		? 'The number is off it.'
+		: `The number is off it. ${led.join(', ')} still leads here.`;
+}
+
 /** A note named both to draw a line to and to take one off loses its line. */
-async function linkNotes(
-	api: LocalApi,
-	asked: Extract<ChatToolCall, { act: 'link_notes' }>['arguments']
-): Promise<ChatToolAnswer> {
+async function linkNotes(api: LocalApi, asked: LinkNotesArguments): Promise<ChatActDone> {
 	const off = new Set<OwnedRef>(asked.off ?? []);
 	const to = [...new Set(asked.to ?? [])].filter((one) => !off.has(one));
-	if (to.length === 0 && off.size === 0) return { said: NOTHING_LINKED, trouble: true };
+	if (to.length === 0 && off.size === 0) return trouble(NOTHING_LINKED, NOTHING_LINKED_TOLD);
 	const note = await api.getNode(asked.note);
-	if (!note) return { said: NO_NOTE, trouble: true };
-	if (to.includes(asked.note)) return { said: NOT_TO_ITSELF, trouble: true };
+	if (!note) return trouble(NO_NOTE, NO_NOTE_TOLD);
+	if (to.includes(asked.note)) return trouble(NOT_TO_ITSELF, NOT_TO_ITSELF_TOLD);
 	for (const other of to) {
-		if (!(await api.getNode(other))) return { said: NO_OTHER_NOTE, trouble: true };
+		if (!(await api.getNode(other))) return trouble(NO_OTHER_NOTE, NO_OTHER_NOTE_TOLD);
 	}
 	const links = [...new Set([...note.links, ...to])].filter((one) => !off.has(one));
 	try {
-		return await listedAnswer(api, await api.updateNode(asked.note, { links }));
+		const written = await api.updateNode(asked.note, { links });
+		return {
+			...(await listedAnswer(api, written)),
+			told: linedTold(to.length > 0, off.size > 0),
+			card: linkCard(written, await headingsOf(api, to), await headingsOf(api, [...off])),
+			touched: [written.ref]
+		};
 	} catch (error) {
-		return { said: wordsFor(error) ?? NOT_LINKED, trouble: true };
+		return troubleWriting(error, NOT_LINKED);
 	}
+}
+
+function linedTold(drawn: boolean, taken: boolean): string {
+	if (!drawn) return 'Lines taken off.';
+	return taken ? 'Lines drawn, and lines taken off.' : 'Lines drawn.';
 }
 
 /**
@@ -328,28 +460,38 @@ async function linkNotes(
  * look, so one line keeps one — and the arrowhead is read against the note it
  * is written on, so it turns with it.
  */
-async function styleEdge(
-	api: LocalApi,
-	asked: Extract<ChatToolCall, { act: 'style_edge' }>['arguments']
-): Promise<ChatToolAnswer> {
-	if (asked.to === asked.note) return { said: NOT_TO_ITSELF, trouble: true };
+async function styleEdge(api: LocalApi, asked: StyleEdgeArguments): Promise<ChatActDone> {
+	if (asked.to === asked.note) return trouble(NOT_TO_ITSELF, NOT_TO_ITSELF_TOLD);
 	if (!saysAnything([asked.label, asked.direction, asked.stroke], asked.off)) {
-		return { said: NOTHING_DRAWN, trouble: true };
+		return trouble(NOTHING_DRAWN, NOTHING_DRAWN_TOLD);
 	}
 	const note = await api.getNode(asked.note);
-	if (!note) return { said: NO_NOTE, trouble: true };
+	if (!note) return trouble(NO_NOTE, NO_NOTE_TOLD);
 	const other = await api.getNode(asked.to);
-	if (!other) return { said: NO_OTHER_NOTE, trouble: true };
+	if (!other) return trouble(NO_OTHER_NOTE, NO_OTHER_NOTE_TOLD);
 	const won = lookBetween(note, other);
 	const on = won !== undefined && won.to === note.ref ? other : note;
 	const at = on === note ? other : note;
 	const look = lookAsked(won, asked, at.ref, on !== note);
 	const edges = [...(on.edges ?? []).filter((one) => one.to !== at.ref), look];
 	try {
-		return await listedAnswer(api, await api.updateNode(on.ref, { edges }));
+		const written = await api.updateNode(on.ref, { edges });
+		return {
+			...(await listedAnswer(api, written)),
+			told: lineTold(asked),
+			card: lineCard(note, other, asked),
+			touched: [written.ref]
+		};
 	} catch (error) {
-		return { said: wordsFor(error) ?? NOT_LOOKED, trouble: true };
+		return troubleWriting(error, NOT_LOOKED);
 	}
+}
+
+function lineTold(asked: StyleEdgeArguments): string {
+	const says = asked.label?.trim();
+	if (says) return `The line says “${says}”.`;
+	const sets = asked.direction !== undefined || asked.stroke !== undefined;
+	return sets ? 'The line is drawn differently.' : 'Taken back off the line.';
 }
 
 /** Whether a look act names anything at all — a channel to set, or one to take
@@ -392,19 +534,24 @@ function lookAsked(
 
 /** How a note's mark is drawn. A look with nothing left set leaves the note
  *  unstyled, which `lookWritten` in `@sloppy/local` is what recognises. */
-async function styleNote(
-	api: LocalApi,
-	asked: Extract<ChatToolCall, { act: 'style_note' }>['arguments']
-): Promise<ChatToolAnswer> {
+async function styleNote(api: LocalApi, asked: StyleNoteArguments): Promise<ChatActDone> {
 	const named = [asked.ring_weight, asked.ring_style, asked.mark_radius];
-	if (!saysAnything(named, asked.off)) return { said: NOTHING_DRAWN, trouble: true };
+	if (!saysAnything(named, asked.off)) return trouble(NOTHING_DRAWN, NOTHING_DRAWN_TOLD);
 	const note = await api.getNode(asked.note);
-	if (!note) return { said: NO_NOTE, trouble: true };
+	if (!note) return trouble(NO_NOTE, NO_NOTE_TOLD);
 	const appearance = markAsked(note.appearance, asked);
 	try {
-		return await listedAnswer(api, await api.updateNode(asked.note, { appearance }));
+		const written = await api.updateNode(asked.note, { appearance });
+		return {
+			...(await listedAnswer(api, written)),
+			told: named.some((one) => one !== undefined)
+				? 'The mark is drawn differently.'
+				: 'Taken back off the mark.',
+			card: markCard(written, asked),
+			touched: [written.ref]
+		};
 	} catch (error) {
-		return { said: wordsFor(error) ?? NOT_DRAWN, trouble: true };
+		return troubleWriting(error, NOT_DRAWN);
 	}
 }
 
@@ -434,19 +581,27 @@ function markAsked(held: NodeAppearance | undefined, asked: StyleNoteArguments):
 	};
 }
 
-async function deleteNote(
-	api: LocalApi,
-	asked: Extract<ChatToolCall, { act: 'delete_note' }>['arguments']
-): Promise<ChatToolAnswer> {
+async function deleteNote(api: LocalApi, asked: DeleteNoteArguments): Promise<ChatActDone> {
 	const note = await api.getNode(asked.note);
-	if (!note) return { said: NO_NOTE, trouble: true };
-	const binned = asListed(note, await anchorsIn(api, note.ref));
+	if (!note) return trouble(NO_NOTE, NO_NOTE_TOLD);
+	const here = await notesHere(api);
+	const going = beneath(here, note.ref);
+	const about = await anchorsIn(api, note.ref);
+	const binned = asListed(note, about);
 	try {
 		await api.deleteNode(asked.note);
 	} catch (error) {
-		return { said: wordsFor(error) ?? NO_NOTE, trouble: true };
+		return troubleWriting(error, NO_NOTE);
 	}
-	return { said: JSON.stringify({ binned } satisfies NoteBinned) };
+	return {
+		said: JSON.stringify({ binned } satisfies NoteBinned),
+		told:
+			going.length === 0
+				? 'In the bin. You can put it back.'
+				: `In the bin, with ${notesSaid(going.length)} beneath it. You can put them back.`,
+		card: binCard(note, about, going.length),
+		...touchedBy([note.ref, ...going.map((one) => one.ref)])
+	};
 }
 
 /** The note about the nearest folder above `path`, and nothing where no note
@@ -479,4 +634,208 @@ async function anchorsIn(api: LocalApi, note: OwnedRef): Promise<string[]> {
 		for (const anchor of anchorsOf(block.content)) paths.add(anchor.path);
 	}
 	return [...paths];
+}
+
+/** Every note under `ref`, which a move carries with it and a delete takes. */
+function beneath(here: readonly NoteHere[], ref: OwnedRef): NodeView[] {
+	const under = new Map<OwnedRef, NodeView[]>();
+	for (const held of here) {
+		const parent = held.note.parent;
+		if (parent === undefined) continue;
+		under.set(parent, [...(under.get(parent) ?? []), held.note]);
+	}
+	const going = new Map<OwnedRef, NodeView>();
+	const walk = (of: OwnedRef): void => {
+		for (const child of under.get(of) ?? []) {
+			if (going.has(child.ref)) continue;
+			going.set(child.ref, child);
+			walk(child.ref);
+		}
+	};
+	walk(ref);
+	return [...going.values()];
+}
+
+/**
+ * The notes an act left different, where it can name them all. Past the bound
+ * it names none and the whole folder is read again, which is the cheaper truth
+ * for a move or a delete that carried a subtree that big.
+ */
+function touchedBy(refs: readonly OwnedRef[]): { touched?: OwnedRef[] } {
+	return refs.length > MOST_NOTES_TOUCHED ? {} : { touched: [...refs] };
+}
+
+/** What an act came to that the agent asked for and did not get: the words it
+ *  reads, and the person's half of the same fact, where the two are not one
+ *  sentence. Nothing was written. */
+function trouble(said: string, told: string = said): ChatActDone {
+	return { said, trouble: true, told, touched: [] };
+}
+
+/** Trouble a write threw, which may have left something behind — so nothing is
+ *  named and the folder is read again. The store refuses in words meant for a
+ *  person, and both readers are given those. */
+function troubleWriting(error: unknown, otherwise: string): ChatActDone {
+	const said = wordsFor(error) ?? otherwise;
+	return { said, trouble: true, told: shortly(said) };
+}
+
+function shortly(said: string): string {
+	return said.length <= CHAT_TOLD_MAX ? said : `${said.slice(0, CHAT_TOLD_MAX - 1)}…`;
+}
+
+/** A note as somebody cites it: the number they navigate by and what it is
+ *  called. */
+function heads(note: Pick<NodeView, 'address' | 'title'>): string {
+	const title = note.title.trim() || UNTITLED;
+	return note.address === undefined ? title : `${note.address} · ${title}`;
+}
+
+/** A note among the ones already read, as a card's row says it. */
+function headingIn(here: readonly NoteHere[], ref: OwnedRef | undefined): string | undefined {
+	if (ref === undefined) return undefined;
+	const held = here.find((one) => one.note.ref === ref);
+	return held && heads(held.note);
+}
+
+/** The notes at the other end of some lines, as the rows naming them read.
+ *  A note that is not here is left out — there is nothing to call it. */
+async function headingsOf(api: LocalApi, refs: readonly OwnedRef[]): Promise<string> {
+	const held: string[] = [];
+	for (const ref of refs) {
+		const note = await api.getNode(ref);
+		if (note) held.push(heads(note));
+	}
+	return held.join(', ');
+}
+
+function notesSaid(count: number): string {
+	return count === 1 ? '1 note' : `${count.toLocaleString()} notes`;
+}
+
+function notesHereTold(count: number): string {
+	return count === 0 ? 'Nothing written here yet.' : `${notesSaid(count)} here.`;
+}
+
+function notesFoundTold(count: number): string {
+	return count === 0 ? 'Nothing here says that.' : `${notesSaid(count)} carry those words.`;
+}
+
+/** What a write lays out: the note as it stands or would, where it is, and
+ *  what it carries. */
+function writeCard(
+	asked: WriteNoteArguments,
+	note: NodeView | undefined,
+	under: string | undefined
+): ChatCard {
+	const tags = [...new Set([...(note?.tags ?? []), ...tagsAmong(asked.tags ?? [])])];
+	return chatCard('note', note ? heads(note) : asked.title?.trim() || asked.about, [
+		...cardRow(PLACE, asked.about),
+		...cardRow(NUMBER, note?.address ?? asked.address),
+		...cardRow(TAGS, tags.join(', ')),
+		...cardRow(UNDER, under),
+		...cardRow(SECTIONS, sectionsSaid(asked.sections))
+	]);
+}
+
+/** What the sections of a write are called, which is the heading each one
+ *  opens with. */
+function sectionsSaid(sections: readonly string[]): string {
+	return sections
+		.map((markdown) => markdown.trimStart().split('\n')[0].trim())
+		.filter((first) => first.startsWith('## '))
+		.map((first) => first.slice('## '.length).trim())
+		.join(', ');
+}
+
+function moveCard(
+	note: NodeView,
+	relation: MoveNoteArguments['relation'],
+	to: NodeView | undefined,
+	going: number,
+	address: string | undefined
+): ChatCard {
+	return chatCard('note', heads(note), [
+		...cardRow(relation === 'under' ? UNDER : AFTER, to && heads(to)),
+		...cardRow(NUMBER, address),
+		...cardRow(ALSO_AT, (note.aliases ?? []).join(', ')),
+		...cardRow(WITH_IT, going === 0 ? undefined : notesSaid(going))
+	]);
+}
+
+function tagCard(note: NodeView, on: readonly Tag[], off: readonly Tag[]): ChatCard {
+	return chatCard('note', heads(note), [
+		...cardRow(ON, on.join(', ')),
+		...cardRow(OFF, off.join(', '))
+	]);
+}
+
+function numberCard(note: NodeView, address: string | undefined): ChatCard {
+	return chatCard('note', heads(note), [
+		...cardRow(NUMBER, address ?? NONE),
+		...cardRow(ALSO_AT, (note.aliases ?? []).join(', '))
+	]);
+}
+
+function linkCard(note: NodeView, to: string, off: string): ChatCard {
+	return chatCard('line', heads(note), [...cardRow(TO, to), ...cardRow(OFF, off)]);
+}
+
+function lineCard(note: NodeView, other: NodeView, asked: StyleEdgeArguments): ChatCard {
+	const gone = channelsOff(asked);
+	const set = <T extends string>(
+		channel: EdgeLookChannel,
+		value: T | undefined,
+		said: (held: T) => string
+	) => (gone.has(channel) ? NONE : value === undefined ? undefined : said(value));
+	return chatCard('line', `${heads(note)} → ${heads(other)}`, [
+		...cardRow(
+			WORDS,
+			set('label', asked.label || undefined, (held) => held)
+		),
+		...cardRow(
+			ARROW,
+			set('direction', asked.direction, (held) => arrowSaid(held, note, other))
+		),
+		...cardRow(
+			LINE,
+			set('stroke', asked.stroke, (held) => STROKE_WORDS[held])
+		)
+	]);
+}
+
+/** Clearing the words is taking them off, whichever way it is asked. */
+function channelsOff(asked: StyleEdgeArguments): Set<EdgeLookChannel> {
+	const off = new Set<EdgeLookChannel>(asked.off ?? []);
+	if (asked.label !== undefined && asked.label.trim() === '') off.add('label');
+	return off;
+}
+
+/** Which end the arrowhead sits at, said against the note the act named rather
+ *  than the note the look is stored on. */
+function arrowSaid(direction: EdgeDirection, note: NodeView, other: NodeView): string {
+	if (direction === 'both') return 'Both ends';
+	return `Points at ${heads(direction === 'to' ? other : note)}`;
+}
+
+function markCard(note: NodeView, asked: StyleNoteArguments): ChatCard {
+	const gone = new Set<MarkChannel>(asked.off ?? []);
+	const set = <T extends string>(
+		channel: MarkChannel,
+		value: T | undefined,
+		words: Record<T, string>
+	) => (gone.has(channel) ? NONE : value === undefined ? undefined : words[value]);
+	return chatCard('mark', heads(note), [
+		...cardRow(RING, set('ring_weight', asked.ring_weight, RING_WEIGHT_LABELS)),
+		...cardRow(RING_STYLE, set('ring_style', asked.ring_style, RING_STYLE_LABELS)),
+		...cardRow(SIZE, set('mark_radius', asked.mark_radius, SIZE_WORDS))
+	]);
+}
+
+function binCard(note: NodeView, about: readonly string[], going: number): ChatCard {
+	return chatCard('note', heads(note), [
+		...cardRow(PLACE, about.join(', ')),
+		...cardRow(TAGS, [...note.tags].join(', ')),
+		...cardRow(WITH_IT, going === 0 ? undefined : notesSaid(going))
+	]);
 }

@@ -3,6 +3,7 @@
 
 import { LocalApi, MemoryFiles } from '@sloppy/local';
 import {
+	type ChatCard,
 	type ChatToolCall,
 	ListedNoteSchema,
 	NoteBinnedSchema,
@@ -10,7 +11,8 @@ import {
 	NotesFoundSchema,
 	NotesListedSchema,
 	NoteWrittenSchema,
-	type OwnedRef
+	type OwnedRef,
+	splitOwnedRef
 } from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { containerApi, serveChatCall } from './chat-acts.js';
@@ -855,5 +857,120 @@ describe('the number a note is written or carried at', () => {
 		);
 
 		expect(moved.address).toBe('1a4');
+	});
+});
+
+describe('what a person reads of an act', () => {
+	/** The rows of a card, by what each one is labelled. */
+	function rows(card: ChatCard | undefined): Record<string, string> {
+		return Object.fromEntries((card?.rows ?? []).map((row) => [row.label, row.value]));
+	}
+
+	it('lays a write out: what it is called, where it is, and what it carries', async () => {
+		const done = await serveChatCall(
+			files,
+			writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser', tags: ['reading'] })
+		);
+
+		expect(done.told).toBe('Written.');
+		expect(done.card?.about).toBe('note');
+		expect(done.card?.heading).toContain('The parser');
+		expect(rows(done.card)).toMatchObject({ Place: PARSER, Tags: 'reading', Sections: 'Why' });
+	});
+
+	it('lays out what a tagging puts on and what it takes off', async () => {
+		const note = await wrote(
+			writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser', tags: ['reading'] })
+		);
+
+		const done = await serveChatCall(files, {
+			call: 'c2',
+			act: 'tag_note',
+			arguments: { note, tags: ['parser'], off: ['reading'] }
+		});
+
+		expect(done.told).toBe('Tagged, and tags taken off.');
+		expect(rows(done.card)).toMatchObject({ On: 'parser', Off: 'reading' });
+	});
+
+	it('names no note by its ref, wherever a card names one', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		const done = await serveChatCall(files, {
+			call: 'c2',
+			act: 'number_note',
+			arguments: { note, address: '7' }
+		});
+
+		const card = JSON.stringify(done.card);
+		expect(card).not.toContain(splitOwnedRef(note).localId);
+		expect(card).toContain('7');
+	});
+
+	it('says a delete takes what is under it, and that it can be put back', async () => {
+		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+		const parser = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		const done = await serveChatCall(files, {
+			call: 'c3',
+			act: 'delete_note',
+			arguments: { note: folder }
+		});
+
+		expect(done.told).toContain('1 note');
+		expect(done.told).toContain('put them back');
+		expect(rows(done.card)).toMatchObject({ 'With it': '1 note' });
+		expect([...(done.touched ?? [])].sort()).toEqual([folder, parser].sort());
+	});
+
+	it('names every note a move carried, so the canvas reads those and no more', async () => {
+		const reading = await wrote(writes(READING_DOC, ['## Why\n\nRead this first.']));
+		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+		const parser = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		const done = await serveChatCall(files, {
+			call: 'c4',
+			act: 'move_note',
+			arguments: { note: folder, to: reading, relation: 'after' }
+		});
+
+		expect(done.told).toContain('Carried');
+		expect([...(done.touched ?? [])].sort()).toEqual([folder, parser].sort());
+	});
+
+	it('leaves nothing to read again where an act only read', async () => {
+		await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		const done = await serveChatCall(files, { call: 'c2', act: 'list_notes', arguments: {} });
+
+		expect(done.touched).toEqual([]);
+		expect(done.told).toBe('1 note here.');
+		expect(done.card).toBeUndefined();
+	});
+
+	it('says a number taken off still leads to the note it was on', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		await answer({ call: 'c2', act: 'number_note', arguments: { note, address: '7' } });
+
+		const done = await serveChatCall(files, {
+			call: 'c3',
+			act: 'number_note',
+			arguments: { note }
+		});
+
+		expect(done.told).toContain('7 still leads here');
+		expect(rows(done.card)).toMatchObject({ Number: 'None', 'Also at': '7' });
+	});
+
+	it('tells the person what happened without the words written for the agent', async () => {
+		const done = await serveChatCall(files, {
+			call: 'c1',
+			act: 'read_note',
+			arguments: { note: `${SOMEBODY}/01J0000000000000000000000A` }
+		});
+
+		expect(done.told).toBe('That note is not here.');
+		expect(done.said).toContain('ref');
+		expect(done.touched).toEqual([]);
 	});
 });

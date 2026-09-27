@@ -20,6 +20,7 @@ import type {
 } from '@sloppy/local';
 import type {
 	ChatAgent,
+	ChatAttachment,
 	ChatCallId,
 	ChatEvent,
 	ChatToolAnswer,
@@ -191,9 +192,24 @@ export interface ChatAccess {
 		hear: (event: ChatEvent) => void,
 		serve: (call: ChatToolCall) => Promise<ChatToolAnswer>
 	): Promise<void>;
-	/** Say something into the session, which begins a turn. It resolves when the
-	 *  agent has been told, NOT when the turn ends — `ended` says that. */
-	say(said: string): Promise<void>;
+	/**
+	 * Say something into the session, which begins a turn. It resolves when the
+	 * agent has been told, NOT when the turn ends — `ended` says that.
+	 *
+	 * `attached` is what {@link ChatAccess.attach} put in front of the agent,
+	 * which the turn names so that it reads them where they are. A turn with
+	 * something attached may say nothing; one with neither REJECTS.
+	 */
+	say(said: string, attached?: readonly ChatAttachment[]): Promise<void>;
+	/**
+	 * Put a file or a picture inside the project, where the agent's own reading
+	 * reaches it, and answer with what it is called and where it went.
+	 *
+	 * **Absent is a shell that cannot take one**, and the offer of it is not put
+	 * in front of anybody there. It REJECTS with words for the person where the
+	 * file is too big to send, and where there is no project open.
+	 */
+	attach?(name: string, bytes: Uint8Array): Promise<ChatAttachment>;
 	/** The person's answer to a call that would write. Answering one that is not
 	 *  waiting is not a failure; a `settled` event follows either way, so a page
 	 *  closes the question on being told rather than on its own act. */

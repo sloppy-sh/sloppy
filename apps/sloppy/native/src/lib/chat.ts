@@ -12,22 +12,27 @@ import {
 	argumentsFit,
 	CHAT_AGENTS,
 	CHAT_ASKED_MAX,
+	CHAT_ATTACHED_NAME_MAX,
+	CHAT_ATTACHMENT_MAX,
 	chatAgentName,
+	ChatAttachmentSchema,
 	ChatEventSchema,
 	ChatToolAnswerSchema,
 	ChatToolCallSchema,
 	chatToolWrites,
+	MOST_ATTACHED_PER_TURN,
 	ulid,
 	type ChatAgent,
+	type ChatAttachment,
 	type ChatCallId,
 	type ChatEvent,
 	type ChatToolAnswer,
 	type ChatToolCall
 } from '@sloppy/types';
-import { chatBrief } from '@sloppy/local';
+import { ATTACHED_DIR, chatBrief } from '@sloppy/local';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { AgentStream } from './chat-stream';
-import type { Invoke } from './files';
+import { tauriFiles, type Invoke } from './files';
 
 /** The commands `src-tauri` answers. */
 const AGENTS = 'chat_agents';
@@ -42,6 +47,9 @@ const ANSWERING = 'Wait for the answer, or stop it, before saying the next thing
 const SAY_SOMETHING = 'Say what you want written about.';
 const TOO_MUCH = 'That is too long to send in one go. Shorten it and try again.';
 const DIDNT_WORK = 'That did not work. Try again.';
+const TOO_BIG = `That file is too big to send. Attach one under ${CHAT_ATTACHMENT_MAX / (1024 * 1024)} MB.`;
+const TOO_MANY = `That is more than ${MOST_ATTACHED_PER_TURN} files to send at once.`;
+const NOT_ATTACHED = 'That file could not be attached. Try again.';
 
 /** What an act that could not be read or was turned down tells the AGENT, which
  *  reads these and acts on them. */
@@ -185,20 +193,41 @@ class TauriChat implements ChatAccess {
 		});
 	}
 
-	async say(asked: string): Promise<void> {
+	async say(asked: string, attached: readonly ChatAttachment[] = []): Promise<void> {
 		const session = this.standing();
 		if (session.turn) throw refuse(ANSWERING);
 		const asking = asked.trim();
-		if (asking === '') throw refuse(SAY_SOMETHING);
+		const files = filesHeld(attached);
+		if (asking === '' && files.length === 0) throw refuse(SAY_SOMETHING);
 		if (asking.length > CHAT_ASKED_MAX) throw refuse(TOO_MUCH);
+		if (files.length > MOST_ATTACHED_PER_TURN) throw refuse(TOO_MANY);
 		session.stream.turned();
 		const turn: Turn = { stopped: false, ...settling() };
 		session.turn = turn;
-		await this.call<void>(SAY, { line: JSON.stringify(aTurn(asking)) }).catch((reason) => {
+		await this.call<void>(SAY, { line: JSON.stringify(aTurn(asking, files)) }).catch((reason) => {
 			if (session.turn === turn) session.turn = undefined;
 			turn.ends();
 			throw refuse(said(reason));
 		});
+	}
+
+	/** A file written where the agent's own reading reaches it, which is inside
+	 *  the project and outside the code. */
+	async attach(name: string, bytes: Uint8Array): Promise<ChatAttachment> {
+		const root = await this.project();
+		if (bytes.byteLength > CHAT_ATTACHMENT_MAX) throw refuse(TOO_BIG);
+		const called = spelled(name);
+		const attached = ChatAttachmentSchema.safeParse({
+			name: called,
+			path: `${ATTACHED_DIR}/${ulid()}-${called}`
+		});
+		if (!attached.success) throw refuse(NOT_ATTACHED);
+		try {
+			await tauriFiles(root, this.call).write(attached.data.path, bytes);
+		} catch {
+			throw refuse(NOT_ATTACHED);
+		}
+		return attached.data;
 	}
 
 	async settle(call: ChatCallId, allowed: boolean): Promise<void> {
@@ -346,8 +375,43 @@ class TauriChat implements ChatAccess {
 
 /** The agent's own dialect, and the only two lines this shell writes in it:
  *  what somebody said, and an end to what it is doing now. */
-function aTurn(said: string): unknown {
-	return { type: 'user', message: { role: 'user', content: [{ type: 'text', text: said }] } };
+function aTurn(said: string, attached: readonly ChatAttachment[]): unknown {
+	const text = [said, whereAttached(attached)].filter((one) => one !== '').join('\n\n');
+	return { type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } };
+}
+
+/** What somebody put in front of the agent, for the agent: what each one is
+ *  called and where in the project to read it. */
+function whereAttached(attached: readonly ChatAttachment[]): string {
+	if (attached.length === 0) return '';
+	const one = attached.length === 1;
+	const lines = attached.map((file) => `- ${file.name} — ${file.path}`);
+	return [`They attached ${one ? 'this file' : 'these files'}, in the project:`, ...lines].join(
+		'\n'
+	);
+}
+
+/** Every attachment, held to its own shape before its path reaches the agent.
+ *  One that does not fit is a page saying something this shell did not put
+ *  there, so none of them go. */
+function filesHeld(attached: readonly ChatAttachment[]): ChatAttachment[] {
+	const files = attached.flatMap((one) => {
+		const file = ChatAttachmentSchema.safeParse(one);
+		return file.success ? [file.data] : [];
+	});
+	if (files.length !== attached.length) throw refuse(NOT_ATTACHED);
+	return files;
+}
+
+/** A name a person's own device wrote, made safe to spell as one segment of a
+ *  path: what shows and what it names are then the same thing. */
+function spelled(name: string): string {
+	const leaf = name.split(/[\\/]/).pop() ?? '';
+	const safe = leaf
+		.replace(/[\p{Cc}\p{Cf}\p{Cs}]/gu, '')
+		.trim()
+		.slice(0, CHAT_ATTACHED_NAME_MAX);
+	return safe === '' || safe === '.' || safe === '..' ? 'file' : safe;
 }
 
 function anInterrupt(): unknown {

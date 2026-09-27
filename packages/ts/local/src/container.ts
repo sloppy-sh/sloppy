@@ -7,6 +7,20 @@ import type { Files } from "./files.js";
 /** What the vault inside a project's root folder is called. */
 export const CONTAINER_DIR = ".sloppy";
 
+const ATTACHED = "attached";
+
+/**
+ * Where a file somebody put in front of an agent goes, said from the folder the
+ * container sits in. **The agent READS it there**, which is why nothing carries
+ * its bytes and no act was added for one — docs/ARCHITECTURE.md § "Asking a
+ * tool to write the notes".
+ */
+export const ATTACHED_DIR = `${CONTAINER_DIR}/${ATTACHED}`;
+
+/** The same folder as the history is told to pass over it, which is said from
+ *  inside the container — {@link KEPT_OUT} in `./kept-out.js`. */
+export const ATTACHED_KEPT_OUT = `/${ATTACHED}/`;
+
 /**
  * Where what is nobody else's business goes for the project rooted at `root`,
  * spelled as the platform spells `root`: inside the container's own sidecar
