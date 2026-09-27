@@ -129,6 +129,20 @@ recognise what is in them.
 draws a line for it, and the note at the other end is reachable from this one. A link to
 anywhere else on the web is an ordinary markdown link and stays one.
 
+## Write it once
+
+Before you write anything down, look for it. These notes are one graph, and a fact it
+already carries is **cited** — \`[what it is called](sloppy:<ref>)\` — never written a second
+time. Two notes saying the same thing come apart as the code moves, and the next reader is
+left guessing which of them is still true.
+
+Keeping them true as the code changes is the same work:
+
+- **Move a note where what it sprang out of turns out to be something else.** That is its
+  \`parent\`, and everything that sprang from the note goes with it.
+- **Take a tag off where it has stopped being true of the note.** A tag that names a system
+  the note is no longer about picks out the wrong set for everyone who selects it.
+
 ## Pointing at code
 
 A link whose target starts \`code:\` points into this project, by a path from the project

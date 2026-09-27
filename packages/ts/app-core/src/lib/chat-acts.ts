@@ -5,9 +5,9 @@
  * project container's own identity rather than the person's, and every write
  * goes through `writeOnto`.
  *
- * What an answer RUNS TO is `listingAnswer`'s and `noteAnswer`'s in
- * `@sloppy/types`, so nothing here decides how much of a project one call
- * carries.
+ * What an answer RUNS TO is `listingAnswer`'s, `foundAnswer`'s and
+ * `noteAnswer`'s in `@sloppy/types`, so nothing here decides how much of a
+ * project one call carries.
  */
 
 import { containerDataAt, type Files, keepingDataAt, LocalApi, writeOnto } from '@sloppy/local';
@@ -17,6 +17,8 @@ import {
 	type ChatToolAnswer,
 	type ChatToolCall,
 	CODE_SCHEME,
+	type FoundNote,
+	foundAnswer,
 	type ListedNote,
 	listingAnswer,
 	type NodeView,
@@ -24,15 +26,21 @@ import {
 	type NoteSection,
 	type NoteWritten,
 	type OwnedRef,
+	type SearchHit,
 	splitOwnedRef,
 	type Tag,
 	tagsAmong,
 	ulid
 } from '@sloppy/types';
 import { emptySidecars, fromMarkdown, toMarkdown } from '@sloppy/vault';
+import { wordsFor } from './stores/errors.js';
 
 const NO_NOTE = 'There is no note here with that ref. List the notes and read one of those.';
 const NOTHING_WRITTEN = 'That write named no sections, so nothing was written.';
+const NO_PARENT =
+	'There is no note here to write that one under. List the notes and name one of those.';
+const NOT_CARRIED = 'That note was not carried anywhere.';
+const NOTHING_TAGGED = 'That named no tags to put on and none to take off.';
 
 /** A store over the notes for the project `files` is rooted at, writing as the
  *  container rather than as whoever is signed in here. */
@@ -47,12 +55,16 @@ export async function serveChatCall(files: Files, call: ChatToolCall): Promise<C
 	switch (call.act) {
 		case 'list_notes':
 			return listingAnswer((await notesHere(api)).map((held) => asListed(held.note, held.about)));
+		case 'search_notes':
+			return foundAnswer((await api.searchNotes(call.arguments.words)).map(asFound));
 		case 'read_note':
 			return await readNote(api, call.arguments.note);
 		case 'write_note':
 			return await writeNote(api, call.arguments);
+		case 'move_note':
+			return await moveNote(api, call.arguments);
 		case 'tag_note':
-			return await tagNote(api, call.arguments.note, call.arguments.tags);
+			return await tagNote(api, call.arguments);
 	}
 }
 
@@ -78,8 +90,18 @@ function asListed(note: NodeView, about: readonly string[]): ListedNote {
 		note: note.ref,
 		title: note.title,
 		...(note.address === undefined ? {} : { address: note.address }),
+		...(note.parent === undefined ? {} : { parent: note.parent }),
 		tags: [...note.tags],
 		about: [...about]
+	};
+}
+
+function asFound(hit: SearchHit): FoundNote {
+	return {
+		note: hit.note,
+		title: hit.title,
+		...(hit.address === undefined ? {} : { address: hit.address }),
+		snippet: hit.snippet
 	};
 }
 
@@ -102,6 +124,9 @@ async function writeNote(
 	if (asked.sections.length === 0) return { said: NOTHING_WRITTEN, trouble: true };
 	const here = await notesHere(api);
 	const standing = here.find((held) => held.about.includes(asked.about))?.note;
+	if (!standing && asked.under !== undefined && !(await api.getNode(asked.under))) {
+		return { said: NO_PARENT, trouble: true };
+	}
 	const tags = tagsAmong(asked.tags ?? []);
 	const aside = emptySidecars(
 		standing === undefined ? ulid() : splitOwnedRef(standing.ref).localId
@@ -110,27 +135,27 @@ async function writeNote(
 	const written = standing
 		? { note: standing.ref, done: (await writeOnto(api, standing, sections, tags)).done }
 		: {
-				note: await startNote(api, here, asked.about, asked.title, sections, tags),
+				note: await startNote(api, here, asked, sections, tags),
 				done: 'written' as const
 			};
 	return { said: JSON.stringify(written satisfies NoteWritten) };
 }
 
 /**
- * A note this project has none of yet. It hangs under the note about the
- * nearest folder above it, and otherwise under whatever the notes about this
- * code already hang under — docs/ARCHITECTURE.md § "Tooling and the review" is
- * the shape it joins.
+ * A note this project has none of yet. Where the agent named nothing to write
+ * it under, it hangs under the note about the nearest folder above it, and
+ * otherwise under whatever the notes about this code already hang under —
+ * docs/ARCHITECTURE.md § "Tooling and the review" is the shape it joins.
  */
 async function startNote(
 	api: LocalApi,
 	here: readonly NoteHere[],
-	about: string,
-	title: string | undefined,
+	asked: Extract<ChatToolCall, { act: 'write_note' }>['arguments'],
 	sections: readonly BlockDocument[],
 	tags: readonly Tag[]
 ): Promise<OwnedRef> {
-	const under = noteOver(here, about) ?? branchOf(here);
+	const { about, title } = asked;
+	const under = asked.under ?? noteOver(here, about) ?? branchOf(here);
 	const note = await api.createNode({
 		from: under === undefined ? { relation: 'free' } : { relation: 'under', note: under },
 		title: title ?? about,
@@ -176,16 +201,39 @@ function pointingAt(about: string): BlockDocument {
 	};
 }
 
+/** A note carried somewhere else, by the rule `moveNote` in `@sloppy/local`
+ *  holds a move to. */
+async function moveNote(
+	api: LocalApi,
+	asked: Extract<ChatToolCall, { act: 'move_note' }>['arguments']
+): Promise<ChatToolAnswer> {
+	if (!(await api.getNode(asked.note))) return { said: NO_NOTE, trouble: true };
+	try {
+		const carried = await api.moveNote(asked.note, {
+			relation: asked.relation,
+			note: asked.to
+		});
+		const moved = carried.find((one) => one.ref === asked.note);
+		if (!moved) return { said: NOT_CARRIED, trouble: true };
+		return { said: JSON.stringify(asListed(moved, await anchorsIn(api, moved.ref))) };
+	} catch (error) {
+		return { said: wordsFor(error) ?? NOT_CARRIED, trouble: true };
+	}
+}
+
+/** A tag named both to put on and to take off comes off. */
 async function tagNote(
 	api: LocalApi,
-	ref: OwnedRef,
-	asked: readonly string[]
+	asked: Extract<ChatToolCall, { act: 'tag_note' }>['arguments']
 ): Promise<ChatToolAnswer> {
-	const note = await api.getNode(ref);
+	const on = tagsAmong(asked.tags ?? []);
+	const off = new Set<string>(tagsAmong(asked.off ?? []));
+	if (on.length === 0 && off.size === 0) return { said: NOTHING_TAGGED, trouble: true };
+	const note = await api.getNode(asked.note);
 	if (!note) return { said: NO_NOTE, trouble: true };
-	const tags = [...new Set([...note.tags, ...tagsAmong(asked)])];
-	const written = await api.updateNode(ref, { tags });
-	return { said: JSON.stringify(asListed(written, await anchorsIn(api, ref))) };
+	const tags = [...new Set([...note.tags, ...on])].filter((tag) => !off.has(tag));
+	const written = await api.updateNode(asked.note, { tags });
+	return { said: JSON.stringify(asListed(written, await anchorsIn(api, asked.note))) };
 }
 
 /** The note about the nearest folder above `path`, and nothing where no note

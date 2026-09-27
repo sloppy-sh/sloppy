@@ -3166,10 +3166,13 @@ PACKAGE — so a detailed note about that file is written under it rather than i
 it, and it carries the WHOLE format: one note per file, the front matter, the sections, the
 markdown a section holds, citations, `code:` anchors, the compass and its three methods,
 tags, `checked`, the shapes a note starts from, and the pictures and drawings an agent moves
-and never redraws. Then the rule that an existing note is changed through an offer, what an
-agent may never write, and the commands above. It is the whole format because an agent that
+and never redraws. Then the doctrine that keeps the notes from saying one thing twice — a
+fact the graph already carries is cited, a note is moved where what it sprang out of turns
+out to be something else, a tag comes off where it has stopped being true — the rule that
+an existing note is changed through an offer, what an agent may never write, and the
+commands above. It is the whole format because an agent that
 can write only a subset of it produces notes a person cannot finish (§ "Asking a tool to
-write the notes"). `AGENT_MD` in `@sloppy/cli` is the one copy of that text; the shapes in
+write the notes"). `AGENT_MD` in `@sloppy/local` is the one copy of that text; the shapes in
 it come from `NOTE_TEMPLATES` in `@sloppy/types` and the methods from `compassMethod`
 beside them, so the file teaches what the app offers and a fourth method or a renamed slot
 cannot leave it saying the old thing.
@@ -3258,10 +3261,32 @@ store every other write in this app goes through, and what it answers with goes 
 the agent. It also means nothing new has to be installed for a chat to write a note.
 
 **The acts are the smallest set that makes the chat useful and no more**: the notes this
-project already has, with their addresses, titles, tags and the places they are about; one
-of them read whole; a note written about a place; tags put on a note. Two of them read and
-two of them write, and `chatToolWrites` is the one statement of which is which — every
-surface that needs to know asks it rather than listing names.
+project already has, with their addresses, titles, tags, what each springs out of and the
+places they are about; the notes some words reach, with the writing around what matched;
+one of them read whole; a note written about a place; a note carried under or after
+another; tags put on a note and taken off it. Three of them read and three of them write,
+and `chatToolWrites` is the one statement of which is which — every surface that needs to
+know asks it rather than listing names.
+
+**Searching is what keeps the notes from saying one thing twice.** An agent that cannot ask
+what is already written writes it again, and two notes about one fact come apart the moment
+the code under them moves. So the vocabulary answers what a note SAYS and not only what it
+is called, and the words an agent reads at the moment it chooses an act send it there
+first: look, then cite what it finds rather than writing it a second time.
+`.sloppy/AGENT.md` holds that same rule for an agent working in the repository on its own,
+and the two say it in the same words deliberately — one doctrine, read wherever an agent
+comes in.
+
+**Reorganising is a write, and the person's answer is the whole of the gate.** A note
+carried somewhere else changes the genealogy, which is what a peer holding a copy reads
+(AI.md § "The Genealogy Is the Protocol"), and a tag taken off is the one act here that
+makes a note say less. Neither can be offered the way writing is — an amendment is a body
+of writing its author takes in, and there is no such thing for where a note hangs — so both
+stand behind the question a write stands behind and never a weaker one, and the question
+names which tags would come off, because that is the half a person would want back.
+**The address stays the person's.** No act names one: a move takes no number, the
+Folgezettel rule gives the note what it takes next, and every address it leaves keeps
+leading to it.
 
 **Every act that WRITES is behind the person's own answer, asked in the thread.** The
 question names what is about to happen — the note, the place — and the call resolves on
@@ -3331,8 +3356,9 @@ on the person, that question settled, a turn ended, and the session over. A bloc
 again at a place already held is that block GROWN, and replaces it, which is the whole of
 how writing draws itself as it arrives.
 
-**What an answer runs to is decided once, in `@sloppy/types`.** A listing and a note read
-whole are each composed by `listingAnswer` and `noteAnswer` there, which carry as much as
+**What an answer runs to is decided once, in `@sloppy/types`.** A listing, a search and a
+note read whole are each composed by `listingAnswer`, `foundAnswer` and `noteAnswer`
+there, one rule under all three, which carry as much as
 `CHAT_ANSWER_MAX` holds and say how much they left — because the shapes bound one note and
 the seam bounds one answer, and neither can say what happens when a project has more notes,
 or a note more sections, than fit. Nothing in these shapes bounds a NOTE: a person adds
@@ -3366,7 +3392,7 @@ element a person can put in a note — the sections, the compass and its three m
 citations, the `code:` anchors, the tags, the shapes a note starts from, the pictures and
 the drawings — is written down there, because an agent that can only write a subset of the
 format produces notes a person cannot finish, and a person editing a note must not be
-writing something the next pass cannot read. `AGENT_MD` in `@sloppy/cli` is the one copy of
+writing something the next pass cannot read. `AGENT_MD` in `@sloppy/local` is the one copy of
 that text, and the shapes and the methods it teaches come from `@sloppy/types` so the file
 and the app cannot drift apart.
 

@@ -18,18 +18,25 @@ import {
   ChatTurnSchema,
   CHAT_ANSWER_MAX,
   CHAT_SECTION_MAX,
+  foundAnswer,
   listingAnswer,
   ListedNoteSchema,
   MAX_SECTIONS_PER_WRITE,
+  MOST_NOTES_FOUND,
   MOST_NOTES_LISTED,
   MOST_SECTIONS_READ,
+  MoveNoteArgumentsSchema,
   noteAnswer,
   NoteReadSchema,
+  NotesFoundSchema,
   NotesListedSchema,
   NoteWrittenSchema,
   ReadNoteArgumentsSchema,
+  SearchNotesArgumentsSchema,
+  TagNoteArgumentsSchema,
   turnFits,
   WriteNoteArgumentsSchema,
+  type FoundNote,
   type ListedNote,
   type NoteSection,
 } from "./chat.js";
@@ -37,6 +44,8 @@ import { WRITE_DONE } from "./authority.js";
 
 const NOTE =
   "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W0X";
+const OTHER =
+  "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W1Y";
 const NOW = "2026-09-26T10:00:00.000Z";
 
 describe("the agents this app chats with", () => {
@@ -59,8 +68,10 @@ describe("the acts Sloppy hands an agent", () => {
 
   it("puts the writing ones behind the person and leaves reading alone", () => {
     expect(chatToolWrites("write_note")).toBe(true);
+    expect(chatToolWrites("move_note")).toBe(true);
     expect(chatToolWrites("tag_note")).toBe(true);
     expect(chatToolWrites("list_notes")).toBe(false);
+    expect(chatToolWrites("search_notes")).toBe(false);
     expect(chatToolWrites("read_note")).toBe(false);
   });
 
@@ -91,13 +102,19 @@ describe("the acts Sloppy hands an agent", () => {
     }
 
     expect(named).toEqual([
+      "search_notes.words",
       "read_note.note",
       "write_note.about",
       "write_note.title",
       "write_note.sections",
       "write_note.tags",
+      "write_note.under",
+      "move_note.note",
+      "move_note.to",
+      "move_note.relation",
       "tag_note.note",
       "tag_note.tags",
+      "tag_note.off",
     ]);
   });
 
@@ -151,6 +168,66 @@ describe("what a call may carry", () => {
     expect(written.title).toBe("What the reader does");
   });
 
+  it("looks for words somebody would type, and nothing empty", () => {
+    expect(
+      SearchNotesArgumentsSchema.parse({ words: "  the reader " }).words,
+    ).toBe("the reader");
+    for (const words of ["", "   "]) {
+      expect(SearchNotesArgumentsSchema.safeParse({ words }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it("carries a note under or after another, and names no address", () => {
+    const under = MoveNoteArgumentsSchema.parse({
+      note: NOTE,
+      to: OTHER,
+      relation: "under",
+    });
+
+    expect(under.relation).toBe("under");
+    expect(
+      MoveNoteArgumentsSchema.safeParse({
+        note: NOTE,
+        to: OTHER,
+        relation: "beside",
+      }).success,
+    ).toBe(false);
+    expect(
+      "address" in
+        MoveNoteArgumentsSchema.parse({
+          note: NOTE,
+          to: OTHER,
+          relation: "after",
+          address: "1a1",
+        }),
+    ).toBe(false);
+  });
+
+  it("writes a note under a named one, and under none where it says none", () => {
+    expect(
+      WriteNoteArgumentsSchema.parse({
+        about: "src",
+        sections: [],
+        under: NOTE,
+      }).under,
+    ).toBe(NOTE);
+    expect(
+      WriteNoteArgumentsSchema.parse({ about: "src", sections: [] }).under,
+    ).toBeUndefined();
+  });
+
+  it("takes tags off a note as its own half of a tagging", () => {
+    const asked = TagNoteArgumentsSchema.parse({
+      note: NOTE,
+      off: ["parsing"],
+    });
+
+    expect(asked.off).toEqual(["parsing"]);
+    expect(asked.tags).toBeUndefined();
+  });
+
   it("is parsed into the act it names", () => {
     const call = ChatToolCallSchema.parse({
       call: "call-1",
@@ -187,6 +264,26 @@ describe("what a call comes to", () => {
 
     expect(listed.address).toBeUndefined();
     expect(listed.tags).toEqual(["parsing"]);
+  });
+
+  it("says what a note sprang out of, and nothing for one that starts a line", () => {
+    const sprang = ListedNoteSchema.parse({
+      note: NOTE,
+      title: "The reader",
+      parent: OTHER,
+      tags: [],
+      about: [],
+    });
+
+    expect(sprang.parent).toBe(OTHER);
+    expect(
+      ListedNoteSchema.parse({
+        note: NOTE,
+        title: "A branch",
+        tags: [],
+        about: [],
+      }).parent,
+    ).toBeUndefined();
   });
 });
 
@@ -241,6 +338,36 @@ describe("what one answer carries", () => {
     expect(answer.said.length).toBeLessThanOrEqual(CHAT_ANSWER_MAX);
     expect(held.notes.length).toBeLessThan(notes.length);
     expect(held.notes.length + (held.more ?? 0)).toBe(notes.length);
+  });
+
+  const found = (
+    n: number,
+    snippet = "The reader reads it whole.",
+  ): FoundNote => ({
+    note: `did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/${ulid(n)}`,
+    title: `What src/place-${n} does`,
+    snippet,
+  });
+
+  it("carries what a search reached, with the writing around each match", () => {
+    const answer = foundAnswer([found(0), found(1)]);
+    const held = NotesFoundSchema.parse(JSON.parse(answer.said));
+
+    expect(ChatToolAnswerSchema.safeParse(answer).success).toBe(true);
+    expect(held.found).toHaveLength(2);
+    expect(held.found[0].snippet).toBe("The reader reads it whole.");
+    expect(held.more).toBeUndefined();
+  });
+
+  it("carries as many found notes as a search reads to, and says how many it left", () => {
+    const hits = Array.from({ length: MOST_NOTES_FOUND + 5 }, (_, n) =>
+      found(n),
+    );
+
+    const held = NotesFoundSchema.parse(JSON.parse(foundAnswer(hits).said));
+
+    expect(held.found).toHaveLength(MOST_NOTES_FOUND);
+    expect(held.more).toBe(5);
   });
 
   it("reads a note holding more sections than one write puts in it", () => {

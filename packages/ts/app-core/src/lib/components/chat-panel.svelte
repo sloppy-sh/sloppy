@@ -36,6 +36,14 @@
 	const agents = $derived(chat.agents);
 	const asking = $derived(chat.asking);
 	const asked = $derived(asking ? readCall(asking.call, asking.act, asking.arguments) : null);
+	/** A tagging that would change something, which is what the question has
+	 *  words for. */
+	const tagging = $derived.by(() => {
+		if (asked?.act !== 'tag_note') return null;
+		const on = asked.arguments.tags ?? [];
+		const off = asked.arguments.off ?? [];
+		return on.length === 0 && off.length === 0 ? null : { note: asked.arguments.note, on, off };
+	});
 
 	let docked = $state(false);
 	let said = $state('');
@@ -82,10 +90,14 @@
 		void send();
 	}
 
-	function titleOf(note: OwnedRef): string | undefined {
+	/** A note as somebody cites it: the address they navigate by, then what it
+	 *  is called. */
+	function nameOf(note: OwnedRef): string | undefined {
 		const held = nodes.get(note);
 		if (!held) return undefined;
-		return held.title.trim() === '' ? undefined : held.title;
+		const title = held.title.trim();
+		if (held.address === undefined) return title === '' ? undefined : title;
+		return title === '' ? held.address : `${held.address} · ${title}`;
 	}
 
 	function read(note: OwnedRef, at: NoteLanding | undefined): void {
@@ -163,10 +175,23 @@
 								{#if asked.arguments.tags && asked.arguments.tags.length > 0}
 									It would tag it {asked.arguments.tags.join(', ')}.
 								{/if}
-							{:else if asked?.act === 'tag_note'}
-								{@const held = titleOf(asked.arguments.note)}
-								It wants to tag {held ?? 'a note'}
-								{asked.arguments.tags.join(', ')}.
+							{:else if asked?.act === 'move_note'}
+								{@const held = nameOf(asked.arguments.note)}
+								{@const landing = nameOf(asked.arguments.to)}
+								It wants to move {held ?? 'a note'}
+								{asked.arguments.relation === 'under' ? 'under' : 'after'}
+								{landing ?? 'another note'}, with everything beneath it.
+							{:else if tagging}
+								{@const held = nameOf(tagging.note) ?? 'a note'}
+								{#if tagging.on.length > 0}
+									It wants to put {tagging.on.join(', ')} on {held}{tagging.off.length > 0
+										? ','
+										: '.'}
+								{/if}
+								{#if tagging.off.length > 0}
+									{tagging.on.length > 0 ? 'and take' : 'It wants to take'}
+									{tagging.off.join(', ')} off {tagging.on.length > 0 ? 'it' : held}.
+								{/if}
 							{:else}
 								It wants to change the notes.
 							{/if}

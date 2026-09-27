@@ -34,6 +34,7 @@ import ChatPanel from './chat-panel.svelte';
 
 const HOME = homeOf(DID);
 const PARSER = ref(1);
+const VAULT = ref(2);
 
 class Stub implements ChatAccess {
 	agent: readonly ChatAgent[] = ['claude_code'];
@@ -198,7 +199,10 @@ beforeEach(async () => {
 	opened = [];
 	stub = new Stub();
 	api = useFakeApi();
-	api.on('GET /nodes', () => [node(1, '1', { title: 'The parser' })]);
+	api.on('GET /nodes', () => [
+		node(1, '1', { title: 'The parser' }),
+		node(2, '1a', { title: 'The vault' })
+	]);
 	session.adopt(VIEWER, 'a-session');
 	await nodes.load({ graph: HOME });
 	initRuntime({ apiHost: () => 'http://api.test', chat: stub });
@@ -470,6 +474,40 @@ describe('an act in the thread', () => {
 		expect(opened).toEqual([{ note: PARSER, at: 'offers' }]);
 	});
 
+	it('draws a search as what was looked for and how much it reached', async () => {
+		await saying();
+		stub.tell({
+			event: 'block',
+			at: 0,
+			block: {
+				kind: 'tool_call',
+				call: 'c1',
+				tool: 'search_notes',
+				act: 'search_notes',
+				arguments: { words: 'lexer tokens' }
+			}
+		});
+		stub.tell({
+			event: 'block',
+			at: 1,
+			block: {
+				kind: 'tool_result',
+				call: 'c1',
+				said: JSON.stringify({
+					found: [
+						{ note: PARSER, title: 'The parser', address: '1', snippet: 'It hands it tokens.' }
+					]
+				})
+			}
+		});
+		await settle();
+
+		expect(screen()).toContain('Looking through the notes');
+		expect(screen()).toContain('lexer tokens');
+		expect(screen()).toContain('1 note');
+		expect(named('Open 1 · The parser')).toBeUndefined();
+	});
+
 	it('draws a tool of the agent’s own by its name and what it is on', async () => {
 		await saying();
 		stub.tell({
@@ -528,6 +566,65 @@ describe('the answer a write waits on', () => {
 
 		expect(stub.answered).toEqual([{ call: 'c9', allowed: false }]);
 		expect(screen()).not.toContain('It wants to write');
+	});
+
+	it('says which note would go where before anything is carried', async () => {
+		await saying();
+		stub.tell({
+			event: 'asking',
+			call: 'c9',
+			act: 'move_note',
+			arguments: { note: VAULT, to: PARSER, relation: 'under' }
+		});
+		await settle();
+
+		expect(screen()).toContain('It wants to move 1a · The vault under 1 · The parser');
+		expect(screen()).toContain('with everything beneath it');
+		expect(stub.answered).toEqual([]);
+	});
+
+	it('carries nothing where the person turns a move down', async () => {
+		await saying();
+		stub.tell({
+			event: 'asking',
+			call: 'c9',
+			act: 'move_note',
+			arguments: { note: VAULT, to: PARSER, relation: 'after' }
+		});
+		await settle();
+		named('Don’t')?.click();
+		await settle();
+
+		expect(stub.answered).toEqual([{ call: 'c9', allowed: false }]);
+		expect(screen()).not.toContain('It wants to move');
+	});
+
+	it('names the tags that would come off, which is the destructive half', async () => {
+		await saying();
+		stub.tell({
+			event: 'asking',
+			call: 'c9',
+			act: 'tag_note',
+			arguments: { note: PARSER, tags: ['lexing'], off: ['reading'] }
+		});
+		await settle();
+
+		expect(screen()).toContain('It wants to put lexing on 1 · The parser');
+		expect(screen()).toContain('and take reading off it');
+	});
+
+	it('says an untagging as taking off, where nothing goes on', async () => {
+		await saying();
+		stub.tell({
+			event: 'asking',
+			call: 'c9',
+			act: 'tag_note',
+			arguments: { note: PARSER, off: ['reading'] }
+		});
+		await settle();
+
+		expect(screen()).toContain('It wants to take reading off 1 · The parser');
+		expect(screen()).not.toContain('put');
 	});
 
 	/** A second write in the same reply, which is what a person documenting

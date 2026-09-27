@@ -5,7 +5,7 @@
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
 	import Wrench from '@lucide/svelte/icons/wrench';
-	import type { ChatTurn, OwnedRef, ToolCallBlock } from '@sloppy/types';
+	import { type ChatTurn, chatToolWrites, type OwnedRef, type ToolCallBlock } from '@sloppy/types';
 	import { saidIn, threadRows, toolLine, toolOutcome } from '../chat-said.js';
 	import type { NoteLanding } from '../pages/page-state.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -32,7 +32,7 @@
 
 	function iconFor(call: ToolCallBlock) {
 		if (call.act === undefined) return Wrench;
-		return call.act === 'list_notes' || call.act === 'read_note' ? BookOpen : NotebookPen;
+		return chatToolWrites(call.act) ? NotebookPen : BookOpen;
 	}
 
 	/** A note as somebody cites it: the address they navigate by, then what it

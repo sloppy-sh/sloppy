@@ -81,14 +81,25 @@ export const CHAT_ARGUMENTS_MAX = 8192;
  */
 export const CHAT_TOOLS = [
   "list_notes",
+  "search_notes",
   "read_note",
   "write_note",
+  "move_note",
   "tag_note",
 ] as const;
 export type ChatToolName = (typeof CHAT_TOOLS)[number];
 
 /** Past this a listing is something the agent skims rather than reads. */
 export const MOST_NOTES_LISTED = 200;
+
+/** Past this a search is one to ask again in better words. */
+export const MOST_NOTES_FOUND = 25;
+
+/** Longer than a phrase worth looking for. */
+export const SEARCH_WORDS_MAX = 200;
+
+/** Longer than the writing a search answers around what it matched. */
+const SNIPPET_MAX = 512;
 
 /** More sections than one note is written in at a time. */
 export const MAX_SECTIONS_PER_WRITE = 32;
@@ -107,6 +118,18 @@ const ABOUT_MAX = 64;
 
 export const ListNotesArgumentsSchema = z.object({});
 export type ListNotesArguments = z.infer<typeof ListNotesArgumentsSchema>;
+
+export const SearchNotesArgumentsSchema = z.object({
+  words: z
+    .string()
+    .trim()
+    .min(1)
+    .max(SEARCH_WORDS_MAX)
+    .describe(
+      "The words to look for, or an address like 1a1. A note is found where its title, its tags or its writing carry all of them.",
+    ),
+});
+export type SearchNotesArguments = z.infer<typeof SearchNotesArgumentsSchema>;
 
 export const ReadNoteArgumentsSchema = z.object({
   note: OwnedRefSchema.describe("The note, as a listing of them gives it."),
@@ -139,15 +162,41 @@ export const WriteNoteArgumentsSchema = z.object({
     .describe(
       "The systems this note belongs to, so that picking one out picks out everything about it. Lowercase, a word or a short phrase.",
     ),
+  under: OwnedRefSchema.optional().describe(
+    "The note this one springs out of, where a note is being started. Leave it out and it springs out of the note about the nearest folder above the place. A note already there is written onto where it stands; move_note is what carries one somewhere else.",
+  ),
 });
 export type WriteNoteArguments = z.infer<typeof WriteNoteArgumentsSchema>;
+
+export const MoveNoteArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe(
+    "The note to carry, as a listing of them gives it. Everything beneath it goes with it.",
+  ),
+  to: OwnedRefSchema.describe("The note it lands by."),
+  relation: z
+    .enum(["under", "after"])
+    .describe(
+      "'under' where the note sprang out of that one, 'after' where it continues the run that one is in.",
+    ),
+});
+export type MoveNoteArguments = z.infer<typeof MoveNoteArgumentsSchema>;
 
 export const TagNoteArgumentsSchema = z.object({
   note: OwnedRefSchema.describe("The note, as a listing of them gives it."),
   tags: z
     .array(z.string())
     .max(MAX_TAGS_PER_NODE)
-    .describe("The systems this note belongs to. Nothing is ever taken off."),
+    .optional()
+    .describe(
+      "The systems this note belongs to, put on beside the ones it already carries. Leave it out to take tags off and put none on.",
+    ),
+  off: z
+    .array(z.string())
+    .max(MAX_TAGS_PER_NODE)
+    .optional()
+    .describe(
+      "Tags that have stopped being true of this note, taken off it. A tag named in both comes off.",
+    ),
 });
 export type TagNoteArguments = z.infer<typeof TagNoteArgumentsSchema>;
 
@@ -170,9 +219,16 @@ export interface ChatToolSpec {
 export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   list_notes: {
     description:
-      "List the notes this project already has: each one's ref, title, address, tags, and the places in the code it is about. A long list answers with as much of itself as fits and says how many notes it left.",
+      "List the notes this project already has: each one's ref, title, address, tags, what it springs out of, and the places in the code it is about. A long list answers with as much of itself as fits and says how many notes it left.",
     label: "Reading the notes",
     arguments: ListNotesArgumentsSchema,
+    writes: false,
+  },
+  search_notes: {
+    description:
+      "Find the notes that carry some words, with the writing around what matched. Look here before writing anything down: where a note already says the thing, cite it — [what it is called](sloppy:<ref>) — rather than writing it a second time.",
+    label: "Looking through the notes",
+    arguments: SearchNotesArgumentsSchema,
     writes: false,
   },
   read_note: {
@@ -184,14 +240,21 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   },
   write_note: {
     description:
-      "Write the note about a place in the project, starting one where there is none. The person is asked before anything lands.",
+      "Write the note about a place in the project, starting one where there is none. Search first: what this graph already says is cited, never written again. The person is asked before anything lands.",
     label: "Writing a note",
     arguments: WriteNoteArgumentsSchema,
     writes: true,
   },
+  move_note: {
+    description:
+      "Carry a note to what it really sprang out of, or after the note it continues. Everything beneath it goes with it, the address it leaves keeps leading to it, and the number it takes next is Sloppy's to give. The person is asked first.",
+    label: "Moving a note",
+    arguments: MoveNoteArgumentsSchema,
+    writes: true,
+  },
   tag_note: {
     description:
-      "Put tags on a note, naming the systems it belongs to. The person is asked first.",
+      "Put tags on a note, naming the systems it belongs to, and take off the ones that have stopped being true of it. The person is asked first, and is told which would come off.",
     label: "Tagging a note",
     arguments: TagNoteArgumentsSchema,
     writes: true,
@@ -241,10 +304,27 @@ export const ListedNoteSchema = z.object({
   title: z.string().max(NODE_TITLE_MAX),
   /** **Absent is a note with no address**, which is an ordinary note. */
   address: AddressSchema.optional(),
+  /** What the note sprang out of. **Absent is a note that starts a line of
+   *  thought of its own** — a branch, or a note written under nothing. */
+  parent: OwnedRefSchema.optional(),
   tags: TagsSchema,
   about: z.array(ProjectPathSchema).max(ABOUT_MAX),
 });
 export type ListedNote = z.infer<typeof ListedNoteSchema>;
+
+/**
+ * One note a search reached. `snippet` is the writing around what matched,
+ * already cut to length; **empty is a note reached by its title, its tags or
+ * its address** rather than by its writing.
+ */
+export const FoundNoteSchema = z.object({
+  note: OwnedRefSchema,
+  title: z.string().max(NODE_TITLE_MAX),
+  /** **Absent is a note with no address**, which is an ordinary note. */
+  address: AddressSchema.optional(),
+  snippet: z.string().max(SNIPPET_MAX),
+});
+export type FoundNote = z.infer<typeof FoundNoteSchema>;
 
 /** One section of a note, as the agent reads and writes one. `id` is what says
  *  a section written back is THAT section rather than a second copy. */
@@ -273,6 +353,16 @@ export const NotesListedSchema = z.object({
   more: z.int().min(1).optional(),
 });
 export type NotesListed = z.infer<typeof NotesListedSchema>;
+
+/** The notes a search reached, or as many of them as one answer carries —
+ *  {@link foundAnswer} is what composes one. */
+export const NotesFoundSchema = z.object({
+  found: z.array(FoundNoteSchema).max(MOST_NOTES_FOUND),
+  /** **Absent is every note the search reached.** A count is how many further
+   *  ones it reached that this answer does not carry. */
+  more: z.int().min(1).optional(),
+});
+export type NotesFound = z.infer<typeof NotesFoundSchema>;
 
 /**
  * What one write came to. `offered` is a note somebody has written in: the
@@ -399,6 +489,11 @@ export const ChatToolCallSchema = z.discriminatedUnion("act", [
   }),
   z.object({
     call: ChatCallIdSchema,
+    act: z.literal("search_notes"),
+    arguments: SearchNotesArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
     act: z.literal("read_note"),
     arguments: ReadNoteArgumentsSchema,
   }),
@@ -406,6 +501,11 @@ export const ChatToolCallSchema = z.discriminatedUnion("act", [
     call: ChatCallIdSchema,
     act: z.literal("write_note"),
     arguments: WriteNoteArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("move_note"),
+    arguments: MoveNoteArgumentsSchema,
   }),
   z.object({
     call: ChatCallIdSchema,
@@ -427,6 +527,8 @@ export const ChatToolAnswerSchema = z.object({
 export type ChatToolAnswer = z.infer<typeof ChatToolAnswerSchema>;
 
 const NOTE_TOO_LONG = "That note is too long to read.";
+const LISTING_TOO_LONG = "There is more here than one answer holds.";
+const SEARCH_TOO_LONG = "Look for something narrower.";
 
 /**
  * The notes a project has, as the agent is handed them: JSON, carrying as many
@@ -435,33 +537,59 @@ const NOTE_TOO_LONG = "That note is too long to read.";
  * § "Asking a tool to write the notes".
  */
 export function listingAnswer(notes: readonly ListedNote[]): ChatToolAnswer {
-  let kept = notes.slice(0, MOST_NOTES_LISTED);
-  for (;;) {
-    const said = JSON.stringify(
-      withMore({ notes: kept }, notes.length - kept.length),
-    );
-    if (said.length <= CHAT_ANSWER_MAX || kept.length === 0) return { said };
-    kept = kept.slice(0, -1);
-  }
+  return asMuchAsFits(
+    notes,
+    MOST_NOTES_LISTED,
+    (kept, more) => withMore({ notes: kept }, more),
+    LISTING_TOO_LONG,
+  );
+}
+
+/** The notes a search reached, by the rule {@link listingAnswer} holds a
+ *  listing to, best match first. */
+export function foundAnswer(found: readonly FoundNote[]): ChatToolAnswer {
+  return asMuchAsFits(
+    found,
+    MOST_NOTES_FOUND,
+    (kept, more) => withMore({ found: kept }, more),
+    SEARCH_TOO_LONG,
+  );
 }
 
 /**
- * One note as the agent is handed it, by the rule {@link listingAnswer} holds a
- * listing to: its sections from the first, as many as one answer carries, and
- * how many it left. **A note whose title, tags and places alone run past the
- * bound comes to trouble**, nothing under it being left to carry.
+ * One note as the agent is handed it, by that same rule: its sections from the
+ * first, as many as one answer carries, and how many it left. **A note whose
+ * title, tags and places alone run past the bound comes to trouble**, nothing
+ * under it being left to carry.
  */
 export function noteAnswer(
   note: ListedNote,
   sections: readonly NoteSection[],
 ): ChatToolAnswer {
-  let kept = sections.slice(0, MOST_SECTIONS_READ);
+  return asMuchAsFits(
+    sections,
+    MOST_SECTIONS_READ,
+    (kept, more) => withMore({ ...note, sections: kept }, more),
+    NOTE_TOO_LONG,
+  );
+}
+
+/**
+ * As many of `held` as one answer carries, dropped from the end until what
+ * `around` makes of them fits. **`tooLong` is what the agent is told instead
+ * where nothing under the bound is left**, as trouble it can act on.
+ */
+function asMuchAsFits<T>(
+  held: readonly T[],
+  most: number,
+  around: (kept: readonly T[], more: number) => object,
+  tooLong: string,
+): ChatToolAnswer {
+  let kept = held.slice(0, most);
   for (;;) {
-    const said = JSON.stringify(
-      withMore({ ...note, sections: kept }, sections.length - kept.length),
-    );
+    const said = JSON.stringify(around(kept, held.length - kept.length));
     if (said.length <= CHAT_ANSWER_MAX) return { said };
-    if (kept.length === 0) return { said: NOTE_TOO_LONG, trouble: true };
+    if (kept.length === 0) return { said: tooLong, trouble: true };
     kept = kept.slice(0, -1);
   }
 }

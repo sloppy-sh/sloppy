@@ -16,6 +16,7 @@ import {
 	type ChatToolName,
 	type ChatTurn,
 	ListedNoteSchema,
+	NotesFoundSchema,
 	NotesListedSchema,
 	NoteWrittenSchema,
 	type OwnedRef,
@@ -126,12 +127,18 @@ export function toolLine(block: ToolCallBlock): ToolLine {
 	switch (held.act) {
 		case 'list_notes':
 			return { doing };
+		case 'search_notes':
+			return { doing, subject: held.arguments.words };
 		case 'read_note':
+		case 'move_note':
 			return { doing, note: held.arguments.note };
 		case 'write_note':
 			return { doing, subject: held.arguments.about };
-		case 'tag_note':
-			return { doing, subject: held.arguments.tags.join(', '), note: held.arguments.note };
+		case 'tag_note': {
+			// What comes OFF is said in the question the person answers, not here.
+			const subject = (held.arguments.tags ?? []).join(', ');
+			return { doing, ...(subject === '' ? {} : { subject }), note: held.arguments.note };
+		}
 	}
 }
 
@@ -157,7 +164,10 @@ export function toolOutcome(
 			return { said: shortly(result.said) };
 		case 'list_notes':
 			return { said: notesRead(result.said) };
+		case 'search_notes':
+			return { said: notesFound(result.said) };
 		case 'read_note':
+		case 'move_note':
 		case 'tag_note': {
 			const note = noteIn(result.said);
 			return note === undefined ? {} : { note };
@@ -178,6 +188,14 @@ function notesRead(said: string): string {
 	if (listed.notes.length === 0) return 'Nothing written here yet.';
 	const held = listed.notes.length === 1 ? '1 note' : `${listed.notes.length} notes`;
 	return listed.more === undefined ? held : `${held}, and more`;
+}
+
+function notesFound(said: string): string {
+	const found = read(said, NotesFoundSchema);
+	if (!found) return '';
+	if (found.found.length === 0) return 'Nothing here says that.';
+	const held = found.found.length === 1 ? '1 note' : `${found.found.length} notes`;
+	return found.more === undefined ? held : `${held}, and more`;
 }
 
 function noteIn(said: string): OwnedRef | undefined {
