@@ -133,7 +133,7 @@ import {
   encodeText,
 } from "@sloppy/vault";
 import { CONTAINER_DIR, containerOf } from "./container.js";
-import { AGENT_FILE, AGENT_MD } from "./agent-md.js";
+import { keepAgentFile } from "./agent-md.js";
 import { keepOut } from "./kept-out.js";
 import { type Files, MemoryFiles } from "./files.js";
 import {
@@ -1711,11 +1711,7 @@ export class LocalApi implements SloppyApi {
       // moment anything writes as the container itself.
       if (graph.projectRoot) {
         await keepOut(graph.files);
-        // The tool that writes notes here is told to read this first, and a
-        // container the app started never had one.
-        if (!(await graph.files.exists(AGENT_FILE))) {
-          await graph.files.write(AGENT_FILE, encodeText(AGENT_MD));
-        }
+        await keepAgentFile(graph.files);
       }
       if (!written) await this.rememberVault(root);
       return graph;

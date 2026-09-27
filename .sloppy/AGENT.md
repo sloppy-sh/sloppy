@@ -18,11 +18,21 @@ that line.
     ---
     ref: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W0X
     parent: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W1Y
+    address: 1a1
     title: What the markdown reader does
     tags:
       - parsing
     links:
       - did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z
+    edges:
+      - to: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z
+        label: grew out of
+        direction: to
+        stroke: dashed
+    appearance:
+      ring_weight: heavy
+      ring_style: dashed
+      mark_radius: large
     created: 2026-09-18T10:00:00.000Z
     updated: 2026-09-18T10:00:00.000Z
     checked: 9f1c0f2e4b6a8d0c2e4f6a8b0d2c4e6f8a0b2c4d
@@ -35,17 +45,24 @@ the canvas is read by. `links` are lines somebody drew between this note and ano
 hand; naming a note in the writing already draws one, so a `links` entry is for a
 connection the writing does not make.
 
-There is no `address` above, and you never write one: a number like `1a1` is the label its
-author cites the note by, theirs to give and theirs to change. A note may carry other
-fields — whose writing it carries, the numbers it has been at, who may write in it, how
-its author asked the mark and its lines to be drawn. Those are the app's to write and the
-author's to change: leave every one of them exactly as you found it. Drawing a line between
-two notes is yours to do — that is what `links` above is — and saying what the line MEANS
-is not: a label like "grew out of", an arrowhead, a stroke are somebody's own reading of the
-connection, so an `edges` entry stays exactly as you found it too. An `authors` line is
-the one to be most careful with: where it is missing the note carries its own author's
-writing and nobody else's, so dropping one that names two people takes somebody's name
-off writing they did.
+`address` is the number a person cites the note by. **Write one on a note you write**: it
+springs from the number of the note above it, takes the next letter or number free in the
+run it joins, and no other note in this graph may be at it — leave it off where the note
+above carries none. **A number on a note already there is not yours to change**: the one it
+gives up has to go on leading to it, which does not happen in a file edited by hand. Write
+down what you found and leave that to its author.
+
+`edges` says what a line MEANS — the words on it, which end the arrowhead sits at, how
+broken it is drawn — and `appearance` says how the mark itself is drawn. Both are yours on
+a note you wrote and stay exactly as you found them on anybody else's. A look draws on a
+line that is already there and nothing where there is none, so an `edges` entry names a
+note this one is already joined to.
+
+A note may carry other fields — whose writing it carries, the numbers it has been at, who
+may write in it. Those are the app's to write and the author's to change: leave every one
+of them exactly as you found it. An `authors` line is the one to be most careful with:
+where it is missing the note carries its own author's writing and nobody else's, so
+dropping one that names two people takes somebody's name off writing they did.
 
 ## A note is a stack of sections
 
@@ -86,6 +103,27 @@ recognise what is in them.
 `[what it is called](sloppy:<ref>)` inside a sentence. That is a citation: the canvas
 draws a line for it, and the note at the other end is reachable from this one. A link to
 anywhere else on the web is an ordinary markdown link and stays one.
+
+## Write it once
+
+Before you write anything down, look for it. These notes are one graph, and a fact it
+already carries is **cited** — `[what it is called](sloppy:<ref>)` — never written a second
+time. Two notes saying the same thing come apart as the code moves, and the next reader is
+left guessing which of them is still true.
+
+Keeping them true as the code changes is the same work, and it stops at the same line.
+Neither of these goes as an offer — where a note hangs and which tags it carries are its
+author's — so both are for a note you wrote where there was none, and on anybody else's you
+write down what you found and leave the change to them.
+
+- **Take a tag off where it has stopped being true of the note.** A tag that names a system
+  the note is no longer about picks out the wrong set for everyone who selects it.
+- **Move a note that carries no number, where what it sprang out of turns out to be
+  something else.** That is its `parent`, and everything that sprang from the note goes
+  with it. **A note that carries one is not yours to move.** The number it would take next
+  is worked out from the run it joins, and the number it leaves has to go on reaching it —
+  neither of which happens in a file somebody edits by hand. Write down what you found and
+  leave that move to its author.
 
 ## Pointing at code
 
@@ -149,6 +187,12 @@ A plain word on the note, lowercased, and nothing declares one first: `parsing`,
 reach for the words this graph already carries before adding one nobody here uses. A tag
 is somebody's own vocabulary, and a note carries as many as it needs.
 
+**A tag names what the note is ABOUT** — the system, the layer, the scope — which is what
+makes selecting one pick out everything about that system however far apart those notes
+sit. That is the whole use of the axis, and naming the systems you find as you read them
+is work only somebody reading the code can do. **A tag that records how the note came to
+be written is the opposite of one**, and never goes on: see below.
+
 ## Saying a note has been read against the code
 
 `checked` names the commit a note's reasoning was last read against. **Absent means
@@ -203,8 +247,9 @@ on is somebody's writing nothing can give back.
   writing, and leave the compass to a person.
 - **`checked`.** It says a person has read the note against the code. Writing it would
   silence the one question the app asks them.
-- **A tag that says a tool wrote the note.** What wrote a note leaves no trace of itself
-  in it; the note is read for what it says.
+- **A tag about the note rather than about the code** — that a tool wrote it, when, or in
+  what pass. What wrote a note leaves no trace of itself in it; the note is read for what
+  it says, and a tag naming the system it is about is wanted for exactly that reason.
 - **A second note about a file that already has one.** Offer a change to the note that
   is there instead.
 - **Anything in the code.** Sloppy reads this project and never writes in it; the only
@@ -216,6 +261,7 @@ on is somebody's writing nothing can give back.
 
     sloppy init [dir]      start the notes in a project, and write what the tree can tell
     sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
+    sloppy draft --tag a,b [paths…]  the same, tagging each note it writes
     sloppy review          what the code has left behind
     sloppy check           read every note and say what doesn't hold
 
@@ -224,3 +270,8 @@ Each takes `--json` and answers in JSON instead of lines.
 `draft` reads a TypeScript or JavaScript file by the line for what it imports and what
 it hands out, and anchors each name it finds. A file in any other language gets an anchor
 to the file and none inside it, so the names in it are yours to write.
+
+`--tag` puts those tags on every note that run writes, beside the ones each already
+carries; it takes none off. Name the system the files are part of, so one run tags one
+scope.
+<!-- sloppy:agent 4200b45a -->

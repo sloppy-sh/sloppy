@@ -8,14 +8,24 @@ import {
   parseCodeAnchor,
 } from "@sloppy/types";
 import {
+  decodeText,
   emptySidecars,
+  encodeText,
   fromMarkdown,
   splitNoteFile,
   toMarkdown,
   vaultToNote,
 } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
-import { AGENT_MD } from "./agent-md.js";
+import {
+  AGENT_FILE,
+  AGENT_MD,
+  agentFile,
+  agentFileIsOurs,
+  keepAgentFile,
+  signedAsOurs,
+} from "./agent-md.js";
+import { type Files, MemoryFiles } from "./files.js";
 
 /** The first indented block under a heading, as the file's own examples are
  *  written, with the indent taken off and the blank lines inside it kept. */
@@ -150,5 +160,74 @@ describe("what AGENT.md teaches", () => {
         expect(AGENT_MD).toContain(section.heading);
       }
     }
+  });
+});
+
+describe("keeping the file an agent reads current", () => {
+  const AT = "/graphs/one/.sloppy";
+
+  function container(): Files {
+    return new MemoryFiles().at(AT);
+  }
+
+  async function said(files: Files): Promise<string | undefined> {
+    const bytes = await files.read(AGENT_FILE);
+    return bytes ? decodeText(bytes) : undefined;
+  }
+
+  it("writes it where a container has none", async () => {
+    const files = container();
+
+    await keepAgentFile(files);
+
+    expect(await said(files)).toBe(agentFile());
+  });
+
+  it("writes it again where Sloppy's own rules have moved since", async () => {
+    const files = container();
+    // The file as an older Sloppy wrote it: its own text, signed by it.
+    const older = signedAsOurs(
+      AGENT_MD.replace("## One note is one file", "## A note used to be one"),
+    );
+    await files.write(AGENT_FILE, encodeText(older));
+
+    await keepAgentFile(files);
+
+    expect(await said(files)).toBe(agentFile());
+  });
+
+  it("leaves a copy somebody has made their own exactly as it is", async () => {
+    const files = container();
+    const theirs = `${agentFile()}\nAnd in this project, never touch the vendor folder.\n`;
+    await files.write(AGENT_FILE, encodeText(theirs));
+
+    await keepAgentFile(files);
+
+    expect(await said(files)).toBe(theirs);
+  });
+
+  it("leaves a file that was never Sloppy's alone", async () => {
+    const files = container();
+    await files.write(AGENT_FILE, encodeText("Read the wiki.\n"));
+
+    await keepAgentFile(files);
+
+    expect(await said(files)).toBe("Read the wiki.\n");
+  });
+
+  it("writes nothing where the file is already what it would write", async () => {
+    const files = container();
+    await keepAgentFile(files);
+    const before = await said(files);
+
+    await keepAgentFile(files);
+
+    expect(await said(files)).toBe(before);
+  });
+
+  it("knows its own copy from one that has been changed", () => {
+    expect(agentFileIsOurs(agentFile())).toBe(true);
+    expect(agentFileIsOurs(`${agentFile()}and one more line\n`)).toBe(false);
+    expect(agentFileIsOurs(AGENT_MD)).toBe(false);
   });
 });

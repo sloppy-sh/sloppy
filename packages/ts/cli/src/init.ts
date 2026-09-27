@@ -10,8 +10,7 @@ import {
   holdDeviceIdentity,
   LocalApi,
   readCarriedIdentity,
-  AGENT_FILE,
-  AGENT_MD,
+  keepAgentFile,
 } from "@sloppy/local";
 import type { BlockDocument, OwnedRef } from "@sloppy/types";
 import { encodeText, GRAPH_FILE } from "@sloppy/vault";
@@ -65,9 +64,7 @@ export async function init(asked: InitAsked): Promise<InitResult> {
   if (!container || !project) {
     throw new InitRefused("These notes are not about any code.");
   }
-  if (!(await container.exists(AGENT_FILE))) {
-    await container.write(AGENT_FILE, encodeText(AGENT_MD));
-  }
+  await keepAgentFile(container);
 
   const parts = await projectParts(project);
   const openings = await projectOpenings(project);

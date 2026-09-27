@@ -2,6 +2,8 @@
 // an agent working in somebody's project finds where it already looks.
 // docs/ARCHITECTURE.md § "Tooling and the review".
 
+import { decodeText, encodeText } from "@sloppy/vault";
+import type { Files } from "./files.js";
 import {
   COMPASS_DIRECTIONS,
   COMPASS_KINDS,
@@ -297,3 +299,61 @@ to the file and none inside it, so the names in it are yours to write.
 carries; it takes none off. Name the system the files are part of, so one run tags one
 scope.
 `;
+
+/** What Sloppy signs the file with, so that next time it can tell its own copy
+ *  from one somebody has made theirs. */
+const SIGNED = "<!-- sloppy:agent ";
+
+/**
+ * A fingerprint of the text. It guards against nobody and is not meant to: it
+ * answers one question, whether this file is still the one Sloppy wrote, and a
+ * person who edits the file and puts the line back has said to leave it alone.
+ */
+function fingerprint(said: string): string {
+  let hash = 0x811c9dc5;
+  for (let at = 0; at < said.length; at++) {
+    hash ^= said.charCodeAt(at);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** `said` signed as Sloppy's own, which is what {@link agentFileIsOurs} reads
+ *  back. The two are a pair: neither means anything without the other. */
+export function signedAsOurs(said: string): string {
+  return `${said}${SIGNED}${fingerprint(said)} -->\n`;
+}
+
+/** The file as Sloppy writes it today. */
+export function agentFile(): string {
+  return signedAsOurs(AGENT_MD);
+}
+
+/** Whether `held` is a copy Sloppy wrote and nobody has changed since. */
+export function agentFileIsOurs(held: string): boolean {
+  const lines = held.split("\n");
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  const signature = lines.pop();
+  if (signature === undefined || !signature.startsWith(SIGNED)) return false;
+  const said = signature.slice(SIGNED.length, -" -->".length);
+  return said === fingerprint(`${lines.join("\n")}\n`);
+}
+
+/**
+ * Keep the file Sloppy tells an agent to read before anything else current.
+ *
+ * **It is rewritten whenever Sloppy's own rules move**, because the file is the
+ * whole of what an agent editing the notes by hand is held to: one frozen at
+ * the version a container happened to be made at teaches rules this build no
+ * longer keeps, and nothing else would ever correct it. A copy somebody has
+ * changed is theirs and is left exactly as it is — the same bargain
+ * {@link keepOut} keeps with a `.gitignore` somebody wrote.
+ */
+export async function keepAgentFile(container: Files): Promise<void> {
+  const bytes = await container.read(AGENT_FILE);
+  const held = bytes ? decodeText(bytes) : undefined;
+  if (held !== undefined && !agentFileIsOurs(held)) return;
+  const said = agentFile();
+  if (held === said) return;
+  await container.write(AGENT_FILE, encodeText(said));
+}
