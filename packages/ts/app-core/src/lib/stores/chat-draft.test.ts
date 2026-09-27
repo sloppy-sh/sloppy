@@ -14,7 +14,7 @@ import {
 } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api, resetApi } from '../api.js';
-import { draftRows } from '../draft-said.js';
+import { draftOnTheCanvas, draftRows, sectionsDrafted } from '../draft-said.js';
 import { initRuntime, type ChatAccess, type DraftAccess } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { chatDraft } from './chat-draft.svelte.js';
@@ -227,15 +227,68 @@ describe('reading a draft', () => {
 		expect(said).toContain('Was called: Origins');
 	});
 
-	it('opens a note as the draft has it, and never as the folder does', async () => {
+	it('opens a note as either copy has it, and never one for the other', async () => {
 		await aTurn(async (drafted) => {
 			await drafted.updateBlock(seed, { content: words('The seed of it all') });
 		});
 		await chatDraft.review();
 
-		const drafted = await chatDraft.asDrafted(origins);
+		const drafted = await chatDraft.asRead('draft', origins);
+		const held = await chatDraft.asRead('folder', origins);
 		expect(drafted?.sections.map((one) => textIn(one.content))).toEqual(['The seed of it all']);
+		expect(held?.sections.map((one) => textIn(one.content))).toEqual(['The seed']);
 		expect((await api.listBlocks(origins)).map((one) => textIn(one.content))).toEqual(['The seed']);
+	});
+
+	it('hands the canvas the draft as the later of two states, with what went in it', async () => {
+		let parser: OwnedRef;
+		await aTurn(async (drafted) => {
+			parser = (await drafted.createNode({ title: 'The parser' })).ref;
+			await drafted.updateNode(origins, { title: 'Where it began' });
+		});
+		await chatDraft.review();
+		const read = chatDraft.read;
+		if (!read) throw new Error('nothing was read');
+		const shown = draftOnTheCanvas(read);
+
+		expect(shown.notes.map((one) => one.title).sort()).toEqual(['The parser', 'Where it began']);
+		expect([...shown.difference.added]).toEqual([parser!]);
+		expect([...shown.difference.changed]).toEqual([origins]);
+		expect(shown.at).toBe(await standing?.history.currentCommit());
+	});
+
+	it('hands the canvas a binned note as the folder had it, so it draws where it was', async () => {
+		let parser: OwnedRef;
+		await aTurn(async (drafted) => {
+			parser = (await drafted.createNode({ title: 'The parser' })).ref;
+		});
+		expect(await chatDraft.merge()).toBe(true);
+		await aTurn(async (drafted) => {
+			await drafted.deleteNode(parser);
+		});
+		await chatDraft.review();
+		const read = chatDraft.read;
+		if (!read) throw new Error('nothing was read');
+
+		expect(draftOnTheCanvas(read).difference.removed.map((one) => one.title)).toEqual([
+			'The parser'
+		]);
+	});
+
+	it('names the sections the draft wrote, and none of the ones it left alone', async () => {
+		let second: OwnedRef;
+		await aTurn(async (drafted) => {
+			second = (await drafted.createBlock({ node: origins, content: words('And then') })).ref;
+			await drafted.updateBlock(seed, { content: words('The seed of it all') });
+		});
+		await chatDraft.review();
+		const read = chatDraft.read;
+		if (!read) throw new Error('nothing was read');
+		const drafted = await chatDraft.asRead('draft', origins);
+
+		expect([...sectionsDrafted(read.difference, origins, drafted?.sections ?? [])].sort()).toEqual(
+			[seed, second!].sort()
+		);
 	});
 
 	it('says so in one line where nothing in it is different', async () => {

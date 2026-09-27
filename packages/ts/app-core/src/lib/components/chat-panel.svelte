@@ -14,8 +14,14 @@
 	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { Textarea } from '@sloppy/ui/textarea';
+	import { onDestroy } from 'svelte';
 	import { readCall } from '../chat-said.js';
-	import { draftHolds } from '../draft-said.js';
+	import {
+		DISCARD_COSTS,
+		draftHolds,
+		draftOnTheCanvas,
+		type DraftOnTheCanvas
+	} from '../draft-said.js';
 	import type { NoteLanding } from '../pages/page-state.js';
 	import { chat } from '../stores/chat.svelte.js';
 	import { chatDraft } from '../stores/chat-draft.svelte.js';
@@ -29,11 +35,15 @@
 
 	let {
 		open = $bindable(false),
-		onOpen
+		onOpen,
+		onShowDraft
 	}: {
 		open?: boolean;
 		/** Read a note an act left, at the offered change where it left one. */
 		onOpen: (note: OwnedRef, at?: NoteLanding) => void;
+		/** A draft and the folder set against each other on the canvas, and `null`
+		 *  to put the graph as it stands back. Absent draws neither. */
+		onShowDraft?: (shown: DraftOnTheCanvas | null) => void;
 	} = $props();
 
 	/** What Sloppy knows how to ask, as somebody with none of them reads it. */
@@ -96,6 +106,15 @@
 		if (box && following) box.scrollTop = box.scrollHeight;
 	});
 
+	// The canvas draws the two states for exactly as long as the review is the
+	// thing in front of somebody — DESIGN.md § "Reading a draft".
+	$effect(() => {
+		const held = open && reviewing ? chatDraft.read : null;
+		onShowDraft?.(held && !held.nothing ? draftOnTheCanvas(held) : null);
+	});
+
+	onDestroy(() => onShowDraft?.(null));
+
 	function onScrolled(): void {
 		const box = thread;
 		if (!box) return;
@@ -151,6 +170,16 @@
 		await chatDraft.review();
 	}
 
+	/** The session ran where the draft was, so letting the draft go ends it. */
+	function draftGone(): void {
+		reviewing = false;
+		chat.draftGone();
+	}
+
+	async function throwTheDraftAway(): Promise<void> {
+		if (await chatDraft.discard()) draftGone();
+	}
+
 	async function read(note: OwnedRef): Promise<void> {
 		// Docked, the note opens beside the conversation and it stays. Narrower
 		// than that, both are the whole screen, and the note is what was asked for.
@@ -171,7 +200,7 @@
 	onWidthChange={(px) => prefs.set('chatWidth', px)}
 >
 	{#if reviewing}
-		<DraftReview onBack={() => (reviewing = false)} onDone={() => (reviewing = false)} />
+		<DraftReview onBack={() => (reviewing = false)} onDone={draftGone} />
 	{:else}
 		<div class="flex min-h-0 flex-1 flex-col gap-3 pt-2">
 			<div class="flex shrink-0 items-start gap-2">
@@ -221,10 +250,11 @@
 						variant="ghost"
 						class="h-9 shrink-0 px-2 text-xs"
 						disabled={chatDraft.busy || chat.running}
-						onclick={() => void chatDraft.discard()}
+						onclick={() => void throwTheDraftAway()}
 					>
 						Discard
 					</Button>
+					<p class="w-full text-xs text-muted-foreground">{DISCARD_COSTS}</p>
 				</div>
 			{/if}
 

@@ -6,15 +6,18 @@
  * review and the thread say one thing in one set of words.
  */
 
+import type { GraphDifference } from '@sloppy/graph';
 import {
 	A_NOTE,
 	CARD_NONE,
 	CARD_ROWS,
 	cardRow,
 	chatCard,
+	splitOwnedRef,
 	type ChatCard,
 	type ChatCardRow,
 	type ImportConflict,
+	type NodeView,
 	type OwnedRef
 } from '@sloppy/types';
 import type { DifferenceCounts, VaultDifference } from '@sloppy/vault';
@@ -25,6 +28,11 @@ export interface DraftNote {
 	title: string;
 	address?: string;
 }
+
+/** What throwing a draft away costs, said the same wherever the act is
+ *  offered. */
+export const DISCARD_COSTS =
+	'Discarding keeps nothing the chat wrote. Your own notes are untouched either way.';
 
 /**
  * Which band a note's row stands in. The order here is the order they are
@@ -199,4 +207,64 @@ export function conflictHeading(
 	const note = named.get(conflict.ref);
 	if (note) return draftHeading(note);
 	return conflict.address ?? A_NOTE;
+}
+
+/** What the canvas draws a draft as: the draft's own notes on one side, and
+ *  what a person did between their folder and it. */
+export interface DraftOnTheCanvas {
+	/** The two states, named the way every other comparison names them. */
+	says: string;
+	/** The version of the draft the notes were read at. */
+	at: string;
+	notes: readonly NodeView[];
+	difference: GraphDifference;
+}
+
+const FOLDER_TO_DRAFT = 'Your notes to the draft';
+
+/**
+ * A draft read as the comparison it is — DESIGN.md § "Reading a draft". A note
+ * the draft only moved is not `changed`: the move is drawn on its lines. A
+ * number it edited is, because a label moves no mark.
+ */
+export function draftOnTheCanvas(read: {
+	difference: VaultDifference;
+	drafted: readonly NodeView[];
+	gone: readonly NodeView[];
+	at: string;
+}): DraftOnTheCanvas {
+	const { notes } = read.difference;
+	return {
+		says: FOLDER_TO_DRAFT,
+		at: read.at,
+		notes: read.drafted,
+		difference: {
+			added: new Set(notes.added),
+			removed: read.gone,
+			moved: notes.moved.map((one) => ({
+				ref: one.ref,
+				...(one.from === undefined ? {} : { from: one.from })
+			})),
+			changed: new Set([
+				...notes.changed.map((one) => one.ref),
+				...notes.renumbered.map((one) => one.ref),
+				...notes.retitled.map((one) => one.ref)
+			])
+		}
+	};
+}
+
+/** Which of a note's sections the draft wrote — the ones it added and the ones
+ *  it wrote into — by the refs the stack in front of somebody is keyed by. */
+export function sectionsDrafted(
+	difference: VaultDifference,
+	note: OwnedRef,
+	sections: readonly { ref: OwnedRef }[]
+): ReadonlySet<OwnedRef> {
+	const changed = difference.notes.changed.find((one) => one.ref === note);
+	if (!changed) return new Set();
+	const wrote = new Set([...changed.sections.added, ...changed.sections.changed]);
+	return new Set(
+		sections.filter((one) => wrote.has(splitOwnedRef(one.ref).localId)).map((one) => one.ref)
+	);
 }

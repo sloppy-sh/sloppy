@@ -7,14 +7,28 @@
 
 	let {
 		conflicts,
+		otherIs = 'the file',
+		heading = undefined,
+		about = undefined,
 		busy = false,
 		onchange
 	}: {
 		conflicts: readonly ImportConflict[];
+		/** What the copy being settled against this one is called, in the words a
+		 *  person reads it under — "the file", "the draft". */
+		otherIs?: string;
+		/** How one disagreement is named. Absent draws the address it carries,
+		 *  which is all a copy from somewhere else can be cited by. */
+		heading?: (conflict: ImportConflict) => string;
+		/** What one disagreement is asked as. Absent asks it as two copies of a
+		 *  graph. */
+		about?: (conflict: ImportConflict) => string;
 		busy?: boolean;
 		/** Everything settled so far, in the order the disagreements were given. */
 		onchange: (settled: readonly ImportResolution[]) => void;
 	} = $props();
+
+	const Other = $derived(otherIs.charAt(0).toUpperCase() + otherIs.slice(1));
 
 	// Keyed by position: one note can be in two disagreements at once, its
 	// writing and the number it carries.
@@ -49,7 +63,8 @@
 
 	$effect(() => onchange(resolutions));
 
-	function about(conflict: ImportConflict): string {
+	function asked(conflict: ImportConflict): string {
+		if (about) return about(conflict);
 		if (conflict.kind === 'address')
 			return 'Both copies carry this number, on a different note. Choose which note keeps it.';
 		if (conflict.kind === 'section')
@@ -75,7 +90,7 @@
 		<div
 			class="space-y-1 border-l-2 pl-3 {taken === 'theirs' ? 'border-primary' : 'border-border'}"
 		>
-			<p class="text-xs text-muted-foreground">in the file</p>
+			<p class="text-xs text-muted-foreground">in {otherIs}</p>
 			{@render writing(theirs, taken === 'mine')}
 		</div>
 	</div>
@@ -86,10 +101,12 @@
 		{@const bySection = sectioned.has(at)}
 		{@const taken = bySection ? undefined : side.get(at)}
 		<li class="space-y-2">
-			{#if conflict.address}
+			{#if heading}
+				<p class="text-sm font-medium break-words">{heading(conflict)}</p>
+			{:else if conflict.address}
 				<p><span class="address text-sm">{conflict.address}</span></p>
 			{/if}
-			<p class="text-sm">{about(conflict)}</p>
+			<p class="text-sm {heading ? 'text-muted-foreground' : ''}">{asked(conflict)}</p>
 
 			{#if !bySection}
 				{@render twoWays(conflict.mine, conflict.theirs, taken)}
@@ -110,7 +127,7 @@
 						disabled={busy}
 						onclick={() => side.set(at, 'theirs')}
 					>
-						{conflict.kind === 'address' ? "The file's note keeps it" : "Take the file's"}
+						{conflict.kind === 'address' ? `${Other}'s note keeps it` : `Take ${otherIs}'s`}
 					</Button>
 				</div>
 				{#if conflict.sections.length > 0}
@@ -150,7 +167,7 @@
 									disabled={busy}
 									onclick={() => perSection.set(sectionKey(at, section.section), 'theirs')}
 								>
-									Take the file's
+									Take {otherIs}'s
 								</Button>
 							</div>
 						</li>

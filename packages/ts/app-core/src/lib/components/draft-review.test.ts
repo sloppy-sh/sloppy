@@ -9,12 +9,14 @@ import {
 	ulid,
 	type BlockDocument,
 	type ChatAgent,
+	type ChatEvent,
 	type OwnedRef,
 	type StandingDraft
 } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api, resetApi } from '../api.js';
+import type { DraftOnTheCanvas } from '../draft-said.js';
 import { initRuntime, type ChatAccess, type DraftAccess } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { chat } from '../stores/chat.svelte.js';
@@ -70,13 +72,24 @@ const drafts: DraftAccess = {
 	}
 };
 
+/** How many sessions have been opened and how many let go: a session runs
+ *  where the draft is, so the two have to stay in step with it. */
+let sessions: { opened: number; closed: number };
+let hear: ((event: ChatEvent) => void) | null;
+
 const chatting: ChatAccess = {
 	agents: async () => ['claude_code'] as ChatAgent[],
-	open: async () => {},
+	open: async (_asked, heard) => {
+		sessions.opened += 1;
+		hear = heard;
+	},
 	say: async () => {},
 	settle: async () => {},
 	stop: async () => {},
-	close: async () => {},
+	close: async () => {
+		sessions.closed += 1;
+		hear = null;
+	},
 	drafts
 };
 
@@ -117,15 +130,38 @@ const named = (label: string): HTMLButtonElement | undefined =>
 const card = (heading: string): HTMLButtonElement | undefined =>
 	[...document.body.querySelectorAll('button')].find((one) => one.textContent?.includes(heading));
 
+const labelled = (label: string): HTMLButtonElement | undefined =>
+	[...document.body.querySelectorAll('button')].find(
+		(one) => one.getAttribute('aria-label') === label
+	);
+
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let graph: OwnedRef;
 let origins: OwnedRef;
 let seed: OwnedRef;
+/** What the page was handed to draw on the canvas, newest last. */
+let drawn: (DraftOnTheCanvas | null)[];
 
 function show(): void {
-	mounted = mount(ChatPanel, { target, props: { open: true, onOpen: () => {} } });
+	mounted = mount(ChatPanel, {
+		target,
+		props: { open: true, onOpen: () => {}, onShowDraft: (shown) => drawn.push(shown) }
+	});
 	flushSync();
+}
+
+/** What somebody types and sends, which is a turn. */
+async function say(words: string): Promise<void> {
+	const into = document.body.querySelector<HTMLTextAreaElement>(
+		'[aria-label="What you want written about"]'
+	);
+	if (!into) throw new Error('no composer');
+	into.value = words;
+	into.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+	labelled('Send')?.click();
+	await settle();
 }
 
 /** One turn of the chat, which is the draft where none stands, what it wrote,
@@ -136,10 +172,21 @@ async function aTurn(wrote: (drafted: LocalApi) => Promise<void>): Promise<void>
 	await chatDraft.keepWhatTheTurnWrote();
 }
 
+/** The same, driven through the panel, so a session stands around it. */
+async function aTurnInTheChat(wrote: (drafted: LocalApi) => Promise<void>): Promise<void> {
+	await say('Write about the parser');
+	await wrote(inTheDraft());
+	hear?.({ event: 'ended' });
+	await settle();
+}
+
 beforeEach(async () => {
 	store = new Map();
 	copyStore = new Map();
 	standing = null;
+	sessions = { opened: 0, closed: 0 };
+	hear = null;
+	drawn = [];
 	kept = new MemoryHistory(folder(), { author: 'Ada' });
 	chat.clear();
 	nodes.clear();
@@ -231,6 +278,7 @@ describe('the line a standing draft is said on', () => {
 		expect(screen()).toContain('A draft is standing — 1 new note, 1 renamed.');
 		expect(named('Review')).toBeDefined();
 		expect(named('Discard')).toBeDefined();
+		expect(screen()).toContain('Discarding keeps nothing the chat wrote.');
 	});
 
 	it('is not there at all before anything has written into one', async () => {
@@ -254,6 +302,49 @@ describe('the line a standing draft is said on', () => {
 
 		expect(screen()).not.toContain('A draft is standing');
 		expect((await api.listNodes({ graph })).map((one) => one.title)).toEqual(['Origins']);
+	});
+});
+
+describe('the session the draft was written in', () => {
+	/** The agent ran inside the draft, so the session cannot outlive it: the
+	 *  next turn opens another, in another draft. */
+	async function thenSaySomethingElse(): Promise<void> {
+		expect(sessions).toEqual({ opened: 1, closed: 1 });
+
+		await say('And the vault?');
+
+		expect(sessions).toEqual({ opened: 2, closed: 1 });
+		expect(chatDraft.standing).not.toBe(null);
+	}
+
+	it('is let go when the draft is taken in, and another opens for the next turn', async () => {
+		await chat.opened(graph);
+		show();
+		await settle();
+		await aTurnInTheChat(async (drafted) => {
+			await drafted.createNode({ title: 'The parser' });
+		});
+
+		named('Review')?.click();
+		await settle();
+		named('Merge')?.click();
+		await settle();
+
+		await thenSaySomethingElse();
+	});
+
+	it('is let go when the draft is thrown away from the line it is said on', async () => {
+		await chat.opened(graph);
+		show();
+		await settle();
+		await aTurnInTheChat(async (drafted) => {
+			await drafted.createNode({ title: 'The parser' });
+		});
+
+		named('Discard')?.click();
+		await settle();
+
+		await thenSaySomethingElse();
 	});
 });
 
@@ -282,8 +373,28 @@ describe('the review', () => {
 		card('Origins')?.click();
 		await settle();
 
-		expect(screen()).toContain('As the draft has it.');
 		expect(screen()).toContain('The seed of it all');
+		expect(named('In the draft')).toBeDefined();
+	});
+
+	it('reads a row on the reading surface, with the folder\u2019s copy one tap away', async () => {
+		await aTurn(async (drafted) => {
+			await drafted.updateBlock(seed, { content: words('The seed of it all') });
+		});
+		await reading();
+
+		card('Origins')?.click();
+		await settle();
+
+		expect(screen()).toContain('The seed of it all');
+		expect(screen()).toContain('Written into by the chat');
+
+		named('In your folder')?.click();
+		await settle();
+
+		expect(screen()).toContain('The seed');
+		expect(screen()).not.toContain('The seed of it all');
+		expect(screen()).not.toContain('Written into by the chat');
 	});
 
 	it('takes the whole draft in with one act, and the draft is gone', async () => {
@@ -326,6 +437,25 @@ describe('the review', () => {
 		]);
 	});
 
+	it('draws the two states on the canvas while it is up, and the graph as it stands after', async () => {
+		let parser: OwnedRef;
+		await aTurn(async (drafted) => {
+			parser = (await drafted.createNode({ title: 'The parser' })).ref;
+			await drafted.updateBlock(seed, { content: words('The seed of it all') });
+		});
+		await reading();
+
+		const shown = drawn.at(-1);
+		expect(shown?.says).toBe('Your notes to the draft');
+		expect([...(shown?.difference.added ?? [])]).toEqual([parser!]);
+		expect([...(shown?.difference.changed ?? [])]).toEqual([origins]);
+
+		labelled('Back to the chat')?.click();
+		await settle();
+
+		expect(drawn.at(-1)).toBe(null);
+	});
+
 	it('says so in one line where nothing in it is different, and offers only throwing it away', async () => {
 		await chatDraft.start();
 		await reading();
@@ -344,17 +474,7 @@ describe('while the chat is still writing', () => {
 		await chat.opened(graph);
 		show();
 		await settle();
-		const into = document.body.querySelector<HTMLTextAreaElement>(
-			'[aria-label="What you want written about"]'
-		);
-		if (!into) throw new Error('no composer');
-		into.value = 'And the vault?';
-		into.dispatchEvent(new Event('input', { bubbles: true }));
-		flushSync();
-		[...document.body.querySelectorAll('button')]
-			.find((one) => one.getAttribute('aria-label') === 'Send')
-			?.click();
-		await settle();
+		await say('And the vault?');
 
 		expect(screen()).toContain('The chat is still writing into it.');
 		expect(named('Review')?.disabled).toBe(true);

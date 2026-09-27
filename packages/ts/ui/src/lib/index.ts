@@ -51,6 +51,7 @@ export { default as GraphSurface } from './components/graph/graph-surface.svelte
 export { default as ImportSheet } from './components/graph/import-sheet.svelte';
 export { default as MoveSheet, type MoveTarget } from './components/graph/move-sheet.svelte';
 export { default as NestingSheet, type NestingAsk } from './components/graph/nesting-sheet.svelte';
+export { default as SettleImport } from './components/graph/settle-import.svelte';
 export * from './components/graph/view.js';
 export {
 	default as TreeSurface,

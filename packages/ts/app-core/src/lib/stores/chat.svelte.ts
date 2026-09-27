@@ -425,7 +425,18 @@ class ChatStore {
 	/** Let this conversation go and begin another, on the same graph. */
 	startAgain(): void {
 		this.#letGo();
+		this.#done.clear();
+		this.#kept.clear();
 		this.#turns = [];
+	}
+
+	/**
+	 * The draft is gone, taken in or thrown away. The session ran WHERE the
+	 * draft was, so it is over with it; what was said stays on screen, and the
+	 * next thing said opens another session in another draft.
+	 */
+	draftGone(): void {
+		if (this.#standing) this.#letGo();
 	}
 
 	/** Another graph has not had this one's conversation. */
@@ -435,6 +446,8 @@ class ChatStore {
 
 	clear(): void {
 		this.#letGo();
+		this.#done.clear();
+		this.#kept.clear();
 		chatDraft.clear();
 		this.#of = null;
 		this.#agents = null;
@@ -454,8 +467,6 @@ class ChatStore {
 		this.#writing = false;
 		this.#keeping = null;
 		this.#keepSettling = false;
-		this.#done.clear();
-		this.#kept.clear();
 		this.#letAttachedGo();
 		this.#openedWith = undefined;
 		this.#trouble = null;

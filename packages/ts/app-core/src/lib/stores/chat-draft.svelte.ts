@@ -62,20 +62,36 @@ export interface DraftAsRead {
 	named: ReadonlyMap<OwnedRef, DraftNote>;
 	/** Whether the two copies say the same thing about everything in them. */
 	nothing: boolean;
+	/** Every note the draft holds, which is the later of the two states the
+	 *  canvas draws. */
+	drafted: readonly NodeView[];
+	/** The notes the folder holds and the draft does not, as the folder has
+	 *  them: a note that went can only be drawn where it was if the canvas is
+	 *  handed it. */
+	gone: readonly NodeView[];
+	/** The version of the draft all of this was read at. */
+	at: string;
 }
 
-/** One note as the draft has it, for somebody reading a row. */
+/** Which copy of a note somebody is reading: the draft's, or the one their own
+ *  folder holds beside it. */
+export type DraftSide = 'draft' | 'folder';
+
+/** One note as one copy has it, with the pictures inside it. */
 export interface DraftedNote {
 	note: NodeView;
 	sections: readonly BlockView[];
+	picture(uploadId: string): Promise<{ src: string; release: () => void }>;
 }
 
-/** The two copies to settle between, and the state the draft was taken from —
- *  which is what says whether a note the draft does not hold went in its bin. */
+/** The two copies to settle between, the state the draft was taken from —
+ *  which is what says whether a note the draft does not hold went in its bin —
+ *  and the version of the draft they were read at. */
 interface TwoCopies {
 	mine: Vault;
 	theirs: Vault;
 	from: Vault;
+	at: string;
 }
 
 class ChatDraftStore {
@@ -88,9 +104,9 @@ class ChatDraftStore {
 	/** One start at a time: the agent calls several acts at once and each one
 	 *  wants the draft, and two starts would be two copies of one folder. */
 	#starting: Promise<StandingDraft> | null = null;
-	/** The draft's own copy of the graph, for reading a note as it has it.
-	 *  Nothing watches it: a row asks it a question and draws the answer. */
-	#drafted: GraphAsItWas | null = null;
+	/** The two copies of the graph, for reading one note as each has it.
+	 *  Nothing watches them: a row asks a question and draws the answer. */
+	#copies: Record<DraftSide, GraphAsItWas | null> = { draft: null, folder: null };
 
 	/** Whether this device keeps drafts at all. Absent is a shell that does
 	 *  not, where a chat writes into the project itself. */
@@ -211,14 +227,21 @@ class ChatDraftStore {
 				graphAsItWas(copies.theirs),
 				graphAsItWas(copies.mine)
 			]);
-			const [there, here] = await Promise.all([notesOf(drafted), notesOf(held)]);
-			this.#drafted = drafted;
+			const [there, here] = await Promise.all([notesIn(drafted), notesIn(held)]);
+			const inTheFolder = new Map(here.map((note) => [note.ref, note]));
+			this.#copies = { draft: drafted, folder: held };
 			this.#counts = countsIn(difference);
 			this.#read = {
 				difference,
 				conflicts: preview.conflicts,
-				named: new Map([...here, ...there]),
-				nothing: noDifference(difference)
+				named: new Map([...cited(here), ...cited(there)]),
+				nothing: noDifference(difference),
+				drafted: there,
+				gone: difference.notes.removed.flatMap((ref) => {
+					const note = inTheFolder.get(ref);
+					return note ? [note] : [];
+				}),
+				at: copies.at
 			};
 		} catch (error) {
 			this.#read = null;
@@ -228,15 +251,15 @@ class ChatDraftStore {
 		}
 	}
 
-	/** One note as the draft has it. `null` is a note the draft does not hold,
-	 *  which is one it put in the bin. */
-	async asDrafted(note: OwnedRef): Promise<DraftedNote | null> {
-		const drafted = this.#drafted;
-		if (!drafted) return null;
-		const held = await drafted.getNode(note).catch(() => null);
+	/** One note as one of the two copies has it. `null` is a copy that does not
+	 *  hold it — in the draft, a note it put in the bin. */
+	async asRead(side: DraftSide, note: OwnedRef): Promise<DraftedNote | null> {
+		const copy = this.#copies[side];
+		if (!copy) return null;
+		const held = await copy.getNode(note).catch(() => null);
 		if (!held) return null;
-		const sections = await drafted.listBlocks(note).catch(() => [] as BlockView[]);
-		return { note: held, sections };
+		const sections = await copy.listBlocks(note).catch(() => [] as BlockView[]);
+		return { note: held, sections, picture: (uploadId) => copy.ownPicture(uploadId) };
 	}
 
 	/**
@@ -286,7 +309,7 @@ class ChatDraftStore {
 		this.#standing = null;
 		this.#counts = null;
 		this.#read = null;
-		this.#drafted = null;
+		this.#copies = { draft: null, folder: null };
 		this.#says = null;
 		this.#reading = false;
 		this.#busy = false;
@@ -309,7 +332,7 @@ class ChatDraftStore {
 		this.#standing = null;
 		this.#counts = null;
 		this.#read = null;
-		this.#drafted = null;
+		this.#copies = { draft: null, folder: null };
 	}
 
 	async #twoCopies(): Promise<TwoCopies | null> {
@@ -323,21 +346,25 @@ class ChatDraftStore {
 			history.readAt(tip),
 			history.readAt(draft.from)
 		]);
-		return { mine, theirs, from };
+		return { mine, theirs, from, at: tip };
 	}
 }
 
-/** Every note one copy of a graph holds, by ref, as somebody cites it. */
-async function notesOf(copy: GraphAsItWas): Promise<Map<OwnedRef, DraftNote>> {
+/** Every note one copy of a graph holds, once each: a branch is listed both as
+ *  the graph's and as its own root. */
+async function notesIn(copy: GraphAsItWas): Promise<NodeView[]> {
 	const graph = await copy.graphHere();
 	const roots = await copy.listNodes({ graph });
 	const under = await Promise.all(roots.map((root) => copy.listNodes({ origin: root.ref })));
-	return new Map(
-		[...roots, ...under.flat()].map((note) => [
-			note.ref,
-			{ title: note.title, ...(note.address === undefined ? {} : { address: note.address }) }
-		])
-	);
+	return [...new Map([...roots, ...under.flat()].map((note) => [note.ref, note])).values()];
+}
+
+/** The same notes as somebody cites them. */
+function cited(notes: readonly NodeView[]): [OwnedRef, DraftNote][] {
+	return notes.map((note) => [
+		note.ref,
+		{ title: note.title, ...(note.address === undefined ? {} : { address: note.address }) }
+	]);
 }
 
 export const chatDraft = new ChatDraftStore();

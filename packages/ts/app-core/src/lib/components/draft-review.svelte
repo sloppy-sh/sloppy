@@ -2,23 +2,29 @@
 	// Reading a draft of the notes whole, and taking it in with one act —
 	// DESIGN.md § "Reading a draft". It stands where the chat stands: on a phone
 	// the review IS the panel, and beside the graph it is that same dock given
-	// room.
+	// room, with the canvas behind it drawing the two states against each other.
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import type { ImportResolution, OwnedRef } from '@sloppy/types';
-	import { ResponsiveModal, sectionLines } from '@sloppy/ui';
+	import { HeldStack, ReadingPanel, SettleImport, type ReferenceReader } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import {
+		conflictHeading,
+		DISCARD_COSTS,
 		DRAFT_BAND_HEADINGS,
 		DRAFT_BANDS,
 		draftHeading,
 		draftRows,
 		picturesSaid,
+		sectionsDrafted,
+		settlingSaid,
 		type DraftBand
 	} from '../draft-said.js';
-	import { chatDraft, type DraftedNote } from '../stores/chat-draft.svelte.js';
+	import { noteEmoji } from '../note-surface.js';
+	import { chatDraft, type DraftedNote, type DraftSide } from '../stores/chat-draft.svelte.js';
+	import { prefs } from '../stores/prefs.svelte.js';
+	import { session } from '../stores/session.svelte.js';
 	import ChatCard from './chat-card.svelte';
-	import SettleDraft from './settle-draft.svelte';
 
 	let {
 		onBack,
@@ -30,41 +36,61 @@
 		onDone: () => void;
 	} = $props();
 
-	/** What a row opens to for a note the draft does not hold. */
+	/** What a row opens to for a note one side does not hold. */
 	const BINNED = 'The draft puts this note in the bin.';
+	const NOT_YOURS_YET = 'Your folder has no such note yet.';
 	const UNWRITTEN = 'Nothing written in it.';
 	const NO_DRAFT = 'There is no draft to read.';
+
+	const SIDES: { side: DraftSide; named: string }[] = [
+		{ side: 'draft', named: 'In the draft' },
+		{ side: 'folder', named: 'In your folder' }
+	];
 
 	const read = $derived(chatDraft.read);
 	const counts = $derived(chatDraft.counts);
 	const conflicts = $derived(read?.conflicts ?? []);
 	const rows = $derived(read ? draftRows(read.difference, read.conflicts, read.named) : []);
 	const pictures = $derived(counts ? picturesSaid(counts) : null);
+	const emoji = $derived(noteEmoji(session.viewer?.did ?? '').catalog);
 
 	let settled = $state.raw<readonly ImportResolution[]>([]);
 	const unsettled = $derived(conflicts.length - settled.length);
 
-	/** The note a row opened, as the draft has it. */
-	let opened = $state.raw<{ note: DraftedNote | null; reading: boolean } | null>(null);
+	/** The note a row opened, on the side it is being read from. */
+	let opened = $state.raw<{
+		ref: OwnedRef;
+		side: DraftSide;
+		note: DraftedNote | null;
+		reading: boolean;
+	} | null>(null);
 
-	const openedName = $derived.by(() => {
-		const held = opened?.note?.note;
-		if (!held) return 'In the draft';
-		return draftHeading({
-			title: held.title,
-			...(held.address === undefined ? {} : { address: held.address })
-		});
-	});
+	const openedName = $derived(opened ? draftHeading(read?.named.get(opened.ref)) : 'A note');
+
+	/** Which of its sections the draft wrote, so the one a reader is looking for
+	 *  is marked rather than hunted for. */
+	const drafted = $derived(
+		opened && read && opened.side === 'draft'
+			? sectionsDrafted(read.difference, opened.ref, opened.note?.sections ?? [])
+			: new Set<OwnedRef>()
+	);
+
+	/** A reference inside the note leads to that note on the side it was read
+	 *  from, because that is the copy the reader is looking at. */
+	const references: ReferenceReader = {
+		read: async (note) => (await chatDraft.asRead(opened?.side ?? 'draft', note))?.note ?? null,
+		open: (note) => void openRow(note, opened?.side ?? 'draft')
+	};
 
 	function inBand(band: DraftBand) {
 		return rows.filter((one) => one.band === band);
 	}
 
-	async function openRow(ref: OwnedRef): Promise<void> {
-		opened = { note: null, reading: true };
-		const held = opened;
-		const note = await chatDraft.asDrafted(ref);
-		if (opened === held) opened = { note, reading: false };
+	async function openRow(ref: OwnedRef, side: DraftSide): Promise<void> {
+		opened = { ref, side, note: null, reading: true };
+		const asked = opened;
+		const note = await chatDraft.asRead(side, ref);
+		if (opened === asked) opened = { ref, side, note, reading: false };
 	}
 
 	async function take(): Promise<void> {
@@ -87,7 +113,7 @@
 					<button
 						type="button"
 						class="w-full rounded-lg text-left"
-						onclick={() => void openRow(row.ref)}
+						onclick={() => void openRow(row.ref, row.band === 'removed' ? 'folder' : 'draft')}
 					>
 						<ChatCard card={row.card} />
 					</button>
@@ -124,9 +150,11 @@
 							: `${conflicts.length.toLocaleString()} notes were written in on both sides. Choose what each says, and everything else comes in around them.`}
 					</p>
 					<div class="px-1">
-						<SettleDraft
+						<SettleImport
 							{conflicts}
-							named={read.named}
+							otherIs="the draft"
+							heading={(one) => conflictHeading(one, read.named)}
+							about={settlingSaid}
 							busy={chatDraft.busy}
 							onchange={(chosen) => (settled = chosen)}
 						/>
@@ -176,40 +204,65 @@
 		>
 			Discard
 		</Button>
-		<p class="px-1 text-xs text-muted-foreground">
-			Discarding keeps nothing the chat wrote. Your own notes are untouched either way.
-		</p>
+		<p class="px-1 text-xs text-muted-foreground">{DISCARD_COSTS}</p>
 	</div>
 </div>
 
-<ResponsiveModal
+<ReadingPanel
 	open={opened !== null}
 	onOpenChange={(up) => {
 		if (!up) opened = null;
 	}}
 	title={openedName}
-	description="As the draft has it."
+	width={prefs.current.readingWidth}
+	onWidthChange={(px) => prefs.set('readingWidth', px)}
 >
-	<div class="space-y-3 px-2 pt-4 pb-2">
-		{#if opened?.reading}
-			<Skeleton class="h-16 w-full" />
-		{:else if opened && !opened.note}
-			<p class="text-sm text-muted-foreground">{BINNED}</p>
-		{:else if opened}
-			{#each opened.note?.sections ?? [] as section (section.ref)}
-				{@const written = sectionLines(section.content)}
-				<div class="space-y-1 border-l-2 border-border pl-3">
-					{#if written.length === 0}
-						<p class="text-sm text-muted-foreground">{UNWRITTEN}</p>
-					{:else}
-						{#each written as line, at (at)}
-							<p class="text-sm break-words">{line}</p>
-						{/each}
-					{/if}
-				</div>
-			{:else}
-				<p class="text-sm text-muted-foreground">{UNWRITTEN}</p>
-			{/each}
+	{#if opened}
+		{@const side = opened.side}
+		{@const ref = opened.ref}
+		<div class="space-y-3 pt-1">
+			<h2 class="text-2xl leading-snug font-semibold tracking-tight">{openedName}</h2>
+			<div class="flex flex-wrap gap-1">
+				{#each SIDES as one (one.side)}
+					<Button
+						variant={side === one.side ? 'secondary' : 'ghost'}
+						class="h-9 rounded-full text-xs"
+						aria-pressed={side === one.side}
+						onclick={() => void openRow(ref, one.side)}
+					>
+						{one.named}
+					</Button>
+				{/each}
+			</div>
+		</div>
+
+		{#if opened.reading}
+			<Skeleton class="mt-4 h-24 w-full" />
+		{:else if !opened.note}
+			<p class="py-8 text-center text-muted-foreground">
+				{side === 'draft' ? BINNED : NOT_YOURS_YET}
+			</p>
+		{:else if opened.note.sections.length === 0}
+			<p class="py-8 text-center text-muted-foreground">{UNWRITTEN}</p>
+		{:else}
+			{@const shown = opened.note}
+			<div class="mt-4 space-y-4">
+				{#each shown.sections as section (section.ref)}
+					<div class="space-y-1">
+						{#if drafted.has(section.ref)}
+							<p class="text-xs text-muted-foreground">Written into by the chat</p>
+						{/if}
+						<HeldStack
+							note={shown.note}
+							author={shown.note.created_by}
+							blocks={[section]}
+							pictures={{ held: true, picture: (upload) => shown.picture(upload) }}
+							{references}
+							{emoji}
+						/>
+					</div>
+				{/each}
+			</div>
 		{/if}
-	</div>
-</ResponsiveModal>
+	{/if}
+</ReadingPanel>
