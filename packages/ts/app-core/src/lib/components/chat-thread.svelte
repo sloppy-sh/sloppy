@@ -19,12 +19,14 @@
 	} from '@sloppy/types';
 	import { Button } from '@sloppy/ui/button';
 	import {
+		actOutcome,
+		type CallOutcome,
+		callOutcome,
 		saidIn,
 		type ThreadRow,
 		threadRows,
 		toolLine,
-		type ToolLine,
-		toolOutcome
+		type ToolLine
 	} from '../chat-said.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import ChatCard from './chat-card.svelte';
@@ -64,32 +66,18 @@
 
 	const drawn = $derived(turns.map((turn) => ({ turn, rows: threadRows(turn) })));
 
-	/** What one call came to, as the thread draws it. */
-	interface Came {
-		said?: string;
-		trouble?: boolean;
-		card?: Card;
-		/** The one note it left, for a surface offering to open it. */
-		note?: OwnedRef;
-	}
+	/** What one call came to, with the one note it left for a surface offering
+	 *  to open it. */
+	type Came = CallOutcome & { note?: OwnedRef };
 
 	function outcomeOf(row: ThreadRow & { kind: 'call' }): Came {
 		const ours = done(row.call.call);
-		// A tool of the agent's own answers the agent and nobody else, so its
-		// writing is the whole of what there is to show of it.
-		if (!ours) return row.answer ? toolOutcome(row.answer) : {};
 		// A note in the bin is nowhere to offer going.
-		const only = row.call.act === 'delete_note' ? undefined : onlyNoteOf(ours);
-		return { ...cameOf(ours), ...(only === undefined ? {} : { note: only }) };
-	}
-
-	function cameOf(act: ChatActDone): Came {
-		const said =
-			act.told ?? (act.trouble === true ? toolOutcome({ said: act.said }).said : undefined);
+		const only =
+			ours === undefined || row.call.act === 'delete_note' ? undefined : onlyNoteOf(ours);
 		return {
-			...(said === undefined ? {} : { said }),
-			...(act.trouble === undefined ? {} : { trouble: act.trouble }),
-			...(act.card === undefined ? {} : { card: act.card })
+			...callOutcome(row.call, row.answer, ours),
+			...(only === undefined ? {} : { note: only })
 		};
 	}
 
@@ -242,7 +230,7 @@
 
 					{#if answer.trim() !== '' && !(live && index === drawn.length - 1)}
 						{#if came}
-							{@render outcome(cameOf(came), onlyNoteOf(came))}
+							{@render outcome(actOutcome(came), onlyNoteOf(came))}
 						{/if}
 						{#if !landed}
 							{#if keeping?.at === index}

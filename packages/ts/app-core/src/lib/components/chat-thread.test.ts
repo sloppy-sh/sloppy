@@ -36,12 +36,21 @@ function agent(blocks: ChatTurn['blocks']): ChatTurn {
 	return { from: 'agent', blocks, at: AT };
 }
 
+/** What one of Sloppy's own acts hands the agent: its ref and what became of
+ *  it, which is the machine's half of the answer and nobody's to read. */
+const HANDED_BACK = `{"note":"${PARSER}","done":"written"}`;
+
 /** One of Sloppy's own acts called and answered, as the shell and the page
  *  between them leave it in the thread. */
-function wrote(call: string, about: string): ChatTurn {
+function wrote(call: string, about: string, trouble = false): ChatTurn {
 	return agent([
 		{ kind: 'tool_call', call, tool: 'write_note', act: 'write_note', arguments: { about } },
-		{ kind: 'tool_result', call, said: '{"note":"…","done":"written"}' }
+		{
+			kind: 'tool_result',
+			call,
+			said: HANDED_BACK,
+			...(trouble ? { trouble: true } : {})
+		}
 	]);
 }
 
@@ -160,6 +169,21 @@ describe('what an act comes to', () => {
 		expect(screen().match(/1 · The parser/g)).toHaveLength(1);
 	});
 
+	it('draws none of what the agent was handed, where the act laid out nothing', () => {
+		show([wrote('c1', 'src/parser.ts')]);
+
+		expect(screen()).toContain('Writing a note');
+		expect(screen()).not.toContain(DID);
+		expect(screen()).not.toContain('"note"');
+	});
+
+	it('says an act did not happen, where it came to nothing and said nothing', () => {
+		show([wrote('c1', 'src/parser.ts', true)]);
+
+		expect(screen()).toContain('That did not happen.');
+		expect(screen()).not.toContain(DID);
+	});
+
 	it('reads trouble as trouble, in the words the act gave', () => {
 		acts.set('c1', { said: 'ignored', trouble: true, told: 'There is no note there.' });
 		show([wrote('c1', 'src/parser.ts')]);
@@ -250,7 +274,11 @@ describe('keeping an answer', () => {
 	});
 
 	it('says why it was not kept and leaves the offer standing', () => {
-		kept.set(0, { said: 'That note was not written.', trouble: true });
+		kept.set(0, {
+			said: 'That note was not written.',
+			trouble: true,
+			told: 'That note was not written.'
+		});
 		show([said]);
 
 		expect(screen()).toContain('That note was not written.');

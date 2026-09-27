@@ -957,7 +957,11 @@ describe('keeping an answer', () => {
 
 	it('says why it was not written and offers again, so the answer is not lost', async () => {
 		await answered();
-		acting.answer = { said: 'That note was not written.', trouble: true };
+		acting.answer = {
+			said: 'That note was not written.',
+			trouble: true,
+			told: 'That note was not written.'
+		};
 		named('Keep as a note')?.click();
 		await settle();
 		named('Keep it')?.click();
