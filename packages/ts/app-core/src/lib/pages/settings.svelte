@@ -13,6 +13,7 @@
 	import HistorySettings from '../components/history-settings.svelte';
 	import IdentitySettings from '../components/identity-settings.svelte';
 	import OpenHere from '../components/open-here.svelte';
+	import WhatHappened from '../components/what-happened.svelte';
 	import { graphHere } from '../graph-here.svelte.js';
 	import { repointRuntime, runtime } from '../runtime.js';
 	import { saveHere, savesFiles } from '../save-file.js';
@@ -364,6 +365,16 @@
 				{/if}
 			</div>
 		{/if}
+
+		<div class="space-y-3 border-t border-border pt-8">
+			<h2 class="text-sm font-medium">When something goes wrong</h2>
+			<p class="text-sm text-muted-foreground">
+				Sloppy can keep a record of what it does while you use it — what you asked of it, what came
+				of that, and anything that failed. Turn it on, do the thing that went wrong again, then hand
+				the record to whoever is fixing it.
+			</p>
+			<WhatHappened />
+		</div>
 
 		{#if !session.onDevice}
 			<div class="space-y-3 border-t border-border pt-8">

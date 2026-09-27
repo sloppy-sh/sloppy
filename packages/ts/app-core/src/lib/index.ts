@@ -28,6 +28,7 @@ export {
 } from './pages/routes.js';
 
 export { serverMessage } from './stores/errors.js';
+export { doingIn, troubleIn, whatHappened } from './stores/what-happened.svelte.js';
 export { session } from './stores/session.svelte.js';
 export {
 	ACCENT_LABELS,

@@ -1,4 +1,4 @@
-import type { ChatAccess } from '@sloppy/app-core';
+import { whatHappened, type ChatAccess } from '@sloppy/app-core';
 import { CHAT_TOOLS, type ChatEvent, type ChatToolAnswer, type ChatToolCall } from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { tauriChat, type Telling, type Told } from './chat';
@@ -475,6 +475,22 @@ describe("Sloppy's own acts", () => {
 			trouble: true
 		});
 		expect(served).toEqual([]);
+	});
+
+	// The page is never told about this one, so a record somebody turned on is
+	// the only place it leaves a mark.
+	it('leaves a call it refused in the record of what happened', async () => {
+		whatHappened.record(true);
+		await opened();
+
+		calls('write_note', { about: '../elsewhere/secrets.ts', sections: [] });
+
+		await until(() => answers.length === 1);
+		expect(whatHappened.kept.map((one) => one.said)).toContain(
+			'writing a note was refused before it ran: That place is outside this project.'
+		);
+		whatHappened.record(false);
+		whatHappened.clear();
 	});
 
 	it('tells the agent what could not be done rather than leaving it waiting', async () => {

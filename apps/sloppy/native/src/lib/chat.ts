@@ -6,7 +6,13 @@
  * `serve` a call is done through.
  */
 
-import type { ChatAccess, ChatAsked } from '@sloppy/app-core';
+import {
+	doingIn,
+	troubleIn,
+	whatHappened,
+	type ChatAccess,
+	type ChatAsked
+} from '@sloppy/app-core';
 import {
 	advertisedChatTools,
 	argumentsFit,
@@ -269,10 +275,15 @@ class TauriChat implements ChatAccess {
 			arguments: one.arguments
 		});
 		if (!held.success) {
-			await this.answers(one.call, {
-				said: held.error.issues[0]?.message ?? UNREADABLE_CALL,
-				trouble: true
-			});
+			const refused = held.error.issues[0]?.message ?? UNREADABLE_CALL;
+			// The page never sees this one, so the record is the only place it
+			// leaves a mark.
+			whatHappened.put(
+				'trouble',
+				`${doingIn(one.act)} was refused before it ran: ${refused}`,
+				one.call
+			);
+			await this.answers(one.call, { said: refused, trouble: true });
 			return;
 		}
 		const call = held.data;
@@ -315,8 +326,11 @@ class TauriChat implements ChatAccess {
 			call,
 			said: said.said,
 			trouble: said.trouble ?? false
-		}).catch(() => {
-			// The session is over, so nothing is waiting on this answer.
+		}).catch((reason) => {
+			// The session is over, so nothing is waiting on this answer — but an
+			// agent left waiting on one that never arrived is exactly what a person
+			// keeping a record is trying to find out about.
+			whatHappened.put('trouble', `the answer did not reach the agent: ${troubleIn(reason)}`, call);
 		});
 	}
 

@@ -37,6 +37,7 @@ import { seam } from '../seam.svelte.js';
 import { wordsFor } from './errors.js';
 import { graphs } from './graphs.svelte.js';
 import { prefs } from './prefs.svelte.js';
+import { doingIn, troubleIn, whatHappened } from './what-happened.svelte.js';
 
 const UNSTARTED = 'Sloppy could not start a chat just now. Try again.';
 const UNSAID = 'Sloppy could not send that just now. Try again.';
@@ -88,6 +89,15 @@ function withAttached(said: string, attached: readonly ChatAttachment[]): string
  *  can only be typed as far as the rest of it. */
 function roomTaken(attached: readonly ChatAttachment[]): number {
 	return withAttached('', attached).length;
+}
+
+/** What an act came to, for the record: whether it worked and how much it left
+ *  different — never what it read, wrote or answered with. */
+function cameTo(done: ChatActDone): string {
+	if (done.trouble === true)
+		return `did not work${done.told === undefined ? '' : `: ${done.told}`}`;
+	const left = done.touched?.length ?? 0;
+	return left === 0 ? 'is done' : `is done, leaving ${left} note${left === 1 ? '' : 's'} different`;
 }
 
 class ChatStore {
@@ -282,8 +292,12 @@ class ChatStore {
 		this.#agents = null;
 		try {
 			this.#agents = await access.agents();
-		} catch {
+		} catch (error) {
 			this.#agents = 'untold';
+			whatHappened.put(
+				'trouble',
+				`this device did not say what it can chat with: ${troubleIn(error)}`
+			);
 		}
 	}
 
@@ -301,6 +315,12 @@ class ChatStore {
 		if (!access || (said === '' && attached.length === 0) || this.#running) return;
 		if (this.#asking !== null) return;
 		const epoch = this.#epoch;
+		whatHappened.put(
+			'turn',
+			attached.length === 0
+				? 'a turn began'
+				: `a turn began, with ${attached.length} file${attached.length === 1 ? '' : 's'} in front of it`
+		);
 		this.#trouble = null;
 		this.#running = true;
 		this.#writing = false;
@@ -323,6 +343,7 @@ class ChatStore {
 					(call) => this.#serve(call)
 				);
 			} catch (error) {
+				whatHappened.put('trouble', `the chat would not start: ${troubleIn(error)}`);
 				if (epoch !== this.#epoch) return;
 				this.#trouble = wordsFor(error) ?? UNSTARTED;
 				this.#running = false;
@@ -335,6 +356,7 @@ class ChatStore {
 		try {
 			await access.say(withAttached(said, attached));
 		} catch (error) {
+			whatHappened.put('trouble', `the agent was not told: ${troubleIn(error)}`);
 			if (epoch !== this.#epoch) return;
 			this.#trouble = wordsFor(error) ?? UNSAID;
 			this.#running = false;
@@ -428,6 +450,16 @@ class ChatStore {
 		const access = seam().chat();
 		if (!access) return;
 		if (allowed && andTheRest) this.#allowedThisTurn = true;
+		const doing = this.#asking?.call === call ? doingIn(this.#asking.act) : 'it';
+		whatHappened.put(
+			'question',
+			allowed
+				? andTheRest
+					? `${doing} was allowed, and so is the rest of this reply`
+					: `${doing} was allowed`
+				: `${doing} was turned down`,
+			call
+		);
 		this.#settling = new Set([...this.#settling, call]);
 		try {
 			await access.settle(call, allowed);
@@ -441,6 +473,7 @@ class ChatStore {
 	async stop(): Promise<void> {
 		const access = seam().chat();
 		if (!access || this.#stopping) return;
+		whatHappened.put('turn', 'an end to the turn was asked for');
 		this.#stopping = true;
 		try {
 			await access.stop();
@@ -507,9 +540,15 @@ class ChatStore {
 	#heard(epoch: number, event: ChatEvent): void {
 		if (epoch !== this.#epoch) return;
 		switch (event.event) {
-			case 'started':
+			case 'started': {
 				this.#standing = true;
+				const named = this.models.find((one) => one.model === event.model)?.name;
+				whatHappened.put(
+					'turn',
+					`the chat opened with ${named ?? 'whatever the agent answers with'}, and the agent has ${event.tools.length} tools`
+				);
 				break;
+			}
 			case 'block':
 				this.#block(event.at, event.block);
 				break;
@@ -517,15 +556,25 @@ class ChatStore {
 				// A question already answered — for this reply, or standingly — is
 				// answered rather than put in front of somebody again.
 				if (this.#allowedThisTurn || prefs.current.writesWithoutAsking) {
+					whatHappened.put(
+						'question',
+						`${doingIn(event.act)} was allowed without asking`,
+						event.call
+					);
 					void this.settle(event.call, true);
 					break;
 				}
+				whatHappened.put('question', `${doingIn(event.act)} is waiting to be answered`, event.call);
 				this.#asking = { call: event.call, act: event.act, arguments: event.arguments };
 				break;
 			case 'settled':
 				if (this.#asking?.call === event.call) this.#asking = null;
 				break;
 			case 'ended':
+				whatHappened.put(
+					'turn',
+					event.stopped === true ? 'the turn was stopped' : 'the turn ended'
+				);
 				this.#running = false;
 				this.#writing = false;
 				this.#allowedThisTurn = false;
@@ -534,6 +583,8 @@ class ChatStore {
 				this.#readAgain();
 				break;
 			case 'over':
+				if (event.said === undefined) whatHappened.put('turn', 'the chat is over');
+				else whatHappened.put('trouble', 'the chat could not go on');
 				this.#standing = false;
 				this.#running = false;
 				this.#writing = false;
@@ -580,14 +631,29 @@ class ChatStore {
 	}
 
 	async #act(call: ChatToolCall): Promise<ChatActDone> {
-		const project = await runtime.project();
-		if (!project) throw new Error(NO_PROJECT);
-		const done: ChatActDone = await serveChatCall(project, call);
-		if (chatToolWrites(call.act)) {
-			if (done.touched === undefined) this.#blind = true;
-			else this.#touched = [...this.#touched, ...done.touched];
+		whatHappened.put('act', `${doingIn(call.act)} began`, call.call);
+		try {
+			const project = await runtime.project();
+			if (!project) throw new Error(NO_PROJECT);
+			const done: ChatActDone = await serveChatCall(project, call);
+			whatHappened.put(
+				done.trouble === true ? 'trouble' : 'act',
+				`${doingIn(call.act)} ${cameTo(done)}`,
+				call.call
+			);
+			if (chatToolWrites(call.act)) {
+				if (done.touched === undefined) this.#blind = true;
+				else this.#touched = [...this.#touched, ...done.touched];
+			}
+			return done;
+		} catch (error) {
+			whatHappened.put(
+				'trouble',
+				`${doingIn(call.act)} did not answer: ${troubleIn(error)}`,
+				call.call
+			);
+			throw error;
 		}
-		return done;
 	}
 }
 
