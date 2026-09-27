@@ -336,17 +336,24 @@ mod tests {
     #[test]
     fn it_carries_the_identity_the_folder_writes_under_and_nothing_the_history_keeps() {
         let (folders, _project, container) = ready("identity");
+        // A file in the same folder that the history DOES keep, kept at one
+        // version and then written again beside it.
+        write(&container, ".sloppy/pictures.json", "{\"kept\":1}");
+        made(&container, "A picture");
+        write(&container, ".sloppy/pictures.json", "{\"since\":1}");
+        write(&container, ".sloppy/identity.json", "{\"me\":1}");
 
         let draft = start(&folders, &said(&container), ID).expect("a draft");
         let sidecar = Path::new(&draft.vault).join(SIDECAR);
         assert_eq!(
             fs::read_to_string(sidecar.join("identity.json")).expect("the identity"),
-            "{}"
+            "{\"me\":1}"
         );
         assert!(sidecar.join("identity.key").exists());
-        // The vault's own files are the version the draft forked from, and are
-        // the repository's to put there.
-        assert!(!sidecar.join("pictures.json").exists());
+        assert_eq!(
+            fs::read_to_string(sidecar.join("pictures.json")).expect("the pictures"),
+            "{\"kept\":1}"
+        );
     }
 
     #[test]
