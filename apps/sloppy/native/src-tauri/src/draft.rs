@@ -29,6 +29,12 @@ use crate::vault::{settled, Folders};
 /// it to anybody.
 const BRANCH_PREFIX: &str = "sloppy/draft/";
 
+/// A branch a draft is on, which is not one of the folder's lines of work:
+/// nothing in `history.rs` lists one and no act there reaches one by name.
+pub fn of_a_draft(name: &str) -> bool {
+    name.starts_with(BRANCH_PREFIX)
+}
+
 /// The vault's own sidecar folder — `SLOPPY_DIR` in `@sloppy/vault`. The
 /// identity a container's writing is by is kept in it, and the repository is
 /// told not to keep it.
@@ -303,7 +309,10 @@ pub async fn draft_discard<R: Runtime>(
 mod tests {
     use super::*;
     use crate::history::tests::{beside_the_graph, made, project, their_commit, write};
-    use crate::history::{branches, commit, head, read_at};
+    use crate::history::{
+        branch, branch_at, branches, commit, delete_branch, graph, head, merge_in, read_at,
+        switch_to,
+    };
 
     const ID: &str = "01JAPART000000000000000000";
     const OTHER: &str = "01JAPART000000000000000001";
@@ -331,14 +340,15 @@ mod tests {
         folders.opened(at).expect("the notes")
     }
 
-    /// The version a branch is at, and nothing where the repository has no
-    /// branch by that name.
-    fn branch_head(at: &crate::vault::Opened, name: &str) -> Option<String> {
-        branches(at)
-            .expect("the branches")
-            .into_iter()
-            .find(|one| one.name == name)
-            .map(|one| one.head)
+    /// The version a branch is at, read out of the repository rather than out
+    /// of what a person is shown, which leaves a draft's branch out.
+    fn branch_head(root: &crate::vault::Opened, name: &str) -> Option<String> {
+        let kept = at(root).expect("the repository");
+        kept.repo()
+            .find_branch(name, BranchType::Local)
+            .ok()
+            .and_then(|held| held.get().target())
+            .map(|id| id.to_string())
     }
 
     #[test]
@@ -518,6 +528,54 @@ mod tests {
         assert_eq!(
             fs::read_to_string(container.join("notes/a.md")).expect("the first note"),
             "one"
+        );
+    }
+
+    #[test]
+    fn the_folder_neither_shows_the_draft_s_branch_nor_acts_on_it() {
+        let (folders, _project, container) = ready("unlisted");
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+        let data = PathBuf::from(folders.data_path());
+        let ours = notes(&folders, &said(&container));
+        let theirs = notes(&folders, &draft.vault);
+        write(&theirs, "notes/b.md", "two");
+        let kept = commit(&theirs, &data, "A second note")
+            .expect("the version")
+            .expect("a version");
+
+        let listed: Vec<String> = branches(&ours)
+            .expect("the branches")
+            .into_iter()
+            .map(|one| one.name)
+            .collect();
+        assert_eq!(listed, ["main"]);
+
+        let drawn = graph(&ours, &data, 20, None).expect("the picture");
+        assert!(drawn.commits.iter().all(|one| one.commit.id != kept.id));
+        assert!(drawn
+            .commits
+            .iter()
+            .all(|one| !one.refs.contains(&draft.branch)));
+
+        assert!(switch_to(&ours, &draft.branch).is_err());
+        assert!(merge_in(&ours, &data, &draft.branch).is_err());
+        assert!(delete_branch(&ours, &draft.branch).is_err());
+        let another = format!("{BRANCH_PREFIX}{OTHER}");
+        assert!(branch(&ours, &another).is_err());
+        assert!(branch_at(&ours, &another, &draft.from).is_err());
+
+        assert_eq!(branch_head(&ours, &draft.branch), Some(kept.id));
+        assert_eq!(branch_head(&ours, &another), None);
+        assert_eq!(
+            standing(&folders, &said(&container))
+                .expect("the drafts")
+                .len(),
+            1
+        );
+        assert!(!container.join("notes/b.md").exists());
+        assert_eq!(
+            head(&ours).expect("the folder's version").as_deref(),
+            Some(draft.from.as_str())
         );
     }
 

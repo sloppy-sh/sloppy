@@ -3369,6 +3369,12 @@ KEPT**, which is what lets the agent read the code as it was kept rather than as
 half-edited — the chat says that in one line where it starts, because it changes what somebody
 would ask for.
 
+**That branch is not one of the folder's lines of work.** `history.rs` leaves it out of the
+branches it lists and the picture it draws, and refuses every act that takes a branch by name
+over one, so nothing a person is shown offers to work on a draft, take one in with git or
+delete one out from under its copy — and no surface has to know the spelling to keep it out
+of their way.
+
 **Reading a draft reads the notes, never a text diff.** `History.readAt` answers the whole
 folder as a commit has it, so a review is `vaultDifference` in `@sloppy/vault` between the
 folder as it stands and the draft at its tip: the notes written, changed, moved, renumbered,
