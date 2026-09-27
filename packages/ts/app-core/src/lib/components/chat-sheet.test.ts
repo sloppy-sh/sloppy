@@ -18,6 +18,7 @@ import type { NoteLanding } from '../pages/page-state.js';
 import { type ChatAccess, type ChatAsked, initRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { chat } from '../stores/chat.svelte.js';
+import { prefs } from '../stores/prefs.svelte.js';
 import {
 	DID,
 	homeOf,
@@ -172,6 +173,9 @@ async function saying(words = 'What is in here?'): Promise<void> {
 beforeEach(async () => {
 	nodes.clear();
 	chat.clear();
+	// A standing answer outlives a chat on purpose, so it is taken back here
+	// rather than leaking into the next test.
+	prefs.set('writesWithoutAsking', false);
 	opened = [];
 	stub = new Stub();
 	api = useFakeApi();
@@ -448,6 +452,80 @@ describe('the answer a write waits on', () => {
 
 		expect(stub.answered).toEqual([{ call: 'c9', allowed: false }]);
 		expect(screen()).not.toContain('It wants to write');
+	});
+
+	/** A second write in the same reply, which is what a person documenting
+	 *  more than one file is answering for. */
+	async function alsoWants(call: string): Promise<void> {
+		stub.tell({
+			event: 'asking',
+			call,
+			act: 'write_note',
+			arguments: { about: 'src/vault.ts', sections: ['## Why\n\nBecause.'] }
+		});
+		await settle();
+	}
+
+	it('lets the rest of the reply through once, without asking again', async () => {
+		await asking();
+		named('Allow the rest of this reply')?.click();
+		await settle();
+
+		await alsoWants('c10');
+
+		expect(stub.answered).toEqual([
+			{ call: 'c9', allowed: true },
+			{ call: 'c10', allowed: true }
+		]);
+		expect(screen()).not.toContain('It wants to write');
+	});
+
+	it('asks again on the next reply, because that allowance went with the last one', async () => {
+		await asking();
+		named('Allow the rest of this reply')?.click();
+		await settle();
+		stub.tell({ event: 'ended', stopped: false });
+		await settle();
+
+		await saying('And the vault');
+		await alsoWants('c11');
+
+		expect(screen()).toContain('It wants to write');
+		expect(stub.answered).toEqual([{ call: 'c9', allowed: true }]);
+	});
+
+	it('stops asking altogether when told to, and says that it has', async () => {
+		await asking();
+		named('Stop asking')?.click();
+		await settle();
+		stub.tell({ event: 'ended', stopped: false });
+		await settle();
+
+		await saying('And the vault');
+		await alsoWants('c12');
+
+		expect(stub.answered).toEqual([
+			{ call: 'c9', allowed: true },
+			{ call: 'c12', allowed: true }
+		]);
+		expect(screen()).not.toContain('It wants to write');
+		expect(screen()).toContain('Notes are written without asking.');
+	});
+
+	it('asks again once the person takes that back', async () => {
+		await asking();
+		named('Stop asking')?.click();
+		await settle();
+		named('Ask me again')?.click();
+		await settle();
+		stub.tell({ event: 'ended', stopped: false });
+		await settle();
+
+		await saying('And the vault');
+		await alsoWants('c13');
+
+		expect(screen()).toContain('It wants to write');
+		expect(stub.answered).toEqual([{ call: 'c9', allowed: true }]);
 	});
 });
 

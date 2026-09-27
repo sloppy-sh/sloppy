@@ -23,6 +23,7 @@ import { runtime } from '../runtime.js';
 import { seam } from '../seam.svelte.js';
 import { wordsFor } from './errors.js';
 import { graphs } from './graphs.svelte.js';
+import { prefs } from './prefs.svelte.js';
 
 const UNSTARTED = 'Sloppy could not start a chat just now. Try again.';
 const UNSAID = 'Sloppy could not send that just now. Try again.';
@@ -67,6 +68,9 @@ class ChatStore {
 	/** Whether a write was allowed in the turn underway, which is what the
 	 *  canvas has not read yet when it ends. */
 	#wrote = false;
+	/** Whether everything the reply underway writes has been allowed at once.
+	 *  It goes with that reply: the next one asks again. */
+	#allowedThisTurn = $state(false);
 	#trouble = $state.raw<string | null>(null);
 	/** An event that lands after this chat was let go of, or after another
 	 *  graph's was opened, is not an event about what is on screen. */
@@ -101,6 +105,22 @@ class ChatStore {
 	/** Whether their answer has been given and has not landed yet. */
 	get settling(): boolean {
 		return this.#settling;
+	}
+
+	/** Whether what this reply writes has been allowed already, so the rest of
+	 *  it lands without asking again. */
+	get allowedThisTurn(): boolean {
+		return this.#allowedThisTurn;
+	}
+
+	/** Whether writes land without being asked about at all. It is the person's
+	 *  standing answer, kept across chats until they take it back. */
+	get writesWithoutAsking(): boolean {
+		return prefs.current.writesWithoutAsking;
+	}
+
+	askBeforeWriting(asking: boolean): void {
+		prefs.set('writesWithoutAsking', !asking);
 	}
 
 	/** Whether an end has been asked for and has not landed yet. */
@@ -178,11 +198,17 @@ class ChatStore {
 		}
 	}
 
-	/** The person's answer to an act that would write. The question closes on
-	 *  being told it has settled, never on this act alone. */
-	async settle(call: ChatCallId, allowed: boolean): Promise<void> {
+	/**
+	 * The person's answer to an act that would write. The question closes on
+	 * being told it has settled, never on this act alone.
+	 *
+	 * `andTheRest` allows everything else the reply underway writes, so a person
+	 * documenting thirty files answers once rather than thirty times.
+	 */
+	async settle(call: ChatCallId, allowed: boolean, andTheRest = false): Promise<void> {
 		const access = seam().chat();
 		if (!access || this.#settling) return;
+		if (allowed && andTheRest) this.#allowedThisTurn = true;
 		this.#settling = true;
 		try {
 			await access.settle(call, allowed);
@@ -239,6 +265,12 @@ class ChatStore {
 				this.#block(event.at, event.block);
 				break;
 			case 'asking':
+				// A question already answered — for this reply, or standingly — is
+				// answered rather than put in front of somebody again.
+				if (this.#allowedThisTurn || prefs.current.writesWithoutAsking) {
+					void this.settle(event.call, true);
+					break;
+				}
 				this.#asking = { call: event.call, act: event.act, arguments: event.arguments };
 				break;
 			case 'settled':
@@ -248,6 +280,7 @@ class ChatStore {
 			case 'ended':
 				this.#running = false;
 				this.#writing = false;
+				this.#allowedThisTurn = false;
 				// A question the turn ended under is one nobody can answer now.
 				this.#asking = null;
 				this.#readTheFolderAgain();
@@ -256,6 +289,7 @@ class ChatStore {
 				this.#standing = false;
 				this.#running = false;
 				this.#writing = false;
+				this.#allowedThisTurn = false;
 				this.#asking = null;
 				this.#readTheFolderAgain();
 				this.#trouble = event.said ?? null;

@@ -43,6 +43,9 @@ export interface Prefs {
 	/** Whether the graph is read as a walk through the notes rather than drawn on
 	 *  the canvas — DESIGN.md § Persistence. */
 	walking: boolean;
+	/** Whether what an agent writes into the project's notes lands without being
+	 *  asked about each time. False asks before every write. */
+	writesWithoutAsking: boolean;
 	/** How much room the reader has taken for a note docked beside the graph, in
 	 *  px. Null is the width it opens at, and a number from a wider window is
 	 *  still safe to hand over: the surface bounds it against the window it is
@@ -111,6 +114,7 @@ function defaults(): Prefs {
 		alsoOnCanvas: [],
 		wallpapers: {},
 		walking: false,
+		writesWithoutAsking: false,
 		readingWidth: null,
 		origin: null
 	};
@@ -218,6 +222,7 @@ class PrefsStore {
 			alsoOnCanvas: refsIn(saved.alsoOnCanvas),
 			wallpapers: sanitizeWallpapers(saved.wallpapers),
 			walking: saved.walking === true,
+			writesWithoutAsking: saved.writesWithoutAsking === true,
 			readingWidth: widthIn(saved.readingWidth),
 			origin: asOrigin(saved.origin)
 		};

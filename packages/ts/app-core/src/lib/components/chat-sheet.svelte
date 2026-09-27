@@ -161,6 +161,40 @@
 								Don’t
 							</Button>
 						</div>
+						<div class="mt-1 flex flex-wrap gap-1">
+							<Button
+								variant="ghost"
+								class="h-11 flex-1 text-xs whitespace-normal"
+								disabled={chat.settling}
+								onclick={() => void chat.settle(asking.call, true, true)}
+							>
+								Allow the rest of this reply
+							</Button>
+							<Button
+								variant="ghost"
+								class="h-11 flex-1 text-xs whitespace-normal"
+								disabled={chat.settling}
+								onclick={() => {
+									chat.askBeforeWriting(false);
+									void chat.settle(asking.call, true);
+								}}
+							>
+								Stop asking
+							</Button>
+						</div>
+					</div>
+				{/if}
+
+				{#if chat.writesWithoutAsking}
+					<div class="flex items-center gap-2 px-1">
+						<p class="flex-1 text-xs text-muted-foreground">Notes are written without asking.</p>
+						<Button
+							variant="ghost"
+							class="h-9 shrink-0 text-xs"
+							onclick={() => chat.askBeforeWriting(true)}
+						>
+							Ask me again
+						</Button>
 					</div>
 				{/if}
 
