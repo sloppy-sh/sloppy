@@ -4,19 +4,26 @@
 	// thread, the composer, and the question standing in front of every act that
 	// would write.
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import Square from '@lucide/svelte/icons/square';
 	import X from '@lucide/svelte/icons/x';
-	import { CHAT_AGENTS, CHAT_ASKED_MAX, chatAgentName, type OwnedRef } from '@sloppy/types';
+	import { CHAT_AGENTS, chatAgentName, type OwnedRef } from '@sloppy/types';
 	import { scrollFade, SideDock } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
+	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { Textarea } from '@sloppy/ui/textarea';
-	import { askedOf, readCall } from '../chat-said.js';
+	import { readCall } from '../chat-said.js';
 	import type { NoteLanding } from '../pages/page-state.js';
 	import { chat } from '../stores/chat.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { offers } from '../stores/offers.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
+	import { askedShown } from './chat-card.js';
+	import ChatCard from './chat-card.svelte';
 	import ChatThread from './chat-thread.svelte';
+	import { noteFromAnswer, placeForAnswer } from './chat-keep.js';
 
 	let {
 		open = $bindable(false),
@@ -30,17 +37,29 @@
 	/** What Sloppy knows how to ask, as somebody with none of them reads it. */
 	const AGENTS_IT_ASKS = CHAT_AGENTS.map(chatAgentName).join(' or ');
 
+	/** What somebody is told where an answer names nowhere in the project to
+	 *  hang a note off. */
+	const NOWHERE = 'Ask about a file or a folder first, so there is somewhere to put this.';
+
+	/** A call this build cannot read is asked about in the plainest words there
+	 *  are, since there is nothing in it to lay out. */
+	const SOMETHING = 'It wants to change the notes.';
+
 	/** How tall the composer grows before it scrolls instead. */
 	const COMPOSER_MAX = 160;
 
 	const agents = $derived(chat.agents);
 	const asking = $derived(chat.asking);
 	const asked = $derived(asking ? readCall(asking.call, asking.act, asking.arguments) : null);
-	const question = $derived(askedOf(asked, nameOf));
+	const shown = $derived(askedShown(asked, nameOf));
+	const models = $derived(chat.models);
+	const picked = $derived(models.find((one) => one.model === chat.model));
 
 	let docked = $state(false);
 	let said = $state('');
+	let aside = $state<string | null>(null);
 	let field = $state.raw<HTMLTextAreaElement | null>(null);
+	let picker = $state.raw<HTMLInputElement | null>(null);
 	let thread = $state.raw<HTMLElement | null>(null);
 	/** Whether the newest line is what the person is reading. Scrolling up says
 	 *  they are reading something else, and the thread stops following. */
@@ -71,8 +90,9 @@
 
 	async function send(): Promise<void> {
 		const words = said;
-		if (words.trim() === '' || chat.running) return;
+		if ((words.trim() === '' && chat.attached.length === 0) || chat.running) return;
 		said = '';
+		aside = null;
 		following = true;
 		await chat.say(words);
 	}
@@ -81,6 +101,25 @@
 		if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
 		event.preventDefault();
 		void send();
+	}
+
+	async function take(input: HTMLInputElement): Promise<void> {
+		const files = [...(input.files ?? [])];
+		input.value = '';
+		aside = await chat.attach(files);
+	}
+
+	/** An answer kept as a note, through the act and the question everything
+	 *  else the chat writes goes through. */
+	function keep(at: number, answer: string): void {
+		const place = placeForAnswer(answer, chat.turns);
+		const asked = place === undefined ? null : noteFromAnswer(answer, place);
+		if (!asked) {
+			aside = NOWHERE;
+			return;
+		}
+		aside = null;
+		chat.keep(at, asked);
 	}
 
 	/** A note as somebody cites it: the address they navigate by, then what it
@@ -93,11 +132,12 @@
 		return title === '' ? held.address : `${held.address} · ${title}`;
 	}
 
-	function read(note: OwnedRef, at: NoteLanding | undefined): void {
+	async function read(note: OwnedRef): Promise<void> {
 		// Docked, the note opens beside the conversation and it stays. Narrower
 		// than that, both are the whole screen, and the note is what was asked for.
 		if (!docked) open = false;
-		onOpen(note, at);
+		await offers.reread(note).catch(() => {});
+		onOpen(note, offers.on(note).length > 0 ? 'offers' : undefined);
 	}
 </script>
 
@@ -119,6 +159,18 @@
 					<p class="text-xs text-muted-foreground">Nothing is written until you say so.</p>
 				{/if}
 			</div>
+			{#if chat.turns.length > 0}
+				<Button
+					variant="ghost"
+					class="h-9 shrink-0 px-2 text-xs"
+					onclick={() => {
+						aside = null;
+						chat.startAgain();
+					}}
+				>
+					Start again
+				</Button>
+			{/if}
 			<Button
 				variant="ghost"
 				class="size-9 shrink-0"
@@ -150,15 +202,30 @@
 				{#if chat.turns.length === 0}
 					<p class="px-1 py-2 text-sm text-muted-foreground">
 						Say what you want written about — a file, a folder, or what somebody new would need to
-						understand first.
+						understand first. The microphone on your keyboard types into it too.
 					</p>
 				{/if}
 
-				<ChatThread turns={chat.turns} onOpen={read} />
+				<ChatThread
+					turns={chat.turns}
+					live={chat.running}
+					busy={asking !== null || chat.settling}
+					done={(call) => chat.done(call)}
+					kept={(at) => chat.kept(at)}
+					onKeep={keep}
+					onOpen={(note) => void read(note)}
+				/>
 
 				{#if asking}
 					<div class="rounded-lg border border-primary/50 bg-primary/5 p-3" role="alert">
-						<p class="text-sm">{question}</p>
+						{#if shown}
+							<ChatCard card={shown.card} />
+							{#if shown.cost}
+								<p class="mt-2 text-xs text-muted-foreground">{shown.cost}</p>
+							{/if}
+						{:else}
+							<p class="text-sm">{SOMETHING}</p>
+						{/if}
 						<div class="mt-3 flex gap-2">
 							<Button
 								class="h-11 flex-1"
@@ -176,27 +243,29 @@
 								Don’t
 							</Button>
 						</div>
-						<div class="mt-1 flex flex-wrap gap-1">
-							<Button
-								variant="ghost"
-								class="h-11 flex-1 text-xs whitespace-normal"
-								disabled={chat.settling}
-								onclick={() => void chat.settle(asking.call, true, true)}
-							>
-								Allow the rest of this reply
-							</Button>
-							<Button
-								variant="ghost"
-								class="h-11 flex-1 text-xs whitespace-normal"
-								disabled={chat.settling}
-								onclick={() => {
-									chat.askBeforeWriting(false);
-									void chat.settle(asking.call, true);
-								}}
-							>
-								Stop asking
-							</Button>
-						</div>
+						{#if asking.keeping === undefined}
+							<div class="mt-1 flex flex-wrap gap-1">
+								<Button
+									variant="ghost"
+									class="h-11 flex-1 text-xs whitespace-normal"
+									disabled={chat.settling}
+									onclick={() => void chat.settle(asking.call, true, true)}
+								>
+									Allow the rest of this reply
+								</Button>
+								<Button
+									variant="ghost"
+									class="h-11 flex-1 text-xs whitespace-normal"
+									disabled={chat.settling}
+									onclick={() => {
+										chat.askBeforeWriting(false);
+										void chat.settle(asking.call, true);
+									}}
+								>
+									Stop asking
+								</Button>
+							</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -218,6 +287,30 @@
 				{/if}
 			</div>
 
+			{#if chat.attached.length > 0}
+				<ul class="flex shrink-0 flex-wrap gap-1">
+					{#each chat.attached as file (file.path)}
+						<li
+							class="inline-flex min-w-0 items-center gap-1 rounded-md border border-border py-1 pr-1 pl-2 text-xs"
+						>
+							<span class="max-w-40 truncate">{file.name}</span>
+							<Button
+								variant="ghost"
+								class="size-7 shrink-0"
+								aria-label={`Take ${file.name} off`}
+								onclick={() => void chat.takeOff(file.path)}
+							>
+								<X class="size-3" />
+							</Button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+
+			{#if aside}
+				<p class="shrink-0 px-1 text-xs text-muted-foreground" role="alert">{aside}</p>
+			{/if}
+
 			<form
 				class="flex shrink-0 items-end gap-2"
 				onsubmit={(event) => {
@@ -229,7 +322,7 @@
 					bind:ref={field}
 					bind:value={said}
 					rows={1}
-					maxlength={CHAT_ASKED_MAX}
+					maxlength={chat.roomToSay}
 					class="max-h-40 min-h-11 resize-none"
 					aria-label="What you want written about"
 					placeholder="Say what you want written about"
@@ -250,12 +343,68 @@
 						type="submit"
 						class="size-11 shrink-0"
 						aria-label="Send"
-						disabled={said.trim() === ''}
+						disabled={asking !== null || (said.trim() === '' && chat.attached.length === 0)}
 					>
 						<ArrowUp class="size-4" />
 					</Button>
 				{/if}
 			</form>
+
+			<div class="flex shrink-0 flex-wrap items-center gap-1">
+				<input
+					bind:this={picker}
+					type="file"
+					multiple
+					class="sr-only"
+					aria-label="Attach a file"
+					onchange={(event) => void take(event.currentTarget)}
+				/>
+				<Button
+					variant="ghost"
+					class="size-9 shrink-0"
+					aria-label="Attach a file"
+					onclick={() => picker?.click()}
+				>
+					<Paperclip class="size-4" />
+				</Button>
+				{#if models.length > 0}
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									variant="ghost"
+									class="h-9 gap-1 px-2 text-xs text-muted-foreground"
+								>
+									{picked?.name ?? 'Model'}
+									<ChevronDown class="size-3.5" />
+								</Button>
+							{/snippet}
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="start" class="w-52">
+							<DropdownMenu.RadioGroup
+								value={chat.model ?? ''}
+								onValueChange={(one) => chat.setModel(one === '' ? undefined : one)}
+							>
+								<DropdownMenu.RadioItem class="min-h-11" value="">
+									Its own choice
+								</DropdownMenu.RadioItem>
+								{#each models as one (one.model)}
+									<DropdownMenu.RadioItem class="min-h-11" value={one.model}>
+										{one.name}
+									</DropdownMenu.RadioItem>
+								{/each}
+							</DropdownMenu.RadioGroup>
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				{/if}
+				{#if chat.answeringWith}
+					<p class="min-w-0 flex-1 text-xs text-muted-foreground">
+						{chat.answeringWith.name} is answering this one. Start again to use {picked?.name ??
+							'its own choice'}.
+					</p>
+				{/if}
+			</div>
 		{/if}
 	</div>
 </SideDock>
