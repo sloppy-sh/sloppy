@@ -37,7 +37,7 @@ import { seam } from '../seam.svelte.js';
 import { wordsFor } from './errors.js';
 import { graphs } from './graphs.svelte.js';
 import { prefs } from './prefs.svelte.js';
-import { troubleIn, whatHappened } from './what-happened.svelte.js';
+import { doingIn, troubleIn, whatHappened } from './what-happened.svelte.js';
 
 const UNSTARTED = 'Sloppy could not start a chat just now. Try again.';
 const UNSAID = 'Sloppy could not send that just now. Try again.';
@@ -97,9 +97,7 @@ function cameTo(done: ChatActDone): string {
 	if (done.trouble === true)
 		return `did not work${done.told === undefined ? '' : `: ${done.told}`}`;
 	const left = done.touched?.length ?? 0;
-	return left === 0
-		? 'answered'
-		: `answered, leaving ${left} note${left === 1 ? '' : 's'} different`;
+	return left === 0 ? 'is done' : `is done, leaving ${left} note${left === 1 ? '' : 's'} different`;
 }
 
 class ChatStore {
@@ -452,14 +450,14 @@ class ChatStore {
 		const access = seam().chat();
 		if (!access) return;
 		if (allowed && andTheRest) this.#allowedThisTurn = true;
-		const act = this.#asking?.call === call ? this.#asking.act : 'it';
+		const doing = this.#asking?.call === call ? doingIn(this.#asking.act) : 'it';
 		whatHappened.put(
 			'question',
 			allowed
 				? andTheRest
-					? `${act} was allowed, and so is the rest of this reply`
-					: `${act} was allowed`
-				: `${act} was turned down`,
+					? `${doing} was allowed, and so is the rest of this reply`
+					: `${doing} was allowed`
+				: `${doing} was turned down`,
 			call
 		);
 		this.#settling = new Set([...this.#settling, call]);
@@ -542,13 +540,15 @@ class ChatStore {
 	#heard(epoch: number, event: ChatEvent): void {
 		if (epoch !== this.#epoch) return;
 		switch (event.event) {
-			case 'started':
+			case 'started': {
 				this.#standing = true;
+				const named = this.models.find((one) => one.model === event.model)?.name;
 				whatHappened.put(
 					'turn',
-					`the chat opened with ${event.model ?? 'whatever the agent answers with'}, and the agent has ${event.tools.length} tools`
+					`the chat opened with ${named ?? 'whatever the agent answers with'}, and the agent has ${event.tools.length} tools`
 				);
 				break;
+			}
 			case 'block':
 				this.#block(event.at, event.block);
 				break;
@@ -556,11 +556,15 @@ class ChatStore {
 				// A question already answered — for this reply, or standingly — is
 				// answered rather than put in front of somebody again.
 				if (this.#allowedThisTurn || prefs.current.writesWithoutAsking) {
-					whatHappened.put('question', `${event.act} was allowed without asking`, event.call);
+					whatHappened.put(
+						'question',
+						`${doingIn(event.act)} was allowed without asking`,
+						event.call
+					);
 					void this.settle(event.call, true);
 					break;
 				}
-				whatHappened.put('question', `${event.act} is waiting to be answered`, event.call);
+				whatHappened.put('question', `${doingIn(event.act)} is waiting to be answered`, event.call);
 				this.#asking = { call: event.call, act: event.act, arguments: event.arguments };
 				break;
 			case 'settled':
@@ -629,14 +633,14 @@ class ChatStore {
 	}
 
 	async #act(call: ChatToolCall): Promise<ChatActDone> {
-		whatHappened.put('act', `${call.act} called`, call.call);
+		whatHappened.put('act', `${doingIn(call.act)} began`, call.call);
 		try {
 			const project = await runtime.project();
 			if (!project) throw new Error(NO_PROJECT);
 			const done: ChatActDone = await serveChatCall(project, call);
 			whatHappened.put(
 				done.trouble === true ? 'trouble' : 'act',
-				`${call.act} ${cameTo(done)}`,
+				`${doingIn(call.act)} ${cameTo(done)}`,
 				call.call
 			);
 			if (chatToolWrites(call.act)) {
@@ -645,7 +649,11 @@ class ChatStore {
 			}
 			return done;
 		} catch (error) {
-			whatHappened.put('trouble', `${call.act} did not answer: ${troubleIn(error)}`, call.call);
+			whatHappened.put(
+				'trouble',
+				`${doingIn(call.act)} did not answer: ${troubleIn(error)}`,
+				call.call
+			);
 			throw error;
 		}
 	}

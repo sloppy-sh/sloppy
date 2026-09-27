@@ -487,7 +487,7 @@ describe("Sloppy's own acts", () => {
 
 		await until(() => answers.length === 1);
 		expect(whatHappened.kept.map((one) => one.said)).toContain(
-			'write_note was refused before it ran: That place is outside this project.'
+			'writing a note was refused before it ran: That place is outside this project.'
 		);
 		whatHappened.record(false);
 		whatHappened.clear();

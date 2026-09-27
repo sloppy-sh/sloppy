@@ -2,6 +2,7 @@
 // What must NOT be in it is as much of this as what must.
 
 import 'fake-indexeddb/auto';
+import { SloppyApiError } from '@sloppy/client';
 import { MemoryFiles } from '@sloppy/local';
 import type {
 	ChatActDone,
@@ -79,6 +80,13 @@ class Stub implements ChatAccess {
 /** What the record says, as one string to look through. */
 const said = (): string => whatHappened.kept.map((one) => one.said).join(' | ');
 
+/** A failure nobody wrote a path for, as the window hands one over. */
+function reject(reason: unknown): void {
+	const event = new Event('unhandledrejection') as Event & { reason?: unknown };
+	event.reason = reason;
+	window.dispatchEvent(event);
+}
+
 let stub: Stub;
 
 beforeEach(() => {
@@ -105,19 +113,19 @@ afterEach(() => {
 describe('the record', () => {
 	it('is off until somebody turns it on', () => {
 		expect(whatHappened.on).toBe(false);
-		whatHappened.put('act', 'write_note called');
+		whatHappened.put('act', 'writing a note began');
 		expect(whatHappened.kept).toEqual([]);
 	});
 
 	it('keeps what happened, with the time and the act it is part of', () => {
 		whatHappened.record(true);
-		whatHappened.put('act', 'write_note called', CALL);
+		whatHappened.put('act', 'writing a note began', CALL);
 		const [one] = whatHappened.kept;
 		expect(one.kind).toBe('act');
-		expect(one.said).toBe('write_note called');
+		expect(one.said).toBe('writing a note began');
 		expect(one.call).toBe(CALL);
 		expect(Number.isNaN(Date.parse(one.at))).toBe(false);
-		expect(whatHappened.asText()).toContain('write_note called');
+		expect(whatHappened.asText()).toContain('writing a note began');
 		expect(whatHappened.asText()).toContain(CALL);
 	});
 
@@ -144,20 +152,55 @@ describe('the record', () => {
 		expect(whatHappened.kept).toEqual([]);
 	});
 
-	it('carries a failure nobody else wrote a path for', () => {
+	it('carries a failure nobody else wrote a path for, and none of its insides', () => {
 		whatHappened.record(true);
-		const event = new Event('unhandledrejection') as Event & { reason?: unknown };
-		event.reason = new TypeError('draw.render is not a function');
-		window.dispatchEvent(event);
-		expect(said()).toContain('TypeError: draw.render is not a function');
+		reject(new TypeError('draw.render is not a function'));
+		expect(whatHappened.kept.map((one) => one.kind)).toEqual(['trouble']);
+		expect(said()).not.toContain('draw.render');
+		expect(said()).not.toContain('TypeError');
+	});
+
+	it('keeps a ref, a DID and a path a failure was carrying out of it', () => {
+		whatHappened.record(true);
+		reject(new Error(`Expected a <did>/<ulid> reference: ${ref(1)}`));
+		reject(
+			new SloppyApiError(404, `Sloppy API 404 Not Found for /nodes/${encodeURIComponent(ref(1))}`)
+		);
+		reject(
+			new SloppyApiError(500, 'Sloppy API 500 Internal Server Error for /following/did:syr:abc', {
+				detail: 'Internal server error'
+			})
+		);
+		const whole = whatHappened.asText();
+		expect(whatHappened.kept).toHaveLength(3);
+		expect(whole).not.toContain('did:syr:');
+		expect(whole).not.toContain('/nodes/');
+		expect(whole).not.toContain('/following/');
+		expect(whole).not.toContain('Sloppy API');
+	});
+
+	it('carries the words a server wrote for a person, and not the path it wrote them about', () => {
+		whatHappened.record(true);
+		reject(
+			new SloppyApiError(409, `Sloppy API 409 Conflict for /nodes/${encodeURIComponent(ref(1))}`, {
+				detail: 'That address is already taken in this graph.'
+			})
+		);
+		expect(said()).toBe('That address is already taken in this graph.');
 	});
 });
 
 describe('a chat in the record', () => {
 	it('carries the turn, the question, the answer and what the act came to', async () => {
 		whatHappened.record(true);
+		await chat.lookForAgents();
 		await chat.say('what is in here?');
-		stub.tell({ event: 'started', session: '01J00000000000000000000001', tools: ['write_note'] });
+		stub.tell({
+			event: 'started',
+			session: '01J00000000000000000000001',
+			model: 'opus',
+			tools: ['write_note']
+		});
 		stub.tell({ event: 'asking', call: CALL, act: 'write_note', arguments: {} });
 		await chat.settle(CALL, true);
 		acting.answer = { said: '{"note":"…"}', touched: [ref(1)] };
@@ -165,10 +208,13 @@ describe('a chat in the record', () => {
 		stub.tell({ event: 'ended' });
 
 		expect(said()).toContain('a turn began');
-		expect(said()).toContain('write_note is waiting to be answered');
-		expect(said()).toContain('write_note was allowed');
-		expect(said()).toContain('write_note called');
-		expect(said()).toContain('write_note answered, leaving 1 note different');
+		expect(said()).toContain('the chat opened with Opus');
+		expect(said()).toContain('writing a note is waiting to be answered');
+		expect(said()).toContain('writing a note was allowed');
+		expect(said()).toContain('writing a note began');
+		expect(said()).toContain('writing a note is done, leaving 1 note different');
+		expect(said()).not.toContain('write_note');
+		expect(said()).not.toContain('with opus');
 		expect(said()).toContain('the turn ended');
 		expect(whatHappened.kept.every((one) => one.call === undefined || one.call === CALL)).toBe(
 			true
@@ -191,7 +237,7 @@ describe('a chat in the record', () => {
 		await chat.say('write a note');
 		acting.answer = { said: 'no', trouble: true, told: 'There is nothing at 1a to write under.' };
 		await stub.serve(writing());
-		expect(said()).toContain('write_note did not work: There is nothing at 1a to write under.');
+		expect(said()).toContain('writing a note did not work: There is nothing at 1a to write under.');
 		expect(whatHappened.kept.some((one) => one.kind === 'trouble')).toBe(true);
 	});
 });

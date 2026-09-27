@@ -6,7 +6,13 @@
  * `serve` a call is done through.
  */
 
-import { troubleIn, whatHappened, type ChatAccess, type ChatAsked } from '@sloppy/app-core';
+import {
+	doingIn,
+	troubleIn,
+	whatHappened,
+	type ChatAccess,
+	type ChatAsked
+} from '@sloppy/app-core';
 import {
 	advertisedChatTools,
 	argumentsFit,
@@ -272,7 +278,11 @@ class TauriChat implements ChatAccess {
 			const refused = held.error.issues[0]?.message ?? UNREADABLE_CALL;
 			// The page never sees this one, so the record is the only place it
 			// leaves a mark.
-			whatHappened.put('trouble', `${one.act} was refused before it ran: ${refused}`, one.call);
+			whatHappened.put(
+				'trouble',
+				`${doingIn(one.act)} was refused before it ran: ${refused}`,
+				one.call
+			);
 			await this.answers(one.call, { said: refused, trouble: true });
 			return;
 		}

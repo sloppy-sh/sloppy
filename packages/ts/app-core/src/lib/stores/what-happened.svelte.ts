@@ -5,19 +5,27 @@
  *
  * **What an act WAS and what it came to goes in. What a note says, what
  * somebody typed, who anybody is and anything that gets them in anywhere never
- * does.** Every call site is held to that, and a line that would carry one of
- * them is a bug rather than a detail.
+ * does.** Every call site is held to that: a value this app did not write for a
+ * person to read crosses `troubleIn` or `doingIn` first, and a line that would
+ * carry one of them is a bug rather than a detail.
  */
 
+import { CHAT_TOOL_SPECS, CHAT_TOOLS, type ChatToolName } from '@sloppy/types';
+import { wordsFor } from './errors.js';
 import { prefs } from './prefs.svelte.js';
 
 /** How many are kept. Past this the oldest goes, so a long day costs a bounded
  *  amount of memory rather than a file that grows. */
 export const MOST_KEPT = 500;
 
-/** How long one line may be, which is what bounds a failure written somewhere
- *  else — a library's error text is not ours to trust with the record. */
 const MOST_SAID = 300;
+
+/** What a failure carrying only the inside of an error is recorded as. */
+const UNSAYABLE = 'something went wrong with nothing to say for itself';
+
+/** What an act this build does not have is recorded as, so no name off the
+ *  wire reaches the record. */
+const UNNAMED_ACT = 'something Sloppy does not do';
 
 export type HappeningKind = 'turn' | 'act' | 'question' | 'trouble';
 
@@ -32,15 +40,23 @@ export interface Happening {
 	call?: string;
 }
 
-/** A failure as one line, whatever was thrown. */
+/** A failure as one line: the words somebody wrote for a person where there
+ *  were any, and a fixed line where all that was thrown is the inside of an
+ *  error. */
 export function troubleIn(reason: unknown): string {
-	if (reason instanceof Error) return `${reason.name}: ${reason.message}`.slice(0, MOST_SAID);
-	if (typeof reason === 'string') return reason.slice(0, MOST_SAID);
-	try {
-		return String(reason).slice(0, MOST_SAID);
-	} catch {
-		return 'something with nothing to say for itself';
-	}
+	return (wordsFor(reason) ?? UNSAYABLE).slice(0, MOST_SAID);
+}
+
+function isAct(act: string): act is ChatToolName {
+	return CHAT_TOOLS.some((one) => one === act);
+}
+
+/** What an act is called in the words a person reads it by, never the name it
+ *  goes by on the wire. */
+export function doingIn(act: string): string {
+	if (!isAct(act)) return UNNAMED_ACT;
+	const label = CHAT_TOOL_SPECS[act].label;
+	return label.charAt(0).toLowerCase() + label.slice(1);
 }
 
 class WhatHappened {
@@ -49,9 +65,7 @@ class WhatHappened {
 	constructor() {
 		if (typeof window === 'undefined') return;
 		// A failure nobody wrote a path for reaches the record here or nowhere.
-		window.addEventListener('error', (event) =>
-			this.put('trouble', troubleIn(event.error ?? event.message))
-		);
+		window.addEventListener('error', (event) => this.put('trouble', troubleIn(event.error)));
 		window.addEventListener('unhandledrejection', (event) =>
 			this.put('trouble', troubleIn(event.reason))
 		);
