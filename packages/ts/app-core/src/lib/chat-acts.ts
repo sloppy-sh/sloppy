@@ -567,7 +567,7 @@ async function deleteNote(api: LocalApi, asked: DeleteNoteArguments): Promise<Ch
 	try {
 		await api.deleteNode(asked.note);
 	} catch (error) {
-		return troubleWriting(error, NO_NOTE);
+		return troubleWriting(error, NO_NOTE, NO_NOTE_TOLD);
 	}
 	return {
 		said: JSON.stringify({ binned } satisfies NoteBinned),
@@ -650,10 +650,13 @@ function trouble(said: string, told: string = said): ChatActDone {
 
 /** Trouble a write threw, which may have left something behind — so nothing is
  *  named and the folder is read again. The store refuses in words meant for a
- *  person, and both readers are given those. */
-function troubleWriting(error: unknown, otherwise: string): ChatActDone {
-	const said = wordsFor(error) ?? otherwise;
-	return { said, trouble: true, told: said };
+ *  person and both readers are given those; where it threw nothing in words,
+ *  `told` is the person's half of `otherwise`. */
+function troubleWriting(error: unknown, otherwise: string, told = otherwise): ChatActDone {
+	const said = wordsFor(error);
+	return said === undefined
+		? { said: otherwise, trouble: true, told }
+		: { said, trouble: true, told: said };
 }
 
 function shortly(told: string): string {

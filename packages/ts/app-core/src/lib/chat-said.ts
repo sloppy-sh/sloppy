@@ -8,9 +8,11 @@
 import {
 	CHAT_BLOCK_KINDS,
 	CHAT_TOOL_SPECS,
+	type ChatActDone,
 	type ChatBlock,
 	type ChatBlockKind,
 	type ChatCallId,
+	type ChatCard,
 	type ChatToolCall,
 	ChatToolCallSchema,
 	type ChatToolName,
@@ -149,12 +151,43 @@ export function toolLine(block: ToolCallBlock): ToolLine {
 	}
 }
 
+/** What one call came to, as the thread draws it. */
+export interface CallOutcome {
+	said?: string;
+	trouble?: boolean;
+	card?: ChatCard;
+}
+
+/** What an act that came to nothing says where it laid out no words of its
+ *  own for the person. */
+const DIDNT_HAPPEN = 'That did not happen.';
+
+/** What one of Sloppy's own acts came to, for the person. */
+export function actOutcome(done: ChatActDone): CallOutcome {
+	const said = done.told ?? (done.trouble === true ? DIDNT_HAPPEN : undefined);
+	return {
+		...(said === undefined ? {} : { said }),
+		...(done.trouble === undefined ? {} : { trouble: done.trouble }),
+		...(done.card === undefined ? {} : { card: done.card })
+	};
+}
+
 /**
- * What a tool of the agent's own came to, as the thread says it. Sloppy's own
- * acts answer the person through `ChatActDone` instead, so what is left here
- * is the agent's own writing, cut to a line.
+ * What one call came to, in the words a person reads. Sloppy's own acts answer
+ * the AGENT in machine text and the person in `ChatActDone`, so a row for one
+ * draws what the act laid out and never what was handed back. A tool of the
+ * agent's own has nothing but its own writing, cut to a line.
  */
-export function toolOutcome(answer: ToolAnswer): ToolAnswer {
+export function callOutcome(
+	call: ToolCallBlock,
+	answer: ToolAnswer | undefined,
+	done: ChatActDone | undefined
+): CallOutcome {
+	if (done) return actOutcome(done);
+	if (call.act !== undefined) {
+		return answer?.trouble === true ? { said: DIDNT_HAPPEN, trouble: true } : {};
+	}
+	if (!answer) return {};
 	return {
 		said: shortly(answer.said),
 		...(answer.trouble === undefined ? {} : { trouble: answer.trouble })
