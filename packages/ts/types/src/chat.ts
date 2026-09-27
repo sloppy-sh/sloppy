@@ -74,6 +74,13 @@ export const CHAT_TOOL_NAME_MAX = 128;
 /** Long enough for what an agent calls itself. */
 export const CHAT_MODEL_MAX = 128;
 
+/** Long enough for what a model is called where somebody picks one. */
+export const CHAT_MODEL_NAME_MAX = 64;
+
+/** Long enough for the one line an act gives the person, which the thread
+ *  shows whole. */
+export const CHAT_TOLD_MAX = 200;
+
 /** More tools than an agent has anything to gain from being handed. */
 export const MAX_TOOLS_LISTED = 128;
 
@@ -85,6 +92,35 @@ export const MAX_TURNS_PER_SESSION = 512;
 
 /** What a tool call's arguments may run to, encoded — {@link argumentsFit}. */
 export const CHAT_ARGUMENTS_MAX = 8192;
+
+/** One model an agent answers with. `model` is what that agent is asked for,
+ *  in its own spelling; `name` is what somebody picking one reads. */
+export const ChatModelSchema = z.object({
+  model: z.string().min(1).max(CHAT_MODEL_MAX),
+  name: z.string().min(1).max(CHAT_MODEL_NAME_MAX),
+});
+export type ChatModel = z.infer<typeof ChatModelSchema>;
+
+const AGENT_MODELS: Record<ChatAgent, readonly ChatModel[]> = {
+  claude_code: [
+    { model: "opus", name: "Opus" },
+    { model: "sonnet", name: "Sonnet" },
+    { model: "haiku", name: "Haiku" },
+  ],
+};
+
+/**
+ * The models an agent can answer with, in the order somebody is offered them.
+ * The one copy of what each is called where a person reads it, the way
+ * {@link chatAgentName} is for the agents themselves.
+ *
+ * **An empty list is an agent that names none**, and choosing none is what
+ * somebody who has picked nothing has: the agent answers with whatever it
+ * would on its own.
+ */
+export function chatModels(agent: ChatAgent): readonly ChatModel[] {
+  return AGENT_MODELS[agent];
+}
 
 /**
  * The acts Sloppy hands an agent. This is the vocabulary three surfaces read:
@@ -566,11 +602,34 @@ export const NoteBinnedSchema = z.object({
 });
 export type NoteBinned = z.infer<typeof NoteBinnedSchema>;
 
+/** Longer than what a person calls a file they put in front of an agent. */
+export const CHAT_ATTACHED_NAME_MAX = 200;
+
+/** More files than somebody puts in front of an agent in one go. */
+export const MOST_ATTACHED_PER_TURN = 8;
+
+/** What one of them may run to, in bytes. Past this the person is told it is
+ *  too big to send rather than being left waiting on it. */
+export const CHAT_ATTACHMENT_MAX = 10 * 1024 * 1024;
+
+/**
+ * A file or a picture a person put in front of the agent alongside what they
+ * said. `name` is what they call it and `path` is where it was put, from the
+ * project root — **the agent READS it there**, so nothing here carries bytes
+ * and no act has to be added for one.
+ */
+export const ChatAttachmentSchema = z.object({
+  name: z.string().min(1).max(CHAT_ATTACHED_NAME_MAX),
+  path: ProjectPathSchema,
+});
+export type ChatAttachment = z.infer<typeof ChatAttachmentSchema>;
+
 /** The kinds of block a turn is made of. **An OPEN set**: a kind this build
  *  has no renderer for is carried untouched rather than refused, for the
  *  reason AI.md § "A Block Is a Section" gives about a note's own elements. */
 export const CHAT_BLOCK_KINDS = [
   "said",
+  "attached",
   "thinking",
   "tool_call",
   "tool_result",
@@ -581,6 +640,14 @@ export const SaidBlockSchema = z.object({
   kind: z.literal("said"),
   said: z.string().max(CHAT_SAID_MAX),
 });
+
+/** What a person attached to what they said, which is the only block of
+ *  theirs that is not words — {@link turnFits}. */
+export const AttachedBlockSchema = z.object({
+  kind: z.literal("attached"),
+  attached: z.array(ChatAttachmentSchema).min(1).max(MOST_ATTACHED_PER_TURN),
+});
+export type AttachedBlock = z.infer<typeof AttachedBlockSchema>;
 
 export const ThinkingBlockSchema = z.object({
   kind: z.literal("thinking"),
@@ -633,6 +700,7 @@ export const CarriedBlockSchema = z.looseObject({
 
 export const ChatBlockSchema = z.union([
   SaidBlockSchema,
+  AttachedBlockSchema,
   ThinkingBlockSchema,
   ToolCallBlockSchema,
   ToolResultBlockSchema,
@@ -730,8 +798,11 @@ export const ChatToolCallSchema = z.discriminatedUnion("act", [
 ]);
 export type ChatToolCall = z.infer<typeof ChatToolCallSchema>;
 
-/** What the page answers a call with. `said` is what the AGENT reads, whole;
- *  what the thread shows is the shorter `tool_result` block beside it. */
+/**
+ * What the AGENT is handed of a call, and the whole of it: `said` is what it
+ * reads, and the seam out to it parses this shape, so what an act lays out for
+ * the PERSON ({@link ChatActDoneSchema}) stays on this side of it.
+ */
 export const ChatToolAnswerSchema = z.object({
   said: z.string().max(CHAT_ANSWER_MAX),
   /** **Absent is an answer.** True is a call that came to nothing the agent
@@ -740,6 +811,108 @@ export const ChatToolAnswerSchema = z.object({
   trouble: z.boolean().optional(),
 });
 export type ChatToolAnswer = z.infer<typeof ChatToolAnswerSchema>;
+
+/** What a card is about, which is what a surface draws it as. A CLOSED set:
+ *  every card is composed here rather than read off an agent. */
+export const CHAT_CARD_ABOUT = ["note", "line", "mark"] as const;
+export type ChatCardAbout = (typeof CHAT_CARD_ABOUT)[number];
+
+/** More rows than a card somebody takes in at a glance. */
+export const MOST_CARD_ROWS = 12;
+
+/** Long enough for a note as somebody cites it — its address and its title. */
+export const CHAT_CARD_HEADING_MAX = 200;
+
+/** Longer than what a row is labelled — a word, or two. */
+export const CHAT_CARD_LABEL_MAX = 40;
+
+/** Long enough for a place's path or a short run of notes, and short enough
+ *  that a row stays a row. */
+export const CHAT_CARD_VALUE_MAX = 512;
+
+/** One labelled row of a card, in the words a person reads. */
+export const ChatCardRowSchema = z.object({
+  label: z.string().min(1).max(CHAT_CARD_LABEL_MAX),
+  value: z.string().min(1).max(CHAT_CARD_VALUE_MAX),
+});
+export type ChatCardRow = z.infer<typeof ChatCardRowSchema>;
+
+/**
+ * What an act lays out for the person: the note, line or mark it is about, how
+ * that reads at the head of it, and the rows that say what happens to it.
+ * **The agent is never handed one.**
+ *
+ * **Nothing on it is written in a tense.** One card stands in front of an act
+ * as the question and after it as what came of it — docs/ARCHITECTURE.md
+ * § "Asking a tool to write the notes" — so which of the two it is, is the
+ * surface's to say and never the card's.
+ */
+export const ChatCardSchema = z.object({
+  about: z.enum(CHAT_CARD_ABOUT),
+  heading: z.string().max(CHAT_CARD_HEADING_MAX),
+  rows: z.array(ChatCardRowSchema).max(MOST_CARD_ROWS),
+});
+export type ChatCard = z.infer<typeof ChatCardSchema>;
+
+/**
+ * One row, held to what a person reads of it. **A row with nothing to say —
+ * no value, or no label — is no row**, so a card lays out what is there and
+ * nothing else. Spread it: `...cardRow("Tags", tags.join(", "))`.
+ */
+export function cardRow(
+  label: string,
+  value: string | undefined,
+): ChatCardRow[] {
+  const said = value?.trim() ?? "";
+  if (said === "" || label === "") return [];
+  return [
+    {
+      label: label.slice(0, CHAT_CARD_LABEL_MAX),
+      value: said.slice(0, CHAT_CARD_VALUE_MAX),
+    },
+  ];
+}
+
+/** A card, held to what one carries, so no act draws a bigger one. */
+export function chatCard(
+  about: ChatCardAbout,
+  heading: string,
+  rows: readonly ChatCardRow[],
+): ChatCard {
+  return {
+    about,
+    heading: heading.trim().slice(0, CHAT_CARD_HEADING_MAX),
+    rows: rows.slice(0, MOST_CARD_ROWS),
+  };
+}
+
+/** More notes than one act names what it did to. A move or a delete carries
+ *  everything beneath a note with it, and past this the act says nothing and
+ *  the whole folder is read again — {@link ChatActDoneSchema}. */
+export const MOST_NOTES_TOUCHED = 200;
+
+/**
+ * One of Sloppy's own acts, done. It answers TWO readers: `said` and `trouble`
+ * are the agent's, and what an act adds here is the person's — one line for
+ * the thread, a card where there is something to lay out, and what it left
+ * different. A card is presentation, and the seam parses
+ * {@link ChatToolAnswerSchema} on its way out, so none of this reaches the
+ * agent.
+ */
+export const ChatActDoneSchema = ChatToolAnswerSchema.extend({
+  /** What the person is told of this, whole. **Absent is an act with nothing
+   *  to say beyond its own label** — the thread draws that alone. */
+  told: z.string().max(CHAT_TOLD_MAX).optional(),
+  /** What this lays out for them. **Absent is an act with nothing worth
+   *  laying out**, which is every reading act and a look that changed one
+   *  channel. */
+  card: ChatCardSchema.optional(),
+  /** The notes this left different from how it found them, so a surface reads
+   *  exactly those again. **Absent is an act that did not say**, and the whole
+   *  folder is read again; an EMPTY list is one that changed nothing. */
+  touched: z.array(OwnedRefSchema).max(MOST_NOTES_TOUCHED).optional(),
+});
+export type ChatActDone = z.infer<typeof ChatActDoneSchema>;
 
 const NOTE_TOO_LONG = "That note is too long to read.";
 const LISTING_TOO_LONG = "There is more here than one answer holds.";
@@ -902,13 +1075,16 @@ export function argumentsFit(value: unknown): boolean {
 }
 
 /**
- * Whether what a turn carries fits who it is from: a person types words, so
- * their turn holds nothing but what they said. The shape cannot say it for the
- * reason {@link argumentsFit} cannot, and both ends of the seam are held to
- * this instead.
+ * Whether what a turn carries fits who it is from: a person says words and
+ * puts files in front of the agent, so their turn holds nothing else. The
+ * shape cannot say it for the reason {@link argumentsFit} cannot, and both
+ * ends of the seam are held to this instead.
  */
 export function turnFits(turn: ChatTurn): boolean {
   return (
-    turn.from === "agent" || turn.blocks.every((block) => block.kind === "said")
+    turn.from === "agent" ||
+    turn.blocks.every(
+      (block) => block.kind === "said" || block.kind === "attached",
+    )
   );
 }

@@ -3324,6 +3324,38 @@ words, or rely on being there at all. A call turned down never reaches the store
 agent is told the person turned it down rather than being left waiting — a chat in which
 one side is blocked on an answer that will never come has stopped without saying so.
 
+**What a person reads of an act is the ACT's own answer, and it is not what the agent read.**
+One call comes to two things: the writing the agent is handed, and what somebody watching is
+shown — a line saying what came of it and, where there is something to lay out, a card, which
+is a heading and a few labelled rows. `ChatActDone` in `@sloppy/types` carries both halves and
+`ChatToolAnswer` is the agent's alone, which is the shape the seam parses on the way out, so the
+card does not reach the agent by anybody remembering to take it off. It must not: a card is
+presentation, and a model handed presentation writes presentation. **The act composes both**,
+because the act is where what happened is known — a thread working out what a call came to by
+reading the answer the AGENT was given is a second reading of one truth, and the one that goes
+stale.
+
+**The question in front of a write is that same card, shown before instead of after.** Somebody
+allowing something reads exactly what would land — the title, the place, the number, which tags
+come off, which note goes in the bin — laid out the way they will read it again once it has. So
+nothing on a card is written in a tense: whether it is a question or a record is said by what
+stands around it, the answers under it or the act's line above it once it has settled.
+
+**An act says which notes it left different, and those are what the canvas reads again.**
+`touched` is the whole of what changed, so a turn that wrote one note costs a read of that note
+rather than of the folder it landed in. An act that says nothing leaves the whole folder to be
+read again, and so does one that changed more notes than an answer carries — a move and a
+delete each take everything beneath a note with them, and past that bound the blind read is
+the cheaper truth.
+
+**An answer is worth keeping, and the thread is where it is lost.** Somebody asks for a guide to
+the code in front of them, reads a good one, and has nowhere to put it; a chat whose output
+cannot be kept is one nobody builds on. So an answer becomes a note through `write_note` like
+any other — the same act, the same question, the same card — with what it is about and what it
+is called taken from the answer itself. A note in a project's container is about somewhere in
+the code, so where it would land is part of what that card shows and is theirs to turn down.
+Nothing marks it as the chat's, for the reason the rest of this section gives.
+
 **What comes back is offered, never landed over somebody's writing — and the writer is
 what holds itself to that.** The store does not: a project's container is an open graph, so
 its notes carry no owner, and § "Whose writing a note carries" answers `lands` for every
@@ -3376,12 +3408,13 @@ exactly as a caller of `Files` spells no check that a path stays inside the root
 what was said, what was thought, a call, what a call came to — arrives from the agent, so a
 kind this build has no renderer for is carried untouched rather than refused, for the
 reason AI.md § "A Block Is a Section" gives about a note's own elements; a block whose kind
-we DO know and whose bounds it breaks is refused rather than carried as an unknown one. An
-event is composed by the shell rather than read off anything, so a page renders by
-exhausting the six of them: a session started, a block arriving or growing, a call waiting
-on the person, that question settled, a turn ended, and the session over. A block arriving
-again at a place already held is that block GROWN, and replaces it, which is the whole of
-how writing draws itself as it arrives.
+we DO know and whose bounds it breaks is refused rather than carried as an unknown one. What
+a person ATTACHED is the one block a page composes itself, and it is held to its own bounds
+the same way. An event is composed by the shell rather than read off anything, so a page
+renders by exhausting the six of them: a session started, a block arriving or growing, a
+call waiting on the person, that question settled, a turn ended, and the session over. A
+block arriving again at a place already held is that block GROWN, and replaces it, which is
+the whole of how writing draws itself as it arrives.
 
 **What an answer runs to is decided once, in `@sloppy/types`.** A listing, a search and a
 note read whole are each composed by `listingAnswer`, `foundAnswer` and `noteAnswer` there,
@@ -3438,7 +3471,8 @@ native shell, which is what puts nothing in front of a reader in a tab.
 
 **The shapes are `chat.ts` in `@sloppy/types` and the seam is `AppRuntime.chat`.**
 `ChatSession`, `ChatTurn` and the blocks it carries are what a surface holds; `ChatEvent`
-is what it is told; `ChatToolCall` and `ChatToolAnswer` are one act asked for and answered;
+is what it is told; `ChatToolCall` is one act asked for, `ChatActDone` what it came to and `ChatToolAnswer`
+the half of that the agent is handed, `ChatCard` what a person is shown of it;
 `CHAT_TOOL_SPECS` is the acts themselves. `ChatAccess` in `@sloppy/app-core`'s runtime is
 the whole of what a page may ask for — the agents this device can reach, a session, a thing
 said into it, an answer for the person, an end to the turn underway and an end to the
@@ -3452,6 +3486,31 @@ each is called where somebody reads it. A second agent is a value there and a wa
 shell to reach it, and touches no shape and no surface. A device with none is an empty list
 from `agents()`, which is what lets the offer say so plainly instead of failing when
 somebody takes it.
+
+**Which model answers is the person's to pick, and a model is a named thing.** `ChatAsked.model`
+already reaches the agent and the shell already asks for it, and the choosing is what a
+person needs beside that. `chatModels` in `@sloppy/types` is the one copy of what an
+agent's models are called where somebody reads them — beside `chatAgentName`, for the same
+reason and keyed by the same set — and what they picked is kept with the rest of what they
+have set about the chat. **Picking none is an ordinary answer**, and the one somebody who has
+never opened the control has: the agent answers with whatever it would on its own.
+
+**A person puts a file or a picture in front of the agent, and the agent reads it where they put
+it.** This needs no act and no second channel: the agent already reads the project, so what they
+attached is written inside it and the turn says what it was and where it went — `ChatAttachment`
+is that pair, and an `attached` block is what the thread draws and the only block of a person's
+turn that is not words. **A picture taken on a phone is the case it is built for.** What is
+attached this way is the chat's rather than the person's code and rather than a note, so it goes
+under the container's own folder and is kept out of the history with everything else there that
+is this device's alone (`KEPT_OUT` in `@sloppy/local`). A file past the bound is refused in those
+words — too big to send — and never by a number nobody chose.
+
+**Voice is the system keyboard's, and Sloppy builds no recorder.** The composer is a text field,
+so dictation is already on it wherever the keyboard has it, and what somebody dictates goes
+through the same keyboard they dictate into everywhere else rather than through anything of ours.
+What is missing is only that somebody knows it is there, which is a hint where it helps them find
+it — a microphone of our own would be a second, worse way to do what the keyboard already does,
+and a transcription seam nobody asked for.
 
 **How much detail somebody wants is part of what they said.** There is no depth field: the
 point of putting an agent behind this rather than a template engine is that it reads the

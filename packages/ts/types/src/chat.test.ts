@@ -5,12 +5,20 @@ import {
   CHAT_AGENTS,
   CHAT_ARGUMENTS_MAX,
   CHAT_BLOCK_KINDS,
+  CHAT_CARD_HEADING_MAX,
+  CHAT_CARD_VALUE_MAX,
   CHAT_SAID_MAX,
   CHAT_SHOWN_MAX,
   CHAT_TOOL_SPECS,
   CHAT_TOOLS,
+  cardRow,
+  chatCard,
+  chatModels,
+  ChatActDoneSchema,
   ChatBlockSchema,
+  ChatCardSchema,
   ChatEventSchema,
+  ChatModelSchema,
   chatAgentName,
   chatToolWrites,
   ChatToolAnswerSchema,
@@ -24,9 +32,12 @@ import {
   listingAnswer,
   ListedNoteSchema,
   MAX_SECTIONS_PER_WRITE,
+  MOST_ATTACHED_PER_TURN,
+  MOST_CARD_ROWS,
   MOST_LINES_DRAWN,
   MOST_NOTES_FOUND,
   MOST_NOTES_LISTED,
+  MOST_NOTES_TOUCHED,
   MOST_SECTIONS_READ,
   MoveNoteArgumentsSchema,
   noteAnswer,
@@ -716,5 +727,115 @@ describe("what a call's arguments may run to", () => {
 
     expect(argumentsFit(round)).toBe(false);
     expect(argumentsFit(() => undefined)).toBe(false);
+  });
+});
+
+describe("the models an agent answers with", () => {
+  it("names every one it offers", () => {
+    for (const agent of CHAT_AGENTS) {
+      for (const model of chatModels(agent)) {
+        expect(ChatModelSchema.parse(model)).toEqual(model);
+        expect(model.name).not.toBe(model.model);
+      }
+    }
+  });
+});
+
+describe("what a person puts in front of the agent", () => {
+  const picture = { name: "photo.jpg", path: ".sloppy/.sloppy/chat/photo.jpg" };
+
+  it("goes in their turn beside what they said", () => {
+    const turn = ChatTurnSchema.parse({
+      from: "person",
+      blocks: [
+        { kind: "said", said: "what is this screen doing" },
+        { kind: "attached", attached: [picture] },
+      ],
+      at: NOW,
+    });
+
+    expect(turnFits(turn)).toBe(true);
+  });
+
+  it("is somewhere in the project, so the agent can read it", () => {
+    for (const path of ["../outside.png", "/etc/passwd", "-rf"]) {
+      expect(
+        ChatBlockSchema.safeParse({
+          kind: "attached",
+          attached: [{ name: "photo.jpg", path }],
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("is a file at a time, up to as many as one turn carries", () => {
+    for (const attached of [
+      [],
+      Array.from({ length: MOST_ATTACHED_PER_TURN + 1 }, () => picture),
+    ]) {
+      expect(
+        ChatBlockSchema.safeParse({ kind: "attached", attached }).success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe("what a person reads of an act", () => {
+  const done = {
+    said: JSON.stringify({ note: NOTE, done: "written" }),
+    told: "Written.",
+    card: chatCard("note", "1a1 · The parser", [
+      ...cardRow("About", "src/parser.ts"),
+      ...cardRow("Tags", "parsing, seed"),
+    ]),
+    touched: [NOTE],
+  };
+
+  it("is answered beside what the agent reads", () => {
+    expect(ChatActDoneSchema.parse(done)).toEqual(done);
+  });
+
+  it("is left behind by the shape the agent is handed", () => {
+    expect(ChatToolAnswerSchema.parse(done)).toEqual({ said: done.said });
+  });
+
+  it("lays out only the rows that say something", () => {
+    expect(cardRow("Tags", "  ")).toEqual([]);
+    expect(cardRow("Tags", undefined)).toEqual([]);
+    expect(cardRow("Number", "1a1")).toEqual([
+      { label: "Number", value: "1a1" },
+    ]);
+  });
+
+  it("holds a card to what one carries", () => {
+    const card = chatCard(
+      "note",
+      "a".repeat(CHAT_CARD_HEADING_MAX + 10),
+      Array.from({ length: MOST_CARD_ROWS + 3 }, () => ({
+        label: "Tags",
+        value: "seed",
+      })),
+    );
+
+    expect(ChatCardSchema.parse(card)).toEqual(card);
+    expect(card.heading.length).toBe(CHAT_CARD_HEADING_MAX);
+    expect(card.rows.length).toBe(MOST_CARD_ROWS);
+    expect(
+      cardRow("Words", "a".repeat(CHAT_CARD_VALUE_MAX + 10))[0].value.length,
+    ).toBe(CHAT_CARD_VALUE_MAX);
+  });
+
+  it("says nothing changed, or says which notes did, or does not say", () => {
+    for (const touched of [undefined, [], [NOTE, OTHER]]) {
+      expect(ChatActDoneSchema.parse({ said: "{}", touched }).touched).toEqual(
+        touched,
+      );
+    }
+    expect(
+      ChatActDoneSchema.safeParse({
+        said: "{}",
+        touched: Array.from({ length: MOST_NOTES_TOUCHED + 1 }, () => NOTE),
+      }).success,
+    ).toBe(false);
   });
 });
