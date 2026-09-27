@@ -583,10 +583,8 @@ class ChatStore {
 				this.#readAgain();
 				break;
 			case 'over':
-				whatHappened.put(
-					event.said === undefined ? 'turn' : 'trouble',
-					event.said === undefined ? 'the chat is over' : `the chat is over: ${event.said}`
-				);
+				if (event.said === undefined) whatHappened.put('turn', 'the chat is over');
+				else whatHappened.put('trouble', 'the chat could not go on');
 				this.#standing = false;
 				this.#running = false;
 				this.#writing = false;

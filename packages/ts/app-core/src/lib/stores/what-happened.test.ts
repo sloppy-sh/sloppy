@@ -232,6 +232,29 @@ describe('a chat in the record', () => {
 		expect(whole).not.toContain('did:syr:');
 	});
 
+	it('says the chat could not go on, and never the line the agent went out on', async () => {
+		whatHappened.record(true);
+		await chat.say('what is in here?');
+		stub.tell({
+			event: 'over',
+			said: "ENOENT: no such file or directory, open '/Users/ada/thesis/.agent/config'"
+		});
+		expect(said()).toContain('the chat could not go on');
+		expect(whatHappened.kept.some((one) => one.kind === 'trouble')).toBe(true);
+		const whole = whatHappened.asText();
+		expect(whole).not.toContain('ENOENT');
+		expect(whole).not.toContain('/Users/ada');
+		expect(chat.trouble).toContain('/Users/ada/thesis/.agent/config');
+	});
+
+	it('says a chat that simply ended, and calls it no trouble', async () => {
+		whatHappened.record(true);
+		await chat.say('what is in here?');
+		stub.tell({ event: 'over' });
+		expect(said()).toContain('the chat is over');
+		expect(whatHappened.kept.some((one) => one.kind === 'trouble')).toBe(false);
+	});
+
 	it('says what an act could not do', async () => {
 		whatHappened.record(true);
 		await chat.say('write a note');
