@@ -1,13 +1,17 @@
 /**
  * A chat with an agent about the project in front of somebody — what has been
- * said, what is arriving now, and the act waiting on the person's answer.
- * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+ * said, and what is arriving now. docs/ARCHITECTURE.md § "Asking a tool to
+ * write the notes".
+ *
+ * Every act LANDS: the session works in a draft of the notes, so nothing here
+ * waits on the person and nothing of theirs changes while it runs.
+ * `stores/chat-draft.svelte.ts` is the draft, and what a person does with one.
  *
  * Nothing here parses what arrives: the seam parses in both directions and
  * rejects with the words this store shows.
  */
 
-import { attachedAt } from '@sloppy/local';
+import { attachedAt, type Files } from '@sloppy/local';
 import {
 	CHAT_ASKED_MAX,
 	CHAT_ATTACHED_NAME_MAX,
@@ -23,7 +27,6 @@ import {
 	type ChatToolAnswer,
 	type ChatToolCall,
 	type ChatToolName,
-	chatToolWrites,
 	type ChatTurn,
 	MOST_ATTACHED_PER_TURN,
 	type OwnedRef,
@@ -34,8 +37,8 @@ import { SvelteMap } from 'svelte/reactivity';
 import { serveChatCall } from '../chat-acts.js';
 import { runtime } from '../runtime.js';
 import { seam } from '../seam.svelte.js';
+import { chatDraft } from './chat-draft.svelte.js';
 import { wordsFor } from './errors.js';
-import { graphs } from './graphs.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { doingIn, troubleIn, whatHappened } from './what-happened.svelte.js';
 
@@ -48,6 +51,7 @@ const TOO_MANY = `You can put ${MOST_ATTACHED_PER_TURN} things in front of it at
 /** Words for the AGENT, which reads a rejection rather than being left
  *  waiting on it. */
 const NO_PROJECT = 'There is no project open here, so there are no notes to work on.';
+const NO_DRAFT = 'There is no draft of the notes to write into.';
 
 /** What a file with no name of its own is called. */
 const UNNAMED = 'A file';
@@ -57,17 +61,17 @@ const UNNAMED = 'A file';
  *  device with no agent gives. */
 export type ChatAgents = readonly ChatAgent[] | 'untold' | null;
 
-/** One act waiting on the person. `arguments` is carried untouched; a surface
- *  parses it against the act's own schema before drawing any of it. */
-export interface ChatAsking {
+/**
+ * An answer somebody asked to keep as a note, waiting on their say-so. It is
+ * the person's own act, so nothing the agent's turn does answers it.
+ *
+ * `arguments` is carried untouched; a surface parses it against the act's own
+ * schema before drawing any of it.
+ */
+export interface ChatKeeping {
 	call: ChatCallId;
 	act: ChatToolName;
 	arguments: unknown;
-}
-
-/** An answer somebody asked to keep as a note, waiting on their say-so. It is
- *  the person's own act, so nothing the agent's turn does answers it. */
-export interface ChatKeeping extends ChatAsking {
 	/** Where the turn whose answer it would keep stands. */
 	at: number;
 }
@@ -108,12 +112,6 @@ class ChatStore {
 	#turns = $state.raw<readonly ChatTurn[]>([]);
 	#standing = $state(false);
 	#running = $state(false);
-	#asking = $state.raw<ChatAsking | null>(null);
-	/** The acts whose answer is on its way. It is a SET and never a flag: the
-	 *  agent calls more than one act at once, so an answer refused because
-	 *  another was in flight is a call nobody ever answers and an agent left
-	 *  waiting on it until it gives up. */
-	#settling = $state.raw<ReadonlySet<ChatCallId>>(new Set());
 	#keeping = $state.raw<ChatKeeping | null>(null);
 	#keepSettling = $state(false);
 	#stopping = $state(false);
@@ -122,13 +120,6 @@ class ChatStore {
 	readonly #done = new SvelteMap<ChatCallId, ChatActDone>();
 	/** What came of keeping a turn's answer, by where that turn stands. */
 	readonly #kept = new SvelteMap<number, ChatActDone>();
-	/** The notes the acts so far left different, and whether one of them left
-	 *  the canvas nothing to go on. */
-	#touched: OwnedRef[] = [];
-	#blind = false;
-	/** Whether everything the reply underway writes has been allowed at once.
-	 *  It goes with that reply: the next one asks again. */
-	#allowedThisTurn = $state(false);
 	#attached = $state.raw<readonly ChatAttachment[]>([]);
 	#trouble = $state.raw<string | null>(null);
 	/** Which model the standing session was opened with, so a person who picks
@@ -166,16 +157,6 @@ class ChatStore {
 		return this.#running;
 	}
 
-	/** The agent's act waiting on the person, or `null` while none is. */
-	get asking(): ChatAsking | null {
-		return this.#asking;
-	}
-
-	/** Whether their answer has been given and has not landed yet. */
-	get settling(): boolean {
-		return this.#settling.size > 0;
-	}
-
 	/** The answer somebody asked to keep, waiting on their say-so. */
 	get keeping(): ChatKeeping | null {
 		return this.#keeping;
@@ -185,22 +166,6 @@ class ChatStore {
 	 *  yet. */
 	get keepSettling(): boolean {
 		return this.#keepSettling;
-	}
-
-	/** Whether what this reply writes has been allowed already, so the rest of
-	 *  it lands without asking again. */
-	get allowedThisTurn(): boolean {
-		return this.#allowedThisTurn;
-	}
-
-	/** Whether writes land without being asked about at all. It is the person's
-	 *  standing answer, kept across chats until they take it back. */
-	get writesWithoutAsking(): boolean {
-		return prefs.current.writesWithoutAsking;
-	}
-
-	askBeforeWriting(asking: boolean): void {
-		prefs.set('writesWithoutAsking', !asking);
 	}
 
 	/** Whether an end has been asked for and has not landed yet. */
@@ -281,6 +246,7 @@ class ChatStore {
 		this.#of = graph;
 		const held = this.#agents;
 		if (held === null || held === 'untold') await this.lookForAgents();
+		await chatDraft.look();
 	}
 
 	/** Ask this device what it has. An ask that goes wrong is told apart from a
@@ -303,17 +269,15 @@ class ChatStore {
 
 	/**
 	 * Say something, which begins a turn — starting the session where none
-	 * stands. Nothing is said while the agent is still answering the last turn,
-	 * nor while a question of the agent's stands: the turn it would begin could
-	 * raise a second one over the first, and the answer to that one would go
-	 * nowhere. Neither is the empty string with nothing attached.
+	 * stands, and the draft it works in where none stands either. Nothing is
+	 * said while the agent is still answering the last turn, nor is the empty
+	 * string with nothing attached.
 	 */
 	async say(words: string): Promise<void> {
 		const access = seam().chat();
 		const said = words.trim();
 		const attached = this.#attached;
 		if (!access || (said === '' && attached.length === 0) || this.#running) return;
-		if (this.#asking !== null) return;
 		const epoch = this.#epoch;
 		whatHappened.put(
 			'turn',
@@ -334,6 +298,9 @@ class ChatStore {
 			const agent = this.agent;
 			const model = this.model;
 			try {
+				// The agent runs where the draft is, so the copy exists before the
+				// session that works in it.
+				await this.#writesInto();
 				await access.open(
 					{
 						...(agent === undefined ? {} : { agent }),
@@ -364,14 +331,19 @@ class ChatStore {
 	}
 
 	/**
-	 * Put files in front of the agent, which writes them inside the project so
-	 * that it reads them where it reads everything else. What comes back is
+	 * Put files in front of the agent, which writes them where the agent works
+	 * so that it reads them where it reads everything else. What comes back is
 	 * what to tell the person where one of them did not go, and `null` where
 	 * they all did.
 	 */
 	async attach(files: readonly File[]): Promise<string | null> {
-		const project = await runtime.project();
-		if (!project || files.length === 0) return null;
+		if (files.length === 0) return null;
+		let project: Files;
+		try {
+			project = await this.#writesInto();
+		} catch (error) {
+			return wordsFor(error) ?? UNATTACHED;
+		}
 		let trouble: string | null = null;
 		const held = [...this.#attached];
 		for (const file of files) {
@@ -399,16 +371,15 @@ class ChatStore {
 	/** Take one of them back off what is about to be said. */
 	async takeOff(path: string): Promise<void> {
 		this.#attached = this.#attached.filter((one) => one.path !== path);
-		const project = await runtime.project();
+		const project = await this.#written();
 		await project?.remove(path).catch(() => {});
 	}
 
 	/**
-	 * Keep the answer in the turn at `at` as a note. It is the person's own
-	 * write, so it goes through the act the agent's writes go through and stands
-	 * behind the same card — where they read what would land and turn it down.
-	 * It is asked whatever {@link ChatStore.writesWithoutAsking} says, because
-	 * that answer is about what the AGENT writes unasked.
+	 * Keep the answer in the turn at `at` as a note. It goes through the act the
+	 * agent's writes go through, so it lands in the same draft and is read again
+	 * in the same review; the card in front of it is where they read what it
+	 * would be called before saying so.
 	 */
 	keep(at: number, asked: WriteNoteArguments): void {
 		if (this.#keeping !== null || this.#keepSettling) return;
@@ -434,37 +405,6 @@ class ChatStore {
 			this.#kept.set(keeping.at, { said: '', trouble: true, told: wordsFor(error) ?? UNKEPT });
 		} finally {
 			this.#keepSettling = false;
-			this.#readAgain();
-		}
-	}
-
-	/**
-	 * The person's answer to an act of the agent's that would write. Its
-	 * question closes on being told it has settled, never on this act alone.
-	 *
-	 * `andTheRest` allows everything else the reply underway writes, so a person
-	 * documenting thirty files answers once rather than thirty times.
-	 */
-	async settle(call: ChatCallId, allowed: boolean, andTheRest = false): Promise<void> {
-		if (this.#settling.has(call)) return;
-		const access = seam().chat();
-		if (!access) return;
-		if (allowed && andTheRest) this.#allowedThisTurn = true;
-		const doing = this.#asking?.call === call ? doingIn(this.#asking.act) : 'it';
-		whatHappened.put(
-			'question',
-			allowed
-				? andTheRest
-					? `${doing} was allowed, and so is the rest of this reply`
-					: `${doing} was allowed`
-				: `${doing} was turned down`,
-			call
-		);
-		this.#settling = new Set([...this.#settling, call]);
-		try {
-			await access.settle(call, allowed);
-		} finally {
-			this.#settling = new Set([...this.#settling].filter((one) => one !== call));
 		}
 	}
 
@@ -495,6 +435,7 @@ class ChatStore {
 
 	clear(): void {
 		this.#letGo();
+		chatDraft.clear();
 		this.#of = null;
 		this.#agents = null;
 		this.#turns = [];
@@ -511,28 +452,22 @@ class ChatStore {
 		this.#standing = false;
 		this.#running = false;
 		this.#writing = false;
-		this.#asking = null;
-		this.#settling = new Set();
 		this.#keeping = null;
 		this.#keepSettling = false;
-		this.#allowedThisTurn = false;
 		this.#done.clear();
 		this.#kept.clear();
-		this.#touched = [];
-		this.#blind = false;
 		this.#letAttachedGo();
 		this.#openedWith = undefined;
 		this.#trouble = null;
 	}
 
 	/** What was put in front of a conversation that is being let go was never
-	 *  said, so nothing reads it again and it comes off the project with it. */
+	 *  said, so nothing reads it again and it comes off where it was put. */
 	#letAttachedGo(): void {
 		const held = this.#attached;
 		this.#attached = [];
 		if (held.length === 0) return;
-		void runtime
-			.project()
+		void this.#written()
 			.then((project) => Promise.all(held.map((one) => project?.remove(one.path))))
 			.catch(() => {});
 	}
@@ -552,24 +487,6 @@ class ChatStore {
 			case 'block':
 				this.#block(event.at, event.block);
 				break;
-			case 'asking':
-				// A question already answered — for this reply, or standingly — is
-				// answered rather than put in front of somebody again.
-				if (this.#allowedThisTurn || prefs.current.writesWithoutAsking) {
-					whatHappened.put(
-						'question',
-						`${doingIn(event.act)} was allowed without asking`,
-						event.call
-					);
-					void this.settle(event.call, true);
-					break;
-				}
-				whatHappened.put('question', `${doingIn(event.act)} is waiting to be answered`, event.call);
-				this.#asking = { call: event.call, act: event.act, arguments: event.arguments };
-				break;
-			case 'settled':
-				if (this.#asking?.call === event.call) this.#asking = null;
-				break;
 			case 'ended':
 				whatHappened.put(
 					'turn',
@@ -577,10 +494,7 @@ class ChatStore {
 				);
 				this.#running = false;
 				this.#writing = false;
-				this.#allowedThisTurn = false;
-				// A question the turn ended under is one nobody can answer now.
-				this.#asking = null;
-				this.#readAgain();
+				void chatDraft.keepWhatTheTurnWrote();
 				break;
 			case 'over':
 				if (event.said === undefined) whatHappened.put('turn', 'the chat is over');
@@ -588,10 +502,7 @@ class ChatStore {
 				this.#standing = false;
 				this.#running = false;
 				this.#writing = false;
-				this.#allowedThisTurn = false;
-				this.#asking = null;
 				this.#openedWith = undefined;
-				this.#readAgain();
 				this.#trouble = event.said ?? null;
 				break;
 		}
@@ -609,16 +520,28 @@ class ChatStore {
 		this.#turns = turns;
 	}
 
-	/** What the acts left different, read off the device again — a note they
-	 *  wrote is one somebody can open only once the canvas has it. An act that
-	 *  named nothing leaves the whole folder to be read. */
-	#readAgain(): void {
-		const touched = this.#touched;
-		const blind = this.#blind;
-		this.#touched = [];
-		this.#blind = false;
-		if (blind) void graphs.readFolderAgain().catch(() => {});
-		else if (touched.length > 0) void graphs.readTheseAgain(touched).catch(() => {});
+	/**
+	 * Where the chat's acts and the files put in front of it are written: the
+	 * draft this device keeps one in, and the project itself where it keeps
+	 * none. A turn beginning is what starts a draft, so this starts one where
+	 * none stands. REJECTS in words the agent reads.
+	 */
+	async #writesInto(): Promise<Files> {
+		if (!chatDraft.keeps) {
+			const project = await runtime.project();
+			if (!project) throw new Error(NO_PROJECT);
+			return project;
+		}
+		if (!chatDraft.standing) await chatDraft.start();
+		const files = chatDraft.files();
+		if (!files) throw new Error(NO_DRAFT);
+		return files;
+	}
+
+	/** The same folder, for taking something back off it: a draft that is not
+	 *  standing holds nothing to take off, so this starts none. */
+	async #written(): Promise<Files | undefined> {
+		return chatDraft.keeps ? chatDraft.files() : await runtime.project();
 	}
 
 	/** One of Sloppy's own acts, done here and answered to the agent. What the
@@ -633,18 +556,12 @@ class ChatStore {
 	async #act(call: ChatToolCall): Promise<ChatActDone> {
 		whatHappened.put('act', `${doingIn(call.act)} began`, call.call);
 		try {
-			const project = await runtime.project();
-			if (!project) throw new Error(NO_PROJECT);
-			const done: ChatActDone = await serveChatCall(project, call);
+			const done: ChatActDone = await serveChatCall(await this.#writesInto(), call);
 			whatHappened.put(
 				done.trouble === true ? 'trouble' : 'act',
 				`${doingIn(call.act)} ${cameTo(done)}`,
 				call.call
 			);
-			if (chatToolWrites(call.act)) {
-				if (done.touched === undefined) this.#blind = true;
-				else this.#touched = [...this.#touched, ...done.touched];
-			}
 			return done;
 		} catch (error) {
 			whatHappened.put(

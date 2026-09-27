@@ -27,7 +27,7 @@ const UNSAYABLE = 'something went wrong with nothing to say for itself';
  *  wire reaches the record. */
 const UNNAMED_ACT = 'something Sloppy does not do';
 
-export type HappeningKind = 'turn' | 'act' | 'question' | 'trouble';
+export type HappeningKind = 'turn' | 'act' | 'trouble';
 
 export interface Happening {
 	/** ISO 8601 with the milliseconds, which is what lets two of these be lined

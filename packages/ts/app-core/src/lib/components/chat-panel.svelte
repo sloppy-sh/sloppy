@@ -1,8 +1,8 @@
 <script lang="ts">
 	// Chatting with an agent about the project's notes — docs/ARCHITECTURE.md
 	// § "Asking a tool to write the notes". A dock beside the graph, holding the
-	// thread, the composer, and the question standing in front of every act that
-	// would write.
+	// thread and the composer, and the draft the chat writes into until somebody
+	// has read it.
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
@@ -15,14 +15,16 @@
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { Textarea } from '@sloppy/ui/textarea';
 	import { readCall } from '../chat-said.js';
+	import { draftHolds } from '../draft-said.js';
 	import type { NoteLanding } from '../pages/page-state.js';
 	import { chat } from '../stores/chat.svelte.js';
+	import { chatDraft } from '../stores/chat-draft.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { offers } from '../stores/offers.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { askedShown } from './chat-card.js';
-	import ChatCard from './chat-card.svelte';
 	import ChatThread from './chat-thread.svelte';
+	import DraftReview from './draft-review.svelte';
 	import { noteFromAnswer, placeForAnswer } from './chat-keep.js';
 
 	let {
@@ -41,9 +43,12 @@
 	 *  hang a note off. */
 	const NOWHERE = 'Ask about a file or a folder first, so there is somewhere to put this.';
 
-	/** A call this build cannot read is asked about in the plainest words there
-	 *  are, since there is nothing in it to lay out. */
-	const SOMETHING = 'It wants to change the notes.';
+	/** Where a chat begins, because it changes what somebody would ask for. */
+	const WORKS_IN_A_DRAFT =
+		'It works in a draft of your notes, from the version you last kept. Nothing here changes until you merge it.';
+
+	/** A draft nothing has been written into yet. */
+	const NOTHING_YET = 'nothing in it yet';
 
 	const ITS_OWN = 'its own choice';
 
@@ -51,9 +56,6 @@
 	const COMPOSER_MAX = 160;
 
 	const agents = $derived(chat.agents);
-	const asking = $derived(chat.asking);
-	const asked = $derived(asking ? readCall(asking.call, asking.act, asking.arguments) : null);
-	const shown = $derived(askedShown(asked, nameOf));
 	const keeping = $derived(chat.keeping);
 	const keepShown = $derived(
 		keeping ? askedShown(readCall(keeping.call, keeping.act, keeping.arguments), nameOf) : null
@@ -62,6 +64,12 @@
 	const picked = $derived(models.find((one) => one.model === chat.model));
 	const answering = $derived(chat.answeringWith);
 
+	const standing = $derived(chatDraft.standing);
+	const holds = $derived(chatDraft.counts ? draftHolds(chatDraft.counts) : '');
+
+	/** Whether the panel is the review rather than the conversation. On a phone
+	 *  the two are one surface, so this is what swaps it. */
+	let reviewing = $state(false);
 	let docked = $state(false);
 	let said = $state('');
 	let aside = $state<string | null>(null);
@@ -84,7 +92,6 @@
 
 	$effect(() => {
 		void chat.turns;
-		void chat.asking;
 		const box = thread;
 		if (box && following) box.scrollTop = box.scrollHeight;
 	});
@@ -139,6 +146,11 @@
 		return title === '' ? held.address : `${held.address} · ${title}`;
 	}
 
+	async function review(): Promise<void> {
+		reviewing = true;
+		await chatDraft.review();
+	}
+
 	async function read(note: OwnedRef): Promise<void> {
 		// Docked, the note opens beside the conversation and it stays. Narrower
 		// than that, both are the whole screen, and the note is what was asked for.
@@ -151,270 +163,238 @@
 <SideDock
 	bind:open
 	onDocked={(is) => (docked = is)}
-	title="Chat about the code"
+	title={reviewing ? 'The draft' : 'Chat about the code'}
 	wall="How much room the chat takes"
 	outer={1}
 	scrolls={false}
 	width={prefs.current.chatWidth}
 	onWidthChange={(px) => prefs.set('chatWidth', px)}
 >
-	<div class="flex min-h-0 flex-1 flex-col gap-3 pt-2">
-		<div class="flex shrink-0 items-start gap-2">
-			<div class="min-w-0 flex-1 px-1">
-				<h2 class="truncate text-sm font-medium">Chat about the code</h2>
-				{#if !chat.writesWithoutAsking}
-					<p class="text-xs text-muted-foreground">Nothing is written until you say so.</p>
-				{/if}
-			</div>
-			{#if chat.turns.length > 0}
-				<Button
-					variant="ghost"
-					class="h-9 shrink-0 px-2 text-xs"
-					onclick={() => {
-						aside = null;
-						chat.startAgain();
-					}}
-				>
-					Start again
-				</Button>
-			{/if}
-			<Button
-				variant="ghost"
-				class="size-9 shrink-0"
-				aria-label="Close the chat"
-				onclick={() => (open = false)}
-			>
-				<X class="size-4" />
-			</Button>
-		</div>
-
-		{#if agents === null}
-			<Skeleton class="h-11 w-full" />
-		{:else if agents === 'untold' || agents.length === 0}
-			<p class="px-1 py-2 text-sm text-muted-foreground">
-				{agents === 'untold'
-					? `Sloppy could not tell whether ${AGENTS_IT_ASKS} is on this machine.`
-					: `Sloppy asks ${AGENTS_IT_ASKS} to do this, and it is not on this machine. Install it, then look again.`}
-			</p>
-			<Button variant="outline" class="h-11 w-full" onclick={() => void chat.lookForAgents()}>
-				Look again
-			</Button>
-		{:else}
-			<div
-				bind:this={thread}
-				onscroll={onScrolled}
-				class="min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto scroll-fade-y [--scroll-fade:1rem]"
-				{@attach scrollFade('y')}
-			>
-				{#if chat.turns.length === 0}
-					<p class="px-1 py-2 text-sm text-muted-foreground">
-						Say what you want written about — a file, a folder, or what somebody new would need to
-						understand first. The microphone on your keyboard types into it too.
-					</p>
-				{/if}
-
-				<ChatThread
-					turns={chat.turns}
-					live={chat.running}
-					busy={asking !== null || chat.settling || keeping !== null || chat.keepSettling}
-					done={(call) => chat.done(call)}
-					kept={(at) => chat.kept(at)}
-					keeping={keeping
-						? { at: keeping.at, ...(keepShown === null ? {} : { card: keepShown.card }) }
-						: null}
-					settling={chat.keepSettling}
-					onKeep={keep}
-					onKept={(allowed) => void chat.keepIt(allowed)}
-					onOpen={(note) => void read(note)}
-				/>
-
-				{#if asking}
-					<div class="rounded-lg border border-primary/50 bg-primary/5 p-3" role="alert">
-						{#if shown}
-							<ChatCard card={shown.card} />
-							{#if shown.cost}
-								<p class="mt-2 text-xs text-muted-foreground">{shown.cost}</p>
-							{/if}
-						{:else}
-							<p class="text-sm">{SOMETHING}</p>
-						{/if}
-						<div class="mt-3 flex gap-2">
-							<Button
-								class="h-11 flex-1"
-								disabled={chat.settling}
-								onclick={() => void chat.settle(asking.call, true)}
-							>
-								Allow
-							</Button>
-							<Button
-								variant="outline"
-								class="h-11 flex-1"
-								disabled={chat.settling}
-								onclick={() => void chat.settle(asking.call, false)}
-							>
-								Don’t
-							</Button>
-						</div>
-						<div class="mt-1 flex flex-wrap gap-1">
-							<Button
-								variant="ghost"
-								class="h-11 flex-1 text-xs whitespace-normal"
-								disabled={chat.settling}
-								onclick={() => void chat.settle(asking.call, true, true)}
-							>
-								Allow the rest of this reply
-							</Button>
-							<Button
-								variant="ghost"
-								class="h-11 flex-1 text-xs whitespace-normal"
-								disabled={chat.settling}
-								onclick={() => {
-									chat.askBeforeWriting(false);
-									void chat.settle(asking.call, true);
-								}}
-							>
-								Stop asking
-							</Button>
-						</div>
-					</div>
-				{/if}
-
-				{#if chat.writesWithoutAsking}
-					<div class="flex items-center gap-2 px-1">
-						<p class="flex-1 text-xs text-muted-foreground">Notes are written without asking.</p>
-						<Button
-							variant="ghost"
-							class="h-9 shrink-0 text-xs"
-							onclick={() => chat.askBeforeWriting(true)}
-						>
-							Ask me again
-						</Button>
-					</div>
-				{/if}
-
-				{#if chat.trouble}
-					<p class="px-1 text-sm text-destructive" role="alert">{chat.trouble}</p>
-				{/if}
-			</div>
-
-			{#if chat.attached.length > 0}
-				<ul class="flex shrink-0 flex-wrap gap-1">
-					{#each chat.attached as file (file.path)}
-						<li
-							class="inline-flex min-w-0 items-center gap-1 rounded-md border border-border py-1 pr-1 pl-2 text-xs"
-						>
-							<span class="max-w-40 truncate">{file.name}</span>
-							<Button
-								variant="ghost"
-								class="size-7 shrink-0"
-								aria-label={`Take ${file.name} off`}
-								onclick={() => void chat.takeOff(file.path)}
-							>
-								<X class="size-3" />
-							</Button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-
-			{#if aside}
-				<p class="shrink-0 px-1 text-xs text-muted-foreground" role="alert">{aside}</p>
-			{/if}
-
-			<form
-				class="flex shrink-0 items-end gap-2"
-				onsubmit={(event) => {
-					event.preventDefault();
-					void send();
-				}}
-			>
-				<Textarea
-					bind:ref={field}
-					bind:value={said}
-					rows={1}
-					maxlength={chat.roomToSay}
-					class="max-h-40 min-h-11 resize-none"
-					aria-label="What you want written about"
-					placeholder="Say what you want written about"
-					onkeydown={onKey}
-				/>
-				{#if chat.running}
+	{#if reviewing}
+		<DraftReview onBack={() => (reviewing = false)} onDone={() => (reviewing = false)} />
+	{:else}
+		<div class="flex min-h-0 flex-1 flex-col gap-3 pt-2">
+			<div class="flex shrink-0 items-start gap-2">
+				<div class="min-w-0 flex-1 px-1">
+					<h2 class="truncate text-sm font-medium">Chat about the code</h2>
+				</div>
+				{#if chat.turns.length > 0}
 					<Button
-						variant="outline"
-						class="size-11 shrink-0"
-						aria-label="Stop"
-						disabled={chat.stopping}
-						onclick={() => void chat.stop()}
+						variant="ghost"
+						class="h-9 shrink-0 px-2 text-xs"
+						onclick={() => {
+							aside = null;
+							chat.startAgain();
+						}}
 					>
-						<Square class="size-4" />
-					</Button>
-				{:else}
-					<Button
-						type="submit"
-						class="size-11 shrink-0"
-						aria-label="Send"
-						disabled={asking !== null || (said.trim() === '' && chat.attached.length === 0)}
-					>
-						<ArrowUp class="size-4" />
+						Start again
 					</Button>
 				{/if}
-			</form>
-
-			<div class="flex shrink-0 flex-wrap items-center gap-1">
-				<input
-					bind:this={picker}
-					type="file"
-					multiple
-					class="sr-only"
-					aria-label="Attach a file"
-					onchange={(event) => void take(event.currentTarget)}
-				/>
 				<Button
 					variant="ghost"
 					class="size-9 shrink-0"
-					aria-label="Attach a file"
-					onclick={() => picker?.click()}
+					aria-label="Close the chat"
+					onclick={() => (open = false)}
 				>
-					<Paperclip class="size-4" />
+					<X class="size-4" />
 				</Button>
-				{#if models.length > 0}
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger>
-							{#snippet child({ props })}
-								<Button
-									{...props}
-									variant="ghost"
-									class="h-9 gap-1 px-2 text-xs text-muted-foreground"
-								>
-									{picked?.name ?? 'Model'}
-									<ChevronDown class="size-3.5" />
-								</Button>
-							{/snippet}
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content align="start" class="w-52">
-							<DropdownMenu.RadioGroup
-								value={chat.model ?? ''}
-								onValueChange={(one) => chat.setModel(one === '' ? undefined : one)}
-							>
-								<DropdownMenu.RadioItem class="min-h-11" value="">
-									Its own choice
-								</DropdownMenu.RadioItem>
-								{#each models as one (one.model)}
-									<DropdownMenu.RadioItem class="min-h-11" value={one.model}>
-										{one.name}
-									</DropdownMenu.RadioItem>
-								{/each}
-							</DropdownMenu.RadioGroup>
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				{/if}
-				{#if answering}
-					<p class="min-w-0 flex-1 text-xs text-muted-foreground">
-						This one is being answered with {answering === 'its own' ? ITS_OWN : answering.name}.
-						Start again to use {picked?.name ?? ITS_OWN}.
-					</p>
-				{/if}
 			</div>
-		{/if}
-	</div>
+
+			{#if standing}
+				<div
+					class="flex shrink-0 flex-wrap items-center gap-1 rounded-lg border border-border px-2 py-1"
+				>
+					<p class="min-w-0 flex-1 text-xs text-muted-foreground">
+						A draft is standing — {holds === '' ? NOTHING_YET : holds}.{chat.running
+							? ' The chat is still writing into it.'
+							: ''}
+					</p>
+					<Button
+						variant="ghost"
+						class="h-9 shrink-0 px-2 text-xs"
+						disabled={chatDraft.busy || chat.running}
+						onclick={() => void review()}
+					>
+						Review
+					</Button>
+					<Button
+						variant="ghost"
+						class="h-9 shrink-0 px-2 text-xs"
+						disabled={chatDraft.busy || chat.running}
+						onclick={() => void chatDraft.discard()}
+					>
+						Discard
+					</Button>
+				</div>
+			{/if}
+
+			{#if agents === null}
+				<Skeleton class="h-11 w-full" />
+			{:else if agents === 'untold' || agents.length === 0}
+				<p class="px-1 py-2 text-sm text-muted-foreground">
+					{agents === 'untold'
+						? `Sloppy could not tell whether ${AGENTS_IT_ASKS} is on this machine.`
+						: `Sloppy asks ${AGENTS_IT_ASKS} to do this, and it is not on this machine. Install it, then look again.`}
+				</p>
+				<Button variant="outline" class="h-11 w-full" onclick={() => void chat.lookForAgents()}>
+					Look again
+				</Button>
+			{:else}
+				<div
+					bind:this={thread}
+					onscroll={onScrolled}
+					class="min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto scroll-fade-y [--scroll-fade:1rem]"
+					{@attach scrollFade('y')}
+				>
+					{#if chat.turns.length === 0}
+						<p class="px-1 py-2 text-sm text-muted-foreground">
+							Say what you want written about — a file, a folder, or what somebody new would need to
+							understand first. The microphone on your keyboard types into it too.
+						</p>
+						{#if chatDraft.keeps}
+							<p class="px-1 text-sm text-muted-foreground">{WORKS_IN_A_DRAFT}</p>
+						{/if}
+					{/if}
+
+					<ChatThread
+						turns={chat.turns}
+						live={chat.running}
+						busy={keeping !== null || chat.keepSettling}
+						done={(call) => chat.done(call)}
+						kept={(at) => chat.kept(at)}
+						keeping={keeping
+							? { at: keeping.at, ...(keepShown === null ? {} : { card: keepShown }) }
+							: null}
+						settling={chat.keepSettling}
+						onKeep={keep}
+						onKept={(allowed) => void chat.keepIt(allowed)}
+						onOpen={(note) => void read(note)}
+					/>
+
+					{#if chat.trouble}
+						<p class="px-1 text-sm text-destructive" role="alert">{chat.trouble}</p>
+					{/if}
+				</div>
+
+				{#if chat.attached.length > 0}
+					<ul class="flex shrink-0 flex-wrap gap-1">
+						{#each chat.attached as file (file.path)}
+							<li
+								class="inline-flex min-w-0 items-center gap-1 rounded-md border border-border py-1 pr-1 pl-2 text-xs"
+							>
+								<span class="max-w-40 truncate">{file.name}</span>
+								<Button
+									variant="ghost"
+									class="size-7 shrink-0"
+									aria-label={`Take ${file.name} off`}
+									onclick={() => void chat.takeOff(file.path)}
+								>
+									<X class="size-3" />
+								</Button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+
+				{#if aside}
+					<p class="shrink-0 px-1 text-xs text-muted-foreground" role="alert">{aside}</p>
+				{/if}
+
+				<form
+					class="flex shrink-0 items-end gap-2"
+					onsubmit={(event) => {
+						event.preventDefault();
+						void send();
+					}}
+				>
+					<Textarea
+						bind:ref={field}
+						bind:value={said}
+						rows={1}
+						maxlength={chat.roomToSay}
+						class="max-h-40 min-h-11 resize-none"
+						aria-label="What you want written about"
+						placeholder="Say what you want written about"
+						onkeydown={onKey}
+					/>
+					{#if chat.running}
+						<Button
+							variant="outline"
+							class="size-11 shrink-0"
+							aria-label="Stop"
+							disabled={chat.stopping}
+							onclick={() => void chat.stop()}
+						>
+							<Square class="size-4" />
+						</Button>
+					{:else}
+						<Button
+							type="submit"
+							class="size-11 shrink-0"
+							aria-label="Send"
+							disabled={said.trim() === '' && chat.attached.length === 0}
+						>
+							<ArrowUp class="size-4" />
+						</Button>
+					{/if}
+				</form>
+
+				<div class="flex shrink-0 flex-wrap items-center gap-1">
+					<input
+						bind:this={picker}
+						type="file"
+						multiple
+						class="sr-only"
+						aria-label="Attach a file"
+						onchange={(event) => void take(event.currentTarget)}
+					/>
+					<Button
+						variant="ghost"
+						class="size-9 shrink-0"
+						aria-label="Attach a file"
+						onclick={() => picker?.click()}
+					>
+						<Paperclip class="size-4" />
+					</Button>
+					{#if models.length > 0}
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										class="h-9 gap-1 px-2 text-xs text-muted-foreground"
+									>
+										{picked?.name ?? 'Model'}
+										<ChevronDown class="size-3.5" />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="start" class="w-52">
+								<DropdownMenu.RadioGroup
+									value={chat.model ?? ''}
+									onValueChange={(one) => chat.setModel(one === '' ? undefined : one)}
+								>
+									<DropdownMenu.RadioItem class="min-h-11" value="">
+										Its own choice
+									</DropdownMenu.RadioItem>
+									{#each models as one (one.model)}
+										<DropdownMenu.RadioItem class="min-h-11" value={one.model}>
+											{one.name}
+										</DropdownMenu.RadioItem>
+									{/each}
+								</DropdownMenu.RadioGroup>
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
+					{/if}
+					{#if answering}
+						<p class="min-w-0 flex-1 text-xs text-muted-foreground">
+							This one is being answered with {answering === 'its own' ? ITS_OWN : answering.name}.
+							Start again to use {picked?.name ?? ITS_OWN}.
+						</p>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	{/if}
 </SideDock>
