@@ -8,6 +8,7 @@
 	import {
 		compareOrd,
 		EDGE_LABEL_MAX,
+		EDGE_STROKES,
 		noteLabel,
 		type BlockView,
 		type EdgeDirection,
@@ -15,7 +16,7 @@
 		type EdgeStroke,
 		type NodeView
 	} from '@sloppy/types';
-	import { isNamed, nameOf, ResponsiveModal } from '@sloppy/ui';
+	import { EDGE_STROKE_LABELS, isNamed, nameOf, ResponsiveModal } from '@sloppy/ui';
 	import { untrack } from 'svelte';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
@@ -74,9 +75,7 @@
 
 	const breaks: { as: EdgeStroke | undefined; says: string }[] = [
 		{ as: undefined, says: 'As it is' },
-		{ as: 'solid', says: 'Solid' },
-		{ as: 'dashed', says: 'Dashed' },
-		{ as: 'dotted', says: 'Dotted' }
+		...EDGE_STROKES.map((as) => ({ as, says: EDGE_STROKE_LABELS[as] }))
 	];
 
 	const pill =

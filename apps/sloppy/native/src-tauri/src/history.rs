@@ -54,7 +54,7 @@ const MERGING: &str = "sloppy/merging";
 
 /// What the folder is told not to keep — docs/ARCHITECTURE.md § "The vault's
 /// history".
-const IGNORED: [&str; 12] = [
+const IGNORED: [&str; 13] = [
     "identity.json",
     "identity.key",
     "sloppy-identity",
@@ -67,6 +67,7 @@ const IGNORED: [&str; 12] = [
     "signing.key.pub",
     "/.sloppy/bin.json",
     "/.sloppy/bin/",
+    "/attached/",
 ];
 
 /// An act the history would not take. What a person is told is the whole of it,

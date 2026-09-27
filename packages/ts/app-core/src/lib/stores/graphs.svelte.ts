@@ -316,6 +316,23 @@ class GraphsStore {
 		return this.#rereading;
 	}
 
+	/**
+	 * The notes something outside this app left different, read off the device
+	 * again — the rest of the folder is left where it is. It counts as a read of
+	 * the folder, so a surface holding what this store does not is told the same
+	 * way {@link GraphsStore.readFolderAgain} tells it.
+	 */
+	async readTheseAgain(notes: readonly OwnedRef[]): Promise<void> {
+		const held = [...new Set(notes)];
+		if (this.#folderRoot === undefined || held.length === 0) return;
+		resetApi();
+		await Promise.all([
+			...held.map((note) => nodes.refetch(note).catch(() => null)),
+			...this.onCanvas.map((graph) => tags.reload(graph).catch(() => {}))
+		]);
+		this.#folderReads += 1;
+	}
+
 	/** How many reads of the folder have FINISHED, for a surface holding
 	 *  something of it this store does not — a note's sections. */
 	get folderReads(): number {

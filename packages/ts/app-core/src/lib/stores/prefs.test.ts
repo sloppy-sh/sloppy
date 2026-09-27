@@ -167,6 +167,7 @@ describe('the saved look', () => {
 				walking: 'yes',
 				readingWidth: 'wide',
 				chatWidth: 'narrow',
+				chatModel: { claude_code: 'a model from later', nobody: 'opus' },
 				origin: 'nowhere at all/ /'
 			})
 		);
@@ -185,6 +186,7 @@ describe('the saved look', () => {
 			writesWithoutAsking: false,
 			readingWidth: null,
 			chatWidth: null,
+			chatModel: {},
 			origin: null
 		});
 	});

@@ -11,7 +11,15 @@
  */
 
 import { GRAPH_GROUNDS, type GraphGround } from '@sloppy/graph';
-import { type OwnedRef, OwnedRefSchema, type Tag, TagSchema } from '@sloppy/types';
+import {
+	CHAT_AGENTS,
+	type ChatAgent,
+	chatModels,
+	type OwnedRef,
+	OwnedRefSchema,
+	type Tag,
+	TagSchema
+} from '@sloppy/types';
 import { sanitizeWallpapers, type WallpaperPrefs } from '../wallpaper.js';
 
 export type Theme = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
@@ -54,6 +62,10 @@ export interface Prefs {
 	/** How much room the reader has taken for the chat docked beside the graph,
 	 *  in px, on the same terms as {@link Prefs.readingWidth}. */
 	chatWidth: number | null;
+	/** Which model each agent is asked to answer with, in that agent's own
+	 *  spelling. **An agent with no entry is one nobody has chosen for**, which
+	 *  is what it answers with on its own. */
+	chatModel: Partial<Record<ChatAgent, string>>;
 	/** The Sloppy this device talks to, as an origin — docs/ARCHITECTURE.md
 	 *  § "Deployment modes". Null is the one the app came with, which is what
 	 *  the shell names. */
@@ -120,6 +132,7 @@ function defaults(): Prefs {
 		writesWithoutAsking: false,
 		readingWidth: null,
 		chatWidth: null,
+		chatModel: {},
 		origin: null
 	};
 }
@@ -153,6 +166,20 @@ function tagsIn(value: unknown): Tag[] {
 	for (const entry of value) {
 		const parsed = TagSchema.safeParse(entry);
 		if (parsed.success && !out.includes(parsed.data)) out.push(parsed.data);
+	}
+	return out;
+}
+
+/** One model per agent, and only ones that agent still offers — a name is what
+ *  somebody picked, and one this build can no longer name is one it cannot
+ *  show them. */
+function modelsIn(value: unknown): Partial<Record<ChatAgent, string>> {
+	if (typeof value !== 'object' || value === null) return {};
+	const held = value as Record<string, unknown>;
+	const out: Partial<Record<ChatAgent, string>> = {};
+	for (const agent of CHAT_AGENTS) {
+		const picked = held[agent];
+		if (chatModels(agent).some((one) => one.model === picked)) out[agent] = picked as string;
 	}
 	return out;
 }
@@ -229,6 +256,7 @@ class PrefsStore {
 			writesWithoutAsking: saved.writesWithoutAsking === true,
 			readingWidth: widthIn(saved.readingWidth),
 			chatWidth: widthIn(saved.chatWidth),
+			chatModel: modelsIn(saved.chatModel),
 			origin: asOrigin(saved.origin)
 		};
 		this.apply();

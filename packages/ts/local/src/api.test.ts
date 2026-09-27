@@ -112,6 +112,7 @@ describe("the folder a shell opened", () => {
     const lines = new TextDecoder().decode(ignore).split("\n");
     expect(lines).toContain("*.key");
     expect(lines).toContain("identities.json");
+    expect(lines).toContain("/attached/");
   });
 
   it("adds the missing lines to a container that already had none", async () => {
