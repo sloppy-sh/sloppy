@@ -318,6 +318,10 @@
 		difference: GraphDifference;
 		inWords?: () => void;
 	} | null>(null);
+	/** The version of the draft the canvas is drawing, while it is drawing it.
+	 *  The chat asks for no draft as it mounts and every time it opens or
+	 *  closes, and that is no reason to put away what the reader has open. */
+	let draftAt = $state.raw<string | null>(null);
 	/** The held note being read, which the canvas also opens around. */
 	let reached = $state<OwnedRef | null>(null);
 	/** The held note whose sections are still on their way. */
@@ -2841,8 +2845,11 @@
 		bind:open={chatting}
 		onOpen={(ref, at) => show(ref, null, at)}
 		onShowDraft={(shown) => {
-			stopActing();
 			const drawn = shown !== null && comparingStates(shown.difference) ? shown : null;
+			const onCanvas = draftAt !== null && asWas?.commit === draftAt;
+			draftAt = drawn && drawn.at;
+			if (drawn === null && !onCanvas) return;
+			stopActing();
 			asWas = drawn && { commit: drawn.at, message: drawn.says, notes: [...drawn.notes] };
 			comparing = drawn && { says: drawn.says, difference: drawn.difference };
 		}}

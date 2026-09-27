@@ -60,7 +60,10 @@ export interface DraftAsRead {
 	difference: VaultDifference;
 	conflicts: readonly ImportConflict[];
 	named: ReadonlyMap<OwnedRef, DraftNote>;
-	/** Whether the two copies say the same thing about everything in them. */
+	/** Whether the draft is a copy of the folder with nothing done to it. A
+	 *  draft that changed what `difference` does not enumerate — a note's tags,
+	 *  its links, how it or a line out of it is drawn — is not nothing, and
+	 *  merging takes it in. */
 	nothing: boolean;
 	/** Every note the draft holds, which is the later of the two states the
 	 *  canvas draws. */
@@ -92,12 +95,15 @@ interface TwoCopies {
 	theirs: Vault;
 	from: Vault;
 	at: string;
+	/** Whether anything has been written into the draft since it was taken. */
+	wrote: boolean;
 }
 
 class ChatDraftStore {
 	#standing = $state.raw<StandingDraft | null>(null);
 	#counts = $state.raw<DifferenceCounts | null>(null);
 	#read = $state.raw<DraftAsRead | null>(null);
+	#wrote = $state(false);
 	#reading = $state(false);
 	#busy = $state(false);
 	#says = $state.raw<string | null>(null);
@@ -130,6 +136,12 @@ class ChatDraftStore {
 		return this.#read;
 	}
 
+	/** Whether the chat has written into the standing draft at all. What
+	 *  {@link counts} counts is a part of that and not the whole of it. */
+	get wrote(): boolean {
+		return this.#wrote;
+	}
+
 	get reading(): boolean {
 		return this.#reading;
 	}
@@ -155,8 +167,12 @@ class ChatDraftStore {
 			this.#standing = null;
 			whatHappened.put('trouble', `the draft was not looked up: ${troubleIn(error)}`);
 		}
-		if (this.#standing) await this.count();
-		else this.#counts = null;
+		if (this.#standing) {
+			await this.count();
+			return;
+		}
+		this.#counts = null;
+		this.#wrote = false;
 	}
 
 	/** The draft to work in: the one standing, or a new one taken from the
@@ -201,8 +217,10 @@ class ChatDraftStore {
 		try {
 			const copies = await this.#twoCopies();
 			this.#counts = copies === null ? null : countsIn(vaultDifference(copies.mine, copies.theirs));
+			this.#wrote = copies?.wrote ?? false;
 		} catch (error) {
 			this.#counts = null;
+			this.#wrote = false;
 			whatHappened.put('trouble', `the draft was not counted: ${troubleIn(error)}`);
 		}
 	}
@@ -219,6 +237,7 @@ class ChatDraftStore {
 			const copies = await this.#twoCopies();
 			if (copies === null) {
 				this.#read = null;
+				this.#wrote = false;
 				return;
 			}
 			const difference = vaultDifference(copies.mine, copies.theirs);
@@ -231,11 +250,12 @@ class ChatDraftStore {
 			const inTheFolder = new Map(here.map((note) => [note.ref, note]));
 			this.#copies = { draft: drafted, folder: held };
 			this.#counts = countsIn(difference);
+			this.#wrote = copies.wrote;
 			this.#read = {
 				difference,
 				conflicts: preview.conflicts,
 				named: new Map([...cited(here), ...cited(there)]),
-				nothing: noDifference(difference),
+				nothing: noDifference(difference) && !copies.wrote,
 				drafted: there,
 				gone: difference.notes.removed.flatMap((ref) => {
 					const note = inTheFolder.get(ref);
@@ -308,6 +328,7 @@ class ChatDraftStore {
 	clear(): void {
 		this.#standing = null;
 		this.#counts = null;
+		this.#wrote = false;
 		this.#read = null;
 		this.#copies = { draft: null, folder: null };
 		this.#says = null;
@@ -331,6 +352,7 @@ class ChatDraftStore {
 		if (drafts && draft) await drafts.discard(draft);
 		this.#standing = null;
 		this.#counts = null;
+		this.#wrote = false;
 		this.#read = null;
 		this.#copies = { draft: null, folder: null };
 	}
@@ -346,7 +368,7 @@ class ChatDraftStore {
 			history.readAt(tip),
 			history.readAt(draft.from)
 		]);
-		return { mine, theirs, from, at: tip };
+		return { mine, theirs, from, at: tip, wrote: tip !== draft.from };
 	}
 }
 

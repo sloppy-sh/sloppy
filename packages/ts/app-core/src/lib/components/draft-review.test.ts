@@ -481,3 +481,57 @@ describe('while the chat is still writing', () => {
 		expect(named('Discard')?.disabled).toBe(true);
 	});
 });
+
+describe('where there is room for the chat and a note at once', () => {
+	// A dock nested inside another dock resolves its place against that dock and
+	// is clipped by it, so the row would open nothing anybody can see.
+	it('opens the row beside the chat rather than inside it', async () => {
+		stubViewport(1440);
+		await aTurn(async (drafted) => {
+			await drafted.updateBlock(seed, { content: words('The seed of it all') });
+		});
+		await chat.opened(graph);
+		show();
+		await settle();
+		named('Review')?.click();
+		await settle();
+
+		card('Origins')?.click();
+		await settle();
+
+		const chatDock = document.body.querySelector('aside[aria-label="The draft"]');
+		const noteDock = document.body.querySelector('aside[aria-label="1 \u00b7 Origins"]');
+		expect(chatDock).not.toBe(null);
+		expect(noteDock).not.toBe(null);
+		expect(chatDock?.contains(noteDock)).toBe(false);
+		expect(screen()).toContain('The seed of it all');
+	});
+});
+
+describe('a draft that changed what no band names', () => {
+	it('says the list is short rather than empty, and merging still takes it in', async () => {
+		await aTurn(async (drafted) => {
+			await drafted.updateNode(origins, { tags: ['seed'] });
+		});
+		await chat.opened(graph);
+		show();
+		await settle();
+
+		expect(screen()).toContain('A draft is standing — the chat has written in it.');
+
+		named('Review')?.click();
+		await settle();
+
+		expect(screen()).not.toContain('Nothing in your notes is different');
+		expect(screen()).toContain(
+			'Nothing the chat did shows up in this list, and the draft is not empty.'
+		);
+		expect(named('Merge')).toBeDefined();
+
+		named('Merge')?.click();
+		await settle();
+
+		expect((await api.getNode(origins))?.tags).toEqual(['seed']);
+		expect(chatDraft.standing).toBe(null);
+	});
+});

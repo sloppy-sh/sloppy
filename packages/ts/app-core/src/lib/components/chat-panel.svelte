@@ -24,12 +24,13 @@
 	} from '../draft-said.js';
 	import type { NoteLanding } from '../pages/page-state.js';
 	import { chat } from '../stores/chat.svelte.js';
-	import { chatDraft } from '../stores/chat-draft.svelte.js';
+	import { chatDraft, type DraftSide } from '../stores/chat-draft.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { offers } from '../stores/offers.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { askedShown } from './chat-card.js';
 	import ChatThread from './chat-thread.svelte';
+	import DraftNote from './draft-note.svelte';
 	import DraftReview from './draft-review.svelte';
 	import { noteFromAnswer, placeForAnswer } from './chat-keep.js';
 
@@ -57,8 +58,10 @@
 	const WORKS_IN_A_DRAFT =
 		'It works in a draft of your notes, from the version you last kept. Nothing here changes until you merge it.';
 
-	/** A draft nothing has been written into yet. */
+	/** A draft nothing has been written into yet, and one whose writing none of
+	 *  the counts name. */
 	const NOTHING_YET = 'nothing in it yet';
+	const WRITTEN_IN = 'the chat has written in it';
 
 	const ITS_OWN = 'its own choice';
 
@@ -76,10 +79,14 @@
 
 	const standing = $derived(chatDraft.standing);
 	const holds = $derived(chatDraft.counts ? draftHolds(chatDraft.counts) : '');
+	/** What the line at the head of the chat says a standing draft holds. */
+	const standsAs = $derived(holds !== '' ? holds : chatDraft.wrote ? WRITTEN_IN : NOTHING_YET);
 
 	/** Whether the panel is the review rather than the conversation. On a phone
 	 *  the two are one surface, so this is what swaps it. */
 	let reviewing = $state(false);
+	/** The note of the draft being read beside the review. */
+	let openedRow = $state.raw<{ ref: OwnedRef; side: DraftSide } | null>(null);
 	let docked = $state(false);
 	let said = $state('');
 	let aside = $state<string | null>(null);
@@ -114,6 +121,10 @@
 	});
 
 	onDestroy(() => onShowDraft?.(null));
+
+	$effect(() => {
+		if (!open || !reviewing) openedRow = null;
+	});
 
 	function onScrolled(): void {
 		const box = thread;
@@ -200,7 +211,11 @@
 	onWidthChange={(px) => prefs.set('chatWidth', px)}
 >
 	{#if reviewing}
-		<DraftReview onBack={() => (reviewing = false)} onDone={draftGone} />
+		<DraftReview
+			onBack={() => (reviewing = false)}
+			onDone={draftGone}
+			onOpen={(ref, side) => (openedRow = { ref, side })}
+		/>
 	{:else}
 		<div class="flex min-h-0 flex-1 flex-col gap-3 pt-2">
 			<div class="flex shrink-0 items-start gap-2">
@@ -234,7 +249,7 @@
 					class="flex shrink-0 flex-wrap items-center gap-1 rounded-lg border border-border px-2 py-1"
 				>
 					<p class="min-w-0 flex-1 text-xs text-muted-foreground">
-						A draft is standing — {holds === '' ? NOTHING_YET : holds}.{chat.running
+						A draft is standing — {standsAs}.{chat.running
 							? ' The chat is still writing into it.'
 							: ''}
 					</p>
@@ -428,3 +443,7 @@
 		</div>
 	{/if}
 </SideDock>
+
+{#if reviewing}
+	<DraftNote bind:opened={openedRow} />
+{/if}

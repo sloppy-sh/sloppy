@@ -11,6 +11,7 @@ import type {
 } from '@sloppy/types';
 import { MARK_SCALE_MAX, MAX_NOTES_PER_BULK_ACT } from '@sloppy/types';
 import { DEFAULT_BUDGET } from '@sloppy/graph';
+import type { Files } from '@sloppy/local';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -28,7 +29,9 @@ import {
 	type FakeApi,
 	type FakeArchive
 } from '../stores/fake-api.test-support.js';
-import { initRuntime } from '../runtime.js';
+import { initRuntime, type ChatAccess } from '../runtime.js';
+import { seamSettledAgain } from '../seam.svelte.js';
+import { chat } from '../stores/chat.svelte.js';
 import { canvasInk } from '../stores/canvas-ink.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
@@ -3356,5 +3359,57 @@ describe('a graph as a file', () => {
 
 		expect(screen()).toContain("This file isn't a Sloppy graph.");
 		expect(screen()).not.toContain('Import “Osmosis”?');
+	});
+});
+
+describe('the chat about the code, beside an open note', () => {
+	const chatting: ChatAccess = {
+		agents: async () => [],
+		open: async () => {},
+		say: async () => {},
+		settle: async () => {},
+		stop: async () => {},
+		close: async () => {}
+	};
+
+	beforeEach(() => {
+		stubViewport((query) => query.includes('900'));
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			project: async () => ({}) as Files,
+			chat: chatting
+		});
+		seamSettledAgain();
+	});
+
+	afterEach(() => {
+		chat.clear();
+		initRuntime({ apiHost: () => 'http://api.test', project: undefined, chat: undefined });
+		seamSettledAgain();
+	});
+
+	// The panel says "draw no draft" as it mounts and again every time it opens
+	// or closes, and the canvas is not to read that as a reason to put the note
+	// the reader has open away.
+	it('leaves the note being read open as the chat opens and as it closes', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+
+		expect(reading()).toBe(true);
+
+		labelled('More').click();
+		await settle();
+		item('Chat about the code').click();
+		await settle();
+
+		expect(reading()).toBe(true);
+		expect(at.note).toBe(SECOND);
+
+		labelled('Close the chat').click();
+		await settle();
+
+		expect(reading()).toBe(true);
+		expect(at.note).toBe(SECOND);
 	});
 });
