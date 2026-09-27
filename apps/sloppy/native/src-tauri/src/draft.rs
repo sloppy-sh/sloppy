@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use git2::{BranchType, Repository, WorktreeAddOptions, WorktreePruneOptions};
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::history::{at, HistoryError};
 use crate::vault::{settled, Folders};
@@ -37,6 +37,7 @@ const SIDECAR: &str = ".sloppy";
 const NOTHING_KEPT: &str = "Keep a version of these notes first. A draft starts from the last one.";
 const NOT_A_DRAFT: &str = "That draft is not here any more.";
 const ALREADY_THERE: &str = "There is already a draft of these notes.";
+const DIDNT_WORK: &str = "That did not work. Try again.";
 
 /// One draft standing — `StandingDraft` in `@sloppy/types`, which says what
 /// each of these is and which of them a person ever sees. None of them.
@@ -216,7 +217,17 @@ pub fn start(folders: &Folders, root: &str, id: &str) -> Result<Draft, HistoryEr
     }
     let mut how = WorktreeAddOptions::new();
     how.reference(Some(at_head.get()));
-    let made = repo.worktree(id, &into, Some(&how))?;
+    let made = match repo.worktree(id, &into, Some(&how)) {
+        Ok(made) => made,
+        Err(why) => {
+            // A branch with no copy on it is a draft nothing lists and
+            // nobody can reach.
+            if let Ok(mut held) = repo.find_branch(&branch, BranchType::Local) {
+                let _ = held.delete();
+            }
+            return Err(why.into());
+        }
+    };
     let root = settled(made.path());
     let prefix = prefix_of(repo, &opened);
     let vault = vault_in(&root, &prefix);
@@ -252,36 +263,47 @@ pub fn discard(folders: &Folders, root: &str, id: &str) -> Result<(), HistoryErr
     Ok(())
 }
 
-#[tauri::command]
-pub fn draft_standing(
-    folders: State<'_, Folders>,
-    root: String,
-) -> Result<Vec<Draft>, HistoryError> {
-    standing(&folders, &root)
+/// A copy is a checkout of every file the folder keeps, and letting one go
+/// deletes the same, so neither runs on the thread the page is drawn on.
+async fn off_the_page<T: Send + 'static>(
+    act: impl FnOnce() -> Result<T, HistoryError> + Send + 'static,
+) -> Result<T, HistoryError> {
+    tauri::async_runtime::spawn_blocking(act)
+        .await
+        .map_err(|_| HistoryError::new(DIDNT_WORK))?
 }
 
 #[tauri::command]
-pub fn draft_start(
-    folders: State<'_, Folders>,
+pub async fn draft_standing<R: Runtime>(
+    app: AppHandle<R>,
+    root: String,
+) -> Result<Vec<Draft>, HistoryError> {
+    off_the_page(move || standing(&app.state::<Folders>(), &root)).await
+}
+
+#[tauri::command]
+pub async fn draft_start<R: Runtime>(
+    app: AppHandle<R>,
     root: String,
     id: String,
 ) -> Result<Draft, HistoryError> {
-    start(&folders, &root, &id)
+    off_the_page(move || start(&app.state::<Folders>(), &root, &id)).await
 }
 
 #[tauri::command]
-pub fn draft_discard(
-    folders: State<'_, Folders>,
+pub async fn draft_discard<R: Runtime>(
+    app: AppHandle<R>,
     root: String,
     id: String,
 ) -> Result<(), HistoryError> {
-    discard(&folders, &root, &id)
+    off_the_page(move || discard(&app.state::<Folders>(), &root, &id)).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::history::tests::{beside_the_graph, made, project, write};
+    use crate::history::tests::{beside_the_graph, made, project, their_commit, write};
+    use crate::history::{branches, commit, head, read_at};
 
     const ID: &str = "01JAPART000000000000000000";
     const OTHER: &str = "01JAPART000000000000000001";
@@ -301,6 +323,22 @@ mod tests {
 
     fn said(root: &crate::vault::Opened) -> String {
         root.to_string_lossy().into_owned()
+    }
+
+    /// Opened the way every history command opens a folder — through
+    /// `Folders`, which is what says this app may reach it.
+    fn notes(folders: &Folders, at: &str) -> crate::vault::Opened {
+        folders.opened(at).expect("the notes")
+    }
+
+    /// The version a branch is at, and nothing where the repository has no
+    /// branch by that name.
+    fn branch_head(at: &crate::vault::Opened, name: &str) -> Option<String> {
+        branches(at)
+            .expect("the branches")
+            .into_iter()
+            .find(|one| one.name == name)
+            .map(|one| one.head)
     }
 
     #[test]
@@ -410,6 +448,92 @@ mod tests {
             .is_empty());
         // Twice is not a failure.
         discard(&folders, &said(&container), ID).expect("nothing to do");
+    }
+
+    #[test]
+    fn the_agent_works_in_the_copy_and_the_history_finds_its_notes_there() {
+        let (folders, project, container) = ready("found");
+        their_commit(&project, &["src/a.ts"], "Their code");
+        write(&project, "src/b.ts", "beside it");
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+
+        // What `chat_open` hands the agent as the folder to work in: the
+        // project as it was last kept, which is what the notes are about.
+        let copy = notes(&folders, &draft.root);
+        assert_eq!(copy.as_ref() as &Path, Path::new(&draft.root));
+        assert_eq!(
+            fs::read_to_string(copy.join("src/a.ts")).expect("the code"),
+            "one"
+        );
+        assert!(!copy.join("src/b.ts").exists());
+
+        let theirs = notes(&folders, &draft.vault);
+        let ours = notes(&folders, &said(&container));
+        assert_eq!(theirs.within(), Path::new(&draft.root));
+        assert!(at(&theirs)
+            .expect("the repository")
+            .keeps_more_than_the_vault());
+        assert_eq!(
+            read_at(&theirs, "HEAD").expect("what the copy kept"),
+            read_at(&ours, "HEAD").expect("what the folder kept")
+        );
+        assert_eq!(head(&theirs).expect("the copy's version"), Some(draft.from));
+    }
+
+    #[test]
+    fn a_version_kept_in_the_copy_lands_on_its_branch_and_moves_nothing_else() {
+        let (folders, _project, container) = ready("keeping");
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+        let data = PathBuf::from(folders.data_path());
+        let theirs = notes(&folders, &draft.vault);
+        let ours = notes(&folders, &said(&container));
+
+        write(&theirs, "notes/b.md", "two");
+        let kept = commit(&theirs, &data, "A second note")
+            .expect("the version")
+            .expect("a version");
+
+        assert_eq!(branch_head(&ours, &draft.branch), Some(kept.id));
+        assert!(read_at(&theirs, "HEAD")
+            .expect("what the copy kept")
+            .contains_key("notes/b.md"));
+        assert_eq!(
+            head(&ours).expect("the folder's version").as_deref(),
+            Some(draft.from.as_str())
+        );
+        assert!(!container.join("notes/b.md").exists());
+        assert!(!read_at(&ours, "HEAD")
+            .expect("what the folder kept")
+            .contains_key("notes/b.md"));
+
+        // A review reads the draft against what it was taken from, and the
+        // folder keeping a version of its own does not move that.
+        write(&container, "notes/c.md", "three");
+        made(&container, "A third note");
+        let held = standing(&folders, &said(&container)).expect("the drafts");
+        assert_eq!(held[0].from, draft.from);
+
+        discard(&folders, &said(&container), ID).expect("the draft gone");
+        assert_eq!(branch_head(&ours, &draft.branch), None);
+        assert_eq!(
+            fs::read_to_string(container.join("notes/a.md")).expect("the first note"),
+            "one"
+        );
+    }
+
+    #[test]
+    fn a_copy_that_could_not_be_made_leaves_no_branch_behind() {
+        let (folders, _project, container) = ready("half");
+        let under = folders.drafts_path();
+        fs::create_dir_all(&under).expect("where the copies go");
+        fs::write(under.join(ID), "in the way").expect("a file where the copy would be");
+
+        assert!(start(&folders, &said(&container), ID).is_err());
+        let ours = notes(&folders, &said(&container));
+        assert_eq!(branch_head(&ours, &format!("{BRANCH_PREFIX}{ID}")), None);
+        assert!(standing(&folders, &said(&container))
+            .expect("the drafts")
+            .is_empty());
     }
 
     #[test]
