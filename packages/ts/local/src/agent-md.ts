@@ -143,10 +143,12 @@ write down what you found and leave the change to them.
 
 - **Take a tag off where it has stopped being true of the note.** A tag that names a system
   the note is no longer about picks out the wrong set for everyone who selects it.
-- **Move a note where what it sprang out of turns out to be something else.** That is its
-  \`parent\`, and everything that sprang from the note goes with it — while the note carries
-  no number. A move gives a numbered one the next number in the run it joins, and a number
-  is never yours to write.
+- **Move a note that carries no number, where what it sprang out of turns out to be
+  something else.** That is its \`parent\`, and everything that sprang from the note goes
+  with it. **A note that carries one is not yours to move.** The number it would take next
+  is worked out from the run it joins, and the number it leaves has to go on reaching it —
+  neither of which happens in a file somebody edits by hand. Write down what you found and
+  leave that move to its author.
 
 ## Pointing at code
 
