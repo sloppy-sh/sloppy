@@ -942,6 +942,28 @@ describe('keeping an answer', () => {
 		expect(named('Keep as a note')).toBeUndefined();
 	});
 
+	it('says why it was not written and offers again, so the answer is not lost', async () => {
+		await answered();
+		acting.answer = { said: 'That note was not written.', trouble: true };
+		named('Keep as a note')?.click();
+		await settle();
+		named('Keep it')?.click();
+		await settle();
+
+		expect(screen()).toContain('That note was not written.');
+		expect(named('Keep as a note')).toBeDefined();
+
+		acting.answer = { said: '{}', told: 'Kept.', touched: [PARSER] };
+		named('Keep as a note')?.click();
+		await settle();
+		named('Keep it')?.click();
+		await settle();
+
+		expect(acting.called.map((one) => one.act)).toEqual(['write_note', 'write_note']);
+		expect(screen()).toContain('Kept.');
+		expect(screen()).not.toContain('That note was not written.');
+	});
+
 	it('writes nothing where the person turns it down, and offers again', async () => {
 		await answered();
 		named('Keep as a note')?.click();

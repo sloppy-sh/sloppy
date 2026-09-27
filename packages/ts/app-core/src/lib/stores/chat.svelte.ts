@@ -400,6 +400,7 @@ class ChatStore {
 	 */
 	keep(at: number, asked: WriteNoteArguments): void {
 		if (this.#keeping !== null || this.#keepSettling) return;
+		this.#kept.delete(at);
 		this.#keeping = { call: ulid(), act: 'write_note', arguments: asked, at };
 	}
 

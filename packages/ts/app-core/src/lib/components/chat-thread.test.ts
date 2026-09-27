@@ -225,4 +225,16 @@ describe('keeping an answer', () => {
 		expect(screen()).toContain('src/parser.ts');
 		expect(named('Open 1 · The parser')).toBeDefined();
 	});
+
+	it('says why it was not kept and leaves the offer standing', () => {
+		kept.set(0, { said: 'That note was not written.', trouble: true });
+		show([said]);
+
+		expect(screen()).toContain('That note was not written.');
+
+		named('Keep as a note')?.click();
+		flushSync();
+
+		expect(keeps).toEqual([{ at: 0, said: ANSWER }]);
+	});
 });

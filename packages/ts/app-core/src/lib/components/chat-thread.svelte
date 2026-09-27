@@ -177,6 +177,7 @@
 			{:else}
 				{@const answer = saidIn(rows)}
 				{@const came = kept(index)}
+				{@const landed = came !== undefined && came.trouble !== true}
 				<div class="space-y-2">
 					{#each rows as row (row.key)}
 						{#if row.kind === 'said'}
@@ -227,34 +228,37 @@
 					{#if answer.trim() !== '' && !(live && index === drawn.length - 1)}
 						{#if came}
 							{@render outcome(cameOf(came), onlyNoteOf(came))}
-						{:else if keeping?.at === index}
-							<div class="rounded-lg border border-primary/50 bg-primary/5 p-3">
-								{#if keeping.card}
-									<ChatCard card={keeping.card} />
-								{/if}
-								<div class="mt-3 flex gap-2">
-									<Button class="h-11 flex-1" disabled={settling} onclick={() => onKept?.(true)}>
-										Keep it
-									</Button>
-									<Button
-										variant="outline"
-										class="h-11 flex-1"
-										disabled={settling}
-										onclick={() => onKept?.(false)}
-									>
-										Don’t
-									</Button>
+						{/if}
+						{#if !landed}
+							{#if keeping?.at === index}
+								<div class="rounded-lg border border-primary/50 bg-primary/5 p-3">
+									{#if keeping.card}
+										<ChatCard card={keeping.card} />
+									{/if}
+									<div class="mt-3 flex gap-2">
+										<Button class="h-11 flex-1" disabled={settling} onclick={() => onKept?.(true)}>
+											Keep it
+										</Button>
+										<Button
+											variant="outline"
+											class="h-11 flex-1"
+											disabled={settling}
+											onclick={() => onKept?.(false)}
+										>
+											Don’t
+										</Button>
+									</div>
 								</div>
-							</div>
-						{:else}
-							<Button
-								variant="ghost"
-								class="h-9 px-2 text-xs text-muted-foreground"
-								disabled={busy}
-								onclick={() => onKeep(index, answer)}
-							>
-								Keep as a note
-							</Button>
+							{:else}
+								<Button
+									variant="ghost"
+									class="h-9 px-2 text-xs text-muted-foreground"
+									disabled={busy}
+									onclick={() => onKeep(index, answer)}
+								>
+									Keep as a note
+								</Button>
+							{/if}
 						{/if}
 					{/if}
 				</div>
