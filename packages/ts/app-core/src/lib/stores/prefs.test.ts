@@ -184,6 +184,7 @@ describe('the saved look', () => {
 			wallpapers: {},
 			walking: false,
 			writesWithoutAsking: false,
+			recordsWhatHappens: false,
 			readingWidth: null,
 			chatWidth: null,
 			chatModel: {},

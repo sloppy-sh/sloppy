@@ -54,6 +54,9 @@ export interface Prefs {
 	/** Whether what an agent writes into the project's notes lands without being
 	 *  asked about each time. False asks before every write. */
 	writesWithoutAsking: boolean;
+	/** Whether the app is keeping a record of what it does, for somebody about
+	 *  to say what went wrong — `stores/what-happened.svelte.ts`. */
+	recordsWhatHappens: boolean;
 	/** How much room the reader has taken for a note docked beside the graph, in
 	 *  px. Null is the width it opens at, and a number from a wider window is
 	 *  still safe to hand over: the surface bounds it against the window it is
@@ -130,6 +133,7 @@ function defaults(): Prefs {
 		wallpapers: {},
 		walking: false,
 		writesWithoutAsking: false,
+		recordsWhatHappens: false,
 		readingWidth: null,
 		chatWidth: null,
 		chatModel: {},
@@ -254,6 +258,7 @@ class PrefsStore {
 			wallpapers: sanitizeWallpapers(saved.wallpapers),
 			walking: saved.walking === true,
 			writesWithoutAsking: saved.writesWithoutAsking === true,
+			recordsWhatHappens: saved.recordsWhatHappens === true,
 			readingWidth: widthIn(saved.readingWidth),
 			chatWidth: widthIn(saved.chatWidth),
 			chatModel: modelsIn(saved.chatModel),

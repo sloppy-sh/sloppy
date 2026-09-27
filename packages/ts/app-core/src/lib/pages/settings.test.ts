@@ -18,6 +18,7 @@ import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { prefs } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
+import { whatHappened } from '../stores/what-happened.svelte.js';
 import { people } from '../stores/people.svelte.js';
 import { aGraphFolder } from '../browser-files.test-support.js';
 import { graphHere } from '../graph-here.svelte.js';
@@ -329,6 +330,44 @@ function typeAddress(typed: string): void {
 	form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 	flushSync();
 }
+
+describe('the record of what happens', () => {
+	it('is off, turns on where somebody asks, and is handed over', async () => {
+		const saved: { name: string; body: Blob }[] = [];
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			saveFile: (name, body) => {
+				saved.push({ name, body });
+				return Promise.resolve();
+			}
+		});
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(target.textContent).toContain('When something goes wrong');
+		expect(whatHappened.on).toBe(false);
+
+		target.querySelector<HTMLButtonElement>('[role="switch"]')?.click();
+		await settle();
+
+		expect(whatHappened.on).toBe(true);
+		expect(target.textContent).toContain('Sloppy is keeping a record');
+
+		whatHappened.put('trouble', 'write_note did not work');
+		await settle();
+		button('Save it').click();
+		await settle();
+
+		expect(saved[0].name).toMatch(/^sloppy-record-\d{4}-\d{2}-\d{2}\.txt$/);
+		expect(await saved[0].body.text()).toContain('write_note did not work');
+
+		button('Clear it').click();
+		await settle();
+		expect(target.textContent).not.toContain('Save it');
+		whatHappened.clear();
+	});
+});
 
 describe('the way out', () => {
 	// The nav pill is the way between the app's pages, and it is not under this
