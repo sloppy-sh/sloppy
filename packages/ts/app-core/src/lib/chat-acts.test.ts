@@ -3,9 +3,12 @@
 
 import { LocalApi, MemoryFiles } from '@sloppy/local';
 import {
+	CHAT_TOLD_MAX,
+	ChatActDoneSchema,
 	type ChatCard,
 	type ChatToolCall,
 	ListedNoteSchema,
+	NODE_TITLE_MAX,
 	NoteBinnedSchema,
 	NoteReadSchema,
 	NotesFoundSchema,
@@ -29,6 +32,7 @@ let files: MemoryFiles;
 async function answer(call: ChatToolCall): Promise<string> {
 	const said = await serveChatCall(files, call);
 	expect(said.trouble).toBeUndefined();
+	ChatActDoneSchema.parse(said);
 	return said.said;
 }
 
@@ -960,6 +964,33 @@ describe('what a person reads of an act', () => {
 
 		expect(done.told).toContain('7 still leads here');
 		expect(rows(done.card)).toMatchObject({ Number: 'None', 'Also at': '7' });
+	});
+
+	it('holds the line to a line, whatever the notes are called', async () => {
+		const long = 'The parser, '.repeat(48).slice(0, NODE_TITLE_MAX);
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: long }));
+
+		const read = await serveChatCall(files, { call: 'c2', act: 'read_note', arguments: { note } });
+
+		expect(long.length).toBe(NODE_TITLE_MAX);
+		expect(read.told?.length).toBeLessThanOrEqual(CHAT_TOLD_MAX);
+		expect(ChatActDoneSchema.safeParse(read).success).toBe(true);
+	});
+
+	it('holds the line to a line, however many numbers led to a note', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		for (let at = 1; at <= 60; at += 1) {
+			await answer({ call: 'c2', act: 'number_note', arguments: { note, address: `${at}` } });
+		}
+
+		const off = await serveChatCall(files, {
+			call: 'c3',
+			act: 'number_note',
+			arguments: { note }
+		});
+
+		expect(off.told?.length).toBeLessThanOrEqual(CHAT_TOLD_MAX);
+		expect(ChatActDoneSchema.safeParse(off).success).toBe(true);
 	});
 
 	it('tells the person what happened without the words written for the agent', async () => {

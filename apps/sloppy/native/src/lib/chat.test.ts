@@ -1,11 +1,5 @@
 import type { ChatAccess } from '@sloppy/app-core';
-import {
-	CHAT_ATTACHMENT_MAX,
-	CHAT_TOOLS,
-	type ChatEvent,
-	type ChatToolAnswer,
-	type ChatToolCall
-} from '@sloppy/types';
+import { CHAT_TOOLS, type ChatEvent, type ChatToolAnswer, type ChatToolCall } from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { tauriChat, type Telling, type Told } from './chat';
 
@@ -24,8 +18,6 @@ let opens: {
 /** Every line written onto the agent's own input. */
 let lines: string[];
 let answers: { call: string; said: string; trouble: boolean }[];
-/** Every file written into a folder, as `files_write` carries one. */
-let written: { root: string; path: string }[];
 let closes: number;
 /** What the session is told over, which the shell takes and the tests speak
  *  into. */
@@ -78,9 +70,6 @@ const call = async <T>(command: string, args?: Record<string, unknown>): Promise
 				trouble: held.trouble as boolean
 			});
 			return undefined as T;
-		case 'files_write':
-			written.push({ root: held.root as string, path: held.path as string });
-			return undefined as T;
 		case 'chat_close':
 			closes += 1;
 			queueMicrotask(() => tells({ from: 'over', stopped: true, trouble: null }));
@@ -103,20 +92,6 @@ function calls(act: string, args: unknown, id = 'c1'): void {
 
 function chat(): ChatAccess {
 	return tauriChat(project, call, () => channel);
-}
-
-/** Putting a file in front of the agent, which this shell does and the seam
- *  leaves to a shell that can. */
-function attaching(access: ChatAccess = chat()): NonNullable<ChatAccess['attach']> {
-	const attach = access.attach;
-	if (!attach) throw new Error('this shell puts a file in front of the agent');
-	return attach.bind(access);
-}
-
-/** The turn as the agent was handed it. */
-function saidToTheAgent(line: string): string {
-	const turn = JSON.parse(line) as { message: { content: { text: string }[] } };
-	return turn.message.content.map((one) => one.text).join('');
 }
 
 /** A session open and saying nothing yet, with everything it tells the page
@@ -190,7 +165,6 @@ beforeEach(() => {
 	opens = [];
 	lines = [];
 	answers = [];
-	written = [];
 	closes = 0;
 	channel = { onmessage: () => {} };
 	served = [];
@@ -595,63 +569,5 @@ describe('what the agent is told before it hears anybody', () => {
 
 		await chat().open({}, () => {}, serve);
 		expect(opens[1].model).toBeUndefined();
-	});
-});
-
-describe('a file somebody puts in front of the agent', () => {
-	it('goes inside the project, under a name the agent can read it by', async () => {
-		const attached = await attaching()('photo.jpg', new Uint8Array([1, 2, 3]));
-
-		expect(attached.name).toBe('photo.jpg');
-		expect(attached.path.endsWith('-photo.jpg')).toBe(true);
-		expect(written).toEqual([{ root: PROJECT, path: attached.path }]);
-	});
-
-	it('is named in the turn, with where to read it', async () => {
-		const { access } = await opened();
-		const attached = await attaching(access)('photo.jpg', new Uint8Array([1]));
-
-		await access.say('What is this?', [attached]);
-
-		const said = saidToTheAgent(lines[0]);
-		expect(said).toContain('What is this?');
-		expect(said).toContain('photo.jpg');
-		expect(said).toContain(attached.path);
-	});
-
-	it('goes with nothing said, which is somebody holding up a picture', async () => {
-		const { access } = await opened();
-		const attached = await attaching(access)('photo.jpg', new Uint8Array([1]));
-
-		await access.say('', [attached]);
-
-		expect(saidToTheAgent(lines[0])).toContain(attached.path);
-	});
-
-	it('says plainly what somebody gets where it is too big to send', async () => {
-		await expect(attaching()('film.mov', new Uint8Array(CHAT_ATTACHMENT_MAX + 1))).rejects.toThrow(
-			'too big to send'
-		);
-
-		expect(written).toEqual([]);
-	});
-
-	it('cannot name a place outside the folder it goes in', async () => {
-		const attached = await attaching()('../../../etc/passwd', new Uint8Array([1]));
-
-		expect(attached.path).not.toContain('..');
-		expect(attached.path.endsWith('-passwd')).toBe(true);
-	});
-
-	it('says to open a project first where none is open', async () => {
-		const nowhere = tauriChat(
-			async () => undefined,
-			call,
-			() => channel
-		);
-
-		await expect(attaching(nowhere)('photo.jpg', new Uint8Array([1]))).rejects.toThrow(
-			'Open the project'
-		);
 	});
 });

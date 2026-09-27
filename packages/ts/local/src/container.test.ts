@@ -1,3 +1,4 @@
+import { ProjectPathSchema } from "@sloppy/types";
 import {
   encodeText,
   GRAPH_FILE,
@@ -6,7 +7,13 @@ import {
   type VaultGraph,
 } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
-import { CONTAINER_DIR, containerOf, projectRootOf } from "./container.js";
+import {
+  ATTACHED_DIR,
+  attachedAt,
+  CONTAINER_DIR,
+  containerOf,
+  projectRootOf,
+} from "./container.js";
 import { MemoryFiles } from "./files.js";
 
 const OWNER = "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE";
@@ -103,5 +110,36 @@ describe("a project's container", () => {
     const vault = new MemoryFiles({ root: "/work/compiler/.sloppy/" });
     expect(projectRootOf(vault, graph(".."))?.root).toBe("/work/compiler");
     expect(projectRootOf(vault, graph("../.."))).toBeUndefined();
+  });
+});
+
+describe("where a file somebody puts in front of an agent goes", () => {
+  it("keeps what they called it, extension and all", () => {
+    expect(attachedAt("photo.jpg").endsWith("-photo.jpg")).toBe(true);
+    expect(attachedAt("写真.png").endsWith("-写真.png")).toBe(true);
+    expect(
+      attachedAt("Q3 notes (final).pdf").endsWith("-Q3 notes (final).pdf"),
+    ).toBe(true);
+  });
+
+  it("goes in the container's own folder and names nowhere else", () => {
+    for (const named of [
+      "photo.jpg",
+      "../../../etc/passwd",
+      "..\\..\\secrets.env",
+      "/etc/passwd",
+      "",
+      "..",
+      ".",
+    ]) {
+      const at = attachedAt(named);
+      expect(at.startsWith(`${ATTACHED_DIR}/`)).toBe(true);
+      expect(at.split("/").length).toBe(ATTACHED_DIR.split("/").length + 1);
+      expect(ProjectPathSchema.safeParse(at).success, at).toBe(true);
+    }
+  });
+
+  it("lands two files called the same thing apart", () => {
+    expect(attachedAt("photo.jpg")).not.toBe(attachedAt("photo.jpg"));
   });
 });

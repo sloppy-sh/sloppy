@@ -27,7 +27,6 @@ import {
 	type EdgeDirection,
 	type EdgeLook,
 	type EdgeLookChannel,
-	type EdgeStroke,
 	type FoundNote,
 	foundAnswer,
 	type LinkNotesArguments,
@@ -35,7 +34,6 @@ import {
 	listingAnswer,
 	lookBetween,
 	type MarkChannel,
-	type MarkRadius,
 	MOST_NOTES_TOUCHED,
 	type MoveNoteArguments,
 	type NodeAppearance,
@@ -56,7 +54,12 @@ import {
 	ulid,
 	type WriteNoteArguments
 } from '@sloppy/types';
-import { RING_STYLE_LABELS, RING_WEIGHT_LABELS } from '@sloppy/ui';
+import {
+	EDGE_STROKE_LABELS,
+	MARK_RADIUS_LABELS,
+	RING_STYLE_LABELS,
+	RING_WEIGHT_LABELS
+} from '@sloppy/ui';
 import { emptySidecars, fromMarkdown, toMarkdown } from '@sloppy/vault';
 import { wordsFor } from './stores/errors.js';
 
@@ -115,23 +118,6 @@ const SIZE = 'Size';
 const NONE = 'None';
 const UNTITLED = 'Untitled';
 
-/** What a line's break and a mark's size are called in front of a person. The
- *  stored vocabulary is an open set, so a look from a newer Sloppy has no word
- *  here and its row is left out. */
-const STROKE_WORDS: Record<EdgeStroke, string> = {
-	solid: 'Solid',
-	dashed: 'Dashed',
-	dotted: 'Dotted'
-};
-
-const SIZE_WORDS: Record<MarkRadius, string> = {
-	small: 'Small',
-	regular: 'Medium',
-	large: 'Large',
-	huge: 'Huge',
-	giant: 'Giant'
-};
-
 /** A store over the notes for the project `files` is rooted at, writing as the
  *  container rather than as whoever is signed in here. */
 export function containerApi(files: Files): LocalApi {
@@ -141,7 +127,11 @@ export function containerApi(files: Files): LocalApi {
 /** One of Sloppy's own acts, done and answered. The arguments arrived parsed;
  *  `said` is what the agent reads and the rest is the person's. */
 export async function serveChatCall(files: Files, call: ChatToolCall): Promise<ChatActDone> {
-	const api = containerApi(files);
+	const done = await act(containerApi(files), call);
+	return done.told === undefined ? done : { ...done, told: shortly(done.told) };
+}
+
+async function act(api: LocalApi, call: ChatToolCall): Promise<ChatActDone> {
 	switch (call.act) {
 		case 'list_notes': {
 			const here = await notesHere(api);
@@ -677,11 +667,11 @@ function trouble(said: string, told: string = said): ChatActDone {
  *  person, and both readers are given those. */
 function troubleWriting(error: unknown, otherwise: string): ChatActDone {
 	const said = wordsFor(error) ?? otherwise;
-	return { said, trouble: true, told: shortly(said) };
+	return { said, trouble: true, told: said };
 }
 
-function shortly(said: string): string {
-	return said.length <= CHAT_TOLD_MAX ? said : `${said.slice(0, CHAT_TOLD_MAX - 1)}…`;
+function shortly(told: string): string {
+	return told.length <= CHAT_TOLD_MAX ? told : `${told.slice(0, CHAT_TOLD_MAX - 1)}…`;
 }
 
 /** A note as somebody cites it: the number they navigate by and what it is
@@ -799,7 +789,7 @@ function lineCard(note: NodeView, other: NodeView, asked: StyleEdgeArguments): C
 		),
 		...cardRow(
 			LINE,
-			set('stroke', asked.stroke, (held) => STROKE_WORDS[held])
+			set('stroke', asked.stroke, (held) => EDGE_STROKE_LABELS[held])
 		)
 	]);
 }
@@ -828,7 +818,7 @@ function markCard(note: NodeView, asked: StyleNoteArguments): ChatCard {
 	return chatCard('mark', heads(note), [
 		...cardRow(RING, set('ring_weight', asked.ring_weight, RING_WEIGHT_LABELS)),
 		...cardRow(RING_STYLE, set('ring_style', asked.ring_style, RING_STYLE_LABELS)),
-		...cardRow(SIZE, set('mark_radius', asked.mark_radius, SIZE_WORDS))
+		...cardRow(SIZE, set('mark_radius', asked.mark_radius, MARK_RADIUS_LABELS))
 	]);
 }
 

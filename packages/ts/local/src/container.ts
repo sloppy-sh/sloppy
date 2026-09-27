@@ -1,6 +1,7 @@
 // Where a project keeps its notes, and where the code it is about is —
 // docs/ARCHITECTURE.md § "A project's container".
 
+import { CHAT_ATTACHED_NAME_MAX, ulid } from "@sloppy/types";
 import { GRAPH_FILE, SLOPPY_DIR, type VaultGraph } from "@sloppy/vault";
 import type { Files } from "./files.js";
 
@@ -20,6 +21,24 @@ export const ATTACHED_DIR = `${CONTAINER_DIR}/${ATTACHED}`;
 /** The same folder as the history is told to pass over it, which is said from
  *  inside the container — {@link KEPT_OUT} in `./kept-out.js`. */
 export const ATTACHED_KEPT_OUT = `/${ATTACHED}/`;
+
+/**
+ * Where a file called `name` goes when somebody puts it in front of an agent,
+ * from the project root. **The extension is kept**, because it is how the agent
+ * knows what it is looking at, and two files called the same thing land apart.
+ */
+export function attachedAt(name: string): string {
+  return `${ATTACHED_DIR}/${ulid()}-${attachedName(name)}`;
+}
+
+function attachedName(name: string): string {
+  const leaf = name.split(/[\\/]/).pop() ?? "";
+  const held = leaf
+    .replace(/[\p{Cc}\p{Cf}\p{Cs}]/gu, "")
+    .trim()
+    .slice(0, CHAT_ATTACHED_NAME_MAX);
+  return held === "" || held === "." || held === ".." ? "file" : held;
+}
 
 /**
  * Where what is nobody else's business goes for the project rooted at `root`,
