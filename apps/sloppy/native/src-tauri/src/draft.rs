@@ -13,15 +13,6 @@
 //! version on the draft and read one back, and settling the two copies into one
 //! is `previewVault` and `importVault` in `@sloppy/local`. No merge of git's
 //! ever touches the folder in front of somebody.
-//!
-//! **A history command reaching the copy needs `Folders` to know the copy is a
-//! repository boundary**, the way it knows a folder somebody picked is:
-//! `Folders::opened` answers `Opened::own` for anything under this app's data,
-//! and `Opened::own` bounds the search for the repository at the vault root, so
-//! the notes inside the copy would be taken for a repository of their own. The
-//! copy must be held the way a picked folder is — but not BY picking it, which
-//! would also make everything under it loadable through the `vault:` scheme,
-//! and this app's private data is the one place that must never be.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -37,9 +28,6 @@ use crate::vault::{settled, Folders};
 /// in `@sloppy/types`, which is the one spelling and the reason nothing shows
 /// it to anybody.
 const BRANCH_PREFIX: &str = "sloppy/draft/";
-
-/// Where the copies go inside this app's own data.
-const DRAFTS_DIR: &str = "drafts";
 
 /// The vault's own sidecar folder — `SLOPPY_DIR` in `@sloppy/vault`. The
 /// identity a container's writing is by is kept in it, and the repository is
@@ -176,7 +164,7 @@ pub fn standing(folders: &Folders, root: &str) -> Result<Vec<Draft>, HistoryErro
     let kept = at(&opened)?;
     let repo = kept.repo();
     let prefix = prefix_of(repo, &opened);
-    let under = PathBuf::from(folders.data_path()).join(DRAFTS_DIR);
+    let under = folders.drafts_path();
     let mut held = Vec::new();
     for name in repo.worktrees()?.iter().flatten() {
         let Ok(id) = draft_id(name) else { continue };
@@ -222,7 +210,7 @@ pub fn start(folders: &Folders, root: &str, id: &str) -> Result<Draft, HistoryEr
         return Err(HistoryError::new(ALREADY_THERE));
     }
     let at_head = repo.branch(&branch, &head, false)?;
-    let into = PathBuf::from(folders.data_path()).join(DRAFTS_DIR).join(id);
+    let into = folders.drafts_path().join(id);
     if let Some(folder) = into.parent() {
         fs::create_dir_all(folder)?;
     }
@@ -354,6 +342,28 @@ mod tests {
             fs::read_to_string(sidecar.join("pictures.json")).expect("the pictures"),
             "{\"kept\":1}"
         );
+    }
+
+    #[test]
+    fn the_copy_s_notes_are_kept_by_the_repository_the_folder_s_are() {
+        let (folders, _project, container) = ready("kept");
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+
+        let theirs = at(&folders.opened(&draft.vault).expect("the copy's notes"))
+            .expect("the repository keeping them");
+        let ours = at(&folders
+            .opened(&said(&container))
+            .expect("the folder's notes"))
+        .expect("the repository keeping them");
+        assert_eq!(
+            settled(theirs.repo().commondir()),
+            settled(ours.repo().commondir())
+        );
+        assert_eq!(
+            theirs.repo().head().expect("the copy's head").shorthand(),
+            Some(draft.branch.as_str())
+        );
+        assert!(!Path::new(&draft.vault).join(".git").exists());
     }
 
     #[test]

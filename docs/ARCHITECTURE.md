@@ -3015,8 +3015,11 @@ holds, and one only the folder wrote into stays.
 **And whether a note is gone or was never there.** A note that state held and the copy does
 not is one the copy put in the bin, and goes in the bin here — unless the folder has been
 written in since, which is a conflict like any other, settled `mine` to keep the note and
-`theirs` to let it go. Without the state, as for every archive, a note the copy does not hold
-is one it never had and the folder's own is left alone.
+`theirs` to let it go. **The other direction reads the same way**: a note that state held and
+the FOLDER does not is one the folder binned, and stays in the bin — unless the copy wrote
+into it, which is that conflict the other way round, settled `mine` to leave it there and
+`theirs` to bring it back with the copy's writing. Without the state, as for every archive, a
+note a side does not hold is one it never had and the folder's own is left alone.
 
 **An archive says what it holds before it is opened.** `manifest` reads `graph.json` and
 counts the entries out of the zip's own listing without inflating them — its notes, its
@@ -3356,9 +3359,15 @@ going on with it, reading it, or throwing it away.
 
 **A version is kept on the draft when a turn ends**, through the same `History` every other
 version goes through; the draft's branch is where those go and no commit of it ever touches
-the branch the person is on. **The draft forks from the last version KEPT**, which is what
-lets the agent read the code as it was kept rather than as it is half-edited — the chat says
-that in one line where it starts, because it changes what somebody would ask for.
+the branch the person is on. That works because the copy is a repository boundary the shell
+holds itself: `Folders::opened` bounds a history command inside a draft at the copy's root, so
+the notes in it are kept by the repository the folder's are, on the draft's branch, rather than
+by a repository of their own inside the copy. It is bounded that way without being a folder
+anybody picked — nothing under the app's own private data is reachable through the `vault:`
+scheme, and that is where the identity's key is. **The draft forks from the last version
+KEPT**, which is what lets the agent read the code as it was kept rather than as it is
+half-edited — the chat says that in one line where it starts, because it changes what somebody
+would ask for.
 
 **Reading a draft reads the notes, never a text diff.** `History.readAt` answers the whole
 folder as a commit has it, so a review is `vaultDifference` in `@sloppy/vault` between the
@@ -3613,9 +3622,10 @@ never need a repository on a disk.
 container sits in a project whose history already exists (§ "A project's container"), and
 reasoning that moves with the code it is about has to land in the same commit as the code. So
 the shell no longer initialises a repository at the vault root wherever it finds one above:
-it discovers the enclosing repository, bounded by the folder the person picked so the search
-can never wander into whatever is above that, and takes the vault root's path relative to
-that repository's workdir as a prefix. `status`, `log`, `readAt` and the staging a commit does
+it discovers the enclosing repository, bounded by the folder holding the vault — the one the
+person picked, or the draft copy it is inside (§ "Asking a tool to write the notes") — so the
+search can never wander into whatever is above that, and takes the vault root's path relative
+to that repository's workdir as a prefix. `status`, `log`, `readAt` and the staging a commit does
 are all read and written under the prefix — so a listing shows the notes changing and never
 the person's code, and **a commit Sloppy makes stages only paths under the prefix**. The lines
 the folder keeps out move with it too: `<prefix>/.sloppy/bin.json`, `<prefix>/.sloppy/bin/`,

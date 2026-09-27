@@ -980,8 +980,8 @@ export class LocalApi implements SloppyApi {
    * written over, so no number either copy has spent comes free.
    *
    * `from` is the state the copy was taken from, where the caller has one, and
-   * is what turns "the copy does not hold this note" into "the copy put it in
-   * the bin" — {@link Merging}.
+   * is what turns "this side does not hold that note" into "this side put it
+   * in the bin" — {@link Merging}.
    */
   private async settleInto(
     into: LocalGraph,
@@ -1007,6 +1007,7 @@ export class LocalApi implements SloppyApi {
     ]);
     const arriving = notesIn(vault, drawings);
     const over = new Set(merge.over);
+    const binnedHere = new Set(merge.binnedHere);
     const contested = new Set(
       merge.conflicts.flatMap((one) =>
         one.address === undefined ? [] : [one.address],
@@ -1018,6 +1019,7 @@ export class LocalApi implements SloppyApi {
         chosen.get(settling({ kind: "section", ref }));
       const mine = into.find(ref);
       if (mine && !how && !over.has(ref)) continue;
+      if (binnedHere.has(ref) && how?.keep !== "theirs") continue;
       const gone = into.findDeleted(ref);
       if (gone) await into.restore(gone);
       const note =
@@ -1161,17 +1163,27 @@ export class LocalApi implements SloppyApi {
       });
     }
     const binning: OwnedRef[] = [];
-    if (base !== undefined && writtenHere !== undefined) {
+    const binnedHere: OwnedRef[] = [];
+    if (
+      base !== undefined &&
+      writtenHere !== undefined &&
+      writtenThere !== undefined
+    ) {
       for (const ref of [...base.keys()].sort()) {
-        if (theirs.has(ref) || !mine.has(ref)) continue;
-        binning.push(ref);
-        if (!writtenHere.has(ref)) continue;
+        const here = mine.get(ref);
+        const there = theirs.get(ref);
+        if (here === undefined && there === undefined) continue;
+        if (here !== undefined && there !== undefined) continue;
+        (here === undefined ? binnedHere : binning).push(ref);
+        const wrote = here === undefined ? writtenThere : writtenHere;
+        if (!wrote.has(ref)) continue;
         conflicts.push({
           kind: "note",
           ref,
           sections: [],
-          mine: asWords(mine.get(ref), mine, writer),
-          theirs: IN_THE_BIN,
+          mine: here === undefined ? IN_THE_BIN : asWords(here, mine, writer),
+          theirs:
+            there === undefined ? IN_THE_BIN : asWords(there, theirs, writer),
         });
       }
     }
@@ -1189,7 +1201,7 @@ export class LocalApi implements SloppyApi {
         theirs: asWords(theirs.get(other), theirs, writer),
       });
     }
-    return { theirs, conflicts, binning, over };
+    return { theirs, conflicts, binning, binnedHere, over };
   }
 
   /**
@@ -2057,16 +2069,19 @@ interface Opened {
 /**
  * Another copy of one graph, and what it and the folder's copy say differently.
  *
- * `binning` is the notes the other copy PUT IN THE BIN, which can only be read
- * where the caller says what state that copy was taken from: without one, a
- * note the copy does not hold is one it never had. A note on this list that is
- * also in `conflicts` is one the folder has been written in since, and goes in
- * the bin only where the person settles it that way.
+ * `binning` is the notes the other copy PUT IN THE BIN and `binnedHere` the
+ * ones the FOLDER did, which can only be read where the caller says what state
+ * that copy was taken from: without one, a note either side does not hold is
+ * one it never had. A note on `binning` that is also in `conflicts` is one the
+ * folder has been written in since and goes in the bin only where the person
+ * settles it that way; one on `binnedHere` stays in the bin, and comes back
+ * only where the copy wrote into it and the person settles it `theirs`.
  */
 interface Merging {
   theirs: Map<OwnedRef, VaultNote>;
   conflicts: ImportConflict[];
   binning: OwnedRef[];
+  binnedHere: OwnedRef[];
   /** The notes the other copy wrote into and the folder did not, so the copy's
    *  is the later writing and lands over what is here. Empty where the caller
    *  says no state the copy was taken from: without one, neither side is later

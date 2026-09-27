@@ -147,9 +147,9 @@ pub(crate) fn own_only(_path: &Path, _mode: u32) -> io::Result<()> {
 }
 
 /// A vault a history command works in: the folder the graph's files are in,
-/// which is what this reads as, and the folder somebody picked that holds it.
-/// The pick is how far up the search for the repository keeping the vault may
-/// go — docs/ARCHITECTURE.md § "The vault's history".
+/// which is what this reads as, and the folder holding it. The holding folder
+/// is how far up the search for the repository keeping the vault may go —
+/// docs/ARCHITECTURE.md § "The vault's history".
 #[derive(Clone, Debug)]
 pub struct Opened {
     root: PathBuf,
@@ -166,8 +166,8 @@ impl Opened {
         }
     }
 
-    /// A vault inside a folder somebody picked — a project's container inside
-    /// the project's root.
+    /// A vault inside a folder that holds it — a project's container inside
+    /// the project's root, or either of those inside a draft copy of it.
     pub fn inside(root: &Path, within: &Path) -> Self {
         Opened {
             root: root.to_path_buf(),
@@ -194,6 +194,9 @@ impl AsRef<Path> for Opened {
         &self.root
     }
 }
+
+/// Where the drafts sit inside this app's own data.
+const DRAFTS_DIR: &str = "drafts";
 
 /// The folders this app may reach: its own private data, and every folder a
 /// person has picked. A pick is written down, so a graph opened yesterday opens
@@ -223,6 +226,12 @@ impl Folders {
 
     pub fn data_path(&self) -> String {
         self.data.to_string_lossy().into_owned()
+    }
+
+    /// Where a draft's copy of a folder goes — `draft.rs` makes them and reads
+    /// them back, and this is what makes each one its own boundary.
+    pub fn drafts_path(&self) -> PathBuf {
+        self.data.join(DRAFTS_DIR)
     }
 
     pub fn pick(&self, folder: PathBuf) -> io::Result<()> {
@@ -275,16 +284,27 @@ impl Folders {
         })
     }
 
-    /// The picked folder a path is in, the innermost where it is in several.
-    /// Nothing for this app's own private data, which nobody picked.
+    /// The folder a path is bounded by, the innermost where it is in several:
+    /// a folder somebody picked, or the draft copy it is inside. Nothing for
+    /// the rest of this app's own private data, which nobody picked.
     fn holding(&self, at: &Path) -> Option<PathBuf> {
         self.picked
             .lock()
             .unwrap()
             .iter()
             .filter(|folder| at.starts_with(folder))
-            .max_by_key(|folder| folder.as_os_str().len())
             .cloned()
+            .chain(self.drafted(at))
+            .max_by_key(|folder| folder.as_os_str().len())
+    }
+
+    /// The draft copy a path is inside. Each is a checkout of its own with its
+    /// branch at the copy's root, so a history command in one is bounded there
+    /// and not at the notes it is reaching.
+    fn drafted(&self, at: &Path) -> Option<PathBuf> {
+        let drafts = self.drafts_path();
+        let id = at.strip_prefix(&drafts).ok()?.components().next()?;
+        Some(drafts.join(id))
     }
 
     /// Where a file the page named lands, refused where it would leave the
@@ -785,6 +805,26 @@ mod tests {
 
         held.pick(vault).expect("picking the folder");
         assert!(held.read(&spelled, "graph.json").is_ok());
+    }
+
+    #[test]
+    fn a_draft_copy_is_bounded_at_the_copy_and_is_still_nobody_s_pick() {
+        let (held, data, _vault) = opened();
+        let data = PathBuf::from(data);
+        let copy = data.join("drafts").join("01JAPART000000000000000000");
+        let notes = copy.join(".sloppy");
+        fs::create_dir_all(&notes).expect("the copy's notes");
+
+        let inside = held.opened(&notes.to_string_lossy()).expect("the notes");
+        assert_eq!(inside.within(), settled(&copy));
+        assert_eq!(held.loadable(&notes), None);
+
+        let elsewhere = data.join("graphs").join("one");
+        fs::create_dir_all(&elsewhere).expect("a graph this device keeps");
+        let own = held
+            .opened(&elsewhere.to_string_lossy())
+            .expect("the graph");
+        assert_eq!(own.within(), settled(&elsewhere));
     }
 
     #[test]

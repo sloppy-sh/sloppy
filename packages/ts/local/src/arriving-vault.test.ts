@@ -185,6 +185,76 @@ describe("another copy of a graph this device keeps", () => {
     expect((await reopened(held).getNode(note.ref))?.title).toBe("Seeds");
   });
 
+  it("leaves in the bin what the folder binned and the copy still holds", async () => {
+    const { held, note, from } = await forked();
+    const drafted = draftOf(held);
+    const written = await drafted.createNode({ title: "Written in the copy" });
+    const vault = await drafted.vaultHere();
+    await held.api.deleteNode(note.ref);
+
+    const said = await held.api.previewVault({ vault, from });
+    expect(said.conflicts).toEqual([]);
+    expect(said.binning).toEqual([]);
+
+    await held.api.importVault({ vault, from });
+    const client = reopened(held);
+    expect(await client.getNode(note.ref)).toBeNull();
+    expect((await client.deletedBranches()).map((one) => one.title)).toEqual([
+      "Seeds",
+    ]);
+    expect((await client.getNode(written.ref))?.title).toBe(
+      "Written in the copy",
+    );
+  });
+
+  it("asks before bringing back a note the folder binned and the copy wrote into", async () => {
+    const { held, note, block, from } = await forked();
+    const drafted = draftOf(held);
+    await drafted.updateBlock(block.ref, {
+      content: textDocument("A seed keeps its own calendar."),
+    });
+    const vault = await drafted.vaultHere();
+    await held.api.deleteNode(note.ref);
+
+    const said = await held.api.previewVault({ vault, from });
+    expect(said.conflicts.map((one) => [one.kind, one.ref, one.mine])).toEqual([
+      ["note", note.ref, "In the bin."],
+    ]);
+    expect(said.conflicts[0].theirs).toContain("its own calendar");
+    await expect(held.api.importVault({ vault, from })).rejects.toThrow(
+      "disagree about one note",
+    );
+
+    await held.api.importVault(
+      { vault, from },
+      { resolutions: [{ kind: "note", ref: note.ref, keep: "theirs" }] },
+    );
+    const client = reopened(held);
+    const back = await client.getNode(note.ref);
+    expect(back?.title).toBe("Seeds");
+    expect(back?.address).toBe("1");
+  });
+
+  it("keeps a note the folder binned in the bin where the person settles it that way", async () => {
+    const { held, note, block, from } = await forked();
+    const drafted = draftOf(held);
+    await drafted.updateBlock(block.ref, {
+      content: textDocument("A seed keeps its own calendar."),
+    });
+    const vault = await drafted.vaultHere();
+    await held.api.deleteNode(note.ref);
+
+    await held.api.importVault(
+      { vault, from },
+      { resolutions: [{ kind: "note", ref: note.ref, keep: "mine" }] },
+    );
+    const client = reopened(held);
+    expect(await client.getNode(note.ref)).toBeNull();
+    expect((await client.deletedBranches()).map((one) => one.title)).toEqual([
+      "Seeds",
+    ]);
+  });
+
   it("bins nothing where the caller says no state the copy was taken from", async () => {
     const { held, note } = await forked();
     const drafted = draftOf(held);
