@@ -99,7 +99,11 @@ class ChatStore {
 	#standing = $state(false);
 	#running = $state(false);
 	#asking = $state.raw<ChatAsking | null>(null);
-	#settling = $state(false);
+	/** The acts whose answer is on its way. It is a SET and never a flag: the
+	 *  agent calls more than one act at once, so an answer refused because
+	 *  another was in flight is a call nobody ever answers and an agent left
+	 *  waiting on it until it gives up. */
+	#settling = $state.raw<ReadonlySet<ChatCallId>>(new Set());
 	#keeping = $state.raw<ChatKeeping | null>(null);
 	#keepSettling = $state(false);
 	#stopping = $state(false);
@@ -159,7 +163,7 @@ class ChatStore {
 
 	/** Whether their answer has been given and has not landed yet. */
 	get settling(): boolean {
-		return this.#settling;
+		return this.#settling.size > 0;
 	}
 
 	/** The answer somebody asked to keep, waiting on their say-so. */
@@ -420,15 +424,15 @@ class ChatStore {
 	 * documenting thirty files answers once rather than thirty times.
 	 */
 	async settle(call: ChatCallId, allowed: boolean, andTheRest = false): Promise<void> {
-		if (this.#settling) return;
+		if (this.#settling.has(call)) return;
 		const access = seam().chat();
 		if (!access) return;
 		if (allowed && andTheRest) this.#allowedThisTurn = true;
-		this.#settling = true;
+		this.#settling = new Set([...this.#settling, call]);
 		try {
 			await access.settle(call, allowed);
 		} finally {
-			this.#settling = false;
+			this.#settling = new Set([...this.#settling].filter((one) => one !== call));
 		}
 	}
 
@@ -475,7 +479,7 @@ class ChatStore {
 		this.#running = false;
 		this.#writing = false;
 		this.#asking = null;
-		this.#settling = false;
+		this.#settling = new Set();
 		this.#keeping = null;
 		this.#keepSettling = false;
 		this.#allowedThisTurn = false;

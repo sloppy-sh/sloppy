@@ -90,10 +90,23 @@ class Stub implements ChatAccess {
 		return Promise.resolve();
 	}
 
+	/** Set while an answer is to hang on its way out, which is what a real one
+	 *  does: the shell serves the act before it resolves. */
+	settleHangs = false;
+	#hanging: (() => void)[] = [];
+
 	settle(call: ChatCallId, allowed: boolean): Promise<void> {
 		this.answered.push({ call, allowed });
 		this.tell({ event: 'settled', call, allowed });
-		return Promise.resolve();
+		if (!this.settleHangs) return Promise.resolve();
+		return new Promise<void>((done) => this.#hanging.push(done));
+	}
+
+	/** Let every answer that was hanging land. */
+	letAnswersLand(): void {
+		const held = this.#hanging;
+		this.#hanging = [];
+		for (const done of held) done();
 	}
 
 	stop(): Promise<void> {
@@ -1185,5 +1198,66 @@ describe('starting again', () => {
 
 		expect(screen()).toContain('microphone on your keyboard');
 		expect(labelled('Record')).toBeUndefined();
+	});
+});
+
+describe('two acts the agent calls at once', () => {
+	/** The agent asks for two writes without waiting for the first, which the
+	 *  endpoint serves on a thread each, so both questions arrive together. */
+	async function bothAsked(): Promise<void> {
+		await saying('Document the packages');
+		stub.settleHangs = true;
+		for (const call of ['c1', 'c2'] as ChatCallId[]) {
+			stub.tell({
+				event: 'asking',
+				call,
+				act: 'write_note',
+				arguments: { about: `packages/${call}`, sections: ['## Why\n\nBecause.'] }
+			});
+		}
+		await settle();
+	}
+
+	it('answers both where writes land without asking', async () => {
+		prefs.set('writesWithoutAsking', true);
+
+		await bothAsked();
+		stub.letAnswersLand();
+		await settle();
+
+		// Before this, one answer was refused because the other was in flight,
+		// and nothing ever answered that call: the agent waited it out.
+		expect(stub.answered).toEqual([
+			{ call: 'c1', allowed: true },
+			{ call: 'c2', allowed: true }
+		]);
+	});
+
+	it('answers both where a reply has been allowed whole', async () => {
+		await saying('Document the packages');
+		stub.tell({
+			event: 'asking',
+			call: 'c0' as ChatCallId,
+			act: 'write_note',
+			arguments: { about: 'packages/one', sections: ['## Why\n\nBecause.'] }
+		});
+		await settle();
+		named('Allow the rest of this reply')?.click();
+		await settle();
+
+		stub.settleHangs = true;
+		for (const call of ['c1', 'c2'] as ChatCallId[]) {
+			stub.tell({
+				event: 'asking',
+				call,
+				act: 'write_note',
+				arguments: { about: `packages/${call}`, sections: ['## Why\n\nBecause.'] }
+			});
+		}
+		await settle();
+		stub.letAnswersLand();
+		await settle();
+
+		expect(stub.answered.map((one) => one.call)).toEqual(['c0', 'c1', 'c2']);
 	});
 });
