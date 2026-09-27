@@ -8,7 +8,13 @@ const PARSER = 'src/parser.ts';
 
 /** The agents this device has, as `chat_agents` answers. */
 let here: string[];
-let opens: { agent: string; root: string; tools: { name: string }[] }[];
+let opens: {
+	agent: string;
+	root: string;
+	tools: { name: string }[];
+	brief: string;
+	model?: string;
+}[];
 /** Every line written onto the agent's own input. */
 let lines: string[];
 let answers: { call: string; said: string; trouble: boolean }[];
@@ -36,11 +42,22 @@ const call = async <T>(command: string, args?: Record<string, unknown>): Promise
 		case 'chat_agents':
 			return here as T;
 		case 'chat_open':
-			opens.push({
-				agent: held.agent as string,
-				root: held.root as string,
-				tools: held.tools as { name: string }[]
-			});
+			{
+				const asked = held.asked as {
+					agent: string;
+					root: string;
+					tools: { name: string }[];
+					brief: string;
+					model?: string;
+				};
+				opens.push({
+					agent: asked.agent,
+					root: asked.root,
+					tools: asked.tools,
+					brief: asked.brief,
+					...(asked.model === undefined ? {} : { model: asked.model })
+				});
+			}
 			channel = held.heard as Telling;
 			return undefined as T;
 		case 'chat_say':
@@ -532,5 +549,25 @@ describe('a write', () => {
 		expect(heard.map((event) => event.event)).toEqual(['asking', 'settled', 'over']);
 		expect(served).toEqual([]);
 		expect(answers[0]).toMatchObject({ trouble: true });
+	});
+});
+
+describe('what the agent is told before it hears anybody', () => {
+	it('is sent the brief, so it knows it is in Sloppy at all', async () => {
+		await chat().open({}, () => {}, serve);
+
+		const { brief } = opens[0];
+		expect(brief).toContain('.sloppy/AGENT.md');
+		expect(brief).toContain('belongs in a note');
+		// The one thing it got wrong without this: offering to write a file.
+		expect(brief).toContain('cannot write or change any file in this project');
+	});
+
+	it('answers with the model somebody chose, and with none where they chose nothing', async () => {
+		await chat().open({ model: 'opus' }, () => {}, serve);
+		expect(opens[0].model).toBe('opus');
+
+		await chat().open({}, () => {}, serve);
+		expect(opens[1].model).toBeUndefined();
 	});
 });

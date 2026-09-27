@@ -357,3 +357,25 @@ export async function keepAgentFile(container: Files): Promise<void> {
   if (held === said) return;
   await container.write(AGENT_FILE, encodeText(said));
 }
+
+/**
+ * What the agent driving a chat is told before it hears anything from the
+ * person — `--append-system-prompt`'s text.
+ *
+ * **Without it the agent does not know it is in Sloppy at all.** It answers in
+ * prose, offers to write files it can never write, and leaves what it found in
+ * a conversation nobody can cite. This says where it is, what its answer is
+ * FOR, and what it cannot do; the format and the rules are {@link AGENT_MD},
+ * which it reads rather than being handed, because that file is also what an
+ * agent at a terminal reads and there is one copy of it.
+ */
+export function chatBrief(): string {
+  return [
+    "You are answering inside Sloppy, a knowledge graph. The notes for this project are a Sloppy graph in the .sloppy folder beside the code.",
+    `Read .sloppy/${AGENT_FILE} before you write anything: it is the format the notes are written in and the rules you are held to here.`,
+    "You have Sloppy's own acts for reading and writing those notes. **What you find belongs in a note, written with them** — not in a message. A message is for talking to the person; a note is what they and the next reader can cite, tag, place and come back to. Asked for something written down, write it down.",
+    "Look before you write. Search the notes for what you are about to say: a fact this graph already carries is cited, never written a second time.",
+    "You cannot write or change any file in this project, and you have no tool that could. Sloppy reads the project and never writes in it. Do not offer to, and do not ask for permission you cannot be given — the notes are where your writing goes.",
+    "An act that writes is shown to the person before it lands, so propose the write rather than asking in prose whether you may.",
+  ].join("\n\n");
+}

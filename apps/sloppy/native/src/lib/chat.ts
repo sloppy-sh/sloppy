@@ -24,6 +24,7 @@ import {
 	type ChatToolAnswer,
 	type ChatToolCall
 } from '@sloppy/types';
+import { chatBrief } from '@sloppy/local';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { AgentStream } from './chat-stream';
 import type { Invoke } from './files';
@@ -167,9 +168,13 @@ class TauriChat implements ChatAccess {
 		told.onmessage = (one) => this.told(session, one);
 		this.held = session;
 		await this.call<void>(OPEN, {
-			agent,
-			root,
-			tools: advertisedChatTools(),
+			asked: {
+				agent,
+				root,
+				tools: advertisedChatTools(),
+				brief: chatBrief(),
+				...(asked.model === undefined ? {} : { model: asked.model })
+			},
 			heard: told
 		}).catch((reason) => {
 			if (this.held === session) this.held = undefined;

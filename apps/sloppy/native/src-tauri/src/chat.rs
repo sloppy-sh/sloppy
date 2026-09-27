@@ -20,7 +20,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::ipc::Channel;
 use tauri::State;
@@ -261,17 +261,25 @@ fn marked() -> u64 {
 
 /// Start the agent in `at`, pointed at an endpoint serving `tools`, and carry
 /// what it says to `heard` until it is done.
+/// What a session is opened with, beside where it runs.
+struct Opening<'a> {
+    tools: &'a [Advertised],
+    brief: &'a str,
+    /// Absent is whatever the agent would answer with on its own.
+    model: Option<&'a str>,
+}
+
 fn open(
     agent: &'static Agent,
     program: &Path,
     at: &Path,
-    tools: &[Advertised],
+    with: Opening<'_>,
     heard: Arc<dyn Fn(Heard) + Send + Sync>,
     chat: Chat,
 ) -> Result<(), ChatError> {
     let telling = heard.clone();
     let endpoint = Endpoint::start(
-        tools,
+        with.tools,
         Arc::new(move |called: Called| {
             telling(Heard::Called {
                 call: called.call,
@@ -281,7 +289,15 @@ fn open(
         }),
     )
     .map_err(|_| ChatError::new(DIDNT_START))?;
-    let mut child = start(program, agent.args, &named(), &endpoint.config(), at)?;
+    let mut child = start(
+        program,
+        agent.args,
+        &named(),
+        &endpoint.config(),
+        with.brief,
+        with.model,
+        at,
+    )?;
     let saying = child
         .stdin
         .take()
@@ -322,6 +338,8 @@ fn start(
     args: &[&str],
     session: &str,
     config: &str,
+    brief: &str,
+    model: Option<&str>,
     at: &Path,
 ) -> Result<Child, ChatError> {
     let mut how = Command::new(program);
@@ -330,10 +348,15 @@ fn start(
         .arg(session)
         .arg("--mcp-config")
         .arg(config)
+        .arg("--append-system-prompt")
+        .arg(brief)
         .current_dir(at)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(model) = model {
+        how.arg("--model").arg(model);
+    }
     started(&mut how).map_err(|_| ChatError::new(NO_PROGRAM))
 }
 
@@ -374,17 +397,36 @@ pub async fn chat_agents() -> Vec<&'static str> {
     .unwrap_or_default()
 }
 
+/// What the page asks a session be opened with.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Asked {
+    pub agent: String,
+    pub root: String,
+    pub tools: Vec<Advertised>,
+    pub brief: String,
+    pub model: Option<String>,
+}
+
 /// Start a session, ending whatever stood. `tools` are the acts the webview
-/// will serve, as `advertisedChatTools` in `@sloppy/types` answered.
+/// will serve, as `advertisedChatTools` in `@sloppy/types` answered; `brief` is
+/// what the agent is told before it hears the person, which is `chatBrief` in
+/// `@sloppy/local` and without which it does not know it is in Sloppy at all;
+/// `model` absent is whatever the agent would answer with on its own.
 #[tauri::command]
 pub async fn chat_open(
     folders: State<'_, Folders>,
     chat: State<'_, Chat>,
-    agent: String,
-    root: String,
-    tools: Vec<Advertised>,
+    asked: Asked,
     heard: Channel<Heard>,
 ) -> Result<(), ChatError> {
+    let Asked {
+        agent,
+        root,
+        tools,
+        brief,
+        model,
+    } = asked;
     let held = AGENTS
         .iter()
         .find(|one| one.id == agent)
@@ -396,7 +438,12 @@ pub async fn chat_open(
     });
     tauri::async_runtime::spawn_blocking(move || {
         let program = found(held).ok_or_else(|| ChatError::new(NO_PROGRAM))?;
-        open(held, &program, &at, &tools, telling, chat)
+        let with = Opening {
+            tools: &tools,
+            brief: &brief,
+            model: model.as_deref(),
+        };
+        open(held, &program, &at, with, telling, chat)
     })
     .await
     .map_err(|_| ChatError::new(DIDNT_START))?
@@ -442,6 +489,15 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::*;
+
+    /// A session opened with no acts, nothing said first and no model named.
+    fn nothing() -> Opening<'static> {
+        Opening {
+            tools: &[],
+            brief: "",
+            model: None,
+        }
+    }
 
     static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -549,7 +605,7 @@ mod tests {
         let thread = Thread::default();
         let chat = Chat::default();
 
-        open(&STUB, &program, &at, &[], thread.sink(), chat).expect("a session");
+        open(&STUB, &program, &at, nothing(), thread.sink(), chat).expect("a session");
 
         waits("the end", || thread.overs().len() == 1);
         assert_eq!(thread.lines(), ["one", "two"]);
@@ -564,7 +620,7 @@ mod tests {
         let program = stub(&at, "agent", "echo starting; sleep 30");
         let thread = Thread::default();
         let chat = Chat::default();
-        open(&STUB, &program, &at, &[], thread.sink(), chat.clone()).expect("a session");
+        open(&STUB, &program, &at, nothing(), thread.sink(), chat.clone()).expect("a session");
         waits("a line", || !thread.lines().is_empty());
 
         chat.close();
@@ -582,7 +638,7 @@ mod tests {
         let program = stub(&at, "agent", "echo starting; sleep 30");
         let thread = Thread::default();
         let chat = Chat::default();
-        open(&STUB, &program, &at, &[], thread.sink(), chat.clone()).expect("a session");
+        open(&STUB, &program, &at, nothing(), thread.sink(), chat.clone()).expect("a session");
         waits("a line", || !thread.lines().is_empty());
 
         chat.close();
@@ -603,10 +659,10 @@ mod tests {
         let second = stub(&at, "second", "echo two; sleep 30");
         let thread = Thread::default();
         let chat = Chat::default();
-        open(&STUB, &first, &at, &[], thread.sink(), chat.clone()).expect("one session");
+        open(&STUB, &first, &at, nothing(), thread.sink(), chat.clone()).expect("one session");
         waits("the first line", || thread.lines() == ["one"]);
 
-        open(&STUB, &second, &at, &[], thread.sink(), chat.clone()).expect("another");
+        open(&STUB, &second, &at, nothing(), thread.sink(), chat.clone()).expect("another");
 
         waits("the end", || thread.overs().len() == 1);
         assert_eq!(thread.overs(), [(true, None)]);
@@ -633,7 +689,7 @@ mod tests {
         );
         let thread = Thread::default();
         let chat = Chat::default();
-        open(&STUB, &program, &at, &[], thread.sink(), chat.clone()).expect("a session");
+        open(&STUB, &program, &at, nothing(), thread.sink(), chat.clone()).expect("a session");
         waits("a line", || !thread.lines().is_empty());
 
         chat.close();
@@ -679,7 +735,7 @@ mod tests {
         let thread = Thread::default();
         let chat = Chat::default();
 
-        open(&STUB, &program, &at, &[], thread.sink(), chat).expect("a session");
+        open(&STUB, &program, &at, nothing(), thread.sink(), chat).expect("a session");
 
         waits("the end", || thread.overs().len() == 1);
         assert!(thread.lines().is_empty());

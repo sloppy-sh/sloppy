@@ -83,7 +83,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 			case 'chat_agents':
 				return ['claude_code'];
 			case 'chat_open':
-				chattedIn.push(args?.root as string);
+				chattedIn.push((args?.asked as { root: string } | undefined)?.root as string);
 				return null;
 			case 'files_list': {
 				const under = `${args?.root as string}/`;

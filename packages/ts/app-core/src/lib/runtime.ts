@@ -110,6 +110,10 @@ export interface ChatAsked {
 	/** Which agent is to do it. **Absent is whichever one this device has**,
 	 *  which is the whole answer while it has one. */
 	agent?: ChatAgent;
+	/** Which model it is to answer with, as that agent names its models.
+	 *  **Absent is whatever the agent would answer with on its own**, which is
+	 *  what somebody who has chosen nothing gets. */
+	model?: string;
 }
 
 /**
