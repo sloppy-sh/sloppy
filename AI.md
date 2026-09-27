@@ -94,9 +94,14 @@ to, all of them about what a person can rely on rather than about what the code 
   property test over generated operation sequences rather than a handful of hand-picked
   cases. What a graph decides is which run of siblings a suggestion is made against; a
   sibling with no address is not in that run and never moves what the rule offers.
-- **A person edits and removes an address wherever one is shown.** That is the whole of
-  what makes it a label. Renumbering the notes AROUND one is still not a thing that
-  happens: a person changes their own note's label and nobody else's.
+- **A person edits and removes an address wherever one is shown, and a tool they set to
+  work may write one for them.** That is the whole of what makes it a label: it is theirs
+  to change, not theirs alone to author. The rule already offers one at creation, so a
+  machine has always written most of them; an agent naming one is the same act, done where
+  it can see the run. Somebody who hands over three hundred notes is not then reading three
+  hundred notes to number them. Renumbering the notes AROUND one is still not a thing that
+  happens: a person changes their own note's label and nobody else's, and so does anything
+  acting for them.
 - **Every address a note that is there has carried keeps leading to it, and belongs to it.**
   An address it was moved from, or renamed away from, resolves to that note for as long as
   it is there, and is never given to a second one — a citation somebody wrote down still
