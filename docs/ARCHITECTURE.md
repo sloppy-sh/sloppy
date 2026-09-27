@@ -2999,6 +2999,25 @@ app and the local app settle an import the same way, because both read the same 
 server and in a folder alike; a settlement that leaves a conflict unsettled refuses the whole
 import before anything is written.
 
+**An archive is one way a second copy arrives, and not the shape of the merge.** `previewVault`
+and `importVault` in `@sloppy/local` are that same settling over a plain vault, with none of
+what a file says about itself, so a copy that never was a file settles by one rule with the
+ones that were — which is how a draft of the notes is taken in (§ "Asking a tool to write the
+notes"). They take one thing an archive cannot give: the state the copy was taken FROM, and it
+answers the two questions two copies alone cannot.
+
+**Which side wrote.** Without a state in common, every note the two read differently is a
+disagreement, because neither is later than the other — which is right for an archive and
+would make every draft a wall of conflicts. With one, only a note BOTH wrote into is a
+conflict; one only the copy wrote into is the later writing and lands over what the folder
+holds, and one only the folder wrote into stays.
+
+**And whether a note is gone or was never there.** A note that state held and the copy does
+not is one the copy put in the bin, and goes in the bin here — unless the folder has been
+written in since, which is a conflict like any other, settled `mine` to keep the note and
+`theirs` to let it go. Without the state, as for every archive, a note the copy does not hold
+is one it never had and the folder's own is left alone.
+
 **An archive says what it holds before it is opened.** `manifest` reads `graph.json` and
 counts the entries out of the zip's own listing without inflating them — its notes, its
 offered changes and its pictures — so an import preview can say whose graph it is, what it
@@ -3262,8 +3281,8 @@ the agent. It also means nothing new has to be installed for a chat to write a n
 
 **The acts reach what a person can do to a note, and stop there.** A shorter list is not a
 safeguard: somebody who hands three hundred files to a tool and then has to draw every
-relation themselves has offloaded nothing, and the gate is the person's answer rather than
-a narrower vocabulary. So: the notes this project already has, with their addresses,
+relation themselves has offloaded nothing, and what holds it is the person reading the draft
+rather than a narrower vocabulary. So: the notes this project already has, with their addresses,
 titles, tags, the lines drawn between them by hand, what each springs out of and the
 places they are about; the notes some words reach, with the writing around what matched;
 one of them read whole, with the looks it sets on its lines; a note written about a place;
@@ -3298,13 +3317,13 @@ first: look, then cite what it finds rather than writing it a second time.
 and the two say it in the same words deliberately — one doctrine, read wherever an agent
 comes in.
 
-**Reorganising is a write, and the person's answer is the whole of the gate.** A note
-carried somewhere else changes the genealogy, which is what a peer holding a copy reads
-(AI.md § "The Genealogy Is the Protocol"), and a tag taken off is the one act here that
-makes a note say less. Neither can be offered the way writing is — an amendment is a body
-of writing its author takes in, and there is no such thing for where a note hangs — so both
-stand behind the question a write stands behind and never a weaker one, and the question
-names which tags would come off, because that is the half a person would want back.
+**Reorganising is a write, and the draft is what holds it.** A note carried somewhere else
+changes the genealogy, which is what a peer holding a copy reads (AI.md § "The Genealogy Is
+the Protocol"), and a tag taken off is the one act here that makes a note say less. Neither
+can be offered the way writing is — an amendment is a body of writing its author takes in,
+and there is no such thing for where a note hangs — so both land in the draft the way
+writing does and are read in the review the same way, which names which tags came off,
+because that is the half a person would want back.
 **The address is the person's label, and a tool they set to work may write one for them**
 (AI.md § "The Genealogy Is the Protocol"). A write and a move each take a number or leave
 it out, and left out is what has always happened: the Folgezettel rule gives the note what
@@ -3315,14 +3334,64 @@ numbers a note it writes, and leaves the number on a note already there alone, b
 number that note gives up has to go on leading to it and that does not happen in a file
 edited by hand.
 
-**Every act that WRITES is behind the person's own answer, asked in the thread.** The
-question names what is about to happen — the note, the place — and the call resolves on
-what they say and on nothing else. A reading act is never asked about, because nothing of
-theirs changes. **The gate is Sloppy's, in Sloppy's words, so it holds whatever is on the
-other end**: an agent's own permission prompt is not one Sloppy can see, put in its own
-words, or rely on being there at all. A call turned down never reaches the store, and the
-agent is told the person turned it down rather than being left waiting — a chat in which
-one side is blocked on an answer that will never come has stopped without saying so.
+**Every act LANDS, and the draft is what makes that safe.** A session works in a DRAFT: a
+second checkout of the repository keeping the notes, under the app's own data, on a branch
+of its own at the version the folder was last kept at. The agent runs there, every act
+writes there, and the folder in front of the person is untouched the whole time. Nothing is
+asked, nothing waits, and nothing times out.
+
+**It replaced a question in front of every write, and the reasons it had to are worth
+keeping.** A per-call gate interrupted a pass over a repository thirty times; it raced,
+because the endpoint serves each call on its own thread and two questions could be open at
+once; and it asked somebody to approve a note they had not read, one at a time, which is
+the opposite of the judgement they are there to bring. What a person actually wants to say
+yes to is finished work, read whole. So they read it whole.
+
+**A draft stands until it is merged or discarded, and it survives the app closing.** It is
+a branch and a folder on the disk, so `draft.rs` in the native shell lists the drafts of a
+folder out of the repository rather than out of anything a run remembers, and `DraftAccess`
+in `@sloppy/app-core` is the whole of what a page can do to one: what is standing, start or
+go on with one, and let one go. One per folder — opening the chat while one stands offers
+going on with it, reading it, or throwing it away.
+
+**A version is kept on the draft when a turn ends**, through the same `History` every other
+version goes through; the draft's branch is where those go and no commit of it ever touches
+the branch the person is on. **The draft forks from the last version KEPT**, which is what
+lets the agent read the code as it was kept rather than as it is half-edited — the chat says
+that in one line where it starts, because it changes what somebody would ask for.
+
+**Reading a draft reads the notes, never a text diff.** `History.readAt` answers the whole
+folder as a commit has it, so a review is `vaultDifference` in `@sloppy/vault` between the
+folder as it stands and the draft at its tip: the notes written, changed, moved, renumbered,
+retitled and binned, each one opening as the draft has it. § "The vault's history" carries
+that reading and DESIGN.md § "Reading a draft" the surface.
+
+**Merging a draft is the merge a copy of a graph already goes through.** `previewVault` and
+`importVault` in `@sloppy/local` are `previewArchive` and `importArchive`'s merge half over
+a plain vault, so a draft settles by exactly the rule an archive of the same graph settles
+by — note by note, section by section, pictures and offers carried, never two versions left
+in one file, and where the folder's own copy of a note changed in the meantime the person is
+handed the same conflict they already know (§ "A graph on disk"). A version is kept in the
+folder afterwards, and then the draft is discarded. **No merge of git's ever runs on the
+folder**: git settles files and Sloppy settles notes, and a note is not a file's worth of
+lines.
+
+**Absence is the one thing two copies cannot read, so the fork is carried with them.** A
+note the folder holds and the draft does not is either a note the draft binned or a note the
+person wrote after the fork, and nothing in the two copies tells the two apart. `ArrivingVault`
+in `@sloppy/local` takes the state the copy was taken from for exactly this, and an archive —
+which has no such state — leaves the folder's own notes alone as it always did.
+
+**Discarding takes both halves**, the checkout and the branch, and leaves nothing of either.
+Nothing of a discarded draft is recoverable and nothing about it is offered as though it
+were.
+
+**The copy carries the identity the folder writes under.** The container's private data is
+what the repository is told not to keep, so a fresh checkout would have none and would write
+under an identity of its own — after which every note the folder already holds comes back as
+somebody else's amendment rather than landing. `draft.rs` copies what the repository ignores
+into the copy and nothing it keeps, so the writing a draft carries is by the same writer the
+folder's is.
 
 **What a person reads of an act is the ACT's own answer, and it is not what the agent read.**
 One call comes to two things: the writing the agent is handed, and what somebody watching is
@@ -3335,11 +3404,11 @@ because the act is where what happened is known — a thread working out what a 
 reading the answer the AGENT was given is a second reading of one truth, and the one that goes
 stale.
 
-**The question in front of a write is that same card, shown before instead of after.** Somebody
-allowing something reads exactly what would land — the title, the place, the number, which tags
-come off, which note goes in the bin — laid out the way they will read it again once it has. So
-nothing on a card is written in a tense: whether it is a question or a record is said by what
-stands around it, the answers under it or the act's line above it once it has settled.
+**A review reads those same cards again.** Somebody deciding whether to merge reads what the
+acts said as they happened — the title, the place, the number, which tags came off, which note
+went in the bin — beside the notes themselves as the draft has them. So nothing on a card is
+written in a tense: it is a record of an act, and what stands around it is what says whether
+the draft it belongs to has been taken in yet.
 
 **An act says which notes it left different, and those are what the canvas reads again.**
 `touched` is the whole of what changed, so a turn that wrote one note costs a read of that note
@@ -3383,7 +3452,9 @@ handed a shell's files rooted at the container answers with the person instead �
 ordinary device, holding one identity, it does so silently. **Where that data goes is
 `containerDataAt` in `@sloppy/local` and is spelled nowhere else**, the CLI included.
 `ChatAccess` in `@sloppy/app-core` carries the obligation where the page serving a call
-reads.
+reads. Where the session works in a draft, those files are rooted at the DRAFT's copy of the
+project (`DraftAccess.files`), and the identity under them is the folder's own, carried into
+the copy when it was made.
 
 **The program is started, never composed.** It is the shell's own and fixed there; it is
 started directly rather than handed to a shell to interpret; and nothing a person typed or
@@ -3429,7 +3500,9 @@ which is why the count it left is in the answer itself.
 **One session at a time on a device, and opening one replaces what stood.** A person sees
 one chat, so there is no second thread for a session to go on into unseen. Saying something
 while a turn is underway is refused rather than queued — the agent is answering the last
-thing it was told.
+thing it was told. **The draft is not the session**: closing the chat ends the program and
+leaves the draft standing, which is what lets somebody walk away from a long pass and read
+it tomorrow.
 
 **Stopping ends the TURN and closing ends the SESSION, and the two are different acts on
 different channels.** A person who stops means the thing being done now: they keep the

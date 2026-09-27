@@ -1,4 +1,5 @@
 mod chat;
+mod draft;
 mod history;
 mod program;
 mod remotes;
@@ -57,6 +58,9 @@ pub(crate) fn commands<R: Runtime>(
         chat::chat_say,
         chat::chat_answer,
         chat::chat_close,
+        draft::draft_standing,
+        draft::draft_start,
+        draft::draft_discard,
     ]
 }
 

@@ -25,7 +25,8 @@ import type {
 	ChatToolAnswer,
 	ChatToolCall,
 	DidSyr,
-	OwnedRef
+	OwnedRef,
+	StandingDraft
 } from '@sloppy/types';
 import type { SloppyApi } from './api.js';
 import { storedOrigin } from './stores/prefs.svelte.js';
@@ -105,6 +106,51 @@ export interface VaultAccess {
 	openProject?(): Promise<string | undefined>;
 }
 
+/**
+ * A draft of the notes: a copy of the folder that a chat writes into, standing
+ * apart from the one somebody has open until they merge it or discard it —
+ * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+ *
+ * **A draft outlives the session and outlives the app.** It is a branch and a
+ * copy on the disk, so {@link DraftAccess.standing} reads what is there rather
+ * than what this run remembers, and a draft is still standing after the app is
+ * closed and opened again. **One per folder**: {@link DraftAccess.start} while
+ * one stands answers that one rather than making a second.
+ *
+ * **Reviewing and merging are NOT here, and deliberately.** What a draft holds
+ * is a copy of a graph, and reading two copies of a graph against each other
+ * and settling them is the store's — `previewVault` and `importVault` in
+ * `@sloppy/local`, handed the vaults {@link History.readAt} answers for the
+ * draft's tip and for the version it forked from. Putting either on this seam
+ * would make the chat a second store. So this seam owns the two halves the
+ * PLATFORM owns, making the copy and reaching it, and a page does the rest
+ * through the store already serving the folder in front of somebody.
+ *
+ * Every act here REJECTS with words for the person in its message.
+ */
+export interface DraftAccess {
+	/** The draft standing for the folder in front of somebody. `undefined` is
+	 *  none, and is not a failure. */
+	standing(): Promise<StandingDraft | undefined>;
+	/** The draft to work in: the one standing where there is one, and otherwise
+	 *  a new one taken from the version the folder was last kept at — so what an
+	 *  agent reads is what was kept, and not what is uncommitted beside it. */
+	start(): Promise<StandingDraft>;
+	/** The draft gone, both halves of it, with nothing of it left behind. The
+	 *  folder in front of somebody is untouched either way, and a draft that is
+	 *  not there is not a failure. */
+	discard(draft: StandingDraft): Promise<void>;
+	/** The draft's copy of the project, rooted where the agent works — what a
+	 *  store serving that chat's acts is handed, exactly as
+	 *  {@link AppRuntime.project} answers for the folder in front of somebody. */
+	files(draft: StandingDraft): Files;
+	/** The states the draft has been in, rooted at its notes.
+	 *  `StandingDraft.from` is the version it forked from and
+	 *  {@link History.currentCommit} the draft as it stands, so
+	 *  {@link History.readAt} on the two is what a review reads. */
+	history(draft: StandingDraft): History;
+}
+
 /** What {@link ChatAccess.open} is asked for. */
 export interface ChatAsked {
 	/** Which agent is to do it. **Absent is whichever one this device has**,
@@ -150,14 +196,13 @@ export interface ChatAsked {
  * refused it for, as trouble, so the agent can call again — dropping it instead
  * would leave the agent waiting on an answer that never comes.
  *
- * **The person's answer gates every act that writes, and the gate is
- * Sloppy's.** Where `chatToolWrites` is true of the act, the shell tells the
- * page `asking` and calls `serve` only once {@link ChatAccess.settle} has
- * allowed it; a call turned down never reaches `serve` at all, and the agent is
- * told the person turned it down. A reading act reaches `serve` straight away
- * and is never asked about. Whatever is on the other end, the gate holds: an
- * agent's own permission prompt is not one Sloppy can see, ask in its own
- * words, or rely on.
+ * **Every act LANDS, and nothing is asked.** A session works on a draft — a
+ * copy of the folder, kept apart from the one in front of somebody until they
+ * have read it — so a write costs them no answer while it runs and costs the
+ * run no wait. {@link ChatAccess.drafts} is where a draft comes from and
+ * {@link DraftAccess} is what a page does with one. {@link ChatAccess.settle}
+ * and the `asking` and `settled` events are what the question used to be and
+ * are on their way out; nothing new calls one.
  *
  * **A page serving a writing act writes as the project's CONTAINER, and never
  * as the person.** `containerDataAt` in `@sloppy/local` is where that store's
@@ -166,7 +211,10 @@ export interface ChatAsked {
  * somebody else has written in the note — and nothing writes a note file by
  * hand. A store rooted anywhere else writes as whoever is signed in here, for
  * whom `writesAlone` is true on every note they have written, so every one of
- * them is written over rather than offered.
+ * them is written over rather than offered. Where the session works in a draft,
+ * that store is rooted at {@link DraftAccess.files} — the draft's copy of the
+ * project — and the container's own data is carried into the copy, so the
+ * writing a draft carries is by the same writer the folder's is.
  */
 export interface ChatAccess {
 	/** The agents this device can reach. An EMPTY list is a device with none,
@@ -184,7 +232,9 @@ export interface ChatAccess {
 	 * It is asked once per call, and what it resolves with is what the agent
 	 * reads; it REJECTS where the act could not be done, and the shell tells
 	 * the agent so in the words of the rejection rather than leaving it
-	 * waiting.
+	 * waiting. **A shell with {@link ChatAccess.drafts} runs the session in the
+	 * draft**, so the folder a page serves a call against is the draft's and not
+	 * the one in front of somebody.
 	 */
 	open(
 		asked: ChatAsked,
@@ -195,9 +245,9 @@ export interface ChatAccess {
 	 *  agent has been told, NOT when the turn ends — `ended` says that. Saying
 	 *  nothing REJECTS. */
 	say(said: string): Promise<void>;
-	/** The person's answer to a call that would write. Answering one that is not
-	 *  waiting is not a failure; a `settled` event follows either way, so a page
-	 *  closes the question on being told rather than on its own act. */
+	/** @deprecated The question a write used to wait on. A session works on a
+	 *  draft now, so nothing asks and nothing calls this; it is declared until
+	 *  every shell and page has let go of it. */
 	settle(call: ChatCallId, allowed: boolean): Promise<void>;
 	/** End the turn underway, resolving once it has ended. The session stands,
 	 *  and the next {@link ChatAccess.say} goes on with it. Nothing underway is
@@ -206,8 +256,13 @@ export interface ChatAccess {
 	/** End the session, resolving once it has ended. What the agent was doing
 	 *  goes with it and a page is told `over`; there is nothing to go on with,
 	 *  so the next thing a page asks for is {@link ChatAccess.open}. No session
-	 *  is not a failure. */
+	 *  is not a failure. The draft is untouched: it stands until somebody merges
+	 *  it or discards it. */
 	close(): Promise<void>;
+	/** The draft a session works in — {@link DraftAccess} declares every act.
+	 *  Absent → this shell keeps no draft, so nothing about one is put in front
+	 *  of anybody. */
+	drafts?: DraftAccess;
 }
 
 export interface AppRuntime {

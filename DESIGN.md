@@ -853,6 +853,61 @@ worked on and is offered neither, because an act that could only be refused is n
 offer. Nothing here is decorated: a history is read to answer a question, and the answer is
 words and lines.
 
+## Reading a draft
+
+A chat with an agent works in a **draft** — a copy of the notes it writes into, standing
+apart from the folder in front of you until you have read it. Nothing it does appears on
+your canvas while it runs, nothing interrupts you to ask, and what you are eventually asked
+is one question about finished work: **take it in, or throw it away.**
+
+**The whole surface is a difference, so it is drawn as one.** § "A difference between two
+states" already says how two states of a graph are read — the notes named are left as they
+are and everything else dims, arrived and gone and changed are three bands in ink, a move is
+two lines — and a draft is exactly that comparison with the draft on one side. A second
+visual language for the same question would be a second thing to learn for no second
+meaning.
+
+**Beside the canvas, a list, because what changed about a note is written and not drawn.**
+One row per note, in this order and no other: **what you would have to settle first**, then
+what is new, then what was changed, then what moved or was renumbered or retitled, then what
+went to the bin. Each row is the note's title, the number where it has one, and one line
+saying what happened — the same line the chat said as it happened, read again. Nothing is
+counted twice: a note written into and moved is one row saying both.
+
+**A row opens the note as the draft has it**, in the reading panel, where a note is always
+read. It is not an editor: this is somebody else's writing until they take it in, and an
+edit made here would be an edit to a copy that is about to stop existing. The note your
+folder holds is one tap away beside it, because the question a reader actually has is what
+is different.
+
+**A conflict is the only thing that stops a merge, and it is the choice you already know.**
+Where your own copy of a note changed while the draft was running, you are handed the same
+mine-or-theirs it has always been — whole note, or section by section, or which note keeps a
+number — from § "A difference between two states"'s vocabulary and the import's. Every one
+settled, and the merge is one act.
+
+**Phone first, and the shape falls out of that.** On a phone the review IS the panel: a full
+sheet of rows, the canvas behind it, a row opening the note over the top, and one bar pinned
+to the bottom holding both acts and clearing the system nav (§ "The four inset vars"). Given
+room, the list sits beside the canvas as the reading panel does, and nothing moves to the
+desktop that was not on the phone.
+
+**Two acts, both plain, and one of them is not red.** Merge and discard sit together; discard
+is the quiet one and says what it costs in words rather than in colour, because a draft is
+work you asked for and throwing it away is an ordinary choice rather than a warning. There is
+no third act: a draft is taken whole or not at all, and a person who wants half of it says so
+to the agent and reads it again.
+
+**A standing draft is said once, quietly, where the chat is.** Not a badge, not a count on
+the canvas, not a nag: a line at the head of the chat saying a draft is standing, with going
+on with it, reading it, or throwing it away. It is still there tomorrow, and the line reads
+the same then.
+
+**The words are draft, review, merge, discard, version and kept.** Never branch, never a
+commit, never a checkout, never a conflict marker — AI.md § "User-Facing Copy Names the
+Outcome". The history surfaces say "branch" because a branch is what a person is looking at
+there; a draft is not one of those surfaces.
+
 ## An anchor into code
 
 A note that explains a piece of code is read next to it, and the whole point of writing one

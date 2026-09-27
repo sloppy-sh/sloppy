@@ -93,6 +93,7 @@ import {
   type UploadTicket,
   type Viewer,
   type UpdatePublicationRequest,
+  type VaultPreview,
   authorsOf,
   graphAsked,
   namesGraph,
@@ -908,6 +909,55 @@ export class LocalApi implements SloppyApi {
     });
   }
 
+  /**
+   * What another copy of a graph this device keeps would bring, answered before
+   * anything is written. It is {@link LocalApi.previewArchive}'s merge half
+   * without the file: a copy that arrives as a vault says nothing about itself.
+   */
+  async previewVault(arriving: ArrivingVault): Promise<VaultPreview> {
+    const into = await this.copyOf(arriving);
+    const merge = await this.merging(into, arriving.vault, arriving.from);
+    return {
+      graph: into.ref,
+      notes: notesIn(arriving.vault, new Map()).size,
+      pictures: [...arriving.vault.keys()].filter(
+        (path) => uploadAt(path) !== undefined,
+      ).length,
+      binning: merge.binning,
+      conflicts: merge.conflicts,
+    };
+  }
+
+  /**
+   * That copy settled into the folder, note by note and section by section —
+   * the same merge an archive of the graph goes through, which is what keeps a
+   * draft and an archive from settling by two different rules.
+   */
+  async importVault(
+    arriving: ArrivingVault,
+    settle?: ImportSettlement,
+  ): Promise<GraphView> {
+    const chosen = checked(() =>
+      ImportSettlementSchema.parse(settle ?? {}),
+    ).resolutions;
+    const into = await this.copyOf(arriving);
+    return this.write(() =>
+      this.settleInto(into, arriving.vault, chosen, arriving.from),
+    );
+  }
+
+  /** The graph here the copy is of. A vault that is a copy of none is refused
+   *  rather than opened as a graph of its own: an arriving vault is a second
+   *  copy of something, and an archive is how a graph nobody keeps arrives. */
+  private async copyOf(arriving: ArrivingVault): Promise<LocalGraph> {
+    const into = await this.graphAt(arriving.graph);
+    const said = readGraph(arriving.vault);
+    if (said === undefined || `${said.owner}/${said.graph}` !== into.ref) {
+      throw refuse("That is not a copy of the graph in front of you.");
+    }
+    return into;
+  }
+
   /** A graph this device does not keep, put in a folder of its own. */
   private async arriveOnItsOwn(vault: Vault): Promise<GraphView> {
     const root = await this.files.pickFolder();
@@ -924,17 +974,22 @@ export class LocalApi implements SloppyApi {
   }
 
   /**
-   * The two copies of one graph settled into the folder: what only the file
+   * The two copies of one graph settled into the folder: what only the copy
    * holds arrives, what only the folder holds stays, and what they say
    * differently about one note is settled as the person chose. Nothing is
    * written over, so no number either copy has spent comes free.
+   *
+   * `from` is the state the copy was taken from, where the caller has one, and
+   * is what turns "the copy does not hold this note" into "the copy put it in
+   * the bin" — {@link Merging}.
    */
   private async settleInto(
     into: LocalGraph,
     vault: Vault,
     settle: readonly ImportResolution[],
+    from?: Vault,
   ): Promise<GraphView> {
-    const merge = await this.merging(into, vault);
+    const merge = await this.merging(into, vault, from);
     const chosen = new Map(settle.map((one) => [settling(one), one]));
     const unsettled = merge.conflicts.filter(
       (one) => !chosen.has(settling(one)),
@@ -951,6 +1006,7 @@ export class LocalApi implements SloppyApi {
       ...offers,
     ]);
     const arriving = notesIn(vault, drawings);
+    const over = new Set(merge.over);
     const contested = new Set(
       merge.conflicts.flatMap((one) =>
         one.address === undefined ? [] : [one.address],
@@ -961,7 +1017,7 @@ export class LocalApi implements SloppyApi {
         chosen.get(settling({ kind: "note", ref })) ??
         chosen.get(settling({ kind: "section", ref }));
       const mine = into.find(ref);
-      if (mine && !how) continue;
+      if (mine && !how && !over.has(ref)) continue;
       const gone = into.findDeleted(ref);
       if (gone) await into.restore(gone);
       const note =
@@ -973,8 +1029,28 @@ export class LocalApi implements SloppyApi {
     for (const conflict of merge.conflicts) {
       await this.settleAddress(into, conflict, chosen.get(settling(conflict)));
     }
+    await this.binWhatTheyBinned(into, merge.binning, chosen);
     await this.carryArrivingOffers(into, offers);
     return this.reopened(into);
+  }
+
+  /** The notes the copy put in the bin, put there here — the ones the person
+   *  settled the other way left standing. They carry nothing beneath them with
+   *  them: the copy binned the whole of what it binned, so every note under one
+   *  is already on this list. */
+  private async binWhatTheyBinned(
+    into: LocalGraph,
+    binning: readonly OwnedRef[],
+    chosen: ReadonlyMap<string, ImportResolution>,
+  ): Promise<void> {
+    const going = binning.flatMap((ref) => {
+      if (chosen.get(settling({ kind: "note", ref }))?.keep === "mine") {
+        return [];
+      }
+      const held = into.held(ref);
+      return held && held.deleted_at === undefined ? [held] : [];
+    });
+    if (going.length > 0) await into.bin(going, nowIso());
   }
 
   /** The number goes to the note the person chose, and the note that loses it
@@ -1024,13 +1100,21 @@ export class LocalApi implements SloppyApi {
   }
 
   /**
-   * What the folder's copy of a graph and the file's copy of it disagree about,
+   * What the folder's copy of a graph and the other copy of it disagree about,
    * note by note and section by section. `vaultDifference` in `@sloppy/vault`
    * is what enumerates it; a note whose tags, links, look or whose writing
    * alone differ is not in that enumeration and is a disagreement all the
    * same.
+   *
+   * `from` is the state the other copy was taken from, and is what turns "the
+   * two read this note differently" into "which side wrote into it" —
+   * {@link Merging}.
    */
-  private async merging(into: LocalGraph, vault: Vault): Promise<Merging> {
+  private async merging(
+    into: LocalGraph,
+    vault: Vault,
+    from?: Vault,
+  ): Promise<Merging> {
     const here = await this.vaultOf(into);
     const writer = await this.writer;
     const difference = vaultDifference(here, vault);
@@ -1039,18 +1123,28 @@ export class LocalApi implements SloppyApi {
     const sections = new Map(
       difference.notes.changed.map((one) => [one.ref, one.sections.changed]),
     );
-    const differing = new Set<OwnedRef>([
-      ...difference.notes.moved.map((one) => one.ref),
-      ...difference.notes.retitled.map((one) => one.ref),
-      ...difference.notes.renumbered.map((one) => one.ref),
-      ...difference.notes.changed.map((one) => one.ref),
-    ]);
-    for (const [ref, was] of mine) {
-      const now = theirs.get(ref);
-      if (now && !alike(was, now)) differing.add(ref);
+    let base: Map<OwnedRef, VaultNote> | undefined;
+    let writtenHere: Set<OwnedRef> | undefined;
+    let writtenThere: Set<OwnedRef> | undefined;
+    if (from !== undefined) {
+      base = notesIn(from, new Map());
+      writtenHere = differingNotes(base, mine, vaultDifference(from, here));
+      writtenThere = differingNotes(base, theirs, vaultDifference(from, vault));
     }
+    // Two copies alone cannot say which side wrote, so every note they read
+    // differently is a disagreement. Where they forked from a state in common,
+    // only a note BOTH wrote into is one, and a note only the other copy wrote
+    // into is the later writing and lands.
+    const bothWrote = (ref: OwnedRef): boolean =>
+      writtenHere === undefined ||
+      writtenThere === undefined ||
+      (writtenHere.has(ref) && writtenThere.has(ref));
+    const apart = [...differingNotes(mine, theirs, difference)].sort();
+    const over = apart.filter(
+      (ref) => !bothWrote(ref) && (writtenThere?.has(ref) ?? false),
+    );
     const conflicts: ImportConflict[] = [];
-    for (const ref of [...differing].sort()) {
+    for (const ref of apart.filter(bothWrote)) {
       const changed = sections.get(ref) ?? [];
       const was = mine.get(ref);
       const now = theirs.get(ref);
@@ -1066,6 +1160,21 @@ export class LocalApi implements SloppyApi {
         theirs: asWords(now, theirs, writer, was),
       });
     }
+    const binning: OwnedRef[] = [];
+    if (base !== undefined && writtenHere !== undefined) {
+      for (const ref of [...base.keys()].sort()) {
+        if (theirs.has(ref) || !mine.has(ref)) continue;
+        binning.push(ref);
+        if (!writtenHere.has(ref)) continue;
+        conflicts.push({
+          kind: "note",
+          ref,
+          sections: [],
+          mine: asWords(mine.get(ref), mine, writer),
+          theirs: IN_THE_BIN,
+        });
+      }
+    }
     const at = numbered(theirs);
     for (const [address, ref] of numbered(mine)) {
       const other = at.get(address);
@@ -1080,7 +1189,7 @@ export class LocalApi implements SloppyApi {
         theirs: asWords(theirs.get(other), theirs, writer),
       });
     }
-    return { theirs, conflicts };
+    return { theirs, conflicts, binning, over };
   }
 
   /**
@@ -1945,11 +2054,47 @@ interface Opened {
   into?: LocalGraph;
 }
 
-/** The file's copy of one graph, and what it and the folder's copy say
- *  differently. */
+/**
+ * Another copy of one graph, and what it and the folder's copy say differently.
+ *
+ * `binning` is the notes the other copy PUT IN THE BIN, which can only be read
+ * where the caller says what state that copy was taken from: without one, a
+ * note the copy does not hold is one it never had. A note on this list that is
+ * also in `conflicts` is one the folder has been written in since, and goes in
+ * the bin only where the person settles it that way.
+ */
 interface Merging {
   theirs: Map<OwnedRef, VaultNote>;
   conflicts: ImportConflict[];
+  binning: OwnedRef[];
+  /** The notes the other copy wrote into and the folder did not, so the copy's
+   *  is the later writing and lands over what is here. Empty where the caller
+   *  says no state the copy was taken from: without one, neither side is later
+   *  and what the folder holds always stays. */
+  over: OwnedRef[];
+}
+
+/** What a conflict reads as on the side that put the note in the bin. */
+const IN_THE_BIN = "In the bin.";
+
+/**
+ * Another copy of a graph this device already keeps, arriving as the folder
+ * itself rather than as a file — a draft of the notes, or any other second copy
+ * something on this device holds.
+ */
+export interface ArrivingVault {
+  vault: Vault;
+  /**
+   * The state the copy was taken from. **Absent is a copy with no state in
+   * common** — an archive — where a note the copy does not hold is one it never
+   * had and nothing is put in the bin. Present is a copy taken from a state of
+   * this graph, where a note that state held and the copy does not is one the
+   * copy binned.
+   */
+  from?: Vault;
+  /** Which graph on this device it is a copy of. Absent is the one in the
+   *  folder that is open. */
+  graph?: OwnedRef;
 }
 
 /** A conflict and the choice made about it stand for the same note, which is
@@ -2062,6 +2207,30 @@ function stored(note: VaultNote, held: StoredNote | undefined): StoredNote {
 
 /** Whether the two copies say the same about a note in the ways an enumerated
  *  difference does not name. */
+/**
+ * Every note two states of a graph say something different about: what
+ * `vaultDifference` enumerates, and what it does not — a note whose tags,
+ * links, look or whose writing alone differ is a disagreement all the same.
+ * `difference` is that enumeration between the two, already read.
+ */
+function differingNotes(
+  was: ReadonlyMap<OwnedRef, VaultNote>,
+  now: ReadonlyMap<OwnedRef, VaultNote>,
+  difference: VaultDifference,
+): Set<OwnedRef> {
+  const held = new Set<OwnedRef>([
+    ...difference.notes.moved.map((one) => one.ref),
+    ...difference.notes.retitled.map((one) => one.ref),
+    ...difference.notes.renumbered.map((one) => one.ref),
+    ...difference.notes.changed.map((one) => one.ref),
+  ]);
+  for (const [ref, before] of was) {
+    const after = now.get(ref);
+    if (after && !alike(before, after)) held.add(ref);
+  }
+  return held;
+}
+
 function alike(a: VaultNote, b: VaultNote): boolean {
   return (
     JSON.stringify([
@@ -2621,6 +2790,36 @@ export async function graphAsItIs(
     throw absent("The graph in front of you is not one this device keeps.");
   }
   return serving.vaultHere(graph);
+}
+
+/**
+ * What another copy of that graph would bring, and that copy settled into the
+ * folder, for the same page reaching the folder the same way — the two acts a
+ * review and a merge are made of. {@link LocalApi.previewVault} and
+ * {@link LocalApi.importVault} say what each answers.
+ */
+export async function previewArrivingVault(
+  api: SloppyApi,
+  arriving: ArrivingVault,
+): Promise<VaultPreview> {
+  return servingLocally(api).previewVault(arriving);
+}
+
+export async function settleArrivingVault(
+  api: SloppyApi,
+  arriving: ArrivingVault,
+  settle?: ImportSettlement,
+): Promise<GraphView> {
+  return servingLocally(api).importVault(arriving, settle);
+}
+
+/** Whatever is serving the graph, where it is a folder on this device. */
+function servingLocally(api: SloppyApi): LocalApi {
+  const serving = api as Partial<LocalApi>;
+  if (typeof serving.previewVault !== "function") {
+    throw absent("The graph in front of you is not one this device keeps.");
+  }
+  return serving as LocalApi;
 }
 
 /** One section of a note as two states have it, each as the editor's own

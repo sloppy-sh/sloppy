@@ -420,6 +420,33 @@ export const ArchivePreviewSchema = z.object({
 export type ArchivePreview = z.infer<typeof ArchivePreviewSchema>;
 
 /**
+ * What another copy of a graph this device already keeps would bring, answered
+ * before anything is written — docs/ARCHITECTURE.md § "A graph on disk".
+ *
+ * An archive is one way such a copy arrives and {@link ArchivePreviewSchema} is
+ * what an archive answers, carrying everything the file says about itself. A
+ * copy that arrives as a vault says nothing about itself, so this is the
+ * merge's half alone: which graph it is a copy of, how much of it there is, and
+ * what the two copies disagree about.
+ */
+export const VaultPreviewSchema = z.object({
+  /** The graph on this device the copy is of. A vault that is a copy of no
+   *  graph here is refused rather than previewed: nothing in it could be
+   *  settled into anything. */
+  graph: OwnedRefSchema,
+  notes: z.int().nonnegative(),
+  pictures: z.int().nonnegative(),
+  /** The notes the copy would put in the bin: ones the state it was taken from
+   *  held and it does not. Empty for a copy taken from no state of this graph,
+   *  where a note it does not hold is one it never had. */
+  binning: z.array(OwnedRefSchema).default([]),
+  /** What the two copies disagree about, for a person to settle before
+   *  anything is written. Empty is nothing to settle. */
+  conflicts: z.array(ImportConflictSchema).default([]),
+});
+export type VaultPreview = z.infer<typeof VaultPreviewSchema>;
+
+/**
  * Who the API believes is calling.
  *
  * `did` names them the way a note's owner and a role's member are named: it is

@@ -1,7 +1,12 @@
 import type { BlockDocument, BlockView, NodeView } from "@sloppy/types";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { vaultDifference, type VaultDifference } from "./difference.js";
+import {
+  countsIn,
+  noDifference,
+  vaultDifference,
+  type VaultDifference,
+} from "./difference.js";
 import { documents } from "./documents.test-support.js";
 import {
   encodeText,
@@ -318,3 +323,56 @@ function inverted(held: VaultDifference): VaultDifference {
     media: { added: held.media.removed, removed: held.media.added },
   };
 }
+
+describe("how much a difference holds", () => {
+  it("counts nothing where the two states say the same thing", () => {
+    const vault = vaultOf([one], UPLOADS);
+    const held = vaultDifference(vault, vault);
+    expect(noDifference(held)).toBe(true);
+    expect(countsIn(held)).toEqual({
+      notes: {
+        added: 0,
+        removed: 0,
+        moved: 0,
+        retitled: 0,
+        renumbered: 0,
+        changed: 0,
+      },
+      media: { added: 0, removed: 0 },
+    });
+  });
+
+  it("mirrors the lists, counting one note in each it is in", () => {
+    const moved: Written = {
+      ulid: NOTES[1],
+      parent: NOTES[0],
+      address: "1a",
+      title: "Renamed and moved and written in",
+      sections: [{ ulid: SECTIONS[1], content: paragraph("later") }],
+    };
+    const before = vaultOf([
+      one,
+      {
+        ...moved,
+        parent: undefined,
+        address: "2",
+        title: "As it was",
+        sections: [],
+      },
+    ]);
+    const held = vaultDifference(before, vaultOf([one, moved], UPLOADS));
+
+    expect(noDifference(held)).toBe(false);
+    expect(countsIn(held)).toEqual({
+      notes: {
+        added: 0,
+        removed: 0,
+        moved: 1,
+        retitled: 1,
+        renumbered: 1,
+        changed: 1,
+      },
+      media: { added: UPLOADS.length, removed: 0 },
+    });
+  });
+});

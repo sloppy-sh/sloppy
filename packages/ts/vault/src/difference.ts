@@ -229,3 +229,45 @@ function same(a: unknown, b: unknown): boolean {
   if (keys.length !== Object.keys(other).length) return false;
   return keys.every((key) => key in other && same(held[key], other[key]));
 }
+
+/**
+ * How much each of {@link VaultDifference}'s lists holds, for a surface saying
+ * how much is there before somebody reads it. It mirrors the difference list
+ * for list, so a note counted in two of them is one note that two things
+ * happened to.
+ */
+export interface DifferenceCounts {
+  notes: {
+    added: number;
+    removed: number;
+    moved: number;
+    retitled: number;
+    renumbered: number;
+    changed: number;
+  };
+  media: { added: number; removed: number };
+}
+
+export function countsIn(difference: VaultDifference): DifferenceCounts {
+  const { notes, media } = difference;
+  return {
+    notes: {
+      added: notes.added.length,
+      removed: notes.removed.length,
+      moved: notes.moved.length,
+      retitled: notes.retitled.length,
+      renumbered: notes.renumbered.length,
+      changed: notes.changed.length,
+    },
+    media: { added: media.added.length, removed: media.removed.length },
+  };
+}
+
+/** Whether the two states say the same thing about every note and hold the
+ *  same pictures. */
+export function noDifference(difference: VaultDifference): boolean {
+  const { notes, media } = countsIn(difference);
+  return [...Object.values(notes), ...Object.values(media)].every(
+    (held) => held === 0,
+  );
+}
