@@ -37,8 +37,10 @@ the shape of the graph survives the question. A node's interior is a stack of
 **blocks**, each one a section its author added deliberately and wrote as many
 paragraphs, lists, pictures and Apple-Pencil drawings into as they liked.
 
-**Platform stance: mobile and tablet are the primary surface.** Desktop is the mobile
-UI given more room, never the mobile UI minus features.
+**Platform stance: mobile and tablet are the primary surface.** Desktop is the same
+parts given room — stood beside the graph rather than over it, from the width the docks
+already stand at — never a third layout, and never a part the phone lacks or one it has
+to do without. DESIGN.md § Layout carries the two arrangements.
 
 **Beside a codebase, the graph holds why the project is the way it is.** A developer and
 whatever they set to work beside them keep one account of that, placed by what each
@@ -401,7 +403,8 @@ UI change. In short:
   colour), `data-app-font` (the face, for legibility, never colour). A style that names a
   colour is a bug; see DESIGN.md.
 - **Mobile and tablet first.** Every surface is designed at phone width and then given
-  room. A desktop-only affordance is a bug report against the phone layout.
+  room; at the dock width the same parts stand beside the graph instead of over it. An
+  affordance only one of those arrangements has is a bug report against the phone layout.
 - **`ResponsiveModal` is the only modal** — a drag-to-dismiss bottom sheet on phone, a
   centered dialog at ≥640px, from one bound `open`, with the branch latched for the
   component's life. Don't add a second modal component; extend this one.

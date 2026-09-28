@@ -121,8 +121,8 @@ precise rather than clever. A good notebook does not have opinions about your ha
    What publishing exposes, and what it cannot take back once a peer has pulled it, is
    said plainly at the moment of the decision and nowhere else.
 6. **Mobile and tablet first.** Every surface is designed at phone width and then given
-   room. Desktop is the same product with more space, never the same product plus
-   features the phone does not get.
+   room — on a desk the same parts stand beside the graph rather than over it. Never the
+   same product plus features the phone does not get, and never minus the ones it has.
 7. **Legible before beautiful.** Ten thousand nodes that stay readable beat a hundred that
    look impressive. Level of detail and collapse exist so the canvas never draws more than
    a person can read; selecting tags answers a question inside what is drawn rather than
