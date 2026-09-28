@@ -33,7 +33,6 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
-	import Footprints from '@lucide/svelte/icons/footprints';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Hash from '@lucide/svelte/icons/hash';
 	import HistoryIcon from '@lucide/svelte/icons/history';
@@ -132,7 +131,6 @@
 	import EdgeSheet from '../components/edge-sheet.svelte';
 	import OpenHere from '../components/open-here.svelte';
 	import PersonSurface from '../components/person-surface.svelte';
-	import ReviewSheet from '../components/review-sheet.svelte';
 	import { api } from '../api.js';
 	import { looksOnCanvas } from '../edge-look.js';
 	import { graphHere } from '../graph-here.svelte.js';
@@ -156,7 +154,6 @@
 	import { people } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
-	import { review } from '../stores/review.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { refusal, serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
@@ -417,9 +414,7 @@
 		gitSettings.clear();
 		find.clear();
 		deleted.clear();
-		review.clear();
 		codeDrift.clear();
-		reviewing = false;
 		chat.clear();
 		chatting = false;
 		readProjectFiles();
@@ -429,7 +424,6 @@
 	/** The project's own files, `undefined` where this graph is nobody's project
 	 *  and `null` before the shell has answered. */
 	let projectFiles = $state.raw<Awaited<ReturnType<typeof runtime.project>> | null>(null);
-	let reviewing = $state(false);
 	let chatting = $state(false);
 
 	/** An answer about the folder that was is not about the folder that is. */
@@ -460,15 +454,14 @@
 	/** A question is asked of one graph; another one in front of somebody has not
 	 *  been asked it. */
 	$effect(() => {
-		review.forget(graphs.current);
 		chat.forget(graphs.current);
 	});
 
 	/**
 	 * What the code has moved under, which the marks carry whether or not
-	 * anybody has asked — DESIGN.md § "What the code left behind". Read again
-	 * whenever the folder is, so an editor saving a file beside the app shows up
-	 * the next time the notes are.
+	 * anybody has asked — DESIGN.md § "An anchor into code". Read again whenever
+	 * the folder is, so an editor saving a file beside the app shows up the next
+	 * time the notes are.
 	 *
 	 * A pulled graph and a version that is not the one on disk are left out: the
 	 * files beside the app are not the ones either of them was read against.
@@ -485,17 +478,6 @@
 	function startChat(): void {
 		chatting = true;
 		void chat.opened(graphs.current);
-	}
-
-	/** What the code has left behind, asked for the graph on screen — DESIGN.md
-	 *  § "What the code left behind". A field that could not be read whole has no
-	 *  answer to this: the notes missing from it are the ones that would say the
-	 *  code was written about. */
-	function askWhatIsLeft(): void {
-		const project = projectFiles;
-		if (!project || shortField) return;
-		reviewing = true;
-		void graphs.readFolderAgain().then(() => review.ask(graphs.current, visible, project));
 	}
 
 	/** The graphs on the canvas, in the order the reader put them there. */
@@ -2106,7 +2088,6 @@
 					{collapsed}
 					{edgeLooks}
 					{selection}
-					lit={foreign || notNow ? undefined : review.lit}
 					codeMoved={codeDrift.moved}
 					fields={foreign || asWas ? undefined : graphs.fields}
 					viewer={session.viewer?.did}
@@ -2463,12 +2444,6 @@
 									<ListChecks class="size-4 text-muted-foreground" />
 									Choose notes
 								</DropdownMenu.Item>
-								{#if projectFiles && !shortField}
-									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={askWhatIsLeft}>
-										<Footprints class="size-4 text-muted-foreground" />
-										What the code left behind
-									</DropdownMenu.Item>
-								{/if}
 								{#if projectFiles && chat.reaches}
 									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startChat}>
 										<MessagesSquare class="size-4 text-muted-foreground" />
@@ -2854,12 +2829,6 @@
 {/if}
 
 <PersonSurface bind:did={meeting} />
-
-<ReviewSheet
-	bind:open={reviewing}
-	onOpen={(ref, at) => show(ref, null, at)}
-	onWrote={(ref) => show(ref, { from: null, shape: null })}
-/>
 
 {#if projectFiles && chat.reaches}
 	<ChatPanel

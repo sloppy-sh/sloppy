@@ -304,8 +304,8 @@ on is somebody's writing nothing can give back.
   Write what you found as candidates, under a "Candidates" heading in the note's own
   writing, and leave the compass to a person.
 - **`checked`, and `read_against`.** Both say a person has read the note against the
-  code. Writing either would silence the one question the app asks them, and neither is
-  true of a file you read for them.
+  code. Writing either would silence the app's line about code that has moved under them,
+  and neither is true of a file you read for them.
 - **A tag about the note rather than about the code** — that a tool wrote it, when, or in
   what pass. What wrote a note leaves no trace of itself in it; the note is read for what
   it says, and a tag naming the system it is about is wanted for exactly that reason.
@@ -321,7 +321,6 @@ on is somebody's writing nothing can give back.
     sloppy init [dir]      start the notes in a project, and write what the tree can tell
     sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
     sloppy draft --tag a,b [paths…]  the same, tagging each note it writes
-    sloppy review          what the code has left behind
     sloppy check           read every note and say what doesn't hold
 
 Each takes `--json` and answers in JSON instead of lines.
@@ -333,4 +332,4 @@ to the file and none inside it, so the names in it are yours to write.
 `--tag` puts those tags on every note that run writes, beside the ones each already
 carries; it takes none off. Name the system the files are part of, so one run tags one
 scope.
-<!-- sloppy:agent 8101ee3f -->
+<!-- sloppy:agent 7b6596e6 -->

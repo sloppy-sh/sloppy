@@ -1,6 +1,5 @@
 // What a machine writer's tags do on a note it writes alone, and on one
-// somebody else has written in — docs/ARCHITECTURE.md § "Tooling and the
-// review".
+// somebody else has written in — docs/ARCHITECTURE.md § "Tooling".
 
 import type { BlockDocument, DidSyr, NodeView } from "@sloppy/types";
 import { describe, expect, it, vi } from "vitest";

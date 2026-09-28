@@ -304,66 +304,8 @@ describe("with tags selected", () => {
   });
 });
 
-// DESIGN.md § "What the code left behind": a signal is asked of the canvas the
-// way a tag is, and the notes it names are the ones left in ink.
-describe("a question that names notes", () => {
-  const named = new Set(drawn.slice(0, 5).map((entry) => entry.node.ref));
-  const model = buildModel(drawn, { selection: [], lit: named, palette });
-
-  it("holds the named notes at full strength and dims the rest", () => {
-    for (const ref of model.order) {
-      const node = model.graph.getNodeAttributes(ref);
-      expect(node.alpha).toBe(
-        named.has(ref) ? 1 : palette.unselectedAlpha(node.fill),
-      );
-    }
-    expect(model.order.length).toBeGreaterThan(named.size);
-  });
-
-  it("drops nothing and moves nothing, as a tag question does not", () => {
-    const plain = buildModel(drawn, { selection: [], palette });
-    expect(model.order).toEqual(plain.order);
-    for (const ref of model.order) {
-      const node = model.graph.getNodeAttributes(ref);
-      const before = plain.graph.getNodeAttributes(ref);
-      expect(node.fill).toBe(before.fill);
-      expect([node.x, node.y]).toEqual([before.x, before.y]);
-    }
-  });
-
-  // Two questions at once: a note answers both or it recedes.
-  it("dims a note a selected tag lit where the signal does not name it", () => {
-    const tagged = buildModel(drawn, { selection, palette });
-    const lit = model.order.filter(
-      (ref) => tagged.graph.getNodeAttributes(ref).tag !== undefined,
-    );
-    expect(lit.length).toBeGreaterThan(0);
-    const both = buildModel(drawn, { selection, lit: named, palette });
-    for (const ref of lit) {
-      const node = both.graph.getNodeAttributes(ref);
-      expect(node.alpha).toBe(
-        named.has(ref) ? 1 : palette.unselectedAlpha(node.fill),
-      );
-    }
-  });
-
-  // A question nothing answered still asks it: the empty set is the answer
-  // "none of them", and absent is nobody asking.
-  it("dims the whole field for a question no note answers", () => {
-    const none = buildModel(drawn, {
-      selection: [],
-      lit: new Set<OwnedRef>(),
-      palette,
-    });
-    for (const ref of none.order) {
-      const node = none.graph.getNodeAttributes(ref);
-      expect(node.alpha).toBe(palette.unselectedAlpha(node.fill));
-    }
-  });
-});
-
-// DESIGN.md § "What the code left behind": the notes the code has moved under,
-// which the mark carries whether or not anybody has asked.
+// DESIGN.md § "An anchor into code": the notes the code has moved under, which
+// the mark carries whether or not anybody has asked.
 describe("the notes the code has moved under", () => {
   const moved = new Set(drawn.slice(0, 3).map((entry) => entry.node.ref));
 

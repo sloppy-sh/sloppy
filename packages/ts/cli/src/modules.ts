@@ -1,5 +1,5 @@
 // What a source file reaches for and what it hands out, read by the line —
-// docs/ARCHITECTURE.md § "Tooling and the review".
+// docs/ARCHITECTURE.md § "Tooling".
 //
 // There is no language server behind this and there is not meant to be: a name
 // it misses is a name a person adds, and a wrong one is a link that draws as

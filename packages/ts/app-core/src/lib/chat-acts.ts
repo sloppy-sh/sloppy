@@ -257,7 +257,7 @@ async function writeNote(api: LocalApi, asked: WriteNoteArguments): Promise<Chat
  * A note this project has none of yet. Where the agent named nothing to write
  * it under, it hangs under the note about the nearest folder above it, and
  * otherwise under whatever the notes about this code already hang under —
- * docs/ARCHITECTURE.md § "Tooling and the review" is the shape it joins.
+ * docs/ARCHITECTURE.md § "Tooling" is the shape it joins.
  */
 async function startNote(
 	api: LocalApi,

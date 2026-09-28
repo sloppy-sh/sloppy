@@ -1,6 +1,6 @@
-// What `sloppy <command>` does — docs/ARCHITECTURE.md § "Tooling and the
-// review". One dispatcher, given where it is and somewhere to write, so the
-// same run is exercised by a test and by the bin beside this file.
+// What `sloppy <command>` does — docs/ARCHITECTURE.md § "Tooling". One
+// dispatcher, given where it is and somewhere to write, so the same run is
+// exercised by a test and by the bin beside this file.
 
 import { basename, dirname, relative, resolve } from "node:path";
 import { SloppyApiError } from "@sloppy/client";
@@ -16,11 +16,10 @@ import { check } from "./check.js";
 import { containerAt, heldAt } from "./folder.js";
 import { draft } from "./draft.js";
 import { init, InitRefused } from "./init.js";
-import { leftBehind } from "./left-behind.js";
 import { NodeFiles } from "./node-files.js";
 import type { WriteDone } from "./writer.js";
 
-export const COMMANDS = ["init", "draft", "review", "check"] as const;
+export const COMMANDS = ["init", "draft", "check"] as const;
 export type Command = (typeof COMMANDS)[number];
 
 /** Nothing to fix. */
@@ -89,12 +88,10 @@ const USAGE = [
   "",
   "  sloppy init [dir]      start the notes in a project, and write what the tree can tell",
   "  sloppy draft [paths…]  a note in detail per file named, never over somebody's writing",
-  "  sloppy review [dir]    what the code has left behind",
   "  sloppy check [dir]     read every note and say what doesn't hold",
   "",
   "  --identity <file>      write as the identity in that file, rather than one made here",
   "  --tag <a,b>            tag every note it writes, alongside what each already carries",
-  "  --strict               let a review say there is something to fix",
   "  --json                 answer in JSON instead of lines",
   "  --help                 this",
 ];
@@ -124,8 +121,6 @@ export async function run(
         return await starting(asked, context, json);
       case "draft":
         return await drafting(asked, context, json);
-      case "review":
-        return await reviewing(asked, context, json);
     }
   } catch (thrown) {
     return nothingDone(command, told, json, whyStopped(thrown));
@@ -196,19 +191,6 @@ const DRAFTED: Record<WriteDone, string> = {
   written: "written.",
   offered: "offered; it shows once the note's author takes it in.",
 };
-
-/** The container a command works in: the one in the folder named, and where
- *  none was named, the nearest one at or above where the command was run. */
-async function containerFrom(
-  context: CliContext,
-  named?: string,
-): Promise<Files | undefined> {
-  if (named !== undefined) {
-    return containerAt(filesFor(context, folderNamed(context, named)));
-  }
-  const found = await projectAbove(context, folderNamed(context));
-  return found ? containerAt(found.files) : undefined;
-}
 
 async function checking(
   asked: Asked,
@@ -362,42 +344,4 @@ function tagsAsked(asked: Asked): Tag[] | string {
     held.push(tag.data);
   }
   return held;
-}
-
-async function reviewing(
-  asked: Asked,
-  context: CliContext,
-  json: boolean,
-): Promise<number> {
-  const found = await containerFrom(context, asked.paths[0]);
-  if (!found) return nothingDone("review", context.told, json, NO_NOTES);
-  const held = await heldAt(found);
-  const rows = await leftBehind({
-    container: found,
-    ...(held.project ? { project: held.project } : {}),
-    standing: context.cwd,
-  });
-  if (json) {
-    context.told.out(
-      JSON.stringify({
-        command: "review",
-        signals: rows.map((row) => row.signal),
-      }),
-    );
-    return strictly(asked, rows.length);
-  }
-  for (const row of rows) {
-    const named = row.title === undefined ? "" : ` (${row.title})`;
-    context.told.out(`${row.where}${named}: ${row.said}`);
-  }
-  if (rows.length === 0) {
-    context.told.out("Nothing the code has left behind.");
-  }
-  return strictly(asked, rows.length);
-}
-
-/** A review says what it found and lets a build carry on, unless somebody
- *  asked it to stand in the way. */
-function strictly(asked: Asked, found: number): number {
-  return asked.options.has("strict") && found > 0 ? TO_FIX : FINE;
 }

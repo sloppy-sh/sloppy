@@ -1,14 +1,36 @@
 // What a project's own files say it is made of — docs/ARCHITECTURE.md
-// § "Tooling and the review". Read once, and handed to whichever command
-// wants it: `init` writes a note per part, `review` asks which part no note
-// reaches.
+// § "Tooling". Read once, and handed to whichever command wants it: `init`
+// writes a note per part, `draft` reads what a part is made of.
 
 import type { Files } from "@sloppy/local";
-import {
-  decodeText,
-  folderWorthReading,
-  PROJECT_MANIFESTS,
-} from "@sloppy/vault";
+import { decodeText } from "@sloppy/vault";
+
+/** A file at a folder saying the tree declares a package there. */
+export const PROJECT_MANIFESTS = [
+  "package.json",
+  "Cargo.toml",
+  "pyproject.toml",
+  "go.mod",
+];
+
+/** Folders a project keeps that are nobody's reading: what a build or a tool
+ *  put there, and anything kept behind a dot. */
+const PASSED_OVER = new Set([
+  "node_modules",
+  "target",
+  "dist",
+  "build",
+  "out",
+  "coverage",
+  "vendor",
+  "__pycache__",
+]);
+
+/** Whether a folder of this name is a place somebody reads the project
+ *  through, rather than one a tool filled in. */
+export function folderWorthReading(name: string): boolean {
+  return !name.startsWith(".") && !PASSED_OVER.has(name);
+}
 
 /** One top-level part of a project: a package it declares, or a folder at the
  *  top of it. */

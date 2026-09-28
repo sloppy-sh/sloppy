@@ -1,4 +1,4 @@
-// The disk as `Files` — docs/ARCHITECTURE.md § "Tooling and the review". The
+// The disk as `Files` — docs/ARCHITECTURE.md § "Tooling". The
 // same interface the shells implement, so every reader and writer in
 // @sloppy/local and @sloppy/vault runs here unchanged.
 

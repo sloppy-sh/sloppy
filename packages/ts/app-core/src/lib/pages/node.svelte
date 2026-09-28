@@ -31,6 +31,7 @@
 		compareOrd,
 		compassOf,
 		graphOf,
+		headsWhy,
 		isAddress,
 		isInSubtree,
 		nextChildAddress,
@@ -90,7 +91,6 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import * as Tabs from '@sloppy/ui/tabs';
-	import { headsWhy } from '@sloppy/vault';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import CiteCode from '../components/cite-code.svelte';
@@ -800,8 +800,7 @@
 	const shownTags = $derived(offerDraft?.tags ?? node?.tags ?? []);
 	/** Whether an offer standing here is this person's to take in: the note's
 	 *  owner, and where it has none, whoever has written in it — a note nothing
-	 *  gates carries offers too (docs/ARCHITECTURE.md § "Tooling and the
-	 *  review"). */
+	 *  gates carries offers too (docs/ARCHITECTURE.md § "Tooling"). */
 	const settlesOffers = $derived(
 		node !== undefined &&
 			viewerDid !== '' &&

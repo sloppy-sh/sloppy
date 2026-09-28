@@ -220,8 +220,8 @@ export function writeOutcome(
 /**
  * Whether a write by `writer` is theirs alone to make: it lands, and the note
  * carries nobody else's writing. A machine writer holds itself to this rather
- * than to {@link writeOutcome} — docs/ARCHITECTURE.md § "Tooling and the
- * review" — and it is what makes an offer on a note with no owner a real offer
+ * than to {@link writeOutcome} — docs/ARCHITECTURE.md § "Tooling" — and it is
+ * what makes an offer on a note with no owner a real offer
  * rather than a change the writer could simply have made.
  */
 export function writesAlone(

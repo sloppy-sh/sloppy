@@ -116,7 +116,7 @@ describe("sloppy", () => {
   });
 
   it("says a folder with no notes in it has none, whatever was asked of it", async () => {
-    for (const argv of [["review"], ["draft", "a.ts"]]) {
+    for (const argv of [["check"], ["draft", "a.ts"]]) {
       const { code, err } = await ran(argv, new MemoryFiles({ root: "/" }));
       expect(code).toBe(NOTHING_DONE);
       expect(err).toEqual(["There are no notes in that folder yet."]);

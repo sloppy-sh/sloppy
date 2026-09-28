@@ -1,7 +1,7 @@
 import type { NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import {
-  drawnLit,
+  drawnRefs,
   drawnNodes,
   drawnReading,
   edgeLookKey,
@@ -176,27 +176,27 @@ describe("drawnReading", () => {
   });
 });
 
-// The notes a question names are a set a mark can be IN, so a fold aggregates
-// it the way it aggregates tags: a mega-node standing for a named note stays in
-// ink rather than dimming with the field.
-describe("drawnLit", () => {
+// The notes a channel names are a set a mark can be IN, so a fold aggregates it
+// the way it aggregates tags: a mega-node standing for a named note carries the
+// channel rather than losing it with the field.
+describe("drawnRefs", () => {
   const every = [root, child, grandchild, sibling];
 
   it("leaves a drawn note where it is", () => {
-    expect(drawnLit(every, new Set(), new Set([child.ref]))).toEqual(
+    expect(drawnRefs(every, new Set(), new Set([child.ref]))).toEqual(
       new Set([child.ref]),
     );
   });
 
   it("names the mega-node that swallowed a named note", () => {
     expect(
-      drawnLit(every, new Set([root.ref]), new Set([grandchild.ref])),
+      drawnRefs(every, new Set([root.ref]), new Set([grandchild.ref])),
     ).toEqual(new Set([root.ref]));
   });
 
   it("carries a nested fold out to the outermost mega-node", () => {
     expect(
-      drawnLit(
+      drawnRefs(
         every,
         new Set([root.ref, child.ref]),
         new Set([grandchild.ref]),
@@ -205,12 +205,12 @@ describe("drawnLit", () => {
   });
 
   it("names nothing where the question named nothing", () => {
-    expect(drawnLit(every, new Set([root.ref]), new Set())).toEqual(new Set());
+    expect(drawnRefs(every, new Set([root.ref]), new Set())).toEqual(new Set());
   });
 
   it("leaves a note the host has not loaded alone", () => {
     const away = node(9, "2");
-    expect(drawnLit(every, new Set([root.ref]), new Set([away.ref]))).toEqual(
+    expect(drawnRefs(every, new Set([root.ref]), new Set([away.ref]))).toEqual(
       new Set([away.ref]),
     );
   });

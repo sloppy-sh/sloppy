@@ -1,5 +1,5 @@
 // A machine writer, held to the one rule that makes its writing an offer
-// rather than an overwrite — docs/ARCHITECTURE.md § "Tooling and the review".
+// rather than an overwrite — docs/ARCHITECTURE.md § "Tooling".
 
 import {
   type BlockDocument,

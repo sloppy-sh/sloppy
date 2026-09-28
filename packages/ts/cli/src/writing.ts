@@ -1,5 +1,5 @@
 // The pieces a section is written out of, as the CLI writes one —
-// docs/ARCHITECTURE.md § "Tooling and the review". Everything here is an
+// docs/ARCHITECTURE.md § "Tooling". Everything here is an
 // ordinary document the editor already knows; nothing is the CLI's own kind.
 
 import {

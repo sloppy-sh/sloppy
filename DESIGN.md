@@ -366,8 +366,8 @@ Thirteen rulings hold that table together:
   **The cost is charged in cells:** the sheet every mark is cut from holds one per ring
   weight AND style, so a style widens it for everybody — the reason the set is short.
 - **The code having moved takes a dot on the rim, because it is the one shape left that is
-  not a ring.** § "What the code left behind" rules that it is drawn at all, and why; what
-  the mark decides is where. Rings here separate by radius, and the sheet every mark is cut
+  not a ring.** § "An anchor into code" rules that it is drawn at all, and why; what the
+  mark decides is where. Rings here separate by radius, and the sheet every mark is cut
   from holds a cell per ring weight AND style — so a third ring widens that sheet for every
   mark on every canvas in order to say one bit, which is more than the fact is worth. A dot
   costs one shape. It is a single small disc centred ON the mark's own edge, due south,
@@ -963,6 +963,19 @@ note nobody has read against the code yet — that says nothing either, and neve
 date". Where the project is not open beside the notes, nothing is worked out and no line is
 drawn.
 
+**On the canvas it is a dot on the mark's rim, drawn whether or not anybody has asked**
+(§ "The mark"). A body of notes beside a codebase is read AS a graph — which part of this
+system has gone out from under me is a question about the field, and somebody who has to
+open a note to learn that anything has moved learns it one note at a time. It is held to
+everything the lines on the note are held to: a note nobody has read against the code
+carries nothing, so unread is still not stale; it is one dot however many files moved,
+because a count was never the thing to act on and a number on a mark is a score; it spends
+no hue, so the canvas's colour still answers the reader's own question and nothing else;
+and where the code cannot be reached, nothing is worked out and nothing is drawn, because a
+silent mark must never come to mean "this one is fine". What the dot MEANS is learned by
+opening the note, which says it in words beside the anchor; the canvas teaches it no other
+way.
+
 **The words name what happened, never how it is known.** "Changed since you read it",
 "Still true", "read against the code" — what a person can act on. Never what Sloppy
 compared, or what it compared it with.
@@ -1026,68 +1039,6 @@ writing"), and the offer reads as what it is — "Part of: gained …" against t
 "Read as: QEC, not Idea compass" where it would read the note by other questions — rather
 than as a block of changed markup. An offer that changes only the method is that line and
 nothing under it.
-
-## What the code left behind
-
-A body of notes beside a codebase goes out of date quietly, and the whole job of this
-surface is to say so without ever nagging. **It is a question the person asks, not a state
-the product broadcasts.** There is no count in the chrome, no score, and nothing that goes
-red on its own — a note nobody has confirmed says nothing at all, because unread is not
-stale (§ "An anchor into code").
-
-**One thing the mark says on its own, and it is the code having moved.** A note whose author
-has read it against the code, and whose code has moved since, carries a dot on its rim
-(§ "The mark") whether or not anybody has asked. This is a deliberate exception to the
-paragraph above, and the reason is the shape: a body of notes beside a codebase is read AS a
-graph — which part of this system has gone out from under me is a question about the field,
-and answering it only inside a list answers it in the one place the field is not. Somebody
-who has to open a sheet to learn that anything has moved learns it one note at a time.
-
-**What that exception is held to, which is everything the rule was protecting.** A note
-nobody has read against the code carries nothing, so unread is still not stale and nobody is
-marked for a note they wrote this morning. It is one dot however many files moved: a count
-was never the thing to act on, and a number on a mark is a score. It spends no hue, so the
-canvas's colour still answers the reader's own question and nothing else. And where the code
-cannot be reached — read away from the project, or a graph that is nobody's project —
-nothing is worked out and nothing is drawn, because a silent mark must never come to mean
-"this one is fine". What the dot MEANS is learned by opening the note, which says it in
-words beside the anchor (§ "An anchor into code"); the canvas teaches it no other way, and
-the sheet below is still how somebody reads the whole of it at once.
-
-**Asking is choosing one signal, and the canvas answers by highlighting.** The four —
-_the code moved_, _nothing written here_, _an empty slot_, _no why written_ — behave exactly
-as tags do: the notes that carry the chosen one stay in ink and the rest dim, so the shape
-of the graph survives the question. Never a filter, never a colour of its own, and never
-two signals at once: the question is one at a time, the way a person asks one.
-
-**Beside it, one quiet sheet.** The same modal every sheet is (§ Layout), titled "What the
-code left behind", listing the notes under the chosen signal — the title, the address where
-there is one, and the act, in the note's own ink:
-
-- **Still true** — for a note whose code has moved. Taking it records the reading and
-  nothing else, and it is the same act the note itself offers beside the anchor.
-- **Write a note** — for code nothing has been written about. It opens a walkthrough under
-  the project's own note, already anchored at the path.
-- **the slot's own question** — for an empty slot, which is the same line the card shows,
-  and tapping it opens the note.
-- **Say why** — for a decision whose "Why" is still empty. Taking it opens the note, and it
-  never writes a word there.
-
-**An act lands on the thing it named.** An empty slot opens the note at its compass card and
-"Say why" opens it with the Why section in view — not at the top of a note somebody then has
-to hunt through for the part the row was about.
-
-**Where nothing is left behind, the sheet says so in one line and offers nothing.** "Nothing
-the code has left behind." That is the ordinary state of a project somebody is keeping up
-with, and it should read as the pleasant thing it is rather than as an empty container with
-a call to action in it.
-
-**Phone first.** The sheet is the full-width bottom sheet, one note per row with its act
-under the title rather than beside it, and the signal chosen from a row of chips along the
-top that wraps onto a second line where the four do not fit — nothing here scrolls sideways,
-because a chip past the edge with nothing to say it is there is a question nobody can ask.
-The canvas keeps answering underneath, so dismissing the sheet
-leaves the highlight where it was — the question is still the one being asked.
 
 ## Typography
 

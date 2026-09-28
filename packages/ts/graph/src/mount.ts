@@ -9,7 +9,7 @@
 import type { OwnedRef } from "@sloppy/types";
 import {
   comparingStates,
-  drawnLit,
+  drawnRefs,
   drawnNodes,
   drawnReading,
   type GraphDifference,
@@ -312,12 +312,9 @@ export function mountGraph(
 
     const model = buildModel(drawnNodes(nodes, lod.collapsed), {
       selection: props.selection,
-      ...(props.lit === undefined
-        ? {}
-        : { lit: drawnLit(nodes, lod.collapsed, props.lit) }),
       ...(props.codeMoved === undefined
         ? {}
-        : { codeMoved: drawnLit(nodes, lod.collapsed, props.codeMoved) }),
+        : { codeMoved: drawnRefs(nodes, lod.collapsed, props.codeMoved) }),
       palette,
       viewer: props.viewer,
       keep: scene.snapshot(),
@@ -326,7 +323,7 @@ export function mountGraph(
       edgeLooks: props.edgeLooks,
     });
 
-    const questioned = props.selection.length > 0 || props.lit !== undefined;
+    const questioned = props.selection.length > 0;
     if (recolour) scene.setTints(model, questioned);
     else scene.setModel(model, questioned);
     drawnFrom = {

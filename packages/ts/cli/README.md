@@ -1,6 +1,6 @@
 # @sloppy/cli
 
-Sloppy at the command line. `docs/ARCHITECTURE.md` § "Tooling and the review" is the doc
+Sloppy at the command line. `docs/ARCHITECTURE.md` § "Tooling" is the doc
 of record — what each command does, and what it may not; this file is only how a caller
 wires it up.
 
@@ -11,14 +11,12 @@ this disk.
 ```
 sloppy init [dir]      start the notes in a project, and write what the tree can tell
 sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
-sloppy review [dir]    what the code has left behind
 sloppy check [dir]     read every note and say what doesn't hold
 ```
 
 `--json` answers in JSON instead of lines. `init` takes `--identity <file>` to write
-under an identity carried from somewhere else rather than one made for this project, and
-`review` takes `--strict` to say there is something to fix rather than only listing it.
-The exit code is **0** where there is nothing to fix, **1** where there is and it has
+under an identity carried from somewhere else rather than one made for this project. The
+exit code is **0** where there is nothing to fix, **1** where there is and it has
 been listed, and **2** where the command did nothing at all — one nobody has, or a
 folder with no notes in it to read.
 

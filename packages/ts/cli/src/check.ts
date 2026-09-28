@@ -1,5 +1,5 @@
 // `sloppy check`: every note in a container read, and what does not hold said
-// once — docs/ARCHITECTURE.md § "Tooling and the review".
+// once — docs/ARCHITECTURE.md § "Tooling".
 
 import { BIN_DIR, binAt, type Files, projectRootOf } from "@sloppy/local";
 import {

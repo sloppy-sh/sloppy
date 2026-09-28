@@ -292,7 +292,7 @@ describe('the folder’s owner, reading it back', () => {
 	});
 
 	// The terminal offers on a note a person has written in whatever gates it —
-	// docs/ARCHITECTURE.md § "Tooling and the review" — so an open note carries
+	// docs/ARCHITECTURE.md § "Tooling" — so an open note carries
 	// offers too, and whoever wrote it is who takes them in.
 	it('is shown a change offered on a note it wrote that nothing gates', async () => {
 		const held = await folder();

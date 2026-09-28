@@ -1,26 +1,25 @@
-// Opening a chat about the project from the graph it is in —
-// docs/ARCHITECTURE.md § "Asking a tool to write the notes". Nothing here
-// starts a program: the seam is a stand-in.
+// The dot a mark carries where the code has moved under the note — DESIGN.md
+// § "An anchor into code".
 
 import 'fake-indexeddb/auto';
-import { MemoryFiles } from '@sloppy/local';
-import type { ChatAgent, NodeView, OwnedRef } from '@sloppy/types';
+import { MemoryFiles, MemoryHistory } from '@sloppy/local';
+import type { BlockDocument, BlockView, NodeView, OwnedRef } from '@sloppy/types';
+import { digestOf } from '@sloppy/vault';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type ChatAccess, initRuntime } from '../runtime.js';
-import { seamSettledAgain } from '../seam.svelte.js';
+import { initRuntime } from '../runtime.js';
 import { canvasInk } from '../stores/canvas-ink.svelte.js';
-import { chat } from '../stores/chat.svelte.js';
+import { codeDrift } from '../stores/code-drift.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
-import { offers } from '../stores/offers.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { peers } from '../stores/peers.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
 import {
+	AT,
 	DID,
 	homeOf,
 	node,
@@ -61,6 +60,7 @@ const Graph = (await import('./graph.svelte')).default;
 const HOME = homeOf(DID);
 const PROJECT = '/home/ada/garden';
 const PARSER = ref(1);
+const DECISION = ref(2);
 
 function segments(of: OwnedRef): string {
 	const cut = of.lastIndexOf('/');
@@ -68,34 +68,18 @@ function segments(of: OwnedRef): string {
 }
 const path = (of: OwnedRef) => `/nodes/${segments(of)}`;
 
-class Stub implements ChatAccess {
-	agent: readonly ChatAgent[] = ['claude_code'];
-	readonly said: string[] = [];
-
-	agents(): Promise<ChatAgent[]> {
-		return Promise.resolve([...this.agent]);
-	}
-
-	open(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	say(said: string): Promise<void> {
-		this.said.push(said);
-		return Promise.resolve();
-	}
-
-	settle(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	stop(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	close(): Promise<void> {
-		return Promise.resolve();
-	}
+let seeded = 300;
+function section(of: OwnedRef, content: BlockDocument): BlockView {
+	seeded += 1;
+	return {
+		ref: ref(seeded),
+		node: of,
+		created_by: DID,
+		created_at: AT,
+		updated_at: AT,
+		ord: 'a0',
+		content
+	} as unknown as BlockView;
 }
 
 function stubViewport(): void {
@@ -124,39 +108,37 @@ async function settle(): Promise<void> {
 	flushSync();
 }
 
-const screen = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
-
-function labelled(label: string): HTMLButtonElement {
-	const found = [...document.body.querySelectorAll('button')].find(
-		(one) => one.getAttribute('aria-label') === label
+/** The notes the canvas is marking as the code having moved under, by
+ *  address. */
+const markedMoved = (): string[] =>
+	[...document.body.querySelectorAll<HTMLElement>('[data-code-moved="yes"]')].map(
+		(mark) => mark.textContent?.trim().split(/\s+/)[0] ?? ''
 	);
-	if (!found) throw new Error(`Nothing on screen is labelled "${label}"`);
-	return found as HTMLButtonElement;
-}
-
-const offeredInMenu = (): string[] =>
-	[...document.body.querySelectorAll('[role="menuitem"]')].map(
-		(row) => row.textContent?.trim() ?? ''
-	);
-
-function menuItem(label: string): HTMLButtonElement {
-	const found = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
-		(row) => row.textContent?.trim() === label
-	);
-	if (!found) throw new Error(`The menu does not offer "${label}"`);
-	return found;
-}
 
 let api: FakeApi;
 let files: MemoryFiles;
+/** The project this device is serving right now, which opening a folder
+ *  changes the way the shell does. */
 let serving: MemoryFiles | undefined;
-let stub: Stub;
+let kept: MemoryHistory;
+let store: Map<string, Uint8Array>;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
-let held: NodeView[];
 
+async function keepFile(at: string, said: string): Promise<void> {
+	await files.write(at, new TextEncoder().encode(said));
+	await kept.commit(`Wrote ${at}`);
+}
+
+/** The notes the graph holds, which something else may add to while the page
+ *  stands on it. */
+let held: NodeView[];
+/** One note anchored at code, and one under it that is not. */
 function installGraph(): void {
-	held = [node(1, '1', { title: 'The parser' })];
+	held = [
+		node(1, '1', { title: 'The parser' }),
+		node(2, '1a', { title: 'Two ways round it', origin: PARSER, parent: PARSER })
+	];
 	api.on('GET /nodes/tags', () => []);
 	api.on('GET /nodes', (url) => {
 		const origin = url.searchParams.get('origin');
@@ -164,7 +146,24 @@ function installGraph(): void {
 	});
 	api.on('GET /publications', () => []);
 	for (const one of held) api.on(`GET ${path(one.ref)}`, () => one);
-	api.on(`GET ${path(PARSER)}/blocks`, () => []);
+	api.on(`GET ${path(PARSER)}/blocks`, () => [
+		section(PARSER, {
+			type: 'doc',
+			content: [
+				{
+					type: 'paragraph',
+					content: [
+						{
+							type: 'text',
+							marks: [{ type: 'link', attrs: { href: 'code:src/parser.ts' } }],
+							text: 'src/parser.ts'
+						}
+					]
+				}
+			]
+		})
+	]);
+	api.on(`GET ${path(DECISION)}/blocks`, () => []);
 }
 
 async function open(): Promise<void> {
@@ -185,22 +184,23 @@ beforeEach(async () => {
 	publications.clear();
 	find.clear();
 	graphs.clear();
-	chat.clear();
-	offers.clear();
-	files = new MemoryFiles({ root: PROJECT, store: new Map(), data: '/data' });
-	await files.write('src/parser.ts', new TextEncoder().encode('export const one = 1;\n'));
-	Element.prototype.scrollIntoView = () => {};
+	codeDrift.clear();
+	store = new Map();
+	files = new MemoryFiles({ root: PROJECT, store, data: '/data' });
+	kept = new MemoryHistory(new MemoryFiles({ root: PROJECT, store, data: '/data' }), {
+		author: 'Ada'
+	});
 	api = useFakeApi();
 	installGraph();
 	canvasInk.rubOut(HOME);
+	await keepFile('src/parser.ts', 'export const one = 1;\n');
+	await keepFile('docs/guide.md', '# Guide\n');
 	serving = files;
-	stub = new Stub();
 	initRuntime({
 		apiHost: () => 'http://api.test',
 		project: async () => serving,
-		chat: stub
+		history: () => kept
 	});
-	seamSettledAgain();
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -208,65 +208,61 @@ beforeEach(async () => {
 afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
-	chat.clear();
-	offers.clear();
+	codeDrift.clear();
 	session.clear();
-	initRuntime({ apiHost: () => '', project: undefined, chat: undefined });
-	seamSettledAgain();
+	initRuntime({
+		apiHost: () => '',
+		project: undefined,
+		history: () => undefined,
+		vault: undefined
+	});
 	target.remove();
 	document.body.innerHTML = '';
 });
 
-describe('where the offer to chat stands', () => {
-	it('is on a graph that is a project', async () => {
-		await open();
-		labelled('More').click();
-		await settle();
+describe('the mark a note carries where the code has moved', () => {
+	async function readAgainst(said: string): Promise<void> {
+		held[0] = {
+			...held[0],
+			read_against: [
+				{ path: 'src/parser.ts', digest: await digestOf(new TextEncoder().encode(said)) }
+			]
+		};
+	}
 
-		expect(offeredInMenu()).toContain('Chat about the code');
+	it('marks the note whose file says something else now, without anybody asking', async () => {
+		await readAgainst('export const one = 1;\n');
+		await keepFile('src/parser.ts', 'export const one = 2;\n');
+
+		await open();
+
+		expect(markedMoved()).toEqual(['1']);
 	});
 
-	it('has taken the place of the four steps that stood there', async () => {
-		await open();
-		labelled('More').click();
-		await settle();
+	it('marks nothing where the file still says what it said', async () => {
+		await readAgainst('export const one = 1;\n');
 
-		expect(offeredInMenu()).not.toContain('Write notes about the code');
+		await open();
+
+		expect(markedMoved()).toEqual([]);
 	});
 
-	it('is nowhere on a graph that is nobody’s project', async () => {
+	// Unread is not stale.
+	it('marks nothing on a note nobody has read against the code', async () => {
+		await keepFile('src/parser.ts', 'export const one = 2;\n');
+
+		await open();
+
+		expect(markedMoved()).toEqual([]);
+	});
+
+	it('works nothing out where the graph is nobody’s project', async () => {
+		await readAgainst('export const one = 1;\n');
+		await keepFile('src/parser.ts', 'export const one = 2;\n');
 		serving = undefined;
+
 		await open();
-		labelled('More').click();
-		await settle();
 
-		expect(offeredInMenu()).not.toContain('Chat about the code');
-	});
-
-	it('is nowhere on a device that cannot reach an agent at all', async () => {
-		initRuntime({
-			apiHost: () => 'http://api.test',
-			project: async () => serving,
-			chat: undefined
-		});
-		seamSettledAgain();
-		await open();
-		labelled('More').click();
-		await settle();
-
-		expect(offeredInMenu()).not.toContain('Chat about the code');
-	});
-});
-
-describe('the chat itself', () => {
-	it('opens on nothing said and nothing asked of the agent', async () => {
-		await open();
-		labelled('More').click();
-		await settle();
-		menuItem('Chat about the code').click();
-		await settle();
-
-		expect(screen()).toContain('Say what you want written about');
-		expect(stub.said).toEqual([]);
+		expect(markedMoved()).toEqual([]);
 	});
 });

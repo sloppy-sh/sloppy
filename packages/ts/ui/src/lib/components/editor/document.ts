@@ -290,7 +290,7 @@ export function openBlocks(blocks: readonly BlockView[], schema: Schema): Opened
 export function openDraft(draft: NoteDraft, blocks: readonly BlockView[], schema: Schema): Opened {
 	const held = new Map(blocks.map((block) => [block.ref, block]));
 	const measured = new Map(draft.rows.map((row) => [row.ref, row]));
-	// By words, not by stamp — docs/ARCHITECTURE.md § "Tooling and the review".
+	// By words, not by stamp — docs/ARCHITECTURE.md § "Tooling".
 	const elsewhere = (ref: OwnedRef): boolean => {
 		const was = measured.get(ref);
 		const now = held.get(ref);

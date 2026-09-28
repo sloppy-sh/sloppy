@@ -1,5 +1,5 @@
 // `sloppy init`: the notes started in a project, and what the tree can be read
-// for written into them — docs/ARCHITECTURE.md § "Tooling and the review".
+// for written into them — docs/ARCHITECTURE.md § "Tooling".
 //
 // Facts only. What a part of the project is FOR, what was chosen instead of it
 // and why are the person's to write, and nothing here writes a word of them.

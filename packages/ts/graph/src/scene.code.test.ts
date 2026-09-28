@@ -1,4 +1,4 @@
-// DESIGN.md § "The mark" and § "What the code left behind": the one thing a
+// DESIGN.md § "The mark" and § "An anchor into code": the one thing a
 // mark says on its own. A note whose author has read it against the code, and
 // whose code has moved since, carries a dot on its rim — one dot, no hue, no
 // count, and nothing at all on a note nobody has read.

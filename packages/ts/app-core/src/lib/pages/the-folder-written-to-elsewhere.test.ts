@@ -1,6 +1,6 @@
 // A note written into the folder by something other than the app — the
 // terminal writes the same files — and the window coming back to somebody.
-// docs/ARCHITECTURE.md § "Tooling and the review".
+// docs/ARCHITECTURE.md § "Tooling".
 
 import 'fake-indexeddb/auto';
 import { LocalApi, MemoryFiles } from '@sloppy/local';
@@ -17,7 +17,6 @@ import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { peers } from '../stores/peers.svelte.js';
 import { people } from '../stores/people.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
-import { review } from '../stores/review.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
 import { at, pushed, replaced, startAt } from './page.test-support.svelte.js';
@@ -105,7 +104,7 @@ async function readingTheFolder(): Promise<void> {
 		}
 	});
 	resetApi();
-	for (const held of [nodes, outlineSections, peers, tags, publications, find, graphs, review]) {
+	for (const held of [nodes, outlineSections, peers, tags, publications, find, graphs]) {
 		held.clear();
 	}
 	people.hold(null);
@@ -135,7 +134,6 @@ afterEach(() => {
 	mounted = undefined;
 	nodes.clear();
 	graphs.clear();
-	review.clear();
 	session.clear();
 	initRuntime({ apiHost: () => '', project: undefined, history: () => undefined });
 	resetApi();

@@ -842,26 +842,6 @@ describe("selecting tags", () => {
     });
   });
 
-  // A question that names notes reaches the canvas through the same fold as a
-  // tag does, so a note inside a mega-node is answered for by the mark standing
-  // where it is rather than dimming with the field it is not drawn in.
-  it("holds the mega-node standing for a named note in ink", async () => {
-    const graph = await mount();
-    const mega = firstMegaNode(graph.model());
-    const child = childrenOf(mega)[0];
-    expect(graph.model().graph.hasNode(child)).toBe(false);
-
-    graph.handle.update({ ...graph.props, lit: new Set([child]) });
-
-    const model = graph.model();
-    expect(model.graph.getNodeAttributes(mega).alpha).toBe(1);
-    expect(
-      model.order
-        .filter((ref) => ref !== mega)
-        .every((ref) => model.graph.getNodeAttributes(ref).alpha < 1),
-    ).toBe(true);
-  });
-
   it("re-colours for a note chosen and a note opened too", async () => {
     const graph = await mount();
     const drew = graph.scene.models;

@@ -1,5 +1,5 @@
 // `sloppy draft`: a note about one file, in as much detail as the file itself
-// can be read for — docs/ARCHITECTURE.md § "Tooling and the review".
+// can be read for — docs/ARCHITECTURE.md § "Tooling".
 //
 // What a compass might hold is written as CANDIDATES in the note's own writing.
 // The compass stays empty: which of them is really what this is part of is a

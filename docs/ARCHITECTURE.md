@@ -2838,9 +2838,9 @@ written under the citation's own key.
 **A Decision is a note holding a compass and a section headed "Why".** It joins the
 templates a new note can be started from, and nothing marks it: those two together are
 what makes a note a decision, and `DECISION_WHY_HEADING` in `@sloppy/types` is the one
-copy of the word, so the template that writes the section and the review that reads it
-cannot drift apart. A note holding a compass and no such section is an ordinary note and
-is never asked to explain itself (§ "Tooling and the review").
+copy of the word, so the template that writes the section and `headsWhy` beside it, which
+is what opens a note at its reasoning, cannot drift apart. A note holding a compass and no
+such section is an ordinary note.
 
 ## A graph on disk
 
@@ -3071,8 +3071,8 @@ because the notes are what a version of them is a version of.
 
 **`graph.json` gains `project`: where the code is, as a path from the vault root**, `..` in
 the ordinary case. **Absent is a graph that is nobody's project** — an anchor into code in it
-draws as an ordinary link and nothing offers to review it, which is every graph written
-before the field. `graphFile` and `readGraphFile` both carry it so no build drops it on a
+draws as an ordinary link and nothing is worked out about what it points at, which is every
+graph written before the field. `graphFile` and `readGraphFile` both carry it so no build drops it on a
 rewrite, and it is the FOLDER's own fact: a graph brought in from an archive arrives without
 one, the way somebody else's name does, until the folder it lands in is a project.
 
@@ -3126,7 +3126,10 @@ in `@sloppy/local` builds over a folder. A digest spelled with an algorithm this
 not take reads as UNREAD rather than as drift: saying a file has moved because a spelling
 changed is worse than saying nothing. **Where the project cannot be reached at all — hosted,
 or a graph that is nobody's project — nothing is computed and nothing is shown**: a note is
-then neither out of date nor up to date, and there is no third state to draw.
+then neither out of date nor up to date, and there is no third state to draw. The canvas
+draws it from `GraphSurfaceProps.codeMoved`, which the `codeDrift` store in
+`@sloppy/app-core` fills for the notes on screen; DESIGN.md § "An anchor into code" is what
+the note and the mark each say.
 
 **Only a person writes either of them.** A reading is somebody saying they read the note
 against the code as it stands, so no act of a tool's writes one: no shape a note starts from
@@ -3162,7 +3165,7 @@ folder into the hosted store is dropped until they name both.
 untouched by all of this.** A container is a vault, a note in it is a note, and an anchor is
 a link inside a section.
 
-## Tooling and the review
+## Tooling
 
 **`@sloppy/cli` is the container without a window.** One package, `packages/ts/cli`,
 running over `@sloppy/vault` and `@sloppy/local` on a `Files` backed by `node:fs/promises`
@@ -3173,7 +3176,6 @@ reaches for, so the notes a project keeps are writable from where the code is wo
 ```
 sloppy init [dir]      start the notes in a project, and write what the tree can tell
 sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
-sloppy review [dir]    what the code has left behind
 sloppy check [dir]     read every note and say what doesn't hold
 ```
 
@@ -3184,8 +3186,7 @@ a note per top-level package or folder the workspace declares, each anchored at 
 folder and at its entry points, and pointing north at the project's own note. `draft` writes
 the DETAILED kind for the paths it is named: what a module imports and exports, an anchor
 per exported symbol, and what a compass MIGHT hold written as candidates in the note's own
-writing. `review` is the signals below. **The CLI never writes a "west" and never writes a
-"Why"** — what was decided against, and why, is the author's thinking and not a tool's to
+writing. **The CLI never writes a "west" and never writes a "Why"** — what was decided against, and why, is the author's thinking and not a tool's to
 supply.
 
 **`check` is the one that says no.** Every file in `notes/` spelled the way a note file is
@@ -3248,41 +3249,9 @@ one copy of that text; the shapes in it come from `NOTE_TEMPLATES` in `@sloppy/t
 the methods from `compassMethod` beside them, so the file teaches what the app offers and a
 fourth method or a renamed slot cannot leave it saying the old thing.
 
-**The review is derived, never stored, and computed in one place.** `review()` in
-`@sloppy/vault` is given the notes, the project's top-level paths and a way to ask what has
-moved, and hands back `ReviewSignal[]`; the app and the CLI both call it, so the two cannot
-disagree about what a person is shown. Nothing it says is written down anywhere — there is
-no signals table, no cached count and nothing to migrate.
-
-- **`anchor-changed`** — an anchor whose file has moved since somebody read the note against
-  it: per file where the note carries `read_against`, and from the history's `changedSince`
-  against the note's `checked` where it carries none. **A note carrying neither yields
-  nothing at all: unread is not stale.** So does one carrying readings where the review was
-  given no way to reach the code (§ "A project's container").
-- **`code-without-note`** — a top-level folder or declared package no anchor in the graph
-  names or reaches into. It is a signal about the PROJECT, so it carries a `path` and no
-  note. **Which places those are is `placesIn` beside it**, so a surface asking the question
-  and the terminal writing the notes read one list: what a build wrote into, what a tool
-  keeps, and anything behind a dot is nobody's reading, and is neither written about nor
-  asked after.
-- **`compass-gap`** — a slot nobody has filled. Every method asks all four, so the gap is
-  the same shape whichever one a note is read by; a note with no compass at all is not
-  missing one. The signal carries the method, so the row asks the question the note itself
-  shows.
-- **`decision-without-why`** — a decision whose "Why" holds nothing under its heading. A
-  note that is not the Decision shape — a compass and that section — is not a decision and
-  yields this never.
-
-A signal names a note, a path, or both: **an absent `note` is a signal about the project,
-and an absent `path` a signal about a note.** DESIGN.md § "What the code left behind" is how
-they are drawn, and the answer there is highlight-and-dim plus one sheet — never a count in
-the chrome. The one mark a note carries without being asked is the dot for code that has
-moved under a reading, which that section rules and holds to its conditions; it is drawn
-from `GraphSurfaceProps.codeMoved`, and the review is where its set comes from.
-
 **The folder is read again when it may have changed under the app** — the window coming
-back, an act of the History surface, the review sheet opening — and **the note in front of
-somebody is read with it.** Whatever serves the graph out of the folder holds its own index,
+back, an act of the History surface — and **the note in front of somebody is read with
+it.** Whatever serves the graph out of the folder holds its own index,
 so it takes the files again first. A pane with nothing waiting to be saved takes the
 folder's version outright; one that IS holding writing puts it down for the surface built
 in its place, which settles it section by section by block ref — the same settlement a
@@ -3350,7 +3319,8 @@ which — every surface that needs to know asks it rather than listing names.
 
 **Three things a person can write are deliberately not among them.** `checked` and
 `read_against` are a person saying they have read a note against the code, and an agent
-writing either silences the one question the app asks them (§ "Tooling and the review"). `owner` is who GATES a note's
+writing either silences the app's line about code that has moved under them
+(DESIGN.md § "An anchor into code"). `owner` is who GATES a note's
 writing, which is an authority change and not a look. And the compass's west and a "Why"
 are what was decided against and the reason for it — the author's own thinking, which
 `.sloppy/AGENT.md` keeps out of an agent's hands for the same reason wherever it writes.
@@ -3593,8 +3563,8 @@ agent finished, or trouble it could not go on past, which is the one of the four
 carries words for the person.
 
 **Nothing marks a note as an agent's.** No field in the front matter, no tag, no heading: a
-note is read for what it says, and what wrote it leaves no trace of itself (§ "Tooling and
-the review", where the same rule decides how `init`'s notes are told apart). What a call
+note is read for what it says, and what wrote it leaves no trace of itself (§ "Tooling",
+where the same rule decides how `init`'s notes are told apart). What a call
 came to is said in the thread, and lives there rather than on the note.
 
 **`.sloppy/AGENT.md` is what the agent reads, and it carries the whole format.** Every

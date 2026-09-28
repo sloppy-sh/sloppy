@@ -1,7 +1,7 @@
 {
   "name": "@sloppy/cli",
   "version": "0.0.1",
-  "description": "Sloppy at the command line: a project's notes read, checked and written without a browser — see docs/ARCHITECTURE.md § \"Tooling and the review\".",
+  "description": "Sloppy at the command line: a project's notes read, checked and written without a browser — see docs/ARCHITECTURE.md § \"Tooling\".",
   "bin": {
     "sloppy": "./dist/sloppy.mjs"
   },

@@ -1,5 +1,5 @@
 // Writing a note from the terminal, through the same client the app writes
-// through — docs/ARCHITECTURE.md § "Tooling and the review".
+// through — docs/ARCHITECTURE.md § "Tooling".
 
 import { type LocalApi, writeOnto as writeOntoNote } from "@sloppy/local";
 import {

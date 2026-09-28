@@ -1,5 +1,5 @@
 // Which notes the code has moved under, for the marks on the canvas —
-// DESIGN.md § "What the code left behind". A note the person has read against
+// DESIGN.md § "An anchor into code". A note the person has read against
 // the code answers; one nobody has read says nothing; and beside no project
 // nothing is worked out at all.
 

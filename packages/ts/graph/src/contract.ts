@@ -295,20 +295,10 @@ export interface GraphSurfaceProps {
    */
   selection: readonly Tag[];
   /**
-   * The notes another question about this graph names — the review's chosen
-   * signal, DESIGN.md § "What the code left behind". They stay in ink and every
-   * other note dims, exactly as a tag question dims what carries none of its
-   * tags; a note has to answer both to stay lit while both are being asked.
-   *
-   * Absent is a canvas nobody has asked this of, which is not the same as an
-   * empty set — that is a question nothing answered, and dims the field.
-   */
-  lit?: ReadonlySet<OwnedRef>;
-  /**
    * The notes whose code has moved since their author read them against it —
-   * DESIGN.md § "What the code left behind", which is also what the mark for
-   * one is. A note nobody has read against the code is never in it, so the
-   * canvas stays silent about one nobody has got to yet.
+   * DESIGN.md § "An anchor into code", which is also what the mark for one is.
+   * A note nobody has read against the code is never in it, so the canvas stays
+   * silent about one nobody has got to yet.
    *
    * Absent, and empty, are a canvas saying nothing about this: where the code
    * cannot be reached at all nothing is worked out, so there is no third state
@@ -495,16 +485,16 @@ export function drawnReading(
 }
 
 /**
- * {@link drawnNodes}'s resolution applied to {@link GraphSurfaceProps.lit}: a
+ * {@link drawnNodes}'s resolution applied to a set of notes a channel names: a
  * named note a fold swallowed is answered for by the mega-node that swallowed
  * it, the way that mega-node carries the tags of everything under it.
  */
-export function drawnLit(
+export function drawnRefs(
   nodes: readonly NodeView[],
   collapsed: ReadonlySet<OwnedRef>,
-  lit: ReadonlySet<OwnedRef>,
+  named: ReadonlySet<OwnedRef>,
 ): ReadonlySet<OwnedRef> {
-  return new Set([...lit].map(drawnAs(nodes, collapsed)));
+  return new Set([...named].map(drawnAs(nodes, collapsed)));
 }
 
 /** Where a ref is drawn: itself, or the mega-node it folded into. A ref outside

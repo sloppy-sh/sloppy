@@ -29,7 +29,7 @@ updated: 2026-09-28T00:46:18.688Z
 - [ink.ts](code:packages/ts/vault/src/ink.ts): drawings as files beside the note.
 - [layout.ts](code:packages/ts/vault/src/layout.ts): where everything goes in the folder.
 - [archive.ts](code:packages/ts/vault/src/archive.ts): the whole graph as one file.
-- [difference.ts](code:packages/ts/vault/src/difference.ts), [review.ts](code:packages/ts/vault/src/review.ts), [amendment.ts](code:packages/ts/vault/src/amendment.ts): what changed between two copies, and offering a change.
+- [difference.ts](code:packages/ts/vault/src/difference.ts), [amendment.ts](code:packages/ts/vault/src/amendment.ts): what changed between two copies, and offering a change.
 - [rekey.ts](code:packages/ts/vault/src/rekey.ts): carrying a graph over to a different identity.
 
 \[A graph on disk\](code\:docs/ARCHITECTURE.md#A graph on disk) is the doc of record.
