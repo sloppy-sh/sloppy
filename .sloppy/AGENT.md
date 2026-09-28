@@ -1,8 +1,17 @@
 # Writing notes in this project
 
-The notes in this folder are a Sloppy graph kept beside the code it is about. They are
-ordinary markdown files: anything can read them, and what follows is what it takes to
-write one that the app, the other people here and the next agent all read the same way.
+The notes in this folder are a Sloppy graph kept beside the code it is about: one account
+of why this project is the way it is, held by the people here and by whatever they set to
+work beside them. They are ordinary markdown files: anything can read them, and what
+follows is what it takes to write one that the app, the other people here and the next
+agent all read the same way.
+
+**What goes down here is a decision and the reason for it**, under what it sprang out of,
+tagged with the system it is about, and pointing at the code it explains — a graph somebody
+moves around in, not a pile of summaries. Asked why something is the way it is, look here
+before answering; told why, write it down here. Asked whether a piece of the code is doing
+what it was written to do, read the note for what the thing is FOR and the code for what it
+does, and put what agrees and what does not into the note, where the next reader finds it.
 
 **Everything a person can write in a note, you can write, and everything you write, a
 person can read and change.** There is no shape here that is yours and not theirs, and
@@ -155,6 +164,12 @@ A direction with nothing in it is left out altogether. Filling one is citing the
 names, exactly as naming that note in a sentence is. What the four directions ASK is the
 method the note is read in, and there are three of them.
 
+**West is what was decided against, and it goes down only from a source you name in the
+note** — what somebody said here, a commit message, a comment, a document in this project.
+Cite it in the note's writing, so the next reader can go and read it. Where you find none,
+the slot stays empty and what you could not settle goes under a "Candidates" heading in the
+note's own writing: an open question is worth keeping, and a reason nobody gave is not.
+
 ## The three methods
 
 The four tokens are the same in all three, and `kind` is what says which:
@@ -275,7 +290,8 @@ found:
 - **Decision** — Where this sits (a compass); Why
 
 A **Decision** is the one shape the app reads back: a compass and a section headed "Why"
-together are what make a note one. So never write that pair — see below.
+together are what make a note one. That pair is where a project's reasoning goes, so write
+it wherever you have a source for it and never where you do not — see below.
 
 ## Pictures and drawings
 
@@ -299,13 +315,17 @@ on is somebody's writing nothing can give back.
 
 ## Never write
 
-- **A "west", and never a "Why".** What was decided against, and the reason for it, are
-  the author's own thinking, and an agent that supplies one puts words in their mouth.
-  Write what you found as candidates, under a "Candidates" heading in the note's own
-  writing, and leave the compass to a person.
+- **A "west" or a "Why" you cannot name a source for.** What was decided against, and the
+  reason for it, is somebody's thinking, and one you supply out of your own reading puts
+  words in their mouth that no reader can tell from theirs. Write it from what you can
+  name in the note — what somebody said here, a commit message, a comment, a document in
+  this project — and cite that there. Where you found none, write what you found as
+  candidates under a "Candidates" heading and leave the slot empty.
 - **`checked`, and `read_against`.** Both say a person has read the note against the
   code. Writing either would silence the app's line about code that has moved under them,
-  and neither is true of a file you read for them.
+  and neither is true of a file you read for them. Read a note against the code as often
+  as you are asked to, and write what agrees and what does not into the note — saying it
+  still holds is theirs.
 - **A tag about the note rather than about the code** — that a tool wrote it, when, or in
   what pass. What wrote a note leaves no trace of itself in it; the note is read for what
   it says, and a tag naming the system it is about is wanted for exactly that reason.
@@ -332,4 +352,4 @@ to the file and none inside it, so the names in it are yours to write.
 `--tag` puts those tags on every note that run writes, beside the ones each already
 carries; it takes none off. Name the system the files are part of, so one run tags one
 scope.
-<!-- sloppy:agent 7b6596e6 -->
+<!-- sloppy:agent 1741a995 -->

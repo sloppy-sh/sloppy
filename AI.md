@@ -40,6 +40,16 @@ paragraphs, lists, pictures and Apple-Pencil drawings into as they liked.
 **Platform stance: mobile and tablet are the primary surface.** Desktop is the mobile
 UI given more room, never the mobile UI minus features.
 
+**Beside a codebase, the graph holds why the project is the way it is.** A developer and
+whatever they set to work beside them keep one account of that, placed by what each
+decision sprang out of and tagged with the system it is about, so the reasoning is read as
+a field and cited rather than hunted for in prose. Every note points at the code it
+explains, so either of them can take a piece of the repository and ask whether it is still
+doing what it was written to do — whether the code matches what its note says it is for,
+and whether the note still reads to somebody arriving now — and write the answer back where
+the next reader finds it. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "A project's
+container" is the mechanism.
+
 Domain: `sloppy.sh` · bundle id `sh.sloppy.app` · packages `@sloppy/*`.
 
 ## The Genealogy Is the Protocol (required)
