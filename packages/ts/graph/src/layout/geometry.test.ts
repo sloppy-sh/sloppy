@@ -140,6 +140,18 @@ describe("seedField", () => {
     expect(swapped.get(run[1].ref)).toEqual(field.get(run[1].ref));
   });
 
+  it("lays a run out in the order it was written, sweeping one way", () => {
+    const [parent, ...run] = family(11);
+    const field = seedField([parent, ...run]);
+    const from = field.get(parent.ref) as SeedPoint;
+    const leans = run.map(
+      (child) => (field.get(child.ref) as SeedPoint).outward - from.outward,
+    );
+    for (let at = 1; at < leans.length; at++) {
+      expect(leans[at], `${at}`).toBeGreaterThan(leans[at - 1]);
+    }
+  });
+
   // The widest run the seeder is asked for still leaves its parent's fan: a run
   // that overran it would lay its far end over the branch alongside.
   it("keeps the widest run inside its parent's own spread", () => {

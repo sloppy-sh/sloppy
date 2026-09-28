@@ -385,7 +385,8 @@ describe("the layout service", () => {
           settled[at * 2 + 1],
         ]);
       }
-      expect(after[held * 2]).toBeCloseTo(settled[held * 2] + 400, 6);
+      // Positions travel as float32, so the sum is matched to what one can hold.
+      expect(after[held * 2]).toBeCloseTo(settled[held * 2] + 400, 3);
     } finally {
       vi.useRealTimers();
     }

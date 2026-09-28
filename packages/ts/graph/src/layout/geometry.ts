@@ -22,14 +22,7 @@ const STEP_DECAY = 0.8;
 /** The widest a child may lean off its parent's outward direction. */
 const SPREAD_FIRST = 1.15;
 const SPREAD_DECAY = 0.66;
-/**
- * How much of a child's lean comes from its place in the run rather than from
- * its ref. The run alone fans siblings in the order they were written; the ref
- * alone gives each subtree a direction of its own. Both travel with the note, so
- * both are kept.
- */
-const FAN_WEIGHT = 0.7;
-/** Saturates the ordinal fan, so 23 siblings still fit inside one spread. */
+/** Saturates the fan's width, so 23 siblings still fit inside one spread. */
 const FAN_SOFT = 3;
 
 export interface SeedPoint {
@@ -90,7 +83,7 @@ function onTheRing(
 function place(
   note: SeededNote,
   byRef: ReadonlyMap<OwnedRef, SeededNote>,
-  ordinals: ReadonlyMap<OwnedRef, number>,
+  ordinals: ReadonlyMap<OwnedRef, Ordinal>,
   radius: number,
   placed: Map<OwnedRef, Placed>,
 ): Placed {
@@ -115,19 +108,25 @@ function place(
       under.ref,
       from === undefined
         ? { point: seedRing(refSector(under.ref), radius), depth: under.depth }
-        : leanOff(from, under, ordinals.get(under.ref) ?? 1),
+        : leanOff(
+            from,
+            under.parent as OwnedRef,
+            ordinals.get(under.ref) ?? { at: 1, of: 1 },
+          ),
     );
   }
 
   return placed.get(note.ref) as Placed;
 }
 
-function leanOff(from: Placed, note: SeededNote, ordinal: number): Placed {
+function leanOff(from: Placed, parent: OwnedRef, ordinal: Ordinal): Placed {
   const depth = from.depth + 1;
-  const lean =
-    spreadAt(depth) *
-    (FAN_WEIGHT * fanOffset(ordinal) +
-      (1 - FAN_WEIGHT) * signedUnit(refSector(note.ref)));
+  const width = fanWidth(ordinal.of);
+  // The run turns as one, by its parent's own sector and only as far as its fan
+  // leaves room: a subtree has a direction of its own, no two siblings ever
+  // trade places, and a run never leans past its parent's spread.
+  const turn = signedUnit(refSector(parent)) * (1 - width);
+  const lean = spreadAt(depth) * (fanOffset(ordinal.at, ordinal.of) + turn);
   const outward = from.point.outward + lean;
   const step = STEP_FIRST * STEP_DECAY ** (depth - 2);
   return {
@@ -140,15 +139,21 @@ function leanOff(from: Placed, note: SeededNote, ordinal: number): Placed {
   };
 }
 
+/** A note's place in its run, from 1, and how many the run holds. */
+interface Ordinal {
+  at: number;
+  of: number;
+}
+
 /**
- * Each note's place in the run it lies in, from 1. `orderSiblings` is handed the
- * notes without their labels, so what fans a run is the order it was written —
- * the half of that rule two peers cannot disagree about.
+ * Each note's place in the run it lies in. `orderSiblings` is handed the notes
+ * without their labels, so what fans a run is the order it was written — the
+ * half of that rule two peers cannot disagree about.
  */
 function runOrdinals(
   held: readonly SeededNote[],
   byRef: ReadonlyMap<OwnedRef, SeededNote>,
-): ReadonlyMap<OwnedRef, number> {
+): ReadonlyMap<OwnedRef, Ordinal> {
   const runs = new Map<OwnedRef, { ref: OwnedRef; created_at: string }[]>();
   for (const note of held) {
     if (note.parent === undefined || !byRef.has(note.parent)) continue;
@@ -158,10 +163,10 @@ function runOrdinals(
     else run.push(member);
   }
 
-  const ordinals = new Map<OwnedRef, number>();
+  const ordinals = new Map<OwnedRef, Ordinal>();
   for (const run of runs.values()) {
     orderSiblings(run).forEach((member, at) =>
-      ordinals.set(member.ref, at + 1),
+      ordinals.set(member.ref, { at: at + 1, of: run.length }),
     );
   }
   return ordinals;
@@ -186,15 +191,21 @@ function spreadAt(depth: number): number {
 }
 
 /**
- * A sibling's place in its parent's fan, in `(-1, 1)`: the first on the centre
- * line, then alternating outward. Saturating rather than proportional, so a run
- * of 23 stays inside one spread.
+ * A sibling's place in its parent's fan, in `(-1, 1)`: the run sweeps one way
+ * across the fan in the order it was written, centred on the parent's own
+ * direction.
  */
-function fanOffset(ordinal: number): number {
-  const k = ordinal - 1;
-  const rank = Math.ceil(k / 2);
-  const sign = k % 2 === 1 ? 1 : -1;
-  return sign * (rank / (rank + FAN_SOFT));
+function fanOffset(at: number, of: number): number {
+  if (of < 2) return 0;
+  return fanWidth(of) * ((2 * (at - 1)) / (of - 1) - 1);
+}
+
+/** How far a run of `of` reaches either side of the centre line, in `[0, 1)`:
+ *  saturating, so a pair sits close and a run of 23 stays inside one spread. */
+function fanWidth(of: number): number {
+  if (of < 2) return 0;
+  const half = (of - 1) / 2;
+  return half / (half + FAN_SOFT);
 }
 
 /** A sector angle as a signed fraction of a half-turn, in `[-1, 1)`. */
