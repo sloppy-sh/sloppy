@@ -2341,10 +2341,15 @@
 					>
 						<Network class="size-5 shrink-0 text-muted-foreground" />
 						{#if !collapsed}
-							<span class="min-w-0 flex-1 truncate font-medium">{graphName}</span>
-							{#if besideIt}
-								<span class="shrink-0 text-xs text-muted-foreground">{besideIt}</span>
-							{/if}
+							<span class="flex min-w-0 flex-1 flex-col">
+								<span class="flex min-w-0 items-baseline gap-2">
+									<span class="min-w-0 truncate font-medium">{graphName}</span>
+									{#if besideIt}
+										<span class="shrink-0 text-xs text-muted-foreground">{besideIt}</span>
+									{/if}
+								</span>
+								<span class="min-w-0 truncate text-xs text-muted-foreground">{summary}</span>
+							</span>
 						{/if}
 					</button>
 
