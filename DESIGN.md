@@ -951,14 +951,17 @@ nobody joins the note's authors, nothing moves. A note nobody has confirmed says
 all — **unread is not stale**, and a product that nags somebody about a note they wrote this
 morning has made a chore out of thinking.
 
-**When the code has moved, one quiet line, beside the anchor it is about.** "This has
-changed since you read it", in the note's own ink under the chip, with "Still true" next to
-it — beside that anchor rather than under the title, because a note pointing at four files
-and saying only that something has moved has told somebody to go and find it. A note whose
-code has all stood still shows no line anywhere: silence is the ordinary state of a note
-that is fine, and so is a note nobody has read against the code yet — that says nothing
-either, and never "up to date". Where the project is not open beside the notes, nothing is
-worked out and no line is drawn.
+**When the code has moved, one quiet line for each file that has, under the title.**
+"`src/parser.ts` has changed since you read it", in the note's own ink, with "Still true"
+beside the lines — one act for the note, because the reading is the note's. Each line names
+its file, so a note pointing at four files never says only that something has moved. The
+lines sit under the title rather than under a chip because a reading outlives the sentence
+that named the file: the note may not point there any more, may name it twice, or name it in
+the middle of a paragraph a line cannot interrupt. A note whose code has all stood still
+shows no line anywhere: silence is the ordinary state of a note that is fine, and so is a
+note nobody has read against the code yet — that says nothing either, and never "up to
+date". Where the project is not open beside the notes, nothing is worked out and no line is
+drawn.
 
 **The words name what happened, never how it is known.** "Changed since you read it",
 "Still true", "read against the code" — what a person can act on. Never what Sloppy
@@ -966,9 +969,9 @@ compared, or what it compared it with.
 
 **Phone first.** The chip wraps inside the paragraph rather than truncating the sentence
 around it; the sheet is the full-width bottom sheet every modal is, with the path pinned at
-the top and the code scrolling under it; the line about moved code is one line at phone width
-and stays one line with the act under it rather than beside it. Nothing here is a hover: an
-anchor says what it is in the words it is drawn with.
+the top and the code scrolling under it; a line about moved code wraps its path rather than
+cutting it short, and at phone width the act sits under the lines rather than beside them.
+Nothing here is a hover: an anchor says what it is in the words it is drawn with.
 
 ## The compass card
 

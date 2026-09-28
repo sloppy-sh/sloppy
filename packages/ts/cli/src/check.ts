@@ -1,17 +1,10 @@
 // `sloppy check`: every note in a container read, and what does not hold said
 // once — docs/ARCHITECTURE.md § "Tooling and the review".
 
-import {
-  BIN_DIR,
-  binAt,
-  digestsIn,
-  type Files,
-  projectRootOf,
-} from "@sloppy/local";
+import { BIN_DIR, binAt, type Files, projectRootOf } from "@sloppy/local";
 import {
   AddressSchema,
   anchorsOf,
-  type CodeReading,
   citedNotes,
   CommitIdSchema,
   PrincipalSchema,
@@ -22,7 +15,6 @@ import {
 } from "@sloppy/types";
 import {
   decodeText,
-  driftOf,
   type FrontValue,
   frontList,
   frontString,
@@ -31,7 +23,6 @@ import {
   notePath,
   NOTES_DIR,
   readGraphFile,
-  readingsOf,
   splitNoteFile,
   VaultFormatError,
   vaultToNote,
@@ -40,15 +31,13 @@ import {
 /**
  * What a defect is. `not-a-note` and `front-matter` are a file somebody's hand
  * has been in; `missing-note` and `missing-code` are a note pointing at
- * something that is not there; `code-moved` is a file a note was read against
- * that has changed since.
+ * something that is not there.
  */
 export const CHECK_DEFECTS = [
   "not-a-note",
   "front-matter",
   "missing-note",
   "missing-code",
-  "code-moved",
 ] as const;
 export type CheckDefectKind = (typeof CHECK_DEFECTS)[number];
 
@@ -95,9 +84,6 @@ interface Read {
   ref: OwnedRef;
   cites: OwnedRef[];
   anchors: string[];
-  /** What each file it was read against said then. Empty is a note nobody has
-   *  read, which is never out of date. */
-  readAgainst: CodeReading[];
 }
 
 /**
@@ -107,8 +93,7 @@ interface Read {
  * A citation of a note in somebody ELSE'S graph is left alone — this folder is
  * not where that note lives, so its absence here says nothing. A note in the
  * bin is still there, so a citation of one resolves. A graph that is nobody's
- * project has nowhere to look for an anchor, and none is looked for — and
- * nothing is worked out about what has moved either.
+ * project has nowhere to look for an anchor, and none is looked for.
  *
  * Throws {@link VaultFormatError} where the folder holds no graph this build
  * can read, which is the one thing that stops the check rather than failing it.
@@ -117,10 +102,7 @@ export async function check(container: Files): Promise<CheckResult> {
   const bytes = await container.read(GRAPH_FILE);
   if (!bytes) throw new VaultFormatError("There is no graph in that folder.");
   const graph = readGraphFile(bytes);
-  const root = projectRootOf(container, graph);
-  /** The project's files and what each of them says now, read once however
-   *  many notes point at it. Absent where the graph is nobody's project. */
-  const code = root && { files: root, now: digestsIn(root) };
+  const project = projectRootOf(container, graph);
 
   const defects: CheckDefect[] = [];
   const here = new Set<string>();
@@ -153,26 +135,14 @@ export async function check(container: Files): Promise<CheckResult> {
         said: `Points at a note this graph hasn't got: ${cited}`,
       });
     }
-    if (code === undefined) continue;
-    const gone = new Set<string>();
+    if (project === undefined) continue;
     for (const path of note.anchors) {
-      if (await code.files.exists(path)) continue;
-      gone.add(path);
+      if (await project.exists(path)) continue;
       defects.push({
         kind: "missing-code",
         file: note.file,
         note: note.ref,
         said: `Points at code that isn't there: ${path}`,
-      });
-    }
-    // A file that is not there is said once, as the sharper of the two.
-    for (const path of await driftOf(note.readAgainst, code.now)) {
-      if (gone.has(path)) continue;
-      defects.push({
-        kind: "code-moved",
-        file: note.file,
-        note: note.ref,
-        said: `Read against a file that has changed since: ${path}`,
       });
     }
   }
@@ -243,11 +213,5 @@ function readNote(
     for (const cited of citedNotes(section.content)) cites.add(cited);
     for (const anchor of anchorsOf(section.content)) anchors.add(anchor.path);
   }
-  return {
-    file,
-    ref,
-    cites: [...cites],
-    anchors: [...anchors],
-    readAgainst: readingsOf(front).read_against ?? [],
-  };
+  return { file, ref, cites: [...cites], anchors: [...anchors] };
 }
