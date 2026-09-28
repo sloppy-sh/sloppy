@@ -75,13 +75,24 @@ describe("the agents this app chats with", () => {
   });
 });
 
+/** Longer than this and an act is being explained rather than named; the file an
+ *  agent reads first is where a rule is taught at length. */
+const ACT_WORDS_MAX = 640;
+
 describe("the acts Sloppy hands an agent", () => {
   it("gives each one words for the agent, words for a person, and a schema", () => {
     for (const act of CHAT_TOOLS) {
       const spec = CHAT_TOOL_SPECS[act];
       expect(spec.description.length).toBeGreaterThan(0);
+      expect(spec.description.length).toBeLessThanOrEqual(ACT_WORDS_MAX);
       expect(spec.label.length).toBeGreaterThan(0);
       expect(spec.arguments.safeParse(undefined).success).toBe(false);
+    }
+  });
+
+  it("tells the acts that draw whose question the canvas's colour answers", () => {
+    for (const act of ["style_note", "tag_note"] as const) {
+      expect(CHAT_TOOL_SPECS[act].description).toContain("reader's own");
     }
   });
 
@@ -125,6 +136,9 @@ describe("the acts Sloppy hands an agent", () => {
       for (const [field, shape] of Object.entries(properties)) {
         named.push(`${one.name}.${field}`);
         expect(shape.description ?? "").not.toBe("");
+        expect((shape.description ?? "").length).toBeLessThanOrEqual(
+          ACT_WORDS_MAX,
+        );
         expect(shape.type).not.toBeUndefined();
       }
     }

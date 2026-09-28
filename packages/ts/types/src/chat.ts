@@ -214,7 +214,7 @@ export const WriteNoteArgumentsSchema = z.object({
     .max(MAX_TAGS_PER_NODE)
     .optional()
     .describe(
-      "The systems this note belongs to, so that picking one out picks out everything about it. Lowercase, a word or a short phrase.",
+      "The systems this note belongs to, so that picking one out picks out everything about it. Lowercase, a word or a short phrase. Write at least one: a note carrying none is in no set at all.",
     ),
   under: OwnedRefSchema.optional().describe(
     "The note this one springs out of, where a note is being started. Leave it out and it springs out of the note about the nearest folder above the place. A note already there is written onto where it stands; move_note is what carries one somewhere else.",
@@ -346,7 +346,7 @@ export const StyleNoteArgumentsSchema = z.object({
     .enum(RING_WEIGHTS)
     .optional()
     .describe(
-      "How heavy a ring the mark wears. 'none' is the mark an unstyled note draws.",
+      "How heavy a ring the mark wears, which is how loudly the ring says what it says. 'none' is the mark an unstyled note draws, and is what most notes should draw.",
     ),
   ring_style: z
     .enum(RING_STYLES)
@@ -357,7 +357,9 @@ export const StyleNoteArgumentsSchema = z.object({
   mark_radius: z
     .enum(MARK_RADII)
     .optional()
-    .describe("How big the mark is drawn."),
+    .describe(
+      "How big the mark is drawn. A mark is already as big as the thought folded under it and this multiplies that, so it is how much of the project the note answers for.",
+    ),
   off: z
     .array(z.enum(MARK_CHANNELS))
     .max(MARK_CHANNELS.length)
@@ -415,7 +417,7 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   },
   write_note: {
     description:
-      "Write the note about a place in the project, starting one where there is none. Search first: what this graph already says is cited, never written again, and a relation between two notes goes on the line between them rather than into a sentence about it. The person is asked before anything lands.",
+      "Write the note about a place in the project, starting one where there is none. Search first: what this graph already says is cited, never written again, and a relation between two notes goes on the line between them rather than into a sentence about it. Name the system it belongs to in its tags as you write it — an untagged note is one no reader's question reaches — and draw it with style_note where its mark should be found from across the field. The person is asked before anything lands.",
     label: "Writing a note",
     arguments: WriteNoteArgumentsSchema,
     writes: true,
@@ -429,7 +431,7 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   },
   tag_note: {
     description:
-      "Put tags on a note, naming the systems it belongs to, and take off the ones that have stopped being true of it. The person is asked first, and is told which would come off.",
+      "Put tags on a note, naming the systems it belongs to, and take off the ones that have stopped being true of it. This is the whole of what can be done for the canvas's colour: a tag has no look of its own, the colour a note draws in is the reader's own selection, and a note carrying no tags is one their question can never reach. The person is asked first, and is told which would come off.",
     label: "Tagging a note",
     arguments: TagNoteArgumentsSchema,
     writes: true,
@@ -457,7 +459,7 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   },
   style_note: {
     description:
-      "Say how a note's mark is drawn on the canvas: the ring it wears, how broken that ring is, how big the mark is. Shape only — the colour on the canvas answers the reader's own question and is never a note's to set. The person is asked first.",
+      "Say how a note's mark is drawn on the canvas: the ring it wears inside its own edge, how broken that ring is, how big the mark is. Size says how much of the project the note answers for, and a broken ring says the reading is not finished. Shape only — the colour on the canvas answers the reader's own question and is never a note's to set. A look is read against the marks carrying none, so draw the few notes somebody should find from across the field and leave the rest plain. The person is asked first.",
     label: "Drawing a mark",
     arguments: StyleNoteArgumentsSchema,
     writes: true,

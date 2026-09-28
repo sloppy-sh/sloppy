@@ -196,6 +196,54 @@ sit. That is the whole use of the axis, and naming the systems you find as you r
 is work only somebody reading the code can do. **A tag that records how the note came to
 be written is the opposite of one**, and never goes on: see below.
 
+## How a mark is drawn
+
+Most of a mark is the canvas's own and nobody's to set: how deep the note sits, whose
+graph it is in, where it stands and how far it stands from what it sprang out of.
+`appearance` is the part its author says, it draws inside the mark, and it moves nothing.
+
+**Colour is not among the things it says.** A look carries none at any level, and nothing
+you write puts colour on the canvas: colour arrives when the reader selects tags and means
+the notes that carry them. So a tag has no look to give it — it is a plain word — and
+**putting the right words on the right notes is the whole of what you can do for that
+channel**. Tag every note with the system it is about, and a reader selecting that system
+lights every note about it, however far apart they sit.
+
+Three channels are left, and each says one thing:
+
+- **`ring_weight`** — the ring the mark wears inside its own edge: `none`, `hairline`,
+  `regular`, `heavy`. `none` is what a note nobody styled draws, and is not itself a look.
+- **`ring_style`** — how much of that ring is missing: `solid` is whole, `open` has a gap,
+  `notched` a few, `dashed` is ticked all the way round. **A broken ring reads as a draft**,
+  and a style says nothing at all on a mark wearing no ring.
+- **`mark_radius`** — `small`, `regular`, `large`, `huge`, `giant`. A mark is already as
+  big as the thought folded under it and this multiplies that, so it is how an author says
+  **this one matters**.
+
+A look is read against the marks carrying none, and it is the first thing the canvas drops
+as marks get small. A ring on every note therefore says what a ring on none says, and a
+graph nobody drew at all leaves the reader nowhere to start. Spend them, and spend them on
+few notes.
+
+**A convention for documenting runs.** What those three channels MEAN is above and is
+Sloppy's. What a run over somebody's code should SPEND them on is written nowhere else, so
+it is written here, so that one run's graph reads like the next one's:
+
+- **Size is how much of the project a note answers for.** `large` on the note a whole
+  system hangs under — the notes about its parts spring out of it, and a fold's size and
+  its author's multiply, so that is the mark somebody finds from across the field.
+  `regular`, which is nothing written at all, on the ordinary note about one part.
+  `small` on a detail nobody reads until they are already inside. Leave `huge` and
+  `giant` to a person: every mark a run grows is one they did not.
+- **A ring is for a note you could not finish reading.** Most get none. Where something is
+  open — a path you could not follow, a name you guessed at, a "Candidates" list still
+  standing — wear one, and how broken it is says how much: `open` for one thing, `notched`
+  for several, `dashed` for a note that is still a stub. The weight is how loudly: `heavy`
+  where nobody should build on the note before reading it again, `hairline` for one loose
+  end.
+- **Every note a run writes carries the system it is about.** A note with no tags is in no
+  set, so it is a mark the reader's question can never reach, whatever else is drawn on it.
+
 ## Saying a note has been read against the code
 
 Two fields say it, and both mean the same thing: somebody sat down with this note and
@@ -285,4 +333,4 @@ to the file and none inside it, so the names in it are yours to write.
 `--tag` puts those tags on every note that run writes, beside the ones each already
 carries; it takes none off. Name the system the files are part of, so one run tags one
 scope.
-<!-- sloppy:agent a0085c85 -->
+<!-- sloppy:agent 8101ee3f -->

@@ -3,9 +3,12 @@ import {
   COMPASS_KINDS,
   compassMethod,
   compassOf,
+  MARK_RADII,
   NOTE_TEMPLATES,
   OwnedRefSchema,
   parseCodeAnchor,
+  RING_STYLES,
+  RING_WEIGHTS,
 } from "@sloppy/types";
 import {
   decodeText,
@@ -43,6 +46,16 @@ function example(heading: string): string {
   }
   while (block[block.length - 1] === "") block.pop();
   return block.join("\n");
+}
+
+/** Everything under a heading, up to the next one. */
+function section(heading: string): string {
+  const lines = AGENT_MD.split("\n");
+  const at = lines.indexOf(`## ${heading}`);
+  expect(at).toBeGreaterThan(-1);
+  const after = lines.slice(at + 1);
+  const ends = after.findIndex((line) => line.startsWith("## "));
+  return (ends === -1 ? after : after.slice(0, ends)).join("\n");
 }
 
 describe("what AGENT.md teaches", () => {
@@ -151,6 +164,31 @@ describe("what AGENT.md teaches", () => {
       expect(emoji?.attrs?.name).toBe("wave");
       expect(emoji?.attrs?.sticker).toBe(sticker);
     }
+  });
+
+  /** A look the file leaves unnamed is one the agent never reaches for, so every
+   *  value this build draws is taught rather than a chosen few. */
+  it("names every look a mark can be drawn with", () => {
+    const drawn = section("How a mark is drawn");
+    for (const look of [...RING_WEIGHTS, ...RING_STYLES, ...MARK_RADII]) {
+      expect(drawn).toContain(`\`${look}\``);
+    }
+    for (const channel of ["ring_weight", "ring_style", "mark_radius"]) {
+      expect(drawn).toContain(`\`${channel}\``);
+    }
+  });
+
+  it("leaves colour to the reader and gives a tag no look of its own", () => {
+    const drawn = section("How a mark is drawn");
+    expect(drawn).toContain("A look carries none at any level");
+    expect(drawn).toContain("colour arrives when the reader selects tags");
+    expect(drawn).toContain("a tag has no look to give it");
+  });
+
+  it("marks what it settles for a documenting run as a convention", () => {
+    expect(section("How a mark is drawn")).toContain(
+      "**A convention for documenting runs.**",
+    );
   });
 
   it("carries every shape the app starts a note from", () => {
