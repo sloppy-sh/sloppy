@@ -37,13 +37,7 @@ describe("a digest of a file", () => {
 describe("what the code has done under a note", () => {
   it("says nothing has moved where every file stands as it was read", async () => {
     const files = { "src/a.ts": "one", "src/b.ts": "two" };
-    expect(
-      await driftOf(
-        ["src/a.ts", "src/b.ts"],
-        await readAgainst(files),
-        project(files),
-      ),
-    ).toEqual({ drifted: [], unread: [] });
+    expect(await driftOf(await readAgainst(files), project(files))).toEqual([]);
   });
 
   it("names the file that has changed since, and only it", async () => {
@@ -52,76 +46,51 @@ describe("what the code has done under a note", () => {
       "src/b.ts": "two",
     });
     const now = project({ "src/a.ts": "one", "src/b.ts": "two, rewritten" });
-    expect(await driftOf(["src/a.ts", "src/b.ts"], readings, now)).toEqual({
-      drifted: ["src/b.ts"],
-      unread: [],
-    });
+    expect(await driftOf(readings, now)).toEqual(["src/b.ts"]);
   });
 
   it("names a file the project has not got any more", async () => {
     const readings = await readAgainst({ "src/a.ts": "one" });
-    expect(await driftOf(["src/a.ts"], readings, project({}))).toEqual({
-      drifted: ["src/a.ts"],
-      unread: [],
-    });
+    expect(await driftOf(readings, project({}))).toEqual(["src/a.ts"]);
   });
 
-  it("holds a path nobody read the note against as unread, however far it has moved", async () => {
+  // Unread is not stale: a file no reading covers is not asked about at all.
+  it("says nothing about a file nobody read the note against", async () => {
     const readings = await readAgainst({ "src/a.ts": "one" });
     const now = project({ "src/a.ts": "one", "src/b.ts": "written since" });
-    expect(await driftOf(["src/a.ts", "src/b.ts"], readings, now)).toEqual({
-      drifted: [],
-      unread: ["src/b.ts"],
-    });
+    expect(await driftOf(readings, now)).toEqual([]);
   });
 
-  it("holds a note read against nothing as unread and never as out of date", async () => {
-    const now = project({ "src/a.ts": "one" });
-    expect(await driftOf(["src/a.ts"], undefined, now)).toEqual({
-      drifted: [],
-      unread: ["src/a.ts"],
-    });
-    expect(await driftOf(["src/a.ts"], [], now)).toEqual({
-      drifted: [],
-      unread: ["src/a.ts"],
-    });
+  it("says nothing about a note read against nothing", async () => {
+    const now = project({ "src/a.ts": "written since" });
+    expect(await driftOf(undefined, now)).toEqual([]);
+    expect(await driftOf([], now)).toEqual([]);
   });
 
-  it("holds a reading it cannot reproduce as unread rather than crying wolf", async () => {
+  it("passes over a reading it cannot reproduce rather than crying wolf", async () => {
     const readings = [{ path: "src/a.ts", digest: `blake3:${"c".repeat(64)}` }];
-    expect(
-      await driftOf(["src/a.ts"], readings, project({ "src/a.ts": "one" })),
-    ).toEqual({ drifted: [], unread: ["src/a.ts"] });
+    expect(await driftOf(readings, project({ "src/a.ts": "one" }))).toEqual([]);
   });
 
-  it("passes over a reading of a path the note no longer points at", async () => {
+  // The readings are the whole question, so a canvas holding nothing but the
+  // note's row asks what a surface holding its writing asks.
+  it("names a file it was read against though the writing no longer points there", async () => {
     const readings = await readAgainst({
       "src/a.ts": "one",
       "src/gone.ts": "two",
     });
-    expect(
-      await driftOf(["src/a.ts"], readings, project({ "src/a.ts": "one" })),
-    ).toEqual({ drifted: [], unread: [] });
+    const now = project({ "src/a.ts": "one", "src/gone.ts": "two, rewritten" });
+    expect(await driftOf(readings, now)).toEqual(["src/gone.ts"]);
   });
 
-  it("answers nothing for a note pointing at no code at all", async () => {
-    expect(await driftOf([], undefined, project({}))).toEqual({
-      drifted: [],
-      unread: [],
-    });
-  });
-
-  it("reads each file once however often a note points at it", async () => {
+  it("reads each file once however often a reading names it", async () => {
     let asked = 0;
     const now: CodeNow = async (path) => {
       asked++;
       return digestOf(encodeText(path));
     };
-    await driftOf(
-      ["src/a.ts", "src/a.ts"],
-      await readingsNow(["src/a.ts"], now),
-      now,
-    );
+    const readings = await readingsNow(["src/a.ts"], now);
+    await driftOf([...readings, ...readings], now);
     expect(asked).toBe(2);
   });
 });
@@ -145,9 +114,6 @@ describe("the readings a note takes when somebody says it still holds", () => {
     const files = { "src/a.ts": "one", "src/b.ts": "two" };
     const paths = Object.keys(files);
     const readings = await readingsNow(paths, project(files));
-    expect(await driftOf(paths, readings, project(files))).toEqual({
-      drifted: [],
-      unread: [],
-    });
+    expect(await driftOf(readings, project(files))).toEqual([]);
   });
 });

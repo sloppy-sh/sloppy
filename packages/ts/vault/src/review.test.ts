@@ -392,4 +392,39 @@ describe("a note read against the files themselves", () => {
     });
     expect(signals).toEqual([]);
   });
+
+  // The canvas draws its mark off the note's row alone, so the sheet and the
+  // terminal ask over the readings too — a reading outlives the link that
+  // wrote it, and clearing it is the act's job.
+  it("names a file it was read against though the writing no longer points there", async () => {
+    const signals = await review({
+      notes: [
+        note({
+          n: 1,
+          readAgainst: { "src/a.ts": "one", "src/gone.ts": "two" },
+          body: "[parser](code:src/a.ts)",
+        }),
+      ],
+      projectTop: ["src"],
+      changed: nothingMoved,
+      codeNow: code({ "src/a.ts": "one", "src/gone.ts": "two, rewritten" }),
+    });
+    expect(signals).toEqual<ReviewSignal[]>([
+      { kind: "anchor-changed", note: ref(1), path: "src/gone.ts" },
+    ]);
+  });
+
+  it("answers a note whose writing points at no code at all by its readings", async () => {
+    const signals = await review({
+      notes: [
+        note({ n: 1, readAgainst: { "src/a.ts": "one" }, body: "no links" }),
+      ],
+      projectTop: [],
+      changed: nothingMoved,
+      codeNow: code({ "src/a.ts": "one, rewritten" }),
+    });
+    expect(signals).toEqual<ReviewSignal[]>([
+      { kind: "anchor-changed", note: ref(1), path: "src/a.ts" },
+    ]);
+  });
 });

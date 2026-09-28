@@ -13,6 +13,7 @@ import {
 	type UpdateNodeRequest
 } from '@sloppy/types';
 import { NOTE_TEMPLATES, writeTemplate } from '@sloppy/ui';
+import { digestOf } from '@sloppy/vault';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initRuntime } from '../runtime.js';
 import { nodes } from './nodes.svelte.js';
@@ -97,9 +98,11 @@ let store: Map<string, Uint8Array>;
 let written: UpdateNodeRequest[];
 let blocks: CreateBlockRequest[];
 
+const said = (text: string) => new TextEncoder().encode(text);
+
 /** Puts a file in the project and keeps a version of the folder. */
-async function keepFile(at: string, said: string): Promise<string> {
-	await files.write(at, new TextEncoder().encode(said));
+async function keepFile(at: string, text: string): Promise<string> {
+	await files.write(at, said(text));
 	await kept.commit(`Wrote ${at}`);
 	return (await kept.currentCommit()) as string;
 }
@@ -334,13 +337,20 @@ describe('acting on what was left behind', () => {
 		await keepFile('docs/guide.md', '# Guide\n');
 	});
 
-	it('records the reading against the version the folder stands on now', async () => {
+	it('records what every file it points at says now, and the version too', async () => {
 		await asked();
 		expect(review.under('anchor-changed')).toHaveLength(1);
 
 		await review.stillTrue(PARSER);
 
-		expect(written).toEqual([{ checked: await kept.currentCommit() }]);
+		expect(written).toEqual([
+			{
+				read_against: [
+					{ path: 'src/parser.ts', digest: await digestOf(said('export const one = 2;\n')) }
+				],
+				checked: await kept.currentCommit()
+			}
+		]);
 		expect(review.under('anchor-changed')).toEqual([]);
 		expect(review.acting).toBeNull();
 		// The last of its kind settled, so the question moves on rather than

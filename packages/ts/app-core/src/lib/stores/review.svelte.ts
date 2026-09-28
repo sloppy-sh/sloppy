@@ -5,7 +5,7 @@
  * `review()` in `@sloppy/vault` so this and the CLI cannot disagree.
  */
 
-import type { Files } from '@sloppy/local';
+import { digestsIn, type Files } from '@sloppy/local';
 import {
 	type BlockDocument,
 	type BlockView,
@@ -23,7 +23,8 @@ import {
 	type ReviewSignalKind
 } from '@sloppy/vault';
 import { api } from '../api.js';
-import { filesIn } from '../project-code.js';
+import { filesIn, readAgainstNow } from '../project-code.js';
+import { codeDrift } from './code-drift.svelte.js';
 import { serverMessage } from './errors.js';
 import { graphHistory } from './history.svelte.js';
 import { nodes } from './nodes.svelte.js';
@@ -55,6 +56,10 @@ class ReviewStore {
 	#reading = $state(false);
 	#acting = $state.raw<string | null>(null);
 	#trouble = $state.raw<string | null>(null);
+	/** The project the answer in hand was read against, so an act reads those
+	 *  same files — as they stand when it is taken, never as the question found
+	 *  them. */
+	#project: Files | null = null;
 	// An {@link ask} whose answer lands after another began, or after a clear,
 	// is not this graph's answer.
 	#epoch = 0;
@@ -127,6 +132,7 @@ class ReviewStore {
 		const epoch = ++this.#epoch;
 		const current = () => epoch === this.#epoch;
 		this.#of = graph;
+		this.#project = project;
 		this.#reading = true;
 		this.#trouble = null;
 		const mine = notes.filter((note) => graphOf(note) === graph);
@@ -136,10 +142,12 @@ class ReviewStore {
 				notes: mine.map((note) => ({
 					ref: note.ref,
 					...(note.checked === undefined ? {} : { checked: note.checked }),
+					...(note.read_against === undefined ? {} : { read_against: note.read_against }),
 					sections: read.get(note.ref) ?? []
 				})),
 				projectTop: placesIn(files),
-				changed: (checked, paths) => graphHistory.changedSince(checked, paths)
+				changed: (checked, paths) => graphHistory.changedSince(checked, paths),
+				codeNow: digestsIn(project)
 			});
 			if (!current()) return;
 			this.#signals = signals;
@@ -159,21 +167,24 @@ class ReviewStore {
 	}
 
 	/**
-	 * Record that this note's reasoning still holds against the version the
-	 * folder stands on now. Nothing else is written, and the note stops being
-	 * one the code has moved under.
+	 * Record that this note's reasoning still holds against the code as it
+	 * stands now — every place it points at, in one act. Nothing else is
+	 * written, and the note stops being one the code has moved under.
 	 */
 	async stillTrue(note: OwnedRef): Promise<void> {
 		const row = actKey({ kind: 'anchor-changed', note });
+		const project = this.#project;
 		this.#acting = row;
 		this.#trouble = null;
 		try {
-			const at = await graphHistory.versionNow();
-			if (at === undefined) {
+			if (!project) {
 				this.#trouble = UNRECORDED;
 				return;
 			}
-			await nodes.update(note, { checked: at });
+			const sections = await api.listBlocks(note);
+			const at = await graphHistory.versionNow();
+			await nodes.update(note, await readAgainstNow(sections, project, at));
+			codeDrift.again();
 			this.#settle((one) => !(one.kind === 'anchor-changed' && one.note === note));
 		} catch (error) {
 			this.#trouble = serverMessage(error) ?? UNRECORDED;
@@ -234,6 +245,7 @@ class ReviewStore {
 		this.#epoch++;
 		this.#signals = [];
 		this.#of = null;
+		this.#project = null;
 		this.#chosen = null;
 		this.#reading = false;
 		this.#acting = null;

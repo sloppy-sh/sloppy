@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { carryIdentityOut, makeLocalIdentity } from "@sloppy/local";
 import { compassOf } from "@sloppy/types";
 import {
+  digestOf,
   INK_DIR,
   PICTURES_FILE,
   placesIn,
@@ -564,7 +565,9 @@ describe("sloppy review", () => {
       }
 
       const moved = (lines: string[]): boolean =>
-        lines.some((line) => line.includes("has changed since this was read"));
+        lines.some((line) =>
+          line.includes("Read against a file that has changed since"),
+        );
       expect(moved((await ran(["review"])).out)).toBe(false);
       await wrote("packages/one/src/index.ts", "export const NAME = 'two';");
       const { out } = await ran(["review"]);
@@ -572,12 +575,43 @@ describe("sloppy review", () => {
       expect(
         out.some((line) =>
           line.endsWith(
-            "The code it points at has changed since this was read: packages/one/src/index.ts",
+            "Read against a file that has changed since: packages/one/src/index.ts",
           ),
         ),
       ).toBe(true);
     },
   );
+
+  // A folder nothing is keeping a history of can be asked this too: the note
+  // carries what each file it points at said when it was read.
+  it("says when a file a note was read against says something else now", async () => {
+    await aProject();
+    await ran(["init"]);
+    await ran(["draft", "packages/one/src/index.ts"]);
+    const digest = await digestOf(
+      new TextEncoder().encode(await read("packages/one/src/index.ts")),
+    );
+    for (const held of await everyNote()) {
+      if (!held.said.includes("title: packages/one/src/index.ts")) continue;
+      await wrote(
+        held.at,
+        held.said.replace(
+          "title:",
+          `read_against:\n  - path: packages/one/src/index.ts\n    digest: ${digest}\ntitle:`,
+        ),
+      );
+    }
+
+    const moved = (lines: string[]): boolean =>
+      lines.some((line) =>
+        line.endsWith(
+          "Read against a file that has changed since: packages/one/src/index.ts",
+        ),
+      );
+    expect(moved((await ran(["review"])).out)).toBe(false);
+    await wrote("packages/one/src/index.ts", "export const NAME = 'two';");
+    expect(moved((await ran(["review"])).out)).toBe(true);
+  });
 
   it.skipIf(!historyHere)(
     "reads a note's `checked` as a commit and never as an argument to git",

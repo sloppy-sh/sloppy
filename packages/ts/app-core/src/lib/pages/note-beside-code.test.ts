@@ -2,6 +2,7 @@
 // when that code moved — DESIGN.md § "An anchor into code".
 
 import { MemoryFiles, MemoryHistory } from '@sloppy/local';
+import { digestOf } from '@sloppy/vault';
 import type { BlockView, NodeView, OwnedRef, UpdateNodeRequest } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -129,9 +130,11 @@ function shellOver(project: boolean, mode: DeploymentMode = 'hosted'): void {
 	});
 }
 
+const said = (text: string) => new TextEncoder().encode(text);
+
 /** Puts a file in the project and keeps a version of the folder. */
-async function keepFile(at: string, said: string): Promise<string> {
-	await files.write(at, new TextEncoder().encode(said));
+async function keepFile(at: string, text: string): Promise<string> {
+	await files.write(at, said(text));
 	await kept.commit(`Wrote ${at}`);
 	return (await kept.currentCommit()) as string;
 }
@@ -233,14 +236,14 @@ describe('saying a note’s reasoning still holds', () => {
 		await keepFile('src/parser.ts', PARSER);
 		await openNote();
 
-		expect(screen()).not.toContain('has changed since you last read it');
+		expect(screen()).not.toContain('has changed since you read it');
 		expect(named('Still true')).toBeUndefined();
 
 		await openActs();
 		expect(named('Still true')).toBeDefined();
 	});
 
-	it('records the version the folder is on, and nothing else', async () => {
+	it('records what every file it points at says now, and the version too', async () => {
 		const at = await keepFile('src/parser.ts', PARSER);
 		await openNote();
 
@@ -248,7 +251,61 @@ describe('saying a note’s reasoning still holds', () => {
 		named('Still true')?.click();
 		await settle();
 
-		expect(written).toEqual([{ checked: at }]);
+		expect(written).toEqual([
+			{
+				read_against: [{ path: 'src/parser.ts', digest: await digestOf(said(PARSER)) }],
+				checked: at
+			}
+		]);
+	});
+
+	// A folder nothing is keeping a history of can still answer this, because
+	// the reading is a reading of the files and not of a version.
+	it('records the reading where the folder keeps no history', async () => {
+		await files.write('src/parser.ts', said(PARSER));
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			mode: () => 'local',
+			project: async () => files,
+			history: () => undefined
+		});
+		await openNote();
+
+		await openActs();
+		named('Still true')?.click();
+		await settle();
+
+		expect(written).toEqual([
+			{ read_against: [{ path: 'src/parser.ts', digest: await digestOf(said(PARSER)) }] }
+		]);
+	});
+
+	it('names the file that moved since the note was read against it', async () => {
+		const digest = await digestOf(said(PARSER));
+		await files.write('src/parser.ts', said(`${PARSER}// and more\n`));
+		await openNote({ read_against: [{ path: 'src/parser.ts', digest }] });
+
+		expect(screen()).toContain('src/parser.ts has changed since you read it');
+		expect(named('Still true')).toBeDefined();
+	});
+
+	// A reading outlives the link that wrote it: the mark on the canvas is drawn
+	// off the readings alone, so the note says the same thing and the act clears
+	// it — taking it records the note against what it points at NOW, which is
+	// nothing.
+	it('says so, and offers the act, where the writing no longer points there', async () => {
+		const digest = await digestOf(said(PARSER));
+		await files.write('src/parser.ts', said(`${PARSER}// and more\n`));
+		await openNote({ read_against: [{ path: 'src/parser.ts', digest }] }, [
+			anchored('https://example.com/')
+		]);
+
+		expect(screen()).toContain('src/parser.ts has changed since you read it');
+
+		named('Still true')?.click();
+		await settle();
+
+		expect(written.map((one) => one.read_against)).toEqual([[]]);
 	});
 
 	it('says so where the code moved after the note was confirmed', async () => {
@@ -256,7 +313,7 @@ describe('saying a note’s reasoning still holds', () => {
 		await keepFile('src/parser.ts', `${PARSER}// and more\n`);
 		await openNote({ checked: read });
 
-		expect(screen()).toContain('The code under this has changed since you last read it');
+		expect(screen()).toContain('src/parser.ts has changed since you read it');
 		expect(named('Still true')).toBeDefined();
 	});
 
@@ -266,8 +323,28 @@ describe('saying a note’s reasoning still holds', () => {
 		await keepFile('src/history.rs', 'fn discover() {}\n');
 		await openNote({ checked: read });
 
-		expect(screen()).not.toContain('has changed since you last read it');
+		expect(screen()).not.toContain('has changed since you read it');
 		expect(named('Still true')).toBeUndefined();
+	});
+
+	it('says nothing where the file it was read against still says the same', async () => {
+		const digest = await digestOf(said(PARSER));
+		await files.write('src/parser.ts', said(PARSER));
+		await openNote({ read_against: [{ path: 'src/parser.ts', digest }] });
+
+		expect(screen()).not.toContain('has changed since you read it');
+		expect(named('Still true')).toBeUndefined();
+	});
+
+	// Where the code cannot be reached nothing is worked out: not moved, and
+	// not up to date either.
+	it('works nothing out beside a graph that is nobody’s project', async () => {
+		const digest = await digestOf(said(PARSER));
+		await files.write('src/parser.ts', said(`${PARSER}// and more\n`));
+		shellOver(false);
+		await openNote({ read_against: [{ path: 'src/parser.ts', digest }] });
+
+		expect(screen()).not.toContain('has changed since you read it');
 	});
 
 	it('is not offered on a note with nothing pointing at code', async () => {
@@ -336,7 +413,7 @@ describe('a note a colleague writes, in the same project', () => {
 		await keepFile('src/parser.ts', `${PARSER}// and more\n`);
 		await openTheirNote({ checked: read });
 
-		expect(screen()).not.toContain('has changed since you last read it');
+		expect(screen()).not.toContain('has changed since you read it');
 		await openActs();
 		expect(named('Still true')).toBeUndefined();
 	});

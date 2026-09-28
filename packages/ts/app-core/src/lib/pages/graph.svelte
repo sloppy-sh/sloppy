@@ -142,6 +142,7 @@
 	import { saveHere, savesFiles } from '../save-file.js';
 	import { canvasInk } from '../stores/canvas-ink.svelte.js';
 	import { chat } from '../stores/chat.svelte.js';
+	import { codeDrift } from '../stores/code-drift.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
@@ -417,6 +418,7 @@
 		find.clear();
 		deleted.clear();
 		review.clear();
+		codeDrift.clear();
 		reviewing = false;
 		chat.clear();
 		chatting = false;
@@ -460,6 +462,24 @@
 	$effect(() => {
 		review.forget(graphs.current);
 		chat.forget(graphs.current);
+	});
+
+	/**
+	 * What the code has moved under, which the marks carry whether or not
+	 * anybody has asked — DESIGN.md § "What the code left behind". Read again
+	 * whenever the folder is, so an editor saving a file beside the app shows up
+	 * the next time the notes are.
+	 *
+	 * A pulled graph and a version that is not the one on disk are left out: the
+	 * files beside the app are not the ones either of them was read against.
+	 */
+	$effect(() => {
+		const theirs = foreign !== null || notNow;
+		void codeDrift.read(
+			theirs ? [] : visible,
+			theirs ? undefined : (projectFiles ?? undefined),
+			graphs.folderReads
+		);
 	});
 
 	function startChat(): void {
@@ -2087,6 +2107,7 @@
 					{edgeLooks}
 					{selection}
 					lit={foreign || notNow ? undefined : review.lit}
+					codeMoved={codeDrift.moved}
 					fields={foreign || asWas ? undefined : graphs.fields}
 					viewer={session.viewer?.did}
 					remountKey={asWas ? asWas.commit : foreign?.ref}

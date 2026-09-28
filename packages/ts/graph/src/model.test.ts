@@ -362,6 +362,46 @@ describe("a question that names notes", () => {
   });
 });
 
+// DESIGN.md § "What the code left behind": the notes the code has moved under,
+// which the mark carries whether or not anybody has asked.
+describe("the notes the code has moved under", () => {
+  const moved = new Set(drawn.slice(0, 3).map((entry) => entry.node.ref));
+
+  it("marks those, and none of the rest", () => {
+    const model = buildModel(drawn, {
+      selection: [],
+      codeMoved: moved,
+      palette,
+    });
+    for (const ref of model.order) {
+      expect(model.graph.getNodeAttributes(ref).codeMoved).toBe(moved.has(ref));
+    }
+  });
+
+  it("marks nothing where nobody could work it out", () => {
+    const model = buildModel(drawn, { selection: [], palette });
+    for (const ref of model.order) {
+      expect(model.graph.getNodeAttributes(ref).codeMoved).toBe(false);
+    }
+  });
+
+  it("changes no hue, no strength and no place", () => {
+    const plain = buildModel(drawn, { selection: [], palette });
+    const model = buildModel(drawn, {
+      selection: [],
+      codeMoved: moved,
+      palette,
+    });
+    for (const ref of model.order) {
+      const node = model.graph.getNodeAttributes(ref);
+      const before = plain.graph.getNodeAttributes(ref);
+      expect(node.fill).toBe(before.fill);
+      expect(node.alpha).toBe(before.alpha);
+      expect([node.x, node.y]).toEqual([before.x, before.y]);
+    }
+  });
+});
+
 // AI.md § "The Genealogy Is the Protocol": which two notes a run joins is a
 // function of what they sprang from and the order they read in, so the model
 // derives it and no row carries it.

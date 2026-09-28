@@ -11,10 +11,12 @@ import {
 	type NodeView,
 	type OwnedRef
 } from '@sloppy/types';
+import { digestOf } from '@sloppy/vault';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initRuntime } from '../runtime.js';
 import { canvasInk } from '../stores/canvas-ink.svelte.js';
+import { codeDrift } from '../stores/code-drift.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
@@ -143,6 +145,13 @@ function menuItem(label: string): HTMLButtonElement {
 	return found;
 }
 
+/** The notes the canvas is marking as the code having moved under, by
+ *  address. */
+const markedMoved = (): string[] =>
+	[...document.body.querySelectorAll<HTMLElement>('[data-code-moved="yes"]')].map(
+		(mark) => mark.textContent?.trim().split(/\s+/)[0] ?? ''
+	);
+
 /** Whether each drawn note is held in ink or dimmed, by its address. */
 function litOnCanvas(): Record<string, string | undefined> {
 	const marks = [...document.body.querySelectorAll<HTMLElement>('[data-lit]')];
@@ -246,6 +255,7 @@ beforeEach(async () => {
 	find.clear();
 	graphs.clear();
 	review.clear();
+	codeDrift.clear();
 	store = new Map();
 	files = new MemoryFiles({ root: PROJECT, store, data: '/data' });
 	kept = new MemoryHistory(new MemoryFiles({ root: PROJECT, store, data: '/data' }), {
@@ -275,6 +285,7 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	review.clear();
+	codeDrift.clear();
 	session.clear();
 	initRuntime({
 		apiHost: () => '',
@@ -284,6 +295,56 @@ afterEach(() => {
 	});
 	target.remove();
 	document.body.innerHTML = '';
+});
+
+// The one thing a mark says on its own — DESIGN.md § "What the code left
+// behind". Nobody has to ask for this one.
+describe('the mark a note carries where the code has moved', () => {
+	async function readAgainst(said: string): Promise<void> {
+		held[0] = {
+			...held[0],
+			read_against: [
+				{ path: 'src/parser.ts', digest: await digestOf(new TextEncoder().encode(said)) }
+			]
+		};
+	}
+
+	it('marks the note whose file says something else now, without anybody asking', async () => {
+		await readAgainst('export const one = 1;\n');
+		await keepFile('src/parser.ts', 'export const one = 2;\n');
+
+		await open();
+
+		expect(markedMoved()).toEqual(['1']);
+		expect(screen()).not.toContain('What the code left behind');
+	});
+
+	it('marks nothing where the file still says what it said', async () => {
+		await readAgainst('export const one = 1;\n');
+
+		await open();
+
+		expect(markedMoved()).toEqual([]);
+	});
+
+	// Unread is not stale.
+	it('marks nothing on a note nobody has read against the code', async () => {
+		await keepFile('src/parser.ts', 'export const one = 2;\n');
+
+		await open();
+
+		expect(markedMoved()).toEqual([]);
+	});
+
+	it('works nothing out where the graph is nobody’s project', async () => {
+		await readAgainst('export const one = 1;\n');
+		await keepFile('src/parser.ts', 'export const one = 2;\n');
+		serving = undefined;
+
+		await open();
+
+		expect(markedMoved()).toEqual([]);
+	});
 });
 
 describe('asking what the code left behind', () => {
