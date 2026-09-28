@@ -280,6 +280,20 @@ describe("a write on an open note somebody else's writing is in", () => {
     );
     expect(written[0].authors).toEqual([OTHER, DID]);
   });
+
+  it("joins nobody where the request only says what it was read against", async () => {
+    const { service, written } = patching();
+    const readings = [{ path: "src/a.ts", digest: `sha256:${"a".repeat(64)}` }];
+    const held = await service.update(
+      DID,
+      ref,
+      { read_against: readings },
+      undefined,
+    );
+    expect(written[0].read_against).toEqual(readings);
+    expect(written[0]).not.toHaveProperty("authors");
+    expect(held.read_against).toEqual(readings);
+  });
 });
 
 describe("an act over a set of open notes", () => {

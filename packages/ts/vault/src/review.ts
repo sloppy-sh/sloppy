@@ -6,6 +6,7 @@
 import {
   anchorsOf,
   type BlockDocument,
+  type CodeReading,
   type Compass,
   type CompassDirection,
   type CompassKind,
@@ -15,6 +16,7 @@ import {
   type DocumentNode,
   type OwnedRef,
 } from "@sloppy/types";
+import { type CodeNow, driftOf } from "./drift.js";
 
 /** A file at a folder saying the tree declares a package there. */
 export const PROJECT_MANIFESTS = [
@@ -99,6 +101,10 @@ export interface ReviewedNote {
   /** The commit its reasoning was last read against. Absent is a note nobody
    *  has confirmed, which is unread and never out of date. */
   checked?: string;
+  /** Each file it points at as it stood when it was last read against that
+   *  file. A note carrying any of these is answered by them alone; one
+   *  carrying none falls back to {@link checked}. */
+  read_against?: readonly CodeReading[];
   sections: readonly { content: BlockDocument }[];
 }
 
@@ -115,12 +121,22 @@ export interface ReviewInput {
    * none.
    */
   changed: (checked: string, paths: readonly string[]) => Promise<string[]>;
+  /**
+   * What each file in the project says now — `digestsIn` in `@sloppy/local`
+   * builds one over a folder. **Absent is a caller that cannot reach the code**
+   * — hosted, or a graph that is nobody's project — and then a note's readings
+   * answer nothing at all: not moved, and not up to date either.
+   */
+  codeNow?: CodeNow;
 }
 
 /**
  * The signals the notes and the tree carry, each note's in the order the notes
- * were given and the project's after them. A note with no `checked` yields no
- * changed anchor at all: unread is not stale.
+ * were given and the project's after them.
+ *
+ * What a note has been read against is answered per file where it carries
+ * readings and by `checked` against the history where it carries none, and a
+ * note carrying neither yields no changed anchor at all: unread is not stale.
  */
 export async function review(input: ReviewInput): Promise<ReviewSignal[]> {
   const anchored = new Set<string>();
@@ -134,11 +150,7 @@ export async function review(input: ReviewInput): Promise<ReviewSignal[]> {
   });
 
   const moved = await Promise.all(
-    read.map(({ note, paths }) =>
-      note.checked === undefined || paths.length === 0
-        ? Promise.resolve<string[]>([])
-        : input.changed(note.checked, paths),
-    ),
+    read.map(({ note, paths }) => movedUnder(input, note, paths)),
   );
 
   const signals: ReviewSignal[] = [];
@@ -168,6 +180,22 @@ export async function review(input: ReviewInput): Promise<ReviewSignal[]> {
     }
   }
   return signals;
+}
+
+/** Which of a note's anchored paths the code has moved under since somebody
+ *  read the note against them. */
+async function movedUnder(
+  input: ReviewInput,
+  note: ReviewedNote,
+  paths: readonly string[],
+): Promise<string[]> {
+  if (paths.length === 0) return [];
+  if (note.read_against?.length) {
+    if (input.codeNow === undefined) return [];
+    const { drifted } = await driftOf(paths, note.read_against, input.codeNow);
+    return drifted;
+  }
+  return note.checked === undefined ? [] : input.changed(note.checked, paths);
 }
 
 /**

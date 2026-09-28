@@ -103,6 +103,9 @@ export class NoteWriter {
       ...(request.tags === undefined ? {} : { tags: [...request.tags] }),
       ...(request.links === undefined ? {} : { links: [...request.links] }),
       ...(request.checked === undefined ? {} : { checked: request.checked }),
+      ...(request.read_against === undefined
+        ? {}
+        : { read_against: [...request.read_against] }),
       updated_at: confirms ? note.updated_at : nowIso(),
     });
   }
@@ -687,13 +690,7 @@ export class NoteWriter {
  *  writing the note carries alone. */
 function writesTheGateAlone(request: UpdateNodeRequest): boolean {
   return (
-    request.owner !== undefined &&
-    request.title === undefined &&
-    request.tags === undefined &&
-    request.links === undefined &&
-    request.edges === undefined &&
-    request.appearance === undefined &&
-    request.checked === undefined
+    request.owner !== undefined && !writesTheNote(request) && !reads(request)
   );
 }
 
@@ -702,13 +699,24 @@ function writesTheGateAlone(request: UpdateNodeRequest): boolean {
  *  its writing and nothing about it has just been written. */
 function confirmsAlone(request: UpdateNodeRequest): boolean {
   return (
-    request.checked !== undefined &&
-    request.owner === undefined &&
-    request.title === undefined &&
-    request.tags === undefined &&
-    request.links === undefined &&
-    request.edges === undefined &&
-    request.appearance === undefined
+    reads(request) && request.owner === undefined && !writesTheNote(request)
+  );
+}
+
+/** Whether a request records that somebody has READ the note against the
+ *  code, either way of recording one. */
+function reads(request: UpdateNodeRequest): boolean {
+  return request.checked !== undefined || request.read_against !== undefined;
+}
+
+/** Whether a request changes anything the note carries. */
+function writesTheNote(request: UpdateNodeRequest): boolean {
+  return (
+    request.title !== undefined ||
+    request.tags !== undefined ||
+    request.links !== undefined ||
+    request.edges !== undefined ||
+    request.appearance !== undefined
   );
 }
 

@@ -3,9 +3,17 @@
 // against that code — docs/ARCHITECTURE.md § "A project's container".
 
 import type { DidSyr, OwnedRef } from "@sloppy/types";
-import { encodeText, GRAPH_FILE, readGraphFile } from "@sloppy/vault";
+import {
+  digestOf,
+  driftOf,
+  encodeText,
+  GRAPH_FILE,
+  readGraphFile,
+  readingsNow,
+} from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { LocalApi, holdsAGraph } from "./api.js";
+import { digestsIn } from "./code.js";
 import { CONTAINER_DIR } from "./container.js";
 import type { Files } from "./files.js";
 import { MemoryFiles } from "./files.js";
@@ -145,5 +153,100 @@ describe("saying a note's reasoning still holds", () => {
   it("is absent on a note nobody has confirmed", async () => {
     const { api, ref } = await note();
     expect((await api.getNode(ref))?.checked).toBeUndefined();
+    expect((await api.getNode(ref))?.read_against).toBeUndefined();
+  });
+
+  it("writes each file it was read against, and the folder keeps them", async () => {
+    const { api, store, ref } = await note();
+    const was = await api.getNode(ref);
+    const readings = [
+      { path: "src/parser.ts", digest: `sha256:${"a".repeat(64)}` },
+    ];
+
+    const held = await api.updateNode(ref, { read_against: readings });
+
+    expect(held.read_against).toEqual(readings);
+    expect(held.updated_at).toBe(was?.updated_at);
+    const again = new LocalApi(new PickingFiles({ store }).at(PROJECT));
+    expect((await again.getNode(ref))?.read_against).toEqual(readings);
+  });
+
+  it("is a reading and not a write, so nobody joins the note's writing", async () => {
+    const { store, ref } = await note();
+    const guest = new LocalApi(new PickingFiles({ store }).at(PROJECT), {
+      writer: GUEST,
+    });
+
+    const held = await guest.updateNode(ref, {
+      read_against: [
+        { path: "src/parser.ts", digest: `sha256:${"a".repeat(64)}` },
+      ],
+    });
+    expect(held.authors).toBeUndefined();
+  });
+
+  it("takes every reading off where the whole list is empty", async () => {
+    const { api, ref } = await note();
+    await api.updateNode(ref, {
+      read_against: [
+        { path: "src/parser.ts", digest: `sha256:${"a".repeat(64)}` },
+      ],
+    });
+
+    expect(
+      (await api.updateNode(ref, { read_against: [] })).read_against,
+    ).toEqual([]);
+  });
+});
+
+describe("what the project's files say now", () => {
+  it("is what a note read against them is compared to", async () => {
+    const { api, files } = project();
+    await wroteCode(files);
+    await api.openProject(PROJECT);
+    const code = (await api.projectFolder()) as Files;
+
+    const readings = await readingsNow(["src/parser.ts"], digestsIn(code));
+    expect(readings).toEqual([
+      {
+        path: "src/parser.ts",
+        digest: await digestOf(encodeText("export const parse = 1;\n")),
+      },
+    ]);
+    expect(await driftOf(["src/parser.ts"], readings, digestsIn(code))).toEqual(
+      { drifted: [], unread: [] },
+    );
+
+    await code.write("src/parser.ts", encodeText("export const parse = 2;\n"));
+    expect(await driftOf(["src/parser.ts"], readings, digestsIn(code))).toEqual(
+      { drifted: ["src/parser.ts"], unread: [] },
+    );
+  });
+
+  it("says nothing about a file the project has not got", async () => {
+    const { api, files } = project();
+    await wroteCode(files);
+    await api.openProject(PROJECT);
+    const code = (await api.projectFolder()) as Files;
+    expect(await digestsIn(code)("src/gone.ts")).toBeUndefined();
+  });
+
+  it("reads one file once, however many notes point at it", async () => {
+    const { api, files } = project();
+    await wroteCode(files);
+    await api.openProject(PROJECT);
+    const code = (await api.projectFolder()) as Files;
+    let asked = 0;
+    const counting: Files = {
+      ...code,
+      read: (path) => {
+        asked++;
+        return code.read(path);
+      },
+    };
+
+    const now = digestsIn(counting);
+    expect(await now("src/parser.ts")).toBe(await now("src/parser.ts"));
+    expect(asked).toBe(1);
   });
 });

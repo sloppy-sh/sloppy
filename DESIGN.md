@@ -341,13 +341,14 @@ whether it is one of the notes open in front of the reader. Each gets its own ch
 | Fill alpha                                     | carries none of the selected tags (§ Hue)                                      |
 | **Its own edge** — present, and whether broken | provenance (§ Form)                                                            |
 | **A ring inside it** — weight, and how broken  | the author's look                                                              |
+| **A dot on its rim**                           | the code under it has moved since its author read it                           |
 | **Its radius**                                 | how much is folded into it, times the size its author asked for                |
 | **The disc's imagery**                         | the author's picture, or a few taking turns, at the share of the disc they set |
 | **The orbit outside it**                       | the mode the canvas is in — picking, choosing, or comparing two states         |
 | **The paper under it** — how far it lifts      | this note is open, and whether it is the one being read                        |
 | **Which field it stands in**                   | which graph it is in (§ "Several graphs on one canvas")                        |
 
-Twelve rulings hold that table together:
+Thirteen rulings hold that table together:
 
 - **Provenance keeps the mark's own edge, and a look draws INSIDE the mark.** Both want a
   ring and both want to be broken — a pulled region is dashed, and a draft is dashed — so
@@ -364,6 +365,20 @@ Twelve rulings hold that table together:
   each is drawn as, and `scene.test.ts` holds them apart on a mark at the threshold.
   **The cost is charged in cells:** the sheet every mark is cut from holds one per ring
   weight AND style, so a style widens it for everybody — the reason the set is short.
+- **The code having moved takes a dot on the rim, because it is the one shape left that is
+  not a ring.** § "What the code left behind" rules that it is drawn at all, and why; what
+  the mark decides is where. Rings here separate by radius, and the sheet every mark is cut
+  from holds a cell per ring weight AND style — so a third ring widens that sheet for every
+  mark on every canvas in order to say one bit, which is more than the fact is worth. A dot
+  costs one shape. It is a single small disc centred ON the mark's own edge, due south,
+  drawn from `--graph-ink` and spending no hue: straddling the edge makes it an addition
+  rather than an absence, so it cannot read as a break in the provenance edge; one dot at
+  one bearing is not a band, so it cannot read as the orbit picking, choosing and comparing
+  put there; and it sits outside the look's ring, at a radius nothing else reaches. It is
+  drawn over the chosen band and over the lift, both of which it stands inside, and **it
+  goes when the look goes** — at the size three concentric strokes stop reading as three, a
+  dot on the rim is a smudge, and a reader that far out asks this through the sheet and the
+  highlight instead.
 - **Picking and choosing share the orbit outside the mark**, because a canvas is in one
   mode or the other and never both: you are picking the note a link points at, or you are
   choosing notes to act on. They are still drawn apart so nobody has to know that —
@@ -912,8 +927,8 @@ there; a draft is not one of those surfaces.
 
 A note that explains a piece of code is read next to it, and the whole point of writing one
 is that somebody comes back to it later and can tell whether it still holds. Two things carry
-that, and neither of them is a badge: a link that goes somewhere, and one quiet line when the
-code under it has moved.
+that on the note, and neither of them is a badge: a link that goes somewhere, and one quiet
+line when the code under it has moved.
 
 **An anchor is a chip in the writing, not a panel beside it.** It sits inline where the
 sentence names the file, reads as the path's last part with the line or the name after it —
@@ -929,17 +944,25 @@ the person opens files. It is a reading surface, so it is monospaced, scrolls in
 direction and offers no editing: Sloppy does not write in somebody's repository.
 
 **"Still true" is one act, and it says only what it does.** It sits on the note, not on each
-anchor, and taking it records that the note's reasoning has been read against the code as it
-stands now. Nothing else happens: no section changes, nobody joins the note's authors,
-nothing moves. A note nobody has confirmed says nothing at all — **unread is not stale**, and
-a product that nags somebody about a note they wrote this morning has made a chore out of
-thinking.
+anchor, and taking it records that the note's reasoning has been read against **every** place
+the note points at, as those files stand now — one act, because a person reads a note
+against its code and not against one file of it. Nothing else happens: no section changes,
+nobody joins the note's authors, nothing moves. A note nobody has confirmed says nothing at
+all — **unread is not stale**, and a product that nags somebody about a note they wrote this
+morning has made a chore out of thinking.
 
-**When the code has moved, one quiet line, in the note.** "The code under this has changed
-since you last read it" with the act beside it, in the note's own ink under the title — never
-a badge on the mark, never a count in the chrome, never a colour on the canvas. The graph's
-shape is what the canvas draws and this is not part of it. Where nothing has moved, there is
-no line: silence is the ordinary state of a note that is fine.
+**When the code has moved, one quiet line, beside the anchor it is about.** "This has
+changed since you read it", in the note's own ink under the chip, with "Still true" next to
+it — beside that anchor rather than under the title, because a note pointing at four files
+and saying only that something has moved has told somebody to go and find it. A note whose
+code has all stood still shows no line anywhere: silence is the ordinary state of a note
+that is fine, and so is a note nobody has read against the code yet — that says nothing
+either, and never "up to date". Where the project is not open beside the notes, nothing is
+worked out and no line is drawn.
+
+**The words name what happened, never how it is known.** "Changed since you read it",
+"Still true", "read against the code" — what a person can act on. Never what Sloppy
+compared, or what it compared it with.
 
 **Phone first.** The chip wraps inside the paragraph rather than truncating the sentence
 around it; the sheet is the full-width bottom sheet every modal is, with the path pinned at
@@ -1005,9 +1028,28 @@ nothing under it.
 
 A body of notes beside a codebase goes out of date quietly, and the whole job of this
 surface is to say so without ever nagging. **It is a question the person asks, not a state
-the product broadcasts.** There is no badge on a mark, no count in the chrome, no score, and
-nothing that goes red on its own — a note nobody has confirmed says nothing at all, because
-unread is not stale (§ "An anchor into code").
+the product broadcasts.** There is no count in the chrome, no score, and nothing that goes
+red on its own — a note nobody has confirmed says nothing at all, because unread is not
+stale (§ "An anchor into code").
+
+**One thing the mark says on its own, and it is the code having moved.** A note whose author
+has read it against the code, and whose code has moved since, carries a dot on its rim
+(§ "The mark") whether or not anybody has asked. This is a deliberate exception to the
+paragraph above, and the reason is the shape: a body of notes beside a codebase is read AS a
+graph — which part of this system has gone out from under me is a question about the field,
+and answering it only inside a list answers it in the one place the field is not. Somebody
+who has to open a sheet to learn that anything has moved learns it one note at a time.
+
+**What that exception is held to, which is everything the rule was protecting.** A note
+nobody has read against the code carries nothing, so unread is still not stale and nobody is
+marked for a note they wrote this morning. It is one dot however many files moved: a count
+was never the thing to act on, and a number on a mark is a score. It spends no hue, so the
+canvas's colour still answers the reader's own question and nothing else. And where the code
+cannot be reached — read away from the project, or a graph that is nobody's project —
+nothing is worked out and nothing is drawn, because a silent mark must never come to mean
+"this one is fine". What the dot MEANS is learned by opening the note, which says it in
+words beside the anchor (§ "An anchor into code"); the canvas teaches it no other way, and
+the sheet below is still how somebody reads the whole of it at once.
 
 **Asking is choosing one signal, and the canvas answers by highlighting.** The four —
 _the code moved_, _nothing written here_, _an empty slot_, _no why written_ — behave exactly
@@ -1020,7 +1062,7 @@ code left behind", listing the notes under the chosen signal — the title, the 
 there is one, and the act, in the note's own ink:
 
 - **Still true** — for a note whose code has moved. Taking it records the reading and
-  nothing else.
+  nothing else, and it is the same act the note itself offers beside the anchor.
 - **Write a note** — for code nothing has been written about. It opens a walkthrough under
   the project's own note, already anchored at the path.
 - **the slot's own question** — for an empty slot, which is the same line the card shows,

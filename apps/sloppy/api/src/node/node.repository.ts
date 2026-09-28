@@ -37,12 +37,20 @@ const PATCHABLE = [
   "owner",
   "authors",
   "checked",
+  "read_against",
 ] as const;
 
 /** A column whose write records that somebody READ the note rather than changed
  *  it, so the row keeps the `updated_at` it had — docs/ARCHITECTURE.md
  *  § "A project's container". */
-const UNMOVING = ["checked"] as const;
+const UNMOVING = ["checked", "read_against"] as const;
+
+/** Whether writing this field records a reading rather than a change. The
+ *  service reads it to decide whether the writer joins the note's authors, so
+ *  the two answers cannot drift from one another. */
+export function recordsAReading(field: string): boolean {
+  return (UNMOVING as readonly string[]).includes(field);
+}
 
 /**
  * A note its author has not deleted, and its opposite. Every read but the two
@@ -145,7 +153,10 @@ const BULK_WRITABLE = ["tags", "appearance", "authors"] as const;
  * names it, and what writes it is {@link withAuthor} over the note that was
  * there. */
 export type NodePatch = Partial<
-  Pick<Node, "title" | "tags" | "links" | "authors" | "checked">
+  Pick<
+    Node,
+    "title" | "tags" | "links" | "authors" | "checked" | "read_against"
+  >
 > & {
   /** The looks on this note's lines, whole; `null` leaves it carrying none. */
   edges?: EdgeLook[] | null;

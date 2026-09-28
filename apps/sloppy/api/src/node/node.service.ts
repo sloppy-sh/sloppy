@@ -68,7 +68,7 @@ import type {
   AddressYield,
   NodeBulkPatch,
 } from "./node.repository";
-import { NodeRepository } from "./node.repository";
+import { NodeRepository, recordsAReading } from "./node.repository";
 import {
   bestFirst,
   notesAmong,
@@ -390,7 +390,7 @@ export class NodeService {
     if (!note) throw new NotFoundException("That note is not here.");
     const fields = Object.keys(request).filter((field) => field !== "owner");
     if (fields.length > 0 && !writable(note, did)) throw gatedElsewhere();
-    const writes = fields.some((field) => field !== "checked");
+    const writes = fields.some((field) => !recordsAReading(field));
     const joined = writes ? withAuthor(note, did) : note;
     const updated = await this.nodes.patch(did, ref, {
       ...request,

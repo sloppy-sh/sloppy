@@ -297,6 +297,102 @@ describe("a note as a file", () => {
     );
   });
 
+  it("writes each file the note was read against, under the commit", () => {
+    const readings = [
+      { path: "src/b.ts", digest: `sha256:${"b".repeat(64)}` },
+      { path: "src/a.ts", digest: `sha256:${"a".repeat(64)}` },
+    ];
+    const { files } = noteToVault(note({ read_against: readings }), [], []);
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array);
+    expect(text).toContain(
+      [
+        "read_against:",
+        "  - path: src/a.ts",
+        `    digest: sha256:${"a".repeat(64)}`,
+        "  - path: src/b.ts",
+        `    digest: sha256:${"b".repeat(64)}`,
+      ].join("\n"),
+    );
+    expect(read(files).read_against).toEqual([
+      { path: "src/a.ts", digest: `sha256:${"a".repeat(64)}` },
+      { path: "src/b.ts", digest: `sha256:${"b".repeat(64)}` },
+    ]);
+  });
+
+  it("writes nothing for a note read against no file", () => {
+    const { files } = noteToVault(note({ read_against: [] }), [], []);
+    expect(decodeText(files.get(notePath(NOTE)) as Uint8Array)).not.toContain(
+      "read_against",
+    );
+    expect(read(files).read_against).toBeUndefined();
+  });
+
+  it("leaves a note carrying only a commit exactly as it was", () => {
+    const commit = "8e52d1a4c0b3f1e2d9a7c6b5a4938271605f4e3d";
+    const { files } = noteToVault(note({ checked: commit }), [], []);
+    const held = read(files);
+    expect(held.checked).toBe(commit);
+    expect(held.read_against).toBeUndefined();
+    expect(
+      decodeText(
+        noteToVault(
+          note({ checked: commit, read_against: [] }),
+          [],
+          [],
+        ).files.get(notePath(NOTE)) as Uint8Array,
+      ),
+    ).toBe(decodeText(files.get(notePath(NOTE)) as Uint8Array));
+  });
+
+  it("costs a reading a hand got wrong that reading and not the note", () => {
+    const { files } = noteToVault(
+      note({
+        read_against: [
+          { path: "src/a.ts", digest: `sha256:${"a".repeat(64)}` },
+        ],
+      }),
+      [],
+      [],
+    );
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      "  - path: src/a.ts",
+      "  - path: ../outside.ts",
+    );
+    const held = vaultToNote({ markdown: text });
+    expect(held.read_against).toBeUndefined();
+    expect(held.title).toBe("What I meant: a note");
+  });
+
+  it("carries a reading back whatever the path and the digest spell", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(
+          "src/a.ts",
+          "packages/ts/types/src/tag.ts",
+          "a b/c.ts",
+          "123",
+          ".config/x.ts",
+          "src/#hash.ts",
+        ),
+        fc.string({
+          unit: fc.constantFrom(..."0123456789abcdef"),
+          minLength: 64,
+          maxLength: 64,
+        }),
+        (path, hex) => {
+          const reading = { path, digest: `sha256:${hex}` };
+          const { files } = noteToVault(
+            note({ read_against: [reading] }),
+            [],
+            [],
+          );
+          expect(read(files).read_against).toEqual([reading]);
+        },
+      ),
+      { numRuns: 2000 },
+    );
+  });
+
   it("carries the look its author gave the mark, whatever it says", () => {
     fc.assert(
       fc.property(looks, (look) => {

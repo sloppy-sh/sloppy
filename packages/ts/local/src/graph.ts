@@ -518,6 +518,9 @@ export class LocalGraph {
         : { contributors: [...note.contributors] }),
       published: false,
       ...(note.checked === undefined ? {} : { checked: note.checked }),
+      ...(note.read_against === undefined
+        ? {}
+        : { read_against: [...note.read_against] }),
       ...(note.appearance === undefined ? {} : { appearance: note.appearance }),
       ...(note.deleted_at === undefined ? {} : { deleted_at: note.deleted_at }),
       created_at: note.created_at,

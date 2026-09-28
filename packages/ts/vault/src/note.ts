@@ -5,6 +5,8 @@ import {
   AddressSchema,
   type BlockDocument,
   type BlockView,
+  type CodeReading,
+  CodeReadingSchema,
   CommitIdSchema,
   type Principal,
   PrincipalSchema,
@@ -17,6 +19,7 @@ import {
   NodeAppearanceSchema,
   type NodeView,
   type OwnedRef,
+  readingsRead,
   OwnedRefSchema,
   splitOwnedRef,
   type Timestamp,
@@ -97,6 +100,10 @@ export interface VaultNote {
   /** The commit its author last read the note's reasoning against. Absent is a
    *  note nobody has confirmed, which is UNREAD and never out of date. */
   checked?: string;
+  /** Each file the note points at as it stood when its author last read the
+   *  note against it. Absent is a note read against none, and a path absent
+   *  from it is one nobody has read the note against. */
+  read_against?: CodeReading[];
   sections: VaultSection[];
 }
 
@@ -153,6 +160,7 @@ export function noteToVault(
     ["created", note.created_at],
     ["updated", note.updated_at],
     ["checked", note.checked],
+    ["read_against", readingEntries(note.read_against)],
     ["appearance", lookBlock(note.appearance)],
   ]);
   return writeSections(
@@ -265,6 +273,7 @@ export function vaultToNote(files: NoteSource): VaultNote {
     ...stamp("created"),
     ...stamp("updated"),
     ...(checked.success ? { checked: checked.data } : {}),
+    ...readingsOf(front),
     sections: readSections(body, files),
   };
 }
@@ -327,6 +336,35 @@ function lookFields(look: EdgeLook): FrontBlock {
   if (look.direction !== undefined) fields.set("direction", look.direction);
   if (look.stroke !== undefined) fields.set("stroke", look.stroke);
   return fields;
+}
+
+/** Each reading as one entry under `read_against`, in the order
+ *  {@link readingsRead} puts them. A note read against nothing writes none. */
+export function readingEntries(
+  readings: readonly CodeReading[] | undefined,
+): FrontEntries | undefined {
+  if (readings === undefined || readings.length === 0) return undefined;
+  return readingsRead(readings).map(
+    (reading) =>
+      new Map([
+        ["path", reading.path],
+        ["digest", reading.digest],
+      ]),
+  );
+}
+
+/** The readings a file holds. One a hand got wrong costs that reading and not
+ *  the note, the way a look a hand got wrong costs that look. */
+export function readingsOf(
+  front: ReadonlyMap<string, FrontValue>,
+): Pick<VaultNote, "read_against"> {
+  const readings = readingsRead(
+    frontEntries(front, "read_against").flatMap((entry) => {
+      const reading = CodeReadingSchema.safeParse(entry);
+      return reading.success ? [reading.data] : [];
+    }),
+  );
+  return readings.length === 0 ? {} : { read_against: readings };
 }
 
 /** The looks a file holds. One a hand got wrong costs that look and not the

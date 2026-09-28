@@ -1299,6 +1299,55 @@ describe("the domain routes", () => {
         ((await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView).checked,
       ).toBeUndefined();
     });
+
+    scenario(
+      "keeps each file it was read against, and answers with them",
+      async () => {
+        const note = await newNode(ada, {
+          title: "Read file by file",
+          tags: [],
+        });
+        expect(note.read_against).toBeUndefined();
+        const readings = [
+          { path: "src/b.ts", digest: `sha256:${"b".repeat(64)}` },
+          { path: "src/a.ts", digest: `sha256:${"a".repeat(64)}` },
+        ];
+
+        const held = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+          read_against: readings,
+        })) as NodeView;
+        // One per path, in path order, however the request spelled them.
+        expect(held.read_against).toEqual([readings[1], readings[0]]);
+        expect(held.updated_at).toBe(note.updated_at);
+
+        const read = (await ok(
+          "GET",
+          `/nodes/${at(note.ref)}`,
+          ada,
+        )) as NodeView;
+        expect(read.read_against).toEqual([readings[1], readings[0]]);
+
+        const emptied = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+          read_against: [],
+        })) as NodeView;
+        expect(emptied.read_against).toEqual([]);
+      },
+    );
+
+    scenario("refuses a reading of a place outside the project", async () => {
+      const note = await newNode(ada, { title: "Never read", tags: [] });
+
+      const answered = await call("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        read_against: [
+          { path: "../elsewhere.ts", digest: `sha256:${"a".repeat(64)}` },
+        ],
+      });
+      expect(answered.status).toBe(400);
+      expect(
+        ((await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView)
+          .read_against,
+      ).toBeUndefined();
+    });
   });
 
   describe("finding a note again", () => {

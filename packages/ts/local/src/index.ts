@@ -7,6 +7,7 @@ export * from "./identity.js";
 export * from "./vault-paths.js";
 export * from "./vaults.js";
 export * from "./container.js";
+export * from "./code.js";
 export * from "./write-onto.js";
 export * from "./kept-out.js";
 export * from "./agent-md.js";

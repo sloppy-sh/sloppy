@@ -17,14 +17,26 @@ const COMMIT = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
 function note(said: {
   n: number;
   checked?: string;
+  /** Each path the note has been read against, and what that file said. */
+  readAgainst?: Record<string, string>;
   /** One per section, in the order the note reads. */
   body: string | string[];
 }): ReturnType<typeof vaultToNote> {
+  const readings = Object.entries(said.readAgainst ?? {});
   const front = [
     "---",
     `ref: ${ref(said.n)}`,
     "title: A note",
     ...(said.checked === undefined ? [] : [`checked: ${said.checked}`]),
+    ...(readings.length === 0
+      ? []
+      : [
+          "read_against:",
+          ...readings.flatMap(([path, text]) => [
+            `  - path: ${path}`,
+            `    digest: ${stands(text)}`,
+          ]),
+        ]),
     "---",
   ].join("\n");
   const sections = (Array.isArray(said.body) ? said.body : [said.body])
@@ -48,6 +60,24 @@ function compass(slots: Partial<Record<string, string[]>>): string {
 }
 
 const nothingMoved: ReviewInput["changed"] = async () => [];
+
+/** A digest of what a file says, spelled the way a reading is. `sha256:` and
+ *  hex is all the drift reader asks of one, so the text stands in for the
+ *  bytes. */
+function stands(text: string): string {
+  let held = 0;
+  for (const char of text) held = (held * 31 + char.codePointAt(0)!) >>> 0;
+  return `sha256:${held.toString(16).padStart(64, "0")}`;
+}
+
+/** A project whose files say these things, as {@link ReviewInput.codeNow}
+ *  asks. */
+function code(files: Record<string, string>): ReviewInput["codeNow"] {
+  return async (path) => {
+    const said = files[path];
+    return said === undefined ? undefined : stands(said);
+  };
+}
 
 describe("what the code has left behind", () => {
   it("says nothing about a project whose notes are all in step", async () => {
@@ -245,5 +275,121 @@ describe("the places a project keeps its code", () => {
         "src/parser.ts",
       ]),
     ).toEqual(["src"]);
+  });
+});
+
+describe("a note read against the files themselves", () => {
+  it("names the one that has changed since, and asks no history", async () => {
+    let asked = false;
+    const signals = await review({
+      notes: [
+        note({
+          n: 1,
+          readAgainst: { "src/a.ts": "one", "src/b.ts": "two" },
+          body: "[parser](code:src/a.ts) and [lexer](code:src/b.ts)",
+        }),
+      ],
+      projectTop: ["src"],
+      changed: async () => {
+        asked = true;
+        return ["src/a.ts"];
+      },
+      codeNow: code({ "src/a.ts": "one", "src/b.ts": "two, rewritten" }),
+    });
+    expect(asked).toBe(false);
+    expect(signals).toEqual<ReviewSignal[]>([
+      { kind: "anchor-changed", note: ref(1), path: "src/b.ts" },
+    ]);
+  });
+
+  it("answers by its readings even where it also carries a commit", async () => {
+    const signals = await review({
+      notes: [
+        note({
+          n: 1,
+          checked: COMMIT,
+          readAgainst: { "src/a.ts": "one" },
+          body: "[parser](code:src/a.ts)",
+        }),
+      ],
+      projectTop: ["src"],
+      changed: async () => ["src/a.ts"],
+      codeNow: code({ "src/a.ts": "one" }),
+    });
+    expect(signals).toEqual([]);
+  });
+
+  it("falls back to the commit and the history where it carries no reading", async () => {
+    const signals = await review({
+      notes: [note({ n: 1, checked: COMMIT, body: "[parser](code:src/a.ts)" })],
+      projectTop: ["src"],
+      changed: async (checked, paths) => {
+        expect(checked).toBe(COMMIT);
+        return [...paths];
+      },
+      codeNow: code({ "src/a.ts": "one" }),
+    });
+    expect(signals).toEqual<ReviewSignal[]>([
+      { kind: "anchor-changed", note: ref(1), path: "src/a.ts" },
+    ]);
+  });
+
+  it("says nothing about a note with neither a reading nor a commit", async () => {
+    const signals = await review({
+      notes: [note({ n: 1, body: "[parser](code:src/a.ts)" })],
+      projectTop: ["src"],
+      changed: async () => ["src/a.ts"],
+      codeNow: code({ "src/a.ts": "written since" }),
+    });
+    expect(signals).toEqual([]);
+  });
+
+  it("says nothing at all where the code cannot be reached", async () => {
+    const signals = await review({
+      notes: [
+        note({
+          n: 1,
+          readAgainst: { "src/a.ts": "one" },
+          body: "[parser](code:src/a.ts)",
+        }),
+      ],
+      projectTop: ["src"],
+      changed: nothingMoved,
+    });
+    expect(signals).toEqual([]);
+  });
+
+  it("names a file the project has not got any more", async () => {
+    const signals = await review({
+      notes: [
+        note({
+          n: 1,
+          readAgainst: { "src/a.ts": "one" },
+          body: "[parser](code:src/a.ts)",
+        }),
+      ],
+      projectTop: ["src"],
+      changed: nothingMoved,
+      codeNow: code({}),
+    });
+    expect(signals).toEqual<ReviewSignal[]>([
+      { kind: "anchor-changed", note: ref(1), path: "src/a.ts" },
+    ]);
+  });
+
+  it("says nothing about a place the note points at that nobody read it against", async () => {
+    const signals = await review({
+      notes: [
+        note({
+          n: 1,
+          readAgainst: { "src/a.ts": "one" },
+          body: "[parser](code:src/a.ts) and [lexer](code:src/b.ts)",
+        }),
+      ],
+      projectTop: ["src"],
+      changed: nothingMoved,
+      codeNow: code({ "src/a.ts": "one", "src/b.ts": "written since" }),
+    });
+    expect(signals).toEqual([]);
   });
 });

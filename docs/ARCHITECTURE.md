@@ -2116,6 +2116,10 @@ node:{ created_by: <did>, id: <ulid> }
   checked     string?   the commit its author last read its reasoning against, opaque
                         here; absent is a note nobody has confirmed (§ "A project's
                         container")
+  read_against object[]? each file it points at as it stood when its author last read
+                        it against that file — `path` and `digest`, one per path, in
+                        path order; absent, and empty, are a note read against none,
+                        and the store never compares one (§ "A project's container")
   published   bool
   appearance  object?   the look its author gave the mark; absent is unstyled
   deleted_at  iso?      when its author deleted it; absent is a note that is there
@@ -2262,8 +2266,9 @@ two answers cannot drift: one function, in `@sloppy/types`, and `snapshot.ts` sh
 receives and has no field for them, so a pulled copy draws its `links` alone — fewer lines
 than the writing it carries. DESIGN.md § Edges states that as the gap it is; closing it is
 the publishing milestone's, and costs deciding what a peer may be told about a note they
-cannot follow. It carries no `checked` either, for a plainer reason: the commit it names is
-in a history the reader has not got (§ "A project's container").
+cannot follow. It carries no `checked` and no `read_against` either, for a plainer reason: both name
+things in a checkout the reader has not got — a commit in a history, and files in a
+project (§ "A project's container").
 
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did
@@ -2903,11 +2908,14 @@ strokes are the record and the SVG is what a viewer that has never heard of Slop
 **One note is one file, and its sections are marked in the body.** The front matter is the
 note as the protocol holds it: `ref`, `parent`, `address`, `aliases`, `owner`, `authors`,
 `contributors`, `tags`, `links`, `edges`, `title`, `created`, `updated`, `checked`,
-`appearance`.
+`read_against`, `appearance`.
 Absent `parent`
 is a branch or an independent note; absent `address` is a note with none; absent `aliases`,
 `tags`, `links` or `contributors` is none of them; absent `owner` is an open note; absent
-`checked` is a note nobody has confirmed against the code (§ "A project's container"). **Absent
+`checked` is a note nobody has confirmed against the code, and absent `read_against` is one
+read against no file of it (§ "A project's container"). `read_against` is a list of blocks,
+one entry per place the note points at, its fields written `path` and `digest`; an entry a
+hand got wrong costs that entry alone, the way a look does. **Absent
 `authors` is the ref's own owner alone**, and that is the one case the file leaves out — a note
 only its own author has written into and a note written before anybody else could write into
 one are the same bytes, which is what keeps the round trip lossless (§ "Whose writing a note
@@ -3091,23 +3099,64 @@ resolves one. Confirming a note
 writes `checked` and nothing else: no section changes, no author joins, nothing moves in the
 genealogy.
 
-**The hosted store keeps it and never interprets it.** `checked` is a column on `node`
-(§ "Data model") holding whatever the folder's history calls a commit, written by `PATCH
-/nodes/:did/:localId` like any other field on a note: there is no route for confirming,
-because confirming is a write on the note. It is held to the note's gate — whoever may write
-the note is who may confirm it — and it joins nobody to the note's authors, which is one of
-the two ways that write differs from every other. The other is `node.updated_at`, which a
-confirmation leaves where it was: the note surface reads that column to ask whether a
-published branch has changed since it went out, and nothing a confirmation writes reaches a
-reader.
+**`read_against` says the same thing one file at a time.** It is a list of `{ path,
+digest }` — each place in the code the note points at, and a digest of what that file held
+when somebody read the note against it, spelled with the algorithm that produced it
+(`sha256:` and lowercase hex; `CodeDigestSchema` in `@sloppy/types`). One entry per path, in
+path order, so two notes read against the same files hold byte-identical lists.
+**Absent — and a path absent from it — is one nobody has read this note against, which
+reads as UNREAD and never as out of date**, exactly the rule `checked` keeps. It rides in
+the note's front matter beside `checked`, on `Node` and through `UpdateNodeRequest` as the
+WHOLE list, the way `tags` and `edges` are. It does not travel with a published version,
+for the reason `checked` does not.
 
-It goes out with an archive and comes back with one, so a graph carried between a server and
+**Why both.** `checked` answers the question through a history, which only a folder git is
+keeping can be asked; a reading of the files answers it wherever the code is open, which is
+every project and not only the versioned ones. Where a note carries readings they are the
+answer and the history is not asked; where it carries only `checked` the history is, so a
+note confirmed before this existed keeps working untouched. "Still true" writes the readings
+from now on, and writes `checked` beside them where the folder has a history — a note
+carried to another device, or another mode, then answers by whichever of the two that device
+can read.
+
+**Drift is computed and never stored.** A path a note was read against whose file now
+digests differently — or that the checkout has not got — is drifted, worked out at the
+moment somebody looks, by `driftOf` in `@sloppy/vault` over a `CodeNow`, which `digestsIn`
+in `@sloppy/local` builds over a folder. A digest spelled with an algorithm this build does
+not take reads as UNREAD rather than as drift: saying a file has moved because a spelling
+changed is worse than saying nothing. **Where the project cannot be reached at all — hosted,
+or a graph that is nobody's project — nothing is computed and nothing is shown**: a note is
+then neither out of date nor up to date, and there is no third state to draw.
+
+**Only a person writes either of them.** A reading is somebody saying they read the note
+against the code as it stands, so no act of a tool's writes one: no shape a note starts from
+seeds one, nothing arriving invents one, and `.sloppy/AGENT.md` says so beside its rule for
+`checked`.
+
+**The hosted store keeps them and never interprets them.** `checked` and `read_against` are
+columns on `node` (§ "Data model") holding whatever the folder's history calls a commit and
+whatever the folder's files digested to, written by `PATCH /nodes/:did/:localId` like any
+other field on a note: there is no route for confirming, because confirming is a write on
+the note. There is no code beside that store to compare a reading against, so it compares
+nothing. They are held to the note's gate — whoever may write the note is who may confirm it
+— and they join nobody to the note's authors, which is one of the two ways that write
+differs from every other. The other is `node.updated_at`, which a confirmation leaves where
+it was: the note surface reads that column to ask whether a published branch has changed
+since it went out, and nothing a confirmation writes reaches a reader. `recordsAReading` in
+`node.repository.ts` is the one list of the columns that behave this way, so the author rule
+and the timestamp rule cannot come to disagree.
+
+Both go out with an archive and come back with one, so a graph carried between a server and
 a folder keeps what its author has read. Settling an archive against a copy of that graph the
 server already holds takes the ARRIVING reading — the folder is the copy that sits beside the
 code, and a reading the server holds stands only where the archive carries none, because
 absent is unread rather than a reading of nothing. Nobody is asked about one, and a note whose
 reading alone arrived is confirmed rather than written: its sections stay where they are, and
-so does its timestamp.
+so does its timestamp. A vault carries a reading either way because a note is a file; what
+reads one FIELD at a time is the hosted import, `archive/arriving.ts` and its settling in
+`archive/merging.ts`, and `read_against` is carried there exactly as `checked` is beside it.
+TODO(surfaces track): those two still name `checked` alone, so a reading arriving from a
+folder into the hosted store is dropped until they name both.
 
 **The genealogy, refs, addresses, aliases, retired numbers and the section opener are
 untouched by all of this.** A container is a vault, a note in it is a note, and an anchor is
@@ -3187,8 +3236,8 @@ PACKAGE — so a detailed note about that file is written under it rather than i
 **`.sloppy/AGENT.md` is what an agent finds where it already looks.** `sloppy init` commits
 it, and it carries the WHOLE format: one note per file, the front matter, the sections, the
 markdown a section holds, citations, `code:` anchors, the compass and its three methods,
-tags, `checked`, the shapes a note starts from, and the pictures and drawings an agent moves
-and never redraws. Then the doctrine that keeps the notes from saying one thing twice — look
+tags, `checked` and `read_against`, the shapes a note starts from, and the pictures and
+drawings an agent moves and never redraws. Then the doctrine that keeps the notes from saying one thing twice — look
 before writing, cite what the graph already carries, and keep a note true by carrying it to
 what it really sprang out of or taking off a tag that has stopped being true, each of those
 two where the note is the agent's own to keep true — the rule that an existing note is
@@ -3205,9 +3254,11 @@ moved, and hands back `ReviewSignal[]`; the app and the CLI both call it, so the
 disagree about what a person is shown. Nothing it says is written down anywhere — there is
 no signals table, no cached count and nothing to migrate.
 
-- **`anchor-changed`** — an anchor whose file has moved since the note's `checked`, from the
-  history's `changedSince`. **A note with no `checked` yields nothing at all: unread is not
-  stale.**
+- **`anchor-changed`** — an anchor whose file has moved since somebody read the note against
+  it: per file where the note carries `read_against`, and from the history's `changedSince`
+  against the note's `checked` where it carries none. **A note carrying neither yields
+  nothing at all: unread is not stale.** So does one carrying readings where the review was
+  given no way to reach the code (§ "A project's container").
 - **`code-without-note`** — a top-level folder or declared package no anchor in the graph
   names or reaches into. It is a signal about the PROJECT, so it carries a `path` and no
   note. **Which places those are is `placesIn` beside it**, so a surface asking the question
@@ -3225,7 +3276,9 @@ no signals table, no cached count and nothing to migrate.
 A signal names a note, a path, or both: **an absent `note` is a signal about the project,
 and an absent `path` a signal about a note.** DESIGN.md § "What the code left behind" is how
 they are drawn, and the answer there is highlight-and-dim plus one sheet — never a count in
-the chrome, never a badge on a mark.
+the chrome. The one mark a note carries without being asked is the dot for code that has
+moved under a reading, which that section rules and holds to its conditions; it is drawn
+from `GraphSurfaceProps.codeMoved`, and the review is where its set comes from.
 
 **The folder is read again when it may have changed under the app** — the window coming
 back, an act of the History surface, the review sheet opening — and **the note in front of
@@ -3295,9 +3348,9 @@ off; what a line says and how it and a mark are drawn; a note put in the bin. Th
 them read and eight of them write, and `chatToolWrites` is the one statement of which is
 which — every surface that needs to know asks it rather than listing names.
 
-**Three things a person can write are deliberately not among them.** `checked` is a person
-saying they have read a note against the code, and an agent writing it silences the one
-question the app asks them (§ "Tooling and the review"). `owner` is who GATES a note's
+**Three things a person can write are deliberately not among them.** `checked` and
+`read_against` are a person saying they have read a note against the code, and an agent
+writing either silences the one question the app asks them (§ "Tooling and the review"). `owner` is who GATES a note's
 writing, which is an authority change and not a look. And the compass's west and a "Why"
 are what was decided against and the reason for it — the author's own thinking, which
 `.sloppy/AGENT.md` keeps out of an agent's hands for the same reason wherever it writes.

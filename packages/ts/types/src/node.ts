@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { AddressSchema, RootAddressSchema } from "./address.js";
+import { CodeReadingsSchema } from "./code-anchor.js";
 import { NodeAppearanceSchema, WrittenAppearanceSchema } from "./appearance.js";
 import {
   OwnedEntitySchema,
@@ -105,6 +106,16 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * date** — docs/ARCHITECTURE.md § "A project's container".
    */
   checked: CommitIdSchema.optional(),
+  /**
+   * Each file this note points at as it stood when its author last read the
+   * note against it — the same reading {@link checked} records, said one file
+   * at a time so a folder with no history can answer it too. **A path absent
+   * from it is one nobody has read this note against, which reads as UNREAD
+   * and never as out of date**; absent, and empty, are a note read against no
+   * file at all. Only a person writes it — docs/ARCHITECTURE.md § "A project's
+   * container".
+   */
+  read_against: CodeReadingsSchema.optional(),
   /** Whether a published version carries this note, maintained from the
    *  snapshot rows and never from a publication rooted above it; docs/ARCHITECTURE.md
    *  § "Data model" carries the ruling. Absent is false. */
@@ -429,6 +440,13 @@ export const UpdateNodeRequestSchema = z.object({
   /** The commit this note's reasoning has now been read against. Absent leaves
    *  whatever it says alone. */
   checked: CommitIdSchema.optional(),
+  /**
+   * The WHOLE list of files this note has now been read against, never a
+   * delta — the way `tags` and `edges` are: a path absent from it is a reading
+   * taken off, and an empty list takes them all off. Absent leaves whatever
+   * readings the note carries alone.
+   */
+  read_against: CodeReadingsSchema.optional(),
 });
 export type UpdateNodeRequest = z.input<typeof UpdateNodeRequestSchema>;
 

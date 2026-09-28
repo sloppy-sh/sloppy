@@ -120,3 +120,68 @@ export function anchorsOf(content: BlockDocument): CodeAnchor[] {
   walk(content.content);
   return [...found.values()];
 }
+
+/** What this build spells a digest of a file's bytes with. A second algorithm
+ *  is a second entry in {@link DIGEST_HEX_LENGTH}, never a second field. */
+export const CODE_DIGEST_ALGORITHM = "sha256";
+
+/** How long each algorithm's hex is. One this build does not know is held to
+ *  the shape alone, so a reading written by a later one arrives intact. */
+const DIGEST_HEX_LENGTH: Readonly<Record<string, number>> = {
+  [CODE_DIGEST_ALGORITHM]: 64,
+};
+
+const DIGEST = /^([a-z0-9-]{1,32}):([0-9a-f]{16,128})$/;
+
+/**
+ * Whether a digest is spelled the way the algorithm it names spells one. The
+ * algorithm is written down so that a reading this build cannot reproduce is
+ * carried untouched and read as UNREAD rather than as drift: saying a file has
+ * moved because a spelling changed is worse than saying nothing.
+ */
+export function digestIsSpelled(digest: string): boolean {
+  const said = DIGEST.exec(digest);
+  if (!said) return false;
+  const hex = DIGEST_HEX_LENGTH[said[1]];
+  return hex === undefined || said[2].length === hex;
+}
+
+/** A digest of a file's bytes: the algorithm that produced it, a colon, and
+ *  lowercase hex. */
+export const CodeDigestSchema = z
+  .string()
+  .refine(digestIsSpelled, "Sloppy is out of date. Update it and try again.");
+
+/**
+ * One file as it stood when somebody last read a note against it: where it is
+ * in the project, and a digest of its bytes. Only a person writes one —
+ * docs/ARCHITECTURE.md § "A project's container".
+ */
+export const CodeReadingSchema = z.object({
+  path: ProjectPathSchema,
+  digest: CodeDigestSchema,
+});
+export type CodeReading = z.infer<typeof CodeReadingSchema>;
+
+/**
+ * The readings a reader takes off a list: one per path, the first of two
+ * naming a path winning, in path order rather than the order they were
+ * written — so two notes read against the same files hold byte-identical
+ * lists, which is what keeps a file's round trip stable.
+ */
+export function readingsRead(readings: readonly CodeReading[]): CodeReading[] {
+  const byPath = new Map<string, CodeReading>();
+  for (const reading of readings) {
+    if (!byPath.has(reading.path)) byPath.set(reading.path, reading);
+  }
+  // Codepoint order, never a locale's: two peers must sort one list one way.
+  return [...byPath.values()].sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
+  );
+}
+
+/** What a note was read against, held to {@link readingsRead} on the way in
+ *  and on the way out. */
+export const CodeReadingsSchema = z
+  .array(CodeReadingSchema)
+  .transform(readingsRead);

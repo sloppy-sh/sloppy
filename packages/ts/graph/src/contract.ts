@@ -305,6 +305,18 @@ export interface GraphSurfaceProps {
    */
   lit?: ReadonlySet<OwnedRef>;
   /**
+   * The notes whose code has moved since their author read them against it —
+   * DESIGN.md § "What the code left behind", which is also what the mark for
+   * one is. A note nobody has read against the code is never in it, so the
+   * canvas stays silent about one nobody has got to yet.
+   *
+   * Absent, and empty, are a canvas saying nothing about this: where the code
+   * cannot be reached at all nothing is worked out, so there is no third state
+   * to draw. It is drawn beside every other channel rather than instead of
+   * one — a dimmed note that carries it still carries it.
+   */
+  codeMoved?: ReadonlySet<OwnedRef>;
+  /**
    * Re-initialises the scene when it changes, and only then: a pan, a zoom or a
    * drag must never remount, or the viewport is lost on every gesture.
    */

@@ -10,4 +10,5 @@ export * from "./amendment.js";
 export * from "./archive.js";
 export * from "./rekey.js";
 export * from "./difference.js";
+export * from "./drift.js";
 export * from "./review.js";

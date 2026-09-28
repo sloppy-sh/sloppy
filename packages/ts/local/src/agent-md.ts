@@ -80,6 +80,9 @@ that line.
     created: 2026-09-18T10:00:00.000Z
     updated: 2026-09-18T10:00:00.000Z
     checked: 9f1c0f2e4b6a8d0c2e4f6a8b0d2c4e6f8a0b2c4d
+    read_against:
+      - path: src/markdown/reader.ts
+        digest: sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae
     ---
 
 \`ref\` is the note, and the only thing that identifies it: it is what every link holds
@@ -225,10 +228,17 @@ be written is the opposite of one**, and never goes on: see below.
 
 ## Saying a note has been read against the code
 
-\`checked\` names the commit a note's reasoning was last read against. **Absent means
-nobody has read it yet**, which is never the same as out of date — the app asks about a
-note whose code has moved SINCE it was read, and says nothing about one nobody has got to.
-It is a person saying they read it, so it is not yours to write: see below.
+Two fields say it, and both mean the same thing: somebody sat down with this note and
+the code it points at, and found that it still held. \`checked\` names the commit they
+read it at. \`read_against\` says the same thing one file at a time — each place the note
+points at, and what that file said when they read it — so a folder that is not kept in a
+history can answer the question too. Where a note carries \`read_against\`, that is what
+the app reads; where it carries only \`checked\`, that is.
+
+**Absent means nobody has read it yet**, which is never the same as out of date: the app
+asks about a note whose code has moved SINCE it was read, and says nothing at all about
+one nobody has got to. Both are a person saying they read it, so neither is yours to
+write: see below.
 
 ## The shapes a note can start from
 
@@ -269,8 +279,9 @@ on is somebody's writing nothing can give back.
   the author's own thinking, and an agent that supplies one puts words in their mouth.
   Write what you found as candidates, under a "Candidates" heading in the note's own
   writing, and leave the compass to a person.
-- **\`checked\`.** It says a person has read the note against the code. Writing it would
-  silence the one question the app asks them.
+- **\`checked\`, and \`read_against\`.** Both say a person has read the note against the
+  code. Writing either would silence the one question the app asks them, and neither is
+  true of a file you read for them.
 - **A tag about the note rather than about the code** — that a tool wrote it, when, or in
   what pass. What wrote a note leaves no trace of itself in it; the note is read for what
   it says, and a tag naming the system it is about is wanted for exactly that reason.
