@@ -1328,9 +1328,11 @@
 	let movedUnder = $state.raw<string[]>([]);
 	let confirming = $state(false);
 
+	const readAgainst = $derived(node?.read_against ?? []);
+
 	$effect(() => {
 		const folder = project ?? undefined;
-		const readings = node?.read_against;
+		const readings = readAgainst;
 		const confirmed = node?.checked;
 		const paths = [...new Set(anchors.map((anchor) => anchor.path))];
 		if (!folder) {
@@ -1338,7 +1340,7 @@
 			return;
 		}
 		let reading = true;
-		const asking = readings?.length
+		const asking = readings.length
 			? codeDrift.under(readings, folder, graphs.folderReads)
 			: confirmed === undefined || paths.length === 0
 				? Promise.resolve<string[]>([])
@@ -1352,9 +1354,13 @@
 	});
 
 	/** Whether the reader may say this note's reasoning still holds: a note a
-	 *  write here lands on, in a project, pointing at code. Where the writing is
-	 *  somebody else's, the reading is theirs. */
-	const mayConfirm = $derived(!readOnly && !offering && !!project && anchors.length > 0);
+	 *  write here lands on, in a project, with somewhere to read it against —
+	 *  code it points at, or a reading it is still carrying for code it does not
+	 *  point at any more. Where the writing is somebody else's, the reading is
+	 *  theirs. */
+	const mayConfirm = $derived(
+		!readOnly && !offering && !!project && (anchors.length > 0 || readAgainst.length > 0)
+	);
 
 	/** Whether the code under any of the places this note points at has moved
 	 *  since somebody read the note against them. */
@@ -2526,10 +2532,6 @@
 				class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-2xl leading-snug font-semibold tracking-tight placeholder:text-muted-foreground/60 focus-visible:outline-none"
 			></textarea>
 
-			<!-- One quiet line for each place the code has moved, naming it so
-			     nobody has to go and find it, and one act for the note — the
-			     reading is the note's. Nothing at all where nothing has moved:
-			     DESIGN.md § "An anchor into code". -->
 			{#if codeMoved}
 				<div class="@container">
 					<div class="flex flex-col items-start gap-1 @md:flex-row @md:items-center @md:gap-3">

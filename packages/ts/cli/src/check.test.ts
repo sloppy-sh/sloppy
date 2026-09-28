@@ -200,7 +200,34 @@ describe("check", () => {
         kind: "code-moved",
         file: "notes/01J0000000000000000000000A.md",
         note: `${DID}/${A}`,
-        said: "The code it points at has changed since this was read: src/b.ts",
+        said: "Read against a file that has changed since: src/b.ts",
+      },
+    ]);
+  });
+
+  // The canvas draws its mark off the note's row alone, so the terminal asks
+  // over the readings too, and the reading clears when the note is read again.
+  it("says a file it was read against though the writing no longer points there", async () => {
+    const said = "export const a = 1;\n";
+    const container = await project({
+      "notes/01J0000000000000000000000A.md": note({
+        ulid: A,
+        front: [
+          "read_against:",
+          "  - path: src/a.ts",
+          `    digest: ${await digestOf(encodeText(said))}`,
+        ].join("\n"),
+        body: "nothing points anywhere now",
+      }),
+      "src/a.ts": `${said}// and more\n`,
+    });
+    const { defects } = await check(container);
+    expect(defects).toEqual([
+      {
+        kind: "code-moved",
+        file: "notes/01J0000000000000000000000A.md",
+        note: `${DID}/${A}`,
+        said: "Read against a file that has changed since: src/a.ts",
       },
     ]);
   });

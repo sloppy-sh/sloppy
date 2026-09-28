@@ -565,7 +565,9 @@ describe("sloppy review", () => {
       }
 
       const moved = (lines: string[]): boolean =>
-        lines.some((line) => line.includes("has changed since this was read"));
+        lines.some((line) =>
+          line.includes("Read against a file that has changed since"),
+        );
       expect(moved((await ran(["review"])).out)).toBe(false);
       await wrote("packages/one/src/index.ts", "export const NAME = 'two';");
       const { out } = await ran(["review"]);
@@ -573,7 +575,7 @@ describe("sloppy review", () => {
       expect(
         out.some((line) =>
           line.endsWith(
-            "The code it points at has changed since this was read: packages/one/src/index.ts",
+            "Read against a file that has changed since: packages/one/src/index.ts",
           ),
         ),
       ).toBe(true);
@@ -603,7 +605,7 @@ describe("sloppy review", () => {
     const moved = (lines: string[]): boolean =>
       lines.some((line) =>
         line.endsWith(
-          "The code it points at has changed since this was read: packages/one/src/index.ts",
+          "Read against a file that has changed since: packages/one/src/index.ts",
         ),
       );
     expect(moved((await ran(["review"])).out)).toBe(false);

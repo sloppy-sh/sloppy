@@ -40,8 +40,8 @@ import {
 /**
  * What a defect is. `not-a-note` and `front-matter` are a file somebody's hand
  * has been in; `missing-note` and `missing-code` are a note pointing at
- * something that is not there; `code-moved` is a note pointing at code that
- * has changed since somebody read the note against it.
+ * something that is not there; `code-moved` is a file a note was read against
+ * that has changed since.
  */
 export const CHECK_DEFECTS = [
   "not-a-note",
@@ -95,8 +95,8 @@ interface Read {
   ref: OwnedRef;
   cites: OwnedRef[];
   anchors: string[];
-  /** What each file it points at said when somebody read the note against it.
-   *  Empty is a note nobody has read, which is never out of date. */
+  /** What each file it was read against said then. Empty is a note nobody has
+   *  read, which is never out of date. */
   readAgainst: CodeReading[];
 }
 
@@ -165,17 +165,14 @@ export async function check(container: Files): Promise<CheckResult> {
         said: `Points at code that isn't there: ${path}`,
       });
     }
-    // The same reader the app draws from, so a mark, a sheet and a terminal
-    // cannot disagree about what has moved. A file that is not there is said
-    // once, as the sharper of the two.
-    const { drifted } = await driftOf(note.anchors, note.readAgainst, code.now);
-    for (const path of drifted) {
+    // A file that is not there is said once, as the sharper of the two.
+    for (const path of await driftOf(note.readAgainst, code.now)) {
       if (gone.has(path)) continue;
       defects.push({
         kind: "code-moved",
         file: note.file,
         note: note.ref,
-        said: `The code it points at has changed since this was read: ${path}`,
+        said: `Read against a file that has changed since: ${path}`,
       });
     }
   }

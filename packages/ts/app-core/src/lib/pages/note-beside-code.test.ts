@@ -289,6 +289,25 @@ describe('saying a note’s reasoning still holds', () => {
 		expect(named('Still true')).toBeDefined();
 	});
 
+	// A reading outlives the link that wrote it: the mark on the canvas is drawn
+	// off the readings alone, so the note says the same thing and the act clears
+	// it — taking it records the note against what it points at NOW, which is
+	// nothing.
+	it('says so, and offers the act, where the writing no longer points there', async () => {
+		const digest = await digestOf(said(PARSER));
+		await files.write('src/parser.ts', said(`${PARSER}// and more\n`));
+		await openNote({ read_against: [{ path: 'src/parser.ts', digest }] }, [
+			anchored('https://example.com/')
+		]);
+
+		expect(screen()).toContain('src/parser.ts has changed since you read it');
+
+		named('Still true')?.click();
+		await settle();
+
+		expect(written.map((one) => one.read_against)).toEqual([[]]);
+	});
+
 	it('says so where the code moved after the note was confirmed', async () => {
 		const read = await keepFile('src/parser.ts', PARSER);
 		await keepFile('src/parser.ts', `${PARSER}// and more\n`);

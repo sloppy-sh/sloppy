@@ -213,14 +213,10 @@ describe("what the project's files say now", () => {
         digest: await digestOf(encodeText("export const parse = 1;\n")),
       },
     ]);
-    expect(await driftOf(["src/parser.ts"], readings, digestsIn(code))).toEqual(
-      { drifted: [], unread: [] },
-    );
+    expect(await driftOf(readings, digestsIn(code))).toEqual([]);
 
     await code.write("src/parser.ts", encodeText("export const parse = 2;\n"));
-    expect(await driftOf(["src/parser.ts"], readings, digestsIn(code))).toEqual(
-      { drifted: ["src/parser.ts"], unread: [] },
-    );
+    expect(await driftOf(readings, digestsIn(code))).toEqual(["src/parser.ts"]);
   });
 
   it("says nothing about a file the project has not got", async () => {

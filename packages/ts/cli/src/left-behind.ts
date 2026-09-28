@@ -85,7 +85,7 @@ function row(
 function saying(signal: ReviewSignal): string {
   switch (signal.kind) {
     case "anchor-changed":
-      return `The code it points at has changed since this was read: ${signal.path}`;
+      return `Read against a file that has changed since: ${signal.path}`;
     case "code-without-note":
       return "No note is about this yet.";
     case "compass-gap":

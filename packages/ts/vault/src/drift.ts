@@ -1,6 +1,6 @@
-// Whether the code a note points at has moved since somebody read the note
-// against it — docs/ARCHITECTURE.md § "A project's container". Nothing here is
-// stored: a reading is, and this is what a reading is compared to.
+// Whether the code a note was read against has moved since — docs/ARCHITECTURE.md
+// § "A project's container". Nothing here is stored: a reading is, and this is
+// what a reading is compared to.
 
 import {
   CODE_DIGEST_ALGORITHM,
@@ -31,50 +31,30 @@ export async function digestOf(bytes: Uint8Array): Promise<string> {
   return `${CODE_DIGEST_ALGORITHM}:${hex}`;
 }
 
-/** What the code has done under one note since somebody read it. */
-export interface CodeDrift {
-  /** Paths the note points at that have changed since it was read against
-   *  them, or that the project has not got any more. In path order. */
-  drifted: string[];
-  /** Paths the note points at that nobody has read it against. In path
-   *  order. */
-  unread: string[];
-}
-
 /**
- * One note's anchored paths, told apart by the readings it carries. A path
- * whose reading this build cannot reproduce — one spelled with an algorithm it
- * does not take — is unread rather than drifted, which is the rule throughout:
- * nothing says a file has moved unless it has been compared.
+ * The files a note was READ against that say something else now, or that this
+ * checkout has not got, in path order. The readings are the whole of the
+ * question, so a caller holding nothing but them — a canvas drawing a mark off
+ * the note's row — asks exactly what a caller holding the note's writing asks.
  *
- * A note with no readings has nothing drifted under it, however far the code
- * has moved: unread is not stale.
+ * A path no reading covers is not asked about, which is how unread stays out of
+ * stale: a note with no readings has nothing drifted under it, however far the
+ * code has gone. So is a reading this build cannot reproduce — one spelled with
+ * an algorithm it does not take — because nothing says a file has moved unless
+ * it has been compared.
  */
 export async function driftOf(
-  anchored: readonly string[],
   readings: readonly CodeReading[] | undefined,
   now: CodeNow,
-): Promise<CodeDrift> {
+): Promise<string[]> {
   const read = new Map(
-    (readings ?? []).map((reading) => [reading.path, reading.digest]),
+    (readings ?? [])
+      .filter((reading) => comparable(reading.digest))
+      .map((reading) => [reading.path, reading.digest]),
   );
-  const asked = inOrder(anchored).map((path) => {
-    const was = read.get(path);
-    return {
-      path,
-      was: was !== undefined && comparable(was) ? was : undefined,
-    };
-  });
-  const digests = await Promise.all(
-    asked.map(({ path, was }) => (was === undefined ? undefined : now(path))),
-  );
-  const drifted: string[] = [];
-  const unread: string[] = [];
-  asked.forEach(({ path, was }, at) => {
-    if (was === undefined) unread.push(path);
-    else if (digests[at] !== was) drifted.push(path);
-  });
-  return { drifted, unread };
+  const paths = inOrder([...read.keys()]);
+  const digests = await Promise.all(paths.map((path) => now(path)));
+  return paths.filter((path, at) => digests[at] !== read.get(path));
 }
 
 /**

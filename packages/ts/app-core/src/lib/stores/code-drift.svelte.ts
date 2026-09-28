@@ -1,8 +1,7 @@
 /**
  * Which notes the code has moved under — DESIGN.md § "What the code left
- * behind". Nothing here is stored: a note carries what each file it points at
- * said when its author read the note against it, and this compares that to
- * what those files say now.
+ * behind". Nothing here is stored: a note carries what each file it was read
+ * against said then, and this compares that to what those files say now.
  *
  * **Where the project is not open beside the notes, nothing is worked out.** A
  * note is then neither moved nor up to date, which is why the answer is one
@@ -50,7 +49,7 @@ class CodeDriftStore {
 		}
 		const now = this.#filesOf(project, reads);
 		const signed = notes.filter((note) => (note.read_against?.length ?? 0) > 0);
-		const drifted = await Promise.all(signed.map((note) => moved(note.read_against, now)));
+		const drifted = await Promise.all(signed.map((note) => driftOf(note.read_against, now)));
 		if (epoch !== this.#epoch) return;
 		this.#moved = new Set(signed.flatMap((note, at) => (drifted[at].length > 0 ? [note.ref] : [])));
 	}
@@ -63,7 +62,7 @@ class CodeDriftStore {
 		reads: number
 	): Promise<string[]> {
 		if (!project) return [];
-		return moved(readings, this.#filesOf(project, reads));
+		return driftOf(readings, this.#filesOf(project, reads));
 	}
 
 	/** Somebody has just read the code themselves, so what this last read of it
@@ -94,19 +93,6 @@ class CodeDriftStore {
 		this.#over = null;
 		this.#reads = -1;
 	}
-}
-
-async function moved(
-	readings: readonly CodeReading[] | undefined,
-	now: CodeNow
-): Promise<string[]> {
-	const held = readings ?? [];
-	const { drifted } = await driftOf(
-		held.map((reading) => reading.path),
-		held,
-		now
-	);
-	return drifted;
 }
 
 export const codeDrift = new CodeDriftStore();

@@ -101,9 +101,9 @@ export interface ReviewedNote {
   /** The commit its reasoning was last read against. Absent is a note nobody
    *  has confirmed, which is unread and never out of date. */
   checked?: string;
-  /** Each file it points at as it stood when it was last read against that
-   *  file. A note carrying any of these is answered by them alone; one
-   *  carrying none falls back to {@link checked}. */
+  /** Each file it was last read against, as that file stood then. A note
+   *  carrying any of these is answered by them alone; one carrying none falls
+   *  back to {@link checked}. */
   read_against?: readonly CodeReading[];
   sections: readonly { content: BlockDocument }[];
 }
@@ -135,8 +135,9 @@ export interface ReviewInput {
  * were given and the project's after them.
  *
  * What a note has been read against is answered per file where it carries
- * readings and by `checked` against the history where it carries none, and a
- * note carrying neither yields no changed anchor at all: unread is not stale.
+ * readings — every one of them, whether or not its writing still points there —
+ * and by `checked` against the history where it carries none. A note carrying
+ * neither yields no changed anchor at all: unread is not stale.
  */
 export async function review(input: ReviewInput): Promise<ReviewSignal[]> {
   const anchored = new Set<string>();
@@ -182,20 +183,20 @@ export async function review(input: ReviewInput): Promise<ReviewSignal[]> {
   return signals;
 }
 
-/** Which of a note's anchored paths the code has moved under since somebody
- *  read the note against them. */
+/** Where the code has moved under a note: the files it was read against, where
+ *  it carries readings, and otherwise its anchored `paths` since `checked`. */
 async function movedUnder(
   input: ReviewInput,
   note: ReviewedNote,
   paths: readonly string[],
 ): Promise<string[]> {
-  if (paths.length === 0) return [];
   if (note.read_against?.length) {
-    if (input.codeNow === undefined) return [];
-    const { drifted } = await driftOf(paths, note.read_against, input.codeNow);
-    return drifted;
+    return input.codeNow === undefined
+      ? []
+      : driftOf(note.read_against, input.codeNow);
   }
-  return note.checked === undefined ? [] : input.changed(note.checked, paths);
+  if (paths.length === 0 || note.checked === undefined) return [];
+  return input.changed(note.checked, paths);
 }
 
 /**
