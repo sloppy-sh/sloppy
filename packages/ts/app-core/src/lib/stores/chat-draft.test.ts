@@ -307,6 +307,9 @@ describe('reading a draft', () => {
 
 		expect((await inTheDraft().getNode(since.ref))?.title).toBe('Written and not kept');
 		expect(chatDraft.read?.nothing).toBe(true);
+		// A draft measured against the last kept version counts a note written
+		// since as one the draft let go of, so this is the count that catches it.
+		expect(chatDraft.counts?.notes.removed).toBe(0);
 		expect(chatDraft.counts?.notes.added).toBe(0);
 	});
 });

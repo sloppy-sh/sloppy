@@ -3367,9 +3367,9 @@ scheme, and that is where the identity's key is.
 
 **The draft's NOTES begin as the folder's working files, and that state is the draft's first
 version.** Keeping a version is the person's own act, so the notes they have been writing are
-usually in no version at all; a draft forked from the last one would start empty of them, and
-— worse — would list every one of them in the review as the agent's writing and hand them to
-the merge as changes to settle. So `draft.rs` writes the folder's own files over the checkout
+usually in no version at all; a draft forked from the last one would start without them, and a
+difference measured against that version would count the person's own unkept notes as if they
+were the draft's. So `draft.rs` writes the folder's own files over the checkout
 before anybody reaches it, takes back out whatever the checkout holds and the folder no longer
 does, keeps that as a version on the draft's branch, and writes the version down under
 `refs/sloppy/drafts/<id>` — a record rather than a merge-base worked out afterwards, because
