@@ -458,7 +458,7 @@ afterEach(() => {
 		for (const branch of open) branch.click();
 		flushSync();
 	}
-	document.body.querySelector<HTMLButtonElement>('button[aria-label="Back to the graph"]')?.click();
+	document.body.querySelector<HTMLButtonElement>('button[aria-label="Graph"]')?.click();
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	session.clear();
@@ -482,7 +482,7 @@ describe('finding your way back on the canvas', () => {
 		finding(api, { recent: [node(2, '1a', { title: 'Cells', origin: FIRST, parent: FIRST })] });
 		await open();
 
-		labelled('Walk the notes one at a time').click();
+		labelled('Outline').click();
 		await settle();
 		expect(brought()).toEqual([]);
 
@@ -639,7 +639,7 @@ describe('a branch somebody else published', () => {
 	it('comes to a held note opened from a row of the outline', async () => {
 		await enterRegion();
 
-		labelled('Walk the notes one at a time').click();
+		labelled('Outline').click();
 		await settle();
 		labelled('Unfold 1').click();
 		await settle();
@@ -667,7 +667,7 @@ describe('linking by pointing at the graph', () => {
 		await startLinking();
 
 		expect(() => labelled('See everything on the canvas')).toThrow();
-		expect(() => labelled('Walk the notes one at a time')).toThrow();
+		expect(() => labelled('Outline')).toThrow();
 		expect(() => labelled('Background')).toThrow();
 	});
 
@@ -1760,7 +1760,7 @@ describe('writing a note of its own', () => {
 
 	it('asks for one from the outline', async () => {
 		await open();
-		labelled('Walk the notes one at a time').click();
+		labelled('Outline').click();
 		await settle();
 
 		button('New note').click();
@@ -1941,7 +1941,7 @@ describe('a note written before the server has answered', () => {
 
 	it('opens somewhere to write for a note asked for from a row of the outline', async () => {
 		await open();
-		labelled('Walk the notes one at a time').click();
+		labelled('Outline').click();
 		await settle();
 		labelled('Unfold 1').click();
 		await settle();
@@ -2697,7 +2697,7 @@ describe('the drawing over the canvas', () => {
 describe('reading the graph as an outline', () => {
 	async function walk(): Promise<void> {
 		await open();
-		labelled('Walk the notes one at a time').click();
+		labelled('Outline').click();
 		await settle();
 	}
 
@@ -2717,7 +2717,7 @@ describe('reading the graph as an outline', () => {
 		await open();
 
 		expect(inOutline('1')).toBeTruthy();
-		expect(labelled('Back to the graph')).toBeTruthy();
+		expect(labelled('Graph')).toBeTruthy();
 	});
 
 	it('chooses notes from a row, and offers the same acts over them', async () => {
@@ -2889,7 +2889,7 @@ describe('reading the graph as an outline', () => {
 
 		expect(reading()).toBe(true);
 		expect(readingName()).toContain('Origins');
-		expect(labelled('Walk the notes one at a time')).toBeTruthy();
+		expect(labelled('Outline')).toBeTruthy();
 	});
 
 	// The run at the head of the outline is the outline's own, so a row of it is
@@ -3448,6 +3448,30 @@ describe('the chrome on a desk', () => {
 
 		expect(column()).toBeNull();
 		expect(document.body.querySelectorAll('[aria-label="Your graphs"]')).toHaveLength(1);
+	});
+
+	// One control, one place, whichever view is up.
+	it('keeps the way between the graph and the outline in the column, in both views', async () => {
+		await onADesk();
+
+		const inColumn = (label: string) => column()?.querySelector(`button[aria-label="${label}"]`);
+		expect(inColumn('Graph')?.getAttribute('aria-pressed')).toBe('true');
+		expect(inColumn('Outline')?.getAttribute('aria-pressed')).toBe('false');
+		expect(
+			document.body.querySelector('[aria-label="See everything on the canvas"]')
+		).not.toBeNull();
+
+		(inColumn('Outline') as HTMLButtonElement).click();
+		await settle();
+
+		expect(inColumn('Outline')?.getAttribute('aria-pressed')).toBe('true');
+		expect(inColumn('Graph')?.getAttribute('aria-pressed')).toBe('false');
+		expect(document.body.querySelectorAll('button[aria-label="Graph"]')).toHaveLength(1);
+		expect(document.body.querySelector('[aria-label="See everything on the canvas"]')).toBeNull();
+
+		(inColumn('Graph') as HTMLButtonElement).click();
+		await settle();
+		expect(inColumn('Graph')?.getAttribute('aria-pressed')).toBe('true');
 	});
 
 	// The icon rail is the column narrowed, never the column minus an act.

@@ -1791,7 +1791,6 @@
 	 *  and where it has nothing it is not drawn at all. */
 	const overCanvas = $derived(
 		!desk.current ||
-			walkingNow ||
 			pointing !== null ||
 			comparing !== null ||
 			asWas !== null ||
@@ -2030,34 +2029,50 @@
 	}}
 />
 
-{#snippet walk()}
-	<!-- Out of the chrome while a set is being chosen: the bar over that set acts
-	     on notes the tree does not mark. -->
+<!-- Which of the two ways the notes are seen: one control, kept with the graph's
+     name in both, so a person in either finds it where they left it — DESIGN.md
+     § Layout. Out of the chrome while a set is being chosen: the bar over that
+     set acts on notes the outline does not mark. -->
+{#snippet viewSwitch(wide: boolean, stacked: boolean)}
 	{#if !choosing}
-		{#if !walking}
-			<Button
-				variant="ghost"
-				size="icon"
-				class="size-9 shrink-0 rounded-full"
-				aria-label="See everything on the canvas"
-				onclick={() => canvas?.fit()}
-			>
-				<Maximize class="size-4" />
-			</Button>
-		{/if}
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-9 shrink-0 rounded-full"
-			aria-label={walking ? 'Back to the graph' : 'Walk the notes one at a time'}
-			onclick={() => prefs.set('walking', !walking)}
+		<div
+			role="group"
+			aria-label="See the notes as"
+			class="flex shrink-0 items-center rounded-full border border-input p-0.5 {stacked
+				? 'flex-col'
+				: ''}"
 		>
-			{#if walking}
+			<button
+				type="button"
+				aria-label="Graph"
+				aria-pressed={!walking}
+				title={wide ? undefined : 'Graph'}
+				onclick={() => prefs.set('walking', false)}
+				class="flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {wide
+					? 'flex-1 px-3'
+					: 'px-2'} {walking
+					? 'text-muted-foreground hover:text-foreground'
+					: 'bg-muted text-foreground'}"
+			>
 				<Network class="size-4" />
-			{:else}
+				{#if wide}<span>Graph</span>{/if}
+			</button>
+			<button
+				type="button"
+				aria-label="Outline"
+				aria-pressed={walking}
+				title={wide ? undefined : 'Outline'}
+				onclick={() => prefs.set('walking', true)}
+				class="flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {wide
+					? 'flex-1 px-3'
+					: 'px-2'} {walking
+					? 'bg-muted text-foreground'
+					: 'text-muted-foreground hover:text-foreground'}"
+			>
 				<ListTree class="size-4" />
-			{/if}
-		</Button>
+				{#if wide}<span>Outline</span>{/if}
+			</button>
+		</div>
 	{/if}
 {/snippet}
 
@@ -2080,7 +2095,7 @@
 				{/snippet}
 			</DropdownMenu.Trigger>
 
-			<DropdownMenu.Content align="end" class="w-52">
+			<DropdownMenu.Content align={desk.current ? 'start' : 'end'} class="w-52">
 				<DropdownMenu.Item class="min-h-11" onSelect={() => canvasInk.undo(inkedOn)}>
 					Undo the last stroke
 				</DropdownMenu.Item>
@@ -2311,12 +2326,22 @@
 		{#if !walkingNow && !choosing && !pointing}
 			<div
 				style="top: {canvasTop}px; bottom: var(--sysnav-clearance)"
-				class="pointer-events-none absolute right-2 z-20 flex items-center sm:right-4"
+				class="pointer-events-none absolute z-20 flex items-center {desk.current
+					? 'start-2 sm:start-4'
+					: 'end-2 sm:end-4'}"
 			>
 				<div
 					class="pointer-events-auto flex flex-col items-center gap-0.5 rounded-full border bg-card/90 p-1 shadow-sm backdrop-blur"
 				>
-					{@render walk()}
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-9 shrink-0 rounded-full"
+						aria-label="See everything on the canvas"
+						onclick={() => canvas?.fit()}
+					>
+						<Maximize class="size-4" />
+					</Button>
 					{@render inkActs()}
 					<GroundChoice
 						value={prefs.current.ground}
@@ -2448,6 +2473,9 @@
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
 					</div>
+					<div class="flex {collapsed ? 'justify-center' : ''}">
+						{@render viewSwitch(!collapsed, collapsed)}
+					</div>
 				{/if}
 
 				{#if railTags.length > 0 || selection.length > 0}
@@ -2522,9 +2550,7 @@
 							>
 								Your graph now
 							</Button>
-							{#if walkingNow}
-								{@render walk()}
-							{/if}
+							{@render viewSwitch(false, false)}
 						</div>
 					{:else if asWas}
 						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -2544,9 +2570,7 @@
 							<Button variant="outline" class="h-9 shrink-0 rounded-full" onclick={backToNow}>
 								Your graph now
 							</Button>
-							{#if walkingNow}
-								{@render walk()}
-							{/if}
+							{@render viewSwitch(false, false)}
 						</div>
 					{:else if foreign}
 						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -2567,90 +2591,85 @@
 							>
 								Your graph
 							</Button>
-							{#if walkingNow}
-								{@render walk()}
-							{/if}
+							{@render viewSwitch(false, false)}
 						</div>
-					{:else if !desk.current || walkingNow}
+					{:else if !desk.current}
 						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-							{#if !desk.current}
-								<!-- The graph you are in leads the chrome, because everything the
+							<!-- The graph you are in leads the chrome, because everything the
 						     row after it does happens inside that one. -->
-								<button
-									type="button"
-									aria-label="Your graphs"
-									onclick={() => (switching = true)}
-									class="-mx-2 flex min-h-9 w-full min-w-0 items-baseline gap-2 rounded-md px-2 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-auto sm:flex-1"
-								>
-									<span class="min-w-0 shrink truncate font-medium">{graphName}</span>
-									{#if besideIt}
-										<span class="shrink-0 text-xs text-muted-foreground">{besideIt}</span>
-									{/if}
-									<!-- Nothing of its own to start from, so the graph is named whole
+							<button
+								type="button"
+								aria-label="Your graphs"
+								onclick={() => (switching = true)}
+								class="-mx-2 flex min-h-9 min-w-0 flex-1 items-baseline gap-2 rounded-md px-2 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+							>
+								<span class="min-w-0 shrink truncate font-medium">{graphName}</span>
+								{#if besideIt}
+									<span class="shrink-0 text-xs text-muted-foreground">{besideIt}</span>
+								{/if}
+								<!-- Nothing of its own to start from, so the graph is named whole
 							     before the census beside it gets a pixel. -->
-									<span class="min-w-0 flex-1 truncate text-muted-foreground">· {summary}</span>
-								</button>
-								<button
-									type="button"
-									aria-label="Find a note ({FIND_NOTE.says})"
-									aria-keyshortcuts={FIND_NOTE.keys}
-									onclick={() => (finding = true)}
-									class="flex h-9 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full border border-input px-2.5 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56 sm:justify-start sm:px-3"
+								<span class="min-w-0 flex-1 truncate text-muted-foreground">· {summary}</span>
+							</button>
+							{@render viewSwitch(false, false)}
+							<div class="basis-full"></div>
+							<button
+								type="button"
+								aria-label="Find a note ({FIND_NOTE.says})"
+								aria-keyshortcuts={FIND_NOTE.keys}
+								onclick={() => (finding = true)}
+								class="flex h-9 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full border border-input px-2.5 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56 sm:justify-start sm:px-3"
+							>
+								<Search class="size-4 shrink-0" />
+								<span class="hidden min-w-0 truncate sm:inline">Find a note</span>
+							</button>
+							<div class="ms-auto flex shrink-0 items-center">
+								<Button
+									class="h-9 rounded-s-full rounded-e-none pe-3"
+									disabled={creating}
+									aria-label="New branch ({NEW_BRANCH.says})"
+									aria-keyshortcuts={NEW_BRANCH.keys}
+									onclick={() => writeBranch(null)}
 								>
-									<Search class="size-4 shrink-0" />
-									<span class="hidden min-w-0 truncate sm:inline">Find a note</span>
-								</button>
-								<div class="ms-auto flex shrink-0 items-center">
-									<Button
-										class="h-9 rounded-s-full rounded-e-none pe-3"
-										disabled={creating}
-										aria-label="New branch ({NEW_BRANCH.says})"
-										aria-keyshortcuts={NEW_BRANCH.keys}
-										onclick={() => writeBranch(null)}
-									>
-										<Plus class="size-4" />
-										New branch
-									</Button>
-									<DropdownMenu.Root>
-										<DropdownMenu.Trigger>
-											{#snippet child({ props })}
-												<Button
-													{...props}
-													class="h-9 rounded-s-none rounded-e-full border-s border-primary-foreground/25 px-2"
-													disabled={creating}
-													aria-label="Other ways to write"
-												>
-													<ChevronDown class="size-4" />
-												</Button>
-											{/snippet}
-										</DropdownMenu.Trigger>
-										<DropdownMenu.Content align="end" class="w-60">
-											{@render otherWrites()}
-										</DropdownMenu.Content>
-									</DropdownMenu.Root>
-								</div>
+									<Plus class="size-4" />
+									New branch
+								</Button>
 								<DropdownMenu.Root>
 									<DropdownMenu.Trigger>
 										{#snippet child({ props })}
 											<Button
 												{...props}
-												variant="ghost"
-												size="icon"
-												class="size-9 shrink-0 rounded-full"
-												aria-label="More"
+												class="h-9 rounded-s-none rounded-e-full border-s border-primary-foreground/25 px-2"
+												disabled={creating}
+												aria-label="Other ways to write"
 											>
-												<Ellipsis class="size-4" />
+												<ChevronDown class="size-4" />
 											</Button>
 										{/snippet}
 									</DropdownMenu.Trigger>
-									<DropdownMenu.Content align="end" class="w-56">
-										{@render moreActs()}
+									<DropdownMenu.Content align="end" class="w-60">
+										{@render otherWrites()}
 									</DropdownMenu.Content>
 								</DropdownMenu.Root>
-							{/if}
-							{#if walkingNow}
-								{@render walk()}
-							{/if}
+							</div>
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="ghost"
+											size="icon"
+											class="size-9 shrink-0 rounded-full"
+											aria-label="More"
+										>
+											<Ellipsis class="size-4" />
+										</Button>
+									{/snippet}
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Content align="end" class="w-56">
+									{@render moreActs()}
+								</DropdownMenu.Content>
+							</DropdownMenu.Root>
 						</div>
 					{/if}
 

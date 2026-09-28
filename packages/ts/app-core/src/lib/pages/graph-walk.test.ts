@@ -116,7 +116,7 @@ async function open(): Promise<void> {
 
 async function walk(): Promise<void> {
 	await open();
-	labelled('Walk the notes one at a time').click();
+	labelled('Outline').click();
 	await settle();
 }
 
@@ -156,7 +156,7 @@ afterEach(() => {
 		flushSync();
 	}
 	const back = [...document.body.querySelectorAll('button')].find(
-		(one) => one.getAttribute('aria-label') === 'Back to the graph'
+		(one) => one.getAttribute('aria-label') === 'Graph'
 	);
 	back?.click();
 	flushSync();
@@ -175,21 +175,34 @@ describe('walking the notes instead of looking at them', () => {
 		const field = canvas();
 		expect(field).not.toBeNull();
 
-		labelled('Walk the notes one at a time').click();
+		labelled('Outline').click();
 		await settle();
 		expect(addresses()).toEqual(['1', '2']);
 		expect(canvas()).toBe(field);
 		expect(field?.closest('.invisible')).not.toBeNull();
 
-		labelled('Back to the graph').click();
+		labelled('Graph').click();
 		await settle();
 		expect(canvas()).toBe(field);
 		expect(field?.closest('.invisible')).toBeNull();
 	});
 
+	it('is switched from the same place in either view', async () => {
+		await open();
+		const card = () => labelled('Outline').closest('[class*="rounded-2xl"]');
+		const over = card();
+		expect(over).not.toBeNull();
+		expect(labelled('Graph').closest('[class*="rounded-2xl"]')).toBe(over);
+
+		labelled('Outline').click();
+		flushSync();
+		expect(labelled('Graph').closest('[class*="rounded-2xl"]')).toBe(over);
+		expect(labelled('Outline').getAttribute('aria-pressed')).toBe('true');
+	});
+
 	it('gives the canvas back', async () => {
 		await walk();
-		labelled('Back to the graph').click();
+		labelled('Graph').click();
 		await settle();
 		expect(canvas()).not.toBeNull();
 		expect(rows()).toHaveLength(0);
@@ -198,7 +211,7 @@ describe('walking the notes instead of looking at them', () => {
 	it('takes the ground control away with the canvas it answers for', async () => {
 		await open();
 		expect(labelled('Background')).toBeTruthy();
-		labelled('Walk the notes one at a time').click();
+		labelled('Outline').click();
 		await settle();
 		expect(
 			[...document.body.querySelectorAll('button')].some(
@@ -211,7 +224,7 @@ describe('walking the notes instead of looking at them', () => {
 		await open();
 		await choose('1');
 		expect(document.body.textContent).toContain('1 note chosen');
-		expect(() => labelled('Walk the notes one at a time')).toThrow();
+		expect(() => labelled('Outline')).toThrow();
 	});
 
 	it('opens a note where it stands when the reader taps its row', async () => {

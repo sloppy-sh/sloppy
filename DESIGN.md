@@ -1071,11 +1071,17 @@ nothing under it.
   one up beside it, naming one, starting one. Moving between graphs is a top-level act on
   the surface the graphs are on, never a setting.
 - **What only changes how the canvas is LOOKED at sits on the canvas, at a weight below the
-  row that writes.** Putting the whole field back in view, walking it note by note, the
-  drawing, the ground under it: none of them makes or changes a note, so none of them takes a
-  place in the row where the graph is named and a branch is written. They ride the canvas they
-  act on, as one quiet column against its edge, held clear of the system nav (§ "The four
-  inset vars").
+  row that writes.** Putting the whole field back in view, the drawing, the ground under it:
+  none of them makes or changes a note, so none of them takes a place in the row where the
+  graph is named and a branch is written. They ride the canvas they act on, as one quiet
+  column against its edge, held clear of the system nav (§ "The four inset vars") — the edge
+  nearest the rest of the chrome, which is the thumb's edge over the canvas and the column's
+  edge beside it, so a pointer never crosses the whole field to reach them.
+- **Which way the notes are seen — the graph or the outline — is one control, kept with the
+  graph's name in both.** It is the one act that has to be reachable from either view, so it
+  never rides the canvas, which the outline puts away: it stands in the row over the canvas
+  and in the column beside it, in the same place whichever view is up, and says both ways at
+  once rather than only the way back.
 - **Two arrangements of the same parts, and the width the docks stand at decides which.**
   Over the canvas, where the graph is the whole screen: a pill anchored bottom-centre
   (`fixed`, safe-area inset) holds the destinations, a card at the top holds the graph you
