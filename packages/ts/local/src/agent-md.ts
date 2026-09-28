@@ -208,8 +208,8 @@ A direction with nothing in it is left out altogether. Filling one is citing the
 names, exactly as naming that note in a sentence is. What the four directions ASK is the
 method the note is read in, and there are three of them.
 
-**West is what was decided against, and it goes down only from a source you name in the
-note** — what somebody said here, a commit message, a comment, a document in this project.
+**Read as an idea, west is what was decided against, and it goes down only from a source
+you name in the note** — what somebody said here, a commit message, a comment, a document in this project.
 Cite it in the note's writing, so the next reader can go and read it. Where you find none,
 the slot stays empty and what you could not settle goes under a "Candidates" heading in the
 note's own writing: an open question is worth keeping, and a reason nobody gave is not.

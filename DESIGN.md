@@ -947,14 +947,14 @@ the person opens files. It is a reading surface, so it is monospaced, scrolls in
 direction and offers no editing: Sloppy does not write in somebody's repository.
 
 **"Still true" is one act, and it says only what it does.** It sits on the note, not on each
-anchor, and taking it records that the note's reasoning has been read against **every** place
-the note points at, as those files stand now — one act, because a person reads a note
+anchor, and taking it records that the note's reasoning has been read against **every**
+place the note points at, as those files stand now — one act, because a person reads a note
 against its code and not against one file of it. **Taking it is the person's**: what an
-agent finds when it reads a note against the code goes into the note in words, and
-somebody who has read them is who says the note still holds. Nothing else happens: no
-section changes, nobody joins the note's authors, nothing moves. A note nobody has confirmed says nothing at
-all — **unread is not stale**, and a product that nags somebody about a note they wrote this
-morning has made a chore out of thinking.
+agent finds when it reads a note against the code goes into the note in words, and somebody
+who has read them is who says the note still holds. Nothing else happens: no section
+changes, nobody joins the note's authors, nothing moves. A note nobody has confirmed says
+nothing at all — **unread is not stale**, and a product that nags somebody about a note they
+wrote this morning has made a chore out of thinking.
 
 **When the code has moved, one quiet line for each file that has, under the title.**
 "`src/parser.ts` has changed since you read it", in the note's own ink, with "Still true"

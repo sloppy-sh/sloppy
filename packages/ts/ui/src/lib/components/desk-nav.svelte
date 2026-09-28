@@ -1,7 +1,10 @@
 <script lang="ts">
 	// The chrome beside the graph on a desk — DESIGN.md § Layout. Presentational
 	// like the pill it stands in place of: the destinations are handed to it, and
-	// the page on screen fills the rest through `deskNav`.
+	// the page on screen fills the rest through `deskNav`. Not shadcn's Sidebar:
+	// that one lays the page out around itself where `main` must stay `contents`,
+	// and keeps a breakpoint and a cookie of its own where the dock width and
+	// `prefs` already decide both.
 	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
 	import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
 	import { cn } from '$lib/utils.js';
@@ -31,9 +34,7 @@
 
 	let column = $state<HTMLElement | null>(null);
 
-	// The column stands over the page, so it owes the room it takes as
-	// `--app-chrome-inset-start` — DESIGN.md § "The four inset vars", which also
-	// says the var is UNSET wherever no column stands.
+	// Owes its width as `--app-chrome-inset-start` — DESIGN.md § "The four inset vars".
 	$effect(() => {
 		const root = document.documentElement;
 		const drop = () => root.style.removeProperty('--app-chrome-inset-start');

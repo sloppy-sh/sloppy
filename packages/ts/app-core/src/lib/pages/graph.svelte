@@ -2379,6 +2379,24 @@
 							>
 								<Plus class="size-4" />
 							</Button>
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="ghost"
+											class="size-11 rounded-full"
+											disabled={creating}
+											aria-label="Other ways to write"
+										>
+											<ChevronDown class="size-4" />
+										</Button>
+									{/snippet}
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Content align="start" class="w-60">
+									{@render otherWrites()}
+								</DropdownMenu.Content>
+							</DropdownMenu.Root>
 						{:else}
 							<div class="flex">
 								<Button
@@ -2432,13 +2450,25 @@
 					</div>
 				{/if}
 
-				{#if !collapsed && (railTags.length > 0 || selection.length > 0)}
-					<TagRail
-						stacked
-						tags={railTags}
-						selected={selection}
-						onselect={(next) => tags.select(next)}
-					/>
+				{#if railTags.length > 0 || selection.length > 0}
+					{#if collapsed}
+						<button
+							type="button"
+							aria-label="Tags"
+							title="Tags"
+							onclick={() => prefs.set('deskNavOpen', true)}
+							class="mx-auto flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+						>
+							<Tag class="size-4" />
+						</button>
+					{:else}
+						<TagRail
+							stacked
+							tags={railTags}
+							selected={selection}
+							onselect={(next) => tags.select(next)}
+						/>
+					{/if}
 				{/if}
 			{/snippet}
 		</DeskNavParts>

@@ -3449,4 +3449,24 @@ describe('the chrome on a desk', () => {
 		expect(column()).toBeNull();
 		expect(document.body.querySelectorAll('[aria-label="Your graphs"]')).toHaveLength(1);
 	});
+
+	// The icon rail is the column narrowed, never the column minus an act.
+	it('keeps every way to write on the icon rail, and a way to the tags', async () => {
+		graph.set(FIRST, { ...graph.get(FIRST)!, tags: ['seed'] });
+		api.on('GET /nodes/tags', () => [{ tag: 'seed', notes: 1 }]);
+		prefs.set('deskNavOpen', false);
+		await onADesk();
+
+		expect(column()?.querySelector('[aria-label="Other ways to write"]')).not.toBeNull();
+		expect(column()?.querySelector('[aria-label="Find a tag"]')).toBeNull();
+		const toTags = column()?.querySelector<HTMLButtonElement>('button[aria-label="Tags"]');
+		expect(toTags).not.toBeNull();
+
+		toTags?.click();
+		await settle();
+
+		expect(prefs.current.deskNavOpen).toBe(true);
+		expect(column()?.querySelector('button[aria-label="Tags"]')).toBeNull();
+		expect(column()?.textContent).toContain('seed');
+	});
 });

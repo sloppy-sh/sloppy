@@ -3194,8 +3194,8 @@ a note per top-level package or folder the workspace declares, each anchored at 
 folder and at its entry points, and pointing north at the project's own note. `draft` writes
 the DETAILED kind for the paths it is named: what a module imports and exports, an anchor
 per exported symbol, and what a compass MIGHT hold written as candidates in the note's own
-writing. **The CLI never writes a "west" and never writes a "Why"** — what was decided against, and why, is the author's thinking and not a tool's to
-supply.
+writing. **The CLI never writes a "west" and never writes a "Why"** — it reads files and has nobody
+to ask, so a reason it wrote would be its own (§ "Asking a tool to write the notes").
 
 **`check` is the one that says no.** Every file in `notes/` spelled the way a note file is
 spelled reads as one — anything else in the folder is the person's and is left alone —
