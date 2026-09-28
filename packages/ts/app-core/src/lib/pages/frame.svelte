@@ -167,7 +167,14 @@
 	});
 </script>
 
-<AppShell items={destinations} {activeId} showNav={navShows()} keyboardOpen={keyboard.open}>
+<AppShell
+	items={destinations}
+	{activeId}
+	showNav={navShows()}
+	keyboardOpen={keyboard.open}
+	deskNavOpen={prefs.current.deskNavOpen}
+	onDeskNavOpenChange={(open) => prefs.set('deskNavOpen', open)}
+>
 	{#if admitted}
 		{@render children()}
 	{:else if held}

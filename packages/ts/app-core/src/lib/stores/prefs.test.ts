@@ -186,6 +186,7 @@ describe('the saved look', () => {
 			recordsWhatHappens: false,
 			readingWidth: null,
 			chatWidth: null,
+			deskNavOpen: true,
 			chatModel: {},
 			origin: null
 		});

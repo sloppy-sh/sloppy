@@ -91,6 +91,8 @@
 		ChosenPublish,
 		ChosenTags,
 		ConfirmModal,
+		DESK_FROM_PX,
+		DeskNavParts,
 		DifferenceLegend,
 		FindSheet,
 		GraphsSheet,
@@ -125,6 +127,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount, untrack } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import ChatPanel from '../components/chat-panel.svelte';
@@ -229,7 +232,8 @@
 	let numberRefused = $state<string | null>(null);
 	/** Whether the shapes a branch can start from are being offered. */
 	let shaping = $state(false);
-	/** What the rail covers, so the graph frames itself into what is left. */
+	/** What the chrome over the canvas covers, so the graph frames itself into
+	 *  what is left. */
 	let railHeight = $state(0);
 	/** The note just written, whose title is still waiting to be given. */
 	let naming = $state<OwnedRef | null>(null);
@@ -1779,6 +1783,26 @@
 
 	let taking = $state(false);
 
+	/** Where the chrome stands beside the graph rather than over it — DESIGN.md
+	 *  § Layout. */
+	const desk = new MediaQuery(`(min-width: ${DESK_FROM_PX}px)`);
+
+	/** Beside the graph the card over it is down to what the graph has to say,
+	 *  and where it has nothing it is not drawn at all. */
+	const overCanvas = $derived(
+		!desk.current ||
+			walkingNow ||
+			pointing !== null ||
+			comparing !== null ||
+			asWas !== null ||
+			foreign !== null ||
+			asLastRead ||
+			shortField !== null ||
+			taking ||
+			refused !== null
+	);
+	const canvasTop = $derived(overCanvas ? railHeight : 0);
+
 	async function takeArchive(): Promise<void> {
 		if (taking) return;
 		refused = null;
@@ -2068,6 +2092,52 @@
 	{/if}
 {/snippet}
 
+{#snippet otherWrites()}
+	<DropdownMenu.Item class="min-h-11 gap-2" onSelect={writeAlone}>
+		<FilePlus class="size-4 text-muted-foreground" />
+		A note on its own
+	</DropdownMenu.Item>
+	<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startNumbering}>
+		<Hash class="size-4 text-muted-foreground" />
+		Number it yourself
+	</DropdownMenu.Item>
+{/snippet}
+
+{#snippet moreActs()}
+	{#if !session.onDevice}
+		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={visitPeers}>
+			<Users class="size-4 text-muted-foreground" />
+			Other people's graphs
+		</DropdownMenu.Item>
+	{/if}
+	<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startChoosing}>
+		<ListChecks class="size-4 text-muted-foreground" />
+		Choose notes
+	</DropdownMenu.Item>
+	{#if projectFiles && chat.reaches}
+		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startChat}>
+			<MessagesSquare class="size-4 text-muted-foreground" />
+			Chat about the code
+		</DropdownMenu.Item>
+	{/if}
+	{#if graphHistory.keeps}
+		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => (showingHistory = true)}>
+			<HistoryIcon class="size-4 text-muted-foreground" />
+			History
+		</DropdownMenu.Item>
+	{/if}
+	<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => void takeArchive()}>
+		<Download class="size-4 text-muted-foreground" />
+		Export this graph
+	</DropdownMenu.Item>
+	{#if graphs.startsGraphs}
+		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => chooser?.click()}>
+			<Upload class="size-4 text-muted-foreground" />
+			Import a graph
+		</DropdownMenu.Item>
+	{/if}
+{/snippet}
+
 <div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)]">
 	<h1 class="sr-only">Your graph</h1>
 	<p class="sr-only" role="status">{justNamed ? `Your new note is ${justNamed}.` : ''}</p>
@@ -2083,7 +2153,7 @@
 			<div class="absolute inset-0" class:invisible={walkingNow} inert={walkingNow}>
 				<GraphSurface
 					bind:handle={canvas}
-					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
+					inset={{ top: `${canvasTop}px`, bottom: 'var(--sysnav-clearance)' }}
 					nodes={visible}
 					{collapsed}
 					{edgeLooks}
@@ -2144,7 +2214,7 @@
 			{#if walkingNow}
 				<GraphTree
 					inset={{
-						top: `${railHeight}px`,
+						top: `${canvasTop}px`,
 						bottom: 'calc(var(--sysnav-clearance) + var(--chosen-bar-inset-bottom, 0px))'
 					}}
 					notes={visible}
@@ -2240,7 +2310,7 @@
 		     weight below the row that writes — DESIGN.md § Layout. -->
 		{#if !walkingNow && !choosing && !pointing}
 			<div
-				style="top: {railHeight}px; bottom: var(--sysnav-clearance)"
+				style="top: {canvasTop}px; bottom: var(--sysnav-clearance)"
 				class="pointer-events-none absolute right-2 z-20 flex items-center sm:right-4"
 			>
 				<div
@@ -2257,258 +2327,331 @@
 				</div>
 			</div>
 		{/if}
-		<!-- Opaque, not a scrim: the chips in here answer a tag question in the
-		     same hue the canvas does, and DESIGN.md § "The wallpaper" holds that
-		     floor on the theme's own surface rather than on a band. -->
-		<div
-			bind:clientHeight={railHeight}
-			class="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-5 sm:px-6"
-		>
-			<div
-				class="pointer-events-auto mx-auto w-full max-w-4xl space-y-2 rounded-2xl border bg-card p-3 shadow-lg"
-			>
-				{#if pointing}
-					<div class="flex items-center gap-3">
-						<p class="min-w-0 flex-1 text-sm">
-							Tap a note to link it to <span class:address={!!pointingNote?.address}
-								>{pointingNote ? noteLabel(pointingNote) : ''}</span
-							>
-						</p>
-						<Button
-							variant="outline"
-							class="h-9 shrink-0 rounded-full"
-							disabled={linking}
-							onclick={stopPointing}
-						>
-							Never mind
-						</Button>
-					</div>
-
-					{#if pointRefused}
-						<p class="text-sm text-destructive" role="alert">{pointRefused}</p>
-					{/if}
-				{:else if comparing}
-					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-						<p class="w-full min-w-0 text-sm sm:w-auto sm:flex-1">
-							What changed
-							<span class="text-muted-foreground">· {comparing.says}</span>
-						</p>
-						{#if comparing.inWords}
-							{@const inWords = comparing.inWords}
-							<Button variant="ghost" class="ms-auto h-9 shrink-0 rounded-full" onclick={inWords}>
-								In words
-							</Button>
-						{/if}
-						<Button
-							variant="outline"
-							class="h-9 shrink-0 rounded-full {comparing.inWords ? '' : 'ms-auto'}"
-							onclick={backToNow}
-						>
-							Your graph now
-						</Button>
-						{#if walkingNow}
-							{@render walk()}
-						{/if}
-					</div>
-				{:else if asWas}
-					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-						<p class="w-full min-w-0 text-sm sm:w-auto sm:flex-1">
-							Your graph as it was
-							{#if asWas.message}
-								<span class="text-muted-foreground">· {asWas.message}</span>
-							{/if}
-						</p>
-						<Button
-							variant="ghost"
-							class="ms-auto h-9 shrink-0 rounded-full"
-							onclick={() => (showingHistory = true)}
-						>
-							History
-						</Button>
-						<Button variant="outline" class="h-9 shrink-0 rounded-full" onclick={backToNow}>
-							Your graph now
-						</Button>
-						{#if walkingNow}
-							{@render walk()}
-						{/if}
-					</div>
-				{:else if foreign}
-					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-						<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
-							{#if foreign.root_address !== undefined}
-								<span class="address">{foreign.root_address}</span>
-							{/if}
-							<span>{nameOr(regionAuthor)}</span>
-							{#if foreign.graph_title}
-								<span class="text-muted-foreground">· {foreign.graph_title}</span>
-							{/if}
-							<span class="text-muted-foreground">· {summary}</span>
-						</p>
-						<Button
-							variant="outline"
-							class="ms-auto h-9 shrink-0 rounded-full"
-							onclick={leaveRegion}
-						>
-							Your graph
-						</Button>
-						{#if walkingNow}
-							{@render walk()}
-						{/if}
-					</div>
-				{:else}
-					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-						<!-- The graph you are in leads the chrome, because everything the
-						     row after it does happens inside that one. -->
-						<button
-							type="button"
-							aria-label="Your graphs"
-							onclick={() => (switching = true)}
-							class="-mx-2 flex min-h-9 w-full min-w-0 items-baseline gap-2 rounded-md px-2 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-auto sm:flex-1"
-						>
-							<span class="min-w-0 shrink truncate font-medium">{graphName}</span>
+		<DeskNavParts>
+			{#snippet children({ collapsed }: { collapsed: boolean })}
+				{#if !pointing && !comparing && !asWas && !foreign}
+					<button
+						type="button"
+						aria-label="Your graphs"
+						title={collapsed ? graphName : undefined}
+						onclick={() => (switching = true)}
+						class="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
+							? 'justify-center'
+							: ''}"
+					>
+						<Network class="size-5 shrink-0 text-muted-foreground" />
+						{#if !collapsed}
+							<span class="min-w-0 flex-1 truncate font-medium">{graphName}</span>
 							{#if besideIt}
 								<span class="shrink-0 text-xs text-muted-foreground">{besideIt}</span>
 							{/if}
-							<!-- Nothing of its own to start from, so the graph is named whole
-							     before the census beside it gets a pixel. -->
-							<span class="min-w-0 flex-1 truncate text-muted-foreground">· {summary}</span>
-						</button>
+						{/if}
+					</button>
+
+					<div class="flex {collapsed ? 'flex-col items-center gap-1' : 'flex-col gap-2'}">
 						<button
 							type="button"
 							aria-label="Find a note ({FIND_NOTE.says})"
 							aria-keyshortcuts={FIND_NOTE.keys}
+							title={collapsed ? 'Find a note' : undefined}
 							onclick={() => (finding = true)}
-							class="flex h-9 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full border border-input px-2.5 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56 sm:justify-start sm:px-3"
+							class="flex min-h-11 items-center gap-2 rounded-full border border-input text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
+								? 'w-11 justify-center'
+								: 'w-full px-3'}"
 						>
 							<Search class="size-4 shrink-0" />
-							<span class="hidden min-w-0 truncate sm:inline">Find a note</span>
+							{#if !collapsed}<span class="min-w-0 truncate">Find a note</span>{/if}
 						</button>
-						<div class="ms-auto flex shrink-0 items-center">
+
+						{#if collapsed}
 							<Button
-								class="h-9 rounded-s-full rounded-e-none pe-3"
+								size="icon"
+								class="size-11 rounded-full"
 								disabled={creating}
 								aria-label="New branch ({NEW_BRANCH.says})"
 								aria-keyshortcuts={NEW_BRANCH.keys}
 								onclick={() => writeBranch(null)}
 							>
 								<Plus class="size-4" />
-								New branch
 							</Button>
-							<DropdownMenu.Root>
-								<DropdownMenu.Trigger>
-									{#snippet child({ props })}
-										<Button
-											{...props}
-											class="h-9 rounded-s-none rounded-e-full border-s border-primary-foreground/25 px-2"
-											disabled={creating}
-											aria-label="Other ways to write"
-										>
-											<ChevronDown class="size-4" />
-										</Button>
-									{/snippet}
-								</DropdownMenu.Trigger>
-								<DropdownMenu.Content align="end" class="w-60">
-									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={writeAlone}>
-										<FilePlus class="size-4 text-muted-foreground" />
-										A note on its own
-									</DropdownMenu.Item>
-									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startNumbering}>
-										<Hash class="size-4 text-muted-foreground" />
-										Number it yourself
-									</DropdownMenu.Item>
-								</DropdownMenu.Content>
-							</DropdownMenu.Root>
-						</div>
+						{:else}
+							<div class="flex">
+								<Button
+									class="h-11 flex-1 rounded-s-full rounded-e-none pe-3"
+									disabled={creating}
+									aria-label="New branch ({NEW_BRANCH.says})"
+									aria-keyshortcuts={NEW_BRANCH.keys}
+									onclick={() => writeBranch(null)}
+								>
+									<Plus class="size-4" />
+									New branch
+								</Button>
+								<DropdownMenu.Root>
+									<DropdownMenu.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												class="h-11 rounded-s-none rounded-e-full border-s border-primary-foreground/25 px-2"
+												disabled={creating}
+												aria-label="Other ways to write"
+											>
+												<ChevronDown class="size-4" />
+											</Button>
+										{/snippet}
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Content align="start" class="w-60">
+										{@render otherWrites()}
+									</DropdownMenu.Content>
+								</DropdownMenu.Root>
+							</div>
+						{/if}
+
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
 								{#snippet child({ props })}
 									<Button
 										{...props}
 										variant="ghost"
-										size="icon"
-										class="size-9 shrink-0 rounded-full"
+										class="rounded-full {collapsed ? 'size-11' : 'h-11 w-full justify-start px-3'}"
 										aria-label="More"
 									>
 										<Ellipsis class="size-4" />
+										{#if !collapsed}<span>More</span>{/if}
 									</Button>
 								{/snippet}
 							</DropdownMenu.Trigger>
-							<DropdownMenu.Content align="end" class="w-56">
-								{#if !session.onDevice}
-									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={visitPeers}>
-										<Users class="size-4 text-muted-foreground" />
-										Other people's graphs
-									</DropdownMenu.Item>
-								{/if}
-								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startChoosing}>
-									<ListChecks class="size-4 text-muted-foreground" />
-									Choose notes
-								</DropdownMenu.Item>
-								{#if projectFiles && chat.reaches}
-									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startChat}>
-										<MessagesSquare class="size-4 text-muted-foreground" />
-										Chat about the code
-									</DropdownMenu.Item>
-								{/if}
-								{#if graphHistory.keeps}
-									<DropdownMenu.Item
-										class="min-h-11 gap-2"
-										onSelect={() => (showingHistory = true)}
-									>
-										<HistoryIcon class="size-4 text-muted-foreground" />
-										History
-									</DropdownMenu.Item>
-								{/if}
-								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => void takeArchive()}>
-									<Download class="size-4 text-muted-foreground" />
-									Export this graph
-								</DropdownMenu.Item>
-								{#if graphs.startsGraphs}
-									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => chooser?.click()}>
-										<Upload class="size-4 text-muted-foreground" />
-										Import a graph
-									</DropdownMenu.Item>
-								{/if}
+							<DropdownMenu.Content align="start" class="w-56">
+								{@render moreActs()}
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
-						{#if walkingNow}
-							{@render walk()}
+					</div>
+				{/if}
+
+				{#if !collapsed && (railTags.length > 0 || selection.length > 0)}
+					<TagRail
+						stacked
+						tags={railTags}
+						selected={selection}
+						onselect={(next) => tags.select(next)}
+					/>
+				{/if}
+			{/snippet}
+		</DeskNavParts>
+		{#if overCanvas}
+			<!-- Opaque, not a scrim: the chips in here answer a tag question in the
+		     same hue the canvas does, and DESIGN.md § "The wallpaper" holds that
+		     floor on the theme's own surface rather than on a band. -->
+			<div
+				bind:clientHeight={railHeight}
+				class="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-5 sm:px-6"
+			>
+				<div
+					class="pointer-events-auto mx-auto w-full max-w-4xl space-y-2 rounded-2xl border bg-card p-3 shadow-lg"
+				>
+					{#if pointing}
+						<div class="flex items-center gap-3">
+							<p class="min-w-0 flex-1 text-sm">
+								Tap a note to link it to <span class:address={!!pointingNote?.address}
+									>{pointingNote ? noteLabel(pointingNote) : ''}</span
+								>
+							</p>
+							<Button
+								variant="outline"
+								class="h-9 shrink-0 rounded-full"
+								disabled={linking}
+								onclick={stopPointing}
+							>
+								Never mind
+							</Button>
+						</div>
+
+						{#if pointRefused}
+							<p class="text-sm text-destructive" role="alert">{pointRefused}</p>
 						{/if}
-					</div>
-				{/if}
+					{:else if comparing}
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+							<p class="w-full min-w-0 text-sm sm:w-auto sm:flex-1">
+								What changed
+								<span class="text-muted-foreground">· {comparing.says}</span>
+							</p>
+							{#if comparing.inWords}
+								{@const inWords = comparing.inWords}
+								<Button variant="ghost" class="ms-auto h-9 shrink-0 rounded-full" onclick={inWords}>
+									In words
+								</Button>
+							{/if}
+							<Button
+								variant="outline"
+								class="h-9 shrink-0 rounded-full {comparing.inWords ? '' : 'ms-auto'}"
+								onclick={backToNow}
+							>
+								Your graph now
+							</Button>
+							{#if walkingNow}
+								{@render walk()}
+							{/if}
+						</div>
+					{:else if asWas}
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+							<p class="w-full min-w-0 text-sm sm:w-auto sm:flex-1">
+								Your graph as it was
+								{#if asWas.message}
+									<span class="text-muted-foreground">· {asWas.message}</span>
+								{/if}
+							</p>
+							<Button
+								variant="ghost"
+								class="ms-auto h-9 shrink-0 rounded-full"
+								onclick={() => (showingHistory = true)}
+							>
+								History
+							</Button>
+							<Button variant="outline" class="h-9 shrink-0 rounded-full" onclick={backToNow}>
+								Your graph now
+							</Button>
+							{#if walkingNow}
+								{@render walk()}
+							{/if}
+						</div>
+					{:else if foreign}
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+							<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
+								{#if foreign.root_address !== undefined}
+									<span class="address">{foreign.root_address}</span>
+								{/if}
+								<span>{nameOr(regionAuthor)}</span>
+								{#if foreign.graph_title}
+									<span class="text-muted-foreground">· {foreign.graph_title}</span>
+								{/if}
+								<span class="text-muted-foreground">· {summary}</span>
+							</p>
+							<Button
+								variant="outline"
+								class="ms-auto h-9 shrink-0 rounded-full"
+								onclick={leaveRegion}
+							>
+								Your graph
+							</Button>
+							{#if walkingNow}
+								{@render walk()}
+							{/if}
+						</div>
+					{:else if !desk.current || walkingNow}
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+							{#if !desk.current}
+								<!-- The graph you are in leads the chrome, because everything the
+						     row after it does happens inside that one. -->
+								<button
+									type="button"
+									aria-label="Your graphs"
+									onclick={() => (switching = true)}
+									class="-mx-2 flex min-h-9 w-full min-w-0 items-baseline gap-2 rounded-md px-2 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-auto sm:flex-1"
+								>
+									<span class="min-w-0 shrink truncate font-medium">{graphName}</span>
+									{#if besideIt}
+										<span class="shrink-0 text-xs text-muted-foreground">{besideIt}</span>
+									{/if}
+									<!-- Nothing of its own to start from, so the graph is named whole
+							     before the census beside it gets a pixel. -->
+									<span class="min-w-0 flex-1 truncate text-muted-foreground">· {summary}</span>
+								</button>
+								<button
+									type="button"
+									aria-label="Find a note ({FIND_NOTE.says})"
+									aria-keyshortcuts={FIND_NOTE.keys}
+									onclick={() => (finding = true)}
+									class="flex h-9 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full border border-input px-2.5 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56 sm:justify-start sm:px-3"
+								>
+									<Search class="size-4 shrink-0" />
+									<span class="hidden min-w-0 truncate sm:inline">Find a note</span>
+								</button>
+								<div class="ms-auto flex shrink-0 items-center">
+									<Button
+										class="h-9 rounded-s-full rounded-e-none pe-3"
+										disabled={creating}
+										aria-label="New branch ({NEW_BRANCH.says})"
+										aria-keyshortcuts={NEW_BRANCH.keys}
+										onclick={() => writeBranch(null)}
+									>
+										<Plus class="size-4" />
+										New branch
+									</Button>
+									<DropdownMenu.Root>
+										<DropdownMenu.Trigger>
+											{#snippet child({ props })}
+												<Button
+													{...props}
+													class="h-9 rounded-s-none rounded-e-full border-s border-primary-foreground/25 px-2"
+													disabled={creating}
+													aria-label="Other ways to write"
+												>
+													<ChevronDown class="size-4" />
+												</Button>
+											{/snippet}
+										</DropdownMenu.Trigger>
+										<DropdownMenu.Content align="end" class="w-60">
+											{@render otherWrites()}
+										</DropdownMenu.Content>
+									</DropdownMenu.Root>
+								</div>
+								<DropdownMenu.Root>
+									<DropdownMenu.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												variant="ghost"
+												size="icon"
+												class="size-9 shrink-0 rounded-full"
+												aria-label="More"
+											>
+												<Ellipsis class="size-4" />
+											</Button>
+										{/snippet}
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Content align="end" class="w-56">
+										{@render moreActs()}
+									</DropdownMenu.Content>
+								</DropdownMenu.Root>
+							{/if}
+							{#if walkingNow}
+								{@render walk()}
+							{/if}
+						</div>
+					{/if}
 
-				{#if railTags.length > 0 || selection.length > 0}
-					<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
-				{/if}
+					{#if !desk.current && (railTags.length > 0 || selection.length > 0)}
+						<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
+					{/if}
 
-				{#if comparing}
-					<DifferenceLegend />
-				{/if}
+					{#if comparing}
+						<DifferenceLegend />
+					{/if}
 
-				{#if asLastRead}
-					<div class="flex items-center gap-2">
-						<p class="min-w-0 text-sm text-muted-foreground" role="status">
-							This is your graph as you last read it.
-						</p>
-						<Button variant="ghost" class="h-9 shrink-0 rounded-full text-sm" onclick={loadGraph}>
-							Try again
-						</Button>
-					</div>
-				{/if}
+					{#if asLastRead}
+						<div class="flex items-center gap-2">
+							<p class="min-w-0 text-sm text-muted-foreground" role="status">
+								This is your graph as you last read it.
+							</p>
+							<Button variant="ghost" class="h-9 shrink-0 rounded-full text-sm" onclick={loadGraph}>
+								Try again
+							</Button>
+						</div>
+					{/if}
 
-				{#if shortField}
-					<p class="text-sm text-destructive" role="alert">{shortField}</p>
-				{/if}
+					{#if shortField}
+						<p class="text-sm text-destructive" role="alert">{shortField}</p>
+					{/if}
 
-				{#if taking}
-					<p class="text-sm text-muted-foreground" role="status">Putting this graph together…</p>
-				{/if}
+					{#if taking}
+						<p class="text-sm text-muted-foreground" role="status">Putting this graph together…</p>
+					{/if}
 
-				{#if refused}
-					<p class="text-sm text-destructive" role="alert">{refused}</p>
-				{/if}
+					{#if refused}
+						<p class="text-sm text-destructive" role="alert">{refused}</p>
+					{/if}
+				</div>
 			</div>
-		</div>
+		{/if}
 	{/if}
 
 	{#if populated && choosing}

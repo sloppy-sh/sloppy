@@ -62,6 +62,9 @@ export interface Prefs {
 	/** How much room the reader has taken for the chat docked beside the graph,
 	 *  in px, on the same terms as {@link Prefs.readingWidth}. */
 	chatWidth: number | null;
+	/** Whether the column beside the graph on a desk stands open or as an icon
+	 *  rail — DESIGN.md § Layout. */
+	deskNavOpen: boolean;
 	/** Which model each agent is asked to answer with, in that agent's own
 	 *  spelling. **An agent with no entry is one nobody has chosen for**, which
 	 *  is what it answers with on its own. */
@@ -132,6 +135,7 @@ function defaults(): Prefs {
 		recordsWhatHappens: false,
 		readingWidth: null,
 		chatWidth: null,
+		deskNavOpen: true,
 		chatModel: {},
 		origin: null
 	};
@@ -256,6 +260,7 @@ class PrefsStore {
 			recordsWhatHappens: saved.recordsWhatHappens === true,
 			readingWidth: widthIn(saved.readingWidth),
 			chatWidth: widthIn(saved.chatWidth),
+			deskNavOpen: saved.deskNavOpen !== false,
 			chatModel: modelsIn(saved.chatModel),
 			origin: asOrigin(saved.origin)
 		};

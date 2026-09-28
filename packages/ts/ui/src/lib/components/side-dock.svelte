@@ -1,6 +1,6 @@
 <script lang="ts" module>
 	/** Below this a dock would leave the graph beside it too little to read. */
-	const DOCK_FROM_PX = 900;
+	export const DOCK_FROM_PX = 900;
 
 	/** The widest a column of words grows inside a dock, in px. A note reads it
 	 *  back as `--reading-column`, so the words and the wall stop at one number

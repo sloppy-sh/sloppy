@@ -4,25 +4,27 @@
  *  which is what makes {@link MediaQueryStub.change} a real breakpoint crossing. */
 export function stubMediaQuery(matches: (query: string) => boolean): MediaQueryStub {
 	let current = matches;
-	const listeners = new Set<() => void>();
+	const lists = new Set<EventTarget>();
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
 		writable: true,
-		value: (query: string) => ({
-			get matches() {
-				return current(query);
-			},
-			media: query,
-			onchange: null,
-			addEventListener: (_: string, fn: () => void) => listeners.add(fn),
-			removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
-			dispatchEvent: () => true
-		})
+		value: (query: string) => {
+			// A real EventTarget, because a listener added through `svelte/events`
+			// is called with the event and reads it.
+			const list = new EventTarget();
+			Object.defineProperties(list, {
+				matches: { get: () => current(query) },
+				media: { value: query },
+				onchange: { value: null, writable: true }
+			});
+			lists.add(list);
+			return list;
+		}
 	});
 	return {
 		change(next: (query: string) => boolean) {
 			current = next;
-			for (const fn of listeners) fn();
+			for (const list of lists) list.dispatchEvent(new Event('change'));
 		}
 	};
 }

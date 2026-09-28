@@ -68,7 +68,7 @@ vi.mock('@sloppy/ui', async (original) => ({
 	GraphSurface: (await import('./graph-surface.test-support.svelte')).default
 }));
 
-const Graph = (await import('./graph.svelte')).default;
+const Graph = (await import('./graph-in-chrome.test-support.svelte')).default;
 
 const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 
@@ -3410,5 +3410,43 @@ describe('the chat about the code, beside an open note', () => {
 
 		expect(reading()).toBe(true);
 		expect(at.note).toBe(SECOND);
+	});
+});
+
+// DESIGN.md § Layout: at the width the docks stand at, the row that writes
+// stands in the column beside the graph instead of floating over it.
+describe('the chrome on a desk', () => {
+	const column = () => document.body.querySelector<HTMLElement>('aside[aria-label="Sloppy"]');
+
+	async function onADesk(): Promise<void> {
+		stubViewport((query) => query.includes('900'));
+		await open();
+	}
+
+	it('stands the graph, the acts and the way to more of them beside the canvas', async () => {
+		await onADesk();
+
+		expect(column()?.querySelector('[aria-label="Your graphs"]')).not.toBeNull();
+		expect(column()?.textContent).toContain('New branch');
+		expect(column()?.querySelector('[aria-label="More"]')).not.toBeNull();
+	});
+
+	it('draws them once, and not over the canvas as well', async () => {
+		await onADesk();
+
+		expect(document.body.querySelectorAll('[aria-label="Your graphs"]')).toHaveLength(1);
+		expect(
+			[...document.body.querySelectorAll('button')].filter((b) =>
+				b.textContent?.includes('New branch')
+			)
+		).toHaveLength(1);
+	});
+
+	it('goes back over the canvas on a phone', async () => {
+		stubViewport();
+		await open();
+
+		expect(column()).toBeNull();
+		expect(document.body.querySelectorAll('[aria-label="Your graphs"]')).toHaveLength(1);
 	});
 });

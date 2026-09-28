@@ -22,6 +22,8 @@ export { default as ConfirmModal } from './components/confirm/confirm-modal.svel
 export { default as CopyButton } from './components/copy-button.svelte';
 export { default as ChoicePill } from './components/choice-pill.svelte';
 export { default as AppShell } from './components/app-shell.svelte';
+export { default as DeskNavParts } from './components/desk-nav-parts.svelte';
+export { DESK_FROM_PX } from './components/desk-nav.svelte.js';
 export { default as NavPill, type NavAction, type NavItem } from './components/nav-pill.svelte';
 
 export { default as PersonAvatar } from './components/identity/avatar.svelte';

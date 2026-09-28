@@ -2,7 +2,7 @@
 import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { stubResizeObserver } from '../dom.test-support.js';
+import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import { reactive } from '../props.test-support.svelte.js';
 import TagRail from './tag-rail.svelte';
 
@@ -16,8 +16,8 @@ let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let asked: Tag[][];
 
-function render(selected: Tag[] = [], tags: TagCount[] = TAGS) {
-	const props = reactive({ tags, selected, onselect: (next: Tag[]) => asked.push(next) });
+function render(selected: Tag[] = [], tags: TagCount[] = TAGS, stacked = false) {
+	const props = reactive({ tags, selected, stacked, onselect: (next: Tag[]) => asked.push(next) });
 	mounted = mount(TagRail, { target, props });
 	flushSync();
 	return props;
@@ -89,6 +89,7 @@ const painted = (element: HTMLElement): Record<string, string> =>
 beforeEach(() => {
 	asked = [];
 	stubResizeObserver();
+	stubMediaQuery(() => false);
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -381,5 +382,116 @@ describe('keeping the tapped tag on screen', () => {
 		chip.click();
 		await tick();
 		expect(scrolled).toEqual([]);
+	});
+});
+
+// DESIGN.md § Layout: beside the graph the same ordering reads down a column.
+describe('the tags down a column', () => {
+	const column = (): HTMLElement => chips()[0].parentElement as HTMLElement;
+
+	it('leads with the selection, in its hue, and counts the rest', () => {
+		const selection = ['question'] as Tag[];
+		render(selection, TAGS, true);
+		expect(names()).toEqual(['question', 'biology', 'seed']);
+		const slot = assignTagHueSlots(selection).get(selection[0]);
+		const dot = named('question').querySelector('span[aria-hidden="true"]') as HTMLElement;
+		expect(painted(dot)).toEqual({ 'background-color': `var(--facet-${slot})` });
+		expect(named('biology').textContent).toContain('431');
+	});
+
+	it('stands the way to find a tag at the head of a crowded column', () => {
+		render([], MANY, true);
+		expect(searchChip()).toBeUndefined();
+		expect(filter()).not.toBeNull();
+	});
+
+	it('scrolls down rather than along', () => {
+		render([], MANY, true);
+		expect(column().className).toContain('overflow-y-auto');
+		expect(column().className).not.toContain('overflow-x-auto');
+	});
+
+	it('brings a tapped tag back into view down the column', async () => {
+		render([], MANY, true);
+		const rail = column();
+		const scrolled: number[] = [];
+		Object.defineProperty(rail, 'clientHeight', { configurable: true, value: 300 });
+		Object.defineProperty(rail, 'scrollTop', { configurable: true, value: 400 });
+		rail.getBoundingClientRect = () => ({ top: 0, height: 300 }) as DOMRect;
+		rail.scrollTo = ((to: ScrollToOptions) => {
+			scrolled.push(to.top ?? 0);
+		}) as typeof rail.scrollTo;
+		const chip = named('thesis');
+		chip.getBoundingClientRect = () => ({ top: 100 - 400, height: 44 }) as DOMRect;
+		chip.click();
+		await vi.waitFor(() => expect(scrolled).toEqual([0]));
+	});
+});
+
+// A trackpad and a sideways wheel reach the rail on their own; a plain mouse
+// wheel does not, and the rail is the only way to the rest of the tags.
+describe('a mouse wheel over the rail', () => {
+	const SEEN = 374;
+
+	function scroller(over: number): HTMLElement {
+		const rail = chips()[0].parentElement as HTMLElement;
+		let left = 0;
+		Object.defineProperty(rail, 'clientWidth', { configurable: true, value: SEEN });
+		Object.defineProperty(rail, 'scrollWidth', { configurable: true, value: SEEN + over });
+		Object.defineProperty(rail, 'scrollLeft', {
+			configurable: true,
+			get: () => left,
+			set: (to: number) => {
+				left = to;
+			}
+		});
+		return rail;
+	}
+
+	function wheel(rail: HTMLElement, deltaY: number, deltaX = 0): boolean {
+		const event = new WheelEvent('wheel', { deltaY, deltaX, cancelable: true, bubbles: true });
+		rail.dispatchEvent(event);
+		flushSync();
+		return event.defaultPrevented;
+	}
+
+	const onAMouse = () => stubMediaQuery((query) => query.includes('pointer: fine'));
+
+	it('carries the rail sideways', () => {
+		onAMouse();
+		render();
+		const rail = scroller(600);
+		expect(wheel(rail, 120)).toBe(true);
+		expect(rail.scrollLeft).toBe(120);
+	});
+
+	it('leaves the page to scroll itself under a finger', () => {
+		stubMediaQuery(() => false);
+		render();
+		const rail = scroller(600);
+		expect(wheel(rail, 120)).toBe(false);
+		expect(rail.scrollLeft).toBe(0);
+	});
+
+	it('leaves a wheel that already runs sideways alone', () => {
+		onAMouse();
+		render();
+		const rail = scroller(600);
+		expect(wheel(rail, 0, 120)).toBe(false);
+	});
+
+	it('hands the page back the wheel at the end of the rail', () => {
+		onAMouse();
+		render();
+		const rail = scroller(600);
+		rail.scrollLeft = 600;
+		expect(wheel(rail, 120)).toBe(false);
+	});
+
+	it('leaves the column to scroll itself', () => {
+		onAMouse();
+		render([], TAGS, true);
+		const rail = scroller(600);
+		expect(wheel(rail, 120)).toBe(false);
 	});
 });

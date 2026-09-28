@@ -1071,10 +1071,29 @@ nothing under it.
   place in the row where the graph is named and a branch is written. They ride the canvas they
   act on, as one quiet column against its edge, held clear of the system nav (§ "The four
   inset vars").
-- **Floating nav, not a top bar.** A pill anchored bottom-centre (`fixed`, safe-area
-  inset) holds the core destinations. ≥44px targets, keyboard-reachable, `aria-label`led.
-  The pill publishes its own height as `--sysnav-inset-bottom` and is suppressed while a
-  modal is open.
+- **Two arrangements of the same parts, and the width the docks stand at decides which.**
+  Over the canvas, where the graph is the whole screen: a pill anchored bottom-centre
+  (`fixed`, safe-area inset) holds the destinations, a card at the top holds the graph you
+  are in and the row that writes, and the tags run along that card. Beside the canvas, from
+  the dock width up: one column down the leading edge holds those same parts — the graph
+  you are in and the way to every other, the row that writes, the tags as a list, and the
+  destinations at its foot — and the canvas takes what is left. ≥44px targets,
+  keyboard-reachable, `aria-label`led, either way. **Neither arrangement has a part the
+  other lacks**, and the column narrows to an icon rail and opens again, which is this
+  device's choice (§ Persistence).
+- **The crossing is a class, never a branch around the page.** A per-arrangement branch
+  around the canvas would destroy and remount it on every crossing, taking the reader's pan
+  and zoom with it. The pill publishes its own height as `--sysnav-inset-bottom` and is
+  suppressed while a modal is open; beside the canvas there is no pill, so that var is
+  unset (§ "The four inset vars"), and the card over the canvas is drawn only where the
+  graph has something to say — the remove-empty-chrome rule below, applied to the top of
+  the page.
+- **Tags are read, not scrolled sideways by force.** Along the card the rail runs sideways,
+  and a plain wheel carries it along, because a mouse has no sideways axis and the tags
+  past the fold are the rest of the question. Beside the canvas the same ordering reads
+  down a column. Either way: selected first, in selection order, since that order hands out
+  the hues (§ Hue); then the rest, most-used first, with their counts; and the way to find
+  one stands where it was left once there are more than a screenful.
 - **What stands beside the graph is a dock, and `SideDock` is the one of them.** It has two
   presentations from one bound `open`: **docked beside the graph at ≥900px**, where the canvas
   keeps its pan, its pinch, its choosing and its menu beside whatever is open; and a
@@ -1207,8 +1226,9 @@ nothing under it.
   says there is anything under it. Anything reading the page aloud is told all three either
   way. The address is the one part that never gives — it is what a person cites — so
   everything else on the row is drawn to fit around it.
-- **A tablet is a phone with room, never a third layout.** If a tablet arrangement needs a
-  component the phone does not have, the phone layout is what is wrong.
+- **A tablet is a phone with room, and a desk is the same parts stood beside the graph
+  rather than over it — never a third layout.** If either arrangement needs a component the
+  phone does not have, the phone layout is what is wrong.
 - **`ResponsiveModal` is the only modal.** A drag-to-dismiss bottom sheet on a phone, a
   centred dialog at ≥640px, from one bound `open`; `fill` is the full-height sheet a reading
   surface stands in below its dock width. It is drawn by Sloppy on every platform, because a

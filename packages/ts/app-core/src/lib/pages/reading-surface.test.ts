@@ -34,7 +34,7 @@ vi.mock('@sloppy/ui', async (original) => ({
 	GraphSurface: (await import('./graph-surface.test-support.svelte')).default
 }));
 
-const Graph = (await import('./graph.svelte')).default;
+const Graph = (await import('./graph-in-chrome.test-support.svelte')).default;
 
 const PHONE = 390;
 const TABLET = 834;

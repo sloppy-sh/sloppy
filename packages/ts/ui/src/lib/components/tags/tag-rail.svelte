@@ -2,7 +2,8 @@
 	// The question the reader asks the canvas, and the legend for its answer.
 	// DESIGN.md § "Hue — the tags you selected, and only those": selected tags
 	// lead, in the order they were selected, because that order is what hands out
-	// the hues.
+	// the hues. One ordering, two presentations — along the chrome over the
+	// canvas, and down the sidebar beside it (DESIGN.md § Layout).
 	import Search from '@lucide/svelte/icons/search';
 	import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
 	import { tick } from 'svelte';
@@ -13,13 +14,16 @@
 	let {
 		tags,
 		selected,
-		onselect
+		onselect,
+		stacked = false
 	}: {
 		/** Every tag the reader has used, most-used first. */
 		tags: readonly TagCount[];
 		/** In selection order. */
 		selected: readonly Tag[];
 		onselect: (tags: Tag[]) => void;
+		/** Down a column that scrolls vertically, rather than along a row. */
+		stacked?: boolean;
 	} = $props();
 
 	const slots = $derived(assignTagHueSlots(selected));
@@ -33,6 +37,8 @@
 	let group = $state<HTMLElement | null>(null);
 	const offered = $derived(tags.length > CROWDED);
 	const needle = $derived(offered ? typed.trim().toLowerCase() : '');
+	/** A column has a head to keep the field in; a row has to be asked for it. */
+	const asField = $derived(offered && (stacked || typing));
 
 	/** What the chips are, for a reader who is not looking at them. */
 	const says = $derived(selected.length > 1 ? 'Notes with any of these' : 'Tags');
@@ -60,9 +66,21 @@
 	// and WebKit hands that chip no focus for the field's own blur to see it by —
 	// so what puts the field away is a pointer landing outside the rail.
 	function putAway(event: Event): void {
-		if (!typing || typed.trim() !== '' || group?.contains(event.target as Node)) return;
+		if (stacked || !typing || typed.trim() !== '' || group?.contains(event.target as Node)) return;
 		typed = '';
 		typing = false;
+	}
+
+	/** A mouse wheel has no sideways axis, and the rail runs sideways. */
+	function wheelAlong(event: WheelEvent): void {
+		if (stacked || !rail) return;
+		if (event.deltaX !== 0 || event.deltaY === 0) return;
+		if (!matchMedia('(pointer: fine)').matches) return;
+		const at = rail.scrollLeft;
+		const to = Math.max(0, Math.min(rail.scrollWidth - rail.clientWidth, at + event.deltaY));
+		if (to === at) return;
+		event.preventDefault();
+		rail.scrollLeft = to;
 	}
 
 	async function toggle(tag: Tag, tapped: HTMLElement): Promise<void> {
@@ -80,32 +98,40 @@
 	 */
 	function keepInView(tapped: HTMLElement): void {
 		if (!rail) return;
-		const at = rail.scrollLeft;
 		const box = tapped.getBoundingClientRect();
-		const start = box.left - rail.getBoundingClientRect().left + at;
-		const end = start + box.width;
-		const seen = rail.clientWidth;
+		const frame = rail.getBoundingClientRect();
+		const at = stacked ? rail.scrollTop : rail.scrollLeft;
+		const start = (stacked ? box.top - frame.top : box.left - frame.left) + at;
+		const end = start + (stacked ? box.height : box.width);
+		const seen = stacked ? rail.clientHeight : rail.clientWidth;
 		const to = end <= seen ? 0 : Math.min(start, Math.max(at, end - seen));
-		if (to !== at) rail.scrollTo({ left: to });
+		if (to === at) return;
+		rail.scrollTo(stacked ? { top: to } : { left: to });
 	}
 
 	const chip =
 		'inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
 	const quiet = 'border-transparent text-muted-foreground hover:text-foreground';
+	const wide = 'w-full justify-start';
 </script>
 
 <svelte:window onpointerdowncapture={putAway} />
 
-<div bind:this={group} role="group" aria-label={says} class="flex items-center gap-1.5">
+<div
+	bind:this={group}
+	role="group"
+	aria-label={says}
+	class={cn('flex gap-1.5', stacked ? 'min-h-0 flex-col' : 'items-center')}
+>
 	{#if offered}
 		<!-- Out of the scroller, so the way to type a tag is where it was left
 		     however far along the chips the reader has gone. -->
-		{#if typing}
+		{#if asField}
 			<Input
 				bind:ref={field}
 				bind:value={typed}
 				type="search"
-				class="h-11 w-36 shrink-0 rounded-full sm:w-44"
+				class={cn('h-11 shrink-0 rounded-full', stacked ? 'w-full' : 'w-36 sm:w-44')}
 				autocapitalize="none"
 				autocomplete="off"
 				spellcheck="false"
@@ -131,8 +157,14 @@
 
 	<div
 		bind:this={rail}
-		class="flex min-w-0 flex-1 gap-1.5 overflow-x-auto scroll-fade-x py-0.5 [scrollbar-width:none]"
-		{@attach scrollFade('x')}
+		onwheel={wheelAlong}
+		class={cn(
+			'flex min-w-0 gap-1.5',
+			stacked
+				? 'min-h-0 flex-1 flex-col overflow-y-auto scroll-fade-y pe-0.5'
+				: 'flex-1 overflow-x-auto scroll-fade-x py-0.5 [scrollbar-width:none]'
+		)}
+		{@attach scrollFade(stacked ? 'y' : 'x')}
 	>
 		{#each order as tag (tag)}
 			{@const slot = slots.get(tag)}
@@ -141,7 +173,7 @@
 				aria-pressed={slot !== undefined}
 				onclick={(event) => void toggle(tag, event.currentTarget)}
 				style={slot === undefined ? undefined : `border-color: var(--facet-${slot})`}
-				class={cn(chip, slot === undefined ? quiet : 'text-foreground')}
+				class={cn(chip, slot === undefined ? quiet : 'text-foreground', stacked && wide)}
 			>
 				{#if slot !== undefined}
 					<span
@@ -150,9 +182,11 @@
 						style="background-color: var(--facet-{slot})"
 					></span>
 				{/if}
-				{tag}
+				<span class={cn(stacked && 'min-w-0 truncate')}>{tag}</span>
 				{#if slot === undefined}
-					<span class="text-xs text-muted-foreground">{counts.get(tag)?.toLocaleString()}</span>
+					<span class={cn('text-xs text-muted-foreground', stacked && 'ms-auto')}
+						>{counts.get(tag)?.toLocaleString()}</span
+					>
 				{/if}
 			</button>
 		{/each}
@@ -168,7 +202,11 @@
 	</div>
 
 	{#if selected.length > 0}
-		<button type="button" onclick={() => onselect([])} class={cn(chip, quiet, 'border-input px-3')}>
+		<button
+			type="button"
+			onclick={() => onselect([])}
+			class={cn(chip, quiet, 'border-input px-3', stacked && wide)}
+		>
 			Clear
 		</button>
 	{/if}
