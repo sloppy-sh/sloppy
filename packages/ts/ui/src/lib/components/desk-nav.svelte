@@ -26,11 +26,35 @@
 	const collapsed = $derived(!open);
 
 	const control =
-		'flex min-h-11 items-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
+		'flex min-h-11 min-w-11 items-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
 	const quiet = 'text-foreground/70 hover:bg-muted/70 hover:text-foreground';
+
+	let column = $state<HTMLElement | null>(null);
+
+	// The column stands over the page, so it owes the room it takes as
+	// `--app-chrome-inset-start` — DESIGN.md § "The four inset vars", which also
+	// says the var is UNSET wherever no column stands.
+	$effect(() => {
+		const root = document.documentElement;
+		const drop = () => root.style.removeProperty('--app-chrome-inset-start');
+		const el = column;
+		if (!el) {
+			drop();
+			return;
+		}
+		const publish = () => root.style.setProperty('--app-chrome-inset-start', `${el.offsetWidth}px`);
+		publish();
+		const observer = new ResizeObserver(publish);
+		observer.observe(el);
+		return () => {
+			observer.disconnect();
+			drop();
+		};
+	});
 </script>
 
 <aside
+	bind:this={column}
 	aria-label="Sloppy"
 	class={cn(
 		'fixed inset-y-0 start-0 z-40 flex flex-col gap-2 border-e bg-card/95 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+0.75rem)] backdrop-blur',

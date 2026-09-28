@@ -69,7 +69,7 @@
 <div
 	bind:this={bar}
 	class="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-3 pb-2"
-	style="right: var(--reading-dock-inset-right, 0px); bottom: var(--sysnav-clearance)"
+	style="inset-inline-start: var(--app-chrome-inset-start, 0px); right: var(--reading-dock-inset-right, 0px); bottom: var(--sysnav-clearance)"
 >
 	<div
 		class="pointer-events-auto w-full max-w-md rounded-2xl border bg-card/95 p-2 shadow-lg backdrop-blur"

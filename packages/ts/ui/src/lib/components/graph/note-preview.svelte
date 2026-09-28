@@ -46,33 +46,32 @@
 
 	const slots = $derived(assignTagHueSlots(selected));
 
-	/** What the graph has left of the window — DESIGN.md § "The four inset vars".
-	 *  A note docked beside it takes the right of the screen, and a card placed
-	 *  against the window would go under the panel. */
-	const room = (): number =>
-		window.innerWidth -
-		(Number.parseFloat(
-			getComputedStyle(document.documentElement).getPropertyValue('--reading-dock-inset-right')
-		) || 0);
+	/** One edge of the window the chrome around the graph has taken, in px —
+	 *  DESIGN.md § "The four inset vars". A card placed against the window itself
+	 *  would go under the column beside the graph, or under a docked note. */
+	const taken = (name: string): number =>
+		Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
 
 	const place = $derived.by(() => {
 		if (!at || !note) return null;
-		const across = room();
-		const width = Math.min(WIDTH, across - EDGE * 2);
+		const leading = taken('--app-chrome-inset-start');
+		const across = window.innerWidth - taken('--reading-dock-inset-right');
+		const width = Math.min(WIDTH, across - leading - EDGE * 2);
+		const leftmost = leading + EDGE;
 		const rightmost = across - EDGE - width;
 		const right = at.clientX + at.radius + GAP;
 		const left = at.clientX - at.radius - GAP - width;
 		// Beside the mark on whichever side has room for it, and above or below it
 		// where neither has — a field narrower than the card and the mark together
 		// would otherwise clamp the card back over the thing it is about.
-		const aside = right <= rightmost ? right : left >= EDGE ? left : null;
+		const aside = right <= rightmost ? right : left >= leftmost ? left : null;
 		// Anchored by whichever edge it grows away from, so it never has to be
 		// measured to be placed and never lands twice.
 		const upward = at.clientY > window.innerHeight / 2;
 		const from = upward ? window.innerHeight - at.clientY : at.clientY;
 		return {
 			width,
-			left: aside ?? Math.max(EDGE, Math.min(at.clientX - width / 2, rightmost)),
+			left: aside ?? Math.max(leftmost, Math.min(at.clientX - width / 2, rightmost)),
 			side: upward ? 'bottom' : 'top',
 			from: aside === null ? from + at.radius + GAP : from
 		};

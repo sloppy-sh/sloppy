@@ -31,6 +31,15 @@ const pages = () => target.querySelectorAll('[data-testid="page"]').length;
 beforeEach(() => {
 	stubResizeObserver();
 	viewport = stubMediaQuery(OVER);
+	// jsdom lays nothing out, so the column measures the width its own class
+	// names — `w-64` open, `w-14` as a rail.
+	Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+		configurable: true,
+		get(this: HTMLElement) {
+			if (this.classList.contains('w-64')) return 256;
+			return this.classList.contains('w-14') ? 56 : 0;
+		}
+	});
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -40,6 +49,7 @@ afterEach(() => {
 	mounted = undefined;
 	target.remove();
 	document.documentElement.style.removeProperty('--sysnav-inset-bottom');
+	document.documentElement.style.removeProperty('--app-chrome-inset-start');
 });
 
 /** The floating pill is the nav that stands outside the sidebar. */
@@ -47,6 +57,8 @@ const pill = () => [...target.querySelectorAll('nav')].find((nav) => !nav.closes
 const sidebar = () => target.querySelector('aside');
 const clearsThePill = () =>
 	document.documentElement.style.getPropertyValue('--sysnav-inset-bottom');
+const clearsTheColumn = () =>
+	document.documentElement.style.getPropertyValue('--app-chrome-inset-start');
 
 describe('the app shell', () => {
 	it('renders the page exactly once', () => {
@@ -148,6 +160,33 @@ describe('the chrome beside the graph', () => {
 		const link = sidebar()?.querySelector('a');
 		expect(link?.textContent?.trim()).toBe('');
 		expect(link?.getAttribute('aria-label')).toBe('Graph');
+	});
+
+	// DESIGN.md § "The four inset vars": what floats over the page is placed
+	// against what the column left, not against the whole window.
+	it('owes the room it takes, and owes nothing where it does not stand', () => {
+		render();
+		expect(clearsTheColumn()).toBe('');
+		viewport.change(BESIDE);
+		flushSync();
+		expect(clearsTheColumn()).toBe('256px');
+		viewport.change(OVER);
+		flushSync();
+		expect(clearsTheColumn()).toBe('');
+	});
+
+	it('owes only the rail once it is narrowed to one', () => {
+		viewport = stubMediaQuery(BESIDE);
+		render({ deskNavOpen: false });
+		expect(clearsTheColumn()).toBe('56px');
+	});
+
+	it('gives the widening a target a finger can hit', () => {
+		viewport = stubMediaQuery(BESIDE);
+		render();
+		const toggle = sidebar()?.querySelector('button[aria-expanded]');
+		expect(toggle?.className).toContain('min-h-11');
+		expect(toggle?.className).toContain('min-w-11');
 	});
 
 	it('hands the widening back to whoever keeps it', () => {

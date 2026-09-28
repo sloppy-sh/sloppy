@@ -1305,6 +1305,14 @@ layer on a page that can be docked beside — a drawn ground, a bar pinned acros
 card raised beside a mark — is placed against that box, or it runs on under the panel while
 the page it belongs to stops at the edge.
 
+`--app-chrome-inset-start` is that same bargain on the leading edge: the column standing
+beside the graph publishes the room it takes, set BY the column and UNSET wherever none
+stands, which is every window under the dock width. The page's own box is inset by the shell
+that draws the column; the var is for what floats OVER that box and would otherwise be
+placed against the whole window — the bar over a chosen set, the card raised beside a mark,
+a hint drawn across a tree. A full-bleed layer starts at that inset and ends at
+`--reading-dock-inset-right`, or it is painted over at one end and unreachable at the other.
+
 `--chosen-bar-inset-bottom` is the bar of chosen notes owing what it stands on, published BY
 the bar and unset wherever it is down. It is measured off the bar's whole box, so the row of
 acts and a refusal drawn under the tally are both counted, and it sits ON TOP of

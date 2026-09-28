@@ -1203,7 +1203,8 @@
 {#if carried}
 	<div
 		class="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-4"
-		style="top: {carried.at.y}px; transform: translateY(-50%)"
+		style="inset-inline-start: var(--app-chrome-inset-start, 0px); top: {carried.at
+			.y}px; transform: translateY(-50%)"
 		aria-hidden="true"
 	>
 		<span
@@ -1229,7 +1230,7 @@
 {#if !carried && moveNote?.refused}
 	<div
 		class="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-4"
-		style="bottom: calc({inset.bottom} + 0.5rem)"
+		style="inset-inline-start: var(--app-chrome-inset-start, 0px); bottom: calc({inset.bottom} + 0.5rem)"
 		aria-hidden="true"
 	>
 		<span

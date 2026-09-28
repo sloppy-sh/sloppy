@@ -57,6 +57,7 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	document.documentElement.style.removeProperty('--reading-dock-inset-right');
+	document.documentElement.style.removeProperty('--app-chrome-inset-start');
 	target.remove();
 });
 
@@ -124,6 +125,22 @@ describe('the note preview', () => {
 		show({ at: mark });
 		const style = card()!.style;
 
+		expect(Number.parseFloat(style.left) + Number.parseFloat(style.width)).toBeLessThanOrEqual(
+			1200 - 544 - 8
+		);
+		expect(clearOf(mark)).toBe(true);
+	});
+
+	// The chrome beside the graph takes the leading edge the same way, and it is
+	// the side the card falls back to once the docked note has taken the other.
+	it('stays inside the room the chrome beside the graph leaves it', () => {
+		document.documentElement.style.setProperty('--app-chrome-inset-start', '256px');
+		document.documentElement.style.setProperty('--reading-dock-inset-right', '544px');
+		const mark = { clientX: 380, clientY: 300, radius: 10 };
+		show({ at: mark });
+		const style = card()!.style;
+
+		expect(Number.parseFloat(style.left)).toBeGreaterThanOrEqual(256 + 8);
 		expect(Number.parseFloat(style.left) + Number.parseFloat(style.width)).toBeLessThanOrEqual(
 			1200 - 544 - 8
 		);
