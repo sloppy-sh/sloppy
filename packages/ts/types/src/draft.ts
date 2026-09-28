@@ -50,10 +50,13 @@ export function draftIdIn(branch: string): string | undefined {
  * what a history of the draft is opened at. They are the same folder for a
  * graph that is a folder of its own.
  *
- * `from` is the version the draft was taken from. A review reads the draft
- * against the folder as it stands now, and against this: a note THIS held that
- * the draft does not is one the draft put in the bin, which is the one thing
- * two copies alone cannot say.
+ * `from` is the version the draft began at, which is the draft's OWN first
+ * version: the notes as the folder had them when it was made, kept whether the
+ * folder had kept them or not. A review reads the draft against the folder as
+ * it stands now, and against this: a note THIS held that the draft does not is
+ * one the draft put in the bin, which is the one thing two copies alone cannot
+ * say — and measuring against the version the folder was last kept at instead
+ * would read everything written since as the draft's own writing.
  *
  * **There is no "when".** A draft is read back out of the repository, which
  * records when a version was kept and not when a branch was made, and writing

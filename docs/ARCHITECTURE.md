@@ -3339,9 +3339,8 @@ edited by hand.
 
 **Every act LANDS, and the draft is what makes that safe.** A session works in a DRAFT: a
 second checkout of the repository keeping the notes, under the app's own data, on a branch
-of its own at the version the folder was last kept at. The agent runs there, every act
-writes there, and the folder in front of the person is untouched the whole time. Nothing is
-asked, nothing waits, and nothing times out.
+of its own. The agent runs there, every act writes there, and the folder in front of the
+person is untouched the whole time. Nothing is asked, nothing waits, and nothing times out.
 
 **It replaced a question in front of every write, and the reasons it had to are worth
 keeping.** A per-call gate interrupted a pass over a repository thirty times; it raced,
@@ -3364,10 +3363,20 @@ holds itself: `Folders::opened` bounds a history command inside a draft at the c
 the notes in it are kept by the repository the folder's are, on the draft's branch, rather than
 by a repository of their own inside the copy. It is bounded that way without being a folder
 anybody picked — nothing under the app's own private data is reachable through the `vault:`
-scheme, and that is where the identity's key is. **The draft forks from the last version
-KEPT**, which is what lets the agent read the code as it was kept rather than as it is
-half-edited — the chat says that in one line where it starts, because it changes what somebody
-would ask for.
+scheme, and that is where the identity's key is.
+
+**The draft's NOTES begin as the folder's working files, and that state is the draft's first
+version.** Keeping a version is the person's own act, so the notes they have been writing are
+usually in no version at all; a draft forked from the last one would start empty of them, and
+— worse — would list every one of them in the review as the agent's writing and hand them to
+the merge as changes to settle. So `draft.rs` writes the folder's own files over the checkout
+before anybody reaches it, takes back out whatever the checkout holds and the folder no longer
+does, keeps that as a version on the draft's branch, and writes the version down under
+`refs/sloppy/drafts/<id>` — a record rather than a merge-base worked out afterwards, because
+the draft's first version is a CHILD of what the two branches have in common, and a draft
+outlives the run that made it. Discarding takes the record with it. The copy is the notes only:
+the code around them is the checkout, so an agent still reads it as it was last kept, and the
+chat says that in one line where it starts, because it changes what somebody would ask for.
 
 **That branch is not one of the folder's lines of work.** `history.rs` leaves it out of the
 branches it lists and the picture it draws, and refuses every act that takes a branch by name

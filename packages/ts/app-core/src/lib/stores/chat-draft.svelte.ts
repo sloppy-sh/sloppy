@@ -175,8 +175,8 @@ class ChatDraftStore {
 		this.#wrote = false;
 	}
 
-	/** The draft to work in: the one standing, or a new one taken from the
-	 *  version the folder was last kept at. REJECTS in words for the person. */
+	/** The draft to work in: the one standing, or a new one holding the notes
+	 *  as the folder has them now. REJECTS in words for the person. */
 	async start(): Promise<StandingDraft> {
 		const drafts = this.#access();
 		if (!drafts) throw new Error('There is no draft of the notes to write into.');

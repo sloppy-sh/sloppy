@@ -56,7 +56,7 @@
 
 	/** Where a chat begins, because it changes what somebody would ask for. */
 	const WORKS_IN_A_DRAFT =
-		'It works in a draft of your notes, from the version you last kept. Nothing here changes until you merge it.';
+		'It works in a draft of your notes as they stand, and reads the code as you last kept it. Nothing here changes until you merge it.';
 
 	/** A draft nothing has been written into yet, and one whose writing none of
 	 *  the counts name. */

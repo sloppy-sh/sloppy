@@ -3,10 +3,14 @@
 //! docs/ARCHITECTURE.md § "Asking a tool to write the notes".
 //!
 //! A draft is a second checkout of the repository keeping the folder's notes,
-//! under this app's own data, on a branch of its own at the version the folder
-//! was last kept at. That is what lets the agent read the code as it was kept,
-//! and what makes a draft survive the app closing: it is read back out of the
-//! repository rather than out of anything this run remembers.
+//! under this app's own data, on a branch of its own. Its notes begin as the
+//! folder's own working files rather than as the last version kept, and that
+//! state is kept as the draft's first version — which is what every review
+//! measures the draft against, so nothing a person wrote and has not kept is
+//! offered back to them as the agent's writing. The code around the notes is
+//! the checkout, so an agent reads it as it was last kept. A draft survives the
+//! app closing because all of it is read back out of the repository rather than
+//! out of anything this run remembers.
 //!
 //! **Making one is all this file does.** Everything after it is what the rest
 //! of the app already does to a folder: the commands in `history.rs` keep a
@@ -14,14 +18,15 @@
 //! is `previewVault` and `importVault` in `@sloppy/local`. No merge of git's
 //! ever touches the folder in front of somebody.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use git2::{BranchType, Repository, WorktreeAddOptions, WorktreePruneOptions};
+use git2::{BranchType, Oid, Repository, WorktreeAddOptions, WorktreePruneOptions};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::history::{at, HistoryError};
+use crate::history::{at, commit, HistoryError};
 use crate::vault::{settled, Folders};
 
 /// What a draft's branch is called before its own ulid — `DRAFT_BRANCH_PREFIX`
@@ -35,12 +40,22 @@ pub fn of_a_draft(name: &str) -> bool {
     name.starts_with(BRANCH_PREFIX)
 }
 
-/// The vault's own sidecar folder — `SLOPPY_DIR` in `@sloppy/vault`. The
-/// identity a container's writing is by is kept in it, and the repository is
-/// told not to keep it.
-const SIDECAR: &str = ".sloppy";
+/// Where a draft's base is written down, before the draft's own ulid: the
+/// version its notes began at, which is what a review reads it against. The
+/// repository is the record because a draft outlives the run that made it, and
+/// this is no branch — nothing `history.rs` lists or acts on reaches one.
+const BASE_REF: &str = "refs/sloppy/drafts/";
 
-const NOTHING_KEPT: &str = "Keep a version of these notes first. A draft starts from the last one.";
+/// The repository's own folder, which a copy of the notes never carries: one
+/// side of the copy is the whole repository and the other is the checkout's
+/// link back to it.
+const GIT: &str = ".git";
+
+/// What the draft's first version is kept as, where a person reads the draft's
+/// own versions back.
+const BEGAN: &str = "The notes as the draft found them";
+
+const NOTHING_KEPT: &str = "Keep a version of these notes first. A draft needs one to start from.";
 const NOT_A_DRAFT: &str = "That draft is not here any more.";
 const ALREADY_THERE: &str = "There is already a draft of these notes.";
 const DIDNT_WORK: &str = "That did not work. Try again.";
@@ -96,10 +111,21 @@ fn vault_in(worktree: &Path, prefix: &str) -> PathBuf {
     }
 }
 
-/// The version a draft's branch and the folder's own last had in common, which
-/// is what the draft was taken from — read back out of the two rather than
-/// written down, so nothing can disagree with the repository.
-fn forked_from(repo: &Repository, branch: &str) -> Result<String, HistoryError> {
+fn based_at(id: &str) -> String {
+    format!("{BASE_REF}{id}")
+}
+
+/// The version a draft's notes began at: what `start` wrote down, and for a
+/// draft made before there was a record, the version its branch and the
+/// folder's own still have in common.
+fn forked_from(repo: &Repository, id: &str, branch: &str) -> Result<String, HistoryError> {
+    if let Some(held) = repo
+        .find_reference(&based_at(id))
+        .ok()
+        .and_then(|held| held.target())
+    {
+        return Ok(held.to_string());
+    }
     let theirs = repo
         .find_branch(branch, BranchType::Local)
         .map_err(|_| HistoryError::new(NOT_A_DRAFT))?
@@ -110,55 +136,103 @@ fn forked_from(repo: &Repository, branch: &str) -> Result<String, HistoryError> 
     Ok(repo.merge_base(ours, theirs).unwrap_or(theirs).to_string())
 }
 
-/// The folder's own private data carried into the copy: what the repository is
-/// told not to keep, which is the identity the container's writing is by. A
-/// copy written under a fresh identity would have every note the folder holds
-/// offered back as somebody else's amendment — docs/ARCHITECTURE.md § "Asking a
-/// tool to write the notes". What the repository IS keeping is already in the
-/// copy, at the version the draft forked from, and is left exactly as it is.
-fn carry_private(repo: &Repository, from: &Path, into: &Path) -> Result<(), HistoryError> {
-    let Some(work) = repo.workdir().map(settled) else {
-        return Ok(());
-    };
-    let entries = match fs::read_dir(from) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(()),
-    };
-    for entry in entries {
+/// The copy's notes made the folder's own working files, byte for byte: every
+/// file under the vault written across whether the history keeps it or not,
+/// and whatever the checkout holds that the folder no longer does taken back
+/// out. A note written since the last version kept is what the agent is
+/// working on, and a note the folder let go of must not come back; the
+/// identity the container's writing is by rides across the same way, because a
+/// copy written under a fresh one would have every note offered back as
+/// somebody else's amendment — docs/ARCHITECTURE.md § "Asking a tool to write
+/// the notes".
+fn begins_as(from: &Path, into: &Path, top: bool) -> Result<(), HistoryError> {
+    fs::create_dir_all(into)?;
+    let mut held = BTreeSet::new();
+    for entry in fs::read_dir(from)? {
         let entry = entry?;
-        let held = entry.path();
-        let Ok(under) = settled(&held).strip_prefix(&work).map(Path::to_path_buf) else {
-            continue;
-        };
-        if !repo.is_path_ignored(&under).unwrap_or(false) {
+        let name = entry.file_name();
+        if top && name == GIT {
             continue;
         }
-        copy_across(&held, &into.join(entry.file_name()))?;
+        held.insert(name.clone());
+        let at = entry.path();
+        let kind = fs::symlink_metadata(&at)?.file_type();
+        if kind.is_symlink() {
+            // Following one is the one way a copy inside the folder ends up
+            // outside it, which is the rule `Folders::list` is held to as well.
+            continue;
+        }
+        let to = into.join(&name);
+        if kind.is_dir() {
+            if fs::symlink_metadata(&to).is_ok_and(|there| !there.is_dir()) {
+                nothing_at(&to)?;
+            }
+            begins_as(&at, &to, false)?;
+        } else if kind.is_file() {
+            nothing_at(&to)?;
+            fs::copy(&at, &to)?;
+        }
+    }
+    for entry in fs::read_dir(into)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if (top && name == GIT) || held.contains(&name) {
+            continue;
+        }
+        nothing_at(&entry.path())?;
     }
     Ok(())
 }
 
-fn copy_across(from: &Path, into: &Path) -> Result<(), HistoryError> {
-    let kind = fs::symlink_metadata(from)?.file_type();
-    if kind.is_symlink() {
-        // Following one is the one way a copy inside the folder ends up outside
-        // it, which is the rule `Folders::list` is held to as well.
-        return Ok(());
+fn nothing_at(held: &Path) -> Result<(), HistoryError> {
+    match fs::symlink_metadata(held) {
+        Ok(kind) if kind.is_dir() => fs::remove_dir_all(held)?,
+        Ok(_) => fs::remove_file(held)?,
+        Err(_) => {}
     }
-    if kind.is_file() {
-        if let Some(folder) = into.parent() {
-            fs::create_dir_all(folder)?;
+    Ok(())
+}
+
+/// The copy's notes written and kept as the draft's first version, and that
+/// version written down as what a review reads the draft against. A folder
+/// that has kept everything it holds leaves nothing to keep, and the draft
+/// begins at the version it was branched from.
+fn began(
+    folders: &Folders,
+    repo: &Repository,
+    ours: &Path,
+    theirs: &Path,
+    head: Oid,
+    id: &str,
+) -> Result<String, HistoryError> {
+    begins_as(ours, theirs, true)?;
+    let opened = folders.opened(&theirs.to_string_lossy())?;
+    let data = PathBuf::from(folders.data_path());
+    let from = match commit(&opened, &data, BEGAN)? {
+        Some(kept) => Oid::from_str(&kept.id)?,
+        None => head,
+    };
+    repo.reference(&based_at(id), from, true, BEGAN)?;
+    Ok(from.to_string())
+}
+
+/// Both halves of a draft gone — the copy and the branch — and with them the
+/// record of where it began.
+fn taken_apart(repo: &Repository, id: &str) -> Result<(), HistoryError> {
+    if let Ok(worktree) = repo.find_worktree(id) {
+        let held = settled(worktree.path());
+        let mut how = WorktreePruneOptions::new();
+        how.valid(true).locked(true).working_tree(true);
+        worktree.prune(Some(&mut how))?;
+        if held.exists() {
+            fs::remove_dir_all(&held)?;
         }
-        fs::copy(from, into)?;
-        return Ok(());
     }
-    if !kind.is_dir() {
-        return Ok(());
+    if let Ok(mut branch) = repo.find_branch(&format!("{BRANCH_PREFIX}{id}"), BranchType::Local) {
+        branch.delete()?;
     }
-    fs::create_dir_all(into)?;
-    for entry in fs::read_dir(from)? {
-        let entry = entry?;
-        copy_across(&entry.path(), &into.join(entry.file_name()))?;
+    if let Ok(mut held) = repo.find_reference(&based_at(id)) {
+        held.delete()?;
     }
     Ok(())
 }
@@ -183,7 +257,7 @@ pub fn standing(folders: &Folders, root: &str) -> Result<Vec<Draft>, HistoryErro
             continue;
         }
         let branch = format!("{BRANCH_PREFIX}{id}");
-        let Ok(from) = forked_from(repo, &branch) else {
+        let Ok(from) = forked_from(repo, id, &branch) else {
             continue;
         };
         held.push(Draft {
@@ -200,9 +274,8 @@ pub fn standing(folders: &Folders, root: &str) -> Result<Vec<Draft>, HistoryErro
     Ok(held)
 }
 
-/// A draft of the folder at `root`, taken from the version it was last kept at.
-/// `id` is the ulid the page minted for it, which names both the copy and the
-/// branch.
+/// A draft of the folder at `root`, holding the notes as they stand. `id` is
+/// the ulid the page minted for it, which names both the copy and the branch.
 pub fn start(folders: &Folders, root: &str, id: &str) -> Result<Draft, HistoryError> {
     let id = draft_id(id)?;
     let opened = folders.opened(root)?;
@@ -223,27 +296,31 @@ pub fn start(folders: &Folders, root: &str, id: &str) -> Result<Draft, HistoryEr
     }
     let mut how = WorktreeAddOptions::new();
     how.reference(Some(at_head.get()));
+    // A draft half made is one nothing lists and nobody can reach, so what was
+    // made of it goes back.
     let made = match repo.worktree(id, &into, Some(&how)) {
         Ok(made) => made,
         Err(why) => {
-            // A branch with no copy on it is a draft nothing lists and
-            // nobody can reach.
-            if let Ok(mut held) = repo.find_branch(&branch, BranchType::Local) {
-                let _ = held.delete();
-            }
+            let _ = taken_apart(repo, id);
             return Err(why.into());
         }
     };
     let root = settled(made.path());
     let prefix = prefix_of(repo, &opened);
     let vault = vault_in(&root, &prefix);
-    carry_private(repo, &opened.join(SIDECAR), &vault.join(SIDECAR))?;
+    let from = match began(folders, repo, &opened, &vault, head.id(), id) {
+        Ok(from) => from,
+        Err(why) => {
+            let _ = taken_apart(repo, id);
+            return Err(why);
+        }
+    };
     Ok(Draft {
         id: id.to_owned(),
         vault: vault.to_string_lossy().into_owned(),
         root: root.to_string_lossy().into_owned(),
         branch,
-        from: head.id().to_string(),
+        from,
     })
 }
 
@@ -253,20 +330,7 @@ pub fn discard(folders: &Folders, root: &str, id: &str) -> Result<(), HistoryErr
     let id = draft_id(id)?;
     let opened = folders.opened(root)?;
     let kept = at(&opened)?;
-    let repo = kept.repo();
-    if let Ok(worktree) = repo.find_worktree(id) {
-        let held = settled(worktree.path());
-        let mut how = WorktreePruneOptions::new();
-        how.valid(true).locked(true).working_tree(true);
-        worktree.prune(Some(&mut how))?;
-        if held.exists() {
-            fs::remove_dir_all(&held)?;
-        }
-    }
-    if let Ok(mut branch) = repo.find_branch(&format!("{BRANCH_PREFIX}{id}"), BranchType::Local) {
-        branch.delete()?;
-    }
-    Ok(())
+    taken_apart(kept.repo(), id)
 }
 
 /// A copy is a checkout of every file the folder keeps, and letting one go
@@ -308,14 +372,17 @@ pub async fn draft_discard<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::history::tests::{beside_the_graph, made, project, their_commit, write};
+    use crate::history::tests::{beside_the_graph, made, project, their_commit, write, CONTAINER};
     use crate::history::{
-        branch, branch_at, branches, commit, delete_branch, graph, head, merge_in, read_at,
-        switch_to,
+        branch, branch_at, branches, delete_branch, graph, head, merge_in, on, read_at, switch_to,
     };
 
     const ID: &str = "01JAPART000000000000000000";
     const OTHER: &str = "01JAPART000000000000000001";
+
+    /// The vault's own sidecar folder — `SLOPPY_DIR` in `@sloppy/vault`, where
+    /// the identity a container's writing is by is kept.
+    const SIDECAR: &str = ".sloppy";
 
     /// A project with its notes inside it, one version kept, and the folders
     /// this app may reach — its own data among them.
@@ -338,6 +405,40 @@ mod tests {
     /// `Folders`, which is what says this app may reach it.
     fn notes(folders: &Folders, at: &str) -> crate::vault::Opened {
         folders.opened(at).expect("the notes")
+    }
+
+    /// A version of the notes as it was written, rather than as `read_at`
+    /// spells bytes for the page.
+    fn kept_at(
+        root: &crate::vault::Opened,
+        commit: &str,
+    ) -> std::collections::BTreeMap<String, String> {
+        use base64::engine::general_purpose::STANDARD as BASE64;
+        use base64::Engine as _;
+        read_at(root, commit)
+            .expect("that version")
+            .into_iter()
+            .map(|(path, held)| {
+                let bytes = BASE64.decode(&held).expect("the bytes");
+                (path, String::from_utf8(bytes).expect("the words"))
+            })
+            .collect()
+    }
+
+    /// What the person's own repository holds that starting a draft may not
+    /// move: the branch it is on, where that branch is, and what is staged.
+    fn theirs_alone(root: &crate::vault::Opened) -> (Option<String>, Option<String>, Vec<String>) {
+        let kept = at(root).expect("the repository");
+        let repo = kept.repo();
+        let index = repo.index().expect("the index");
+        (
+            on(repo).expect("the branch"),
+            head(root).expect("the version"),
+            index
+                .iter()
+                .filter_map(|entry| String::from_utf8(entry.path).ok())
+                .collect(),
+        )
     }
 
     /// The version a branch is at, read out of the repository rather than out
@@ -370,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn it_carries_the_identity_the_folder_writes_under_and_nothing_the_history_keeps() {
+    fn it_carries_the_identity_the_folder_writes_under_and_keeps_no_version_of_it() {
         let (folders, _project, container) = ready("identity");
         // A file in the same folder that the history DOES keep, kept at one
         // version and then written again beside it.
@@ -388,8 +489,142 @@ mod tests {
         assert!(sidecar.join("identity.key").exists());
         assert_eq!(
             fs::read_to_string(sidecar.join("pictures.json")).expect("the pictures"),
-            "{\"kept\":1}"
+            "{\"since\":1}"
         );
+
+        let began = kept_at(&notes(&folders, &draft.vault), &draft.from);
+        assert!(!began.contains_key(".sloppy/identity.json"));
+        assert!(!began.contains_key(".sloppy/identity.key"));
+        assert_eq!(
+            began.get(".sloppy/pictures.json").map(String::as_str),
+            Some("{\"since\":1}")
+        );
+    }
+
+    #[test]
+    fn the_notes_in_a_draft_are_the_folder_s_as_they_stand() {
+        let (folders, _project, container) = ready("as_they_stand");
+        write(&container, "notes/a.md", "one, written into");
+        write(&container, "notes/b.md", "two");
+
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+        let vault = Path::new(&draft.vault);
+        assert_eq!(
+            fs::read_to_string(vault.join("notes/a.md")).expect("the first note"),
+            "one, written into"
+        );
+        assert_eq!(
+            fs::read_to_string(vault.join("notes/b.md")).expect("the second"),
+            "two"
+        );
+
+        // And that is the version the draft begins at, so a review of it
+        // before the agent has written lists none of them.
+        let began = kept_at(&notes(&folders, &draft.vault), &draft.from);
+        assert_eq!(
+            began.get("notes/a.md").map(String::as_str),
+            Some("one, written into")
+        );
+        assert_eq!(began.get("notes/b.md").map(String::as_str), Some("two"));
+        assert!(!read_at(&notes(&folders, &said(&container)), "HEAD")
+            .expect("what the folder kept")
+            .contains_key("notes/b.md"));
+    }
+
+    #[test]
+    fn a_note_the_folder_let_go_of_is_not_in_the_draft() {
+        let (folders, _project, container) = ready("let_go");
+        write(&container, "notes/b.md", "two");
+        made(&container, "A second note");
+        fs::remove_file(container.join("notes/b.md")).expect("the note gone");
+
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+        assert!(!Path::new(&draft.vault).join("notes/b.md").exists());
+        assert!(!read_at(&notes(&folders, &draft.vault), &draft.from)
+            .expect("what it began at")
+            .contains_key("notes/b.md"));
+    }
+
+    #[test]
+    fn a_draft_is_measured_against_the_version_it_began_at() {
+        let (folders, _project, container) = ready("measured");
+        write(&container, "notes/b.md", "two");
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+        let ours = notes(&folders, &said(&container));
+
+        let kept = head(&ours).expect("the folder's version").expect("one");
+        assert_ne!(draft.from, kept);
+        assert_eq!(branch_head(&ours, &draft.branch), Some(draft.from.clone()));
+        // Written down rather than worked out, so a second reading — a later
+        // run of the app — answers the same thing.
+        assert_eq!(
+            standing(&folders, &said(&container)).expect("the drafts")[0].from,
+            draft.from
+        );
+    }
+
+    #[test]
+    fn a_folder_that_kept_everything_it_holds_begins_at_that_version() {
+        let (folders, _project, container) = ready("level");
+        let ours = notes(&folders, &said(&container));
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+
+        assert_eq!(
+            head(&ours).expect("the folder's version").as_deref(),
+            Some(draft.from.as_str())
+        );
+        assert_eq!(
+            standing(&folders, &said(&container)).expect("the drafts")[0].from,
+            draft.from
+        );
+    }
+
+    #[test]
+    fn starting_one_moves_nothing_of_the_person_s_own() {
+        let (folders, project, container) = ready("untouched");
+        their_commit(&project, &["src/a.ts"], "Their code");
+        write(&project, "src/b.ts", "beside it");
+        write(&container, "notes/b.md", "two");
+        let ours = notes(&folders, &said(&container));
+        let was = theirs_alone(&ours);
+
+        start(&folders, &said(&container), ID).expect("a draft");
+
+        assert_eq!(theirs_alone(&ours), was);
+        assert_eq!(
+            fs::read_to_string(container.join("notes/b.md")).expect("the note they wrote"),
+            "two"
+        );
+        assert_eq!(
+            fs::read_to_string(project.join("src/b.ts")).expect("the code beside it"),
+            "beside it"
+        );
+        assert!(!read_at(&ours, "HEAD")
+            .expect("what the folder kept")
+            .contains_key("notes/b.md"));
+    }
+
+    #[test]
+    fn a_draft_of_a_container_copies_the_notes_and_nothing_around_them() {
+        let (folders, project, container) = ready("only_the_notes");
+        their_commit(&project, &["src/a.ts"], "Their code");
+        write(&project, "src/b.ts", "beside it");
+        write(&project, "README.md", "theirs");
+        write(&container, "notes/b.md", "two");
+
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+        let root = Path::new(&draft.root);
+        assert_eq!(Path::new(&draft.vault), root.join(CONTAINER));
+        assert_eq!(
+            fs::read_to_string(root.join(CONTAINER).join("notes/b.md")).expect("the note"),
+            "two"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("src/a.ts")).expect("the code as it was kept"),
+            "one"
+        );
+        assert!(!root.join("src/b.ts").exists());
+        assert!(!root.join("README.md").exists());
     }
 
     #[test]
@@ -449,13 +684,21 @@ mod tests {
     #[test]
     fn discarding_leaves_nothing_of_either_half() {
         let (folders, _project, container) = ready("discarded");
+        write(&container, "notes/b.md", "two");
         let draft = start(&folders, &said(&container), ID).expect("a draft");
+        let ours = notes(&folders, &said(&container));
 
         discard(&folders, &said(&container), ID).expect("it gone");
         assert!(!Path::new(&draft.root).exists());
         assert!(standing(&folders, &said(&container))
             .expect("the drafts")
             .is_empty());
+        assert_eq!(branch_head(&ours, &draft.branch), None);
+        assert!(at(&ours)
+            .expect("the repository")
+            .repo()
+            .find_reference(&based_at(ID))
+            .is_err());
         // Twice is not a failure.
         discard(&folders, &said(&container), ID).expect("nothing to do");
     }

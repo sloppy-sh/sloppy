@@ -44,19 +44,18 @@ const drafts: DraftAccess = {
 	standing: async () => standing?.draft,
 	start: async () => {
 		if (standing) return standing.draft;
-		const tip = await kept.currentCommit();
-		const from = tip === undefined ? new Map<string, Uint8Array>() : await kept.readAt(tip);
 		copyStore = new Map();
 		for (const [path, bytes] of store) {
 			if (path.startsWith('/data/')) copyStore.set(path, bytes);
+			else if (path.startsWith(`${ROOT}/`))
+				copyStore.set(`${COPY}/${path.slice(ROOT.length + 1)}`, bytes);
 		}
-		for (const [path, bytes] of from) copyStore.set(`${COPY}/${path}`, bytes);
 		const history = new MemoryHistory(copyFiles(), { author: 'Ada' });
-		const forked = await history.commit('The version it was taken from');
-		if (!forked) throw new Error('a copy of nothing');
+		const began = await history.commit('The notes as the draft found them');
+		if (!began) throw new Error('a copy of nothing');
 		const id = ulid();
 		standing = {
-			draft: { id, root: COPY, vault: COPY, branch: draftBranch(id), from: forked.id },
+			draft: { id, root: COPY, vault: COPY, branch: draftBranch(id), from: began.id },
 			history
 		};
 		return standing.draft;
@@ -251,14 +250,12 @@ afterEach(() => {
 });
 
 describe('where a chat begins', () => {
-	it('says once that it works in a draft from the version last kept', async () => {
+	it('says once that it works in a draft of the notes as they stand', async () => {
 		await chat.opened(graph);
 		show();
 		await settle();
 
-		expect(screen()).toContain(
-			'It works in a draft of your notes, from the version you last kept.'
-		);
+		expect(screen()).toContain('It works in a draft of your notes as they stand,');
 		expect(screen()).not.toContain('Nothing is written until you say so.');
 		expect(named('Review')).toBeUndefined();
 	});

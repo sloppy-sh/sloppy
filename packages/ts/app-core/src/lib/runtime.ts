@@ -132,8 +132,9 @@ export interface DraftAccess {
 	 *  none, and is not a failure. */
 	standing(): Promise<StandingDraft | undefined>;
 	/** The draft to work in: the one standing where there is one, and otherwise
-	 *  a new one taken from the version the folder was last kept at — so what an
-	 *  agent reads is what was kept, and not what is uncommitted beside it. */
+	 *  a new one whose notes are the folder's as they stand, kept as the draft's
+	 *  first version — so {@link StandingDraft.from} is that version and not
+	 *  whichever one the folder was last kept at. */
 	start(): Promise<StandingDraft>;
 	/** The draft gone, both halves of it, with nothing of it left behind. The
 	 *  folder in front of somebody is untouched either way, and a draft that is

@@ -50,27 +50,27 @@ function textIn(content: BlockDocument): string {
 }
 
 /**
- * The platform's half of a draft: a second folder taken from the version the
- * first was last kept at, carrying the identity it writes under, with a
- * history of its own whose first version is the one it forked from.
+ * The platform's half of a draft: a second folder holding the first's files as
+ * they stand — kept or not — carrying the identity it writes under, with a
+ * history of its own whose first version is that state and is what `from`
+ * names.
  */
 const drafts: DraftAccess = {
 	standing: async () => standing?.draft,
 	start: async () => {
 		if (standing) return standing.draft;
-		const tip = await kept.currentCommit();
-		const from = tip === undefined ? new Map<string, Uint8Array>() : await kept.readAt(tip);
 		copyStore = new Map();
 		for (const [path, bytes] of store) {
 			if (path.startsWith('/data/')) copyStore.set(path, bytes);
+			else if (path.startsWith(`${ROOT}/`))
+				copyStore.set(`${COPY}/${path.slice(ROOT.length + 1)}`, bytes);
 		}
-		for (const [path, bytes] of from) copyStore.set(`${COPY}/${path}`, bytes);
 		const history = new MemoryHistory(copyFiles(), { author: 'Ada' });
-		const forked = await history.commit('The version it was taken from');
-		if (!forked) throw new Error('a copy of nothing');
+		const began = await history.commit('The notes as the draft found them');
+		if (!began) throw new Error('a copy of nothing');
 		const id = ulid();
 		standing = {
-			draft: { id, root: COPY, vault: COPY, branch: draftBranch(id), from: forked.id },
+			draft: { id, root: COPY, vault: COPY, branch: draftBranch(id), from: began.id },
 			history
 		};
 		return standing.draft;
@@ -294,6 +294,20 @@ describe('reading a draft', () => {
 		await chatDraft.start();
 		await chatDraft.review();
 		expect(chatDraft.read?.nothing).toBe(true);
+	});
+
+	// The review reads the draft against the version the draft BEGAN at, not
+	// against the one the folder was last kept at, so a note the person wrote
+	// and has not kept is in the draft and is nobody's change.
+	it('lists nothing of what the person wrote and has not kept', async () => {
+		const since = await api.createNode({ title: 'Written and not kept' });
+
+		await chatDraft.start();
+		await chatDraft.review();
+
+		expect((await inTheDraft().getNode(since.ref))?.title).toBe('Written and not kept');
+		expect(chatDraft.read?.nothing).toBe(true);
+		expect(chatDraft.counts?.notes.added).toBe(0);
 	});
 });
 
