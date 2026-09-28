@@ -30,15 +30,19 @@ One person thinking, the people they let read over their shoulder, and the ones 
   nobody has to choose between letting somebody write and keeping a note their own.
 - **The annotator** — the same two people on a tablet with a pencil. They ink over the
   canvas to think spatially, and ink inside a node when a diagram is the note.
-- **The maintainer** — someone keeping a codebase, writing down why it is the way it is next
-  to the code itself: the notes live in the project, they point at the files and the names
-  they are about, and they are saved in the same commit as the change that prompted them.
-  They want to be told when the code under a piece of reasoning has moved since they last
-  read it, and never to be nagged about the ones they have not got to. Their colleagues read
-  the same notes out of the same repository, and a colleague who disagrees offers a change
-  the way any contributor does. A note of theirs says what it is part of, what it is made
-  of, what it is like and what was chosen instead, and what the code has left behind is
-  something they ask the graph rather than something it tells them.
+- **The developer, and the agent documenting beside them** — someone keeping a codebase,
+  and whatever they set to work in it, holding one account of why the project is the way it
+  is next to the code itself: the notes live in the project, they point at the files and the
+  names they are about, and they are saved in the same commit as the change that prompted
+  them. Either of them takes a piece of the repository and asks whether it is still doing
+  what it was written to do — whether the code matches what the note says it is for, and
+  whether the note still reads to somebody arriving now — and the answer goes back into the
+  graph rather than staying in a conversation. They want to be told when the code under a
+  piece of reasoning has moved since they last read it, and never to be nagged about the
+  ones they have not got to. Their colleagues read the same notes out of the same
+  repository, and a colleague who disagrees offers a change the way any contributor does. A
+  note of theirs says what it is part of, what it is made of, what it is like and what was
+  chosen instead.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the hosted, self-hosted and
 fully-local modes that serve all five.
@@ -58,6 +62,13 @@ it lands in a shape they can read.
 
 It is a thinking tool that happens to be social, not a social network that happens to
 hold notes.
+
+Beside a codebase it holds one thing more: why this project is the way it is, written
+where a person and the tool working with them read the same copy. Each decision sits under
+what it sprang out of, carries the system it is about, and points at the code it explains —
+so the reasoning is a field either of them can move around in, and so either of them can
+put what a note says a thing is for next to what the code now does and say whether the two
+still agree. Success is that nobody has to work the same decision out twice.
 
 A person can write on a line between two notes — a word for what it is, an arrow for which
 way it runs, a line that runs solid or breaks — without any of it moving a mark or changing what

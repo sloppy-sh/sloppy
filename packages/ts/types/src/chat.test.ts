@@ -96,6 +96,12 @@ describe("the acts Sloppy hands an agent", () => {
     }
   });
 
+  it("lets a reason be written only from a source the note names", () => {
+    const { description } = CHAT_TOOL_SPECS.write_note;
+    expect(description).toContain("a source you name in the note");
+    expect(description).toContain("the open question goes down instead");
+  });
+
   it("puts the writing ones behind the person and leaves reading alone", () => {
     for (const act of [
       "write_note",

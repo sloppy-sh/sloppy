@@ -25,6 +25,7 @@ import {
   AGENT_MD,
   agentFile,
   agentFileIsOurs,
+  chatBrief,
   keepAgentFile,
   signedAsOurs,
 } from "./agent-md.js";
@@ -56,6 +57,12 @@ function section(heading: string): string {
   const after = lines.slice(at + 1);
   const ends = after.findIndex((line) => line.startsWith("## "));
   return (ends === -1 ? after : after.slice(0, ends)).join("\n");
+}
+
+/** A section as its sentences read, so a test of what it says does not also
+ *  pin where the lines happen to wrap. */
+function said(heading: string): string {
+  return section(heading).replace(/\s+/g, " ");
 }
 
 describe("what AGENT.md teaches", () => {
@@ -191,6 +198,23 @@ describe("what AGENT.md teaches", () => {
     );
   });
 
+  it("says what the notes are for before it says how to write one", () => {
+    expect(AGENT_MD).toContain("why this project is the way it is");
+  });
+
+  it("lets a reason be written from a source the note names, and not otherwise", () => {
+    expect(said("The compass")).toContain("a source you name in the note");
+    expect(said("The compass")).toContain('"Candidates" heading');
+    expect(said("Never write")).toContain(
+      'A "west" or a "Why" you cannot name a source for',
+    );
+  });
+
+  it("leaves saying a note still holds to the person", () => {
+    expect(said("Never write")).toContain("`checked`, and `read_against`");
+    expect(said("Never write")).toContain("saying it still holds is theirs");
+  });
+
   it("carries every shape the app starts a note from", () => {
     for (const shape of NOTE_TEMPLATES) {
       expect(AGENT_MD).toContain(`**${shape.name}**`);
@@ -198,6 +222,16 @@ describe("what AGENT.md teaches", () => {
         expect(AGENT_MD).toContain(section.heading);
       }
     }
+  });
+});
+
+describe("what the agent in a chat is told before it hears anybody", () => {
+  it("says what the notes are, and where a why is looked up and written", () => {
+    const brief = chatBrief();
+
+    expect(brief).toContain("why this project is the way it is");
+    expect(brief).toContain("look in the notes before you answer");
+    expect(brief).toContain("Told why, write it down there");
   });
 });
 

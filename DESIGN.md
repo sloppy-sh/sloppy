@@ -871,9 +871,11 @@ words and lines.
 ## Reading a draft
 
 A chat with an agent works in a **draft** — a copy of the notes it writes into, standing
-apart from the folder in front of you until you have read it. Nothing it does appears on
-your canvas while it runs, nothing interrupts you to ask, and what you are eventually asked
-is one question about finished work: **take it in, or throw it away.**
+apart from the folder in front of you until you have read it. What it writes there is going
+into the account of why this project is the way it is (AI.md § Project), which is why it is
+read whole before it lands. Nothing it does appears on your canvas while it runs, nothing
+interrupts you to ask, and what you are eventually asked is one question about finished
+work: **take it in, or throw it away.**
 
 **The whole surface is a difference, so it is drawn as one.** § "A difference between two
 states" already says how two states of a graph are read — the notes named are left as they
@@ -926,9 +928,10 @@ there; a draft is not one of those surfaces.
 ## An anchor into code
 
 A note that explains a piece of code is read next to it, and the whole point of writing one
-is that somebody comes back to it later and can tell whether it still holds. Two things carry
-that on the note, and neither of them is a badge: a link that goes somewhere, and one quiet
-line when the code under it has moved.
+is that whoever comes back — the person keeping the project, or whatever they set to work
+beside them — can put what the note says the code is FOR next to what the code now does and
+say whether the two still agree. Two things carry that on the note, and neither of them is a
+badge: a link that goes somewhere, and one quiet line when the code under it has moved.
 
 **An anchor is a chip in the writing, not a panel beside it.** It sits inline where the
 sentence names the file, reads as the path's last part with the line or the name after it —
@@ -946,8 +949,10 @@ direction and offers no editing: Sloppy does not write in somebody's repository.
 **"Still true" is one act, and it says only what it does.** It sits on the note, not on each
 anchor, and taking it records that the note's reasoning has been read against **every** place
 the note points at, as those files stand now — one act, because a person reads a note
-against its code and not against one file of it. Nothing else happens: no section changes,
-nobody joins the note's authors, nothing moves. A note nobody has confirmed says nothing at
+against its code and not against one file of it. **Taking it is the person's**: what an
+agent finds when it reads a note against the code goes into the note in words, and
+somebody who has read them is who says the note still holds. Nothing else happens: no
+section changes, nobody joins the note's authors, nothing moves. A note nobody has confirmed says nothing at
 all — **unread is not stale**, and a product that nags somebody about a note they wrote this
 morning has made a chore out of thinking.
 

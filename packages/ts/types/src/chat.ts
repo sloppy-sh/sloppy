@@ -403,21 +403,21 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   },
   search_notes: {
     description:
-      "Find the notes that carry some words, with the writing around what matched. Look here before writing anything down: where a note already says the thing, cite it — [what it is called](sloppy:<ref>) — rather than writing it a second time.",
+      "Find the notes that carry some words, with the writing around what matched. Look here before writing anything down, and before answering why something in this project is the way it is: where a note already says the thing, cite it — [what it is called](sloppy:<ref>) — rather than writing it a second time.",
     label: "Looking through the notes",
     arguments: SearchNotesArgumentsSchema,
     writes: false,
   },
   read_note: {
     description:
-      "Read one note whole — its title, tags, the places it is about, and its sections as markdown. A long note answers with as much of itself as fits and says how many sections it left.",
+      "Read one note whole — its title, tags, the places it is about, and its sections as markdown. It says what a piece of this project is FOR, which is what you read the code against when somebody asks whether it is still doing what it was written to do. A long note answers with as much of itself as fits and says how many sections it left.",
     label: "Reading a note",
     arguments: ReadNoteArgumentsSchema,
     writes: false,
   },
   write_note: {
     description:
-      "Write the note about a place in the project, starting one where there is none. Search first: what this graph already says is cited, never written again, and a relation between two notes goes on the line between them rather than into a sentence about it. Name the system it belongs to in its tags as you write it — an untagged note is one no reader's question reaches — and draw it with style_note where its mark should be found from across the field.",
+      "Write the note about a place in the project, starting one where there is none. A decision and the reason for it belong here, and so does what you found reading one against the code. A reason goes down only from a source you name in the note — the person's words, a commit message, a comment, a document here — and where none says why, the open question goes down instead. Search first: what this graph already says is cited, not written again, and a relation between two notes goes on the line between them. Tag it with the system it is about, and draw it with style_note where its mark should be found from across the field.",
     label: "Writing a note",
     arguments: WriteNoteArgumentsSchema,
     writes: true,

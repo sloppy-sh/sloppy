@@ -3036,6 +3036,15 @@ for a folder and one for a server, and both count the same way.
 
 ## A project's container
 
+**What it is for: one account of why this project is the way it is, kept by the person
+writing the code and by whatever they set to work beside them.** A decision goes down as a
+note, placed under what it sprang out of, tagged with the system it is about, and pointing
+at the code it explains — so the reasoning is a field both of them move around in rather
+than a pile of summaries either would have to read through. That placement is also what
+makes it answerable: a note says what a piece of the project is FOR, its anchors say where
+that piece is, and either reader can put the two beside each other and say whether they
+still agree. Everything below is how a folder holds that.
+
 **A project's notes are an ordinary vault at `<project>/.sloppy/`.** It is a folder with a
 `graph.json` in it like any other (§ "A graph on disk"), so the archive, the history, offered
 changes, the picker and publishing all work on it unchanged, and there is no second kind of
@@ -3269,11 +3278,21 @@ is said: nothing of the person's was lost, and nothing is theirs to fix.
 ## Asking a tool to write the notes
 
 **`@sloppy/cli` is the container without a window; this is the window.** An agent working
-in a repository can already start a container and write notes into it, and a maintainer
+in a repository can already start a container and write notes into it, and a developer
 standing in front of the app cannot ask for the same thing. What this adds is the person:
 they open a chat about the project in front of them, say what they want written about, and
 watch it happen — the files being read, the thinking, and every one of Sloppy's own acts
 the agent calls, arriving in the thread as each one happens.
+
+**What the acts are FOR is the graph § "A project's container" describes.** An agent here
+is not summarising a repository: it puts down a decision and the reason for it where it has
+a source to name, it looks up why before it explains anything a second time, and it places
+what it writes under what the thought sprang out of and tags it with the system it is
+about. Asked whether a piece of the code is doing what it was written to do, it reads the
+note for what the thing is for and the code for what it does, says which of the two agree
+and which do not, citing both, and writes that finding into the note rather than leaving it
+in a thread nobody can cite. Every one of those is the vocabulary below, read and written:
+there is no act for verifying, because verifying is a reading and a conversation.
 
 **Nothing here is a stage somebody is walked through.** They say a thing, they are shown
 what came of it, and they say the next thing — which is the only shape that lets somebody
@@ -3316,13 +3335,20 @@ off; what a line says and how it and a mark are drawn; a note put in the bin. Th
 them read and eight of them write, and `chatToolWrites` is the one statement of which is
 which — every surface that needs to know asks it rather than listing names.
 
-**Three things a person can write are deliberately not among them.** `checked` and
+**Two things a person can write are deliberately not among them.** `checked` and
 `read_against` are a person saying they have read a note against the code, and an agent
 writing either silences the app's line about code that has moved under them
-(DESIGN.md § "An anchor into code"). `owner` is who GATES a note's
-writing, which is an authority change and not a look. And the compass's west and a "Why"
-are what was decided against and the reason for it — the author's own thinking, which
-`.sloppy/AGENT.md` keeps out of an agent's hands for the same reason wherever it writes.
+(DESIGN.md § "An anchor into code"): it may read a note against the code and write what it
+found, and the signature stays the person's. `owner` is who GATES a note's writing, which
+is an authority change and not a look.
+
+**A reason is written from a source or not at all.** The compass's west and a "Why" are
+what was decided against and why, and one an agent supplies out of its own reading puts
+words in somebody's mouth that no reader can tell from theirs. So it writes one only from
+something it names in the note — what the person said in the chat, a commit message, a
+comment, a document in the repository — and where it finds none it writes the open question
+instead of an answer. `.sloppy/AGENT.md` holds an agent to that wherever it writes; the
+CLI's own `draft` writes neither, because it reads files and has nobody to ask (§ Tooling).
 
 **An act holds no rule of its own.** Every rule about addresses, aliases, cycles,
 ownership and offers lives in `@sloppy/local` and is tested there, so an act calls it,
