@@ -417,64 +417,63 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   },
   write_note: {
     description:
-      "Write the note about a place in the project, starting one where there is none. Search first: what this graph already says is cited, never written again, and a relation between two notes goes on the line between them rather than into a sentence about it. Name the system it belongs to in its tags as you write it — an untagged note is one no reader's question reaches — and draw it with style_note where its mark should be found from across the field. The person is asked before anything lands.",
+      "Write the note about a place in the project, starting one where there is none. Search first: what this graph already says is cited, never written again, and a relation between two notes goes on the line between them rather than into a sentence about it. Name the system it belongs to in its tags as you write it — an untagged note is one no reader's question reaches — and draw it with style_note where its mark should be found from across the field.",
     label: "Writing a note",
     arguments: WriteNoteArgumentsSchema,
     writes: true,
   },
   move_note: {
     description:
-      "Carry a note to what it really sprang out of, or after the note it continues. Everything beneath it goes with it, and the address it leaves keeps leading to it. The person is asked first.",
+      "Carry a note to what it really sprang out of, or after the note it continues. Everything beneath it goes with it, and the address it leaves keeps leading to it.",
     label: "Moving a note",
     arguments: MoveNoteArgumentsSchema,
     writes: true,
   },
   tag_note: {
     description:
-      "Put tags on a note, naming the systems it belongs to, and take off the ones that have stopped being true of it. This is the whole of what can be done for the canvas's colour: a tag has no look of its own, the colour a note draws in is the reader's own selection, and a note carrying no tags is one their question can never reach. The person is asked first, and is told which would come off.",
+      "Put tags on a note, naming the systems it belongs to, and take off the ones that have stopped being true of it. This is the whole of what can be done for the canvas's colour: a tag has no look of its own, the colour a note draws in is the reader's own selection, and a note carrying no tags is one their question can never reach.",
     label: "Tagging a note",
     arguments: TagNoteArgumentsSchema,
     writes: true,
   },
   number_note: {
     description:
-      "Write the number a person cites a note by — 1a1 — or take the one it has off it. Read the notes first: the number springs from the number of the note above it, and no other note in this graph may be at it. The person is asked first.",
+      "Write the number a person cites a note by — 1a1 — or take the one it has off it. Read the notes first: the number springs from the number of the note above it, and no other note in this graph may be at it.",
     label: "Numbering a note",
     arguments: NumberNoteArgumentsSchema,
     writes: true,
   },
   link_notes: {
     description:
-      "Draw a line between two notes, and take one off. Read the notes first: a line that is already there is not drawn again, and naming a note in the writing draws one already, so this is for a connection the writing does not make. What the line MEANS goes on the line with style_edge, never into prose about it. The person is asked first, and is told which lines would go.",
+      "Draw a line between two notes, and take one off. Read the notes first: a line that is already there is not drawn again, and naming a note in the writing draws one already, so this is for a connection the writing does not make. What the line MEANS goes on the line with style_edge, never into prose about it.",
     label: "Linking notes",
     arguments: LinkNotesArgumentsSchema,
     writes: true,
   },
   style_edge: {
     description:
-      "Say what the line between two notes reads as: the words on it, which end the arrowhead sits at, how broken it is drawn. It is a look on whatever line is already there — genealogy, run, citation or one drawn by hand — and draws nothing where there is no line, so draw the line first. The person is asked first.",
+      "Say what the line between two notes reads as: the words on it, which end the arrowhead sits at, how broken it is drawn. It is a look on whatever line is already there — genealogy, run, citation or one drawn by hand — and draws nothing where there is no line, so draw the line first.",
     label: "Labelling a line",
     arguments: StyleEdgeArgumentsSchema,
     writes: true,
   },
   style_note: {
     description:
-      "Say how a note's mark is drawn on the canvas: the ring it wears inside its own edge, how broken that ring is, how big the mark is. Size says how much of the project the note answers for, and a broken ring says the reading is not finished. Shape only — the colour on the canvas answers the reader's own question and is never a note's to set. A look is read against the marks carrying none, so draw the few notes somebody should find from across the field and leave the rest plain. The person is asked first.",
+      "Say how a note's mark is drawn on the canvas: the ring it wears inside its own edge, how broken that ring is, how big the mark is. Size says how much of the project the note answers for, and a broken ring says the reading is not finished. Shape only — the colour on the canvas answers the reader's own question and is never a note's to set. A look is read against the marks carrying none, so draw the few notes somebody should find from across the field and leave the rest plain.",
     label: "Drawing a mark",
     arguments: StyleNoteArgumentsSchema,
     writes: true,
   },
   delete_note: {
     description:
-      "Put a note in the bin, with everything beneath it. A person can take it back out. Read the note first: what a note says is worth citing from somewhere else more often than it is worth losing. The person is asked first.",
+      "Put a note in the bin, with everything beneath it. A person can take it back out. Read the note first: what a note says is worth citing from somewhere else more often than it is worth losing.",
     label: "Putting a note in the bin",
     arguments: DeleteNoteArgumentsSchema,
     writes: true,
   },
 };
 
-/** Whether an act writes, which is the whole of what decides whether the
- *  person is asked before it happens. */
+/** Whether an act writes on the draft, which is what the thread's icon says. */
 export function chatToolWrites(act: ChatToolName): boolean {
   return CHAT_TOOL_SPECS[act].writes;
 }
