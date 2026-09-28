@@ -2838,9 +2838,8 @@ written under the citation's own key.
 **A Decision is a note holding a compass and a section headed "Why".** It joins the
 templates a new note can be started from, and nothing marks it: those two together are
 what makes a note a decision, and `DECISION_WHY_HEADING` in `@sloppy/types` is the one
-copy of the word, so the template that writes the section and `headsWhy` beside it, which
-is what opens a note at its reasoning, cannot drift apart. A note holding a compass and no
-such section is an ordinary note.
+copy of the word the template writes. A note holding a compass and no such section is an
+ordinary note.
 
 ## A graph on disk
 

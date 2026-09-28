@@ -155,9 +155,8 @@ export const COMPASS_TYPE = "compass";
 
 /**
  * The heading a Decision writes its reasoning under. The shape is a compass and
- * this section, and nothing on the note marks one, so this word is what the
- * template writes and what {@link headsWhy} reads — change it in one place or
- * the two stop meaning the same note. docs/ARCHITECTURE.md § "The compass".
+ * this section, and nothing on the note marks one, so this word is the one copy
+ * of it. docs/ARCHITECTURE.md § "The compass".
  */
 export const DECISION_WHY_HEADING = "Why";
 
@@ -321,21 +320,6 @@ function citedIn(place: unknown): unknown {
  * carries two, the first one in it is the answer: a note points one way, and a
  * second compass is a hand in the file rather than a second heading.
  */
-/** Whether this section is the one a decision gives its reason in. */
-export function headsWhy(content: BlockDocument): boolean {
-  const opener = (content.content ?? [])[0];
-  if (!opener || opener.type !== "heading") return false;
-  return (
-    said(opener).trim().toLowerCase() === DECISION_WHY_HEADING.toLowerCase()
-  );
-}
-
-function said(held: DocumentNode): string {
-  return (held.content ?? [])
-    .map((child) => child.text ?? said(child))
-    .join("");
-}
-
 export function compassOf(content: BlockDocument): Compass | undefined {
   const find = (nodes: readonly DocumentNode[]): Compass | undefined => {
     for (const held of nodes) {

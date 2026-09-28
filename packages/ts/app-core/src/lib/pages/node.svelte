@@ -29,9 +29,7 @@
 		BlockViewSchema,
 		citedNotes,
 		compareOrd,
-		compassOf,
 		graphOf,
-		headsWhy,
 		isAddress,
 		isInSubtree,
 		nextChildAddress,
@@ -1602,14 +1600,6 @@
 		void tick().then(() => startAtTheirPlace(opening));
 	});
 
-	/** The section an act sent the reader to, where this note holds one. */
-	const landingAt = $derived.by(() => {
-		if (landOn === 'compass')
-			return blocks.find((one) => compassOf(one.content) !== undefined)?.ref;
-		if (landOn === 'why') return blocks.find((one) => headsWhy(one.content))?.ref;
-		return undefined;
-	});
-
 	/** An act that sent the reader to what is offered here opens it for them,
 	 *  once the offers on this note are known one way or the other. */
 	let sentToOffers: OwnedRef | null = null;
@@ -1620,27 +1610,6 @@
 			if (opening === null || sentToOffers === opening) return;
 			sentToOffers = opening;
 			readingOffers = true;
-		});
-	});
-
-	/** The one act already answered, so a save that rewrites the stack does not
-	 *  pull the reader back there. */
-	let sentTo: string | null = null;
-
-	$effect(() => {
-		const section = landingAt;
-		const reading = side === 'note';
-		untrack(() => {
-			if (section === undefined || !reading) return;
-			const asked = `${ref} ${landOn} ${section}`;
-			if (sentTo === asked) return;
-			sentTo = asked;
-			void tick().then(() => {
-				const rows = [...(noteBody?.querySelectorAll('[data-block-ref]') ?? [])];
-				rows
-					.find((row) => row.getAttribute('data-block-ref') === section)
-					?.scrollIntoView({ block: 'start' });
-			});
 		});
 	});
 
