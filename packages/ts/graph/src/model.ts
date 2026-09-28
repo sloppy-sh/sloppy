@@ -158,6 +158,10 @@ export interface GraphNodeAttributes {
   ringWeight: RingWeight;
   /** Says nothing while {@link ringWeight} is `none`. */
   ringStyle: RingStyle;
+  /** Whether the code this note points at has moved since its author read the
+   *  note against it — {@link ModelOptions.codeMoved}. False on a note nobody
+   *  has read, and on every mark where the code cannot be reached. */
+  codeMoved: boolean;
   /** The pictures the mark wears, as uploads only their author's own instance
    *  can answer for. No pictures is a mark with none; whose turn it is among
    *  several is the scene's to read off the clock. */
@@ -197,6 +201,10 @@ export interface ModelOptions {
   /** {@link GraphSurfaceProps.lit} — the notes a second question names, which
    *  a note must be among to stay in ink while one is being asked. */
   lit?: ReadonlySet<OwnedRef>;
+  /** {@link GraphSurfaceProps.codeMoved} — the notes the code has moved under
+   *  since their author read them against it. Absent and empty both say
+   *  nothing, which is what a canvas beside no code draws. */
+  codeMoved?: ReadonlySet<OwnedRef>;
   palette: GraphPalette;
   /** Whose graph this is. Absent means nothing here is claimed as own. */
   viewer?: DidSyr;
@@ -297,6 +305,8 @@ export function buildModel(
       tag,
       ringWeight: gone ? "none" : look.ringWeight,
       ringStyle: look.ringStyle,
+      // A note that went is a band around nothing, so there is no rim to mark.
+      codeMoved: !gone && (options.codeMoved?.has(node.ref) ?? false),
       preview: gone ? { ...look.preview, pictures: [] } : look.preview,
       previewCover: look.previewCover,
       ...(difference === undefined ? {} : { difference }),

@@ -1,5 +1,10 @@
 import { MemoryFiles } from "@sloppy/local";
-import { encodeText, graphFile, type VaultGraph } from "@sloppy/vault";
+import {
+  digestOf,
+  encodeText,
+  graphFile,
+  type VaultGraph,
+} from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { check } from "./check.js";
 
@@ -172,6 +177,63 @@ describe("check", () => {
     ]);
   });
 
+  it("says which of a note's files has changed since it was read", async () => {
+    const said = "export const a = 1;\n";
+    const container = await project({
+      "notes/01J0000000000000000000000A.md": note({
+        ulid: A,
+        front: [
+          "read_against:",
+          "  - path: src/a.ts",
+          `    digest: ${await digestOf(encodeText(said))}`,
+          "  - path: src/b.ts",
+          `    digest: ${await digestOf(encodeText(said))}`,
+        ].join("\n"),
+        body: "[a](code:src/a.ts) and [b](code:src/b.ts)",
+      }),
+      "src/a.ts": said,
+      "src/b.ts": `${said}// and more\n`,
+    });
+    const { defects } = await check(container);
+    expect(defects).toEqual([
+      {
+        kind: "code-moved",
+        file: "notes/01J0000000000000000000000A.md",
+        note: `${DID}/${A}`,
+        said: "The code it points at has changed since this was read: src/b.ts",
+      },
+    ]);
+  });
+
+  it("says a file that isn't there once, and as the sharper of the two", async () => {
+    const container = await project({
+      "notes/01J0000000000000000000000A.md": note({
+        ulid: A,
+        front: [
+          "read_against:",
+          "  - path: src/gone.ts",
+          `    digest: ${await digestOf(encodeText("was"))}`,
+        ].join("\n"),
+        body: "[gone](code:src/gone.ts)",
+      }),
+    });
+    const { defects } = await check(container);
+    expect(defects.map((one) => one.kind)).toEqual(["missing-code"]);
+  });
+
+  // Unread is not stale: a note nobody has read against the code is never out
+  // of date, however far the code has moved.
+  it("says nothing about a note nobody has read against the code", async () => {
+    const container = await project({
+      "notes/01J0000000000000000000000A.md": note({
+        ulid: A,
+        body: "[a](code:src/a.ts)",
+      }),
+      "src/a.ts": "export const a = 2;\n",
+    });
+    expect((await check(container)).defects).toEqual([]);
+  });
+
   it("looks for no code where the graph is nobody's project", async () => {
     const nobodys: VaultGraph = {
       format: 1,
@@ -183,6 +245,11 @@ describe("check", () => {
       {
         "notes/01J0000000000000000000000A.md": note({
           ulid: A,
+          front: [
+            "read_against:",
+            "  - path: src/gone.ts",
+            `    digest: ${await digestOf(encodeText("was"))}`,
+          ].join("\n"),
           body: "[gone](code:src/gone.ts)",
         }),
       },

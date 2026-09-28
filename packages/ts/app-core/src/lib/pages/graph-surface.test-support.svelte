@@ -20,6 +20,7 @@
 		handle = $bindable(),
 		nodes,
 		lit,
+		codeMoved,
 		difference,
 		wallpaper,
 		picking,
@@ -58,6 +59,7 @@
 			<button
 				type="button"
 				data-lit={lit === undefined ? undefined : lit.has(note.ref) ? 'yes' : 'no'}
+				data-code-moved={codeMoved?.has(note.ref) ? 'yes' : undefined}
 				data-difference={marks.get(note.ref)}
 				data-marked={marked}
 				data-chosen={chosen?.has(note.ref) ? 'yes' : undefined}

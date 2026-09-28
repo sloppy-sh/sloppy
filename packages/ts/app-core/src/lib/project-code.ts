@@ -2,7 +2,9 @@
 // reaches no folder, so `NoteCode` is built from these —
 // docs/ARCHITECTURE.md § "A project's container".
 
-import { CONTAINER_DIR, type Files } from '@sloppy/local';
+import { CONTAINER_DIR, digestsIn, type Files } from '@sloppy/local';
+import { anchorsOf, type BlockDocument, type UpdateNodeRequest } from '@sloppy/types';
+import { readingsNow } from '@sloppy/vault';
 
 const READ_AS_TEXT = new TextDecoder();
 
@@ -46,4 +48,27 @@ export function fileAddress(root: string, path: string): string {
 		.map((part) => encodeURIComponent(part))
 		.join('/');
 	return `file://${spelled.startsWith('/') ? spelled : `/${spelled}`}`;
+}
+
+/**
+ * What saying a note still holds writes: every place its writing points at, as
+ * those files stand NOW, and the version the folder is at where it keeps one.
+ *
+ * The reading is the WHOLE list, so a place the writing no longer names is one
+ * the note is no longer read against. The files are read at the moment of the
+ * act rather than when the question was asked — otherwise a save in between
+ * would be recorded as read.
+ */
+export async function readAgainstNow(
+	sections: readonly { content: BlockDocument }[],
+	project: Files,
+	at: string | undefined
+): Promise<UpdateNodeRequest> {
+	const paths = sections
+		.flatMap((section) => anchorsOf(section.content))
+		.map((anchor) => anchor.path);
+	return {
+		read_against: await readingsNow(paths, digestsIn(project)),
+		...(at === undefined ? {} : { checked: at })
+	};
 }

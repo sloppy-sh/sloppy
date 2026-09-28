@@ -4,7 +4,7 @@
 // is what stops the app and the CLI saying different things.
 
 import { relative } from "node:path";
-import type { Files } from "@sloppy/local";
+import { digestsIn, type Files } from "@sloppy/local";
 import { compassSlotWords, type OwnedRef } from "@sloppy/types";
 import { review, type ReviewSignal } from "@sloppy/vault";
 import { type HeldNote, notesIn } from "./folder.js";
@@ -40,6 +40,9 @@ export async function leftBehind(
     notes: notes.map((held) => held.note),
     projectTop: parts.map((part) => part.path),
     changed: asked.project ? movedSince(asked.project.root) : async () => [],
+    ...(asked.project === undefined
+      ? {}
+      : { codeNow: digestsIn(asked.project) }),
   });
   const at = new Map(notes.map((held) => [held.note.ref, held]));
   const notesAt = from(asked.standing, asked.container.root);

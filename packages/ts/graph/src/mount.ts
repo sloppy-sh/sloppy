@@ -315,6 +315,9 @@ export function mountGraph(
       ...(props.lit === undefined
         ? {}
         : { lit: drawnLit(nodes, lod.collapsed, props.lit) }),
+      ...(props.codeMoved === undefined
+        ? {}
+        : { codeMoved: drawnLit(nodes, lod.collapsed, props.codeMoved) }),
       palette,
       viewer: props.viewer,
       keep: scene.snapshot(),

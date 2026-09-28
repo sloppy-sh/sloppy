@@ -108,7 +108,8 @@ async function canvasOn(
 }
 
 /** The graphics the world holds, in the order `scene.ts` adds them: the lift,
- *  the three line passes, the difference, the shapes, their edges, the orbit. */
+ *  the three line passes, the difference, the shapes, their edges, the orbit,
+ *  and the rim's dots over it. */
 function layers(app: FakeApplication): {
   genealogy: FakeGraphics;
   runs: FakeGraphics;
@@ -124,7 +125,7 @@ function layers(app: FakeApplication): {
     runs: held[2],
     connections: held[3],
     difference: held[4],
-    orbit: held[held.length - 1],
+    orbit: held[held.length - 2],
   };
 }
 

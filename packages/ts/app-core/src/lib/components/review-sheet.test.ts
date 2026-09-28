@@ -29,6 +29,7 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
+import { digestOf } from '@sloppy/vault';
 import ReviewSheet from './review-sheet.svelte';
 
 const HOME = homeOf(DID);
@@ -107,8 +108,10 @@ let justWrote: OwnedRef[];
 let written: UpdateNodeRequest[];
 let blocks: CreateBlockRequest[];
 
-async function keepFile(at: string, said: string): Promise<string> {
-	await files.write(at, new TextEncoder().encode(said));
+const said = (text: string) => new TextEncoder().encode(text);
+
+async function keepFile(at: string, text: string): Promise<string> {
+	await files.write(at, said(text));
 	await kept.commit(`Wrote ${at}`);
 	return (await kept.currentCommit()) as string;
 }
@@ -234,7 +237,14 @@ describe('a project with something left behind', () => {
 		named('Still true')?.click();
 		await settle();
 
-		expect(written).toEqual([{ checked: await kept.currentCommit() }]);
+		expect(written).toEqual([
+			{
+				read_against: [
+					{ path: 'src/parser.ts', digest: await digestOf(said('export const one = 2;\n')) }
+				],
+				checked: await kept.currentCommit()
+			}
+		]);
 		expect(named('Still true')).toBeUndefined();
 	});
 

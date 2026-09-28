@@ -261,6 +261,15 @@ export const FILL_AT = (TEXTURE_RADIUS - 1) / TEXTURE_RADIUS;
 export const EDGE_RING_AT = (TEXTURE_RADIUS - 1.6) / TEXTURE_RADIUS;
 export const EDGE_RING_WIDTH = 2.2 / TEXTURE_RADIUS;
 
+/**
+ * How wide the dot the code having moved takes is, as a fraction of the mark's
+ * radius. Its centre is {@link EDGE_RING_AT}, due south — DESIGN.md § "The
+ * mark". `scene.code.test.ts` holds it clear of the look's ring and wider than
+ * the provenance stroke it straddles, which is what keeps it an addition
+ * rather than a break in that edge.
+ */
+export const CODE_MOVED_RADIUS = 0.17;
+
 /** Rebuild edge geometry when the zoom has moved enough to show in the stroke. */
 const SCALE_REBUILD = 0.08;
 
@@ -438,6 +447,7 @@ export class GraphScene {
     private readonly looks: ParticleContainer,
     private readonly shapeRings: Graphics,
     private readonly picks: Graphics,
+    private readonly codeMoved: Graphics,
     private readonly labels: Container,
     private readonly labelPool: LabelSlot[],
     private readonly edgeLabelPool: Text[],
@@ -490,6 +500,7 @@ export class GraphScene {
     const looks = new pixi.ParticleContainer(particleOptions);
     const shapeRings = new pixi.Graphics();
     const picks = new pixi.Graphics();
+    const codeMoved = new pixi.Graphics();
     // The lift is under everything: it is paper, not a line drawn on the field.
     // The author's ring is UNDER their picture, so widening the cover past it
     // takes it — which is what the cover slider is for. Provenance is OVER the
@@ -509,6 +520,7 @@ export class GraphScene {
       rings,
       shapeRings,
       picks,
+      codeMoved,
     );
 
     const labels = new pixi.Container();
@@ -590,6 +602,7 @@ export class GraphScene {
       looks,
       shapeRings,
       picks,
+      codeMoved,
       labels,
       labelPool,
       edgeLabelPool,
@@ -986,6 +999,7 @@ export class GraphScene {
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
     if (this.positionsDirty || scaleMoved) this.drawDifference();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();
+    if (this.positionsDirty || scaleMoved) this.drawCodeMoved();
     if (this.positionsDirty || scaleMoved) this.layoutLabels();
     if (this.positionsDirty || scaleMoved) this.layoutFieldNames();
 
@@ -1077,12 +1091,14 @@ export class GraphScene {
         mark.ring.x = x;
         mark.ring.y = y;
       }
-      if (mark.look === null && mark.preview === null) continue;
-
+      // Latched for every mark, not only the ones with something inside them:
+      // the rim's dot goes when the look goes, and a mark with no look at all
+      // still carries one.
       mark.looking = looksDrawn(
         mark.radius * this.viewport.scale,
         mark.looking,
       );
+      if (mark.look === null && mark.preview === null) continue;
       if (mark.look) {
         mark.look.x = x;
         mark.look.y = y;
@@ -1837,6 +1853,29 @@ export class GraphScene {
         alpha: from ? 0.95 : 0.4,
         width: from ? width * 2 : width,
       });
+    }
+  }
+
+  /**
+   * The dot on the rim of each mark whose code has moved since its author read
+   * the note against it — DESIGN.md § "The mark". Drawn over the orbit and the
+   * lift it stands inside, in ink and never in a hue, and it goes at the size
+   * the look's ring goes: past that a dot on a rim is a smudge.
+   */
+  private drawCodeMoved(): void {
+    this.codeMoved.clear();
+    const { ink } = this.options.palette;
+    for (const mark of this.marks) {
+      if (!mark.attributes.codeMoved || !mark.looking) continue;
+      const x = this.positions[mark.index * 2];
+      const y = this.positions[mark.index * 2 + 1];
+      this.codeMoved
+        .circle(
+          x,
+          y + mark.radius * EDGE_RING_AT,
+          mark.radius * CODE_MOVED_RADIUS,
+        )
+        .fill({ color: ink, alpha: mark.attributes.alpha });
     }
   }
 

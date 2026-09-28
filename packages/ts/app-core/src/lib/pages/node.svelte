@@ -106,8 +106,9 @@
 	import { deviceStore, type DeviceArea } from '../device-store.js';
 	import { carries, movedFrom, reachEveryGraph, type Reach } from '../note-find.js';
 	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
-	import { fileAddress, filesIn, textIn } from '../project-code.js';
+	import { fileAddress, filesIn, readAgainstNow, textIn } from '../project-code.js';
 	import { runtime } from '../runtime.js';
+	import { codeDrift } from '../stores/code-drift.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { drafts } from '../stores/drafts.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
@@ -1321,43 +1322,28 @@
 		};
 	});
 
-	/** The anchors of this note a version kept since it was confirmed has
-	 *  touched. Empty is a note nothing has moved under, which says nothing. */
+	/** The places this note points at that the code has moved under since
+	 *  somebody read the note against them, in path order. Empty is a note
+	 *  nothing has moved under, and every note nobody has read. */
 	let movedUnder = $state.raw<string[]>([]);
-	/** The version the folder stands on, so the act is offered only where there
-	 *  is one to record. */
-	let versionHere = $state.raw<string | undefined>(undefined);
 	let confirming = $state(false);
 
 	$effect(() => {
-		const drawn = graphHistory.at;
-		if (!project) {
-			versionHere = undefined;
-			return;
-		}
-		if (drawn !== undefined) {
-			versionHere = drawn;
-			return;
-		}
-		let reading = true;
-		void graphHistory.versionNow().then((at) => {
-			if (reading) versionHere = at;
-		});
-		return () => {
-			reading = false;
-		};
-	});
-
-	$effect(() => {
+		const folder = project ?? undefined;
+		const readings = node?.read_against;
 		const confirmed = node?.checked;
-		const folder = project;
 		const paths = [...new Set(anchors.map((anchor) => anchor.path))];
-		if (confirmed === undefined || !folder || paths.length === 0) {
+		if (!folder) {
 			movedUnder = [];
 			return;
 		}
 		let reading = true;
-		void graphHistory.changedSince(confirmed, paths).then((since: string[]) => {
+		const asking = readings?.length
+			? codeDrift.under(readings, folder, graphs.folderReads)
+			: confirmed === undefined || paths.length === 0
+				? Promise.resolve<string[]>([])
+				: graphHistory.changedSince(confirmed, paths);
+		void asking.then((since: string[]) => {
 			if (reading) movedUnder = since;
 		});
 		return () => {
@@ -1366,25 +1352,24 @@
 	});
 
 	/** Whether the reader may say this note's reasoning still holds: a note a
-	 *  write here lands on, in a project, pointing at code, with a version to
-	 *  record. Where the writing is somebody else's, the reading is theirs. */
-	const mayConfirm = $derived(
-		!readOnly && !offering && !!project && anchors.length > 0 && versionHere !== undefined
-	);
+	 *  write here lands on, in a project, pointing at code. Where the writing is
+	 *  somebody else's, the reading is theirs. */
+	const mayConfirm = $derived(!readOnly && !offering && !!project && anchors.length > 0);
 
-	/** Whether a version kept since this note was last read against has touched
-	 *  the code it points at. */
+	/** Whether the code under any of the places this note points at has moved
+	 *  since somebody read the note against them. */
 	const codeMoved = $derived(!readOnly && !offering && movedUnder.length > 0);
 
 	async function stillTrue(): Promise<void> {
 		const of = ref;
+		const folder = project;
+		if (!folder) return;
 		confirming = true;
 		refuse(of, 'checked', null);
 		try {
-			const at = (await graphHistory.versionNow()) ?? versionHere;
-			if (at === undefined) return;
-			versionHere = at;
-			await nodes.update(of, { checked: at });
+			const at = await graphHistory.versionNow();
+			await nodes.update(of, await readAgainstNow(stack, folder, at));
+			codeDrift.again();
 			movedUnder = [];
 		} catch (error) {
 			refuse(
@@ -2541,14 +2526,20 @@
 				class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-2xl leading-snug font-semibold tracking-tight placeholder:text-muted-foreground/60 focus-visible:outline-none"
 			></textarea>
 
-			<!-- One quiet line where the code has moved, and nothing at all where it
-			     has not — DESIGN.md § "An anchor into code". -->
+			<!-- One quiet line for each place the code has moved, naming it so
+			     nobody has to go and find it, and one act for the note — the
+			     reading is the note's. Nothing at all where nothing has moved:
+			     DESIGN.md § "An anchor into code". -->
 			{#if codeMoved}
 				<div class="@container">
 					<div class="flex flex-col items-start gap-1 @md:flex-row @md:items-center @md:gap-3">
-						<p class="text-sm text-muted-foreground">
-							The code under this has changed since you last read it.
-						</p>
+						<div class="min-w-0">
+							{#each movedUnder as path (path)}
+								<p class="text-sm break-all text-muted-foreground">
+									{path} has changed since you read it.
+								</p>
+							{/each}
+						</div>
 						{#if mayConfirm}
 							<Button
 								variant="ghost"
