@@ -372,7 +372,9 @@ pub async fn draft_discard<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::history::tests::{beside_the_graph, made, project, their_commit, write, CONTAINER};
+    use crate::history::tests::{
+        beside_the_graph, made, project, their_commit, vault, write, CONTAINER,
+    };
     use crate::history::{
         branch, branch_at, branches, delete_branch, graph, head, merge_in, on, read_at, switch_to,
     };
@@ -628,6 +630,51 @@ mod tests {
     }
 
     #[test]
+    fn a_draft_of_a_vault_that_is_its_own_repository_copies_the_notes_and_leaves_git_alone() {
+        let container = vault();
+        beside_the_graph(&container.join(SIDECAR));
+        write(&container, "notes/a.md", "one");
+        made(&container, "A graph");
+        let folders = Folders::new(container.with_extension("data")).expect("this app's own data");
+        folders.pick(container.to_path_buf()).expect("the notes");
+        write(&container, "notes/b.md", "two");
+        let ours = notes(&folders, &said(&container));
+        let was = head(&ours).expect("the folder's version");
+
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+        let root = Path::new(&draft.root);
+        assert_eq!(Path::new(&draft.vault), root);
+        assert_eq!(
+            fs::read_to_string(root.join("notes/b.md")).expect("the note they had not kept"),
+            "two"
+        );
+        assert_eq!(
+            kept_at(&notes(&folders, &draft.vault), &draft.from)
+                .get("notes/b.md")
+                .map(String::as_str),
+            Some("two")
+        );
+
+        assert!(root.join(GIT).is_file());
+        assert!(!root.join(GIT).is_dir());
+        assert!(!root.join(GIT).join("objects").exists());
+        assert!(container.join(GIT).join("objects").is_dir());
+        assert_eq!(head(&ours).expect("the folder's version"), was);
+
+        discard(&folders, &said(&container), ID).expect("it gone");
+        assert!(!root.exists());
+        assert_eq!(branch_head(&ours, &draft.branch), None);
+        assert!(at(&ours)
+            .expect("the repository")
+            .repo()
+            .find_reference(&based_at(ID))
+            .is_err());
+        assert!(standing(&folders, &said(&container))
+            .expect("the drafts")
+            .is_empty());
+    }
+
+    #[test]
     fn the_copy_s_notes_are_kept_by_the_repository_the_folder_s_are() {
         let (folders, _project, container) = ready("kept");
         let draft = start(&folders, &said(&container), ID).expect("a draft");
@@ -660,6 +707,45 @@ mod tests {
         assert_eq!(held[0].root, made.root);
         assert_eq!(held[0].vault, made.vault);
         assert_eq!(held[0].from, made.from);
+    }
+
+    #[test]
+    fn a_draft_made_before_its_version_was_written_down_still_answers_where_it_began() {
+        let (folders, _project, container) = ready("unrecorded");
+        write(&container, "notes/b.md", "two");
+        let draft = start(&folders, &said(&container), ID).expect("a draft");
+        let ours = notes(&folders, &said(&container));
+
+        let in_common = {
+            let kept = at(&ours).expect("the repository");
+            let repo = kept.repo();
+            // A draft from before the record existed is one with no record.
+            repo.find_reference(&based_at(ID))
+                .expect("where it began")
+                .delete()
+                .expect("the record gone");
+            let theirs = repo
+                .find_branch(&draft.branch, BranchType::Local)
+                .expect("the draft's branch")
+                .get()
+                .peel_to_commit()
+                .expect("its version")
+                .id();
+            let mine = repo
+                .head()
+                .expect("the folder's branch")
+                .peel_to_commit()
+                .expect("its version")
+                .id();
+            repo.merge_base(mine, theirs)
+                .expect("what the two still have in common")
+                .to_string()
+        };
+
+        let held = standing(&folders, &said(&container)).expect("the drafts");
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].from, in_common);
+        assert_ne!(held[0].from, draft.from);
     }
 
     #[test]
