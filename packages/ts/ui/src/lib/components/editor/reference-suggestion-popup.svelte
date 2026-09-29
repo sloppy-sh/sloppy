@@ -46,7 +46,7 @@
 				role="option"
 				aria-label={label(choice)}
 				aria-selected={i === completions.index}
-				class="flex min-h-11 w-full items-baseline gap-2.5 rounded-md px-2 py-1.5 text-left text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+				class="flex min-h-control w-full items-baseline gap-2.5 rounded-md px-2 py-1.5 text-left text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
 				onmousedown={(event) => {
 					event.preventDefault();
 					completions.pick(choice);

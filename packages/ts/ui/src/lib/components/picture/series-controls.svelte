@@ -53,10 +53,10 @@
 			value={String(every)}
 			onValueChange={(next: string) => onevery(Number(next))}
 		>
-			<Select.Trigger class="h-11 w-full">{turnLabel}</Select.Trigger>
+			<Select.Trigger class="h-control w-full">{turnLabel}</Select.Trigger>
 			<Select.Content>
 				{#each PICTURE_TURNS as turn (turn.value)}
-					<Select.Item value={String(turn.value)} class="min-h-11">{turn.label}</Select.Item>
+					<Select.Item value={String(turn.value)} class="min-h-control">{turn.label}</Select.Item>
 				{/each}
 			</Select.Content>
 		</Select.Root>
@@ -71,7 +71,7 @@
 			{#each PICTURE_TRANSITIONS as one (one)}
 				<Button
 					variant={transition === one ? 'default' : 'outline'}
-					class="h-11 rounded-full"
+					class="h-control rounded-full"
 					aria-pressed={transition === one}
 					onclick={() => ontransition(one)}
 				>

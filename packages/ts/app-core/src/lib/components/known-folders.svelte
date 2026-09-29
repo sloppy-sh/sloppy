@@ -42,7 +42,7 @@
 				{#if folder.reachable}
 					<button
 						type="button"
-						class="min-h-11 min-w-0 flex-1 rounded-md px-2 py-1 text-left text-sm hover:bg-muted"
+						class="min-h-control min-w-0 flex-1 rounded-md px-2 py-1 text-left text-sm hover:bg-muted"
 						disabled={busy}
 						aria-busy={opening === folder.root ? 'true' : undefined}
 						onclick={() => onopen(folder.root)}
@@ -53,7 +53,7 @@
 						</span>
 					</button>
 				{:else}
-					<div class="min-h-11 min-w-0 flex-1 px-2 py-1 text-sm">
+					<div class="min-h-control min-w-0 flex-1 px-2 py-1 text-sm">
 						<span class="block truncate">{nameOf(folder)}</span>
 						<span class="block truncate text-xs text-muted-foreground" title={folder.root}>
 							{folder.root}

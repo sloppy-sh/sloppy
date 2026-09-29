@@ -49,12 +49,17 @@
 		<p class="px-2 pt-4 text-sm text-destructive" role="alert">{refused}</p>
 	{/if}
 	<div class="flex flex-col-reverse gap-2 px-2 pt-4 sm:flex-row sm:justify-end">
-		<Button variant="outline" class="h-11 sm:h-9" disabled={working} onclick={() => (open = false)}>
+		<Button
+			variant="outline"
+			class="h-control sm:h-9"
+			disabled={working}
+			onclick={() => (open = false)}
+		>
 			{cancelLabel}
 		</Button>
 		<Button
 			variant={destructive ? 'destructive' : 'default'}
-			class="h-11 sm:h-9"
+			class="h-control sm:h-9"
 			disabled={working}
 			onclick={confirm}
 		>

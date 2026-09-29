@@ -47,7 +47,13 @@
 <!-- `contents`: the canvas inside is positioned against the page, so the
      landmark must lay nothing out — except where the sidebar stands beside it
      and the page is given what is left. -->
-<main class={showSidebar ? (deskNavOpen ? 'block ps-64' : 'block ps-14') : 'contents'}>
+<main
+	class={showSidebar
+		? deskNavOpen
+			? 'block ps-(--desk-nav-width)'
+			: 'block ps-(--desk-nav-rail)'
+		: 'contents'}
+>
 	{@render children()}
 </main>
 

@@ -71,7 +71,7 @@
 	<div class="w-full max-w-sm space-y-5 text-center">
 		{#if refused}
 			<p class="text-destructive" role="alert">{refused}</p>
-			<Button variant="outline" class="h-11" onclick={() => void put()}>Try again</Button>
+			<Button variant="outline" class="h-control" onclick={() => void put()}>Try again</Button>
 		{:else}
 			<p class="text-muted-foreground" role="status">Putting that down…</p>
 		{/if}

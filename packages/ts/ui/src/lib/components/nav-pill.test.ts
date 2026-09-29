@@ -81,7 +81,7 @@ describe('the nav pill', () => {
 	it('gives every target a reachable size', () => {
 		const nav = render();
 		for (const link of nav.querySelectorAll('a')) {
-			expect(link.className).toContain('min-h-11');
+			expect(link.className).toContain('min-h-control');
 		}
 	});
 

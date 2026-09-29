@@ -127,7 +127,7 @@
 	}
 
 	const chip =
-		'inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
+		'inline-flex min-h-control shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
 	const quiet = 'border-transparent text-muted-foreground hover:text-foreground';
 	const wide = 'w-full justify-start';
 </script>
@@ -139,7 +139,7 @@
 		bind:ref={field}
 		bind:value={typed}
 		type="search"
-		class={cn('h-11 shrink-0 rounded-full', stacked ? 'min-w-0 flex-1' : 'w-36 sm:w-44')}
+		class={cn('h-control shrink-0 rounded-full', stacked ? 'min-w-0 flex-1' : 'w-36 sm:w-44')}
 		autocapitalize="none"
 		autocomplete="off"
 		spellcheck="false"
@@ -170,7 +170,7 @@
 					aria-label={order === 'name' ? 'Order by how many notes carry each' : 'Order by name'}
 					title={order === 'name' ? 'Order by how many notes carry each' : 'Order by name'}
 					onclick={() => onorder?.(order === 'name' ? 'count' : 'name')}
-					class={cn(chip, quiet, 'size-11 justify-center border-input px-0')}
+					class={cn(chip, quiet, 'size-control justify-center border-input px-0')}
 				>
 					{#if order === 'name'}
 						<ArrowDown10 class="size-4" />
@@ -232,7 +232,7 @@
 		{#if nothingMatched}
 			<p
 				role="status"
-				class="flex min-h-11 shrink-0 items-center px-2 text-sm text-muted-foreground"
+				class="flex min-h-control shrink-0 items-center px-2 text-sm text-muted-foreground"
 			>
 				No tag has that in it.
 			</p>

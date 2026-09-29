@@ -199,7 +199,7 @@
 				<p class="text-muted-foreground" role={says ? 'alert' : undefined}>
 					{says ?? 'Somebody published this note. Sign in to keep it, or to answer it.'}
 				</p>
-				<Button class="h-11 w-full sm:w-auto sm:px-8" onclick={() => void goto('/sign-in')}>
+				<Button class="h-control w-full sm:w-auto sm:px-8" onclick={() => void goto('/sign-in')}>
 					Sign in
 				</Button>
 			</div>

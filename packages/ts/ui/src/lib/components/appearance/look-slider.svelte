@@ -37,7 +37,7 @@
 		{max}
 		{step}
 		{label}
-		class="h-11"
+		class="h-control"
 		onValueChange={ondrag}
 		onValueCommit={(next: number) => void onchange(next)}
 	/>

@@ -269,7 +269,7 @@
 					reading = false;
 					reviewing = null;
 				}}
-				class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+				class="-ml-2 inline-flex min-h-control items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 			>
 				<ArrowLeft class="size-4" />
 				Publishing
@@ -310,7 +310,7 @@
 								<button
 									type="button"
 									onclick={() => review(version, before(at))}
-									class="flex min-h-11 w-full items-center gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+									class="flex min-h-control w-full items-center gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 								>
 									<span class="shrink-0 address text-sm">Version {version.sequence}</span>
 									<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
@@ -323,7 +323,7 @@
 								</button>
 							</li>
 						{:else}
-							<li class="flex min-h-11 items-center gap-3 px-2">
+							<li class="flex min-h-control items-center gap-3 px-2">
 								<span class="shrink-0 address text-sm">Version {version.sequence}</span>
 								<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
 									{when(version.published_at)}
@@ -379,7 +379,7 @@
 				{#each narrower as under, i (i)}
 					<p class="text-sm text-muted-foreground">{narrowerSays(under, 'already')}</p>
 				{/each}
-				<Button class="h-11 w-full" disabled={working} onclick={() => act(onpublish)}>
+				<Button class="h-control w-full" disabled={working} onclick={() => act(onpublish)}>
 					Publish again
 				</Button>
 			</section>
@@ -418,7 +418,7 @@
 
 			<Button
 				variant="ghost"
-				class="h-11 w-full text-destructive hover:bg-destructive/10"
+				class="h-control w-full text-destructive hover:bg-destructive/10"
 				disabled={working}
 				onclick={() => {
 					open = false;
@@ -448,13 +448,13 @@
 			<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
 				<Button
 					variant="outline"
-					class="h-11 sm:h-9"
+					class="h-control sm:h-9"
 					disabled={working}
 					onclick={() => (open = false)}
 				>
 					Cancel
 				</Button>
-				<Button class="h-11 sm:h-9" disabled={working} onclick={() => act(onpublish)}>
+				<Button class="h-control sm:h-9" disabled={working} onclick={() => act(onpublish)}>
 					Publish
 				</Button>
 			</div>

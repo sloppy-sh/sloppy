@@ -333,7 +333,7 @@
 	{#if note && sprang && onEdge}
 		<button
 			type="button"
-			class="flex min-h-11 items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+			class="flex min-h-control items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 			onclick={() => onEdge?.(note.ref, sprang.ref)}
 		>
 			<Spline class="size-3.5" aria-hidden="true" />

@@ -46,7 +46,7 @@
 	<div class="space-y-2 px-2 pt-4 pb-2">
 		<Button
 			variant={owner === undefined ? 'secondary' : 'outline'}
-			class="h-11 w-full justify-start"
+			class="h-control w-full justify-start"
 			aria-pressed={owner === undefined}
 			disabled={busy}
 			onclick={() => void onchange(null)}
@@ -55,7 +55,7 @@
 		</Button>
 		<Button
 			variant={mine ? 'secondary' : 'outline'}
-			class="h-11 w-full justify-start"
+			class="h-control w-full justify-start"
 			aria-pressed={mine}
 			disabled={busy}
 			onclick={() => void onchange(me)}

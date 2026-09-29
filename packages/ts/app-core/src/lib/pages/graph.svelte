@@ -141,7 +141,7 @@
 	import { runtime, type KnownFolder } from '../runtime.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
-	import { saveHere, savesFiles } from '../save-file.js';
+	import { openHere as askForOne, saveHere, savesFiles } from '../save-file.js';
 	import { canvasInk } from '../stores/canvas-ink.svelte.js';
 	import { chat } from '../stores/chat.svelte.js';
 	import { codeDrift } from '../stores/code-drift.svelte.js';
@@ -1858,11 +1858,20 @@
 			run: startNumbering
 		},
 		{
+			id: 'find',
+			label: 'Find a note, or do something',
+			icon: Search,
+			says: THE_PALETTE,
+			group: 'Look',
+			where: ['menu'],
+			run: () => (finding = true)
+		},
+		{
 			id: 'the-graph',
 			label: 'See the notes as a graph',
 			icon: Network,
 			group: 'Look',
-			where: ['palette'],
+			where: ['palette', 'menu'],
 			run: () => prefs.set('walking', false)
 		},
 		{
@@ -1870,7 +1879,7 @@
 			label: 'See the notes as an outline',
 			icon: ListTree,
 			group: 'Look',
-			where: ['palette'],
+			where: ['palette', 'menu'],
 			run: () => prefs.set('walking', true)
 		},
 		{
@@ -1933,7 +1942,7 @@
 						icon: Upload,
 						group: 'Graph',
 						where: ['palette', 'menu'] as const,
-						run: () => chooser?.click()
+						run: () => void bringOneIn()
 					}
 				]
 			: [])
@@ -1963,7 +1972,12 @@
 	}
 
 	/** The file picker for a graph somebody is bringing in. */
-	let chooser = $state<HTMLInputElement>();
+	/** Ask for a graph kept in a file, wherever this platform asks for one — a
+	 *  line of the menu bar arrives with no tap on the page behind it, which a
+	 *  file input of our own would need. */
+	async function bringOneIn(): Promise<void> {
+		await readArchive((await askForOne('.sloppy')) ?? undefined);
+	}
 	/** The archive in hand, held while its preview is read and answered. */
 	let arriving = $state<{
 		file: File;
@@ -2235,10 +2249,10 @@
 			</DropdownMenu.Trigger>
 
 			<DropdownMenu.Content align={desk.current ? 'start' : 'end'} class="w-52">
-				<DropdownMenu.Item class="min-h-11" onSelect={() => canvasInk.undo(inkedOn)}>
+				<DropdownMenu.Item class="min-h-control" onSelect={() => canvasInk.undo(inkedOn)}>
 					Undo the last stroke
 				</DropdownMenu.Item>
-				<DropdownMenu.Item class="min-h-11" onSelect={() => canvasInk.rubOut(inkedOn)}>
+				<DropdownMenu.Item class="min-h-control" onSelect={() => canvasInk.rubOut(inkedOn)}>
 					Rub the drawing out
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
@@ -2247,11 +2261,11 @@
 {/snippet}
 
 {#snippet otherWrites()}
-	<DropdownMenu.Item class="min-h-11 gap-2" onSelect={writeAlone}>
+	<DropdownMenu.Item class="min-h-control gap-2" onSelect={writeAlone}>
 		<FilePlus class="size-4 text-muted-foreground" />
 		A note on its own
 	</DropdownMenu.Item>
-	<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startNumbering}>
+	<DropdownMenu.Item class="min-h-control gap-2" onSelect={startNumbering}>
 		<Hash class="size-4 text-muted-foreground" />
 		Number it yourself
 	</DropdownMenu.Item>
@@ -2259,7 +2273,7 @@
 
 {#snippet moreActs()}
 	{#each acts.inMore as one (one.id)}
-		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={one.run}>
+		<DropdownMenu.Item class="min-h-control gap-2" onSelect={one.run}>
 			{#if one.icon}<one.icon class="size-4 text-muted-foreground" />{/if}
 			{one.label}
 		</DropdownMenu.Item>
@@ -2374,7 +2388,7 @@
 				{#if loading || (foreign && peers.busy)}
 					<div class="space-y-2 px-2 pt-2">
 						{#each Array.from({ length: 6 }, (_, row) => row) as row (row)}
-							<Skeleton class="h-11 w-full" />
+							<Skeleton class="h-control w-full" />
 						{/each}
 					</div>
 				{:else if foreign}
@@ -2382,12 +2396,12 @@
 						<p class="text-muted-foreground" role="alert">
 							{peers.says ?? 'There is nothing in this branch to read.'}
 						</p>
-						<Button variant="outline" class="h-11" onclick={leaveRegion}>Your graph</Button>
+						<Button variant="outline" class="h-control" onclick={leaveRegion}>Your graph</Button>
 					</div>
 				{:else if unreachable}
 					<div class="mx-auto max-w-sm space-y-5 py-20 text-center">
 						<p class="text-muted-foreground" role="alert">{unreachable}</p>
-						<Button variant="outline" class="h-11" onclick={loadGraph}>Try again</Button>
+						<Button variant="outline" class="h-control" onclick={loadGraph}>Try again</Button>
 					</div>
 				{:else}
 					<div class="mx-auto max-w-sm space-y-6 py-20 text-center">
@@ -2396,30 +2410,35 @@
 							else grows out of it.
 						</p>
 						<div class="flex flex-col items-center gap-2">
-							<Button class="h-11" disabled={creating} onclick={() => writeBranch(null)}>
+							<Button class="h-control" disabled={creating} onclick={() => writeBranch(null)}>
 								Write the first note
 							</Button>
 							<Button
 								variant="ghost"
-								class="h-11"
+								class="h-control"
 								disabled={creating}
 								onclick={() => (shaping = true)}
 							>
 								Start from a shape
 							</Button>
-							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
+							<Button
+								variant="ghost"
+								class="h-control"
+								disabled={creating}
+								onclick={startNumbering}
+							>
 								Number it yourself
 							</Button>
 							{#if graphs.startsGraphs}
-								<Button variant="ghost" class="h-11" onclick={() => chooser?.click()}>
+								<Button variant="ghost" class="h-control" onclick={() => void bringOneIn()}>
 									Import a graph
 								</Button>
 							{/if}
-							<Button variant="ghost" class="h-11" onclick={() => (switching = true)}>
+							<Button variant="ghost" class="h-control" onclick={() => (switching = true)}>
 								Your graphs
 							</Button>
 							{#if !session.onDevice}
-								<Button variant="ghost" class="h-11" onclick={visitPeers}>
+								<Button variant="ghost" class="h-control" onclick={visitPeers}>
 									Read somebody else's
 								</Button>
 							{/if}
@@ -2478,7 +2497,7 @@
 						aria-label="Your graphs"
 						title={collapsed ? graphName : undefined}
 						onclick={() => (switching = true)}
-						class="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
+						class="flex min-h-control w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
 							? 'justify-center'
 							: ''}"
 					>
@@ -2503,8 +2522,8 @@
 							aria-keyshortcuts={THE_PALETTE.keys}
 							title={collapsed ? 'Find a note' : undefined}
 							onclick={() => (finding = true)}
-							class="flex min-h-11 items-center gap-2 rounded-full border border-input text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
-								? 'w-11 justify-center'
+							class="flex min-h-control items-center gap-2 rounded-full border border-input text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
+								? 'w-control justify-center'
 								: 'w-full px-3'}"
 						>
 							<Search class="size-4 shrink-0" />
@@ -2514,7 +2533,7 @@
 						{#if collapsed}
 							<Button
 								size="icon"
-								class="size-11 rounded-full"
+								class="size-control rounded-full"
 								disabled={creating}
 								aria-label="New branch ({NEW_BRANCH.says})"
 								aria-keyshortcuts={NEW_BRANCH.keys}
@@ -2528,7 +2547,7 @@
 										<Button
 											{...props}
 											variant="ghost"
-											class="size-11 rounded-full"
+											class="size-control rounded-full"
 											disabled={creating}
 											aria-label="Other ways to write"
 										>
@@ -2543,7 +2562,7 @@
 						{:else}
 							<div class="flex">
 								<Button
-									class="h-11 flex-1 rounded-s-full rounded-e-none pe-3"
+									class="h-control flex-1 rounded-s-full rounded-e-none pe-3"
 									disabled={creating}
 									aria-label="New branch ({NEW_BRANCH.says})"
 									aria-keyshortcuts={NEW_BRANCH.keys}
@@ -2557,7 +2576,7 @@
 										{#snippet child({ props })}
 											<Button
 												{...props}
-												class="h-11 rounded-s-none rounded-e-full border-s border-primary-foreground/25 px-2"
+												class="h-control rounded-s-none rounded-e-full border-s border-primary-foreground/25 px-2"
 												disabled={creating}
 												aria-label="Other ways to write"
 											>
@@ -2580,8 +2599,8 @@
 								onclick={one.run}
 								aria-label={collapsed ? one.label : undefined}
 								title={collapsed ? one.label : undefined}
-								class="flex min-h-11 items-center gap-3 rounded-lg text-sm text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
-									? 'w-11 justify-center'
+								class="flex min-h-control items-center gap-3 rounded-lg text-sm text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
+									? 'w-control justify-center'
 									: 'w-full px-2.5'}"
 							>
 								{#if one.icon}<one.icon class="size-4 shrink-0" />{/if}
@@ -2598,7 +2617,7 @@
 							aria-label="Tags"
 							title="Tags"
 							onclick={() => prefs.set('deskNavOpen', true)}
-							class="mx-auto flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+							class="mx-auto flex size-control shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 						>
 							<Tag class="size-4" />
 						</button>
@@ -3050,18 +3069,6 @@
 	<OpenHere brief />
 {/snippet}
 
-<input
-	bind:this={chooser}
-	type="file"
-	accept=".sloppy"
-	class="hidden"
-	onchange={(event) => {
-		const input = event.currentTarget;
-		void readArchive(input.files?.[0]);
-		input.value = '';
-	}}
-/>
-
 <ImportSheet
 	open={arriving !== null}
 	onOpenChange={(up) => {
@@ -3184,7 +3191,7 @@
 	<div class="space-y-3 px-2 pt-4">
 		<Input
 			bind:value={branchNumber}
-			class="h-11"
+			class="h-control"
 			inputmode="numeric"
 			autocomplete="off"
 			placeholder="7"
@@ -3203,14 +3210,14 @@
 		<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
 			<Button
 				variant="outline"
-				class="h-11 sm:h-9"
+				class="h-control sm:h-9"
 				disabled={creating}
 				onclick={() => (numbering = false)}
 			>
 				Cancel
 			</Button>
 			<Button
-				class="h-11 sm:h-9"
+				class="h-control sm:h-9"
 				disabled={creating || branchNumber.trim() === ''}
 				onclick={writeNumberedBranch}
 			>

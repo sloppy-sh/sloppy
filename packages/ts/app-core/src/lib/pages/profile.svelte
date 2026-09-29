@@ -215,7 +215,7 @@
 		{:else}
 			<PersonHeader person={shown.person}>
 				{#snippet actions()}
-					<Button variant="outline" class="h-11 sm:h-9" onclick={() => (editing = true)}>
+					<Button variant="outline" class="h-control sm:h-9" onclick={() => (editing = true)}>
 						<Pencil class="size-4" aria-hidden="true" />
 						Edit
 					</Button>
@@ -234,7 +234,7 @@
 							<li>
 								<a
 									href={nodeHref(branch.root)}
-									class="flex min-h-11 items-center gap-3 rounded-md px-1 transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+									class="flex min-h-control items-center gap-3 rounded-md px-1 transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 								>
 									<span class="shrink-0 address">{branch.address}</span>
 									<span class="min-w-0 flex-1">

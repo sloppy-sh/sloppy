@@ -479,7 +479,7 @@
 			<h3 class="text-sm font-medium">Find somebody</h3>
 			<Input
 				bind:value={identity}
-				class="h-11"
+				class="h-control"
 				autocomplete="off"
 				spellcheck="false"
 				placeholder="alice@sloppy.example"
@@ -487,7 +487,7 @@
 			/>
 			<Input
 				bind:value={where}
-				class="h-11"
+				class="h-control"
 				autocomplete="off"
 				spellcheck="false"
 				inputmode="url"
@@ -500,7 +500,7 @@
 			</p>
 			<Button
 				variant="outline"
-				class="h-11 w-full"
+				class="h-control w-full"
 				disabled={busy || identity.trim() === ''}
 				onclick={() => look(identity)}
 			>
@@ -516,7 +516,7 @@
 			<p class="text-sm text-destructive" role="alert">{says}</p>
 		{/if}
 		{#if onRetry && !busy}
-			<Button variant="outline" class="h-11 w-full" onclick={onRetry}>Try again</Button>
+			<Button variant="outline" class="h-control w-full" onclick={onRetry}>Try again</Button>
 		{/if}
 
 		{#if looking}

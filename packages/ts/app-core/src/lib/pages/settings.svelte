@@ -28,6 +28,8 @@
 		ACCENT_LABELS,
 		ACCENTS,
 		asOrigin,
+		DENSITIES,
+		DENSITY_LABELS,
 		FONT_LABELS,
 		FONTS,
 		prefs,
@@ -172,7 +174,7 @@
 			{#if wayOut}
 				<a
 					href="/sign-in"
-					class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					class="-ml-2 inline-flex min-h-control items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 				>
 					<ArrowLeft class="size-4" />
 					Back
@@ -241,6 +243,24 @@
 			</div>
 		</fieldset>
 
+		<fieldset class="space-y-3">
+			<legend class="text-sm font-medium">How close it is drawn</legend>
+			<div class="flex flex-wrap gap-2">
+				{#each DENSITIES as density (density)}
+					<ChoicePill
+						group="density"
+						value={density}
+						label={DENSITY_LABELS[density]}
+						checked={prefs.current.density === density}
+						onpick={() => prefs.set('density', density)}
+					/>
+				{/each}
+			</div>
+			<p class="text-sm text-muted-foreground">
+				Anything you tap stays big enough to tap, whatever you choose here.
+			</p>
+		</fieldset>
+
 		{#if graphHere.open}
 			<div class="space-y-3 border-t border-border pt-8">
 				<OpenHere />
@@ -263,7 +283,7 @@
 					</p>
 					<Button
 						variant="outline"
-						class="h-11"
+						class="h-control"
 						disabled={opening}
 						aria-busy={opening}
 						onclick={() => void openAnother()}
@@ -291,7 +311,7 @@
 						changed since the last one. A line of your own is where you try something without
 						touching the graph you have.
 					</p>
-					<Button variant="outline" class="h-11" onclick={() => (showingHistory = true)}>
+					<Button variant="outline" class="h-control" onclick={() => (showingHistory = true)}>
 						Open the history
 					</Button>
 					<HistorySettings />
@@ -317,9 +337,9 @@
 						spellcheck={false}
 						placeholder="sloppy.example.com"
 						bind:value={typedOrigin}
-						class="h-11 sm:flex-1"
+						class="h-control sm:flex-1"
 					/>
-					<Button type="submit" variant="outline" class="h-11">Point Sloppy here</Button>
+					<Button type="submit" variant="outline" class="h-control">Point Sloppy here</Button>
 				</form>
 				{#if originProblem}
 					<p class="text-sm text-destructive" role="alert">{originProblem}</p>
@@ -328,7 +348,7 @@
 					<p class="text-sm text-muted-foreground" role="status">{moved}</p>
 				{/if}
 				{#if prefs.current.origin}
-					<Button variant="ghost" class="h-11 px-0" onclick={() => pointAt(null)}>
+					<Button variant="ghost" class="h-control px-0" onclick={() => pointAt(null)}>
 						Use the one Sloppy came with
 					</Button>
 				{/if}
@@ -353,7 +373,7 @@
 					variant="outline"
 					onclick={takeCopy}
 					disabled={copying || !canSaveFiles}
-					class="h-11"
+					class="h-control"
 				>
 					{copying ? 'Putting it together…' : 'Download a copy'}
 				</Button>
@@ -402,14 +422,14 @@
 							Your identity lives at <span class="text-foreground select-text">{instance}</span>.
 						</p>
 					{/if}
-					<Button variant="ghost" onclick={signOut} disabled={leaving} class="h-11 px-0">
+					<Button variant="ghost" onclick={signOut} disabled={leaving} class="h-control px-0">
 						Sign out
 					</Button>
 				{:else}
 					<p class="text-sm text-muted-foreground">Your graph opens once you sign in.</p>
 					<a
 						href="/sign-in"
-						class="inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline"
+						class="inline-flex min-h-control items-center text-sm underline-offset-4 hover:underline"
 					>
 						Sign in
 					</a>

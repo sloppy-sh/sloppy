@@ -117,7 +117,7 @@
 	<div class="flex flex-col gap-3">
 		{#if chosen === null}
 			<Input
-				class="h-11"
+				class="h-control"
 				placeholder="Find a file"
 				aria-label="Find a file"
 				autocapitalize="off"
@@ -140,7 +140,7 @@
 							<button
 								type="button"
 								onclick={() => (chosen = path)}
-								class="flex min-h-11 w-full items-center rounded-md px-2 text-left font-mono text-sm transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+								class="flex min-h-control w-full items-center rounded-md px-2 text-left font-mono text-sm transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 							>
 								{path}
 							</button>
@@ -167,7 +167,7 @@
 			<label class="flex flex-col gap-1.5 text-sm">
 				What in it?
 				<Input
-					class="h-11"
+					class="h-control"
 					placeholder="12-20, or a name — leave this for the whole file"
 					autocapitalize="off"
 					autocorrect="off"
@@ -175,7 +175,7 @@
 					bind:value={within}
 				/>
 			</label>
-			<Button class="h-11 w-full sm:w-fit" onclick={cite}>Cite it</Button>
+			<Button class="h-control w-full sm:w-fit" onclick={cite}>Cite it</Button>
 		{/if}
 	</div>
 </ResponsiveModal>

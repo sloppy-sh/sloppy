@@ -73,8 +73,8 @@ describe('choosing the ground', () => {
 	it('offers rows a thumb can land on', () => {
 		open();
 		expect(target.querySelector('button')?.className).toContain('size-9');
-		for (const row of rows()) expect(row.className).toContain('min-h-11');
-		expect(picture()?.className).toContain('min-h-11');
+		for (const row of rows()) expect(row.className).toContain('min-h-control');
+		expect(picture()?.className).toContain('min-h-control');
 	});
 });
 

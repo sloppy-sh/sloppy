@@ -239,12 +239,16 @@
 										<ChatCard card={keeping.card} />
 									{/if}
 									<div class="mt-3 flex gap-2">
-										<Button class="h-11 flex-1" disabled={settling} onclick={() => onKept?.(true)}>
+										<Button
+											class="h-control flex-1"
+											disabled={settling}
+											onclick={() => onKept?.(true)}
+										>
 											Keep it
 										</Button>
 										<Button
 											variant="outline"
-											class="h-11 flex-1"
+											class="h-control flex-1"
 											disabled={settling}
 											onclick={() => onKept?.(false)}
 										>

@@ -67,10 +67,10 @@
 	<div class="space-y-3">
 		{#if places.length > 1}
 			<Select.Root type="single" value={at.name} onValueChange={onPick}>
-				<Select.Trigger class="h-11 w-full" aria-label="Where to">{at.at}</Select.Trigger>
+				<Select.Trigger class="h-control w-full" aria-label="Where to">{at.at}</Select.Trigger>
 				<Select.Content>
 					{#each places as one (one.name)}
-						<Select.Item value={one.name} class="min-h-11">{one.at}</Select.Item>
+						<Select.Item value={one.name} class="min-h-control">{one.at}</Select.Item>
 					{/each}
 				</Select.Content>
 			</Select.Root>
@@ -83,7 +83,7 @@
 		<div class="flex flex-col gap-2 sm:flex-row">
 			<Button
 				variant="outline"
-				class="h-11 sm:flex-1"
+				class="h-control sm:flex-1"
 				disabled={busy}
 				onclick={() => onLook(at.name)}
 			>
@@ -91,13 +91,13 @@
 			</Button>
 			<Button
 				variant="outline"
-				class="h-11 sm:flex-1"
+				class="h-control sm:flex-1"
 				disabled={busy}
 				onclick={() => onTakeIn(at.name)}
 			>
 				Take them in
 			</Button>
-			<Button class="h-11 sm:flex-1" disabled={busy} onclick={() => onPutThere(at.name)}>
+			<Button class="h-control sm:flex-1" disabled={busy} onclick={() => onPutThere(at.name)}>
 				Put yours there
 			</Button>
 		</div>

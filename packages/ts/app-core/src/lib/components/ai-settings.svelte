@@ -171,20 +171,24 @@
 								<Input
 									bind:value={typed}
 									type="password"
-									class="h-11 min-w-0 flex-1"
+									class="h-control min-w-0 flex-1"
 									autocapitalize="none"
 									autocomplete="off"
 									spellcheck="false"
 									aria-label="Key for {name}"
 									placeholder="Paste the key"
 								/>
-								<Button type="submit" class="h-11" disabled={busy === agent || typed.trim() === ''}>
+								<Button
+									type="submit"
+									class="h-control"
+									disabled={busy === agent || typed.trim() === ''}
+								>
 									Keep it here
 								</Button>
 								<Button
 									type="button"
 									variant="ghost"
-									class="h-11"
+									class="h-control"
 									onclick={() => {
 										typing = null;
 										typed = '';

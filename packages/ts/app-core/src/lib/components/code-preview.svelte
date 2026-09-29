@@ -139,7 +139,7 @@
 		{#if back !== undefined}
 			<Button
 				variant="ghost"
-				class="h-11 w-fit max-w-full gap-1.5 text-muted-foreground"
+				class="h-control w-fit max-w-full gap-1.5 text-muted-foreground"
 				onclick={() => (within = within.slice(0, -1))}
 			>
 				<ChevronLeft class="size-4 shrink-0" />
@@ -155,7 +155,7 @@
 						<button
 							type="button"
 							onclick={() => (within = [...within, entry.path])}
-							class="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+							class="flex min-h-control w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 						>
 							{#if entry.folder}
 								<Folder class="size-4 shrink-0 text-muted-foreground" />
@@ -200,7 +200,7 @@
 			{#if shown.more}
 				<Button
 					variant="ghost"
-					class="h-11 w-fit text-muted-foreground"
+					class="h-control w-fit text-muted-foreground"
 					onclick={() => (pages += 1)}
 				>
 					Show more of this file
@@ -212,7 +212,12 @@
 			<div class="flex flex-wrap items-center gap-2">
 				<CopyButton value={path} label="Copy the path" />
 				{#if openWhereFilesOpen}
-					<Button variant="outline" class="h-11" disabled={opening} onclick={() => void openIt()}>
+					<Button
+						variant="outline"
+						class="h-control"
+						disabled={opening}
+						onclick={() => void openIt()}
+					>
 						<SquareArrowOutUpRight class="size-4" />
 						Open in your editor
 					</Button>

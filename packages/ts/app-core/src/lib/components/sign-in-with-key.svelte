@@ -89,7 +89,7 @@
 		<div class="rounded-md border border-border">
 			<button
 				type="button"
-				class="flex min-h-11 w-full items-center justify-between gap-3 px-3 text-left text-sm hover:bg-muted"
+				class="flex min-h-control w-full items-center justify-between gap-3 px-3 text-left text-sm hover:bg-muted"
 				aria-expanded={showingHow}
 				aria-controls="how-your-key-is-found"
 				onclick={() => (showingHow = !showingHow)}
@@ -129,7 +129,7 @@
 			<p class="text-sm text-destructive" role="alert">{problem}</p>
 		{/if}
 
-		<Button type="submit" disabled={working} aria-busy={working} class="h-11 w-full">
+		<Button type="submit" disabled={working} aria-busy={working} class="h-control w-full">
 			{working ? 'Just a moment…' : 'Continue'}
 		</Button>
 	</form>
@@ -139,7 +139,7 @@
 			<p class="text-sm">Sign this exactly as it is, then paste the signature back.</p>
 			<pre
 				class="max-h-48 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs break-all whitespace-pre-wrap select-all">{statement}</pre>
-			<Button type="button" variant="outline" class="h-11 w-full" onclick={copy}>
+			<Button type="button" variant="outline" class="h-control w-full" onclick={copy}>
 				{copied ? 'Copied' : 'Copy the text'}
 			</Button>
 			<p class="text-sm text-muted-foreground">
@@ -174,14 +174,14 @@
 			<p class="text-sm text-destructive" role="alert">{problem}</p>
 		{/if}
 
-		<Button type="submit" disabled={working} aria-busy={working} class="h-11 w-full">
+		<Button type="submit" disabled={working} aria-busy={working} class="h-control w-full">
 			{working ? 'Signing you in…' : 'Sign in'}
 		</Button>
 		<Button
 			type="button"
 			variant="ghost"
 			disabled={working}
-			class="h-11 w-full"
+			class="h-control w-full"
 			onclick={startAgain}
 		>
 			Start again

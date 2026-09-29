@@ -167,7 +167,7 @@
 
 		{#if preview}
 			<Button
-				class="h-11 w-full"
+				class="h-control w-full"
 				disabled={busy || keptElsewhere > 0 || empty || unsettled > 0}
 				onclick={() => onimport(merging ? { resolutions: [...resolutions] } : undefined)}
 			>
@@ -175,6 +175,8 @@
 			</Button>
 		{/if}
 
-		<Button variant="ghost" class="h-11 w-full" disabled={busy} onclick={oncancel}>Cancel</Button>
+		<Button variant="ghost" class="h-control w-full" disabled={busy} onclick={oncancel}
+			>Cancel</Button
+		>
 	</div>
 </ResponsiveModal>

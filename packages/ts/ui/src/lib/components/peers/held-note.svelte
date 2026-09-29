@@ -104,7 +104,7 @@
 				<button
 					type="button"
 					onclick={onClose}
-					class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					class="-ml-2 inline-flex min-h-control items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 				>
 					<ArrowLeft class="size-4" />
 					Their graph
@@ -114,7 +114,7 @@
 						type="button"
 						onclick={() => void copy(citation)}
 						aria-label="Copy this note's address"
-						class="ml-auto inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						class="ml-auto inline-flex min-h-control min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 					>
 						<span class="truncate address select-text">{note.address}</span>
 						{#if copied}
@@ -126,7 +126,7 @@
 						type="button"
 						onclick={() => void copy(link)}
 						aria-label="Copy a link to this note"
-						class="ml-auto inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						class="ml-auto inline-flex min-h-control min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 					>
 						{#if copied}
 							<Check class="size-4 shrink-0" />
@@ -177,7 +177,7 @@
 			<div class="mt-6 space-y-2">
 				<Button
 					variant="outline"
-					class="h-11 w-full"
+					class="h-control w-full"
 					onclick={() => {
 						if (note) onCite(note);
 					}}

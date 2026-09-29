@@ -81,7 +81,7 @@
 			<div class="space-y-2">
 				<Button
 					variant="outline"
-					class="h-11 w-full"
+					class="h-control w-full"
 					disabled={busy}
 					onclick={() => void onKeepHere()}
 				>
@@ -89,14 +89,14 @@
 				</Button>
 				<Button
 					variant="outline"
-					class="h-11 w-full"
+					class="h-control w-full"
 					disabled={busy}
 					onclick={() => void onTakeThere()}
 				>
 					Take {line}'s
 				</Button>
 				{#if sections.length > 0}
-					<Button variant="ghost" class="h-11 w-full" onclick={() => (bySection = true)}>
+					<Button variant="ghost" class="h-control w-full" onclick={() => (bySection = true)}>
 						Choose section by section
 					</Button>
 				{/if}
@@ -138,7 +138,7 @@
 				{/each}
 			</ul>
 			<Button
-				class="h-11 w-full"
+				class="h-control w-full"
 				disabled={busy}
 				onclick={() => void onSettleSections(new Set(taking))}
 			>

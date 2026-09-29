@@ -273,7 +273,7 @@
 			{#each row.values as value (value)}
 				<Button
 					variant={row.on === value ? 'default' : 'outline'}
-					class="h-11 min-w-0 rounded-full"
+					class="h-control min-w-0 rounded-full"
 					aria-pressed={row.on === value}
 					onclick={() => row.choose(value)}
 				>
@@ -342,7 +342,7 @@
 		{#if series.length < PICTURES_PER_SERIES}
 			<Button
 				variant="outline"
-				class="h-11 w-full"
+				class="h-control w-full"
 				disabled={sending}
 				onclick={() => (choosing = true)}
 			>
@@ -382,7 +382,7 @@
 	{/if}
 
 	{#if !isUnstyled(shown)}
-		<Button variant="ghost" class="h-11 w-full text-muted-foreground" onclick={() => set({})}>
+		<Button variant="ghost" class="h-control w-full text-muted-foreground" onclick={() => set({})}>
 			Leave it plain
 		</Button>
 	{/if}

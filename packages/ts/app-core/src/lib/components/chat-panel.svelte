@@ -335,14 +335,18 @@
 			{/if}
 
 			{#if agents === null}
-				<Skeleton class="h-11 w-full" />
+				<Skeleton class="h-control w-full" />
 			{:else if agents === 'untold' || agents.length === 0}
 				<p class="px-1 py-2 text-sm text-muted-foreground">
 					{agents === 'untold'
 						? `Sloppy could not tell whether ${AGENTS_IT_ASKS} is on this machine.`
 						: `Sloppy asks ${AGENTS_IT_ASKS} to do this, and it is not on this machine. Install it, or give a key in Settings, then look again.`}
 				</p>
-				<Button variant="outline" class="h-11 w-full" onclick={() => void chat.lookForAgents()}>
+				<Button
+					variant="outline"
+					class="h-control w-full"
+					onclick={() => void chat.lookForAgents()}
+				>
 					Look again
 				</Button>
 			{:else}
@@ -431,7 +435,7 @@
 						bind:value={said}
 						rows={1}
 						maxlength={chat.roomToSay}
-						class="max-h-40 min-h-11 resize-none"
+						class="max-h-40 min-h-control resize-none"
 						aria-label="What you want written about"
 						placeholder="Say what you want written about"
 						onkeydown={onKey}
@@ -439,7 +443,7 @@
 					{#if chat.running}
 						<Button
 							variant="outline"
-							class="size-11 shrink-0"
+							class="size-control shrink-0"
 							aria-label="Stop"
 							disabled={chat.stopping}
 							onclick={() => void chat.stop()}
@@ -449,7 +453,7 @@
 					{:else}
 						<Button
 							type="submit"
-							class="size-11 shrink-0"
+							class="size-control shrink-0"
 							aria-label="Send"
 							disabled={said.trim() === '' && chat.attached.length === 0}
 						>
@@ -499,23 +503,26 @@
 										{#if at > 0}<DropdownMenu.Separator />{/if}
 										<DropdownMenu.GroupHeading class="text-xs">{one.name}</DropdownMenu.GroupHeading
 										>
-										<DropdownMenu.RadioItem class="min-h-11" value={route(one.agent, '')}>
+										<DropdownMenu.RadioItem class="min-h-control" value={route(one.agent, '')}>
 											Its own choice
 										</DropdownMenu.RadioItem>
 										{#each one.models as model (model.model)}
 											<DropdownMenu.RadioItem
-												class="min-h-11"
+												class="min-h-control"
 												value={route(one.agent, model.model)}
 											>
 												{model.name}
 											</DropdownMenu.RadioItem>
 										{/each}
 										{#if chat.agent === one.agent && chat.model !== undefined && !one.models.some((model) => model.model === chat.model)}
-											<DropdownMenu.RadioItem class="min-h-11" value={route(one.agent, chat.model)}>
+											<DropdownMenu.RadioItem
+												class="min-h-control"
+												value={route(one.agent, chat.model)}
+											>
 												{chat.model}
 											</DropdownMenu.RadioItem>
 										{/if}
-										<DropdownMenu.RadioItem class="min-h-11" value={route(one.agent, '…')}>
+										<DropdownMenu.RadioItem class="min-h-control" value={route(one.agent, '…')}>
 											Something else…
 										</DropdownMenu.RadioItem>
 									{/each}

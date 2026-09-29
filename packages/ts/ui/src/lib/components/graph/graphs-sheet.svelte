@@ -313,7 +313,7 @@
 				{@const up = here || (ref !== undefined && alsoUp.has(ref))}
 				<li class="flex flex-wrap items-center gap-2">
 					{#if ref === undefined}
-						<div class="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-2 text-sm">
+						<div class="flex min-h-control min-w-0 flex-1 items-center gap-2 px-2 text-sm">
 							<span class="w-4 shrink-0"></span>
 							<span class="min-w-0 flex-1">
 								<span class="block truncate">{nameOf(graph)}</span>
@@ -323,7 +323,7 @@
 					{:else if naming?.ref === ref}
 						<Input
 							bind:value={naming.title}
-							class="h-11 flex-1"
+							class="h-control flex-1"
 							autocomplete="off"
 							maxlength={512}
 							aria-label="Name"
@@ -335,7 +335,7 @@
 						/>
 						<Button
 							variant="outline"
-							class="h-11 shrink-0"
+							class="h-control shrink-0"
 							disabled={working || naming.title.trim() === ''}
 							onclick={renameGraph}
 						>
@@ -364,7 +364,7 @@
 						<button
 							type="button"
 							aria-current={here ? 'true' : undefined}
-							class="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"
+							class="flex min-h-control min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"
 							disabled={working}
 							onclick={() => {
 								if (folder !== undefined && onOpenFolder) {
@@ -474,7 +474,7 @@
 				<p class="text-xs text-muted-foreground">
 					An empty folder becomes a graph of its own. One that already holds a graph opens it.
 				</p>
-				<Button class="h-11 w-full" disabled={working} onclick={startFolder}>
+				<Button class="h-control w-full" disabled={working} onclick={startFolder}>
 					<Plus class="size-4" />
 					Choose a folder
 				</Button>
@@ -485,7 +485,12 @@
 					<p class="text-xs text-muted-foreground">
 						Notes that sit with the code they are about. Choose the project's own folder.
 					</p>
-					<Button variant="outline" class="h-11 w-full" disabled={working} onclick={openProject}>
+					<Button
+						variant="outline"
+						class="h-control w-full"
+						disabled={working}
+						onclick={openProject}
+					>
 						<FolderCode class="size-4" />
 						Choose a project
 					</Button>
@@ -500,7 +505,7 @@
 					<div class="flex gap-2">
 						<Input
 							bind:value={bringing}
-							class="h-11 flex-1"
+							class="h-control flex-1"
 							autocomplete="off"
 							autocapitalize="none"
 							spellcheck={false}
@@ -514,7 +519,7 @@
 							}}
 						/>
 						<Button
-							class="h-11 shrink-0"
+							class="h-control shrink-0"
 							disabled={working || bringing.trim() === ''}
 							onclick={bringOne}
 						>
@@ -529,7 +534,7 @@
 				<div class="flex gap-2">
 					<Input
 						bind:value={opening}
-						class="h-11 flex-1"
+						class="h-control flex-1"
 						autocomplete="off"
 						maxlength={512}
 						placeholder="The garden"
@@ -541,7 +546,7 @@
 						}}
 					/>
 					<Button
-						class="h-11 shrink-0"
+						class="h-control shrink-0"
 						disabled={working || opening.trim() === ''}
 						onclick={openGraph}
 					>

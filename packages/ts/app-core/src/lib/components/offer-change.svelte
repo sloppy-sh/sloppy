@@ -78,14 +78,14 @@
 
 		<Input
 			bind:value={message}
-			class="h-11"
+			class="h-control"
 			maxlength={2048}
 			autocomplete="off"
 			placeholder="Say what you changed, if you like"
 			aria-label="Say what you changed"
 		/>
 
-		<Button class="h-11 w-full" disabled={busy} onclick={() => void onOffer(message)}>
+		<Button class="h-control w-full" disabled={busy} onclick={() => void onOffer(message)}>
 			Offer it
 		</Button>
 

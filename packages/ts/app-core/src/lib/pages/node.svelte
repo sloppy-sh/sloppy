@@ -2264,7 +2264,7 @@
 			aria-label={away
 				? `${[note.address, note.title || 'Untitled'].filter(Boolean).join(' ')}, in ${away}`
 				: undefined}
-			class="flex min-h-11 min-w-0 flex-1 items-baseline gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+			class="flex min-h-control min-w-0 flex-1 items-baseline gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 		>
 			{#if note.address}
 				<span class="address shrink-0 text-sm text-muted-foreground">{note.address}</span>
@@ -2278,7 +2278,7 @@
 			<Button
 				variant="ghost"
 				size="icon"
-				class="size-11 shrink-0 text-muted-foreground"
+				class="size-control shrink-0 text-muted-foreground"
 				aria-label="Open {noteLabel(note)} as well"
 				onclick={() => onOpenAlso(note.ref)}
 			>
@@ -2312,7 +2312,7 @@
 			<button
 				type="button"
 				onclick={onBack ?? onClose}
-				class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+				class="-ml-2 inline-flex min-h-control items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 			>
 				<ArrowLeft class="size-4" />
 				{onBack ? 'Back' : 'Graph'}
@@ -2324,7 +2324,7 @@
 						bind:ref={actsFrom}
 						variant="ghost"
 						size="icon"
-						class="-mr-2 size-11 shrink-0 text-muted-foreground"
+						class="-mr-2 size-control shrink-0 text-muted-foreground"
 						aria-label="What to do with this note"
 						onclick={() => (acting = true)}
 					>
@@ -2379,7 +2379,7 @@
 									? `Copy the address ${node.address}, in ${graphHere}`
 									: `Copy the address ${node.address}`}
 							onclick={() => (own ? startAddressing() : void handOver(citation, 'Address copied.'))}
-							class="-ml-2 flex min-h-11 min-w-0 items-center rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+							class="-ml-2 flex min-h-control min-w-0 items-center rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 						>
 							<span class="flex min-w-0 items-baseline gap-2">
 								<span class="address truncate">{node.address}</span>
@@ -2392,7 +2392,7 @@
 							<Button
 								variant="ghost"
 								size="icon"
-								class="size-11 shrink-0 text-muted-foreground"
+								class="size-control shrink-0 text-muted-foreground"
 								aria-label={graphHere
 									? `Copy the address ${node.address}, in ${graphHere}`
 									: `Copy the address ${node.address}`}
@@ -2405,7 +2405,7 @@
 						<button
 							type="button"
 							onclick={startAddressing}
-							class="-ml-2 min-h-11 shrink-0 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+							class="-ml-2 min-h-control shrink-0 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 						>
 							Give it an address
 						</button>
@@ -2429,7 +2429,7 @@
 						<Input
 							bind:ref={addressField}
 							bind:value={addressTyped}
-							class="address h-11 min-w-0 flex-1"
+							class="address h-control min-w-0 flex-1"
 							autocapitalize="none"
 							autocomplete="off"
 							spellcheck="false"
@@ -2442,12 +2442,12 @@
 								stopAddressing();
 							}}
 						/>
-						<Button type="submit" class="h-11 shrink-0" disabled={writingAddress}>Save</Button>
+						<Button type="submit" class="h-control shrink-0" disabled={writingAddress}>Save</Button>
 						{#if node.address}
 							<Button
 								type="button"
 								variant="ghost"
-								class="h-11 shrink-0"
+								class="h-control shrink-0"
 								disabled={writingAddress}
 								onclick={() => void writeAddress(null)}
 							>
@@ -2458,7 +2458,7 @@
 							type="button"
 							variant="ghost"
 							size="icon"
-							class="size-11 shrink-0"
+							class="size-control shrink-0"
 							aria-label="Leave the address as it is"
 							disabled={writingAddress}
 							onclick={stopAddressing}
@@ -2513,7 +2513,7 @@
 						{#if mayConfirm}
 							<Button
 								variant="ghost"
-								class="-ml-2 h-11 shrink-0 text-muted-foreground"
+								class="-ml-2 h-control shrink-0 text-muted-foreground"
 								disabled={confirming}
 								onclick={() => void stillTrue()}
 							>
@@ -2580,7 +2580,7 @@
 				{#if readOnly}
 					<div
 						aria-label="Tags: {shownTags.join(', ')}"
-						class="flex min-h-11 w-full flex-wrap items-center gap-1.5"
+						class="flex min-h-control w-full flex-wrap items-center gap-1.5"
 					>
 						{@render tagBadges()}
 					</div>
@@ -2589,7 +2589,7 @@
 						type="button"
 						aria-label="Tags: {shownTags.join(', ')}"
 						onclick={() => (tagging = true)}
-						class="-mx-2 flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						class="-mx-2 flex min-h-control w-full flex-wrap items-center gap-1.5 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 					>
 						{@render tagBadges()}
 					</button>
@@ -2614,7 +2614,7 @@
 							{#if offers.changed(ref)}
 								<Button
 									variant="outline"
-									class="h-11"
+									class="h-control"
 									disabled={offers.busy}
 									onclick={() => (offeringChange = true)}
 								>
@@ -2624,7 +2624,7 @@
 							{#if myOffer}
 								<Button
 									variant="ghost"
-									class="h-11 text-muted-foreground"
+									class="h-control text-muted-foreground"
 									disabled={offers.busy}
 									onclick={() => void takeOfferBack()}
 								>
@@ -2652,7 +2652,7 @@
 			<!-- How a mark is drawn is whoever writes the note's, so a reader of
 			     somebody else's is shown the note and nothing to switch to. -->
 			{#if !gated}
-				<Tabs.List class="h-11 w-full p-1 sm:w-fit">
+				<Tabs.List class="h-control w-full p-1 sm:w-fit">
 					<Tabs.Trigger value="note" class="px-6">Note</Tabs.Trigger>
 					<Tabs.Trigger value="look" class="px-6">Look</Tabs.Trigger>
 				</Tabs.List>
@@ -2698,7 +2698,7 @@
 				{#if !loading && !unreachable && shapeable}
 					<Button
 						variant="ghost"
-						class="-mt-4 h-11 w-fit text-muted-foreground"
+						class="-mt-4 h-control w-fit text-muted-foreground"
 						disabled={seeding.has(ref)}
 						onclick={() => offerShapes('this')}
 					>
@@ -2732,7 +2732,7 @@
 						<div class="flex gap-2 @md:flex-1">
 							<Button
 								variant="outline"
-								class="h-11 flex-1"
+								class="h-control flex-1"
 								disabled={writingAnother}
 								aria-label="Write a note under this ({WRITE_UNDER.says})"
 								aria-keyshortcuts={WRITE_UNDER.keys}
@@ -2744,7 +2744,7 @@
 							<Button
 								variant="ghost"
 								size="icon"
-								class="size-11 shrink-0 text-muted-foreground"
+								class="size-control shrink-0 text-muted-foreground"
 								aria-label="Write a note under this, from a shape"
 								disabled={writingAnother}
 								onclick={() => offerShapes('under')}
@@ -2755,7 +2755,7 @@
 						<div class="flex gap-2 @md:flex-1">
 							<Button
 								variant="outline"
-								class="h-11 flex-1"
+								class="h-control flex-1"
 								disabled={writingAnother}
 								onclick={() => write('after', null)}
 							>
@@ -2765,7 +2765,7 @@
 							<Button
 								variant="ghost"
 								size="icon"
-								class="size-11 shrink-0 text-muted-foreground"
+								class="size-control shrink-0 text-muted-foreground"
 								aria-label="Write the next note, from a shape"
 								disabled={writingAnother}
 								onclick={() => offerShapes('after')}
@@ -2789,7 +2789,7 @@
 										{#if to}
 											{@render row(to, () => onOpen(target), true)}
 										{:else if gone.has(target)}
-											<p class="flex min-h-11 flex-1 items-center px-2 text-muted-foreground">
+											<p class="flex min-h-control flex-1 items-center px-2 text-muted-foreground">
 												A note that is no longer here.
 											</p>
 										{:else}
@@ -2798,7 +2798,7 @@
 										<Button
 											variant="ghost"
 											size="icon"
-											class="size-11 shrink-0 text-muted-foreground hover:text-destructive"
+											class="size-control shrink-0 text-muted-foreground hover:text-destructive"
 											aria-label={to ? `Unlink ${noteLabel(to)}` : 'Unlink'}
 											disabled={relinking.has(ref)}
 											onclick={() => unlink(target)}
@@ -2893,7 +2893,7 @@
 					{@const Way = way.icon}
 					<Button
 						variant="ghost"
-						class="h-11 min-w-0 flex-1 gap-1.5 px-1 text-muted-foreground"
+						class="h-control min-w-0 flex-1 gap-1.5 px-1 text-muted-foreground"
 						disabled={!way.to}
 						aria-label={way.to ? `${way.says}, ${noteLabel(way.to)}` : way.says}
 						onclick={() => way.to && onOpen(way.to.ref)}
@@ -2928,7 +2928,7 @@
 				<div class="space-y-3 px-2 pt-2">
 					<Button
 						variant="outline"
-						class="h-11 w-full"
+						class="h-control w-full"
 						disabled={relinking.has(ref)}
 						onclick={() => {
 							linking = false;
@@ -2941,7 +2941,7 @@
 
 					<Input
 						bind:value={cited}
-						class="h-11"
+						class="h-control"
 						placeholder="Or link by title or address"
 						aria-label="Link by title or address"
 						autocapitalize="none"
@@ -2958,7 +2958,11 @@
 							Sloppy could not open all of your graphs, so a note in one of them may be missing
 							here.
 						</p>
-						<Button variant="outline" class="h-11 w-full" onclick={() => void lookEverywhere()}>
+						<Button
+							variant="outline"
+							class="h-control w-full"
+							onclick={() => void lookEverywhere()}
+						>
 							Look again
 						</Button>
 					{/if}

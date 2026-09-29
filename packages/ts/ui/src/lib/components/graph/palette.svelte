@@ -161,7 +161,7 @@
 			<Input
 				bind:ref={field}
 				value={words}
-				class="h-11 ps-9"
+				class="h-control ps-9"
 				autocomplete="off"
 				role="combobox"
 				aria-expanded={rows.length > 0}
@@ -215,7 +215,7 @@
 							<button
 								type="button"
 								tabindex="-1"
-								class="flex min-h-11 w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								class="flex min-h-control w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 								onclick={() => onopen(note.ref)}
 							>
 								<span class="flex w-full min-w-0 items-baseline gap-2 text-sm">
@@ -240,7 +240,7 @@
 							<button
 								type="button"
 								tabindex="-1"
-								class="flex min-h-11 w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								class="flex min-h-control w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 								onclick={() => onrun?.(act.id)}
 							>
 								<span class="min-w-0 flex-1 truncate">{act.label}</span>

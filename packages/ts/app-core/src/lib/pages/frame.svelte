@@ -100,6 +100,8 @@
 		replaceState(url, page.state);
 	}
 
+	onMount(() => prefs.watchThePointer());
+
 	onMount(async () => {
 		prefs.init();
 		const code = page.url.searchParams.get('sloppy_code');
@@ -185,7 +187,7 @@
 			<Button
 				variant="outline"
 				disabled={session.loading}
-				class="h-11"
+				class="h-control"
 				onclick={() => void session.refresh()}
 			>
 				{session.loading ? 'Trying…' : 'Try again'}

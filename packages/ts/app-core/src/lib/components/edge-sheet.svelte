@@ -79,7 +79,7 @@
 	];
 
 	const pill =
-		'inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
+		'inline-flex min-h-control items-center gap-1.5 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
 	const chosen = (on: boolean) =>
 		on
 			? 'border-input text-foreground'
@@ -135,7 +135,7 @@
 			<p class="px-1 text-xs text-muted-foreground" id="edge-words">Words on the line</p>
 			<Input
 				bind:value={label}
-				class="h-11"
+				class="h-control"
 				maxlength={EDGE_LABEL_MAX}
 				autocomplete="off"
 				placeholder="Nothing written on it"
@@ -191,13 +191,13 @@
 		{/if}
 
 		<div class="flex flex-col gap-2 sm:flex-row-reverse">
-			<Button class="h-11 sm:flex-1" disabled={busy} onclick={save}>
+			<Button class="h-control sm:flex-1" disabled={busy} onclick={save}>
 				{busy ? 'Just a moment…' : offering ? 'Offer this look' : 'Save'}
 			</Button>
 			{#if line.look}
 				<Button
 					variant="ghost"
-					class="h-11 sm:flex-1"
+					class="h-control sm:flex-1"
 					disabled={busy}
 					onclick={() => void write({})}
 				>

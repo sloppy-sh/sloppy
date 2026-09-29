@@ -290,7 +290,7 @@
 
 			<Button
 				variant="outline"
-				class="h-11 w-full"
+				class="h-control w-full"
 				disabled={sending}
 				onclick={() => (choosing = true)}
 			>
@@ -315,7 +315,7 @@
 					value={Math.round(choice.strength * 100)}
 					oninput={(event) =>
 						onchange({ ...choice, strength: event.currentTarget.valueAsNumber / 100 })}
-					class="h-11 w-full accent-primary"
+					class="h-control w-full accent-primary"
 				/>
 			</div>
 
@@ -329,7 +329,7 @@
 
 			<Button
 				variant="outline"
-				class="h-11 w-full"
+				class="h-control w-full"
 				onclick={() => onchange({ ...choice, pictures: [] })}
 			>
 				No picture

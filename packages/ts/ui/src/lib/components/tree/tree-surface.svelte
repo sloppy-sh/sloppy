@@ -722,7 +722,7 @@
 	 *  section it moves. */
 	const railed = new SvelteMap<OwnedRef, number>();
 
-	/** A handle is `size-11`, so two of them on sections shorter than that would
+	/** A handle is `size-control`, so two of them on sections shorter than that would
 	 *  paint over each other and take each other's press. */
 	const RAIL_STEP = 44;
 
@@ -943,7 +943,7 @@
 									onclick={() => act(group, row, heads)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted sm:gap-2 {selection.length >
+									class="flex min-h-control cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted sm:gap-2 {selection.length >
 										0 && asked.length === 0
 										? 'opacity-45'
 										: ''} {!heads && lit.has(row.note.ref)
@@ -962,7 +962,7 @@
 												event.stopPropagation();
 												toggle(row.note.ref, !row.open);
 											}}
-											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+											class="flex size-control shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>
 											<ChevronRight
 												class="size-4 transition-transform motion-reduce:transition-none {row.open
@@ -971,7 +971,7 @@
 											/>
 										</button>
 									{:else}
-										<span class="size-11 shrink-0" aria-hidden="true"></span>
+										<span class="size-control shrink-0" aria-hidden="true"></span>
 									{/if}
 
 									<!-- What the row is read by is its grip: it is what a move
@@ -1053,7 +1053,7 @@
 												event.stopPropagation();
 												onOpen(row.note.ref);
 											}}
-											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+											class="flex size-control shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>
 											<FileText class="size-4" />
 										</button>
@@ -1077,7 +1077,7 @@
 												}
 												writeUnder?.write(row.note.ref);
 											}}
-											class="flex size-11 shrink-0 touch-pan-y items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+											class="flex size-control shrink-0 touch-pan-y items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>
 											<CornerDownRight class="size-4" />
 										</button>
@@ -1120,7 +1120,7 @@
 														}
 														nudging = nudging === one.ref ? null : one.ref;
 													}}
-													class="flex size-11 shrink-0 cursor-grab touch-pan-y items-center justify-center rounded-md text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+													class="flex size-control shrink-0 cursor-grab touch-pan-y items-center justify-center rounded-md text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 												>
 													<GripVertical class="size-4" />
 												</button>
@@ -1130,7 +1130,7 @@
 														disabled={at === 0}
 														aria-label="Move it up in {noteLabel(row.note)}"
 														onclick={() => arrange(row.note.ref, one.ref, -1)}
-														class="flex size-11 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+														class="flex size-control shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
 													>
 														<ArrowUp class="size-4" />
 													</button>
@@ -1139,7 +1139,7 @@
 														disabled={at === stackOf(row.note.ref).length - 1}
 														aria-label="Move it down in {noteLabel(row.note)}"
 														onclick={() => arrange(row.note.ref, one.ref, 1)}
-														class="flex size-11 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+														class="flex size-control shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
 													>
 														<ArrowDown class="size-4" />
 													</button>
@@ -1161,12 +1161,12 @@
 									onclick={() => act(group, row, heads)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 items-center gap-1 rounded-lg pe-2 text-sm text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2 {row.again
+									class="flex min-h-control items-center gap-1 rounded-lg pe-2 text-sm text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2 {row.again
 										? 'cursor-pointer hover:bg-muted/60'
 										: ''}"
 									style="padding-inline-start: {step}"
 								>
-									<span class="size-11 shrink-0" aria-hidden="true"></span>
+									<span class="size-control shrink-0" aria-hidden="true"></span>
 									<span class="min-w-0 truncate">{row.says}</span>
 								</div>
 							{:else}
@@ -1181,10 +1181,10 @@
 									onclick={() => reveal(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2"
+									class="flex min-h-control cursor-pointer items-center gap-1 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2"
 									style="padding-inline-start: {step}"
 								>
-									<span class="size-11 shrink-0" aria-hidden="true"></span>
+									<span class="size-control shrink-0" aria-hidden="true"></span>
 									<span class="min-w-0 truncate">
 										{row.rest.toLocaleString()} more{row.parent
 											? ` under ${row.parent}`

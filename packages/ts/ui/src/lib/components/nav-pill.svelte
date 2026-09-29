@@ -95,7 +95,7 @@
 			href={item.href}
 			aria-current={active ? 'page' : undefined}
 			class={cn(
-				'relative flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-full px-3 font-medium transition-[color,background-color,scale] duration-150 ease-out motion-safe:active:scale-95 motion-reduce:transition-none sm:min-w-0 sm:flex-row sm:gap-2 sm:px-4',
+				'relative flex min-h-control min-w-control flex-col items-center justify-center gap-0.5 rounded-full px-3 font-medium transition-[color,background-color,scale] duration-150 ease-out motion-safe:active:scale-95 motion-reduce:transition-none sm:min-w-0 sm:flex-row sm:gap-2 sm:px-4',
 				active
 					? 'bg-primary/10 text-primary'
 					: 'text-foreground/60 hover:bg-muted/70 hover:text-foreground/80'
@@ -130,7 +130,7 @@
 		<button
 			type="button"
 			onclick={action.onSelect}
-			class="flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-full px-3 font-medium text-foreground/60 transition-[color,background-color,scale] duration-150 ease-out hover:bg-muted/70 hover:text-foreground/80 motion-safe:active:scale-95 motion-reduce:transition-none sm:min-w-0 sm:flex-row sm:gap-2 sm:px-4"
+			class="flex min-h-control min-w-control flex-col items-center justify-center gap-0.5 rounded-full px-3 font-medium text-foreground/60 transition-[color,background-color,scale] duration-150 ease-out hover:bg-muted/70 hover:text-foreground/80 motion-safe:active:scale-95 motion-reduce:transition-none sm:min-w-0 sm:flex-row sm:gap-2 sm:px-4"
 		>
 			<action.icon class="size-5" />
 			<span class="text-[11px] leading-none whitespace-nowrap sm:text-sm">{action.label}</span>

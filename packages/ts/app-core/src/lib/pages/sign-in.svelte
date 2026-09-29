@@ -86,7 +86,12 @@
 		{#if here || unanswered}
 			<div class="space-y-3">
 				{#if here}
-					<Button type="button" disabled={leaving} class="h-11 w-full" onclick={() => go(here!)}>
+					<Button
+						type="button"
+						disabled={leaving}
+						class="h-control w-full"
+						onclick={() => go(here!)}
+					>
 						Start here
 					</Button>
 					<p class="text-sm text-muted-foreground">
@@ -100,7 +105,7 @@
 						type="button"
 						variant="outline"
 						disabled={asking}
-						class="h-11 w-full"
+						class="h-control w-full"
 						onclick={() => void offer()}
 					>
 						{asking ? 'Trying…' : 'Try again'}
@@ -134,7 +139,7 @@
 				<p class="text-sm text-destructive" role="alert">{problem ?? refused}</p>
 			{/if}
 
-			<Button type="submit" disabled={leaving} aria-busy={leaving} class="h-11 w-full">
+			<Button type="submit" disabled={leaving} aria-busy={leaving} class="h-control w-full">
 				{leaving ? 'Taking you there…' : 'Continue'}
 			</Button>
 		</form>
@@ -159,7 +164,7 @@
 
 		<a
 			href="/settings"
-			class="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+			class="inline-flex min-h-control items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
 		>
 			Settings
 		</a>

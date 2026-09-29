@@ -114,7 +114,7 @@
 				Sloppy could not open all of your graphs, so a note at {ask.parent} may be missing here.
 			</p>
 			{#if onlookagain}
-				<Button variant="outline" class="h-11 w-full" disabled={busy} onclick={onlookagain}>
+				<Button variant="outline" class="h-control w-full" disabled={busy} onclick={onlookagain}>
 					Look again
 				</Button>
 			{/if}
@@ -123,7 +123,7 @@
 		{#if writes}
 			<Button
 				variant="outline"
-				class="h-auto min-h-11 w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
+				class="h-auto min-h-control w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
 				disabled={busy}
 				onclick={onwrite}
 			>
@@ -141,7 +141,7 @@
 		{#if ask.kind !== 'nowhere'}
 			<Button
 				variant="outline"
-				class="h-auto min-h-11 w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
+				class="h-auto min-h-control w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
 				disabled={busy}
 				onclick={oncarry}
 			>
@@ -164,7 +164,7 @@
 
 		<Button
 			variant="outline"
-			class="h-auto min-h-11 w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
+			class="h-auto min-h-control w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
 			disabled={busy}
 			onclick={onkeep}
 		>
@@ -178,7 +178,7 @@
 			<p class="px-2 text-sm text-destructive" role="alert">{refused}</p>
 		{/if}
 
-		<Button variant="ghost" class="h-11 w-full" disabled={busy} onclick={onelse}>
+		<Button variant="ghost" class="h-control w-full" disabled={busy} onclick={onelse}>
 			{ask.kind === 'nowhere' ? 'Pick another number' : 'Cancel'}
 		</Button>
 	</div>

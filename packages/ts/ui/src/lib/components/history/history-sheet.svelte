@@ -230,7 +230,7 @@
 						<li>
 							<button
 								type="button"
-								class="flex min-h-11 w-full items-baseline gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"
+								class="flex min-h-control w-full items-baseline gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"
 								onclick={() => onSettle(note.path)}
 							>
 								{#if note.address}
@@ -265,7 +265,7 @@
 				/>
 			{/if}
 			<Button
-				class="h-11"
+				class="h-control"
 				disabled={busy || unsettled || (kept && !anythingToKeep)}
 				onclick={() => (keeping = true)}
 			>
@@ -366,7 +366,7 @@
 				<div class="flex gap-2">
 					<Input
 						bind:value={naming}
-						class="h-11 flex-1"
+						class="h-control flex-1"
 						autocomplete="off"
 						maxlength={128}
 						placeholder="another-way"
@@ -379,7 +379,7 @@
 					/>
 					<Button
 						variant="outline"
-						class="h-11 shrink-0"
+						class="h-control shrink-0"
 						disabled={busy || !kept || naming.trim() === ''}
 						onclick={startLine}
 					>
@@ -400,12 +400,12 @@
 				<div class="flex-1 space-y-1">
 					<span class="text-xs text-muted-foreground" id="difference-from">From</span>
 					<Select.Root type="single" bind:value={before}>
-						<Select.Trigger class="h-11 w-full" aria-labelledby="difference-from">
+						<Select.Trigger class="h-control w-full" aria-labelledby="difference-from">
 							{labelled(before)}
 						</Select.Trigger>
 						<Select.Content>
 							{#each states as state (state.value)}
-								<Select.Item value={state.value} class="min-h-11">{state.label}</Select.Item>
+								<Select.Item value={state.value} class="min-h-control">{state.label}</Select.Item>
 							{/each}
 						</Select.Content>
 					</Select.Root>
@@ -413,19 +413,19 @@
 				<div class="flex-1 space-y-1">
 					<span class="text-xs text-muted-foreground" id="difference-to">To</span>
 					<Select.Root type="single" bind:value={after}>
-						<Select.Trigger class="h-11 w-full" aria-labelledby="difference-to">
+						<Select.Trigger class="h-control w-full" aria-labelledby="difference-to">
 							{labelled(after)}
 						</Select.Trigger>
 						<Select.Content>
 							{#each states as state (state.value)}
-								<Select.Item value={state.value} class="min-h-11">{state.label}</Select.Item>
+								<Select.Item value={state.value} class="min-h-control">{state.label}</Select.Item>
 							{/each}
 						</Select.Content>
 					</Select.Root>
 				</div>
 				<Button
 					variant="outline"
-					class="h-11 shrink-0"
+					class="h-control shrink-0"
 					disabled={comparing || before === after}
 					onclick={compare}
 				>
@@ -455,7 +455,7 @@
 	<div class="space-y-3 px-2 pt-4 pb-2">
 		<Input
 			bind:value={message}
-			class="h-11"
+			class="h-control"
 			autocomplete="off"
 			maxlength={512}
 			placeholder="Where the argument turned"
@@ -466,7 +466,7 @@
 				void keep();
 			}}
 		/>
-		<Button class="h-11 w-full" disabled={busy || message.trim() === ''} onclick={keep}>
+		<Button class="h-control w-full" disabled={busy || message.trim() === ''} onclick={keep}>
 			Keep it
 		</Button>
 		{#if says}

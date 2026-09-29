@@ -215,13 +215,13 @@ describe('a copy of everything somebody keeps', () => {
 });
 
 describe('settings', () => {
-	it('keeps the four axes of the look together', () => {
+	it('keeps the five axes of the look together', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
-		for (const legend of ['Theme', 'Accent', 'Style', 'Font']) {
+		for (const legend of ['Theme', 'Accent', 'Style', 'Font', 'How close it is drawn']) {
 			expect(target.textContent).toContain(legend);
 		}
-		expect(target.querySelectorAll('input[type="radio"]').length).toBe(18);
+		expect(target.querySelectorAll('input[type="radio"]').length).toBe(21);
 	});
 
 	// The face is the one look choice somebody may not be able to read the page

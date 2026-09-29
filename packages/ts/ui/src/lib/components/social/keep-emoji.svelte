@@ -61,7 +61,7 @@
 				<img src={emoji.src} alt={named} class="size-12 shrink-0 object-contain" />
 				<Input
 					bind:value={shortcode}
-					class="h-11"
+					class="h-control"
 					autocapitalize="none"
 					autocomplete="off"
 					spellcheck="false"
@@ -78,7 +78,8 @@
 			{#if refused}
 				<p class="text-sm text-destructive" role="alert">{refused}</p>
 			{/if}
-			<Button class="h-11 w-full" disabled={keeping || !spelled} onclick={keep}>Keep it</Button>
+			<Button class="h-control w-full" disabled={keeping || !spelled} onclick={keep}>Keep it</Button
+			>
 		</div>
 	{/if}
 </ResponsiveModal>

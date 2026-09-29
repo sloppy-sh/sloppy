@@ -95,7 +95,7 @@
 	{#if following}
 		<Button
 			variant="ghost"
-			class="h-11 shrink-0 rounded-full sm:h-9"
+			class="h-control shrink-0 rounded-full sm:h-9"
 			disabled={busy}
 			onclick={onUnfollow}
 		>
@@ -105,7 +105,7 @@
 	{:else}
 		<Button
 			variant="outline"
-			class="h-11 shrink-0 rounded-full sm:h-9"
+			class="h-control shrink-0 rounded-full sm:h-9"
 			disabled={busy}
 			onclick={onFollow}
 		>
@@ -138,7 +138,7 @@
 		<section class="space-y-2 border-t border-border pt-4">
 			<h3 class="text-sm font-medium">What they publish</h3>
 			{#if looking}
-				<Skeleton class="h-11 w-full" />
+				<Skeleton class="h-control w-full" />
 			{:else if found}
 				<PublishedRoots
 					publications={found.publications}

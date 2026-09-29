@@ -32,12 +32,12 @@ beforeEach(() => {
 	stubResizeObserver();
 	viewport = stubMediaQuery(OVER);
 	// jsdom lays nothing out, so the column measures the width its own class
-	// names — `w-64` open, `w-14` as a rail.
+	// names — the column's own width open, its rail width narrowed.
 	Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
 		configurable: true,
 		get(this: HTMLElement) {
-			if (this.classList.contains('w-64')) return 256;
-			return this.classList.contains('w-14') ? 56 : 0;
+			if (this.classList.contains('w-(--desk-nav-width)')) return 256;
+			return this.classList.contains('w-(--desk-nav-rail)') ? 56 : 0;
 		}
 	});
 	target = document.createElement('div');
@@ -198,8 +198,8 @@ describe('the chrome beside the graph', () => {
 		viewport = stubMediaQuery(BESIDE);
 		render();
 		const toggle = sidebar()?.querySelector('button[aria-expanded]');
-		expect(toggle?.className).toContain('min-h-11');
-		expect(toggle?.className).toContain('min-w-11');
+		expect(toggle?.className).toContain('min-h-control');
+		expect(toggle?.className).toContain('min-w-control');
 	});
 
 	it('hands the widening back to whoever keeps it', () => {

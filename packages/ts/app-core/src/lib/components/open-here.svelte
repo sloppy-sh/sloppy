@@ -97,7 +97,7 @@
 		{#if open.how === 'archive'}
 			<Button
 				variant="outline"
-				class="h-11"
+				class="h-control"
 				disabled={working !== null || !canSaveFiles}
 				aria-busy={working === 'copy'}
 				onclick={() => void doing('copy', () => graphHere.saveCopy())}
@@ -108,7 +108,7 @@
 		{#if graphHere.opensAFolder}
 			<Button
 				variant="outline"
-				class="h-11"
+				class="h-control"
 				disabled={working !== null}
 				aria-busy={working === 'folder'}
 				onclick={() => leave('folder')}
@@ -118,7 +118,7 @@
 		{/if}
 		<Button
 			variant="outline"
-			class="h-11"
+			class="h-control"
 			disabled={working !== null}
 			aria-busy={working === 'archive'}
 			onclick={() => leave('archive')}
@@ -127,7 +127,7 @@
 		</Button>
 		<Button
 			variant="ghost"
-			class="h-11"
+			class="h-control"
 			disabled={working !== null}
 			aria-busy={working === 'close'}
 			onclick={() => leave('close')}
@@ -148,7 +148,7 @@
 		</p>
 		<div class="flex flex-col gap-2 sm:flex-row">
 			<Button
-				class="h-11 sm:flex-1"
+				class="h-control sm:flex-1"
 				disabled={working !== null}
 				aria-busy={working === 'again'}
 				onclick={() => void doing('again', () => graphHere.openAgain())}
@@ -158,7 +158,7 @@
 			</Button>
 			<Button
 				variant="ghost"
-				class="h-11"
+				class="h-control"
 				disabled={working !== null}
 				onclick={() => graphHere.notNow()}
 			>
@@ -180,7 +180,7 @@
 		{#if graphHere.opensAFolder}
 			<Button
 				variant="outline"
-				class="h-11 sm:flex-1"
+				class="h-control sm:flex-1"
 				disabled={working !== null}
 				aria-busy={working === 'folder'}
 				onclick={() => leave('folder')}
@@ -191,7 +191,7 @@
 		{/if}
 		<Button
 			variant="outline"
-			class="h-11 sm:flex-1"
+			class="h-control sm:flex-1"
 			disabled={working !== null}
 			aria-busy={working === 'archive'}
 			onclick={() => leave('archive')}
@@ -222,7 +222,7 @@
 			<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
 				<Button
 					variant="outline"
-					class="h-11 sm:h-9"
+					class="h-control sm:h-9"
 					disabled={working !== null}
 					onclick={() => (asking = null)}
 				>
@@ -230,7 +230,7 @@
 				</Button>
 				<Button
 					variant="outline"
-					class="h-11 sm:h-9"
+					class="h-control sm:h-9"
 					disabled={working !== null || !canSaveFiles}
 					aria-busy={working === 'copy'}
 					onclick={() => void doing('copy', () => graphHere.saveCopy())}
@@ -238,7 +238,7 @@
 					{working === 'copy' ? 'Putting it together…' : 'Save a copy'}
 				</Button>
 				<Button
-					class="h-11 sm:h-9"
+					class="h-control sm:h-9"
 					disabled={working !== null}
 					onclick={() => void answered(question.way)}
 				>

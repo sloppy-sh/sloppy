@@ -28,6 +28,12 @@
 			root.setAttribute('data-accent', saved.accent || 'indigo');
 			if (saved.style && saved.style !== 'default') root.setAttribute('data-style', saved.style);
 			if (saved.font && saved.font !== 'system') root.setAttribute('data-app-font', saved.font);
+			// `auto` is what this device is: closer where a mouse is the only pointer.
+			var density = saved.density || 'auto';
+			var forAMouse =
+				matchMedia('(pointer: fine)').matches && !matchMedia('(any-pointer: coarse)').matches;
+			if (density === 'compact' || (density === 'auto' && forAMouse))
+				root.setAttribute('data-density', 'compact');
 			root.classList.toggle('dark', dark);
 
 			// The browser's own chrome, taking the ground from app.css rather than

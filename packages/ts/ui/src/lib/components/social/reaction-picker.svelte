@@ -58,7 +58,7 @@
 	<div class="space-y-3 px-2 pt-2">
 		<Input
 			bind:value={query}
-			class="h-11"
+			class="h-control"
 			placeholder="Search"
 			aria-label="Search emoji"
 			autocapitalize="none"
@@ -76,7 +76,7 @@
 							title={entry.shortcode}
 							aria-label={entry.shortcode}
 							onclick={() => choose(entry)}
-							class="flex size-11 items-center justify-center rounded-md text-2xl transition-colors duration-150 ease-out hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+							class="flex size-control items-center justify-center rounded-md text-2xl transition-colors duration-150 ease-out hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 						>
 							{#if isCustomEmoji(entry)}
 								<img

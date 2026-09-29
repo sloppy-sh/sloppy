@@ -32,5 +32,12 @@ export default defineConfig({
 		host: host || false,
 		hmr: host ? { protocol: 'ws', host, port: 8041 } : undefined
 	},
-	test: { environment: 'jsdom', include: ['src/**/*.test.ts'] }
+	test: {
+		environment: 'jsdom',
+		include: ['src/**/*.test.ts'],
+		// The first test in a file that mounts the whole app pays for compiling it,
+		// which is seconds rather than milliseconds and is not what the test is
+		// measuring; the default would call that a hang under a loaded machine.
+		testTimeout: 30_000
+	}
 });

@@ -50,7 +50,7 @@
 			onValueChange={(next: string) => onchange(next as GraphGround)}
 		>
 			{#each GRAPH_GROUNDS as ground (ground)}
-				<DropdownMenu.RadioItem value={ground} class="min-h-11">
+				<DropdownMenu.RadioItem value={ground} class="min-h-control">
 					{LABELS[ground]}
 				</DropdownMenu.RadioItem>
 			{/each}
@@ -58,7 +58,7 @@
 
 		{#if onpicture}
 			<DropdownMenu.Separator />
-			<DropdownMenu.Item class="min-h-11" onSelect={onpicture}>
+			<DropdownMenu.Item class="min-h-control" onSelect={onpicture}>
 				<Image class="size-4" />
 				{pictured ? 'Change the picture' : 'Add a picture'}
 			</DropdownMenu.Item>

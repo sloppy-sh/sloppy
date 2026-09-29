@@ -188,6 +188,7 @@ describe('the saved look', () => {
 			chatWidth: null,
 			deskNavOpen: true,
 			tagOrder: 'count',
+			density: 'auto',
 			aiOffered: false,
 			chatAgent: null,
 			// A model this build does not name is still the person's to ask for;

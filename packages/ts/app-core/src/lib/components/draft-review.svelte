@@ -146,7 +146,7 @@
 	<div class="flex shrink-0 flex-col gap-2 border-t border-border pt-3">
 		{#if read && !read.nothing}
 			<Button
-				class="h-11 w-full"
+				class="h-control w-full"
 				disabled={chatDraft.busy || chatDraft.reading || unsettled > 0}
 				onclick={() => void take()}
 			>
@@ -162,7 +162,7 @@
 		{/if}
 		<Button
 			variant="ghost"
-			class="h-11 w-full"
+			class="h-control w-full"
 			disabled={chatDraft.busy}
 			onclick={() => void throwAway()}
 		>

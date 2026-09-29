@@ -94,7 +94,7 @@
 			{#each choices as choice (choice.value)}
 				<Button
 					variant={choice.value === held ? 'default' : 'outline'}
-					class="h-11 rounded-full"
+					class="h-control rounded-full"
 					aria-pressed={choice.value === held}
 					onclick={() => pick(choice.value)}
 				>
@@ -139,7 +139,7 @@
 		<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
 			<Button
 				variant="ghost"
-				class="h-11 sm:h-9"
+				class="h-control sm:h-9"
 				disabled={working}
 				onclick={() => void apply(null)}
 			>
@@ -147,14 +147,14 @@
 			</Button>
 			<Button
 				variant="outline"
-				class="h-11 sm:h-9"
+				class="h-control sm:h-9"
 				disabled={working}
 				onclick={() => (open = false)}
 			>
 				Cancel
 			</Button>
 			<Button
-				class="h-11 sm:h-9"
+				class="h-control sm:h-9"
 				disabled={working || look === null}
 				onclick={() => void apply(look)}
 			>

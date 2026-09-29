@@ -147,7 +147,7 @@
 					item.onSelect();
 				}}
 				class={cn(
-					'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors duration-150 ease-out hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none',
+					'flex min-h-control w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors duration-150 ease-out hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none',
 					item.destructive && 'text-destructive'
 				)}
 			>

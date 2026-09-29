@@ -161,7 +161,7 @@
 							{#if !one.writing}
 								<Button
 									variant="outline"
-									class="h-11"
+									class="h-control"
 									disabled={busy !== null}
 									onclick={() => writeAs(one.did)}
 								>
@@ -170,7 +170,7 @@
 							{/if}
 							<Button
 								variant="ghost"
-								class="h-11"
+								class="h-control"
 								disabled={busy !== null}
 								aria-expanded={naming === one.did}
 								onclick={() => nameIt(one)}
@@ -180,7 +180,7 @@
 							{#if one.carriable && canCarryOut}
 								<Button
 									variant="ghost"
-									class="h-11"
+									class="h-control"
 									disabled={busy !== null}
 									onclick={() => carryOut(one.did)}
 								>
@@ -201,11 +201,11 @@
 									autocomplete="off"
 									placeholder="What you call it"
 									bind:value={typed}
-									class="h-11 sm:flex-1"
+									class="h-control sm:flex-1"
 								/>
 								<Button
 									type="submit"
-									class="h-11"
+									class="h-control"
 									disabled={busy !== null}
 									aria-busy={busy === `call:${one.did}`}
 								>
@@ -228,13 +228,13 @@
 
 		<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
 			{#if mints}
-				<Button variant="outline" class="h-11" disabled={busy !== null} onclick={makeOne}>
+				<Button variant="outline" class="h-control" disabled={busy !== null} onclick={makeOne}>
 					{busy === 'make' ? 'One moment…' : 'Start a new one here'}
 				</Button>
 			{/if}
 			<Button
 				variant="outline"
-				class="h-11"
+				class="h-control"
 				disabled={busy !== null}
 				onclick={() => (asking = !asking)}
 				aria-expanded={asking}
@@ -242,10 +242,10 @@
 				Sign in with your identity
 			</Button>
 			{#if canBringIn}
-				<Button variant="outline" class="h-11" disabled={busy !== null} onclick={bring}>
+				<Button variant="outline" class="h-control" disabled={busy !== null} onclick={bring}>
 					{busy === 'bring' ? 'Reading it…' : 'Bring one from another device'}
 				</Button>
-				<Button variant="outline" class="h-11" disabled={busy !== null} onclick={bringLocked}>
+				<Button variant="outline" class="h-control" disabled={busy !== null} onclick={bringLocked}>
 					{busy === 'bring-locked' ? 'Reading it…' : 'Bring one you keep under a passphrase'}
 				</Button>
 			{/if}
@@ -267,9 +267,14 @@
 					spellcheck={false}
 					placeholder="keys.example.com"
 					bind:value={address}
-					class="h-11 sm:flex-1"
+					class="h-control sm:flex-1"
 				/>
-				<Button type="submit" class="h-11" disabled={busy !== null} aria-busy={busy === 'sign-in'}>
+				<Button
+					type="submit"
+					class="h-control"
+					disabled={busy !== null}
+					aria-busy={busy === 'sign-in'}
+				>
 					{busy === 'sign-in' ? 'Taking you there…' : 'Continue'}
 				</Button>
 			</form>

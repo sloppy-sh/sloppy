@@ -30,7 +30,7 @@
 	const collapsed = $derived(!open);
 
 	const control =
-		'flex min-h-11 min-w-11 items-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
+		'flex min-h-control min-w-control items-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
 	const quiet = 'text-foreground/70 hover:bg-muted/70 hover:text-foreground';
 
 	let column = $state<HTMLElement | null>(null);
@@ -66,7 +66,7 @@
 	aria-label="Sloppy"
 	class={cn(
 		'fixed inset-y-0 start-0 z-40 flex flex-col gap-2 border-e bg-card/95 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+0.75rem)] backdrop-blur',
-		collapsed ? 'w-14 px-1.5' : 'w-64 px-2'
+		collapsed ? 'w-(--desk-nav-rail) px-1.5' : 'w-(--desk-nav-width) px-2'
 	)}
 >
 	<!-- The head is where the page is looked at differently — the column narrowed,

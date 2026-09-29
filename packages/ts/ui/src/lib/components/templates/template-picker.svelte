@@ -29,7 +29,7 @@
 	]);
 
 	const row =
-		'flex min-h-11 w-full flex-col items-start gap-0.5 rounded-md px-2 py-2.5 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
+		'flex min-h-control w-full flex-col items-start gap-0.5 rounded-md px-2 py-2.5 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
 </script>
 
 <ResponsiveModal

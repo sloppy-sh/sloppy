@@ -187,7 +187,7 @@
 					tabindex="-1"
 					onmousedown={(event) => event.preventDefault()}
 					onclick={() => void add(match)}
-					class="flex min-h-11 w-full items-center px-2 text-left text-sm"
+					class="flex min-h-control w-full items-center px-2 text-left text-sm"
 				>
 					{match}
 				</button>

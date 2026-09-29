@@ -84,7 +84,7 @@
 
 			<Button
 				variant="outline"
-				class="h-auto min-h-11 w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
+				class="h-auto min-h-control w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
 				disabled={busy}
 				onclick={() => onmove({ relation: 'under', note: target.ref })}
 			>
@@ -98,7 +98,7 @@
 
 			<Button
 				variant="outline"
-				class="h-auto min-h-11 w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
+				class="h-auto min-h-control w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
 				disabled={busy}
 				onclick={() => onmove({ relation: 'after', note: target.ref })}
 			>
@@ -114,7 +114,12 @@
 				<p class="px-2 text-sm text-destructive" role="alert">{refused}</p>
 			{/if}
 
-			<Button variant="ghost" class="h-11 w-full" disabled={busy} onclick={() => (chosen = null)}>
+			<Button
+				variant="ghost"
+				class="h-control w-full"
+				disabled={busy}
+				onclick={() => (chosen = null)}
+			>
 				Choose another note
 			</Button>
 		{:else}
@@ -126,7 +131,7 @@
 				<Input
 					bind:ref={field}
 					value={query}
-					class="h-11 ps-9"
+					class="h-control ps-9"
 					autocapitalize="none"
 					autocomplete="off"
 					spellcheck="false"
@@ -153,7 +158,7 @@
 								type="button"
 								disabled={why !== null}
 								onclick={() => (chosen = target)}
-								class="flex min-h-11 w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-60"
+								class="flex min-h-control w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-60"
 							>
 								<span class="flex w-full min-w-0 items-baseline gap-3 text-sm">
 									{#if target.address}

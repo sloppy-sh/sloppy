@@ -137,7 +137,7 @@
 							? `Close ${noteLabel(tab)} in ${tab.graph}`
 							: `Close ${noteLabel(tab)}`}
 						onclick={() => onCloseTab?.(tab.ref)}
-						class="flex w-11 shrink-0 items-center justify-center rounded-r-md text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						class="flex w-control shrink-0 items-center justify-center rounded-r-md text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 					>
 						<X class="size-3.5" />
 					</button>

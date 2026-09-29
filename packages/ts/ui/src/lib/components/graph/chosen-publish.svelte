@@ -89,13 +89,13 @@
 		<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
 			<Button
 				variant="outline"
-				class="h-11 sm:h-9"
+				class="h-control sm:h-9"
 				disabled={working}
 				onclick={() => (open = false)}
 			>
 				Cancel
 			</Button>
-			<Button class="h-11 sm:h-9" disabled={working} onclick={() => void publish()}>
+			<Button class="h-control sm:h-9" disabled={working} onclick={() => void publish()}>
 				{count === 1 ? 'Publish it' : `Publish ${count.toLocaleString()} notes`}
 			</Button>
 		</div>

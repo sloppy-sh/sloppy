@@ -117,7 +117,7 @@
 						<li>
 							<button
 								type="button"
-								class="flex min-h-11 w-full flex-col items-start gap-1 rounded-md px-2 py-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+								class="flex min-h-control w-full flex-col items-start gap-1 rounded-md px-2 py-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 								onclick={() => (reading = one.ref)}
 							>
 								<span class="flex w-full min-w-0 items-center gap-2">
@@ -156,19 +156,19 @@
 			{/if}
 
 			<div class="space-y-2">
-				<Button class="h-11 w-full" disabled={busy} onclick={() => void settle(onApprove)}>
+				<Button class="h-control w-full" disabled={busy} onclick={() => void settle(onApprove)}>
 					Take it in
 				</Button>
 				<Button
 					variant="outline"
-					class="h-11 w-full"
+					class="h-control w-full"
 					disabled={busy}
 					onclick={() => void settle(onDecline)}
 				>
 					Turn it down
 				</Button>
 				{#if offers.length > 1}
-					<Button variant="ghost" class="h-11 w-full" onclick={() => (reading = null)}>
+					<Button variant="ghost" class="h-control w-full" onclick={() => (reading = null)}>
 						The other offers
 					</Button>
 				{/if}

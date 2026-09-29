@@ -433,7 +433,7 @@
 			<p class="text-sm text-destructive" role="alert">{refused}</p>
 		{/if}
 		<Button
-			class="h-11 w-full @md:h-9 @md:w-fit"
+			class="h-control w-full @md:h-9 @md:w-fit"
 			disabled={saying || draft.trim() === ''}
 			onclick={say}
 		>

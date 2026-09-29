@@ -1,11 +1,12 @@
 /* Sloppy's design system. Consumers import it as `@sloppy/ui/styles`.
    DESIGN.md is the spec; this file is its implementation and adds no rule of
-   its own. Four orthogonal axes on <html>:
+   its own. Five orthogonal axes on <html>:
 
      data-theme    → neutral/surface tokens   (paper | graphite | light | dark | contrast)
      data-accent   → --primary and its family (indigo | moss | rust | sea | iris | ochre | slate)
      data-style    → how surfaces are DRAWN   (default | hardline); structural, never colour
      data-app-font → both faces               (atkinson | opendyslexic | apple); absent is Inter
+     data-density  → how close it is drawn    (compact); absent is comfortable
 
    Bare :root carries the Paper + Indigo defaults, so first paint is right
    before the prefs store has set an attribute. */
@@ -26,6 +27,17 @@
 
 :root {
 	--radius: 0.625rem;
+
+	/* How big a thing you tap has to be, and how much room everything is given —
+	   DESIGN.md § Layout. `--control` is the target's own size; `--spacing` is
+	   what every padding and gap is counted in, so the two move together and a
+	   surface asks for neither by hand. */
+	--control: 2.75rem;
+
+	/* What a column beside the graph takes, open and as an icon rail, so the
+	   page it stands next to gives up the same number. */
+	--desk-nav-width: 16rem;
+	--desk-nav-rail: 3.5rem;
 
 	/* DESIGN.md § Typography is the contract for both faces. The webfonts are
 	   self-hosted by the shells, so these stacks stand alone until they load;
@@ -280,6 +292,28 @@
 	--primary-mark: oklch(0.63 0.12 80);
 }
 
+/* ══ Density axis: Compact ═════════════════════════════════════════════════
+   DESIGN.md § Layout is the contract: a mouse can hit something smaller than a
+   finger can, so a desk may be drawn closer. Both levers move together —
+   `--control` is the size of a thing you tap, and it is what a list's height
+   is mostly made of; `--spacing` is what padding and gaps are counted in, and
+   it gives up less because the icon scale is counted in it too, and an icon
+   drawn much under 14px stops reading as what it is. */
+:root[data-density='compact'] {
+	--spacing: 0.225rem;
+	--control: 2.25rem;
+}
+
+/* A finger needs its 44px wherever one is used, whatever was chosen: a tablet
+   with a mouse plugged into it is still a tablet the moment somebody reaches
+   for the screen. */
+@media (hover: none) and (pointer: coarse) {
+	:root[data-density='compact'] {
+		--spacing: 0.25rem;
+		--control: 2.75rem;
+	}
+}
+
 /* ══ Style axis: Hardline ══════════════════════════════════════════════════
    DESIGN.md § "Style presets" is the contract. The `.dark:root` twin is not
    redundant: the dark families declare --border at 0,3,0 specificity, so the
@@ -420,6 +454,10 @@
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);
 	--radius-xl: calc(var(--radius) + 4px);
+
+	/* `h-control`, `min-h-control`, `size-control`, `w-control`: a target you
+	   tap, at whatever size this device is drawn at. */
+	--spacing-control: var(--control);
 
 	--font-sans: var(--font-sans);
 	--font-address: var(--font-address);

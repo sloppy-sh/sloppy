@@ -207,7 +207,7 @@
 				type="button"
 				disabled={opening !== null}
 				aria-busy={opening === 'folder'}
-				class="h-11 w-full"
+				class="h-control w-full"
 				onclick={() => void begin()}
 			>
 				{#if opening === 'folder'}
@@ -229,7 +229,7 @@
 						variant="outline"
 						disabled={opening !== null}
 						aria-busy={opening === 'project'}
-						class="h-11 w-full"
+						class="h-control w-full"
 						onclick={() => void begin('project')}
 					>
 						{#if opening === 'project'}
@@ -246,7 +246,7 @@
 			<div class="border-t border-border pt-6">
 				<button
 					type="button"
-					class="flex min-h-11 w-full items-center justify-between gap-3 rounded-md px-2 text-left text-sm text-muted-foreground hover:bg-muted"
+					class="flex min-h-control w-full items-center justify-between gap-3 rounded-md px-2 text-left text-sm text-muted-foreground hover:bg-muted"
 					aria-expanded={showingWho}
 					aria-controls="who-writes-here"
 					onclick={() => (showingWho = !showingWho)}

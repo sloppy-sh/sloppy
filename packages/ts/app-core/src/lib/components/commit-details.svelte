@@ -94,7 +94,7 @@
 						<li>
 							<button
 								type="button"
-								class="min-h-11 w-full truncate rounded-md px-2 text-left text-sm hover:bg-muted"
+								class="min-h-control w-full truncate rounded-md px-2 text-left text-sm hover:bg-muted"
 								onclick={() => onOpen(one.id)}
 							>
 								{one.message || 'A version'}
@@ -107,19 +107,19 @@
 
 		<section class="flex flex-col gap-2">
 			{#if onRead}
-				<Button variant="outline" class="h-11" onclick={() => onRead(version.id)}>
+				<Button variant="outline" class="h-control" onclick={() => onRead(version.id)}>
 					Read your graph as it was
 				</Button>
 			{/if}
 			{#if onCompare}
-				<Button variant="outline" class="h-11" onclick={() => onCompare(version.id)}>
+				<Button variant="outline" class="h-control" onclick={() => onCompare(version.id)}>
 					Show what has changed since
 				</Button>
 			{/if}
 			{#each linesHere as name (name)}
 				<Button
 					variant="outline"
-					class="h-11"
+					class="h-control"
 					disabled={busy}
 					onclick={() => void onWorkOn(name).then((done) => (open = !done))}
 				>
@@ -133,7 +133,7 @@
 			<div class="flex gap-2">
 				<Input
 					bind:value={naming}
-					class="h-11 flex-1"
+					class="h-control flex-1"
 					autocomplete="off"
 					maxlength={128}
 					placeholder="another-way"
@@ -146,7 +146,7 @@
 				/>
 				<Button
 					variant="outline"
-					class="h-11 shrink-0"
+					class="h-control shrink-0"
 					disabled={busy || naming.trim() === ''}
 					onclick={startLine}
 				>

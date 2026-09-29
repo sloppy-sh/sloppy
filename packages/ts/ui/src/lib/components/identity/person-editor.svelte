@@ -67,7 +67,7 @@
 	<Button
 		type="button"
 		variant="outline"
-		class="h-11 sm:h-9"
+		class="h-control sm:h-9"
 		disabled={replacing !== null || saving}
 		onclick={() => pickers[role]?.click()}
 	>
@@ -132,13 +132,13 @@
 		<Button
 			type="button"
 			variant="outline"
-			class="h-11 sm:h-9"
+			class="h-control sm:h-9"
 			disabled={saving}
 			onclick={onCancel}
 		>
 			Cancel
 		</Button>
-		<Button type="submit" class="h-11 sm:h-9" disabled={saving} aria-busy={saving}>
+		<Button type="submit" class="h-control sm:h-9" disabled={saving} aria-busy={saving}>
 			{saving ? 'Saving…' : 'Save'}
 		</Button>
 	</div>

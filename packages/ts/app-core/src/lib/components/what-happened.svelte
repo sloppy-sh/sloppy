@@ -62,13 +62,20 @@
 
 	{#if kept.length > 0}
 		<div class="flex flex-wrap items-center gap-2">
-			<Button variant="outline" class="h-11" onclick={() => (reading = true)}>Read it</Button>
+			<Button variant="outline" class="h-control" onclick={() => (reading = true)}>Read it</Button>
 			{#if canSave}
-				<Button variant="outline" class="h-11" disabled={saving} onclick={() => void handOver()}>
+				<Button
+					variant="outline"
+					class="h-control"
+					disabled={saving}
+					onclick={() => void handOver()}
+				>
 					{saving ? 'One moment…' : 'Save it'}
 				</Button>
 			{/if}
-			<Button variant="ghost" class="h-11" onclick={() => whatHappened.clear()}>Clear it</Button>
+			<Button variant="ghost" class="h-control" onclick={() => whatHappened.clear()}
+				>Clear it</Button
+			>
 			<CopyButton value={whatHappened.asText()} label="Copy the record" />
 		</div>
 		{#if trouble}

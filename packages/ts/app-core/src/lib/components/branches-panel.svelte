@@ -150,7 +150,7 @@
 	<div class="flex gap-2">
 		<Input
 			bind:value={naming}
-			class="h-11 flex-1"
+			class="h-control flex-1"
 			autocomplete="off"
 			maxlength={128}
 			placeholder="another-way"
@@ -163,7 +163,7 @@
 		/>
 		<Button
 			variant="outline"
-			class="h-11 shrink-0"
+			class="h-control shrink-0"
 			disabled={busy || !anyVersion || naming.trim() === ''}
 			onclick={startLine}
 		>

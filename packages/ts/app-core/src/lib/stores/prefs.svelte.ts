@@ -26,6 +26,7 @@ export type Theme = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
 export type Accent = 'indigo' | 'moss' | 'rust' | 'sea' | 'iris' | 'ochre' | 'slate';
 export type Style = 'default' | 'hardline';
 export type Font = 'system' | 'atkinson' | 'opendyslexic' | 'apple';
+export type Density = 'auto' | 'comfortable' | 'compact';
 
 export interface Prefs {
 	theme: Theme;
@@ -62,6 +63,9 @@ export interface Prefs {
 	/** How much room the reader has taken for the chat docked beside the graph,
 	 *  in px, on the same terms as {@link Prefs.readingWidth}. */
 	chatWidth: number | null;
+	/** How close everything is drawn — DESIGN.md § Layout. `auto` is what this
+	 *  device is: closer where a mouse is the only pointer. */
+	density: Density;
 	/** Whether the column beside the graph on a desk stands open or as an icon
 	 *  rail — DESIGN.md § Layout. */
 	deskNavOpen: boolean;
@@ -112,11 +116,37 @@ export const FONT_LABELS: Record<Font, string> = {
 	opendyslexic: 'OpenDyslexic',
 	apple: "Your device's face"
 };
+export const DENSITY_LABELS: Record<Density, string> = {
+	auto: 'What this device is',
+	comfortable: 'Comfortable',
+	compact: 'Compact'
+};
 
 export const THEMES = Object.keys(THEME_LABELS) as Theme[];
 export const ACCENTS = Object.keys(ACCENT_LABELS) as Accent[];
 export const STYLES = Object.keys(STYLE_LABELS) as Style[];
 export const FONTS = Object.keys(FONT_LABELS) as Font[];
+export const DENSITIES = Object.keys(DENSITY_LABELS) as Density[];
+
+/**
+ * Whether this device is one where everything can be drawn closer: a mouse and
+ * nothing else. A screen somebody might reach for is drawn for a finger,
+ * whatever else is plugged in. **These two queries are the whole of what a
+ * webview can honestly read about it** — DESIGN.md § Theme.
+ */
+function drawnForAMouse(): boolean {
+	try {
+		return matchMedia('(pointer: fine)').matches && !matchMedia('(any-pointer: coarse)').matches;
+	} catch {
+		return false;
+	}
+}
+
+/** Which of the two the setting comes to, for the attribute to carry. */
+export function densityNow(density: Density): Exclude<Density, 'auto'> {
+	if (density !== 'auto') return density;
+	return drawnForAMouse() ? 'compact' : 'comfortable';
+}
 
 function systemPrefersDark(): boolean {
 	try {
@@ -145,6 +175,7 @@ function defaults(): Prefs {
 		chatWidth: null,
 		deskNavOpen: true,
 		tagOrder: 'count',
+		density: 'auto',
 		aiOffered: false,
 		chatAgent: null,
 		chatModel: {},
@@ -273,6 +304,7 @@ class PrefsStore {
 			chatWidth: widthIn(saved.chatWidth),
 			deskNavOpen: saved.deskNavOpen !== false,
 			tagOrder: saved.tagOrder === 'name' ? 'name' : 'count',
+			density: oneOf(saved.density, DENSITIES, base.density),
 			aiOffered: saved.aiOffered === true,
 			chatAgent: CHAT_AGENTS.includes(saved.chatAgent as ChatAgent)
 				? (saved.chatAgent as ChatAgent)
@@ -329,7 +361,20 @@ class PrefsStore {
 		else root.setAttribute('data-style', p.style);
 		if (p.font === 'system') root.removeAttribute('data-app-font');
 		else root.setAttribute('data-app-font', p.font);
+		// Absent IS comfortable, the same bargain the style and font axes make.
+		if (densityNow(p.density) === 'compact') root.setAttribute('data-density', 'compact');
+		else root.removeAttribute('data-density');
 		root.classList.toggle('dark', this.isDark);
+	}
+
+	/** A mouse plugged into a tablet, or taken out again, changes what this
+	 *  device is — so `auto` is answered again rather than at boot only. */
+	watchThePointer(): () => void {
+		if (typeof matchMedia === 'undefined') return () => {};
+		const asked = matchMedia('(any-pointer: coarse)');
+		const again = () => this.apply();
+		asked.addEventListener('change', again);
+		return () => asked.removeEventListener('change', again);
 	}
 }
 

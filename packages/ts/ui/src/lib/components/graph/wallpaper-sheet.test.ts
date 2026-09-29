@@ -178,9 +178,9 @@ describe('choosing the picture under the graph', () => {
 	// on the phone as much as on the desk.
 	it('offers controls a thumb can land on', async () => {
 		await open(ground(['a', 'b'], { every: 30 }));
-		expect(strength()?.className).toContain('h-11');
+		expect(strength()?.className).toContain('h-control');
 		const turn = document.body.querySelector<HTMLElement>('[data-slot="select-trigger"]');
-		expect(turn?.className).toContain('h-11');
+		expect(turn?.className).toContain('h-control');
 		for (const tile of tiles()) expect(tile.className).toContain('aspect-square');
 	});
 });

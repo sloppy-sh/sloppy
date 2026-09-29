@@ -293,7 +293,7 @@
 						autocomplete="name"
 						value={user.name}
 						oninput={(event) => (typedUser = { ...user, name: event.currentTarget.value })}
-						class="h-11"
+						class="h-control"
 					/>
 				</div>
 				<div class="space-y-1">
@@ -308,10 +308,10 @@
 						spellcheck={false}
 						value={user.email}
 						oninput={(event) => (typedUser = { ...user, email: event.currentTarget.value })}
-						class="h-11"
+						class="h-control"
 					/>
 				</div>
-				<Button type="submit" variant="outline" class="h-11" disabled={gitSettings.busy}>
+				<Button type="submit" variant="outline" class="h-control" disabled={gitSettings.busy}>
 					Save who they're by
 				</Button>
 			</form>
@@ -402,10 +402,10 @@
 							placeholder="~/.ssh/id_ed25519"
 							value={path}
 							oninput={(event) => (keyPath = event.currentTarget.value)}
-							class="h-11"
+							class="h-control"
 						/>
 					</div>
-					<Button type="submit" variant="outline" class="h-11" disabled={gitSettings.busy}>
+					<Button type="submit" variant="outline" class="h-control" disabled={gitSettings.busy}>
 						Sign with this key
 					</Button>
 				</form>
@@ -423,7 +423,7 @@
 							placeholder="gpg"
 							value={programNamed}
 							oninput={(event) => (program = event.currentTarget.value)}
-							class="h-11"
+							class="h-control"
 						/>
 					</div>
 					<div class="space-y-1">
@@ -435,13 +435,13 @@
 							spellcheck={false}
 							value={keyNamed}
 							oninput={(event) => (keyId = event.currentTarget.value)}
-							class="h-11"
+							class="h-control"
 						/>
 					</div>
 					<p class="text-sm text-muted-foreground">
 						Leave either empty and Sloppy uses what this device is already set up with.
 					</p>
-					<Button type="submit" variant="outline" class="h-11" disabled={gitSettings.busy}>
+					<Button type="submit" variant="outline" class="h-control" disabled={gitSettings.busy}>
 						Sign with this program
 					</Button>
 				</form>
@@ -473,7 +473,7 @@
 							<div class="flex flex-wrap gap-2">
 								<Button
 									variant="outline"
-									class="h-11"
+									class="h-control"
 									onclick={() => openEdit(place)}
 									aria-expanded={editing === place.name}
 								>
@@ -482,14 +482,14 @@
 								{#if place.host && gitSettings.holdsWaysIn}
 									<Button
 										variant="outline"
-										class="h-11"
+										class="h-control"
 										onclick={() => openWayIn(place)}
 										aria-expanded={wayFor === place.name}
 									>
 										{place.credential ? 'Change the way in' : 'Add a way in'}
 									</Button>
 								{/if}
-								<Button variant="ghost" class="h-11" onclick={() => askToRemove(place)}>
+								<Button variant="ghost" class="h-control" onclick={() => askToRemove(place)}>
 									Remove it
 								</Button>
 							</div>
@@ -504,7 +504,7 @@
 											autocapitalize="none"
 											spellcheck={false}
 											bind:value={editName}
-											class="h-11"
+											class="h-control"
 										/>
 									</div>
 									<div class="space-y-1">
@@ -516,10 +516,15 @@
 											autocapitalize="none"
 											spellcheck={false}
 											bind:value={editUrl}
-											class="h-11"
+											class="h-control"
 										/>
 									</div>
-									<Button type="submit" variant="outline" class="h-11" disabled={gitSettings.busy}>
+									<Button
+										type="submit"
+										variant="outline"
+										class="h-control"
+										disabled={gitSettings.busy}
+									>
 										Save this place
 									</Button>
 								</form>
@@ -563,7 +568,7 @@
 												autocapitalize="none"
 												spellcheck={false}
 												bind:value={token}
-												class="h-11"
+												class="h-control"
 											/>
 										</div>
 										<div class="space-y-1">
@@ -577,7 +582,7 @@
 												autocapitalize="none"
 												spellcheck={false}
 												bind:value={username}
-												class="h-11"
+												class="h-control"
 											/>
 										</div>
 									{:else}
@@ -612,7 +617,7 @@
 													spellcheck={false}
 													placeholder="~/.ssh/id_ed25519"
 													bind:value={sshPath}
-													class="h-11"
+													class="h-control"
 												/>
 											</div>
 										{/if}
@@ -628,7 +633,7 @@
 										<Button
 											type="submit"
 											variant="outline"
-											class="h-11"
+											class="h-control"
 											disabled={gitSettings.busy}
 										>
 											Save the way in
@@ -637,7 +642,7 @@
 											<Button
 												type="button"
 												variant="ghost"
-												class="h-11"
+												class="h-control"
 												disabled={gitSettings.busy}
 												onclick={() => forgetWayIn(host)}
 											>
@@ -663,7 +668,7 @@
 							spellcheck={false}
 							placeholder="origin"
 							bind:value={newName}
-							class="h-11"
+							class="h-control"
 						/>
 					</div>
 					<div class="space-y-1">
@@ -676,17 +681,17 @@
 							spellcheck={false}
 							placeholder="https://github.com/you/notes.git"
 							bind:value={newUrl}
-							class="h-11"
+							class="h-control"
 						/>
 					</div>
-					<Button type="submit" variant="outline" class="h-11" disabled={gitSettings.busy}>
+					<Button type="submit" variant="outline" class="h-control" disabled={gitSettings.busy}>
 						Keep it there too
 					</Button>
 				</form>
 			{:else}
 				<Button
 					variant="outline"
-					class="h-11"
+					class="h-control"
 					onclick={() => {
 						adding = true;
 						problem = null;

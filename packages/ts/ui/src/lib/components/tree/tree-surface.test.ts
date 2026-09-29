@@ -2017,7 +2017,7 @@ describe('a note row on the narrowest phone', () => {
 			`Write a note under ${DEEPEST}`
 		]);
 		for (const one of controls) {
-			expect(classesOf(one)).toContain('size-11');
+			expect(classesOf(one)).toContain('size-control');
 			expect(classesOf(one).filter((cls) => /^-?m[a-z]?-/.test(cls))).toEqual([]);
 		}
 	});
