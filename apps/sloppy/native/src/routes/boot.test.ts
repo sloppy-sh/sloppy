@@ -10,6 +10,7 @@ let missing = false;
 vi.mock('$lib/back', () => ({ answerBack: vi.fn() }));
 vi.mock('$lib/deep-link', () => ({ forwardDeepLinks: vi.fn(async () => {}) }));
 vi.mock('$lib/keyboard', () => ({ trackKeyboardInset: () => () => {} }));
+vi.mock('$lib/menubar.svelte', () => ({ wireMenu: () => () => {} }));
 vi.mock('$lib/local-mode', () => ({ LOCAL_MODE: true }));
 vi.mock('$lib/platform', () => ({ IS_MOBILE: false, TAURI_PLATFORM: 'desktop' }));
 vi.mock('$lib/runtime', () => ({

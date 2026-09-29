@@ -12,6 +12,10 @@ export type {
 	KnownFolder,
 	VaultAccess
 } from './runtime.js';
+export { appMenu } from './menu.js';
+export type { MenuGroup, MenuLine } from './menu.js';
+export { acts } from './stores/acts.svelte.js';
+export type { Act, ActWhere } from './stores/acts.svelte.js';
 export { keyboard, trackKeyboard } from './keyboard.svelte.js';
 export type { KeyboardChange } from './keyboard.svelte.js';
 export { deviceStore } from './device-store.js';

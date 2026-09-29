@@ -1110,6 +1110,12 @@ nothing under it.
   as a row is what somebody reaches every day; what is typed for is the rest — choosing a set
   of notes, taking the graph as a file, bringing one in. An act is declared once, in one
   place, and where it stands is a property of the act rather than a copy of it per surface.
+- **On a desk the app has its own menu bar, and it is the same declaration again.** What a
+  person expects to find under File, Edit, View and Window is there because the platform
+  gives them that expectation, not because the product needs a third place to put things —
+  so it carries only what the acts already name, and leaves every line the system spells
+  (Quit, Undo, Minimize) to the system. It is a desktop's, and a phone grows nothing like
+  it.
 - **The crossing is a class, never a branch around the page.** A per-arrangement branch
   around the canvas would destroy and remount it on every crossing, taking the reader's pan
   and zoom with it. The pill publishes its own height as `--sysnav-inset-bottom` and is

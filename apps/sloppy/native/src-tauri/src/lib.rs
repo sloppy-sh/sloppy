@@ -1,6 +1,8 @@
 mod chat;
 mod draft;
 mod history;
+#[cfg(desktop)]
+mod menubar;
 mod program;
 mod remotes;
 mod signing;
@@ -26,6 +28,8 @@ pub(crate) fn commands<R: Runtime>(
         vault::pick_folder,
         vault::pick_file,
         vault::save_file,
+        #[cfg(desktop)]
+        menubar::app_menu_set,
         history::history_status,
         history::history_log,
         history::history_commit,
@@ -108,6 +112,9 @@ pub fn run() {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 app.deep_link().register_all()?;
             }
+
+            #[cfg(desktop)]
+            menubar::tell_the_page(app);
             Ok(())
         })
         .run(tauri::generate_context!())

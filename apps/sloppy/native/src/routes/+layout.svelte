@@ -7,6 +7,7 @@
 	import { forwardDeepLinks } from '$lib/deep-link';
 	import { deviceFolders } from '$lib/folders';
 	import { trackKeyboardInset } from '$lib/keyboard';
+	import { wireMenu } from '$lib/menubar.svelte';
 	import { LOCAL_MODE } from '$lib/local-mode';
 	import { IS_MOBILE, TAURI_PLATFORM } from '$lib/platform';
 	import { initNativeRuntime, openRememberedVault, vaultIsMissing } from '$lib/runtime';
@@ -71,9 +72,11 @@
 		// Mobile only: a desktop pinch-zoom shrinks the visual viewport the same
 		// way a keyboard does, and would be read as one.
 		const stopKeyboard = IS_MOBILE ? trackKeyboardInset() : undefined;
+		const stopMenu = IS_MOBILE ? undefined : wireMenu();
 		return () => {
 			window.removeEventListener('sloppy:back', answerBack);
 			stopKeyboard?.();
+			stopMenu?.();
 		};
 	});
 </script>

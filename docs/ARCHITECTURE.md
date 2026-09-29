@@ -102,6 +102,15 @@ and that decision has to live inside it.
   satisfies it by shape and never by cast; `serverOnly` is a whole method body for what an
   adapter cannot serve.
 
+**The shell carries a menu it does not read.** A desk has an app menu bar, and what it says
+belongs with the rest of the product: `appMenu()` in `@sloppy/app-core` describes it — groups,
+lines, which are enabled — off `acts`, the one declaration of what the page standing now can
+do. `apps/sloppy/native/src/lib/menubar.svelte.ts` pushes that description to `app_menu_set`
+in `src-tauri/src/menubar.rs`, which builds it, and carries back the id of whatever was chosen
+for `acts.run`. **A line whose id begins `~` is one the system spells and does itself**, so
+its words are never written here. Desktop only, by `#[cfg(desktop)]` on the Rust side and
+`IS_MOBILE` on the shell's.
+
 **What fills those on native is `@sloppy/local`.** `Files` is the shell's own file access —
 read, write, list, remove, exists, mkdir under one root, a folder picker, the app's private
 data path, and the address a picture in the vault loads from;
