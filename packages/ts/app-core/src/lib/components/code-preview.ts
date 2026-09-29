@@ -87,3 +87,29 @@ export function fragmentSays(anchor: CodeAnchor): string | undefined {
 	if (held.kind === 'symbol') return held.name;
 	return held.from === held.to ? `Line ${held.from}` : `Lines ${held.from} to ${held.to}`;
 }
+
+/** One thing directly inside a folder. */
+export interface FolderEntry {
+	name: string;
+	/** From the project's root. */
+	path: string;
+	folder: boolean;
+}
+
+/** What stands directly inside `folder`, folders first and each side in name
+ *  order, read off every file under it. */
+export function childrenOf(folder: string, files: readonly string[]): FolderEntry[] {
+	const prefix = folder === '' ? '' : `${folder}/`;
+	const seen = new Map<string, FolderEntry>();
+	for (const file of files) {
+		if (!file.startsWith(prefix)) continue;
+		const rest = file.slice(prefix.length);
+		const slash = rest.indexOf('/');
+		const name = slash === -1 ? rest : rest.slice(0, slash);
+		if (name === '' || seen.has(name)) continue;
+		seen.set(name, { name, path: `${prefix}${name}`, folder: slash !== -1 });
+	}
+	return [...seen.values()].sort(
+		(a, b) => Number(b.folder) - Number(a.folder) || a.name.localeCompare(b.name)
+	);
+}

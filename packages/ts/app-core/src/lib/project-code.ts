@@ -24,8 +24,14 @@ const NOT_WRITTEN_BY_HAND = new Set([
 
 /** Every file in the project somebody could be writing about, as paths from its
  *  root. */
-export async function filesIn(project: Files): Promise<string[]> {
-	const held = await project.list('');
+export function filesIn(project: Files): Promise<string[]> {
+	return filesUnder(project, '');
+}
+
+/** Every such file under one folder, as paths from the project's root; empty
+ *  where nothing is there. */
+export async function filesUnder(project: Files, path: string): Promise<string[]> {
+	const held = await project.list(path).catch(() => []);
 	return held.filter((path) => !path.split('/').some((part) => NOT_WRITTEN_BY_HAND.has(part)));
 }
 

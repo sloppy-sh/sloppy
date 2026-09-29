@@ -41,6 +41,7 @@
 	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { cn } from '$lib/utils.js';
+	import { chromeInset } from './chrome-inset.svelte.js';
 	import { docksRight } from './dock-stack.svelte.js';
 	import ResponsiveModal from './responsive-modal.svelte';
 
@@ -89,13 +90,15 @@
 
 	const room = new MediaQuery(`(min-width: ${DOCK_FROM_PX}px)`);
 
-	/** The window every dock bounds itself against. */
 	let across = $state(untrack(() => (typeof window === 'undefined' ? 0 : window.innerWidth)));
+	/** The window every dock bounds itself against: what is left of it once the
+	 *  chrome at the other edge has taken its room. */
+	const free = $derived(across - chromeInset.start);
 
 	/** Whether there is room to dock beside what is already docked and still
 	 *  leave a graph worth the name. The first dock answers the breakpoint; a
 	 *  second one answers what the first left. */
-	const wouldDock = $derived(room.current && across - place.others >= LEAST + GRAPH_KEEPS);
+	const wouldDock = $derived(room.current && free - place.others >= LEAST + GRAPH_KEEPS);
 	// Fixed for as long as something is open in it: a presentation that moved
 	// under a mounted editor would tear it down mid-edit and lose the caret.
 	let asDock = $state(untrack(() => wouldDock));
@@ -124,9 +127,9 @@
 
 	const wanted = $derived(dragged ?? width);
 	const stands = $derived(
-		across > 0 && wanted !== null ? dockedWidth(wanted, across - place.others) : null
+		across > 0 && wanted !== null ? dockedWidth(wanted, free - place.others) : null
 	);
-	const bounds = $derived(widthWithin((across || DOCK_FROM_PX) - place.others));
+	const bounds = $derived(widthWithin((across > 0 ? free : DOCK_FROM_PX) - place.others));
 
 	const handle = (v: boolean) => {
 		open = v;

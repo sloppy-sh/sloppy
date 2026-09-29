@@ -104,7 +104,7 @@
 	import { deviceStore, type DeviceArea } from '../device-store.js';
 	import { carries, movedFrom, reachEveryGraph, type Reach } from '../note-find.js';
 	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
-	import { fileAddress, filesIn, readAgainstNow, textIn } from '../project-code.js';
+	import { fileAddress, filesIn, filesUnder, readAgainstNow, textIn } from '../project-code.js';
 	import { runtime } from '../runtime.js';
 	import { codeDrift } from '../stores/code-drift.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
@@ -3098,6 +3098,7 @@
 				bind:open={showingCode}
 				anchor={shownAnchor}
 				read={(path) => textIn(folder, path)}
+				list={(path) => filesUnder(folder, path)}
 				{...openWhereFilesOpen === undefined ? {} : { openWhereFilesOpen }}
 			/>
 		{/if}

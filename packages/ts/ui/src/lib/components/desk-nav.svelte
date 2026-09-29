@@ -8,6 +8,7 @@
 	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
 	import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
 	import { cn } from '$lib/utils.js';
+	import { chromeInset } from './chrome-inset.svelte.js';
 	import { deskNav } from './desk-nav.svelte.js';
 	import Avatar from './identity/avatar.svelte';
 	import type { NavAction, NavItem } from './nav-pill.svelte';
@@ -37,13 +38,19 @@
 	// Owes its width as `--app-chrome-inset-start` — DESIGN.md § "The four inset vars".
 	$effect(() => {
 		const root = document.documentElement;
-		const drop = () => root.style.removeProperty('--app-chrome-inset-start');
+		const drop = () => {
+			root.style.removeProperty('--app-chrome-inset-start');
+			chromeInset.takes(0);
+		};
 		const el = column;
 		if (!el) {
 			drop();
 			return;
 		}
-		const publish = () => root.style.setProperty('--app-chrome-inset-start', `${el.offsetWidth}px`);
+		const publish = () => {
+			root.style.setProperty('--app-chrome-inset-start', `${el.offsetWidth}px`);
+			chromeInset.takes(el.offsetWidth);
+		};
 		publish();
 		const observer = new ResizeObserver(publish);
 		observer.observe(el);
@@ -62,13 +69,18 @@
 		collapsed ? 'w-14 px-1.5' : 'w-64 px-2'
 	)}
 >
-	<div class={cn('flex', collapsed ? 'justify-center' : 'justify-end')}>
+	<!-- The head is where the page is looked at differently — the column narrowed,
+	     and whatever the page puts beside that — so those stand together. -->
+	<div class={cn('flex gap-1', collapsed ? 'flex-col items-center' : 'items-center')}>
+		{#if deskNav.head && !collapsed}
+			<div class="flex min-w-0 flex-1 items-center">{@render deskNav.head({ collapsed })}</div>
+		{/if}
 		<button
 			type="button"
 			aria-expanded={open}
 			aria-label={open ? 'Narrow this column' : 'Widen this column'}
 			onclick={() => onOpenChange?.(!open)}
-			class={cn(control, quiet, 'justify-center px-2.5')}
+			class={cn(control, quiet, 'ms-auto justify-center px-2.5')}
 		>
 			{#if open}
 				<PanelLeftClose class="size-5" />
@@ -76,6 +88,9 @@
 				<PanelLeftOpen class="size-5" />
 			{/if}
 		</button>
+		{#if deskNav.head && collapsed}
+			{@render deskNav.head({ collapsed })}
+		{/if}
 	</div>
 
 	{#if deskNav.parts}

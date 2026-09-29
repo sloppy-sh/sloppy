@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { chromeInset } from './chrome-inset.svelte.js';
 import { stubMediaQuery, stubResizeObserver } from './dom.test-support.js';
 import SideDock from './side-dock.svelte';
 
@@ -56,6 +57,7 @@ afterEach(() => {
 	target.remove();
 	document.body.innerHTML = '';
 	document.documentElement.style.removeProperty('--reading-dock-inset-right');
+	chromeInset.takes(0);
 });
 
 describe('a dock beside the graph', () => {
@@ -123,6 +125,24 @@ describe('a note and the chat docked at once', () => {
 
 		const took = Number(owed().replace('px', ''));
 		expect(window.innerWidth - took).toBeGreaterThanOrEqual(448);
+	});
+
+	it('leaves the graph its room beside a column standing at the other edge', () => {
+		windowIs(1300);
+		chromeInset.takes(256);
+		dock('Note', { outer: 0, width: 5000 });
+
+		expect(dockNamed('Note')).not.toBeNull();
+		expect(Number(owed().replace('px', ''))).toBeLessThanOrEqual(1300 - 256 - 448);
+	});
+
+	it('is a sheet where the column at the other edge leaves it no room to dock', () => {
+		windowIs(1000);
+		chromeInset.takes(256);
+		dock('Note', { outer: 0, width: 400 });
+
+		expect(dockNamed('Note')).toBeNull();
+		expect(owed()).toBe('');
 	});
 
 	it('opens the second as a sheet where docking it would leave no graph', () => {

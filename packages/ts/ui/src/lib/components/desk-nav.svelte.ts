@@ -17,17 +17,27 @@ export type DeskParts = Snippet<[{ collapsed: boolean }]>;
 
 class DeskNavState {
 	#parts = $state<DeskParts | null>(null);
+	#head = $state<DeskParts | null>(null);
 
 	get parts(): DeskParts | null {
 		return this.#parts;
 	}
 
+	/** What stands in the sidebar's head beside its own toggle: the acts that
+	 *  change how the page is looked at rather than what is in it. */
+	get head(): DeskParts | null {
+		return this.#head;
+	}
+
 	/** Returns the disposer that takes them away again; calling it twice is a
 	 *  no-op, so an `$effect` cleanup can own it. */
-	fills(parts: DeskParts): () => void {
+	fills(parts: DeskParts, head?: DeskParts): () => void {
 		this.#parts = parts;
+		this.#head = head ?? null;
 		return () => {
-			if (this.#parts === parts) this.#parts = null;
+			if (this.#parts !== parts) return;
+			this.#parts = null;
+			this.#head = null;
 		};
 	}
 }

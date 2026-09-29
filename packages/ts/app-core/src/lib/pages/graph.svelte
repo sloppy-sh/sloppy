@@ -2353,6 +2353,11 @@
 			</div>
 		{/if}
 		<DeskNavParts>
+			{#snippet head({ collapsed }: { collapsed: boolean })}
+				{#if !pointing && !comparing && !asWas && !foreign}
+					{@render viewSwitch(!collapsed, collapsed)}
+				{/if}
+			{/snippet}
 			{#snippet children({ collapsed }: { collapsed: boolean })}
 				{#if !pointing && !comparing && !asWas && !foreign}
 					<button
@@ -2472,9 +2477,6 @@
 								{@render moreActs()}
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
-					</div>
-					<div class="flex {collapsed ? 'justify-center' : ''}">
-						{@render viewSwitch(!collapsed, collapsed)}
 					</div>
 				{/if}
 

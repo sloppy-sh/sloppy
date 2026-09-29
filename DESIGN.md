@@ -1091,7 +1091,9 @@ nothing under it.
   destinations at its foot — and the canvas takes what is left. ≥44px targets,
   keyboard-reachable, `aria-label`led, either way. **Neither arrangement has a part the
   other lacks**, and the column narrows to an icon rail and opens again, which is this
-  device's choice (§ Persistence).
+  device's choice (§ Persistence). Its head is where the page is looked at differently —
+  the column narrowed, and the graph or the outline chosen — so those two stand together
+  there, apart from the acts that write.
 - **The crossing is a class, never a branch around the page.** A per-arrangement branch
   around the canvas would destroy and remount it on every crossing, taking the reader's pan
   and zoom with it. The pill publishes its own height as `--sysnav-inset-bottom` and is
@@ -1136,7 +1138,8 @@ nothing under it.
   the tablet it docks on has no hover. It is bounded at both ends — never narrower than words
   read well in, never wider than the point they themselves stop widening, and never so wide
   that what it is docked against stops being a graph, which the two of them answer between
-  them: each is bounded against what the window has left once the other has taken its room
+  them: each is bounded against what the window has left once the other, and the column at
+  the far edge, have taken their room
   — and it publishes every width it passes through rather than only the
   one it comes to rest at, because the nav pill, the bar over a chosen set and the card
   beside a mark all place themselves against that number. Below the dock width what it holds

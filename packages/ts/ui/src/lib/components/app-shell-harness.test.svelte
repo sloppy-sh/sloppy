@@ -27,6 +27,9 @@
 	<Page {onmount} />
 	{#if fills}
 		<DeskNavParts>
+			{#snippet head({ collapsed }: { collapsed: boolean })}
+				<p data-testid="head">{collapsed ? 'narrow' : 'wide'}</p>
+			{/snippet}
 			{#snippet children({ collapsed }: { collapsed: boolean })}
 				<p data-testid="parts">{collapsed ? 'an icon rail' : 'a column'}</p>
 			{/snippet}

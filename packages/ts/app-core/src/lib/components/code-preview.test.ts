@@ -5,6 +5,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import CodePreview from './code-preview.svelte';
 import {
+	childrenOf,
 	excerpt,
 	fragmentSays,
 	linesOf,
@@ -23,6 +24,7 @@ const FILE = ['export function discover() {', '\treturn 1;', '}', '', 'const dis
 function show(over: {
 	anchor?: CodeAnchor | null;
 	read?: (path: string) => Promise<string | undefined>;
+	list?: (path: string) => Promise<string[]>;
 	openWhereFilesOpen?: (path: string) => Promise<void>;
 }): void {
 	mounted = mount(CodePreview, {
@@ -31,11 +33,26 @@ function show(over: {
 			open: true,
 			anchor: over.anchor ?? { path: 'src/parser.ts' },
 			read: over.read ?? (async () => FILE),
+			...(over.list ? { list: over.list } : {}),
 			...(over.openWhereFilesOpen ? { openWhereFilesOpen: over.openWhereFilesOpen } : {})
 		}
 	});
 	flushSync();
 }
+
+/** Lets the sheet read, list and draw. */
+async function settled(): Promise<void> {
+	for (let i = 0; i < 4; i += 1) await Promise.resolve();
+	flushSync();
+}
+
+const button = (text: string): HTMLButtonElement => {
+	const found = [...document.body.querySelectorAll('button')].find(
+		(one) => one.textContent?.trim() === text
+	);
+	if (!found) throw new Error(`Nothing on screen reads "${text}"`);
+	return found;
+};
 
 const screen = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
 const code = () => document.body.querySelector('code')?.textContent ?? '';
@@ -183,7 +200,7 @@ describe('reading the code an anchor names', () => {
 		await Promise.resolve();
 		flushSync();
 
-		expect(screen()).toContain('This file is not in the project now');
+		expect(screen()).toContain('There is nothing at this path in the project now');
 	});
 
 	it('says so where nothing in the file is called that, and shows the file', async () => {
@@ -216,5 +233,51 @@ describe('reading the code an anchor names', () => {
 		flushSync();
 
 		expect(screen()).not.toContain('Open in your editor');
+	});
+});
+
+describe('a folder a note points at', () => {
+	const IN_SRC = ['src/parser.ts', 'src/lexer/tokens.ts', 'src/lexer/scan.ts'];
+	const project = {
+		read: async (path: string) => (path === 'src/parser.ts' ? FILE : undefined),
+		list: async (path: string) => IN_SRC.filter((one) => one.startsWith(`${path}/`))
+	};
+
+	it('sorts what stands directly inside it, folders first', () => {
+		expect(childrenOf('src', IN_SRC)).toEqual([
+			{ name: 'lexer', path: 'src/lexer', folder: true },
+			{ name: 'parser.ts', path: 'src/parser.ts', folder: false }
+		]);
+		expect(childrenOf('', ['a.ts'])).toEqual([{ name: 'a.ts', path: 'a.ts', folder: false }]);
+		expect(childrenOf('elsewhere', IN_SRC)).toEqual([]);
+	});
+
+	it('leads to what is in it, and from there into a file and back', async () => {
+		show({ anchor: { path: 'src' }, ...project });
+		await settled();
+
+		expect(screen()).toContain('3 files');
+		expect(screen()).toContain('lexer/');
+		expect(screen()).not.toContain('nothing at this path');
+
+		button('parser.ts').click();
+		await settled();
+		expect(code()).toContain('export function discover');
+		expect(screen()).toContain('src/parser.ts');
+
+		button('src').click();
+		await settled();
+		expect(screen()).toContain('lexer/');
+
+		button('lexer/').click();
+		await settled();
+		expect(screen()).toContain('tokens.ts');
+		expect(screen()).toContain('2 files');
+	});
+
+	it('says so where neither a file nor a folder is there', async () => {
+		show({ anchor: { path: 'gone' }, ...project });
+		await settled();
+		expect(screen()).toContain('nothing at this path');
 	});
 });

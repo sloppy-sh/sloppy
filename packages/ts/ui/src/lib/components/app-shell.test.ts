@@ -147,6 +147,19 @@ describe('the chrome beside the graph', () => {
 		expect(sidebar()?.querySelector('[data-testid="parts"]')?.textContent).toBe('a column');
 	});
 
+	it("stands the page's head beside its own toggle, however narrow", () => {
+		viewport = stubMediaQuery(BESIDE);
+		render({ fills: true });
+		const head = sidebar()?.firstElementChild;
+		expect(head?.querySelector('[data-testid="head"]')?.textContent).toBe('wide');
+		expect(head?.querySelector('button[aria-expanded="true"]')).not.toBeNull();
+
+		render({ deskNavOpen: false, fills: true });
+		const rail = target.querySelectorAll('aside')[1]?.firstElementChild;
+		expect(rail?.querySelector('[data-testid="head"]')?.textContent).toBe('narrow');
+		expect(rail?.querySelector('button[aria-expanded="false"]')).not.toBeNull();
+	});
+
 	it('stands for a page with parts to put there even where there is nowhere to go', () => {
 		viewport = stubMediaQuery(BESIDE);
 		render({ items: [], fills: true });
