@@ -725,3 +725,12 @@
 		transparent
 	);
 }
+
+/* Colour on code: every run carries both schemes, and the family picks —
+   `components/editor/highlight.ts`. */
+.shiki {
+	color: var(--shiki-light);
+}
+.dark .shiki {
+	color: var(--shiki-dark);
+}

@@ -65,6 +65,8 @@ export interface Prefs {
 	/** Whether the column beside the graph on a desk stands open or as an icon
 	 *  rail — DESIGN.md § Layout. */
 	deskNavOpen: boolean;
+	/** How the tags down that column are laid out. */
+	tagOrder: 'count' | 'name';
 	/** Which model each agent is asked to answer with, in that agent's own
 	 *  spelling. **An agent with no entry is one nobody has chosen for**, which
 	 *  is what it answers with on its own. */
@@ -136,6 +138,7 @@ function defaults(): Prefs {
 		readingWidth: null,
 		chatWidth: null,
 		deskNavOpen: true,
+		tagOrder: 'count',
 		chatModel: {},
 		origin: null
 	};
@@ -261,6 +264,7 @@ class PrefsStore {
 			readingWidth: widthIn(saved.readingWidth),
 			chatWidth: widthIn(saved.chatWidth),
 			deskNavOpen: saved.deskNavOpen !== false,
+			tagOrder: saved.tagOrder === 'name' ? 'name' : 'count',
 			chatModel: modelsIn(saved.chatModel),
 			origin: asOrigin(saved.origin)
 		};

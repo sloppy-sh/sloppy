@@ -981,6 +981,12 @@ silent mark must never come to mean "this one is fine". What the dot MEANS is le
 opening the note, which says it in words beside the anchor; the canvas teaches it no other
 way.
 
+**Code carries colour, quietly, and it is the one thing outside the graph that does.** A
+reader tells a name from a string at a glance, in the writing and in the sheet alike, in the
+same two schemes as the light and dark families — never a scheme of its own, and never a
+colour a style names. The sheet is as wide as the window allows it, because code is read as
+it was written and wraps nowhere.
+
 **The words name what happened, never how it is known.** "Changed since you read it",
 "Still true", "read against the code" — what a person can act on. Never what Sloppy
 compared, or what it compared it with.
@@ -1093,7 +1099,10 @@ nothing under it.
   other lacks**, and the column narrows to an icon rail and opens again, which is this
   device's choice (§ Persistence). Its head is where the page is looked at differently —
   the column narrowed, and the graph or the outline chosen — so those two stand together
-  there, apart from the acts that write.
+  there, apart from the acts that write. The column folds nothing behind a "More": the acts
+  the row over the canvas keeps behind one, for want of room, stand as rows of their own
+  beside the graph, and the tags below them can be found by typing and ordered by name or
+  by how many notes carry each.
 - **The crossing is a class, never a branch around the page.** A per-arrangement branch
   around the canvas would destroy and remount it on every crossing, taking the reader's pan
   and zoom with it. The pill publishes its own height as `--sysnav-inset-bottom` and is

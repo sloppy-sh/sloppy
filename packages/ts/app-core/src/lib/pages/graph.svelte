@@ -126,7 +126,7 @@
 	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
-	import { onMount, untrack } from 'svelte';
+	import { type Component, onMount, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -1802,6 +1802,24 @@
 	);
 	const canvasTop = $derived(overCanvas ? railHeight : 0);
 
+	/** The acts on the whole graph that are neither writing nor looking: behind
+	 *  "More" over the canvas, where the row is short, and rows of their own down
+	 *  the column beside it, where there is room for them. */
+	const otherActs = $derived<{ label: string; icon: Component; act: () => void }[]>([
+		...(session.onDevice ? [] : [{ label: "Other people's graphs", icon: Users, act: visitPeers }]),
+		{ label: 'Choose notes', icon: ListChecks, act: startChoosing },
+		...(projectFiles && chat.reaches
+			? [{ label: 'Chat about the code', icon: MessagesSquare, act: startChat }]
+			: []),
+		...(graphHistory.keeps
+			? [{ label: 'History', icon: HistoryIcon, act: () => (showingHistory = true) }]
+			: []),
+		{ label: 'Export this graph', icon: Download, act: () => void takeArchive() },
+		...(graphs.startsGraphs
+			? [{ label: 'Import a graph', icon: Upload, act: () => chooser?.click() }]
+			: [])
+	]);
+
 	async function takeArchive(): Promise<void> {
 		if (taking) return;
 		refused = null;
@@ -2119,38 +2137,12 @@
 {/snippet}
 
 {#snippet moreActs()}
-	{#if !session.onDevice}
-		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={visitPeers}>
-			<Users class="size-4 text-muted-foreground" />
-			Other people's graphs
+	{#each otherActs as one (one.label)}
+		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={one.act}>
+			<one.icon class="size-4 text-muted-foreground" />
+			{one.label}
 		</DropdownMenu.Item>
-	{/if}
-	<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startChoosing}>
-		<ListChecks class="size-4 text-muted-foreground" />
-		Choose notes
-	</DropdownMenu.Item>
-	{#if projectFiles && chat.reaches}
-		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startChat}>
-			<MessagesSquare class="size-4 text-muted-foreground" />
-			Chat about the code
-		</DropdownMenu.Item>
-	{/if}
-	{#if graphHistory.keeps}
-		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => (showingHistory = true)}>
-			<HistoryIcon class="size-4 text-muted-foreground" />
-			History
-		</DropdownMenu.Item>
-	{/if}
-	<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => void takeArchive()}>
-		<Download class="size-4 text-muted-foreground" />
-		Export this graph
-	</DropdownMenu.Item>
-	{#if graphs.startsGraphs}
-		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => chooser?.click()}>
-			<Upload class="size-4 text-muted-foreground" />
-			Import a graph
-		</DropdownMenu.Item>
-	{/if}
+	{/each}
 {/snippet}
 
 <div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)]">
@@ -2458,25 +2450,23 @@
 								</DropdownMenu.Root>
 							</div>
 						{/if}
+					</div>
 
-						<DropdownMenu.Root>
-							<DropdownMenu.Trigger>
-								{#snippet child({ props })}
-									<Button
-										{...props}
-										variant="ghost"
-										class="rounded-full {collapsed ? 'size-11' : 'h-11 w-full justify-start px-3'}"
-										aria-label="More"
-									>
-										<Ellipsis class="size-4" />
-										{#if !collapsed}<span>More</span>{/if}
-									</Button>
-								{/snippet}
-							</DropdownMenu.Trigger>
-							<DropdownMenu.Content align="start" class="w-56">
-								{@render moreActs()}
-							</DropdownMenu.Content>
-						</DropdownMenu.Root>
+					<div class="flex flex-col gap-0.5 {collapsed ? 'items-center' : ''}">
+						{#each otherActs as one (one.label)}
+							<button
+								type="button"
+								onclick={one.act}
+								aria-label={collapsed ? one.label : undefined}
+								title={collapsed ? one.label : undefined}
+								class="flex min-h-11 items-center gap-3 rounded-lg text-sm text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
+									? 'w-11 justify-center'
+									: 'w-full px-2.5'}"
+							>
+								<one.icon class="size-4 shrink-0" />
+								{#if !collapsed}<span class="min-w-0 truncate">{one.label}</span>{/if}
+							</button>
+						{/each}
 					</div>
 				{/if}
 
@@ -2497,6 +2487,8 @@
 							tags={railTags}
 							selected={selection}
 							onselect={(next) => tags.select(next)}
+							order={prefs.current.tagOrder}
+							onorder={(next) => prefs.set('tagOrder', next)}
 						/>
 					{/if}
 				{/if}

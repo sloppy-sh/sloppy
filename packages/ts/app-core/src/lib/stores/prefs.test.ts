@@ -187,6 +187,7 @@ describe('the saved look', () => {
 			readingWidth: null,
 			chatWidth: null,
 			deskNavOpen: true,
+			tagOrder: 'count',
 			chatModel: {},
 			origin: null
 		});

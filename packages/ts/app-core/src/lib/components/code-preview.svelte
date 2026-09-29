@@ -7,7 +7,14 @@
 	import Folder from '@lucide/svelte/icons/folder';
 	import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
 	import type { CodeAnchor } from '@sloppy/types';
-	import { CopyButton, ResponsiveModal, scrollFade } from '@sloppy/ui';
+	import {
+		type Coloured,
+		colourLines,
+		CopyButton,
+		languageOfPath,
+		ResponsiveModal,
+		scrollFade
+	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { childrenOf, excerpt, fragmentSays, type CodeExcerpt } from './code-preview.js';
@@ -35,6 +42,9 @@
 	/** What the file says, `null` while it is being read, `undefined` where this
 	 *  checkout has not got it. */
 	let text = $state.raw<string | null | undefined>(null);
+	/** The file's lines as coloured runs, once its language is known and its
+	 *  grammar in; `null` until then, and where it has none. */
+	let coloured = $state.raw<Coloured[][] | null>(null);
 	/** What the folder holds, where the path is one; `null` where it is not. */
 	let inside = $state.raw<string[] | null>(null);
 	/** Where the reader has gone from the anchor into a folder it names, the
@@ -62,11 +72,24 @@
 		let current = true;
 		text = null;
 		inside = null;
+		coloured = null;
 		pages = 1;
 		refused = null;
 		const found = (held: string | undefined): void => {
 			if (!current) return;
-			if (held !== undefined || !list) {
+			if (held !== undefined) {
+				text = held;
+				void languageOfPath(at)
+					.then((language) => colourLines(held, language))
+					.then(
+						(runs) => {
+							if (current && runs) coloured = runs;
+						},
+						() => {}
+					);
+				return;
+			}
+			if (!list) {
 				text = held;
 				return;
 			}
@@ -111,7 +134,7 @@
 	}
 </script>
 
-<ResponsiveModal bind:open title={path ?? ''} description={says}>
+<ResponsiveModal bind:open title={path ?? ''} description={says} class="sm:max-w-5xl">
 	<div class="flex flex-col gap-3">
 		{#if back !== undefined}
 			<Button
@@ -160,11 +183,16 @@
 			>
 				<code class="block w-max min-w-full px-3 font-mono text-xs leading-relaxed">
 					{#each shown.lines as line, i (i)}
+						{@const runs = coloured?.[shown.from + i - 1]}
 						<span class="flex">
 							<span
 								class="w-10 shrink-0 pr-3 text-right text-muted-foreground tabular-nums select-none"
 								aria-hidden="true">{shown.from + i}</span
-							><span class="whitespace-pre">{line}</span>
+							><span class="whitespace-pre"
+								>{#if runs}{#each runs as run, at (at)}<span class="shiki" style={run.style}
+											>{run.text}</span
+										>{/each}{:else}{line}{/if}</span
+							>
 						</span>
 					{/each}
 				</code>

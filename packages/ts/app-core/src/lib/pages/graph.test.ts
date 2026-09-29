@@ -3397,9 +3397,11 @@ describe('the chat about the code, beside an open note', () => {
 
 		expect(reading()).toBe(true);
 
-		labelled('More').click();
-		await settle();
-		item('Chat about the code').click();
+		(
+			[...document.body.querySelectorAll('button')].find(
+				(one) => one.textContent?.trim() === 'Chat about the code'
+			) as HTMLButtonElement
+		).click();
 		await settle();
 
 		expect(reading()).toBe(true);
@@ -3428,7 +3430,12 @@ describe('the chrome on a desk', () => {
 
 		expect(column()?.querySelector('[aria-label="Your graphs"]')).not.toBeNull();
 		expect(column()?.textContent).toContain('New branch');
-		expect(column()?.querySelector('[aria-label="More"]')).not.toBeNull();
+		expect(column()?.querySelector('[aria-label="More"]')).toBeNull();
+		expect(
+			[...(column()?.querySelectorAll('button') ?? [])].some(
+				(one) => one.textContent?.trim() === 'Choose notes'
+			)
+		).toBe(true);
 	});
 
 	it('draws them once, and not over the canvas as well', async () => {

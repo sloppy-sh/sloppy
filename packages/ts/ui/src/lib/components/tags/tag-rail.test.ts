@@ -4,7 +4,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import { reactive } from '../props.test-support.svelte.js';
-import TagRail from './tag-rail.svelte';
+import TagRail, { type TagOrder } from './tag-rail.svelte';
 
 const TAGS: TagCount[] = [
 	{ tag: 'biology' as Tag, notes: 431 },
@@ -403,6 +403,44 @@ describe('the tags down a column', () => {
 		render([], MANY, true);
 		expect(searchChip()).toBeUndefined();
 		expect(filter()).not.toBeNull();
+	});
+
+	it('offers the field at the head of any column, crowded or not', () => {
+		render([], TAGS, true);
+		expect(searchChip()).toBeUndefined();
+		expect(filter()).not.toBeNull();
+	});
+
+	it('orders the rest by name when asked, with the selection still first', () => {
+		const orders: string[] = [];
+		const props = reactive({
+			tags: TAGS,
+			selected: ['seed'] as Tag[],
+			stacked: true,
+			order: 'count' as TagOrder,
+			onselect: (next: Tag[]) => asked.push(next),
+			onorder: (next: string) => orders.push(next)
+		});
+		mounted = mount(TagRail, { target, props });
+		flushSync();
+		expect(names()).toEqual(['seed', 'biology', 'question']);
+
+		const by = () =>
+			[...target.querySelectorAll('button')].find((one) =>
+				one.getAttribute('aria-label')?.startsWith('Order by')
+			) as HTMLButtonElement;
+		expect(by().getAttribute('aria-label')).toBe('Order by name');
+		by().click();
+		expect(orders).toEqual(['name']);
+
+		props.order = 'name';
+		flushSync();
+		expect(names()).toEqual(['seed', 'biology', 'question']);
+		expect(by().getAttribute('aria-label')).toBe('Order by how many notes carry each');
+
+		props.tags = [...TAGS, { tag: 'algae' as Tag, notes: 3 }];
+		flushSync();
+		expect(names()).toEqual(['seed', 'algae', 'biology', 'question']);
 	});
 
 	it('scrolls down rather than along', () => {

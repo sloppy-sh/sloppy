@@ -1,9 +1,17 @@
+<script lang="ts" module>
+	/** How the tags a reader has not selected are laid out: by how many notes
+	 *  carry each, or by name. */
+	export type TagOrder = 'count' | 'name';
+</script>
+
 <script lang="ts">
 	// The question the reader asks the canvas, and the legend for its answer.
 	// DESIGN.md § "Hue — the tags you selected, and only those": selected tags
 	// lead, in the order they were selected, because that order is what hands out
 	// the hues. One ordering, two presentations — along the chrome over the
 	// canvas, and down the sidebar beside it (DESIGN.md § Layout).
+	import ArrowDown10 from '@lucide/svelte/icons/arrow-down-1-0';
+	import ArrowDownAZ from '@lucide/svelte/icons/arrow-down-a-z';
 	import Search from '@lucide/svelte/icons/search';
 	import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
 	import { tick } from 'svelte';
@@ -15,7 +23,9 @@
 		tags,
 		selected,
 		onselect,
-		stacked = false
+		stacked = false,
+		order = 'count',
+		onorder
 	}: {
 		/** Every tag the reader has used, most-used first. */
 		tags: readonly TagCount[];
@@ -24,6 +34,10 @@
 		onselect: (tags: Tag[]) => void;
 		/** Down a column that scrolls vertically, rather than along a row. */
 		stacked?: boolean;
+		/** How the rest are laid out down a column; a row keeps most-used first. */
+		order?: TagOrder;
+		/** Absent is a column with no say in its order. */
+		onorder?: (order: TagOrder) => void;
 	} = $props();
 
 	const slots = $derived(assignTagHueSlots(selected));
@@ -36,23 +50,26 @@
 	let field = $state<HTMLInputElement | null>(null);
 	let group = $state<HTMLElement | null>(null);
 	const offered = $derived(tags.length > CROWDED);
-	const needle = $derived(offered ? typed.trim().toLowerCase() : '');
-	/** A column has a head to keep the field in; a row has to be asked for it. */
-	const asField = $derived(offered && (stacked || typing));
+	/** A column has a head to keep the field in; a row has to be asked for it,
+	 *  and only once there are enough chips to make typing the shorter way. */
+	const asField = $derived(stacked || (offered && typing));
+	const needle = $derived(asField ? typed.trim().toLowerCase() : '');
 
 	/** What the chips are, for a reader who is not looking at them. */
 	const says = $derived(selected.length > 1 ? 'Notes with any of these' : 'Tags');
 
-	/** Selected first, in selection order; then the rest as the read ordered them. */
-	const order = $derived([
-		...selected,
-		// The canvas is drawing the selection's hues, so the legend holds them
-		// whatever is typed; only the tail narrows.
-		...tags
+	/** The rest, as the read ordered them — most-used first — or by name. */
+	const rest = $derived.by(() => {
+		const held = tags
 			.map((entry) => entry.tag)
-			.filter((tag) => !slots.has(tag) && (needle === '' || tag.includes(needle)))
-	]);
-	const nothingMatched = $derived(needle !== '' && !order.some((tag) => tag.includes(needle)));
+			.filter((tag) => !slots.has(tag) && (needle === '' || tag.includes(needle)));
+		return stacked && order === 'name' ? [...held].sort((a, b) => a.localeCompare(b)) : held;
+	});
+	/** Selected first, in selection order, whatever the order of the rest: the
+	 *  canvas is drawing the selection's hues, so the legend holds them whatever
+	 *  is typed, and only the tail narrows. */
+	const shown = $derived([...selected, ...rest]);
+	const nothingMatched = $derived(needle !== '' && !shown.some((tag) => tag.includes(needle)));
 
 	let rail = $state<HTMLElement | null>(null);
 
@@ -117,42 +134,63 @@
 
 <svelte:window onpointerdowncapture={putAway} />
 
+{#snippet finder()}
+	<Input
+		bind:ref={field}
+		bind:value={typed}
+		type="search"
+		class={cn('h-11 shrink-0 rounded-full', stacked ? 'min-w-0 flex-1' : 'w-36 sm:w-44')}
+		autocapitalize="none"
+		autocomplete="off"
+		spellcheck="false"
+		aria-label="Find a tag"
+		placeholder="Find a tag"
+		onkeydown={(event) => {
+			if (event.key !== 'Escape' || typed === '') return;
+			event.stopPropagation();
+			typed = '';
+		}}
+	/>
+{/snippet}
+
 <div
 	bind:this={group}
 	role="group"
 	aria-label={says}
 	class={cn('flex gap-1.5', stacked ? 'min-h-0 flex-col' : 'items-center')}
 >
-	{#if offered}
-		<!-- Out of the scroller, so the way to type a tag is where it was left
-		     however far along the chips the reader has gone. -->
-		{#if asField}
-			<Input
-				bind:ref={field}
-				bind:value={typed}
-				type="search"
-				class={cn('h-11 shrink-0 rounded-full', stacked ? 'w-full' : 'w-36 sm:w-44')}
-				autocapitalize="none"
-				autocomplete="off"
-				spellcheck="false"
-				aria-label="Find a tag"
-				placeholder="Find a tag"
-				onkeydown={(event) => {
-					if (event.key !== 'Escape' || typed === '') return;
-					event.stopPropagation();
-					typed = '';
-				}}
-			/>
-		{:else}
-			<button
-				type="button"
-				aria-label="Find a tag"
-				onclick={() => void startTyping()}
-				class={cn(chip, quiet, 'border-input px-3')}
-			>
-				<Search class="size-4" />
-			</button>
-		{/if}
+	<!-- Out of the scroller, so the way to type a tag is where it was left
+	     however far along the chips the reader has gone. -->
+	{#if asField && stacked}
+		<div class="flex shrink-0 items-center gap-1.5">
+			{@render finder()}
+			{#if onorder}
+				<button
+					type="button"
+					aria-label={order === 'name' ? 'Order by how many notes carry each' : 'Order by name'}
+					title={order === 'name' ? 'Order by how many notes carry each' : 'Order by name'}
+					onclick={() => onorder?.(order === 'name' ? 'count' : 'name')}
+					class={cn(chip, quiet, 'size-11 justify-center border-input px-0')}
+				>
+					{#if order === 'name'}
+						<ArrowDown10 class="size-4" />
+					{:else}
+						<ArrowDownAZ class="size-4" />
+					{/if}
+				</button>
+			{/if}
+		</div>
+	{:else if asField}
+		{@render finder()}
+	{:else if offered}
+		<button
+			type="button"
+			aria-label="Find a tag"
+			onclick={() => void startTyping()}
+			class={cn(chip, quiet, 'border-input px-3')}
+		>
+			<Search class="size-4" />
+		</button>
 	{/if}
 
 	<div
@@ -166,7 +204,7 @@
 		)}
 		{@attach scrollFade(stacked ? 'y' : 'x')}
 	>
-		{#each order as tag (tag)}
+		{#each shown as tag (tag)}
 			{@const slot = slots.get(tag)}
 			<button
 				type="button"

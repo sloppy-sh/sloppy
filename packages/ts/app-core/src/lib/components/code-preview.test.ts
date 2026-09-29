@@ -236,6 +236,21 @@ describe('reading the code an anchor names', () => {
 	});
 });
 
+describe('colour on the lines', () => {
+	it('colours a file it knows the language of', async () => {
+		show({ anchor: { path: 'src/parser.ts' } });
+		for (let i = 0; i < 200 && !document.body.querySelector('span.shiki'); i += 1) {
+			await new Promise((done) => setTimeout(done, 25));
+			flushSync();
+		}
+		const runs = [...document.body.querySelectorAll('span.shiki')];
+		expect(runs.length).toBeGreaterThan(0);
+		expect(runs.map((run) => run.textContent).join('')).toContain('export function discover');
+		expect(runs[0]?.getAttribute('style')).toContain('--shiki-dark');
+		expect(code()).toContain('return 1;');
+	}, 15000);
+});
+
 describe('a folder a note points at', () => {
 	const IN_SRC = ['src/parser.ts', 'src/lexer/tokens.ts', 'src/lexer/scan.ts'];
 	const project = {

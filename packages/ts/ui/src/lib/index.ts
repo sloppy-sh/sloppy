@@ -65,8 +65,11 @@ export type { TreeNote, TreeRow } from './components/tree/walk.js';
 export { sectionLines } from './components/publish/section-text.js';
 export { default as TagField } from './components/tags/tag-field.svelte';
 export { default as TagRail } from './components/tags/tag-rail.svelte';
+export type { TagOrder } from './components/tags/tag-rail.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';
 export { anchorLabel, codeHref } from './components/editor/code-anchor.js';
+export { colourLines, languageOfPath } from './components/editor/highlight.js';
+export type { Coloured } from './components/editor/highlight.js';
 export type {
 	BlockStackProps,
 	HeldPicture,
