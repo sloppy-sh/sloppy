@@ -21,6 +21,11 @@
 	 *  grow with the text they hold. */
 	const FOLDED = 2.875;
 	const DENSE = 1.875;
+
+	/** Under this the columns fold and a row takes two lines. It is the
+	 *  PICTURE's own width, not the window's: this stands in a sheet on a desk
+	 *  and in a column beside the graph, and only it knows which. */
+	const FOLD_UNDER = 36;
 	const SHORT_NAME = 8;
 
 	type Point = [number, number];
@@ -55,7 +60,6 @@
 	// version, its lane beside it, the lines between them in the lane's hue.
 	import Check from '@lucide/svelte/icons/check';
 	import { Button } from '@sloppy/ui/button';
-	import { MediaQuery } from 'svelte/reactivity';
 	import type { DrawnVersion } from './commit-graph.js';
 	import { lanes, type LaneLink, type Lanes } from './commit-lanes.js';
 
@@ -67,6 +71,8 @@
 		signs = false,
 		older = false,
 		busy = false,
+		standingFor,
+		onStandingFor,
 		onOlder,
 		onOpen
 	}: {
@@ -86,12 +92,17 @@
 		/** Whether there are older ones than these. */
 		older?: boolean;
 		busy?: boolean;
+		/** How many versions a row stands for, by that row's id — a run nobody
+		 *  wrote a message for, folded. Absent folds nothing. */
+		standingFor?: ReadonlyMap<string, number>;
+		/** Somebody asked to see the versions a folded row stands for. */
+		onStandingFor?: (id: string) => void;
 		onOlder: () => void;
 		onOpen: (id: string) => void;
 	} = $props();
 
-	const folded = new MediaQuery('(max-width: 39.99rem)');
-
+	let box = $state.raw<HTMLElement | null>(null);
+	let across = $state(0);
 	let rootPx = $state(16);
 	function readRootPx(): void {
 		const said = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
@@ -102,7 +113,17 @@
 		window.addEventListener('resize', readRootPx);
 		return () => window.removeEventListener('resize', readRootPx);
 	});
-	const tall = $derived(Math.round((folded.current ? FOLDED : DENSE) * rootPx));
+	$effect(() => {
+		const held = box;
+		if (!held) return;
+		const measure = () => (across = held.offsetWidth);
+		measure();
+		const watching = new ResizeObserver(measure);
+		watching.observe(held);
+		return () => watching.disconnect();
+	});
+	const folded = $derived(across > 0 && across < FOLD_UNDER * rootPx);
+	const tall = $derived(Math.round((folded ? FOLDED : DENSE) * rootPx));
 	const laid = $derived(lanes(versions));
 	const width = $derived(EDGE * 2 + LANE * (laid.width - 1));
 	const drawn = $derived(rows(laid, tall));
@@ -156,11 +177,12 @@
 	}
 </script>
 
-<ul aria-label="The history">
+<ul bind:this={box} aria-label="The history" class="@container">
 	{#each versions as version, row (version.id)}
 		{@const place = drawn[row] ?? { lane: 0, hue: 0, curves: [] }}
 		{@const standing = version.id === at}
 		{@const named = version.id.slice(0, SHORT_NAME)}
+		{@const holds = standingFor?.get(version.id)}
 		<li
 			class="[content-visibility:auto]"
 			style="height: {tall}px; contain-intrinsic-size: auto {tall}px"
@@ -169,11 +191,13 @@
 		>
 			<button
 				type="button"
-				class="grid h-full w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 rounded-md pr-2 text-left hover:bg-muted focus-visible:inset-ring-2 focus-visible:inset-ring-ring focus-visible:outline-none sm:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]"
-				onclick={() => onOpen(version.id)}
+				class="grid h-full w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 rounded-md pr-2 text-left hover:bg-muted focus-visible:inset-ring-2 focus-visible:inset-ring-ring focus-visible:outline-none @xl:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] {holds
+					? 'text-muted-foreground'
+					: ''}"
+				onclick={() => (holds ? onStandingFor?.(version.id) : onOpen(version.id))}
 			>
 				<svg
-					class="row-span-2 sm:row-span-1"
+					class="row-span-2 @xl:row-span-1"
 					{width}
 					height={tall}
 					viewBox="0 0 {width} {tall}"
@@ -211,19 +235,23 @@
 							{ref}
 						</span>
 					{/each}
-					<span class="min-w-0 truncate text-sm">{version.message || 'A version'}</span>
+					<span class="min-w-0 truncate text-sm"
+						>{version.message || 'A version'}{#if holds}
+							<span class="text-xs">· {holds} versions</span>
+						{/if}</span
+					>
 				</span>
 
 				<span
-					class="col-start-2 flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground sm:contents"
+					class="col-start-2 flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground @xl:contents"
 				>
-					<span class="shrink-0 tabular-nums sm:w-24 sm:text-right">{version.when}</span>
-					<span class="min-w-0 truncate sm:w-24 sm:text-right">
-						{#if version.author}<span aria-hidden="true" class="sm:hidden">·&nbsp;</span
+					<span class="shrink-0 tabular-nums @xl:w-24 @xl:text-right">{version.when}</span>
+					<span class="min-w-0 truncate @xl:w-24 @xl:text-right">
+						{#if version.author}<span aria-hidden="true" class="@xl:hidden">·&nbsp;</span
 							>{version.author}{/if}
 					</span>
-					<span class="shrink-0 font-mono sm:w-16 sm:text-right">
-						<span aria-hidden="true" class="sm:hidden">·&nbsp;</span>{named}
+					<span class="shrink-0 font-mono @xl:w-16 @xl:text-right">
+						<span aria-hidden="true" class="@xl:hidden">·&nbsp;</span>{named}
 					</span>
 				</span>
 			</button>

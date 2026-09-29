@@ -156,6 +156,8 @@
 	import { outlineSections } from '../stores/outline-sections.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
+	import HistoryColumn from '../components/history-column.svelte';
+	import { savesWhileWriting } from '../stores/autosave.svelte.js';
 	import { acts, type Act } from '../stores/acts.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
@@ -1819,6 +1821,21 @@
 	 *  project to chat about, and an assistant the person asked for. */
 	const offersChat = $derived(projectFiles !== undefined && chat.offered);
 
+	/** The column's groups: both may stand open, and they share what it has
+	 *  left. Which are open is this device's (DESIGN.md § Persistence). */
+	function toggleGroup(which: 'history' | 'tags'): void {
+		const held = prefs.current.columnGroups;
+		prefs.set('columnGroups', { ...held, [which]: !held[which] });
+	}
+
+	/** From the icon rail: widen the column and open that group in it. */
+	function openGroup(which: 'history' | 'tags'): void {
+		prefs.set('columnGroups', { ...prefs.current.columnGroups, [which]: true });
+		prefs.set('deskNavOpen', true);
+	}
+
+	$effect(() => savesWhileWriting());
+
 	// Asked for and not yet answered: the device is asked once what it has, so
 	// the offer can stand before the chat is ever opened.
 	$effect(() => {
@@ -2610,26 +2627,81 @@
 					</div>
 				{/if}
 
+				{#if graphHistory.keeps}
+					{#if collapsed}
+						<button
+							type="button"
+							aria-label="History"
+							title="History"
+							onclick={() => openGroup('history')}
+							class="mx-auto flex size-control shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+						>
+							<HistoryIcon class="size-4" />
+						</button>
+					{:else}
+						{@const open = prefs.current.columnGroups.history}
+						<div class="flex min-h-0 flex-col {open ? 'flex-1' : 'shrink-0'}">
+							<button
+								type="button"
+								aria-expanded={open}
+								onclick={() => toggleGroup('history')}
+								class="flex min-h-control shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-sm text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+							>
+								<ChevronDown
+									class="size-4 shrink-0 transition-transform {open ? '' : '-rotate-90'}"
+								/>
+								<span class="min-w-0 truncate">History</span>
+							</button>
+							{#if open}
+								<div class="min-h-0 flex-1 overflow-y-auto pt-1">
+									<HistoryColumn
+										onOpenAll={() => (showingHistory = true)}
+										onOpenVersion={() => (showingHistory = true)}
+									/>
+								</div>
+							{/if}
+						</div>
+					{/if}
+				{/if}
+
 				{#if railTags.length > 0 || selection.length > 0}
 					{#if collapsed}
 						<button
 							type="button"
 							aria-label="Tags"
 							title="Tags"
-							onclick={() => prefs.set('deskNavOpen', true)}
+							onclick={() => openGroup('tags')}
 							class="mx-auto flex size-control shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 						>
 							<Tag class="size-4" />
 						</button>
 					{:else}
-						<TagRail
-							stacked
-							tags={railTags}
-							selected={selection}
-							onselect={(next) => tags.select(next)}
-							order={prefs.current.tagOrder}
-							onorder={(next) => prefs.set('tagOrder', next)}
-						/>
+						{@const open = prefs.current.columnGroups.tags}
+						<div class="flex min-h-0 flex-col {open ? 'flex-1' : 'shrink-0'}">
+							<button
+								type="button"
+								aria-expanded={open}
+								onclick={() => toggleGroup('tags')}
+								class="flex min-h-control shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-sm text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+							>
+								<ChevronDown
+									class="size-4 shrink-0 transition-transform {open ? '' : '-rotate-90'}"
+								/>
+								<span class="min-w-0 truncate">Tags</span>
+							</button>
+							{#if open}
+								<div class="flex min-h-0 flex-1 flex-col pt-1">
+									<TagRail
+										stacked
+										tags={railTags}
+										selected={selection}
+										onselect={(next) => tags.select(next)}
+										order={prefs.current.tagOrder}
+										onorder={(next) => prefs.set('tagOrder', next)}
+									/>
+								</div>
+							{/if}
+						</div>
 					{/if}
 				{/if}
 			{/snippet}

@@ -66,11 +66,19 @@ export interface Prefs {
 	/** How close everything is drawn — DESIGN.md § Layout. `auto` is what this
 	 *  device is: closer where a mouse is the only pointer. */
 	density: Density;
+	/** Whether a version is kept while somebody writes. Off until asked for:
+	 *  nothing about somebody's own history changes shape on its own. */
+	autosave: boolean;
+	/** How long between them, in minutes. */
+	autosaveMinutes: number;
 	/** Whether the column beside the graph on a desk stands open or as an icon
 	 *  rail — DESIGN.md § Layout. */
 	deskNavOpen: boolean;
 	/** How the tags down that column are laid out. */
 	tagOrder: 'count' | 'name';
+	/** Which groups of that column stand open. Both may, and they share what
+	 *  it has left. */
+	columnGroups: { history: boolean; tags: boolean };
 	/** Whether Sloppy offers to work with an assistant at all. Off is the app
 	 *  without one, and nothing about one is put in front of anybody. */
 	aiOffered: boolean;
@@ -128,6 +136,9 @@ export const STYLES = Object.keys(STYLE_LABELS) as Style[];
 export const FONTS = Object.keys(FONT_LABELS) as Font[];
 export const DENSITIES = Object.keys(DENSITY_LABELS) as Density[];
 
+/** How long between versions kept while writing, in minutes. */
+export const AUTOSAVE_MINUTES = [2, 5, 15, 30] as const;
+
 /**
  * Whether this device is one where everything can be drawn closer: a mouse and
  * nothing else. A screen somebody might reach for is drawn for a finger,
@@ -175,7 +186,10 @@ function defaults(): Prefs {
 		chatWidth: null,
 		deskNavOpen: true,
 		tagOrder: 'count',
+		columnGroups: { history: false, tags: true },
 		density: 'auto',
+		autosave: false,
+		autosaveMinutes: 5,
 		aiOffered: false,
 		chatAgent: null,
 		chatModel: {},
@@ -199,6 +213,18 @@ function stored(): Partial<Prefs> {
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
 	return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+function oneNumberOf<T extends number>(value: unknown, allowed: readonly T[], fallback: T): T {
+	return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+function groupsIn(value: unknown): { history: boolean; tags: boolean } {
+	const held = (typeof value === 'object' && value !== null ? value : {}) as Record<
+		string,
+		unknown
+	>;
+	return { history: held.history === true, tags: held.tags !== false };
 }
 
 function widthIn(value: unknown): number | null {
@@ -304,7 +330,10 @@ class PrefsStore {
 			chatWidth: widthIn(saved.chatWidth),
 			deskNavOpen: saved.deskNavOpen !== false,
 			tagOrder: saved.tagOrder === 'name' ? 'name' : 'count',
+			columnGroups: groupsIn(saved.columnGroups),
 			density: oneOf(saved.density, DENSITIES, base.density),
+			autosave: saved.autosave === true,
+			autosaveMinutes: oneNumberOf(saved.autosaveMinutes, AUTOSAVE_MINUTES, 5),
 			aiOffered: saved.aiOffered === true,
 			chatAgent: CHAT_AGENTS.includes(saved.chatAgent as ChatAgent)
 				? (saved.chatAgent as ChatAgent)

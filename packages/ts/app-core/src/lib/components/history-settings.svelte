@@ -7,6 +7,8 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
+	import { Switch } from '@sloppy/ui/switch';
+	import { AUTOSAVE_MINUTES, prefs } from '../stores/prefs.svelte.js';
 	import { gitSettings, onADesktop, type PlaceKept } from '../stores/git-settings.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 
@@ -275,6 +277,40 @@
 			What you set here is this folder's. The name on your versions and the way they are signed also
 			start off the next folder you begin on this device.
 		</p>
+
+		<section class="space-y-3">
+			<h3 class="text-sm font-medium">Saving as you write</h3>
+			<div class="flex items-start gap-3">
+				<Switch
+					id="autosave"
+					checked={prefs.current.autosave}
+					onCheckedChange={(on) => prefs.set('autosave', on)}
+				/>
+				<div class="min-w-0 flex-1 space-y-1">
+					<Label for="autosave" class="text-sm font-normal">Keep a version as I write</Label>
+					<p class="text-xs text-muted-foreground">
+						It keeps on the line you are already on, under one name, so a run of them reads as one
+						thing. Nothing is kept while your project is in the middle of something you began.
+					</p>
+				</div>
+			</div>
+			{#if prefs.current.autosave}
+				<fieldset class="space-y-2">
+					<legend class="text-sm">How often</legend>
+					<div class="flex flex-wrap gap-2">
+						{#each AUTOSAVE_MINUTES as minutes (minutes)}
+							<ChoicePill
+								group="autosave-minutes"
+								value={String(minutes)}
+								label="{minutes} minutes"
+								checked={prefs.current.autosaveMinutes === minutes}
+								onpick={() => prefs.set('autosaveMinutes', minutes)}
+							/>
+						{/each}
+					</div>
+				</fieldset>
+			{/if}
+		</section>
 
 		<section class="space-y-3">
 			<h3 class="text-sm font-medium">Who your versions are by</h3>

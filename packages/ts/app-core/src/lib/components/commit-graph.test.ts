@@ -14,16 +14,23 @@ function version(id: string, parents: string[], over: Partial<DrawnVersion> = {}
 	return { id, message: id, when: '1 Jan 2026', parents, refs: [], ...over };
 }
 
-/** Whether the surface has room for date, author and name beside the message. */
+/** Whether the picture itself has room for date, author and name beside the
+ *  message — its own width, which is what it reads. */
 function room(wide: boolean): void {
-	Object.defineProperty(globalThis, 'matchMedia', {
+	Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+		configurable: true,
+		get(this: HTMLElement) {
+			return this.tagName === 'UL' ? (wide ? 900 : 260) : 0;
+		}
+	});
+	Object.defineProperty(globalThis, 'ResizeObserver', {
 		configurable: true,
 		writable: true,
-		value: (query: string) => ({
-			matches: query.includes('max-width') ? !wide : wide,
-			addEventListener: () => {},
-			removeEventListener: () => {}
-		})
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
 	});
 }
 

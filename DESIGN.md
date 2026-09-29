@@ -814,9 +814,16 @@ thinking it is.
 ## The history as a picture
 
 A person who keeps their graph in more than one place has a second shape to read: not the
-graph, but the states it has been in and the lines they run along. It is drawn on the
-History surface, and it is a picture rather than a list because branches are a shape — where
-one left another and where they came back together is not a thing a column of rows can say.
+graph, but the states it has been in and the lines they run along. It is a picture rather
+than a list because branches are a shape — where one left another and where they came back
+together is not a thing a column of rows can say.
+
+**It stands beside the graph on a desk, and is a surface a phone opens.** In the column it
+is what somebody keeps reaching for — what is unkept, somewhere to keep it, and the picture
+— with the lines, the other places and what is different one row away in the surface that
+has always held them. **What it folds by is its own width and never the window's**: the same
+picture is drawn in a column on a wide screen and across a whole phone, and only it knows
+which.
 
 **It is a table, one dense row per version.** The lanes, then the message with the branches
 at it beside it, then when it was kept, who kept it, and the short name it is cited by. A
@@ -824,6 +831,12 @@ branch kept here is a chip with a border; one kept somewhere else, which the his
 `origin/main`, is drawn dashed, so where a branch lives is read from form rather than from a
 second colour (§ "The graph's colour language"). The version the folder stands on is an open mark on its
 lane, and a version nobody is at is a filled one and nothing more.
+
+**A run of versions nobody wrote a message for folds into one row.** Saving as you write
+keeps them under one name, and a hundred of those are one thing that happened, not a
+hundred — so the run stands as its first version, says how many it holds, and is drawn in
+the quieter ink the curated ones are not. It expands where somebody asks, and it never folds
+a version a line points at, because that is one somebody looks for by name.
 
 **Lanes are drawn in hue, and this is the one surface outside the canvas that spends it.**
 Which of a dozen lines a row belongs to is the question this picture exists to answer, and

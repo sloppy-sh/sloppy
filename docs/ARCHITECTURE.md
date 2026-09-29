@@ -3724,6 +3724,17 @@ should own. `History` in `@sloppy/local` declares every one of them and what its
 means, and `MemoryHistory` beside it is that surface over `MemoryFiles`, so a page's tests
 never need a repository on a disk.
 
+**Saving as you write is app-core's clock, and there is none in `src-tauri`.** It is off
+until somebody asks for it, and then keeps a version every few minutes and once more when the
+window goes away. It keeps **on the line the folder is already on**, under one fixed message,
+because `commit` commits where HEAD is and `switch` is refused while anything is unkept — a
+line of its own would mean moving the folder four times a period. It never moves the folder,
+so nothing about the graph is read again afterwards; `graphHistory.keep` is split from the
+acts that do move it for exactly that reason. A folder in the middle of something the person
+began refuses (`theirs_unfinished`), and that refusal is recorded rather than put on screen:
+it repeats every period, and a message that repeats is not a message. `autosave.svelte.ts`
+is the whole of it.
+
 **A vault inside a repository uses that repository, and is a PREFIX inside it.** A
 container sits in a project whose history already exists (§ "A project's container"), and
 reasoning that moves with the code it is about has to land in the same commit as the code. So

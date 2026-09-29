@@ -428,13 +428,30 @@ class HistoryStore {
 		}
 	}
 
-	/** Keep what is in the folder as a version. Answers whether anything was
-	 *  kept: nothing to keep is not a failure. */
+	/**
+	 * Keep what is in the folder as a version. Answers whether anything was
+	 * kept: nothing to keep is not a failure.
+	 *
+	 * **Keeping does not move the folder**, so nothing about the graph is read
+	 * again — only what the history itself now says. That is what lets this be
+	 * done on a clock (`autosave`) without the graph reloading under somebody's
+	 * cursor.
+	 */
 	async keep(message: string): Promise<boolean> {
-		return this.act(async (history) => {
+		const history = runtime.history();
+		if (!history) return false;
+		this.#busy = true;
+		this.#says = null;
+		try {
 			const kept = await history.commit(message);
+			await this.read();
 			return kept !== undefined;
-		});
+		} catch (err) {
+			this.#says = said(err);
+			return false;
+		} finally {
+			this.#busy = false;
+		}
 	}
 
 	/** A line of work starting at the version the folder stands on. The folder

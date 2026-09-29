@@ -18,7 +18,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import BranchesPanel, { type LineRow } from '../components/branches-panel.svelte';
 	import CommitDetails from '../components/commit-details.svelte';
-	import type { DrawnVersion } from '../components/commit-graph.js';
+	import { drawnFrom, type DrawnVersion, keptBy, whenKept } from '../components/commit-graph.js';
 	import CommitGraph from '../components/commit-graph.svelte';
 	import SyncControls, { type KeptAlso } from '../components/sync-controls.svelte';
 	import {
@@ -57,12 +57,12 @@
 
 	const versions = $derived<KeptVersion[]>(
 		graphHistory.versions.map((one) => {
-			const author = named(one.author);
+			const author = keptBy(one.author);
 			return {
 				id: one.id,
 				message: one.message,
 				...(author === undefined ? {} : { author }),
-				when: when(one.at),
+				when: whenKept(one.at),
 				merged: one.parents.length > 1
 			};
 		})
@@ -72,20 +72,7 @@
 		graphHistory.lines.map((one) => ({ name: one.name, head: one.head, here: one.current }))
 	);
 
-	const drawnVersions = $derived<DrawnVersion[]>(
-		graphHistory.picture.map((one) => {
-			const author = named(one.author);
-			return {
-				id: one.id,
-				message: one.message,
-				...(author === undefined ? {} : { author }),
-				when: when(one.at),
-				parents: one.parents,
-				refs: one.refs,
-				...(one.signature === undefined ? {} : { signed: one.signature })
-			};
-		})
-	);
+	const drawnVersions = $derived<DrawnVersion[]>(drawnFrom(graphHistory.picture));
 
 	/** The lines this folder only knows about, so the picture can draw where a
 	 *  line is kept rather than read it out of its name. */
@@ -164,18 +151,6 @@
 	});
 
 	/** Whoever kept a version, where the graph has a name for them. */
-	function named(author: string): string | undefined {
-		return author === '' || author.startsWith('did:') ? undefined : author;
-	}
-
-	/** The day it was kept, in the reader's own language. */
-	function when(at: string): string {
-		const day = new Date(at);
-		return Number.isNaN(day.getTime())
-			? ''
-			: day.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-	}
-
 	/** What a person calls the note a ref names. A note the graph in front of
 	 *  them no longer holds still has to be spoken of, so it is named as one. */
 	function called(ref: OwnedRef | undefined): string | undefined {
