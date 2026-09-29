@@ -26,16 +26,42 @@ import { MAX_TAGS_PER_NODE, TagsSchema } from "./tag.js";
 
 /** The agents this app can chat with. A second one is a value here and a way
  *  for the shell to reach it, and touches no shape and no surface. */
-export const CHAT_AGENTS = ["claude_code"] as const;
+export const CHAT_AGENTS = [
+  "claude_code",
+  "anthropic",
+  "openai",
+  "deepseek",
+] as const;
 export type ChatAgent = (typeof CHAT_AGENTS)[number];
 
 const AGENT_NAMES: Record<ChatAgent, string> = {
   claude_code: "Claude Code",
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  deepseek: "DeepSeek",
 };
 
 /** What an agent is called where somebody reads it. */
 export function chatAgentName(agent: ChatAgent): string {
   return AGENT_NAMES[agent];
+}
+
+/**
+ * How a device reaches an agent: a program it starts, or an endpoint a key
+ * this device holds opens. The axis every surface asks, so nothing branches
+ * on which agent it is.
+ */
+export type ChatReach = "program" | "key";
+
+const AGENT_REACH: Record<ChatAgent, ChatReach> = {
+  claude_code: "program",
+  anthropic: "key",
+  openai: "key",
+  deepseek: "key",
+};
+
+export function chatAgentReach(agent: ChatAgent): ChatReach {
+  return AGENT_REACH[agent];
 }
 
 /**
@@ -103,10 +129,19 @@ export type ChatModel = z.infer<typeof ChatModelSchema>;
 
 const AGENT_MODELS: Record<ChatAgent, readonly ChatModel[]> = {
   claude_code: [
+    { model: "fable", name: "Fable" },
     { model: "opus", name: "Opus" },
     { model: "sonnet", name: "Sonnet" },
     { model: "haiku", name: "Haiku" },
   ],
+  anthropic: [
+    { model: "claude-fable-5-1", name: "Fable 5.1" },
+    { model: "claude-opus-5", name: "Opus 5" },
+    { model: "claude-sonnet-5", name: "Sonnet 5" },
+    { model: "claude-haiku-4-5-20251001", name: "Haiku 4.5" },
+  ],
+  openai: [],
+  deepseek: [],
 };
 
 /**
@@ -1051,11 +1086,58 @@ const BlockEventSchema = z.object({
   block: ChatBlockSchema,
 });
 
+/**
+ * What a turn spent. Every count is this TURN's own, so a session is its turns
+ * added up — except `cost`, which an agent reports as what the whole
+ * conversation has come to so far, and is therefore the latest rather than a
+ * sum. {@link spentTogether} is the one copy of that rule.
+ */
+export const ChatSpendSchema = z.object({
+  /** Tokens put in front of the agent. */
+  sent: z.int().min(0),
+  /** Tokens the agent wrote. */
+  answered: z.int().min(0),
+  /** Tokens read back from what it had already been shown. */
+  recalled: z.int().min(0).optional(),
+  /** Tokens kept for it to read back later. */
+  kept: z.int().min(0).optional(),
+  /** Tokens spent thinking before answering. */
+  thought: z.int().min(0).optional(),
+  /** What the conversation has cost so far, in US dollars. **Absent is an
+   *  agent that does not say**, which is not free. */
+  cost: z.number().min(0).optional(),
+});
+export type ChatSpend = z.infer<typeof ChatSpendSchema>;
+
+/** A turn's spend added to a session's: the counts summed, `cost` replaced. */
+export function spentTogether(
+  held: ChatSpend | undefined,
+  more: ChatSpend,
+): ChatSpend {
+  if (held === undefined) return { ...more };
+  const add = (a: number | undefined, b: number | undefined) =>
+    a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0);
+  const summed = {
+    sent: held.sent + more.sent,
+    answered: held.answered + more.answered,
+    recalled: add(held.recalled, more.recalled),
+    kept: add(held.kept, more.kept),
+    thought: add(held.thought, more.thought),
+    cost: more.cost ?? held.cost,
+  };
+  return Object.fromEntries(
+    Object.entries(summed).filter(([, value]) => value !== undefined),
+  ) as ChatSpend;
+}
+
 const EndedEventSchema = z.object({
   event: z.literal("ended"),
   /** **Absent is a turn that finished.** True is one the person stopped, which
    *  is not trouble and says nothing to them. */
   stopped: z.boolean().optional(),
+  /** What the turn spent. **Absent is a turn nothing was said about**, which
+   *  is not nothing spent. */
+  spent: ChatSpendSchema.optional(),
 });
 
 const OverEventSchema = z.object({

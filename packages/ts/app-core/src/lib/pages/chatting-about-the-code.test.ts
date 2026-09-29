@@ -11,6 +11,7 @@ import { type ChatAccess, initRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { canvasInk } from '../stores/canvas-ink.svelte.js';
 import { chat } from '../stores/chat.svelte.js';
+import { prefs } from '../stores/prefs.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
@@ -195,6 +196,7 @@ beforeEach(async () => {
 	canvasInk.rubOut(HOME);
 	serving = files;
 	stub = new Stub();
+	prefs.set('aiOffered', true);
 	initRuntime({
 		apiHost: () => 'http://api.test',
 		project: async () => serving,
@@ -208,6 +210,7 @@ beforeEach(async () => {
 afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
+	prefs.set('aiOffered', false);
 	chat.clear();
 	offers.clear();
 	session.clear();
@@ -236,6 +239,24 @@ describe('where the offer to chat stands', () => {
 
 	it('is nowhere on a graph that is nobody’s project', async () => {
 		serving = undefined;
+		await open();
+		labelled('More').click();
+		await settle();
+
+		expect(offeredInMenu()).not.toContain('Chat about the code');
+	});
+
+	it('is nowhere until the person has asked for an assistant', async () => {
+		prefs.set('aiOffered', false);
+		await open();
+		labelled('More').click();
+		await settle();
+
+		expect(offeredInMenu()).not.toContain('Chat about the code');
+	});
+
+	it('is nowhere where nothing on this device answers, though it was asked for', async () => {
+		stub.agent = [];
 		await open();
 		labelled('More').click();
 		await settle();

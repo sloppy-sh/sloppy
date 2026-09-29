@@ -13,8 +13,8 @@
 import { GRAPH_GROUNDS, type GraphGround } from '@sloppy/graph';
 import {
 	CHAT_AGENTS,
+	CHAT_MODEL_MAX,
 	type ChatAgent,
-	chatModels,
 	type OwnedRef,
 	OwnedRefSchema,
 	type Tag,
@@ -67,6 +67,12 @@ export interface Prefs {
 	deskNavOpen: boolean;
 	/** How the tags down that column are laid out. */
 	tagOrder: 'count' | 'name';
+	/** Whether Sloppy offers to work with an assistant at all. Off is the app
+	 *  without one, and nothing about one is put in front of anybody. */
+	aiOffered: boolean;
+	/** Which agent answers, where this device reaches more than one. Null is
+	 *  whichever it reaches first. */
+	chatAgent: ChatAgent | null;
 	/** Which model each agent is asked to answer with, in that agent's own
 	 *  spelling. **An agent with no entry is one nobody has chosen for**, which
 	 *  is what it answers with on its own. */
@@ -139,6 +145,8 @@ function defaults(): Prefs {
 		chatWidth: null,
 		deskNavOpen: true,
 		tagOrder: 'count',
+		aiOffered: false,
+		chatAgent: null,
 		chatModel: {},
 		origin: null
 	};
@@ -177,16 +185,16 @@ function tagsIn(value: unknown): Tag[] {
 	return out;
 }
 
-/** One model per agent, and only ones that agent still offers — a name is what
- *  somebody picked, and one this build can no longer name is one it cannot
- *  show them. */
+/** One model per agent, as somebody spelled it — one this build does not name
+ *  is still theirs to ask for, so only the bound is held. */
 function modelsIn(value: unknown): Partial<Record<ChatAgent, string>> {
 	if (typeof value !== 'object' || value === null) return {};
 	const held = value as Record<string, unknown>;
 	const out: Partial<Record<ChatAgent, string>> = {};
 	for (const agent of CHAT_AGENTS) {
 		const picked = held[agent];
-		if (chatModels(agent).some((one) => one.model === picked)) out[agent] = picked as string;
+		if (typeof picked === 'string' && picked.trim() !== '' && picked.length <= CHAT_MODEL_MAX)
+			out[agent] = picked;
 	}
 	return out;
 }
@@ -265,6 +273,10 @@ class PrefsStore {
 			chatWidth: widthIn(saved.chatWidth),
 			deskNavOpen: saved.deskNavOpen !== false,
 			tagOrder: saved.tagOrder === 'name' ? 'name' : 'count',
+			aiOffered: saved.aiOffered === true,
+			chatAgent: CHAT_AGENTS.includes(saved.chatAgent as ChatAgent)
+				? (saved.chatAgent as ChatAgent)
+				: null,
 			chatModel: modelsIn(saved.chatModel),
 			origin: asOrigin(saved.origin)
 		};

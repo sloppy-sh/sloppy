@@ -17,17 +17,19 @@ import {
 	advertisedChatTools,
 	CHAT_AGENTS,
 	CHAT_ASKED_MAX,
-	chatAgentName,
-	ChatEventSchema,
-	ChatToolAnswerSchema,
-	ChatToolCallSchema,
-	ulid,
 	type ChatAgent,
+	chatAgentName,
+	chatAgentReach,
 	type ChatEvent,
+	ChatEventSchema,
+	type ChatSpend,
 	type ChatToolAnswer,
-	type ChatToolCall
+	ChatToolAnswerSchema,
+	type ChatToolCall,
+	ChatToolCallSchema,
+	ulid
 } from '@sloppy/types';
-import { chatBrief } from '@sloppy/local';
+import { type AiKeysAccess, chatBrief } from '@sloppy/local';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { AgentStream } from './chat-stream';
 import type { DraftAccess } from './draft';
@@ -79,8 +81,10 @@ function said(reason: unknown): string {
 }
 
 function nothingToChatWith(): string {
-	const known = CHAT_AGENTS.map(chatAgentName).join(' or ');
-	return `Sloppy has nothing on this computer to chat with. Install ${known} and try again.`;
+	const programs = CHAT_AGENTS.filter((agent) => chatAgentReach(agent) === 'program')
+		.map(chatAgentName)
+		.join(' or ');
+	return `Sloppy has nothing on this computer to chat with. Install ${programs}, or give it a key in Settings, and try again.`;
 }
 
 interface Settling {
@@ -121,11 +125,15 @@ class Session {
 	}
 
 	/** The turn underway is over, however it ended. */
-	ends(): void {
+	ends(spent?: ChatSpend): void {
 		const turn = this.turn;
 		if (!turn) return;
 		this.turn = undefined;
-		this.tell({ event: 'ended', ...(turn.stopped ? { stopped: true } : {}) });
+		this.tell({
+			event: 'ended',
+			...(turn.stopped ? { stopped: true } : {}),
+			...(spent === undefined ? {} : { spent })
+		});
 		turn.ends();
 	}
 
@@ -146,12 +154,16 @@ class TauriChat implements ChatAccess {
 		private readonly here: () => Promise<string | undefined>,
 		readonly drafts: DraftAccess | undefined,
 		private readonly call: Invoke,
-		private readonly telling: () => Telling
+		private readonly telling: () => Telling,
+		private readonly keys: AiKeysAccess | undefined
 	) {}
 
+	/** The agents this device reaches: the programs it found, and the agents a
+	 *  key it holds opens. */
 	async agents(): Promise<ChatAgent[]> {
-		const held = await this.call<string[]>(AGENTS);
-		return CHAT_AGENTS.filter((agent) => held.includes(agent));
+		const programs = await this.call<string[]>(AGENTS);
+		const keyed = ((await this.keys?.held().catch(() => [])) ?? []).map((one) => one.provider);
+		return CHAT_AGENTS.filter((agent) => programs.includes(agent) || keyed.includes(agent));
 	}
 
 	async open(asked: ChatAsked, hear: (event: ChatEvent) => void, serve: Serving): Promise<void> {
@@ -232,7 +244,7 @@ class TauriChat implements ChatAccess {
 			case 'said': {
 				const heard = session.stream.read(one.line);
 				for (const event of heard.events) session.tell(event);
-				if (heard.ended) session.ends();
+				if (heard.ended) session.ends(heard.spent);
 				return;
 			}
 			case 'called':
@@ -315,7 +327,11 @@ class TauriChat implements ChatAccess {
 		const held = await this.agents();
 		if (asked !== undefined) {
 			if (held.includes(asked)) return asked;
-			throw refuse(`${chatAgentName(asked)} is not on this computer. Install it and try again.`);
+			throw refuse(
+				chatAgentReach(asked) === 'program'
+					? `${chatAgentName(asked)} is not on this computer. Install it and try again.`
+					: `There is no key for ${chatAgentName(asked)} on this device. Give it one in Settings and try again.`
+			);
 		}
 		const [first] = held;
 		if (first === undefined) throw refuse(nothingToChatWith());
@@ -339,7 +355,8 @@ export function tauriChat(
 	here: () => Promise<string | undefined>,
 	drafts?: DraftAccess,
 	call: Invoke = invoke,
-	telling: () => Telling = () => new Channel<Told>()
+	telling: () => Telling = () => new Channel<Told>(),
+	keys?: AiKeysAccess
 ): ChatAccess {
-	return new TauriChat(here, drafts, call, telling);
+	return new TauriChat(here, drafts, call, telling, keys);
 }

@@ -3364,7 +3364,7 @@ describe('a graph as a file', () => {
 
 describe('the chat about the code, beside an open note', () => {
 	const chatting: ChatAccess = {
-		agents: async () => [],
+		agents: async () => ['claude_code'],
 		open: async () => {},
 		say: async () => {},
 		stop: async () => {},
@@ -3373,6 +3373,7 @@ describe('the chat about the code, beside an open note', () => {
 
 	beforeEach(() => {
 		stubViewport((query) => query.includes('900'));
+		prefs.set('aiOffered', true);
 		initRuntime({
 			apiHost: () => 'http://api.test',
 			project: async () => ({}) as Files,
@@ -3382,6 +3383,7 @@ describe('the chat about the code, beside an open note', () => {
 	});
 
 	afterEach(() => {
+		prefs.set('aiOffered', false);
 		chat.clear();
 		initRuntime({ apiHost: () => 'http://api.test', project: undefined, chat: undefined });
 		seamSettledAgain();

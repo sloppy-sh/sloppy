@@ -13,6 +13,7 @@ import {
 	type ChatBlockKind,
 	type ChatCallId,
 	type ChatCard,
+	type ChatSpend,
 	type ChatToolCall,
 	ChatToolCallSchema,
 	type ChatToolName,
@@ -207,4 +208,59 @@ function firstString(args: unknown): string | undefined {
 function shortly(said: string): string {
 	const line = said.split('\n')[0].trim();
 	return line.length > SHOWN_MAX ? `${line.slice(0, SHOWN_MAX - 1)}…` : line;
+}
+
+/** Tokens as somebody reads them: `812`, `12.4k`, `1.2M`. */
+export function tokensSaid(count: number): string {
+	if (count < 1000) return String(count);
+	const short = (value: number, unit: string) =>
+		`${value.toFixed(value < 10 ? 1 : 0).replace(/\.0$/, '')}${unit}`;
+	return count < 1_000_000 ? short(count / 1000, 'k') : short(count / 1_000_000, 'M');
+}
+
+/** What the chat has spent, in one quiet line: the turn, the conversation,
+ *  and the cost only where the agent says one. */
+export function spentSaid(spent: { turn?: ChatSpend; session?: ChatSpend }): string {
+	const parts: string[] = [];
+	if (spent.turn) parts.push(`${tokensSaid(spent.turn.sent + spent.turn.answered)} this turn`);
+	if (spent.session)
+		parts.push(`${tokensSaid(spent.session.sent + spent.session.answered)} in this chat`);
+	const cost = spent.session?.cost ?? spent.turn?.cost;
+	if (cost !== undefined) parts.push(cost > 0 && cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`);
+	return parts.join(' · ');
+}
+
+/** How much of an earlier conversation is carried to an agent that was not
+ *  there for it, in characters. The most recent is what matters, so the head
+ *  goes first. */
+export const CARRIED_MAX = 24_000;
+
+/**
+ * What was said so far, for an agent taking over the conversation: each turn
+ * as who said it and what, the agent's tool calls as one line each. Bounded to
+ * {@link CARRIED_MAX} from the end. Empty where nothing was said.
+ */
+export function carriedOver(turns: readonly ChatTurn[]): string {
+	const lines = turns.flatMap((turn) => {
+		const rows = threadRows(turn);
+		const said = rows.flatMap((row) => {
+			if (row.kind === 'said') return [row.said];
+			if (row.kind === 'call') {
+				const line = toolLine(row.call);
+				return [`(${line.doing}${line.subject === undefined ? '' : ` ${line.subject}`})`];
+			}
+			return [];
+		});
+		if (said.length === 0) return [];
+		return [`${turn.from === 'person' ? 'Person' : 'Assistant'}: ${said.join('\n')}`];
+	});
+	const whole = lines.join('\n\n');
+	return whole.length <= CARRIED_MAX ? whole : `…${whole.slice(-CARRIED_MAX)}`;
+}
+
+/** What a person's words become where an earlier conversation is carried
+ *  into a new session with them. */
+export function withCarried(carried: string, said: string): string {
+	if (carried === '') return said;
+	return `Earlier in this conversation, answered by another assistant:\n\n${carried}\n\n---\n\n${said}`;
 }

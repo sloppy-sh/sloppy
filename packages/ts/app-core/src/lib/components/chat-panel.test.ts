@@ -229,6 +229,7 @@ beforeEach(async () => {
 	chat.clear();
 	offers.clear();
 	prefs.set('chatModel', {});
+	prefs.set('chatAgent', null);
 	opened = [];
 	acting.answer = { said: '{}' };
 	acting.called.length = 0;
@@ -870,12 +871,12 @@ describe('which model answers', () => {
 		await chat.opened(HOME);
 		show();
 		await settle();
-		expect(named('Model')).toBeDefined();
+		expect(labelled('Answering with')?.textContent?.trim()).toBe('Claude Code');
 
 		chat.setModel('sonnet');
 		await settle();
 
-		expect(named('Sonnet')).toBeDefined();
+		expect(labelled('Answering with')?.textContent?.trim()).toBe('Claude Code · Sonnet');
 		expect(prefs.current.chatModel).toEqual({ claude_code: 'sonnet' });
 
 		type('Write about the parser');
@@ -931,5 +932,84 @@ describe('starting again', () => {
 
 		expect(screen()).toContain('microphone on your keyboard');
 		expect(labelled('Record')).toBeUndefined();
+	});
+});
+
+describe('answering with', () => {
+	it('reads the agent and the model picked, and offers every route this device reaches', async () => {
+		stub.agent = ['claude_code', 'anthropic'];
+		prefs.set('chatModel', { claude_code: 'fable' });
+		await chat.opened(HOME);
+		show();
+		await settle();
+
+		expect(labelled('Answering with')?.textContent?.trim()).toBe('Claude Code · Fable');
+		expect(chat.agent).toBe('claude_code');
+	});
+
+	it('says what a turn spent, and the conversation so far, only where the agent says', async () => {
+		await saying('What is in here?');
+		expect(screen()).not.toContain('this turn');
+
+		stub.tell({ event: 'ended', spent: { sent: 1200, answered: 340, cost: 0.04 } });
+		await settle();
+		expect(screen()).toContain('1.5k this turn · 1.5k in this chat · $0.04');
+
+		type('And then?');
+		labelled('Send')?.click();
+		await settle();
+		stub.tell({ event: 'ended', spent: { sent: 100, answered: 50, cost: 0.06 } });
+		await settle();
+		expect(screen()).toContain('150 this turn · 1.7k in this chat · $0.06');
+	});
+
+	it('moves the conversation to another agent, carrying what was said so far', async () => {
+		stub.agent = ['claude_code', 'anthropic'];
+		await saying('First question');
+		stub.tell({ event: 'block', at: 0, block: { kind: 'said', said: 'An answer' } });
+		stub.tell({ event: 'ended' });
+		await settle();
+
+		chat.pick('anthropic', undefined);
+		await settle();
+		expect(stub.closes).toBe(1);
+		expect(chat.turns).toHaveLength(2);
+
+		type('Second question');
+		labelled('Send')?.click();
+		await settle();
+		expect(stub.asked.at(-1)?.agent).toBe('anthropic');
+		const carried = stub.said.at(-1) ?? '';
+		expect(carried).toContain('Earlier in this conversation');
+		expect(carried).toContain('Person: First question');
+		expect(carried).toContain('Assistant: An answer');
+		expect(carried.endsWith('Second question')).toBe(true);
+	});
+
+	it('offers another agent where the session dies, and says the same thing to it', async () => {
+		stub.agent = ['claude_code', 'anthropic'];
+		await saying('Hello there');
+		stub.tell({ event: 'block', at: 0, block: { kind: 'said', said: 'Hi' } });
+		stub.tell({ event: 'over', said: 'It could not go on.' });
+		await settle();
+
+		expect(screen()).toContain('It could not go on.');
+		named('Try with Anthropic')?.click();
+		await settle();
+
+		expect(stub.asked.at(-1)?.agent).toBe('anthropic');
+		expect(stub.said.at(-1)).toBe('Hello there');
+		expect(chat.turns.map((turn) => turn.from)).toEqual(['person']);
+		expect(screen()).not.toContain('It could not go on.');
+	});
+
+	it('says a model the assistant does not know was refused, in words', async () => {
+		prefs.set('chatModel', { claude_code: 'no-such-model' });
+		await saying('Hello');
+		stub.tell({ event: 'over', said: 'Error: model not found' });
+		await settle();
+
+		expect(screen()).toContain("That model isn't one this assistant knows. Pick another.");
+		expect(screen()).not.toContain('model not found');
 	});
 });

@@ -3632,6 +3632,40 @@ shell to reach it, and touches no shape and no surface. A device with none is an
 from `agents()`, which is what lets the offer say so plainly instead of failing when
 somebody takes it.
 
+**An assistant is an add-on, and the person asks for it.** `prefs.aiOffered` is the one thing
+kept about it, off by default, and nothing about an assistant stands in front of anybody while
+it is off. Turning it on is the ask: the device is asked what it has, and `chat.offered` — this
+shell can reach an agent, the person asked for one, and something answers — is the one predicate
+the graph page and the phone card read. **`agents()` answers with everything this device
+reaches**: the programs it found, and the agents a key it holds opens. `chatAgentReach` in
+`@sloppy/types` is the axis — `program` or `key` — so no surface branches on which agent it is;
+a phone reaches no program, so what it can ever reach is a key.
+
+**A key is sealed by the device and never handed to a page.** `AiKeysAccess` in `@sloppy/local`
+is what a page reaches keys through: `hold` takes one in, `held` says which agents have one and
+what keeps it, `forget` takes it out. Before it is written down, the key is sealed through the
+device's own secrets store — the `crypto-hw` plugin: a key that never leaves the secure hardware
+where the device has one, the system's own protected store where it does not, a key file of the
+app's own otherwise, and which of the three is said as `backing` — and the sealed value goes in
+`ai-keys.json` under the app's private data. It is opened only where the request that needs it
+is made, never in the webview; `DeviceAiKeys` is the page's side and holds no secret.
+
+**What a turn spent is said on `ended`.** `ChatSpend` is the shape — what was put in front of the
+agent, what it wrote, and what the conversation has cost where the agent says — and
+`spentTogether` is the one copy of the rule: the counts are the turn's own and add up, the cost
+arrives as the conversation's total and is read as the latest rather than added. An agent that
+says nothing about spend is a turn nothing is said about, which is not a free one. The chat draws
+it as one quiet line, and the cost only where it was said.
+
+**A conversation moves to another agent by being carried.** A session is one agent's. Picking
+another lets the standing session go and carries what was said so far into the next one, as the
+earlier conversation the new agent is handed with the next thing said (`carriedOver` and
+`withCarried` in app-core's `chat-said.ts`, bounded from the end). Where a session dies, the
+person is offered the other agents this device reaches, and trying again with one says the same
+thing to it with the conversation before it carried. A model the agent does not know is told
+apart from any other way a session dies — it ends before the agent has written anything — and
+is said as that.
+
 **Which model answers is the person's to pick, and a model is a named thing.** `ChatAsked.model`
 already reaches the agent and the shell already asks for it, and the choosing is what a
 person needs beside that. `chatModels` in `@sloppy/types` is the one copy of what an

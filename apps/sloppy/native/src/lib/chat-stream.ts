@@ -21,15 +21,17 @@ import {
 	argumentsFit,
 	type ChatBlock,
 	type ChatEvent,
+	type ChatSpend,
 	type ChatToolName
 } from '@sloppy/types';
 
 /** What one line came to. `ended` is the line that ends the turn underway;
  *  whether somebody STOPPED it is the seam's to say, so the `ended` event is
- *  composed there. */
+ *  composed there. `spent` is what that line said the turn cost, where it said. */
 export interface Heard {
 	events: ChatEvent[];
 	ended: boolean;
+	spent?: ChatSpend;
 }
 
 const NOTHING: Heard = { events: [], ended: false };
@@ -95,8 +97,10 @@ export class AgentStream {
 				return { events: this.settled(field(held, 'message')), ended: false };
 			case 'user':
 				return { events: this.answered(field(held, 'message')), ended: false };
-			case 'result':
-				return { events: [], ended: true };
+			case 'result': {
+				const spent = spentIn(held);
+				return { events: [], ended: true, ...(spent === undefined ? {} : { spent }) };
+			}
 			default:
 				return NOTHING;
 		}
@@ -200,6 +204,51 @@ export class AgentStream {
 		const held = ChatBlockSchema.safeParse(block);
 		return held.success ? [{ event: 'block', at, block: held.data }] : [];
 	}
+}
+
+/**
+ * What the line that ends a turn says it spent. The counts on it are the
+ * turn's own; the cost is the conversation's so far, which is why it is read
+ * as it is and never added to an earlier one. Nothing here is required: a
+ * result that says nothing about spend is a turn nobody is told about.
+ */
+function spentIn(held: unknown): ChatSpend | undefined {
+	const usage = field(held, 'usage');
+	const sent = count(field(usage, 'input_tokens'));
+	const answered = count(field(usage, 'output_tokens'));
+	if (sent === undefined || answered === undefined) return undefined;
+	const recalled = count(field(usage, 'cache_read_input_tokens'));
+	const kept = count(field(usage, 'cache_creation_input_tokens'));
+	const thought = count(field(field(usage, 'output_tokens_details'), 'thinking_tokens'));
+	const cost = costIn(held);
+	return {
+		sent,
+		answered,
+		...(recalled === undefined ? {} : { recalled }),
+		...(kept === undefined ? {} : { kept }),
+		...(thought === undefined ? {} : { thought }),
+		...(cost === undefined ? {} : { cost })
+	};
+}
+
+function costIn(held: unknown): number | undefined {
+	const total = field(held, 'total_cost_usd');
+	if (typeof total === 'number' && Number.isFinite(total) && total >= 0) return total;
+	const byModel = field(held, 'modelUsage');
+	if (typeof byModel !== 'object' || byModel === null) return undefined;
+	let sum = 0;
+	let any = false;
+	for (const one of Object.values(byModel as Record<string, unknown>)) {
+		const cost = field(one, 'costUSD');
+		if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) continue;
+		sum += cost;
+		any = true;
+	}
+	return any ? sum : undefined;
+}
+
+function count(held: unknown): number | undefined {
+	return typeof held === 'number' && Number.isInteger(held) && held >= 0 ? held : undefined;
 }
 
 function started(held: unknown): ChatEvent[] {

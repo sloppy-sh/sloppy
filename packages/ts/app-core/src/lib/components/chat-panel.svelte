@@ -8,14 +8,23 @@
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import Square from '@lucide/svelte/icons/square';
 	import X from '@lucide/svelte/icons/x';
-	import { CHAT_AGENTS, chatAgentName, type OwnedRef } from '@sloppy/types';
+	import {
+		CHAT_AGENTS,
+		CHAT_MODEL_MAX,
+		type ChatAgent,
+		chatAgentName,
+		chatAgentReach,
+		chatModels,
+		type OwnedRef
+	} from '@sloppy/types';
 	import { scrollFade, SideDock } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
+	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { Textarea } from '@sloppy/ui/textarea';
 	import { onDestroy } from 'svelte';
-	import { readCall } from '../chat-said.js';
+	import { readCall, spentSaid } from '../chat-said.js';
 	import {
 		DISCARD_COSTS,
 		draftHolds,
@@ -47,8 +56,10 @@
 		onShowDraft?: (shown: DraftOnTheCanvas | null) => void;
 	} = $props();
 
-	/** What Sloppy knows how to ask, as somebody with none of them reads it. */
-	const AGENTS_IT_ASKS = CHAT_AGENTS.map(chatAgentName).join(' or ');
+	/** The programs Sloppy knows how to ask, as somebody with none of them reads it. */
+	const AGENTS_IT_ASKS = CHAT_AGENTS.filter((agent) => chatAgentReach(agent) === 'program')
+		.map(chatAgentName)
+		.join(' or ');
 
 	/** What somebody is told where an answer names nowhere in the project to
 	 *  hang a note off. */
@@ -75,6 +86,56 @@
 	);
 	const models = $derived(chat.models);
 	const picked = $derived(models.find((one) => one.model === chat.model));
+	/** Every way this device can answer: each agent it reaches, with its models. */
+	const routes = $derived(
+		Array.isArray(agents)
+			? agents.map((agent) => ({ agent, name: chatAgentName(agent), models: chatModels(agent) }))
+			: []
+	);
+	/** What the trigger reads: the agent, and the model where one is picked. */
+	const routeSaid = $derived.by(() => {
+		const agent = chat.agent;
+		if (agent === undefined) return '';
+		const model = chat.model;
+		const named = model === undefined ? undefined : (picked?.name ?? model);
+		return named === undefined ? chatAgentName(agent) : `${chatAgentName(agent)} · ${named}`;
+	});
+	/** The agents a failed turn could be tried again with. */
+	const others = $derived(
+		chat.failedRoute === null
+			? []
+			: routes.filter((route) => route.agent !== chat.failedRoute?.agent)
+	);
+	const spentLine = $derived(spentSaid(chat.spent));
+	/** An agent whose model is being typed rather than picked. */
+	let naming = $state<ChatAgent | null>(null);
+	let typedModel = $state('');
+
+	function route(agent: ChatAgent, model: string): string {
+		return `${agent}\u0000${model}`;
+	}
+
+	function onRoute(value: string): void {
+		const at = value.indexOf('\u0000');
+		if (at === -1) return;
+		const agent = value.slice(0, at) as ChatAgent;
+		const model = value.slice(at + 1);
+		if (model === '…') {
+			naming = agent;
+			typedModel = chat.agent === agent ? (chat.model ?? '') : '';
+			return;
+		}
+		chat.pick(agent, model === '' ? undefined : model);
+	}
+
+	function useTyped(): void {
+		const agent = naming;
+		const model = typedModel.trim();
+		if (agent === null || model === '') return;
+		chat.pick(agent, model);
+		naming = null;
+		typedModel = '';
+	}
 	const answering = $derived(chat.answeringWith);
 
 	const standing = $derived(chatDraft.standing);
@@ -279,7 +340,7 @@
 				<p class="px-1 py-2 text-sm text-muted-foreground">
 					{agents === 'untold'
 						? `Sloppy could not tell whether ${AGENTS_IT_ASKS} is on this machine.`
-						: `Sloppy asks ${AGENTS_IT_ASKS} to do this, and it is not on this machine. Install it, then look again.`}
+						: `Sloppy asks ${AGENTS_IT_ASKS} to do this, and it is not on this machine. Install it, or give a key in Settings, then look again.`}
 				</p>
 				<Button variant="outline" class="h-11 w-full" onclick={() => void chat.lookForAgents()}>
 					Look again
@@ -318,6 +379,19 @@
 
 					{#if chat.trouble}
 						<p class="px-1 text-sm text-destructive" role="alert">{chat.trouble}</p>
+						{#if others.length > 0}
+							<div class="flex flex-wrap gap-2 px-1">
+								{#each others as one (one.agent)}
+									<Button
+										variant="outline"
+										class="h-9 text-xs"
+										onclick={() => void chat.retryWith(one.agent)}
+									>
+										Try with {one.name}
+									</Button>
+								{/each}
+							</div>
+						{/if}
 					{/if}
 				</div>
 
@@ -401,7 +475,7 @@
 					>
 						<Paperclip class="size-4" />
 					</Button>
-					{#if models.length > 0}
+					{#if routes.length > 0}
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
 								{#snippet child({ props })}
@@ -409,28 +483,48 @@
 										{...props}
 										variant="ghost"
 										class="h-9 gap-1 px-2 text-xs text-muted-foreground"
+										aria-label="Answering with"
 									>
-										{picked?.name ?? 'Model'}
+										{routeSaid}
 										<ChevronDown class="size-3.5" />
 									</Button>
 								{/snippet}
 							</DropdownMenu.Trigger>
-							<DropdownMenu.Content align="start" class="w-52">
+							<DropdownMenu.Content align="start" class="w-60">
 								<DropdownMenu.RadioGroup
-									value={chat.model ?? ''}
-									onValueChange={(one) => chat.setModel(one === '' ? undefined : one)}
+									value={chat.agent === undefined ? '' : route(chat.agent, chat.model ?? '')}
+									onValueChange={onRoute}
 								>
-									<DropdownMenu.RadioItem class="min-h-11" value="">
-										Its own choice
-									</DropdownMenu.RadioItem>
-									{#each models as one (one.model)}
-										<DropdownMenu.RadioItem class="min-h-11" value={one.model}>
-											{one.name}
+									{#each routes as one, at (one.agent)}
+										{#if at > 0}<DropdownMenu.Separator />{/if}
+										<DropdownMenu.GroupHeading class="text-xs">{one.name}</DropdownMenu.GroupHeading
+										>
+										<DropdownMenu.RadioItem class="min-h-11" value={route(one.agent, '')}>
+											Its own choice
+										</DropdownMenu.RadioItem>
+										{#each one.models as model (model.model)}
+											<DropdownMenu.RadioItem
+												class="min-h-11"
+												value={route(one.agent, model.model)}
+											>
+												{model.name}
+											</DropdownMenu.RadioItem>
+										{/each}
+										{#if chat.agent === one.agent && chat.model !== undefined && !one.models.some((model) => model.model === chat.model)}
+											<DropdownMenu.RadioItem class="min-h-11" value={route(one.agent, chat.model)}>
+												{chat.model}
+											</DropdownMenu.RadioItem>
+										{/if}
+										<DropdownMenu.RadioItem class="min-h-11" value={route(one.agent, '…')}>
+											Something else…
 										</DropdownMenu.RadioItem>
 									{/each}
 								</DropdownMenu.RadioGroup>
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
+					{/if}
+					{#if spentLine !== ''}
+						<p class="text-xs text-muted-foreground" role="status">{spentLine}</p>
 					{/if}
 					{#if answering}
 						<p class="min-w-0 flex-1 text-xs text-muted-foreground">
@@ -439,6 +533,45 @@
 						</p>
 					{/if}
 				</div>
+				{#if naming !== null}
+					<form
+						class="flex shrink-0 items-center gap-2"
+						onsubmit={(event) => {
+							event.preventDefault();
+							useTyped();
+						}}
+					>
+						<Input
+							bind:value={typedModel}
+							maxlength={CHAT_MODEL_MAX}
+							class="h-9 min-w-0 flex-1 text-xs"
+							autocapitalize="none"
+							autocomplete="off"
+							spellcheck="false"
+							aria-label="Model to ask {chatAgentName(naming)} for"
+							placeholder="Model, as {chatAgentName(naming)} names it"
+						/>
+						<Button
+							type="submit"
+							variant="outline"
+							class="h-9 text-xs"
+							disabled={typedModel.trim() === ''}
+						>
+							Use it
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							class="h-9 text-xs"
+							onclick={() => {
+								naming = null;
+								typedModel = '';
+							}}
+						>
+							Never mind
+						</Button>
+					</form>
+				{/if}
 			{/if}
 		</div>
 	{/if}

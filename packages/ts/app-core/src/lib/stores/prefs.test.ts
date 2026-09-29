@@ -188,7 +188,11 @@ describe('the saved look', () => {
 			chatWidth: null,
 			deskNavOpen: true,
 			tagOrder: 'count',
-			chatModel: {},
+			aiOffered: false,
+			chatAgent: null,
+			// A model this build does not name is still the person's to ask for;
+			// an agent this build does not know is not.
+			chatModel: { claude_code: 'a model from later' },
 			origin: null
 		});
 	});

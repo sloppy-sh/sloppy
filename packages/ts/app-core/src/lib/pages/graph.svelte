@@ -1802,15 +1802,23 @@
 	);
 	const canvasTop = $derived(overCanvas ? railHeight : 0);
 
+	/** Whether the chat about the code is put in front of anybody here: a
+	 *  project to chat about, and an assistant the person asked for. */
+	const offersChat = $derived(projectFiles !== undefined && chat.offered);
+
+	// Asked for and not yet answered: the device is asked once what it has, so
+	// the offer can stand before the chat is ever opened.
+	$effect(() => {
+		if (prefs.current.aiOffered && chat.reaches && chat.agents === null) void chat.lookForAgents();
+	});
+
 	/** The acts on the whole graph that are neither writing nor looking: behind
 	 *  "More" over the canvas, where the row is short, and rows of their own down
 	 *  the column beside it, where there is room for them. */
 	const otherActs = $derived<{ label: string; icon: Component; act: () => void }[]>([
 		...(session.onDevice ? [] : [{ label: "Other people's graphs", icon: Users, act: visitPeers }]),
 		{ label: 'Choose notes', icon: ListChecks, act: startChoosing },
-		...(projectFiles && chat.reaches
-			? [{ label: 'Chat about the code', icon: MessagesSquare, act: startChat }]
-			: []),
+		...(offersChat ? [{ label: 'Chat about the code', icon: MessagesSquare, act: startChat }] : []),
 		...(graphHistory.keeps
 			? [{ label: 'History', icon: HistoryIcon, act: () => (showingHistory = true) }]
 			: []),
@@ -3021,7 +3029,7 @@
 
 <PersonSurface bind:did={meeting} />
 
-{#if projectFiles && chat.reaches}
+{#if offersChat}
 	<ChatPanel
 		bind:open={chatting}
 		onOpen={(ref, at) => show(ref, null, at)}

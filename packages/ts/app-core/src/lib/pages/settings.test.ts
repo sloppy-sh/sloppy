@@ -332,6 +332,31 @@ function typeAddress(typed: string): void {
 }
 
 describe('the record of what happens', () => {
+	it('offers an assistant only where this device could reach one', async () => {
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			chat: {
+				agents: async () => [],
+				open: async () => {},
+				say: async () => {},
+				stop: async () => {},
+				close: async () => {}
+			}
+		});
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+		expect(target.textContent).toContain('An assistant');
+		unmount(mounted, { outro: false });
+		mounted = undefined;
+
+		initRuntime({ apiHost: () => 'http://api.test', chat: undefined });
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+		expect(target.textContent).not.toContain('An assistant');
+	});
+
 	it('is off, turns on where somebody asks, and is handed over', async () => {
 		const saved: { name: string; body: Blob }[] = [];
 		initRuntime({

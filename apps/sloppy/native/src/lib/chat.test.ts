@@ -1,4 +1,5 @@
 import { whatHappened, type ChatAccess } from '@sloppy/app-core';
+import type { AiKeysAccess } from '@sloppy/local';
 import {
 	CHAT_TOOLS,
 	draftBranch,
@@ -228,11 +229,30 @@ describe('the agents this device can reach', () => {
 		expect(await chat().agents()).toEqual(['claude_code']);
 	});
 
+	it('counts an agent a key this device holds opens, in the order they are named', async () => {
+		here = ['claude_code'];
+		const keys: AiKeysAccess = {
+			held: async () => [{ provider: 'deepseek', backing: 'hardware' }],
+			hold: async () => 'hardware',
+			forget: async () => {}
+		};
+
+		expect(await tauriChat(project, drafts(), call, () => channel, keys).agents()).toEqual([
+			'claude_code',
+			'deepseek'
+		]);
+
+		here = [];
+		expect(await tauriChat(project, drafts(), call, () => channel, keys).agents()).toEqual([
+			'deepseek'
+		]);
+	});
+
 	it('says what to install where a chat is opened anyway', async () => {
 		here = [];
 
 		await expect(chat().open({}, () => {}, serve)).rejects.toThrow(
-			'Sloppy has nothing on this computer to chat with. Install Claude Code and try again.'
+			'Sloppy has nothing on this computer to chat with. Install Claude Code, or give it a key in Settings, and try again.'
 		);
 	});
 
@@ -311,6 +331,52 @@ describe('a session', () => {
 
 		expect(heard).toContainEqual({ event: 'ended' });
 		expect(lines).toHaveLength(2);
+	});
+
+	it('says what a turn spent where the agent says, and nothing where it does not', async () => {
+		const { access, heard } = await opened();
+		await access.say('first');
+
+		says(
+			JSON.stringify({
+				type: 'result',
+				subtype: 'success',
+				usage: {
+					input_tokens: 1200,
+					output_tokens: 340,
+					cache_read_input_tokens: 900,
+					cache_creation_input_tokens: 0,
+					output_tokens_details: { thinking_tokens: 40 }
+				},
+				total_cost_usd: 0.0421,
+				modelUsage: { 'claude-fable-5-1': { costUSD: 0.0421 } }
+			})
+		);
+		expect(heard.at(-1)).toEqual({
+			event: 'ended',
+			spent: { sent: 1200, answered: 340, recalled: 900, kept: 0, thought: 40, cost: 0.0421 }
+		});
+
+		await access.say('second');
+		says(RESULT);
+		expect(heard.at(-1)).toEqual({ event: 'ended' });
+	});
+
+	it('takes the cost from the models where the total is not said', async () => {
+		const { access, heard } = await opened();
+		await access.say('first');
+
+		says(
+			JSON.stringify({
+				type: 'result',
+				usage: { input_tokens: 10, output_tokens: 5 },
+				modelUsage: { a: { costUSD: 0.01 }, b: { costUSD: 0.02 }, c: {} }
+			})
+		);
+		expect(heard.at(-1)).toEqual({
+			event: 'ended',
+			spent: { sent: 10, answered: 5, cost: 0.03 }
+		});
 	});
 
 	it('says nothing about why where the session simply ended', async () => {

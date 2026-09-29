@@ -13,11 +13,13 @@
 	import HistorySettings from '../components/history-settings.svelte';
 	import IdentitySettings from '../components/identity-settings.svelte';
 	import OpenHere from '../components/open-here.svelte';
+	import AiSettings from '../components/ai-settings.svelte';
 	import WhatHappened from '../components/what-happened.svelte';
 	import { graphHere } from '../graph-here.svelte.js';
 	import { repointRuntime, runtime } from '../runtime.js';
 	import { saveHere, savesFiles } from '../save-file.js';
 	import { serverMessage } from '../stores/errors.js';
+	import { chat } from '../stores/chat.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { letGoOfWhatWasRead } from '../stores/let-go.js';
@@ -363,6 +365,13 @@
 				{#if copyProblem}
 					<p class="text-sm text-destructive" role="alert">{copyProblem}</p>
 				{/if}
+			</div>
+		{/if}
+
+		{#if chat.reaches}
+			<div class="space-y-3 border-t border-border pt-8">
+				<h2 class="text-sm font-medium">An assistant</h2>
+				<AiSettings />
 			</div>
 		{/if}
 

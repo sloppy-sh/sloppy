@@ -18,23 +18,27 @@ import {
 	CHAT_ATTACHMENT_MAX,
 	type ChatActDone,
 	type ChatAgent,
+	chatAgentName,
 	type ChatAttachment,
 	type ChatBlock,
 	type ChatCallId,
 	type ChatEvent,
 	type ChatModel,
 	chatModels,
+	type ChatSpend,
 	type ChatToolAnswer,
 	type ChatToolCall,
 	type ChatToolName,
 	type ChatTurn,
 	MOST_ATTACHED_PER_TURN,
 	type OwnedRef,
+	spentTogether,
 	ulid,
 	type WriteNoteArguments
 } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { serveChatCall } from '../chat-acts.js';
+import { carriedOver, withCarried } from '../chat-said.js';
 import { runtime } from '../runtime.js';
 import { seam } from '../seam.svelte.js';
 import { chatDraft } from './chat-draft.svelte.js';
@@ -44,6 +48,7 @@ import { doingIn, troubleIn, whatHappened } from './what-happened.svelte.js';
 
 const UNSTARTED = 'Sloppy could not start a chat just now. Try again.';
 const UNSAID = 'Sloppy could not send that just now. Try again.';
+const MODEL_UNKNOWN = "That model isn't one this assistant knows. Pick another.";
 const UNKEPT = 'Sloppy could not keep that just now. Try again.';
 const UNATTACHED = 'Sloppy could not put that where the chat can read it. Try again.';
 const TOO_MANY = `You can put ${MOST_ATTACHED_PER_TURN} things in front of it at once.`;
@@ -74,6 +79,11 @@ export interface ChatKeeping {
 	arguments: unknown;
 	/** Where the turn whose answer it would keep stands. */
 	at: number;
+}
+
+/** The words of a person's turn, without what was attached. */
+function saidOf(turn: ChatTurn): string {
+	return turn.blocks.flatMap((block) => (block.kind === 'said' ? [block.said] : [])).join('\n');
 }
 
 function agentTurn(): ChatTurn {
@@ -125,6 +135,19 @@ class ChatStore {
 	/** Which model the standing session was opened with, so a person who picks
 	 *  another is told the one in front of them still answers. */
 	#openedWith = $state.raw<string | undefined>(undefined);
+	/** Which agent the standing session was opened with. */
+	#openedAs: ChatAgent | undefined = undefined;
+	/** Whether the agent has written anything in the standing session, which
+	 *  is what tells a model it refused from any other way a session dies. */
+	#answered = false;
+	/** An earlier conversation to carry into the next session, where the
+	 *  person moved it to another agent. */
+	#carrying: string | null = null;
+	/** The agent and model the last session died under, for the person to be
+	 *  offered another. */
+	#failed = $state.raw<{ agent: ChatAgent; model?: string } | null>(null);
+	#spentTurn = $state.raw<ChatSpend | undefined>(undefined);
+	#spentSession = $state.raw<ChatSpend | undefined>(undefined);
 	/** An event that lands after this chat was let go of, or after another
 	 *  graph's was opened, is not an event about what is on screen. */
 	#epoch = 0;
@@ -141,11 +164,72 @@ class ChatStore {
 		return this.#agents;
 	}
 
-	/** The agent this chat is with. Absent until this device has said it has
-	 *  one. */
+	/** The agent this chat is with: the one the person picked where this device
+	 *  reaches it, else the first it reaches. Absent until this device has said
+	 *  what it has. */
 	get agent(): ChatAgent | undefined {
 		const held = this.#agents;
-		return Array.isArray(held) ? held[0] : undefined;
+		if (!Array.isArray(held) || held.length === 0) return undefined;
+		const picked = prefs.current.chatAgent;
+		return picked !== null && held.includes(picked) ? picked : held[0];
+	}
+
+	/**
+	 * Whether the chat is put in front of anybody at all: this device can reach
+	 * an agent, the person asked for one, and something answers. **Unanswered
+	 * is not offered**, so nothing appears before the device has said what it
+	 * has.
+	 */
+	get offered(): boolean {
+		const held = this.#agents;
+		return this.reaches && prefs.current.aiOffered && Array.isArray(held) && held.length > 0;
+	}
+
+	/** What the chat has spent, where the agent says: the last turn, and the
+	 *  conversation with this agent so far. */
+	get spent(): { turn?: ChatSpend; session?: ChatSpend } {
+		return {
+			...(this.#spentTurn === undefined ? {} : { turn: this.#spentTurn }),
+			...(this.#spentSession === undefined ? {} : { session: this.#spentSession })
+		};
+	}
+
+	/** Where the last session died: which agent and model, for the person to
+	 *  be offered another route. */
+	get failedRoute(): { agent: ChatAgent; model?: string } | null {
+		return this.#failed;
+	}
+
+	/**
+	 * Answer with this agent and model from here on. Another agent takes the
+	 * conversation so far with it: the session standing is let go of, and what
+	 * was said is carried into the next one as the earlier conversation.
+	 */
+	pick(agent: ChatAgent, model: string | undefined): void {
+		const held = { ...prefs.current.chatModel };
+		if (model === undefined) delete held[agent];
+		else held[agent] = model;
+		prefs.set('chatModel', held);
+		prefs.set('chatAgent', agent);
+		if (this.#standing && this.#openedAs !== undefined && this.#openedAs !== agent) {
+			whatHappened.put('turn', `the conversation moved to ${chatAgentName(agent)}`);
+			this.#carrying = carriedOver(this.#turns);
+			this.#letGo();
+		}
+	}
+
+	/** Say the last thing again, to another agent, with the conversation before
+	 *  it carried over. */
+	async retryWith(agent: ChatAgent): Promise<void> {
+		const last = [...this.#turns].reverse().find((turn) => turn.from === 'person');
+		const words = last ? saidOf(last) : '';
+		const before = last ? this.#turns.slice(0, this.#turns.lastIndexOf(last)) : this.#turns;
+		this.#carrying = carriedOver(before);
+		this.#failed = null;
+		if (this.#standing) this.#letGo();
+		this.pick(agent, prefs.current.chatModel[agent]);
+		this.#turns = before;
+		await this.say(words);
 	}
 
 	get turns(): readonly ChatTurn[] {
@@ -286,6 +370,7 @@ class ChatStore {
 				: `a turn began, with ${attached.length} file${attached.length === 1 ? '' : 's'} in front of it`
 		);
 		this.#trouble = null;
+		this.#failed = null;
 		this.#running = true;
 		this.#writing = false;
 		this.#attached = [];
@@ -319,9 +404,12 @@ class ChatStore {
 			if (epoch !== this.#epoch) return;
 			this.#standing = true;
 			this.#openedWith = model;
+			this.#openedAs = agent;
 		}
+		const carried = this.#carrying ?? '';
+		this.#carrying = null;
 		try {
-			await access.say(withAttached(said, attached));
+			await access.say(withCarried(carried, withAttached(said, attached)));
 		} catch (error) {
 			whatHappened.put('trouble', `the agent was not told: ${troubleIn(error)}`);
 			if (epoch !== this.#epoch) return;
@@ -469,6 +557,10 @@ class ChatStore {
 		this.#keepSettling = false;
 		this.#letAttachedGo();
 		this.#openedWith = undefined;
+		this.#openedAs = undefined;
+		this.#answered = false;
+		this.#spentTurn = undefined;
+		this.#spentSession = undefined;
 		this.#trouble = null;
 	}
 
@@ -505,22 +597,38 @@ class ChatStore {
 				);
 				this.#running = false;
 				this.#writing = false;
+				if (event.spent !== undefined) {
+					this.#spentTurn = event.spent;
+					this.#spentSession = spentTogether(this.#spentSession, event.spent);
+				}
 				void chatDraft.keepWhatTheTurnWrote();
 				break;
-			case 'over':
+			case 'over': {
 				if (event.said === undefined) whatHappened.put('turn', 'the chat is over');
 				else whatHappened.put('trouble', 'the chat could not go on');
+				const refusedModel =
+					event.said !== undefined && !this.#answered && this.#openedWith !== undefined;
+				if (event.said !== undefined && this.#openedAs !== undefined) {
+					this.#failed = {
+						agent: this.#openedAs,
+						...(this.#openedWith === undefined ? {} : { model: this.#openedWith })
+					};
+				}
 				this.#standing = false;
 				this.#running = false;
 				this.#writing = false;
 				this.#openedWith = undefined;
-				this.#trouble = event.said ?? null;
+				this.#openedAs = undefined;
+				this.#answered = false;
+				this.#trouble = refusedModel ? MODEL_UNKNOWN : (event.said ?? null);
 				break;
+			}
 		}
 	}
 
 	/** A block already at this place in the turn underway is that block grown. */
 	#block(at: number, block: ChatBlock): void {
+		this.#answered = true;
 		const turns = this.#writing ? [...this.#turns] : [...this.#turns, agentTurn()];
 		this.#writing = true;
 		const turn = turns[turns.length - 1];

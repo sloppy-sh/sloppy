@@ -1,38 +1,39 @@
 import { describe, expect, it } from "vitest";
 import {
-  sectionHeadings,
-  CARD_ROWS,
   advertisedChatTools,
   argumentsFit,
+  CARD_ROWS,
+  cardRow,
   CHAT_AGENTS,
+  CHAT_ANSWER_MAX,
   CHAT_ARGUMENTS_MAX,
   CHAT_BLOCK_KINDS,
   CHAT_CARD_HEADING_MAX,
   CHAT_CARD_VALUE_MAX,
   CHAT_SAID_MAX,
+  CHAT_SECTION_MAX,
   CHAT_SHOWN_MAX,
   CHAT_TOOL_SPECS,
   CHAT_TOOLS,
-  cardRow,
-  chatCard,
-  chatModels,
   ChatActDoneSchema,
+  chatAgentName,
+  chatAgentReach,
   ChatBlockSchema,
+  chatCard,
   ChatCardSchema,
   ChatEventSchema,
+  chatModels,
   ChatModelSchema,
-  chatAgentName,
-  chatToolWrites,
+  ChatSpendSchema,
   ChatToolAnswerSchema,
   ChatToolCallSchema,
+  chatToolWrites,
   ChatTurnSchema,
-  CHAT_ANSWER_MAX,
-  CHAT_SECTION_MAX,
   DeleteNoteArgumentsSchema,
   foundAnswer,
   LinkNotesArgumentsSchema,
-  listingAnswer,
   ListedNoteSchema,
+  listingAnswer,
   MAX_SECTIONS_PER_WRITE,
   MOST_ATTACHED_PER_TURN,
   MOST_CARD_ROWS,
@@ -43,21 +44,23 @@ import {
   MOST_SECTIONS_READ,
   MoveNoteArgumentsSchema,
   noteAnswer,
-  NumberNoteArgumentsSchema,
   NoteReadSchema,
   NotesFoundSchema,
   NotesListedSchema,
   NoteWrittenSchema,
+  NumberNoteArgumentsSchema,
   ReadNoteArgumentsSchema,
   SearchNotesArgumentsSchema,
+  sectionHeadings,
+  spentTogether,
   StyleEdgeArgumentsSchema,
   StyleNoteArgumentsSchema,
   TagNoteArgumentsSchema,
   turnFits,
-  WriteNoteArgumentsSchema,
   type FoundNote,
   type ListedNote,
   type NoteSection,
+  WriteNoteArgumentsSchema,
 } from "./chat.js";
 import { WRITE_DONE } from "./authority.js";
 
@@ -884,5 +887,57 @@ describe("what both readings of a card share", () => {
       Object.values(CARD_ROWS).length,
     );
     for (const said of Object.values(CARD_ROWS)) expect(said.trim()).toBe(said);
+  });
+});
+
+describe("how an agent is reached, and what a turn spent", () => {
+  it("names a program or a key for every agent", () => {
+    for (const agent of CHAT_AGENTS) {
+      expect(["program", "key"]).toContain(chatAgentReach(agent));
+    }
+    expect(chatAgentReach("claude_code")).toBe("program");
+    expect(chatAgentReach("anthropic")).toBe("key");
+  });
+
+  it("offers Fable first to Claude Code, and names none for an agent nobody has listed", () => {
+    expect(chatModels("claude_code")[0]).toEqual({
+      model: "fable",
+      name: "Fable",
+    });
+    expect(chatModels("openai")).toEqual([]);
+  });
+
+  it("adds counts up across turns and keeps the latest cost", () => {
+    const first = spentTogether(undefined, {
+      sent: 10,
+      answered: 5,
+      cost: 0.1,
+    });
+    expect(first).toEqual({ sent: 10, answered: 5, cost: 0.1 });
+    const second = spentTogether(first, {
+      sent: 20,
+      answered: 7,
+      recalled: 3,
+      cost: 0.25,
+    });
+    expect(second).toEqual({ sent: 30, answered: 12, recalled: 3, cost: 0.25 });
+    const third = spentTogether(second, { sent: 1, answered: 1 });
+    expect(third.cost).toBe(0.25);
+    expect(third.recalled).toBe(3);
+  });
+
+  it("carries a turn's spend on the ended event, and nothing where nothing was said", () => {
+    expect(
+      ChatEventSchema.parse({
+        event: "ended",
+        spent: { sent: 1, answered: 2 },
+      }),
+    ).toEqual({ event: "ended", spent: { sent: 1, answered: 2 } });
+    expect(ChatEventSchema.parse({ event: "ended" })).toEqual({
+      event: "ended",
+    });
+    expect(ChatSpendSchema.safeParse({ sent: -1, answered: 0 }).success).toBe(
+      false,
+    );
   });
 });

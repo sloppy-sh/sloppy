@@ -11,6 +11,7 @@
 
 import { setHost } from '@sloppy/client';
 import type {
+	AiKeysAccess,
 	Credential,
 	CredentialsAccess,
 	Files,
@@ -340,6 +341,10 @@ export interface AppRuntime {
 	 *  that would need one. `CredentialsAccess` in `@sloppy/local` declares
 	 *  every act. */
 	credentials?: CredentialsAccess;
+	/** The keys this device holds for the agents a key opens. Absent → this
+	 *  platform keeps none, so nothing that would need one is offered.
+	 *  `AiKeysAccess` in `@sloppy/local` declares every act. */
+	aiKeys?: AiKeysAccess;
 	/** Chatting with an agent on this device about the project — a shell that
 	 *  defines it also defines {@link AppRuntime.project}. Absent → nothing here
 	 *  can run a program of the person's, so nothing about a chat is put in
@@ -459,6 +464,7 @@ export const runtime = {
 	project: async (): Promise<Files | undefined> => current.project?.(),
 	gitDefaults: (): GitDefaultsAccess | undefined => current.gitDefaults,
 	credentials: (): CredentialsAccess | undefined => current.credentials,
+	aiKeys: (): AiKeysAccess | undefined => current.aiKeys,
 	chat: (): ChatAccess | undefined => current.chat,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,

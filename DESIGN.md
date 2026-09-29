@@ -1124,9 +1124,10 @@ nothing under it.
   open in it — a rotation mid-edit never remounts the editor and loses a caret — and is read
   again from the viewport once the dock is empty. **Two things dock today**: a note opened to
   read, which is `ReadingPanel` — the dock plus the strip across its head; and the chat with
-  an agent about the project, which is the dock plus the thread and the composer. Anything
-  else that wants to stand beside the graph is a third use of the same dock, never a second
-  copy of it.
+  an agent about the project, which is the dock plus the thread and the composer — with, under
+  the composer, one quiet line saying who is answering and what the conversation has spent,
+  the cost only where the agent says one. Anything else that wants to stand beside the graph
+  is a third use of the same dock, never a second copy of it.
 - **Both may stand at once, and they stack.** You read the note while you chat about it, so
   the chat is outermost — it is the companion that stays — and a note opened to read sits
   between it and the graph. A second dock opens beside the first only where the graph would
