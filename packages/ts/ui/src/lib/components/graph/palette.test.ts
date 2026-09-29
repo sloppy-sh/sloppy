@@ -3,8 +3,8 @@ import type { OwnedRef } from '@sloppy/types';
 import { flushSync, mount, unmount, type ComponentProps } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
-import FindSheet, { type FoundNote } from './find-sheet.svelte';
-import FindSheetInPage from './find-sheet.test-support.svelte';
+import Palette, { type FoundNote } from './palette.svelte';
+import PaletteInPage from './palette.test-support.svelte';
 
 const ORIGINS = 'did:syr:z6MkAda/01ARZ3NDEKTSV4RRFFQ69G5FAV' as OwnedRef;
 const CELLS = 'did:syr:z6MkAda/01ARZ3NDEKTSV4RRFFQ69G5FAW' as OwnedRef;
@@ -33,14 +33,14 @@ async function settle(): Promise<void> {
 	flushSync();
 }
 
-async function open(props: Partial<ComponentProps<typeof FindSheet>> = {}): Promise<void> {
+async function open(props: Partial<ComponentProps<typeof Palette>> = {}): Promise<void> {
 	if (mounted) unmount(mounted, { outro: false });
 	document.body.innerHTML = '';
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	opened = [];
 	typed = [];
-	mounted = mount(FindSheet, {
+	mounted = mount(Palette, {
 		target,
 		props: {
 			open: true,
@@ -69,6 +69,7 @@ const screen = () => document.body.textContent ?? '';
 beforeEach(() => {
 	stubMediaQuery((query) => query.includes('min-width'));
 	stubResizeObserver();
+	Element.prototype.scrollIntoView = () => {};
 });
 
 afterEach(() => {
@@ -93,7 +94,7 @@ describe('the find sheet', () => {
 		target = document.createElement('div');
 		document.body.appendChild(target);
 		const said: string[] = [];
-		mounted = mount(FindSheetInPage, {
+		mounted = mount(PaletteInPage, {
 			target,
 			props: { onsaid: (words: string) => said.push(words), answersAfter: 2 }
 		});
@@ -230,5 +231,56 @@ describe('the find sheet', () => {
 
 		const said = document.querySelector('[role="status"]');
 		expect(said?.textContent).toBe('Showing 2 notes.');
+	});
+});
+
+describe('doing something from the palette', () => {
+	const ACTS = [
+		{ id: 'branch', label: 'New branch', says: '⌘ Return', group: 'Write' },
+		{ id: 'choose', label: 'Choose notes', group: 'Graph' }
+	];
+	let ran: string[];
+	const rowsShown = () =>
+		[...document.querySelectorAll<HTMLElement>('[role="option"]')].map((row) =>
+			(row.textContent ?? '').replace(/\s+/g, ' ').trim()
+		);
+
+	async function openWithActs(props: Partial<ComponentProps<typeof Palette>> = {}): Promise<void> {
+		ran = [];
+		await open({ acts: ACTS, onrun: (id: string) => ran.push(id), ...props });
+	}
+
+	it('lists every act with its keystroke while nothing is typed, grouped', async () => {
+		await openWithActs();
+		expect(rowsShown()).toEqual(['New branch ⌘ Return', 'Choose notes']);
+		expect(screen()).toContain('Write');
+		expect(screen()).toContain('Graph');
+		expect(field().getAttribute('role')).toBe('combobox');
+	});
+
+	it('runs the act the arrow keys reached on Enter, and a lone match without them', async () => {
+		await openWithActs();
+		field().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+		field().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+		flushSync();
+		expect(field().getAttribute('aria-activedescendant')).toBe('palette-row-1');
+		field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		expect(ran).toEqual(['choose']);
+
+		field().value = 'cho';
+		field().dispatchEvent(new Event('input', { bubbles: true }));
+		flushSync();
+		expect(rowsShown()).toEqual(['Choose notes']);
+		field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		expect(ran).toEqual(['choose', 'choose']);
+	});
+
+	it('puts the acts the words begin before the notes, and a tap runs one', async () => {
+		await openWithActs({ query: 'ne', found: [found({ title: 'New ideas', address: '2' })] });
+		expect(rowsShown()[0]).toBe('New branch ⌘ Return');
+		expect(rowsShown()[1]).toContain('New ideas');
+		rows()[0].click();
+		expect(ran).toEqual(['branch']);
+		expect(opened).toEqual([]);
 	});
 });

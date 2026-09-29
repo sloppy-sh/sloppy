@@ -3069,11 +3069,26 @@ describe('a graph as a file', () => {
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 	}
 
-	async function fromMore(offer: string): Promise<void> {
+	/** Do something by its name, the way a person reaches what is not a row:
+	 *  the palette, and the words. */
+	async function fromPalette(offer: string): Promise<void> {
 		await open();
-		labelled('More').click();
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true })
+		);
 		await settle();
-		item(offer).click();
+		const field = document.body.querySelector<HTMLInputElement>(
+			'[role="dialog"] input[role="combobox"]'
+		);
+		if (!field) throw new Error('The palette is not on screen');
+		field.value = offer;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		await settle();
+		const row = [
+			...document.body.querySelectorAll<HTMLButtonElement>('[role="option"] button')
+		].find((one) => one.textContent?.trim().startsWith(offer));
+		if (!row) throw new Error(`The palette does not offer "${offer}"`);
+		row.click();
 		await settle();
 	}
 
@@ -3081,13 +3096,21 @@ describe('a graph as a file', () => {
 		graphs.clear();
 	});
 
-	it('offers to export this graph and to bring one in', async () => {
+	// Rare acts are typed for rather than kept in a row somebody reads past
+	// every day — DESIGN.md § Layout.
+	it('offers to export this graph and to bring one in, by their names', async () => {
 		await open();
-		labelled('More').click();
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true })
+		);
 		await settle();
 
-		expect(offered()).toContain('Export this graph');
-		expect(offered()).toContain('Import a graph');
+		const offers = [...document.body.querySelectorAll('[role="option"]')].map((row) =>
+			(row.textContent ?? '').replace(/\s+/g, ' ').trim()
+		);
+		expect(offers).toContain('Export this graph');
+		expect(offers).toContain('Import a graph');
+		expect(offers).toContain('Choose notes');
 	});
 
 	it('takes a graph in from the empty graph, where there is nothing else to open a menu on', async () => {
@@ -3107,7 +3130,7 @@ describe('a graph as a file', () => {
 		archiving(api, { exported: takenAs('Cell Biology 2026-03-05.sloppy') });
 		initRuntime({ apiHost: () => 'http://api.test', saveFile: null });
 
-		await fromMore('Export this graph');
+		await fromPalette('Export this graph');
 
 		expect(screen()).toContain('Open Sloppy in a browser to take one.');
 	});
@@ -3120,7 +3143,7 @@ describe('a graph as a file', () => {
 			saveFile: async (name, body) => void saved.push({ name, body })
 		});
 
-		await fromMore('Export this graph');
+		await fromPalette('Export this graph');
 
 		expect(saved.map((one) => one.name)).toEqual(['Cell Biology 2026-03-05.sloppy']);
 		expect(await saved[0].body.text()).toBe('a graph');
@@ -3138,7 +3161,7 @@ describe('a graph as a file', () => {
 		archiving(api, { exported: takenAs('Cell Biology 2026-03-05.sloppy') });
 		initRuntime({ apiHost: () => 'http://api.test', saveFile: undefined });
 
-		await fromMore('Export this graph');
+		await fromPalette('Export this graph');
 		HTMLAnchorElement.prototype.click = clicking;
 
 		expect(asked).toEqual([{ href: 'blob:a-graph', name: 'Cell Biology 2026-03-05.sloppy' }]);
@@ -3150,7 +3173,7 @@ describe('a graph as a file', () => {
 		});
 		initRuntime({ apiHost: () => 'http://api.test', saveFile: undefined });
 
-		await fromMore('Export this graph');
+		await fromPalette('Export this graph');
 
 		expect(screen()).toContain('Sloppy could not reach your writing.');
 	});
@@ -3158,7 +3181,7 @@ describe('a graph as a file', () => {
 	it('says what is in a file before any of it is brought in', async () => {
 		archiving(api, { preview: () => whatArrives(), imported: () => OSMOSIS });
 
-		await fromMore('Import a graph');
+		await fromPalette('Import a graph');
 		chooseFile();
 		await settle();
 
@@ -3172,7 +3195,7 @@ describe('a graph as a file', () => {
 	it('opens the graph it brought in', async () => {
 		archiving(api, { preview: () => whatArrives(), imported: () => OSMOSIS });
 
-		await fromMore('Import a graph');
+		await fromPalette('Import a graph');
 		chooseFile();
 		await settle();
 		button('Import').click();
@@ -3189,7 +3212,7 @@ describe('a graph as a file', () => {
 			imported: () => refuses('Some of these notes are already here.')
 		});
 
-		await fromMore('Import a graph');
+		await fromPalette('Import a graph');
 		chooseFile();
 		await settle();
 		button('Import').click();
@@ -3229,7 +3252,7 @@ describe('a graph as a file', () => {
 				}
 			]);
 
-			await fromMore('Import a graph');
+			await fromPalette('Import a graph');
 			chooseFile();
 			await settle();
 
@@ -3265,7 +3288,7 @@ describe('a graph as a file', () => {
 				}
 			]);
 
-			await fromMore('Import a graph');
+			await fromPalette('Import a graph');
 			chooseFile();
 			await settle();
 
@@ -3297,7 +3320,7 @@ describe('a graph as a file', () => {
 				}
 			]);
 
-			await fromMore('Import a graph');
+			await fromPalette('Import a graph');
 			chooseFile();
 			await settle();
 			button('Choose section by section').click();
@@ -3337,7 +3360,7 @@ describe('a graph as a file', () => {
 					: refuses('That number is another note’s.')
 			);
 
-			await fromMore('Import a graph');
+			await fromPalette('Import a graph');
 			chooseFile();
 			await settle();
 			button("Take the file's").click();
@@ -3353,7 +3376,7 @@ describe('a graph as a file', () => {
 	it('repeats the words a file that could not be read came back with', async () => {
 		archiving(api, { preview: () => refuses("This file isn't a Sloppy graph.") });
 
-		await fromMore('Import a graph');
+		await fromPalette('Import a graph');
 		chooseFile();
 		await settle();
 
@@ -3427,17 +3450,20 @@ describe('the chrome on a desk', () => {
 		await open();
 	}
 
-	it('stands the graph, the acts and the way to more of them beside the canvas', async () => {
+	// The column holds what somebody reaches every day and folds nothing behind
+	// a "More"; the rest is typed for — DESIGN.md § Layout.
+	it('stands the graph and the acts beside the canvas, folding nothing away', async () => {
 		await onADesk();
 
 		expect(column()?.querySelector('[aria-label="Your graphs"]')).not.toBeNull();
 		expect(column()?.textContent).toContain('New branch');
 		expect(column()?.querySelector('[aria-label="More"]')).toBeNull();
-		expect(
-			[...(column()?.querySelectorAll('button') ?? [])].some(
-				(one) => one.textContent?.trim() === 'Choose notes'
-			)
-		).toBe(true);
+		expect(column()?.querySelector('[aria-label^="Find a note"]')).not.toBeNull();
+		const rows = [...(column()?.querySelectorAll('button') ?? [])].map((one) =>
+			one.textContent?.trim()
+		);
+		expect(rows).not.toContain('Export this graph');
+		expect(rows).not.toContain('Choose notes');
 	});
 
 	it('draws them once, and not over the canvas as well', async () => {

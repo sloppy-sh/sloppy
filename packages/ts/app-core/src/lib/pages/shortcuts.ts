@@ -27,15 +27,15 @@ export const WRITE_UNDER: Accelerator = {
 	}
 };
 
-export const FIND_NOTE: Accelerator = {
+export const THE_PALETTE: Accelerator = {
 	keys: 'Meta+K Control+K',
 	get says() {
 		return onMac() ? '⌘ K' : 'Ctrl+K';
 	}
 };
 
-/** Whether the keystroke asks for the field that goes back to a note. */
-export function opensFind(event: KeyboardEvent): boolean {
+/** Whether the keystroke asks for the field that reaches a note or an act. */
+export function opensPalette(event: KeyboardEvent): boolean {
 	if (event.key !== 'k' && event.key !== 'K') return false;
 	if (event.altKey || event.shiftKey) return false;
 	return event.metaKey || event.ctrlKey;

@@ -22,6 +22,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { tauriChat } from './chat';
 import { SIGN_IN_CALLBACK } from './deep-link';
 import { tauriDrafts } from './draft';
+import { deviceAiKeys } from './ai-keys';
 import { tauriFiles, tauriHistory, tauriOpenFile, tauriSaveFile } from './files';
 import { tauriIdentities } from './identity';
 import {
@@ -250,6 +251,7 @@ export function initNativeRuntime(): void {
 					identities: identitiesHere(device),
 					gitDefaults: new DeviceGitDefaults(device),
 					credentials: new DeviceCredentials(device),
+					aiKeys: deviceAiKeys(device),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,

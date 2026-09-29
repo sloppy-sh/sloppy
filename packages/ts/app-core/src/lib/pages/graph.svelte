@@ -86,47 +86,48 @@
 		branchesCarrying,
 		CanvasInk,
 		CanvasMenu,
+		type CanvasMenuItem,
+		type CanvasPen,
 		ChosenBar,
 		ChosenLook,
 		ChosenPublish,
 		ChosenTags,
 		ConfirmModal,
+		type ConversationProps,
 		DESK_FROM_PX,
 		DeskNavParts,
 		DifferenceLegend,
-		FindSheet,
+		type FoundNote,
 		GraphsSheet,
 		GraphSurface,
 		GroundChoice,
 		HeldNote,
+		type HeldRegion,
 		ImportSheet,
 		namedBranches,
 		nameOr,
 		NotePreview,
-		overlay,
-		PeersSheet,
-		ReadingPanel,
-		ResponsiveModal,
-		TagRail,
-		TemplatePicker,
-		WallpaperSheet,
-		type CanvasMenuItem,
-		type CanvasPen,
-		type ConversationProps,
-		type FoundNote,
-		type HeldRegion,
 		type NoteTemplate,
+		overlay,
+		Palette,
+		type PaletteAct,
 		type Peer,
+		PeersSheet,
 		type PictureSource,
 		type PreviewedNote,
 		type ReactionPick,
-		type ReferenceReader
+		ReadingPanel,
+		type ReferenceReader,
+		ResponsiveModal,
+		TagRail,
+		TemplatePicker,
+		WallpaperSheet
 	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
-	import { type Component, onMount, untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -155,6 +156,7 @@
 	import { outlineSections } from '../stores/outline-sections.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
+	import { acts, type Act } from '../stores/acts.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
@@ -169,9 +171,9 @@
 	import { citationUrl, nodeHref, refFromPath } from './routes.js';
 	import {
 		acceleratorFor,
-		FIND_NOTE,
+		THE_PALETTE,
 		NEW_BRANCH,
-		opensFind,
+		opensPalette,
 		typedIntoWriting,
 		WRITE_UNDER
 	} from './shortcuts.js';
@@ -784,6 +786,17 @@
 
 	/** An address is read inside one graph, so a row names its own only where
 	 *  there is a second one on the canvas to tell it from. */
+	/** The acts as the palette offers them: what it draws, never how it is
+	 *  done. */
+	const paletteActs = $derived<PaletteAct[]>(
+		acts.inPalette.map((one) => ({
+			id: one.id,
+			label: one.label,
+			group: one.group,
+			...(one.says === undefined ? {} : { says: one.says.says })
+		}))
+	);
+
 	const foundNotes = $derived.by<FoundNote[]>(() => {
 		const several = onCanvas.length > 1;
 		return find.found.map((hit) => ({
@@ -1812,21 +1825,121 @@
 		if (prefs.current.aiOffered && chat.reaches && chat.agents === null) void chat.lookForAgents();
 	});
 
-	/** The acts on the whole graph that are neither writing nor looking: behind
-	 *  "More" over the canvas, where the row is short, and rows of their own down
-	 *  the column beside it, where there is room for them. */
-	const otherActs = $derived<{ label: string; icon: Component; act: () => void }[]>([
-		...(session.onDevice ? [] : [{ label: "Other people's graphs", icon: Users, act: visitPeers }]),
-		{ label: 'Choose notes', icon: ListChecks, act: startChoosing },
-		...(offersChat ? [{ label: 'Chat about the code', icon: MessagesSquare, act: startChat }] : []),
-		...(graphHistory.keeps
-			? [{ label: 'History', icon: HistoryIcon, act: () => (showingHistory = true) }]
+	/**
+	 * Everything this page can do, declared once. Where each stands is the
+	 * `where` on it: typed for in the palette, a row of the column beside the
+	 * graph, an item behind "More" over the canvas. A person reads the whole
+	 * list, with its keystrokes, by opening the palette and typing nothing.
+	 */
+	const theActs = $derived<Act[]>([
+		{
+			id: 'new-branch',
+			label: 'New branch',
+			icon: Plus,
+			says: NEW_BRANCH,
+			group: 'Write',
+			where: ['palette'],
+			run: () => writeBranch(null)
+		},
+		{
+			id: 'write-alone',
+			label: 'A note on its own',
+			icon: FilePlus,
+			group: 'Write',
+			where: ['palette'],
+			run: writeAlone
+		},
+		{
+			id: 'number-it',
+			label: 'Number it yourself',
+			icon: Hash,
+			group: 'Write',
+			where: ['palette'],
+			run: startNumbering
+		},
+		{
+			id: 'the-graph',
+			label: 'See the notes as a graph',
+			icon: Network,
+			group: 'Look',
+			where: ['palette'],
+			run: () => prefs.set('walking', false)
+		},
+		{
+			id: 'the-outline',
+			label: 'See the notes as an outline',
+			icon: ListTree,
+			group: 'Look',
+			where: ['palette'],
+			run: () => prefs.set('walking', true)
+		},
+		{
+			id: 'choose-notes',
+			label: 'Choose notes',
+			icon: ListChecks,
+			group: 'Look',
+			where: ['palette'],
+			run: startChoosing
+		},
+		...(session.onDevice
+			? []
+			: [
+					{
+						id: 'peers',
+						label: "Other people's graphs",
+						icon: Users,
+						group: 'Graph',
+						where: ['palette', 'column', 'more'] as const,
+						run: visitPeers
+					}
+				]),
+		...(offersChat
+			? [
+					{
+						id: 'chat',
+						label: 'Chat about the code',
+						icon: MessagesSquare,
+						group: 'Graph',
+						where: ['palette', 'column', 'more'] as const,
+						run: startChat
+					}
+				]
 			: []),
-		{ label: 'Export this graph', icon: Download, act: () => void takeArchive() },
+		...(graphHistory.keeps
+			? [
+					{
+						id: 'history',
+						label: 'History',
+						icon: HistoryIcon,
+						group: 'History',
+						where: ['palette', 'column', 'more', 'menu'] as const,
+						run: () => (showingHistory = true)
+					}
+				]
+			: []),
+		{
+			id: 'export',
+			label: 'Export this graph',
+			icon: Download,
+			group: 'Graph',
+			where: ['palette', 'menu'],
+			run: () => void takeArchive()
+		},
 		...(graphs.startsGraphs
-			? [{ label: 'Import a graph', icon: Upload, act: () => chooser?.click() }]
+			? [
+					{
+						id: 'import',
+						label: 'Import a graph',
+						icon: Upload,
+						group: 'Graph',
+						where: ['palette', 'menu'] as const,
+						run: () => chooser?.click()
+					}
+				]
 			: [])
 	]);
+
+	$effect(() => acts.offers(theActs));
 
 	async function takeArchive(): Promise<void> {
 		if (taking) return;
@@ -2038,7 +2151,7 @@
 		// Last resort: a row of the walk answers these keys for the note it is on,
 		// and has refused the default by the time they reach here.
 		if (event.defaultPrevented || asked || pointing || foreign || notNow) return;
-		if (opensFind(event)) {
+		if (opensPalette(event)) {
 			event.preventDefault();
 			finding = true;
 			return;
@@ -2145,9 +2258,9 @@
 {/snippet}
 
 {#snippet moreActs()}
-	{#each otherActs as one (one.label)}
-		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={one.act}>
-			<one.icon class="size-4 text-muted-foreground" />
+	{#each acts.inMore as one (one.id)}
+		<DropdownMenu.Item class="min-h-11 gap-2" onSelect={one.run}>
+			{#if one.icon}<one.icon class="size-4 text-muted-foreground" />{/if}
 			{one.label}
 		</DropdownMenu.Item>
 	{/each}
@@ -2386,8 +2499,8 @@
 					<div class="flex {collapsed ? 'flex-col items-center gap-1' : 'flex-col gap-2'}">
 						<button
 							type="button"
-							aria-label="Find a note ({FIND_NOTE.says})"
-							aria-keyshortcuts={FIND_NOTE.keys}
+							aria-label="Find a note, or do something ({THE_PALETTE.says})"
+							aria-keyshortcuts={THE_PALETTE.keys}
 							title={collapsed ? 'Find a note' : undefined}
 							onclick={() => (finding = true)}
 							class="flex min-h-11 items-center gap-2 rounded-full border border-input text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
@@ -2461,17 +2574,17 @@
 					</div>
 
 					<div class="flex flex-col gap-0.5 {collapsed ? 'items-center' : ''}">
-						{#each otherActs as one (one.label)}
+						{#each acts.inColumn as one (one.id)}
 							<button
 								type="button"
-								onclick={one.act}
+								onclick={one.run}
 								aria-label={collapsed ? one.label : undefined}
 								title={collapsed ? one.label : undefined}
 								class="flex min-h-11 items-center gap-3 rounded-lg text-sm text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
 									? 'w-11 justify-center'
 									: 'w-full px-2.5'}"
 							>
-								<one.icon class="size-4 shrink-0" />
+								{#if one.icon}<one.icon class="size-4 shrink-0" />{/if}
 								{#if !collapsed}<span class="min-w-0 truncate">{one.label}</span>{/if}
 							</button>
 						{/each}
@@ -2617,8 +2730,8 @@
 							<div class="basis-full"></div>
 							<button
 								type="button"
-								aria-label="Find a note ({FIND_NOTE.says})"
-								aria-keyshortcuts={FIND_NOTE.keys}
+								aria-label="Find a note, or do something ({THE_PALETTE.says})"
+								aria-keyshortcuts={THE_PALETTE.keys}
 								onclick={() => (finding = true)}
 								class="flex h-9 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full border border-input px-2.5 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56 sm:justify-start sm:px-3"
 							>
@@ -2654,24 +2767,26 @@
 									</DropdownMenu.Content>
 								</DropdownMenu.Root>
 							</div>
-							<DropdownMenu.Root>
-								<DropdownMenu.Trigger>
-									{#snippet child({ props })}
-										<Button
-											{...props}
-											variant="ghost"
-											size="icon"
-											class="size-9 shrink-0 rounded-full"
-											aria-label="More"
-										>
-											<Ellipsis class="size-4" />
-										</Button>
-									{/snippet}
-								</DropdownMenu.Trigger>
-								<DropdownMenu.Content align="end" class="w-56">
-									{@render moreActs()}
-								</DropdownMenu.Content>
-							</DropdownMenu.Root>
+							{#if acts.inMore.length > 0}
+								<DropdownMenu.Root>
+									<DropdownMenu.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												variant="ghost"
+												size="icon"
+												class="size-9 shrink-0 rounded-full"
+												aria-label="More"
+											>
+												<Ellipsis class="size-4" />
+											</Button>
+										{/snippet}
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Content align="end" class="w-56">
+										{@render moreActs()}
+									</DropdownMenu.Content>
+								</DropdownMenu.Root>
+							{/if}
 						</div>
 					{/if}
 
@@ -2793,10 +2908,11 @@
 	}}
 />
 
-<FindSheet
+<Palette
 	bind:open={finding}
 	query={find.query}
 	found={foundNotes}
+	acts={paletteActs}
 	looking={find.looking}
 	settled={find.settled}
 	elsewhere={graphs.all.length > onCanvas.length}
@@ -2804,6 +2920,10 @@
 	exact={find.exact}
 	onquery={(words) => find.type(words)}
 	onopen={openFound}
+	onrun={(id) => {
+		finding = false;
+		acts.run(id);
+	}}
 />
 
 <HistorySurface

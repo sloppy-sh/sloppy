@@ -4,7 +4,7 @@
 	// time, and it lands carrying the word the keystroke it started on typed.
 	import type { OwnedRef } from '@sloppy/types';
 	import { tick } from 'svelte';
-	import FindSheet, { type FoundNote } from './find-sheet.svelte';
+	import Palette, { type FoundNote } from './palette.svelte';
 
 	let {
 		onsaid,
@@ -32,7 +32,7 @@
 	}
 </script>
 
-<FindSheet
+<Palette
 	bind:open
 	{query}
 	{found}

@@ -229,6 +229,24 @@ function onCanvas(address: string): HTMLButtonElement {
 }
 
 /** The rest of what the graph can do, behind the one control the rail keeps. */
+/** Everything the palette offers, which is where an act nobody needs daily
+ *  is reached. */
+async function openPalette(): Promise<string[]> {
+	window.dispatchEvent(
+		new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true })
+	);
+	await settle();
+	return [...document.body.querySelectorAll('[role="option"]')].map((row) =>
+		(row.textContent ?? '').replace(/\s+/g, ' ').trim()
+	);
+}
+
+/** Whether the canvas folds anything behind a "More" at all. */
+const foldsAnything = (): boolean =>
+	[...document.body.querySelectorAll('button')].some(
+		(one) => one.getAttribute('aria-label') === 'More'
+	);
+
 async function openMore(): Promise<void> {
 	const more = [...document.body.querySelectorAll('button')].find(
 		(b) => b.getAttribute('aria-label') === 'More'
@@ -311,10 +329,12 @@ describe('the graph, on a device holding its own', () => {
 	it('offers no way into somebody else’s graph, and asks about none', async () => {
 		running('local');
 		await openGraph();
-		await openMore();
 
-		expect(offered()).toContain('Choose notes');
-		expect(offered()).not.toContain("Other people's graphs");
+		const offers = await openPalette();
+		expect(offers).toContain('Choose notes');
+		expect(offers).not.toContain("Other people's graphs");
+		// Nothing is left to fold away on a device holding its own graph.
+		expect(foldsAnything()).toBe(false);
 		expect(api.countOf('GET /pulls')).toBe(0);
 		expect(api.countOf('GET /publications')).toBe(0);
 	});
@@ -330,9 +350,8 @@ describe('the graph, on a device holding its own', () => {
 	it('offers nothing about them where the platform keeps none', async () => {
 		running('local');
 		await openGraph();
-		await openMore();
 
-		expect(offered()).not.toContain('History');
+		expect(await openPalette()).not.toContain('History');
 	});
 
 	it('still offers it where a Sloppy is serving the graph', async () => {

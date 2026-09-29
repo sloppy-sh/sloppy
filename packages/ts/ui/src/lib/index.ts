@@ -48,7 +48,9 @@ export { default as HeldStack } from './components/peers/held-stack.svelte';
 export type { HeldRegion, Peer, PublishedThere } from './components/peers/peer.js';
 
 export { default as CanvasInk, type CanvasPen } from './components/graph/canvas-ink.svelte';
-export { default as FindSheet, type FoundNote } from './components/graph/find-sheet.svelte';
+export { default as Palette, type FoundNote } from './components/graph/palette.svelte';
+export { rowsFor, reaches } from './components/graph/palette-rows.js';
+export type { PaletteAct, PaletteRow } from './components/graph/palette-rows.js';
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export { default as ImportSheet } from './components/graph/import-sheet.svelte';
 export { default as MoveSheet, type MoveTarget } from './components/graph/move-sheet.svelte';

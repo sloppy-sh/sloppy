@@ -1102,7 +1102,14 @@ nothing under it.
   there, apart from the acts that write. The column folds nothing behind a "More": the acts
   the row over the canvas keeps behind one, for want of room, stand as rows of their own
   beside the graph, and the tags below them can be found by typing and ordered by name or
-  by how many notes carry each.
+  by how many notes carry each. A "More" holding nothing is not drawn at all.
+- **One field reaches both a note and an act, in both arrangements.** The same keystroke that
+  finds a note by its number, its title or a word in it does something by its name, and with
+  nothing typed it lists everything this page can do with the keystroke beside each — so the
+  cheat sheet is the field somebody already knows rather than a second surface. What stands
+  as a row is what somebody reaches every day; what is typed for is the rest — choosing a set
+  of notes, taking the graph as a file, bringing one in. An act is declared once, in one
+  place, and where it stands is a property of the act rather than a copy of it per surface.
 - **The crossing is a class, never a branch around the page.** A per-arrangement branch
   around the canvas would destroy and remount it on every crossing, taking the reader's pan
   and zoom with it. The pill publishes its own height as `--sysnav-inset-bottom` and is

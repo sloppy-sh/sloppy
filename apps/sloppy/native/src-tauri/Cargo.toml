@@ -40,6 +40,11 @@ ssh-key = { version = "0.6", default-features = false, features = ["ed25519", "a
 # A commit's time is a count of seconds, and `Timestamp` in `@sloppy/types` is
 # ISO-8601 UTC at millisecond width.
 chrono = { version = "0.4", default-features = false, features = ["std", "now"] }
+# What seals a key this app is given for an assistant, so the key is written
+# down only as something this device can read back — docs/ARCHITECTURE.md
+# § "Asking a tool to write the notes". A path while it is being built here;
+# it becomes a version before this ships.
+tauri-plugin-crypto-hw = { path = "../../../../../playground/tauri-plugin-crypto-hw" }
 # The sign-in round trip: out through opener, back through deep-link.
 tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"
