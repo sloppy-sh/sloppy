@@ -140,6 +140,12 @@ fn no_merge_here() -> HistoryError {
     HistoryError::new("There is no merge here to stop.")
 }
 
+fn nothing_to_start_from() -> HistoryError {
+    HistoryError::new(
+        "There is nothing here to branch off yet. Commit what is in this folder first.",
+    )
+}
+
 /// The project's own files are settled where the person writes them, so a
 /// refusal over one names that and not an act this app offers.
 fn their_code_uncommitted() -> HistoryError {
@@ -1235,9 +1241,7 @@ pub fn branch(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
         return Err(already_called(name));
     }
     let Some(head) = head_commit(repo)? else {
-        return Err(HistoryError::new(
-            "There is nothing here to branch off yet. Commit what is in this folder first.",
-        ));
+        return Err(nothing_to_start_from());
     };
     let made = repo
         .branch(name, &head, false)
@@ -1457,24 +1461,34 @@ fn already_the_same(kept: &Kept, onto: Oid) -> Result<Vec<Aside>, HistoryError> 
     Ok(held)
 }
 
-pub(crate) fn lay(kept: &Kept, onto: Oid) -> Result<(), HistoryError> {
-    laying(kept, onto, in_the_way)
+/// What laying a state over the folder may write over, and so what it refuses.
+pub(crate) enum WritesOver {
+    /// Nothing the history is not keeping.
+    NothingUnkept,
+    /// Nothing the person has written, whether the history is keeping it or not.
+    NothingWritten,
+    /// Everything here, folder and index alike — what takes a half-settled merge
+    /// away.
+    Everything,
 }
 
-/// `refused` is what a person is told where something here would be written
-/// over.
-fn laying(
-    kept: &Kept,
-    onto: Oid,
-    refused: fn(git2::Error) -> HistoryError,
-) -> Result<(), HistoryError> {
-    let repo = kept.repo();
-    let tree = repo.find_object(onto, Some(ObjectType::Commit))?;
-    let same = already_the_same(kept, onto)?;
-    let held = set_aside(kept, onto)?;
+/// A checkout that leaves alone whatever the history is not keeping.
+fn safely(repo: &Repository, at: &git2::Object<'_>) -> Result<(), git2::Error> {
     let mut how = CheckoutBuilder::new();
     how.safe();
-    let laid = repo.checkout_tree(&tree, Some(&mut how)).map_err(refused);
+    repo.checkout_tree(at, Some(&mut how))
+}
+
+pub(crate) fn lay(kept: &Kept, onto: Oid, over: WritesOver) -> Result<(), HistoryError> {
+    let repo = kept.repo();
+    let at = repo.find_object(onto, Some(ObjectType::Commit))?;
+    let same = already_the_same(kept, onto)?;
+    let held = set_aside(kept, onto)?;
+    let laid = match over {
+        WritesOver::Everything => repo.reset(&at, ResetType::Hard, None).map_err(Into::into),
+        WritesOver::NothingUnkept => safely(repo, &at).map_err(in_the_way),
+        WritesOver::NothingWritten => safely(repo, &at).map_err(written_over),
+    };
     put_back(kept, held)?;
     // A checkout that wrote them is a checkout that went through; one that was
     // refused leaves the folder holding everything it held before.
@@ -1512,7 +1526,7 @@ pub fn switch_to(vault: &Opened, name: &str) -> Result<(), HistoryError> {
     if let Some(why) = unsettled(&kept)?.refusal() {
         return Err(why);
     }
-    lay(&kept, head)?;
+    lay(&kept, head, WritesOver::NothingUnkept)?;
     kept.repo().set_head(&format!("refs/heads/{name}"))?;
     Ok(())
 }
@@ -1539,10 +1553,14 @@ pub fn stand_on(vault: &Opened, commit: &str, carrying: bool) -> Result<(), Hist
             return Err(why);
         }
     }
-    laying(
+    lay(
         &kept,
         onto,
-        if carrying { written_over } else { in_the_way },
+        if carrying {
+            WritesOver::NothingWritten
+        } else {
+            WritesOver::NothingUnkept
+        },
     )?;
     kept.repo().set_head_detached(onto)?;
     Ok(())
@@ -1564,9 +1582,7 @@ pub fn line_here(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
         return Err(already_called(name));
     }
     let Some(head) = head_commit(repo)? else {
-        return Err(HistoryError::new(
-            "There is nothing here to branch off yet. Commit what is in this folder first.",
-        ));
+        return Err(nothing_to_start_from());
     };
     repo.branch(name, &head, false)
         .map_err(|_| wont_work(name))?;
@@ -1609,14 +1625,10 @@ pub fn abandon_merge(vault: &Opened) -> Result<(), HistoryError> {
     if !with.is_some_and(|head| ours_to_finish(&kept, head)) {
         return Err(no_merge_here());
     }
-    let repo = kept.repo();
-    let Some(mine) = head_commit(repo)? else {
+    let Some(mine) = head_commit(kept.repo())?.map(|held| held.id()) else {
         return Err(no_merge_here());
     };
-    let held = set_aside(&kept, mine.id())?;
-    let undone = repo.reset(mine.as_object(), ResetType::Hard, None);
-    put_back(&kept, held)?;
-    undone?;
+    lay(&kept, mine, WritesOver::Everything)?;
     finished_the_merge(&kept)?;
     Ok(())
 }
@@ -1705,7 +1717,7 @@ pub(crate) fn merge_commit(
         return Ok(Merged::whole());
     }
     if reading.is_fast_forward() {
-        lay(kept, theirs.id())?;
+        lay(kept, theirs.id(), WritesOver::NothingUnkept)?;
         repo.reference(
             &format!("refs/heads/{branch}"),
             theirs.id(),
@@ -2909,6 +2921,40 @@ pub(crate) mod tests {
         // And the folder is somewhere a person writes again.
         write(&root, "notes/c.md", "after");
         made(&root, "After all that");
+    }
+
+    /// Going back to before a merge is the one act that writes over whatever is
+    /// here, so what a bare reset would hand back is an older bin.
+    #[test]
+    fn stopping_a_merge_leaves_what_is_kept_out_of_the_history_alone() {
+        let root = scratch("stop-aside");
+        Repository::init(&root).expect("their repository");
+        write(&root, GRAPH_FILE, "{}");
+        beside_the_graph(&root);
+        write(&root, "notes/a.md", "was");
+        theirs(&root, "Everything I had");
+        let theirs_line = status(&root)
+            .expect("the status")
+            .branch
+            .expect("the line their repository is on");
+
+        branch(&root, "later").expect("the line");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        theirs(&root, "Their way");
+        switch_to(&root, &theirs_line).expect("back");
+        write(&root, "notes/a.md", "mine");
+        theirs(&root, "My way");
+
+        merge_in(&root, &private_for(&root), "later").expect("the merge");
+        write(&root, ".sloppy/bin.json", r#"{"spent":["1a","1b"]}"#);
+        write(&root, "identity.key", "the seed this device holds");
+
+        abandon_merge(&root).expect("the stop");
+
+        assert_eq!(read(&root, "notes/a.md"), "mine");
+        assert_eq!(read(&root, ".sloppy/bin.json"), r#"{"spent":["1a","1b"]}"#);
+        assert_eq!(read(&root, "identity.key"), "the seed this device holds");
     }
 
     #[test]
