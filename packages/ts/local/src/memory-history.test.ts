@@ -203,6 +203,252 @@ describe("the states a graph has been in", () => {
   });
 });
 
+/** Two versions on `main`: the first has the one note, the second a note
+ *  beside it and the first one untouched. */
+async function twoVersions(): Promise<{
+  files: MemoryFiles;
+  history: MemoryHistory;
+  first: string;
+  second: string;
+}> {
+  const { files, history } = graph();
+  await write(files, NOTE, "one");
+  const first = await history.commit("A first note");
+  await write(files, OTHER, "beside it");
+  const second = await history.commit("A note beside it");
+  return { files, history, first: first?.id ?? "", second: second?.id ?? "" };
+}
+
+describe("a folder standing on a version rather than a line", () => {
+  it("becomes that version, on no line, and comes back onto one", async () => {
+    const { files, history, first } = await twoVersions();
+
+    await history.standOn(first);
+
+    expect(await files.read(NOTE)).toEqual(encodeText("one"));
+    expect(await files.read(OTHER)).toBeUndefined();
+    expect(await history.currentCommit()).toBe(first);
+    expect(await history.status()).toEqual({
+      changed: [],
+      untracked: [],
+      ahead: 0,
+      behind: 0,
+    });
+    expect((await history.branches()).some((one) => one.current)).toBe(false);
+    expect((await history.log(10)).commits.map((one) => one.message)).toEqual([
+      "A first note",
+    ]);
+
+    await history.switch("main");
+
+    expect(await files.read(OTHER)).toEqual(encodeText("beside it"));
+    expect((await history.status()).branch).toBe("main");
+  });
+
+  it("keeps a version there without moving any line", async () => {
+    const { files, history, first, second } = await twoVersions();
+    await history.standOn(first);
+
+    await write(files, NOTE, "one, written while standing here");
+    const made = await history.commit("Written on no line");
+
+    expect(made?.parents).toEqual([first]);
+    expect(await history.currentCommit()).toBe(made?.id);
+    expect((await history.status()).branch).toBeUndefined();
+    expect(
+      (await history.branches()).find((one) => one.name === "main")?.head,
+    ).toBe(second);
+  });
+
+  it("opens a line where it stands, leaving the folder untouched", async () => {
+    const { files, history, first } = await twoVersions();
+    await history.standOn(first);
+    await write(files, NOTE, "one, being written");
+
+    const opened = await history.lineHere("from-here");
+
+    expect(opened).toEqual({ name: "from-here", head: first, current: true });
+    expect(await files.read(NOTE)).toEqual(encodeText("one, being written"));
+    expect(await history.status()).toMatchObject({
+      branch: "from-here",
+      changed: [NOTE],
+    });
+    await expect(history.lineHere("main")).rejects.toBeInstanceOf(HistoryError);
+  });
+
+  it("leaves the folder exactly as it was where it will not stand", async () => {
+    const { files, history, first } = await twoVersions();
+    await write(files, NOTE, "one, being written");
+
+    await expect(history.standOn(first)).rejects.toBeInstanceOf(HistoryError);
+
+    expect(await files.read(NOTE)).toEqual(encodeText("one, being written"));
+    expect(await files.read(OTHER)).toEqual(encodeText("beside it"));
+    expect((await history.status()).branch).toBe("main");
+    await expect(history.standOn("nowhere")).rejects.toBeInstanceOf(
+      HistoryError,
+    );
+  });
+
+  it("carries what is written here where that version has none of it", async () => {
+    const { files, history, first } = await twoVersions();
+    await write(files, NOTE, "one, being written");
+
+    await history.standOn(first, true);
+
+    expect(await files.read(NOTE)).toEqual(encodeText("one, being written"));
+    expect(await files.read(OTHER)).toBeUndefined();
+    expect((await history.status()).changed).toEqual([NOTE]);
+  });
+
+  it("stands where what is written here is already what that version has", async () => {
+    const { files, history, first } = await twoVersions();
+    await files.remove(OTHER);
+    await write(files, NOTE, "one");
+
+    await history.standOn(first, true);
+
+    expect(await files.read(NOTE)).toEqual(encodeText("one"));
+    expect(await files.read(OTHER)).toBeUndefined();
+    expect(await history.status()).toMatchObject({
+      changed: [],
+      untracked: [],
+    });
+  });
+
+  it("will not carry what that version has otherwise", async () => {
+    const { files, history, first } = await twoVersions();
+    await write(files, NOTE, "one, written again");
+    await history.commit("Written again");
+    await write(files, NOTE, "one, being written");
+
+    await expect(history.standOn(first, true)).rejects.toBeInstanceOf(
+      HistoryError,
+    );
+
+    expect(await files.read(NOTE)).toEqual(encodeText("one, being written"));
+    expect(await files.read(OTHER)).toEqual(encodeText("beside it"));
+  });
+
+  it("calls a line something else, and takes the folder with it", async () => {
+    const { history, first } = await twoVersions();
+    await history.branch("aside");
+
+    expect(await history.renameLine("main", "the-thesis")).toEqual({
+      name: "the-thesis",
+      head: expect.any(String),
+      current: true,
+    });
+    expect((await history.status()).branch).toBe("the-thesis");
+    expect((await history.branches()).map((one) => one.name).sort()).toEqual([
+      "aside",
+      "the-thesis",
+    ]);
+
+    await expect(
+      history.renameLine("aside", "the-thesis"),
+    ).rejects.toBeInstanceOf(HistoryError);
+    await expect(
+      history.renameLine("nowhere", "elsewhere"),
+    ).rejects.toBeInstanceOf(HistoryError);
+
+    await history.standOn(first);
+    expect((await history.renameLine("aside", "beside")).current).toBe(false);
+  });
+});
+
+describe("a merge the folder is part-way through", () => {
+  /** Both lines wrote into the one note, and the other line wrote a second. */
+  async function bothWrote(): Promise<{
+    files: MemoryFiles;
+    history: MemoryHistory;
+    before: string;
+  }> {
+    const { files, history } = graph();
+    await write(files, NOTE, "one");
+    await history.commit("A first note");
+    await history.branch("aside");
+    await history.switch("aside");
+    await write(files, NOTE, "theirs");
+    await write(files, OTHER, "beside it");
+    await history.commit("Written there");
+    await history.switch("main");
+    await write(files, NOTE, "mine");
+    const before = await history.commit("Written here");
+    return { files, history, before: before?.id ?? "" };
+  }
+
+  it("is what the folder says about itself, not what anybody remembered", async () => {
+    const { history } = await bothWrote();
+    const theirs = (await history.branches()).find(
+      (one) => one.name === "aside",
+    )?.head;
+
+    await history.merge("aside");
+
+    expect((await history.status()).merging).toEqual({
+      taking: theirs,
+      inTwoVersions: [NOTE],
+    });
+
+    await history.resolve(NOTE, "theirs");
+
+    expect((await history.status()).merging).toEqual({
+      taking: theirs,
+      inTwoVersions: [],
+    });
+
+    await history.commit("Both lines");
+
+    expect((await history.status()).merging).toBeUndefined();
+  });
+
+  it("is stopped, and the folder is as it was before it began", async () => {
+    const { files, history, before } = await bothWrote();
+    await history.merge("aside");
+    expect(await files.read(OTHER)).toEqual(encodeText("beside it"));
+
+    await history.abandonMerge();
+
+    expect(await files.read(NOTE)).toEqual(encodeText("mine"));
+    expect(await files.read(OTHER)).toBeUndefined();
+    expect(await history.status()).toMatchObject({
+      branch: "main",
+      changed: [],
+      untracked: [],
+    });
+    expect((await history.status()).merging).toBeUndefined();
+    expect(await history.currentCommit()).toBe(before);
+    await expect(history.abandonMerge()).rejects.toBeInstanceOf(HistoryError);
+  });
+
+  it("is stopped with nothing settled the other line's way left behind", async () => {
+    const { files, history } = graph();
+    await write(files, NOTE, "one");
+    await history.commit("A first note");
+    await history.branch("aside");
+    await history.switch("aside");
+    await write(files, NOTE, "theirs");
+    await history.commit("Written there");
+    await history.switch("main");
+    await files.remove(NOTE);
+    await history.commit("It goes");
+
+    await history.merge("aside");
+    await history.resolve(NOTE, "theirs");
+    expect(await files.read(NOTE)).toEqual(encodeText("theirs"));
+
+    await history.abandonMerge();
+
+    expect(await files.read(NOTE)).toBeUndefined();
+    expect(await history.status()).toMatchObject({
+      branch: "main",
+      changed: [],
+      untracked: [],
+    });
+  });
+});
+
 const KEPT_URL = "https://example.test/ada/garden.git";
 
 /** Two folders and the one place they both keep their graph. */

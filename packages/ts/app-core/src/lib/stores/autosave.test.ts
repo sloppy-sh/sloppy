@@ -112,6 +112,24 @@ describe('keeping a version while somebody writes', () => {
 		whatHappened.record(false);
 	});
 
+	it('keeps nothing while the folder is part-way through a merge', async () => {
+		history = aHistory({
+			status: async () => ({
+				changed: [],
+				untracked: [],
+				ahead: 0,
+				behind: 0,
+				merging: { taking: 'another-version', inTwoVersions: [] }
+			})
+		});
+		running();
+		await graphHistory.read();
+
+		await saveNow();
+
+		expect(history.kept).toEqual([]);
+	});
+
 	it('takes nothing to keep as the ordinary answer', async () => {
 		history = aHistory({ commit: async () => undefined });
 		running();
