@@ -941,7 +941,12 @@ reachable whenever the folder is part-way through a merge**, including after the
 closed and opened again — a person who shuts the laptop mid-merge comes back to the same list,
 not to a folder that looks settled and is not. **Stop the merge** sits at the foot of it,
 plainly and not in the destructive colour: it puts the folder back the way it was before the
-merge began, and says before it does that the writing nothing has kept goes back with it.
+merge began, and says before it does that nothing the other line wrote stays and the choices
+already made are let go. **It never takes writing with it.** Putting the folder back writes
+over what is in it, so where anything has been written since the merge began it is refused
+rather than done, and the person is told to put that back or keep a version of it first. That
+is narrower than git, which keeps a change to a file the merge never touched; the narrower
+rule is the one that cannot lose a note, and it is the one to widen if it proves a nuisance.
 
 **Every number is the distance from the place in front of you.** Where a folder is kept in
 more than one place, the picker over those acts opens on the one the line the folder is on

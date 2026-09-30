@@ -117,7 +117,7 @@
 	<ConfirmModal
 		bind:open={stopping}
 		title="Stop bringing in {taking}?"
-		description="Your graph goes back to the last version you kept. Nothing {taking} wrote stays, the choices you have made here are let go, and anything you have written since goes with them — keep a version first if you want to hold on to it."
+		description="Your graph goes back to the last version you kept. Nothing {taking} wrote stays, and the choices you have made here are let go. Anything you have written since is not taken: where there is any, stopping is refused until you put it back or keep a version of it."
 		confirmLabel="Stop it"
 		cancelLabel="Keep going"
 		destructive={false}

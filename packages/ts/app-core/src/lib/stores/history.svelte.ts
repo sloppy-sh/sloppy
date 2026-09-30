@@ -169,6 +169,8 @@ class HistoryStore {
 	 *  line of work. False offers none of it. */
 	get stands(): boolean {
 		return runtime.history()?.standOn !== undefined;
+	}
+
 	/** Whether this platform can put the folder back the way it was before a
 	 *  merge began. False is a shell whose history cannot, and stopping one is
 	 *  not offered. */

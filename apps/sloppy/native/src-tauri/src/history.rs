@@ -933,6 +933,8 @@ fn written_since_the_merge_began(kept: &Kept) -> Result<bool, HistoryError> {
     let held = kept.repo().statuses(Some(&mut how))?;
     Ok(held.iter().any(|entry| {
         let status = entry.status();
+        // The working tree alone: a merge stages its own settling in the index,
+        // so a change there is the merge's own and not something to refuse over.
         entry.path().map_or(true, |path| !kept.kept_out(path))
             && (status.is_wt_modified()
                 || status.is_wt_deleted()
@@ -2938,12 +2940,23 @@ pub(crate) mod tests {
             "Finish the merge you are in the middle of first."
         );
 
+        // Putting the folder back writes over what the merge left, so writing
+        // done since is what the stop would take with it.
         write(
             &root,
             "notes/elsewhere.md",
             "and then I thought better of it",
         );
+        assert_eq!(
+            abandon_merge(&root).unwrap_err().said(),
+            "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again."
+        );
+        assert_eq!(
+            read(&root, "notes/elsewhere.md"),
+            "and then I thought better of it"
+        );
 
+        write(&root, "notes/elsewhere.md", "as it stood");
         abandon_merge(&root).expect("the stop");
 
         assert_eq!(read(&root, "notes/a.md"), "mine");

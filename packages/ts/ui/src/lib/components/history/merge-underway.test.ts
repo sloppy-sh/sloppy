@@ -165,14 +165,17 @@ describe('a line part-way into the one being worked on', () => {
 		expect(screen()).not.toContain('Your graph goes back to the last version you kept');
 	});
 
-	it('warns that stopping takes the writing nothing has kept yet, and says how to hold on to it', () => {
+	// Putting the folder back writes over what is in it, so the folder refuses
+	// rather than taking writing nobody has kept with it.
+	it('says what stopping lets go, and that writing since is not among it', () => {
 		open();
 
 		control('Stop bringing it in').click();
 		flushSync();
 
-		expect(screen()).toContain('anything you have written since goes with them');
-		expect(screen()).toContain('keep a version first');
+		expect(screen()).toContain('the choices you have made here are let go');
+		expect(screen()).toContain('Anything you have written since is not taken');
+		expect(screen()).toContain('stopping is refused until you put it back');
 	});
 
 	it('offers no way to stop where the folder cannot be put back', () => {
