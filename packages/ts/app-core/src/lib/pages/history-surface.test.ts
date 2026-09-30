@@ -1,12 +1,13 @@
 // The graph as it was, on the canvas: a version kept, opened from the history,
 // drawn in place of the graph and taking nothing.
 
+import type { History } from '@sloppy/local';
 import { LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import type { BlockDocument, OwnedRef, Viewer } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetApi } from '../api.js';
-import { initRuntime } from '../runtime.js';
+import { initRuntime, updateRuntime } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
@@ -188,13 +189,14 @@ async function origins(): Promise<OwnedRef> {
 
 /** Two lines of work that each wrote into the one note, brought together and
  *  left part-way through. */
-async function bothWrote(): Promise<OwnedRef> {
+async function bothWrote(alsoThere?: string): Promise<OwnedRef> {
 	const note = await origins();
 	const section = await served.createBlock({ node: note, content: words('The seed') });
 	await graphHistory.keep('A first version');
 	await graphHistory.startLine('an-argument');
 	await graphHistory.workOn('an-argument');
 	await served.updateBlock(section.ref, { content: words('The seed of the argument') });
+	if (alsoThere !== undefined) await served.createNode({ title: alsoThere });
 	await graphHistory.keep('Over there');
 	await graphHistory.workOn('main');
 	await served.updateBlock(section.ref, { content: words('The seed of it all') });
@@ -490,6 +492,26 @@ describe('a line being brought in, part-way through', () => {
 		expect(screen()).not.toContain('.md');
 	});
 
+	it('says how much came in settled, so what is left in two versions has a size', async () => {
+		await bothWrote('Written over there');
+
+		await openHistory();
+
+		expect(said('Bringing in an-argument')).toContain('One note is in two versions');
+		expect(said('Bringing in an-argument')).toContain('One other note is settled already');
+	});
+
+	it('leaves that count where it is when somebody writes while the merge stands open', async () => {
+		await bothWrote('Written over there');
+		await openHistory();
+
+		await served.createNode({ title: 'Written while the list was open' });
+		await graphHistory.opened();
+		await settle();
+
+		expect(said('Bringing in an-argument')).toContain('One other note is settled already');
+	});
+
 	it('offers to keep a version once the last note has been settled', async () => {
 		await bothWrote();
 		await openHistory();
@@ -509,6 +531,17 @@ describe('a line being brought in, part-way through', () => {
 
 		expect(screen()).not.toContain('Bringing in an-argument');
 		expect(graphHistory.versions[0].parents).toHaveLength(2);
+	});
+
+	it('offers no way to stop where this platform cannot put the folder back', async () => {
+		await bothWrote();
+		const cannotStop = Object.create(kept, { abandonMerge: { value: undefined } }) as History;
+		updateRuntime({ history: () => cannotStop });
+
+		await openHistory();
+
+		expect(said('Bringing in an-argument')).toContain('One note is in two versions');
+		expect(said('Bringing in an-argument')).not.toContain('Stop bringing it in');
 	});
 
 	it('stops, and the graph goes back the way it was before it began', async () => {

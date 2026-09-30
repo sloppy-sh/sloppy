@@ -137,6 +137,7 @@ class HistoryStore {
 	#elsewhere = $state<ElsewhereSaid | null>(null);
 	#signs = $state(false);
 	#merging = $state<MergeUnderway | null>(null);
+	#settled = $state<number | null>(null);
 	/** Notes the history has already been asked to settle, while their sections
 	 *  are still being written. */
 	#taken = new Set<string>();
@@ -158,6 +159,13 @@ class HistoryStore {
 	 */
 	get draws(): boolean {
 		return runtime.history()?.graph !== undefined;
+	}
+
+	/** Whether this platform can put the folder back the way it was before a
+	 *  merge began. False is a shell whose history cannot, and stopping one is
+	 *  not offered. */
+	get stopsAMerge(): boolean {
+		return runtime.history()?.abandonMerge !== undefined;
 	}
 
 	/** Why the last act did not happen, in the words it gave. */
@@ -325,6 +333,13 @@ class HistoryStore {
 		return this.#merging?.inTwoVersions ?? [];
 	}
 
+	/** How many notes the merge the folder is part-way through settled by
+	 *  itself. `null` is a folder in the middle of nothing, and one whose two
+	 *  versions could not be read. */
+	get settledAlready(): number | null {
+		return this.#settled;
+	}
+
 	/** What a merge is taking in, as a person reads it: the line standing at that
 	 *  version, else its short name. `null` is a folder in the middle of
 	 *  nothing. */
@@ -364,6 +379,7 @@ class HistoryStore {
 		this.#signs = false;
 		this.#taken.clear();
 		this.#merging = null;
+		this.#settled = null;
 	}
 
 	/** The surface has come up: what an earlier act said no longer stands. */
@@ -421,9 +437,13 @@ class HistoryStore {
 			);
 			if (at !== this.#epoch) return;
 			this.#places = places;
-			const since = await this.between(commit, undefined);
+			const [since, settled] = await Promise.all([
+				this.between(commit, undefined),
+				this.settledBy(status.merging, commit)
+			]);
 			if (at !== this.#epoch) return;
 			this.#changed = since;
+			this.#settled = settled;
 		} catch (err) {
 			if (at === this.#epoch) this.#says = said(err);
 		} finally {
@@ -684,10 +704,9 @@ class HistoryStore {
 		if (!merging || !history) return null;
 		const { graphAsItWas } = await local();
 		const theirs = await graphAsItWas(await history.readAt(merging.taking));
-		const ulid = path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, '');
 		const owner = (await theirs.me())?.did;
 		if (!owner) return null;
-		const ref = `${owner}/${ulid}` as OwnedRef;
+		const ref = `${owner}/${ulidIn(path)}` as OwnedRef;
 		const [mine, said, here, there] = await Promise.all([
 			api.listBlocks(ref).catch(() => [] as BlockView[]),
 			theirs.listBlocks(ref).catch(() => [] as BlockView[]),
@@ -753,6 +772,21 @@ class HistoryStore {
 		if (commit !== undefined) return history.readAt(commit);
 		const { graphAsItIs } = await local();
 		return graphAsItIs(api);
+	}
+
+	/** How many notes a merge has settled by itself: what the two versions it is
+	 *  bringing together hold differently, less what is still in two versions.
+	 *  Neither side is the folder, so writing while the merge stands open does
+	 *  not move it — DESIGN.md § "The history". */
+	private async settledBy(
+		merging: MergeUnderway | undefined,
+		head: string | undefined
+	): Promise<number | null> {
+		if (!merging || head === undefined) return null;
+		const both = await this.between(head, merging.taking);
+		if (!both) return null;
+		const unsettled = new Set(merging.inTwoVersions.map(ulidIn));
+		return both.notes.filter((note) => !unsettled.has(localPart(note.ref))).length;
 	}
 
 	/** Whether a merge settled by itself. */
@@ -891,6 +925,11 @@ function apart(here: string, there: string, drawn: readonly GraphCommit[]): Stan
 
 function localPart(ref: OwnedRef): string {
 	return ref.slice(ref.lastIndexOf('/') + 1);
+}
+
+/** The note a history names by a path, as its ref spells it. */
+function ulidIn(path: string): string {
+	return path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, '');
 }
 
 /** What somebody calls a place their folder is also kept: the host it is at,

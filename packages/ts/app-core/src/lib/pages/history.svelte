@@ -283,6 +283,7 @@
 	{lines}
 	{conflicts}
 	taking={graphHistory.taking}
+	settled={graphHistory.settledAlready ?? undefined}
 	busy={graphHistory.busy}
 	says={graphHistory.says}
 	onShow={() => void graphHistory.opened()}
@@ -295,7 +296,7 @@
 		settling = path;
 		settleOpen = true;
 	}}
-	onStopBringingIn={() => graphHistory.abandonMerge()}
+	onStopBringingIn={graphHistory.stopsAMerge ? () => graphHistory.abandonMerge() : undefined}
 	onOpenVersion={onShowVersion ? (id) => void showVersion(id) : undefined}
 	onCompare={compare}
 	picture={graphHistory.draws ? theShape : undefined}

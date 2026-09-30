@@ -93,6 +93,23 @@ describe('a line part-way into the one being worked on', () => {
 		expect(screen()).toContain('A second thought');
 	});
 
+	it('says how many are settled already, so what is left has a size beside it', () => {
+		open({
+			notes: [ORIGINS, { ...ORIGINS, path: 'notes/01B.md', title: 'A second thought' }],
+			settled: 12
+		});
+
+		expect(screen()).toContain('2 notes are in two versions');
+		expect(screen()).toContain('12 other notes are settled already');
+	});
+
+	it('leaves the count unsaid where nothing has been settled', () => {
+		open({ settled: 0 });
+
+		expect(screen()).toContain('One note is in two versions');
+		expect(screen()).not.toContain('settled already');
+	});
+
 	it('names something that is not a note without showing what it is called', () => {
 		open({ notes: [{ path: 'pictures/a-leaf.png', title: '', isNote: false }] });
 
@@ -156,6 +173,13 @@ describe('a line part-way into the one being worked on', () => {
 
 		expect(screen()).toContain('anything you have written since goes with them');
 		expect(screen()).toContain('keep a version first');
+	});
+
+	it('offers no way to stop where the folder cannot be put back', () => {
+		open({ onStop: undefined });
+
+		expect(screen()).toContain('One note is in two versions');
+		expect(screen()).not.toContain('Stop bringing it in');
 	});
 
 	it('holds the question open where stopping did not happen', async () => {

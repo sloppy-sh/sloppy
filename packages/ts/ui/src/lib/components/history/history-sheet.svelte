@@ -56,6 +56,7 @@
 		lines,
 		conflicts = [],
 		taking = null,
+		settled = undefined,
 		busy = false,
 		says = null,
 		onShow,
@@ -96,6 +97,8 @@
 		/** The line being brought in. `null` is a folder in the middle of
 		 *  nothing, and the whole of what says one is part-way through. */
 		taking?: string | null;
+		/** How many notes a line being brought in settled by itself. */
+		settled?: number;
 		busy?: boolean;
 		says?: string | null;
 		/** The surface has just opened, and what it shows is worth asking for. */
@@ -107,8 +110,9 @@
 		onBringIn: (name: string) => Promise<boolean>;
 		onSettle: (path: string) => void;
 		/** The folder back at the last version kept, holding nothing of the line
-		 *  that was being brought in and nothing written since. */
-		onStopBringingIn: () => Promise<boolean>;
+		 *  that was being brought in and nothing written since. Absent where this
+		 *  platform cannot, and stopping is not offered. */
+		onStopBringingIn?: () => Promise<boolean>;
 		/** Absent where a version cannot be put on the graph from here. */
 		onOpenVersion?: (id: string) => void;
 		onCompare: (
@@ -225,6 +229,7 @@
 			<MergeUnderway
 				{taking}
 				notes={conflicts}
+				{settled}
 				{busy}
 				{says}
 				{onSettle}

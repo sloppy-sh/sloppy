@@ -20,6 +20,7 @@
 	let {
 		taking,
 		notes,
+		settled = undefined,
 		busy = false,
 		says = null,
 		onSettle,
@@ -30,12 +31,16 @@
 		taking: string;
 		/** What is still in two versions. Empty is a line waiting to be kept. */
 		notes: readonly NoteInTwo[];
+		/** How many notes the merge settled by itself. Absent → left unsaid. */
+		settled?: number;
 		busy?: boolean;
 		says?: string | null;
 		onSettle: (path: string) => void;
 		/** Keeping a version is what finishes it. */
 		onFinish: () => void;
-		onStop: () => Promise<boolean>;
+		/** Absent where the folder cannot be put back the way it was, and
+		 *  stopping is not offered at all. */
+		onStop?: () => Promise<boolean>;
 	} = $props();
 
 	let stopping = $state(false);
@@ -49,7 +54,7 @@
 	}
 
 	async function stop(): Promise<void> {
-		if (!(await onStop())) throw new Error(says ?? '');
+		if (!(await onStop?.())) throw new Error(says ?? '');
 	}
 </script>
 
@@ -67,6 +72,13 @@
 				: `${left.toLocaleString()} notes are in two versions: you and ${taking} both wrote in them.`}
 			Choose what each one says, then keep a version.
 		</p>
+		{#if settled !== undefined && settled > 0}
+			<p class="text-sm text-muted-foreground">
+				{settled === 1
+					? 'One other note is settled already.'
+					: `${settled.toLocaleString()} other notes are settled already.`}
+			</p>
+		{/if}
 		<ul class="space-y-1">
 			{#each notes as note (note.path)}
 				<li>
@@ -93,19 +105,23 @@
 		{#if left === 0}
 			<Button class="h-control" disabled={busy} onclick={onFinish}>Keep a version</Button>
 		{/if}
-		<Button variant="outline" class="h-control" disabled={busy} onclick={() => (stopping = true)}>
-			Stop bringing it in
-		</Button>
+		{#if onStop}
+			<Button variant="outline" class="h-control" disabled={busy} onclick={() => (stopping = true)}>
+				Stop bringing it in
+			</Button>
+		{/if}
 	</div>
 </section>
 
-<ConfirmModal
-	bind:open={stopping}
-	title="Stop bringing in {taking}?"
-	description="Your graph goes back to the last version you kept. Nothing {taking} wrote stays, the choices you have made here are let go, and anything you have written since goes with them — keep a version first if you want to hold on to it."
-	confirmLabel="Stop it"
-	cancelLabel="Keep going"
-	destructive={false}
-	refused={says}
-	onconfirm={stop}
-/>
+{#if onStop}
+	<ConfirmModal
+		bind:open={stopping}
+		title="Stop bringing in {taking}?"
+		description="Your graph goes back to the last version you kept. Nothing {taking} wrote stays, the choices you have made here are let go, and anything you have written since goes with them — keep a version first if you want to hold on to it."
+		confirmLabel="Stop it"
+		cancelLabel="Keep going"
+		destructive={false}
+		refused={says}
+		onconfirm={stop}
+	/>
+{/if}
