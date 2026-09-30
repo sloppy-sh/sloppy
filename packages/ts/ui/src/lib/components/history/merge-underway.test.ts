@@ -126,7 +126,7 @@ describe('a line part-way into the one being worked on', () => {
 		flushSync();
 
 		expect(screen()).toContain('Stop bringing in an-argument?');
-		expect(screen()).toContain('Your graph goes back the way it was before you started');
+		expect(screen()).toContain('Your graph goes back to the last version you kept');
 		expect(stopped).toBe(0);
 
 		control('Stop it').click();
@@ -145,7 +145,17 @@ describe('a line part-way into the one being worked on', () => {
 		await settle();
 
 		expect(stopped).toBe(0);
-		expect(screen()).not.toContain('Your graph goes back the way it was before you started');
+		expect(screen()).not.toContain('Your graph goes back to the last version you kept');
+	});
+
+	it('warns that stopping takes the writing nothing has kept yet, and says how to hold on to it', () => {
+		open();
+
+		control('Stop bringing it in').click();
+		flushSync();
+
+		expect(screen()).toContain('anything you have written since goes with them');
+		expect(screen()).toContain('keep a version first');
 	});
 
 	it('holds the question open where stopping did not happen', async () => {

@@ -422,6 +422,19 @@ describe("a merge the folder is part-way through", () => {
     await expect(history.abandonMerge()).rejects.toBeInstanceOf(HistoryError);
   });
 
+  it("puts back every note it keeps, one written in since and unkept among them", async () => {
+    const elsewhere = "notes/01J0000000000000000000000C.md";
+    const { files, history } = await bothWrote();
+    await write(files, elsewhere, "as it stood");
+    await history.commit("A note to one side");
+    await history.merge("aside");
+
+    await write(files, elsewhere, "and then I thought better of it");
+    await history.abandonMerge();
+
+    expect(await files.read(elsewhere)).toEqual(encodeText("as it stood"));
+  });
+
   it("is stopped with nothing settled the other line's way left behind", async () => {
     const { files, history } = graph();
     await write(files, NOTE, "one");

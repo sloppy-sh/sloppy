@@ -106,7 +106,8 @@
 		onWorkOn: (name: string) => Promise<boolean>;
 		onBringIn: (name: string) => Promise<boolean>;
 		onSettle: (path: string) => void;
-		/** The folder back the way it was before the line was brought in. */
+		/** The folder back at the last version kept, holding nothing of the line
+		 *  that was being brought in and nothing written since. */
 		onStopBringingIn: () => Promise<boolean>;
 		/** Absent where a version cannot be put on the graph from here. */
 		onOpenVersion?: (id: string) => void;
