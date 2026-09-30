@@ -14,6 +14,7 @@
 		signs = false,
 		busy = false,
 		says = null,
+		onStandOn,
 		onRead,
 		onCompare,
 		onOpen,
@@ -32,6 +33,9 @@
 		signs?: boolean;
 		busy?: boolean;
 		says?: string | null;
+		/** Make the folder this version, to write from it. Absent where the folder
+		 *  is already on it, or the platform stands on none. */
+		onStandOn?: (id: string) => void;
 		/** Absent where the graph is not in front of anybody to draw it on. */
 		onRead?: (id: string) => void;
 		onCompare?: (id: string) => void;
@@ -106,6 +110,16 @@
 		</section>
 
 		<section class="flex flex-col gap-2">
+			{#if onStandOn}
+				<Button
+					variant="outline"
+					class="h-control"
+					disabled={busy}
+					onclick={() => onStandOn(version.id)}
+				>
+					Work on this version
+				</Button>
+			{/if}
 			{#if onRead}
 				<Button variant="outline" class="h-control" onclick={() => onRead(version.id)}>
 					Read your graph as it was

@@ -303,7 +303,9 @@ describe('a version somebody works on', () => {
 		expect(await graphHistory.keep('Written from here')).toBe(true);
 
 		expect(await api.getNode(written.ref)).not.toBe(null);
-		expect(graphHistory.onAVersion).toBe(true);
+		// A version nothing leads back to is one nobody reaches again, so keeping
+		// opens the line where they stand first.
+		expect(graphHistory.line).toBe(`from-${first.slice(0, 8)}`);
 		expect(graphHistory.versions[0].parents).toEqual([first]);
 	});
 

@@ -16,10 +16,13 @@
 		type StatePicked
 	} from '@sloppy/ui';
 	import { SvelteMap } from 'svelte/reactivity';
+	import BeforeMoving from '../components/before-moving.svelte';
 	import BranchesPanel, { type LineRow } from '../components/branches-panel.svelte';
 	import CommitDetails from '../components/commit-details.svelte';
 	import { drawnFrom, type DrawnVersion, keptBy, whenKept } from '../components/commit-graph.js';
 	import CommitGraph from '../components/commit-graph.svelte';
+	import { type Leaving, Moving } from '../components/moving.svelte.js';
+	import Standing from '../components/standing.svelte';
 	import SyncControls, { type KeptAlso } from '../components/sync-controls.svelte';
 	import {
 		type DifferenceBetween,
@@ -31,7 +34,8 @@
 	let {
 		open = $bindable(false),
 		onShowVersion,
-		onShowDifference
+		onShowDifference,
+		onMoved
 	}: {
 		open?: boolean;
 		/** Absent where there is no graph on screen to draw a state on. */
@@ -45,7 +49,11 @@
 				difference: GraphDifference;
 			} | null
 		) => void;
+		/** The folder has moved onto another version or line. */
+		onMoved?: () => void;
 	} = $props();
+
+	const moving = new Moving();
 
 	/** What each note left in two versions holds on either side, once read. */
 	const inTwo = new SvelteMap<string, NoteInTwoVersions | null>();
@@ -213,6 +221,21 @@
 		showingOpen = true;
 	}
 
+	function standOn(commit: string): void {
+		showingOpen = false;
+		void moved({ carries: true, go: (carrying) => graphHistory.standOn(commit, carrying) });
+	}
+
+	function workOn(name: string): Promise<boolean> {
+		return moved({ carries: false, go: () => graphHistory.workOn(name) });
+	}
+
+	async function moved(leaving: Leaving): Promise<boolean> {
+		const went = await moving.leaveFor(leaving);
+		if (went) onMoved?.();
+		return went;
+	}
+
 	async function compare(
 		before: StatePicked,
 		after: StatePicked
@@ -294,7 +317,7 @@
 	onKeep={(message) => graphHistory.keep(message)}
 	onOlder={() => void graphHistory.readOlder()}
 	onStartLine={(name) => graphHistory.startLine(name)}
-	onWorkOn={(name) => graphHistory.workOn(name)}
+	onWorkOn={workOn}
 	onBringIn={(name) => graphHistory.bringIn(name)}
 	onSettle={(path) => {
 		settling = path;
@@ -302,10 +325,15 @@
 	}}
 	onOpenVersion={onShowVersion ? (id) => void showVersion(id) : undefined}
 	onCompare={compare}
+	standing={graphHistory.stands ? theStanding : undefined}
 	picture={graphHistory.draws ? theShape : undefined}
 	branches={graphHistory.draws ? theLines : undefined}
 	elsewhere={graphHistory.draws ? theOtherPlaces : undefined}
 />
+
+{#snippet theStanding()}
+	<Standing />
+{/snippet}
 
 {#snippet theShape()}
 	<CommitGraph
@@ -328,7 +356,7 @@
 		busy={graphHistory.busy}
 		unsettled={graphHistory.inTwoVersions.length > 0}
 		onStartLine={(name) => graphHistory.startLine(name)}
-		onWorkOn={(name) => graphHistory.workOn(name)}
+		onWorkOn={workOn}
 		onBringIn={(name) => graphHistory.bringIn(name)}
 		onDrop={(name) => graphHistory.dropLine(name)}
 		onStartFrom={(name, head) => graphHistory.startLineAt(name, head)}
@@ -359,11 +387,14 @@
 		signs={graphHistory.signs}
 		busy={graphHistory.busy}
 		says={graphHistory.says}
+		onStandOn={graphHistory.stands && !(graphHistory.onAVersion && graphHistory.at === opened.id)
+			? standOn
+			: undefined}
 		onRead={onShowVersion ? (id) => void showVersion(id) : undefined}
 		onCompare={onShowDifference ? (id) => void compareWithNow(id) : undefined}
 		onOpen={openVersion}
 		onStartLine={(name, id) => graphHistory.startLineAt(name, id)}
-		onWorkOn={(name) => graphHistory.workOn(name)}
+		onWorkOn={workOn}
 	/>
 {/if}
 
@@ -385,3 +416,5 @@
 		onSettleSections={settleBySection}
 	/>
 {/if}
+
+<BeforeMoving {moving} />

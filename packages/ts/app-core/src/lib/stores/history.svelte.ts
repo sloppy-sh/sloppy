@@ -137,6 +137,10 @@ class HistoryStore {
 	#elsewhere = $state<ElsewhereSaid | null>(null);
 	#signs = $state(false);
 	#merging = $state<MergeUnderway | null>(null);
+	/** Whether the folder's standing has been read at all this session. */
+	#readOnce = $state(false);
+	/** The line somebody's writing opened where they stood on a version. */
+	#openedLine = $state<string | null>(null);
 	/** Notes the history has already been asked to settle, while their sections
 	 *  are still being written. */
 	#taken = new Set<string>();
@@ -158,6 +162,12 @@ class HistoryStore {
 	 */
 	get draws(): boolean {
 		return runtime.history()?.graph !== undefined;
+	}
+
+	/** Whether this platform can put the folder on a version rather than on a
+	 *  line of work. False offers none of it. */
+	get stands(): boolean {
+		return runtime.history()?.standOn !== undefined;
 	}
 
 	/** Why the last act did not happen, in the words it gave. */
@@ -308,8 +318,9 @@ class HistoryStore {
 		return this.#changed;
 	}
 
-	/** Whether there is anything at all to keep — the history answers this, and
-	 *  {@link changed} names notes and no more. */
+	/** Whether there is anything at all to keep, as the surface last read it —
+	 *  the history answers this, and {@link changed} names notes and no more.
+	 *  {@link HistoryStore.unkeptNow} asks the folder again. */
 	get unkept(): boolean {
 		return this.#dirty;
 	}
@@ -342,6 +353,18 @@ class HistoryStore {
 		return this.#at !== undefined && this.#line === undefined;
 	}
 
+	/** The name a person reads and cites for the version the folder stands on;
+	 *  `undefined` where it is on a line of work. */
+	get standingOn(): string | undefined {
+		return this.onAVersion ? this.#at?.slice(0, SHORT_NAME) : undefined;
+	}
+
+	/** The line somebody's writing opened where they stood on a version, while
+	 *  the folder is still on it. */
+	get openedLine(): string | null {
+		return this.#line !== undefined && this.#line === this.#openedLine ? this.#openedLine : null;
+	}
+
 	clear(): void {
 		this.#epoch += 1;
 		this.#busy = false;
@@ -351,6 +374,8 @@ class HistoryStore {
 		this.#branches = [];
 		this.#at = undefined;
 		this.#line = undefined;
+		this.#readOnce = false;
+		this.#openedLine = null;
 		this.#ahead = 0;
 		this.#changed = null;
 		this.#dirty = false;
@@ -402,6 +427,7 @@ class HistoryStore {
 				history.signing?.()
 			]);
 			if (at !== this.#epoch) return;
+			this.#readOnce = true;
 			this.#line = status.branch;
 			this.#ahead = status.ahead;
 			this.#behind = status.behind;
@@ -429,6 +455,14 @@ class HistoryStore {
 		} finally {
 			if (at === this.#epoch) this.#busy = false;
 		}
+	}
+
+	/** Whether there is anything at all to keep, asked of the folder now rather
+	 *  than as the surface last drew it — a write lands without anything on
+	 *  screen hearing of it. */
+	async unkeptNow(): Promise<boolean> {
+		await this.read();
+		return this.#dirty;
 	}
 
 	/** The page of older versions after the ones already read. */
@@ -464,17 +498,21 @@ class HistoryStore {
 	}
 
 	/**
-	 * Keep what is in the folder as a version. Answers whether anything was
-	 * kept: nothing to keep is not a failure.
+	 * Keep what is in the folder as a version, on a line of work — one opens
+	 * first where the folder stands on a version, so a version is never kept
+	 * where nothing leads back to it. Answers whether anything was kept:
+	 * nothing to keep is not a failure.
 	 *
-	 * **Keeping does not move the folder**, so nothing about the graph is read
-	 * again — only what the history itself now says. That is what lets this be
-	 * done on a clock (`autosave`) without the graph reloading under somebody's
-	 * cursor.
+	 * **Keeping itself does not move the folder**, so nothing about the graph is
+	 * read again — only what the history itself now says. That is what lets this
+	 * be done on a clock (`autosave`) without the graph reloading under
+	 * somebody's cursor.
 	 */
 	async keep(message: string): Promise<boolean> {
 		const history = runtime.history();
 		if (!history) return false;
+		if (!(await this.unkeptNow())) return false;
+		if (!(await this.lineToWriteOn())) return false;
 		this.#busy = true;
 		this.#says = null;
 		try {
@@ -533,14 +571,39 @@ class HistoryStore {
 		return done ? name : null;
 	}
 
+	/**
+	 * A line for what is about to be written to land on. Where the folder stands
+	 * on a version rather than a line, one opens where it stands and no file
+	 * moves — DESIGN.md § "The history as a picture".
+	 *
+	 * False is a line that could not open, with {@link HistoryStore.says} carrying
+	 * why — **and writing goes ahead anyway.** It is keeping a version that needs
+	 * a line, and {@link HistoryStore.keep} is what refuses.
+	 */
+	async lineToWriteOn(): Promise<boolean> {
+		// A platform that cannot put the folder on a version opens no lines, and
+		// its repository being on none is the person's own doing to undo.
+		if (!this.keeps || !this.stands) return true;
+		// Read again first: nothing may have asked this session, and a line is
+		// named against the names already taken.
+		if (!this.#readOnce || this.onAVersion) await this.read();
+		if (!this.onAVersion) return true;
+		const opened = await this.lineHere();
+		if (opened === null) return false;
+		this.#openedLine = opened;
+		return true;
+	}
+
 	/** A line of work called something else. Where the folder is on it, it stays
 	 *  on it under the new name. */
 	async renameLine(from: string, to: string): Promise<boolean> {
-		return this.act(async (history) => {
+		const done = await this.act(async (history) => {
 			if (!history.renameLine) return false;
 			await history.renameLine(from, to);
 			return true;
 		});
+		if (done && this.#openedLine === from) this.#openedLine = to;
+		return done;
 	}
 
 	/** Stop the merge the folder is part-way through, leaving it as it was before
@@ -553,9 +616,11 @@ class HistoryStore {
 		});
 	}
 
-	/** Take a line's versions into the one the folder is on. Answers false where
-	 *  notes are left in two versions for somebody to settle. */
+	/** Take a line's versions into the one the folder is on, opening one first
+	 *  where the folder stands on a version. Answers false where notes are left
+	 *  in two versions for somebody to settle. */
 	async bringIn(name: string): Promise<boolean> {
+		if (!(await this.lineToWriteOn())) return false;
 		return this.act(async (history) => this.tookIn(await history.merge(name)));
 	}
 
@@ -592,9 +657,17 @@ class HistoryStore {
 		);
 	}
 
-	/** Take in what is kept somewhere else. Answers false where notes are left
-	 *  in two versions for somebody to settle. */
+	/** Take in what is kept somewhere else, opening a line first where the folder
+	 *  stands on a version. Answers false where notes are left in two versions
+	 *  for somebody to settle. */
 	async takeIn(remote?: string): Promise<boolean> {
+		if (!(await this.lineToWriteOn())) {
+			this.#elsewhere = {
+				words: this.#says ?? 'Start a line to work on first, then try again.',
+				refused: true
+			};
+			return false;
+		}
 		const was = this.#at;
 		let settled = true;
 		const done = await this.withRemote(
