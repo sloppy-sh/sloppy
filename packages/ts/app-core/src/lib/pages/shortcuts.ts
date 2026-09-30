@@ -13,7 +13,7 @@ export interface Accelerator {
 	says: string;
 }
 
-export const NEW_BRANCH: Accelerator = {
+export const NEW_NOTE: Accelerator = {
 	keys: 'Meta+Enter Control+Enter',
 	get says() {
 		return onMac() ? '⌘ Return' : 'Ctrl+Enter';

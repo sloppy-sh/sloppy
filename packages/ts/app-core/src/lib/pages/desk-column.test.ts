@@ -392,7 +392,7 @@ describe('standing on a version', () => {
 		expect(document.body.querySelectorAll('[data-menu]').length).toBeGreaterThan(0);
 		expect(field()).not.toBeNull();
 		expect(inColumn().querySelector('[aria-label="Your graphs"]')).not.toBeNull();
-		expect(rows()).toContain('New branch');
+		expect(rows()).toContain('New note');
 		expect(screen()).not.toContain('Your graph as it was');
 	});
 
@@ -470,6 +470,7 @@ describe('standing on a version', () => {
 		await settle();
 		const stood = graphHistory.at;
 		expect(graphHistory.line).toBeUndefined();
+		const drawn = document.body.querySelectorAll('[aria-label="The graph"] li').length;
 
 		window.dispatchEvent(
 			new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
@@ -479,7 +480,9 @@ describe('standing on a version', () => {
 		expect(graphHistory.line).toBe(`from-${stood?.slice(0, 8)}`);
 		// No file moved to open it: the line begins at the version stood on.
 		expect(graphHistory.at).toBe(stood);
-		expect(document.body.querySelectorAll('[data-expand]')).toHaveLength(2);
+		// Counted on the canvas itself: a note written on its own carries no
+		// address, so nothing keyed on one would find it.
+		expect(document.body.querySelectorAll('[aria-label="The graph"] li')).toHaveLength(drawn + 1);
 		expect(screen()).toContain(`Your writing opened a new line, from-${stood?.slice(0, 8)}.`);
 		expect(rows()).toContain('Rename');
 	});

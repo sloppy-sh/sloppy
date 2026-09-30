@@ -277,14 +277,14 @@ describe('which graph you are in', () => {
 
 	// An address is assigned inside a graph, so where a new branch lands is what
 	// the switch is for.
-	it('writes a new branch in the graph the reader is in', async () => {
+	it('writes a new note in the graph the reader is in', async () => {
 		await open();
 		await openGraphs();
 		button('Garden').click();
 		await settle();
-		button('New branch').click();
+		button('New note').click();
 		await settle();
-		expect(written).toEqual([{ from: { relation: 'branch', graph: GARDEN } }]);
+		expect(written).toEqual([{ from: { relation: 'free', graph: GARDEN } }]);
 	});
 
 	it('renames one in place', async () => {

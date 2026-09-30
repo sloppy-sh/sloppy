@@ -468,7 +468,7 @@ describe('a note beside the graph', () => {
 		// No scrim between the reader and the field: the graph is still drawn,
 		// still says what it holds, and still answers a tap on another note.
 		expect(document.body.querySelector('[aria-label="The graph"]')).not.toBeNull();
-		expect(screen()).toContain('New branch');
+		expect(screen()).toContain('New note');
 
 		onCanvas('1').click();
 		await settle();

@@ -641,6 +641,11 @@ apart; nothing reads it yet. Splitting the two is what the table above is a ruli
 
 Seven rulings hold that table together, and one condition sits under all of them:
 
+- **The note the chrome writes is one of those, and that is the default on purpose.** The
+  control that writes puts down a note that springs from nothing, because a thought arrives
+  before its place does (PRODUCT.md § Design Principles 2). Opening a numbered branch, and
+  numbering one by hand, stand beside it as the other ways to write. Numbering the note
+  afterwards is what attaches it, and that is the same act whichever way it was written.
 - **A note that sprang from nothing and carries no number is in no run, and so is drawn with
   no line at all.** The run says one thought carries on from another, and nothing carries on
   from a thought that sprang from nothing — a note written on its own is a beginning, not the

@@ -559,7 +559,7 @@ describe('what the graph says out loud', () => {
 		await open();
 		expect(said()).not.toContain('Your new note is 3.');
 
-		button('New branch').click();
+		button('New note').click();
 		await settle();
 
 		expect(said()).toContain('Your new note is 3.');
@@ -900,7 +900,7 @@ describe('choosing several notes to act on', () => {
 		await open();
 		menuOn('the canvas').click();
 		await settle();
-		expect(offered()).toEqual(['New branch', 'New note', 'Choose notes']);
+		expect(offered()).toEqual(['New note', 'New branch', 'Choose notes']);
 
 		item('Choose notes').click();
 		await settle();
@@ -1364,7 +1364,7 @@ describe('choosing several notes to act on', () => {
 		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
 
 		await chooseThree();
-		button('New branch').click();
+		button('New note').click();
 		await settle();
 		await pointFromNote();
 
@@ -1415,8 +1415,8 @@ describe('choosing the notes a selection lit', () => {
 		await settle();
 		expect(offered()).toEqual([
 			'Choose the 2 notes lit up',
-			'New branch',
 			'New note',
+			'New branch',
 			'Choose notes'
 		]);
 
@@ -1441,7 +1441,7 @@ describe('choosing the notes a selection lit', () => {
 		menuOn('the canvas').click();
 		await settle();
 
-		expect(offered()).toEqual(['New branch', 'New note', 'Choose notes']);
+		expect(offered()).toEqual(['New note', 'New branch', 'Choose notes']);
 	});
 
 	it('counts one lit note as one', async () => {
@@ -1452,7 +1452,7 @@ describe('choosing the notes a selection lit', () => {
 		menuOn('the canvas').click();
 		await settle();
 
-		expect(offered()).toEqual(['Choose the note lit up', 'New branch', 'New note', 'Choose notes']);
+		expect(offered()).toEqual(['Choose the note lit up', 'New note', 'New branch', 'Choose notes']);
 	});
 
 	// The bound is the reader's to see before the tap: a refusal landing after it
@@ -1466,7 +1466,7 @@ describe('choosing the notes a selection lit', () => {
 		const row = `Choose ${MAX_NOTES_PER_BULK_ACT.toLocaleString()} of the ${many.toLocaleString()} notes lit up`;
 		menuOn('the canvas').click();
 		await settle();
-		expect(offered()).toEqual([row, 'New branch', 'New note', 'Choose notes']);
+		expect(offered()).toEqual([row, 'New note', 'New branch', 'Choose notes']);
 
 		item(row).click();
 		await settle();
@@ -1497,8 +1497,8 @@ describe('choosing the notes a selection lit', () => {
 
 		expect(offered()).toEqual([
 			'Choose the 2 notes lit up',
-			'New branch',
 			'New note',
+			'New branch',
 			'Choose notes'
 		]);
 	});
@@ -1614,12 +1614,12 @@ describe('writing a note from the keyboard', () => {
 		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
 	});
 
-	it('starts a branch of its own', async () => {
+	it('writes a note that springs from nothing', async () => {
 		await open();
 		strike(false);
 		await settle();
 
-		expect(placed).toEqual({ relation: 'branch', graph: expect.any(String) });
+		expect(placed).toEqual({ relation: 'free', graph: expect.any(String) });
 		expect(reading()).toBe(true);
 	});
 
@@ -1713,9 +1713,9 @@ describe('writing a note from the keyboard', () => {
 	it('names the keys on the control that writes the same note', async () => {
 		await open();
 
-		const branch = button('New branch');
+		const branch = button('New note');
 		expect(branch.getAttribute('aria-keyshortcuts')).toContain('Enter');
-		expect(branch.getAttribute('aria-label')).toMatch(/^New branch \(.+\)$/);
+		expect(branch.getAttribute('aria-label')).toMatch(/^New note \(.+\)$/);
 	});
 });
 
@@ -1738,9 +1738,7 @@ describe('writing a note of its own', () => {
 	it('asks for one from the chrome, and opens it to be written', async () => {
 		await open();
 
-		labelled('Other ways to write').click();
-		await settle();
-		item('A note on its own').click();
+		button('New note').click();
 		await settle();
 
 		expect(placed).toEqual({ relation: 'free', graph: expect.any(String) });
@@ -1848,7 +1846,9 @@ describe('a note written before the server has answered', () => {
 
 	it('opens somewhere to write on the tap, with the address still being given', async () => {
 		await open();
-		button('New branch').click();
+		labelled('Other ways to write').click();
+		await settle();
+		item('New branch').click();
 		await settle();
 
 		expect(reading()).toBe(true);
@@ -1860,9 +1860,7 @@ describe('a note written before the server has answered', () => {
 	// on says what is happening rather than what is not.
 	it('promises no address for a note written on its own', async () => {
 		await open();
-		labelled('Other ways to write').click();
-		await settle();
-		item('A note on its own').click();
+		button('New note').click();
 		await settle();
 
 		expect(reading()).toBe(true);
@@ -1872,7 +1870,7 @@ describe('a note written before the server has answered', () => {
 
 	it('puts what was typed into the note the moment there is one', async () => {
 		await open();
-		button('New branch').click();
+		button('New note').click();
 		await settle();
 		type(field('Title'), 'Membranes');
 		type(field('Note body'), 'two bars is still four seconds');
@@ -1891,7 +1889,7 @@ describe('a note written before the server has answered', () => {
 
 	it('keeps the writing and offers another go when the note will not be written', async () => {
 		await open();
-		button('New branch').click();
+		button('New note').click();
 		await settle();
 		type(field('Note body'), 'two bars is still four seconds');
 		await settle();
@@ -1972,7 +1970,7 @@ describe('a note written before the server has answered', () => {
 		await settle();
 
 		expect(reading()).toBe(false);
-		expect(button('New branch').disabled).toBe(false);
+		expect(button('New note').disabled).toBe(false);
 	});
 
 	it('keeps what was typed into a branch started from a shape, above its sections', async () => {
@@ -2111,12 +2109,12 @@ describe('a note written before the server has answered', () => {
 		expect(openTabs()).toEqual({ addresses: ['1', '2'], reading: '1' });
 	});
 
-	it('marks no note as the one being read while a branch is being written', async () => {
+	it('marks no note as the one being read while a note is being written', async () => {
 		await openTwo();
-		button('New branch').click();
+		button('New note').click();
 		await settle();
 
-		expect(screen()).toContain('Giving it an address');
+		expect(screen()).toContain('Putting it down');
 		expect(openTabs().reading).toBeUndefined();
 		expect(openTabs().addresses).toEqual(['1', '2']);
 	});
@@ -3456,7 +3454,7 @@ describe('the chrome on a desk', () => {
 		await onADesk();
 
 		expect(column()?.querySelector('[aria-label="Your graphs"]')).not.toBeNull();
-		expect(column()?.textContent).toContain('New branch');
+		expect(column()?.textContent).toContain('New note');
 		expect(column()?.querySelector('[aria-label="More"]')).toBeNull();
 		expect(column()?.querySelector('[aria-label^="Find a note"]')).not.toBeNull();
 		const rows = [...(column()?.querySelectorAll('button') ?? [])].map((one) =>
@@ -3472,7 +3470,7 @@ describe('the chrome on a desk', () => {
 		expect(document.body.querySelectorAll('[aria-label="Your graphs"]')).toHaveLength(1);
 		expect(
 			[...document.body.querySelectorAll('button')].filter((b) =>
-				b.textContent?.includes('New branch')
+				b.textContent?.includes('New note')
 			)
 		).toHaveLength(1);
 	});

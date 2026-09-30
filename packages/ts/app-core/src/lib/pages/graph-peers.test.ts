@@ -362,7 +362,7 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 		button('Your graph').click();
 		await settle();
 		expect(drawn()).toEqual(['1']);
-		expect(button('New branch')).toBeTruthy();
+		expect(button('New note')).toBeTruthy();
 	});
 
 	it('calls the author the same thing on the note it opens', async () => {
@@ -376,7 +376,7 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 	it('offers nothing that would change somebody else’s note', async () => {
 		await enterHeldRegion();
 		expect(choosingOnCanvas()).toBeUndefined();
-		expect(() => button('New branch')).toThrow();
+		expect(() => button('New note')).toThrow();
 		document.body.querySelector<HTMLButtonElement>('[data-menu="1a"]')?.click();
 		await settle();
 		expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(0);

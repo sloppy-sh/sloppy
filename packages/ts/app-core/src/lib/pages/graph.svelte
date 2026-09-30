@@ -174,7 +174,7 @@
 	import {
 		acceleratorFor,
 		THE_PALETTE,
-		NEW_BRANCH,
+		NEW_NOTE,
 		opensPalette,
 		typedIntoWriting,
 		WRITE_UNDER
@@ -1481,8 +1481,8 @@
 		if (!choosing) {
 			if (!on) {
 				const bare: CanvasMenuItem[] = [
-					{ label: 'New branch', icon: Plus, onSelect: () => writeBranch(null) },
-					{ label: 'New note', icon: FilePlus, onSelect: writeAlone },
+					{ label: 'New note', icon: Plus, onSelect: () => writeAlone() },
+					{ label: 'New branch', icon: FilePlus, onSelect: () => writeBranch(null) },
 					{ label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }
 				];
 				return chooseLit ? [chooseLit, ...bare] : bare;
@@ -1598,8 +1598,8 @@
 
 	/** A note that springs from nothing and carries no address until the reader
 	 *  writes one on it. */
-	function writeAlone(): void {
-		void startWriting({ from: { relation: 'free', graph: graphs.current } }, null, null);
+	function writeAlone(shape: NoteTemplate | null = null): void {
+		void startWriting({ from: { relation: 'free', graph: graphs.current } }, null, shape);
 	}
 
 	/** The note that springs from one already on the canvas, without opening it
@@ -1886,21 +1886,21 @@
 	 */
 	const theActs = $derived<Act[]>([
 		{
-			id: 'new-branch',
-			label: 'New branch',
+			id: 'new-note',
+			label: 'New note',
 			icon: Plus,
-			says: NEW_BRANCH,
-			group: 'Write',
-			where: ['palette'],
-			run: () => writeBranch(null)
-		},
-		{
-			id: 'write-alone',
-			label: 'A note on its own',
-			icon: FilePlus,
+			says: NEW_NOTE,
 			group: 'Write',
 			where: ['palette'],
 			run: writeAlone
+		},
+		{
+			id: 'new-branch',
+			label: 'New branch',
+			icon: FilePlus,
+			group: 'Write',
+			where: ['palette'],
+			run: () => writeBranch(null)
 		},
 		{
 			id: 'number-it',
@@ -2234,7 +2234,7 @@
 		const act = acceleratorFor(event);
 		if (act === 'branch') {
 			event.preventDefault();
-			writeBranch(null);
+			writeAlone();
 		} else if (act === 'under' && open) {
 			event.preventDefault();
 			writeUnder(open);
@@ -2321,9 +2321,9 @@
 {/snippet}
 
 {#snippet otherWrites()}
-	<DropdownMenu.Item class="min-h-control gap-2" onSelect={writeAlone}>
+	<DropdownMenu.Item class="min-h-control gap-2" onSelect={() => writeBranch(null)}>
 		<FilePlus class="size-4 text-muted-foreground" />
-		A note on its own
+		New branch
 	</DropdownMenu.Item>
 	<DropdownMenu.Item class="min-h-control gap-2" onSelect={startNumbering}>
 		<Hash class="size-4 text-muted-foreground" />
@@ -2438,7 +2438,7 @@
 					onReached={(ref) => (bringingTo = ref)}
 					onEdge={foreign || notNow ? undefined : setLookOn}
 					writeUnder={foreign || notNow ? undefined : writeFromRow}
-					writeAlone={foreign || notNow ? undefined : writeAlone}
+					writeAlone={foreign || notNow ? undefined : () => writeAlone()}
 				/>
 			{/if}
 		</div>
@@ -2470,7 +2470,7 @@
 							else grows out of it.
 						</p>
 						<div class="flex flex-col items-center gap-2">
-							<Button class="h-control" disabled={creating} onclick={() => writeBranch(null)}>
+							<Button class="h-control" disabled={creating} onclick={() => writeAlone()}>
 								Write the first note
 							</Button>
 							<Button
@@ -2617,9 +2617,9 @@
 								size="icon"
 								class="size-control rounded-full"
 								disabled={creating}
-								aria-label="New branch ({NEW_BRANCH.says})"
-								aria-keyshortcuts={NEW_BRANCH.keys}
-								onclick={() => writeBranch(null)}
+								aria-label="New note ({NEW_NOTE.says})"
+								aria-keyshortcuts={NEW_NOTE.keys}
+								onclick={() => writeAlone()}
 							>
 								<Plus class="size-4" />
 							</Button>
@@ -2646,12 +2646,12 @@
 								<Button
 									class="h-control flex-1 rounded-s-full rounded-e-none pe-3"
 									disabled={creating}
-									aria-label="New branch ({NEW_BRANCH.says})"
-									aria-keyshortcuts={NEW_BRANCH.keys}
-									onclick={() => writeBranch(null)}
+									aria-label="New note ({NEW_NOTE.says})"
+									aria-keyshortcuts={NEW_NOTE.keys}
+									onclick={() => writeAlone()}
 								>
 									<Plus class="size-4" />
-									New branch
+									New note
 								</Button>
 								<DropdownMenu.Root>
 									<DropdownMenu.Trigger>
@@ -2899,12 +2899,12 @@
 								<Button
 									class="h-9 rounded-s-full rounded-e-none pe-3"
 									disabled={creating}
-									aria-label="New branch ({NEW_BRANCH.says})"
-									aria-keyshortcuts={NEW_BRANCH.keys}
-									onclick={() => writeBranch(null)}
+									aria-label="New note ({NEW_NOTE.says})"
+									aria-keyshortcuts={NEW_NOTE.keys}
+									onclick={() => writeAlone()}
 								>
 									<Plus class="size-4" />
-									New branch
+									New note
 								</Button>
 								<DropdownMenu.Root>
 									<DropdownMenu.Trigger>
@@ -3061,7 +3061,7 @@
 	bind:open={shaping}
 	onpick={(shape) => {
 		shaping = false;
-		writeBranch(shape);
+		writeAlone(shape);
 	}}
 />
 
