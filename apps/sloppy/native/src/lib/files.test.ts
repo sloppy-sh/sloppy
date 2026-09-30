@@ -85,7 +85,8 @@ describe('the states the graph in this folder has been in', () => {
 				branch: 'main',
 				ahead: 0,
 				behind: 2,
-				upstream: 'origin/main'
+				upstream: 'origin/main',
+				merging: { taking: 'abc', inTwoVersions: ['notes/a.md'] }
 			}
 		});
 
@@ -95,7 +96,8 @@ describe('the states the graph in this folder has been in', () => {
 			branch: 'main',
 			ahead: 0,
 			behind: 2,
-			upstream: 'origin/main'
+			upstream: 'origin/main',
+			merging: { taking: 'abc', inTwoVersions: ['notes/a.md'] }
 		});
 		expect(asked).toEqual([{ command: 'history_status', args: { root: '/vault' } }]);
 	});
@@ -290,6 +292,36 @@ describe('the whole picture of what this folder has been', () => {
 		]);
 	});
 
+	it('stands the folder on a version, opens a line there, renames one and stops a merge', async () => {
+		const { asked, call } = shell({
+			history_line_here: { name: 'from-9f3c1a2b', head: 'a', current: true },
+			history_rename_line: { name: 'sooner', head: 'a', current: true }
+		});
+		const history = tauriHistory('/vault', call);
+
+		await history.standOn?.('a');
+		await history.standOn?.('a', true);
+		expect(await history.lineHere?.('from-9f3c1a2b')).toEqual({
+			name: 'from-9f3c1a2b',
+			head: 'a',
+			current: true
+		});
+		expect(await history.renameLine?.('later', 'sooner')).toEqual({
+			name: 'sooner',
+			head: 'a',
+			current: true
+		});
+		await history.abandonMerge?.();
+
+		expect(asked).toEqual([
+			{ command: 'history_stand_on', args: { root: '/vault', commit: 'a', carrying: false } },
+			{ command: 'history_stand_on', args: { root: '/vault', commit: 'a', carrying: true } },
+			{ command: 'history_line_here', args: { root: '/vault', name: 'from-9f3c1a2b' } },
+			{ command: 'history_rename_line', args: { root: '/vault', from: 'later', to: 'sooner' } },
+			{ command: 'history_abandon_merge', args: { root: '/vault' } }
+		]);
+	});
+
 	it('makes a branch back in the history and takes one away', async () => {
 		const { asked, call } = shell({
 			history_branch_at: { name: 'from-then', head: 'a', current: false }
@@ -373,6 +405,15 @@ describe('what this shell tells the surfaces that read a folder it can do', () =
 			'pull',
 			'push'
 		] as const) {
+			expect(typeof history[act]).toBe('function');
+		}
+	});
+
+	/** `History` in `@sloppy/local`: the four that move the folder off a line
+	 *  are one family, and a shell that defines any of them defines all four. */
+	it('defines every act that puts the folder on a version, together', () => {
+		const history = tauriHistory('/vault', shell().call);
+		for (const act of ['standOn', 'lineHere', 'renameLine', 'abandonMerge'] as const) {
 			expect(typeof history[act]).toBe('function');
 		}
 	});
