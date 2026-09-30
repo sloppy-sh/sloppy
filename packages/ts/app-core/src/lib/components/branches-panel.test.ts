@@ -19,13 +19,12 @@ const line = (over: Partial<LineRow> = {}): LineRow => ({
 	...over
 });
 
-function show(over: { lines?: LineRow[]; standingOn?: string } = {}): void {
+function show(over: { lines?: LineRow[] } = {}): void {
 	mounted = mount(BranchesPanel, {
 		target,
 		props: {
 			lines: over.lines ?? [line()],
 			anyVersion: true,
-			...(over.standingOn === undefined ? {} : { standingOn: over.standingOn }),
 			onStartLine: () => Promise.resolve(true),
 			onWorkOn: (name: string) => {
 				workedOn.push(name);
@@ -111,20 +110,27 @@ describe('a line of work in the list', () => {
 		expect(screen()).toContain('You are working on this one.');
 	});
 
-	// Where the folder is on no line, no line may claim it — and a person still
-	// has to be told where they actually are.
-	it('says the folder is on a version, and lets no row claim it', () => {
+	// Where the folder is on no line, no line may claim it.
+	it('lets no row claim the folder while it is on none', () => {
 		show({
-			lines: [line({ here: false }), line({ name: 'an-older-thought', head: 'c0', here: false })],
-			standingOn: '9f3c1a2b'
+			lines: [line({ here: false }), line({ name: 'an-older-thought', head: 'c0', here: false })]
 		});
 
-		expect(screen()).toContain('Working on a version, 9f3c1a2b.');
 		expect(screen()).not.toContain('You are working on this one.');
 
 		inRow('main', 'main').click();
 		flushSync();
 
 		expect(workedOn).toEqual(['main']);
+	});
+
+	// A row that moves the whole folder has to say so to somebody who cannot see
+	// it, beside two smaller acts that already name themselves.
+	it('names what tapping a row does', () => {
+		show({ lines: [line(), line({ name: 'an-older-thought', head: 'c0', here: false })] });
+
+		expect(inRow('an-older-thought', 'an-older-thought').getAttribute('aria-label')).toBe(
+			'Work on an-older-thought'
+		);
 	});
 });

@@ -2,7 +2,7 @@
 // can be reached, and a field that goes to a note without taking the page
 // away — DESIGN.md § Layout.
 
-import { LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
+import { HistoryError, LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import type { OwnedRef, Viewer } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -56,9 +56,21 @@ let served: LocalApi;
 let kept: MemoryHistory;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
+/** What this folder's own history would say about standing on a version, where
+ *  it would not. */
+let standingRefused: string | null;
 
 function folder(): MemoryFiles {
 	return new MemoryFiles({ root: ROOT, store, data: '/data' });
+}
+
+function theHistory(): MemoryHistory {
+	const says = standingRefused;
+	if (says === null) return kept;
+	return new Proxy(kept, {
+		get: (on, name) =>
+			name === 'standOn' ? () => Promise.reject(new HistoryError(says)) : Reflect.get(on, name, on)
+	});
 }
 
 /** Wide enough that the chrome stands beside the graph rather than over it. */
@@ -164,6 +176,7 @@ beforeEach(async () => {
 	people.hold(null);
 	graphHistory.clear();
 	store = new Map();
+	standingRefused = null;
 	served = new LocalApi(folder());
 	kept = new MemoryHistory(folder(), { author: 'Ada' });
 	initRuntime({
@@ -176,7 +189,7 @@ beforeEach(async () => {
 			asks: true,
 			open: async () => ROOT
 		},
-		history: () => kept
+		history: () => theHistory()
 	});
 	resetApi();
 	target = document.createElement('div');
@@ -268,8 +281,52 @@ describe('the history beside the graph', () => {
 		await settle();
 
 		expect(rows()).toContain('Work on this version');
-		expect(rows()).toContain('Start a line here');
+		expect(rows()).toContain('Read the graph as it was here');
 		expect(rows()).toContain('Everything about this version');
+	});
+
+	// Reading a version is still reading — DESIGN.md § "The history as a
+	// picture" — so the act that moves nothing stands beside the one that does.
+	it('puts a version on the canvas as it was, without moving the folder', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		await graphHistory.keep('A second version');
+		await standing();
+		await openHistory();
+		const found = [
+			...inColumn().querySelectorAll<HTMLButtonElement>('[aria-label="The history"] li button')
+		].find((one) => (one.textContent ?? '').includes('A first version'));
+		found?.click();
+		await settle();
+
+		control('Read the graph as it was here').click();
+		await settle();
+
+		expect(screen()).toContain('Your graph as it was');
+		expect(drawn()).not.toContain('A second thought');
+		expect(graphHistory.line).toBe('main');
+	});
+
+	// A refusal is the answer somebody gets, rather than a control that looks
+	// like it did nothing.
+	it('says what the folder would not do when nothing is unkept', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		await graphHistory.keep('A second version');
+		standingRefused = 'Finish what you started here first, then try again.';
+		await standing();
+		await openHistory();
+		const found = [
+			...inColumn().querySelectorAll<HTMLButtonElement>('[aria-label="The history"] li button')
+		].find((one) => (one.textContent ?? '').includes('A first version'));
+		found?.click();
+		await settle();
+
+		control('Work on this version').click();
+		await settle();
+
+		expect(screen()).toContain('Finish what you started here first, then try again.');
+		expect(graphHistory.line).toBe('main');
 	});
 });
 

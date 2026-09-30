@@ -12,7 +12,7 @@ function aHistory(over: Partial<History> = {}): History & { kept: string[] } {
 	const kept: string[] = [];
 	const held = {
 		kept,
-		status: async () => ({ changed: [], untracked: [], ahead: 0, behind: 0 }),
+		status: async () => ({ branch: 'main', changed: [], untracked: [], ahead: 0, behind: 0 }),
 		log: async () => ({ versions: [] }),
 		commit: async (message: string) => {
 			kept.push(message);
@@ -115,6 +115,7 @@ describe('keeping a version while somebody writes', () => {
 	it('keeps nothing while the folder is part-way through a merge', async () => {
 		history = aHistory({
 			status: async () => ({
+				branch: 'main',
 				changed: [],
 				untracked: [],
 				ahead: 0,
@@ -128,6 +129,23 @@ describe('keeping a version while somebody writes', () => {
 		await saveNow();
 
 		expect(history.kept).toEqual([]);
+	});
+
+	// A version kept where the folder is on no line is reachable from nothing,
+	// so a folder that cannot be given one is left alone.
+	it('keeps nothing where the folder stands on a version and no line can open', async () => {
+		history = aHistory({
+			status: async () => ({ changed: [], untracked: [], ahead: 0, behind: 0 })
+		});
+		running();
+		await graphHistory.read();
+		whatHappened.record(true);
+
+		await saveNow();
+
+		expect(history.kept).toEqual([]);
+		expect(whatHappened.asText()).toContain('a version was not kept while writing');
+		whatHappened.record(false);
 	});
 
 	it('takes nothing to keep as the ordinary answer', async () => {

@@ -313,9 +313,6 @@
 	let foreign = $state<PullView | null>(null);
 	/** Whether the states this graph has been in are up. */
 	let showingHistory = $state(false);
-	/** The line writing opened where the folder stood on a version, for the
-	 *  history beside the graph to say once. */
-	let lineOpened = $state<string | null>(null);
 	/** A state the graph was in, drawn in place of the one it is in. Nothing on
 	 *  the canvas writes while it is up. */
 	let asWas = $state<{ commit: string; message: string; notes: NodeView[] } | null>(null);
@@ -1280,7 +1277,11 @@
 		linking = true;
 		pointRefused = null;
 		try {
-			await aLineToWriteOn();
+			const stopped = await aLineToWriteOn();
+			if (stopped !== null) {
+				pointRefused = stopped;
+				return;
+			}
 			if (!note.links.includes(target)) {
 				await nodes.update(from, { links: [...note.links, target] });
 			}
@@ -1377,7 +1378,11 @@
 
 	async function runAct(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
 		forgetLastAct();
-		await aLineToWriteOn();
+		const stopped = await aLineToWriteOn();
+		if (stopped !== null) {
+			actRefused = stopped;
+			return;
+		}
 		// Read before the act, since a delete takes the notes out of the cache
 		// this reads their graph from.
 		const acrossGraphs = graphsOf(asked);
@@ -1594,14 +1599,14 @@
 	}
 
 	/**
-	 * Called before anything is written into this folder's graph: where the
-	 * folder stands on a version rather than on a line of work, a line opens
-	 * where it stands and no file moves — DESIGN.md § "The history as a picture".
+	 * Nothing is written into this folder's graph until there is a line to write
+	 * it on: where the folder stands on a version, one opens where it stands and
+	 * no file moves — DESIGN.md § "The history as a picture". The words to show
+	 * where none could open, and `null` where the writing may go ahead.
 	 */
-	async function aLineToWriteOn(): Promise<void> {
-		if (!graphHistory.onAVersion) return;
-		const opened = await graphHistory.lineHere();
-		if (opened !== null) lineOpened = opened;
+	async function aLineToWriteOn(): Promise<string | null> {
+		if (await graphHistory.lineToWriteOn()) return null;
+		return graphHistory.says ?? 'Your writing could not start a line here. Try again in a moment.';
 	}
 
 	/** A branch of its own, in the graph the reader is in — against
@@ -1632,7 +1637,11 @@
 	): Promise<void> {
 		if (creating) return;
 		refused = null;
-		await aLineToWriteOn();
+		const stopped = await aLineToWriteOn();
+		if (stopped !== null) {
+			refused = stopped;
+			return;
+		}
 		if (creating) return;
 		if (from !== null && from !== open && openNotes.includes(from)) activate(from);
 		writingAt = behind.length;
@@ -1736,7 +1745,11 @@
 		citing = true;
 		citeRefused = null;
 		try {
-			await aLineToWriteOn();
+			const stopped = await aLineToWriteOn();
+			if (stopped !== null) {
+				citeRefused = stopped;
+				return;
+			}
 			const written = await nodes.create({
 				from: { relation: 'branch', graph: graphs.current }
 			});
@@ -1829,7 +1842,8 @@
 
 	/** The same, for an act that writes into this folder's graph. */
 	async function writeInTheirWords(act: () => Promise<unknown>, otherwise: string): Promise<void> {
-		await aLineToWriteOn();
+		const stopped = await aLineToWriteOn();
+		if (stopped !== null) throw refusal(stopped, otherwise);
 		await inTheirWords(act, otherwise);
 	}
 
@@ -1863,6 +1877,13 @@
 	/** Whether the chat about the code is put in front of anybody here: a
 	 *  project to chat about, and an assistant the person asked for. */
 	const offersChat = $derived(projectFiles !== undefined && chat.offered);
+
+	/** Put a version on the graph as it was, from wherever somebody asked. */
+	async function readTheVersion(commit: string): Promise<void> {
+		stopActing();
+		comparing = null;
+		asWas = await graphHistory.asItWas(commit);
+	}
 
 	/** The column's groups: both may stand open, and they share what it has
 	 *  left. Which are open is this device's (DESIGN.md § Persistence). */
@@ -2072,7 +2093,11 @@
 		arriving = { ...arriving, busy: true, refused: null };
 		const held = arriving;
 		try {
-			await aLineToWriteOn();
+			const stopped = await aLineToWriteOn();
+			if (stopped !== null) {
+				if (arriving === held) arriving = { ...held, busy: false, refused: stopped };
+				return;
+			}
 			const brought = await graphs.importArchive(held.file, settle);
 			if (arriving === held) arriving = null;
 			closeUndrawn();
@@ -2196,7 +2221,11 @@
 		numberingWrite = true;
 		numberRefused = null;
 		try {
-			await aLineToWriteOn();
+			const stopped = await aLineToWriteOn();
+			if (stopped !== null) {
+				numberRefused = stopped;
+				return;
+			}
 			const written = await nodes.create({
 				from: { relation: 'root', address: picked.data, graph: graphs.current }
 			});
@@ -2726,7 +2755,10 @@
 							</button>
 							{#if open}
 								<div class="min-h-0 flex-1 overflow-y-auto pt-1">
-									<HistoryColumn {lineOpened} onOpenAll={() => (showingHistory = true)} />
+									<HistoryColumn
+										onOpenAll={() => (showingHistory = true)}
+										onReadVersion={(commit) => void readTheVersion(commit)}
+									/>
 								</div>
 							{/if}
 						</div>

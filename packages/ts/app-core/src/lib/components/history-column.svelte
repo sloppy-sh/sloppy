@@ -10,22 +10,20 @@
 	import { graphHistory } from '../stores/history.svelte.js';
 	import { drawnFrom, foldRuns } from './commit-graph.js';
 	import CommitGraph from './commit-graph.svelte';
-
-	/** How much of a version's name the picture draws, and a person cites. */
-	const SHORT_NAME = 8;
+	import Standing from './standing.svelte';
 
 	const BEFORE_MOVING = 'Before moving on';
 
 	let {
 		onOpenAll,
-		lineOpened = null
+		onReadVersion
 	}: {
 		/** Everything a column has no room for: the lines in full, the other
 		 *  places, and what is different. */
 		onOpenAll: () => void;
-		/** A line somebody's writing opened where they stood, said once while the
-		 *  folder is still on it. */
-		lineOpened?: string | null;
+		/** Put a version on the graph as it was, to read against what is there
+		 *  now. Absent where there is no graph on screen to draw one on. */
+		onReadVersion?: (commit: string) => void;
 	} = $props();
 
 	/** Somewhere the folder is going, once writing nobody has kept is answered
@@ -44,10 +42,10 @@
 	let leaving = $state.raw<Leaving | null>(null);
 	let asking = $state(false);
 	let going = $state(false);
-	/** So a refusal from before this question is not read as its answer. */
+	/** So a refusal from before this column asked for anything is not read as
+	 *  the answer to what it asked. */
 	let tried = $state(false);
 	let leavingMessage = $state(BEFORE_MOVING);
-	let renaming = $state<string | null>(null);
 
 	// The history is asked for as soon as this stands: a picture nobody asked
 	// for is an empty one, and an empty one reads as a graph with no history.
@@ -63,17 +61,12 @@
 			.filter((one) => one.remote === undefined)
 			.sort((a, b) => Number(b.current) - Number(a.current))
 	);
-	const standingOn = $derived(
-		graphHistory.onAVersion ? graphHistory.at?.slice(0, SHORT_NAME) : undefined
-	);
-	const openedLine = $derived(
-		lineOpened !== null && graphHistory.line === lineOpened ? lineOpened : null
-	);
 
 	async function keep(): Promise<void> {
 		const said = message.trim();
 		if (said === '' || keeping) return;
 		keeping = true;
+		tried = true;
 		try {
 			if (await graphHistory.keep(said)) message = '';
 		} finally {
@@ -86,7 +79,7 @@
 	async function leaveFor(what: Leaving): Promise<void> {
 		picked = null;
 		if (!graphHistory.unkept) {
-			await what.go(false);
+			await takeTheWayOut(() => what.go(false));
 			return;
 		}
 		leavingMessage = BEFORE_MOVING;
@@ -125,29 +118,14 @@
 		return leaveFor({ carries: true, go: (carrying) => graphHistory.standOn(at, carrying) });
 	}
 
-	function lineFrom(at: string): Promise<void> {
-		return leaveFor({
-			carries: true,
-			go: async (carrying) =>
-				(await graphHistory.standOn(at, carrying)) && (await graphHistory.lineHere()) !== null
-		});
-	}
-
 	function workOnLine(name: string): Promise<void> {
 		return leaveFor({ carries: false, go: () => graphHistory.workOn(name) });
-	}
-
-	async function rename(): Promise<void> {
-		const from = openedLine;
-		const to = renaming?.trim();
-		if (from === null || to === undefined || to === '' || to === from) return;
-		if (await graphHistory.renameLine(from, to)) renaming = null;
 	}
 </script>
 
 {#snippet acts(at: string)}
 	<div class="flex flex-col gap-0.5">
-		{#if !(graphHistory.onAVersion && graphHistory.at === at)}
+		{#if graphHistory.stands && !(graphHistory.onAVersion && graphHistory.at === at)}
 			<Button
 				variant="ghost"
 				class="h-control justify-start text-xs"
@@ -156,13 +134,18 @@
 				Work on this version
 			</Button>
 		{/if}
-		<Button
-			variant="ghost"
-			class="h-control justify-start text-xs"
-			onclick={() => void lineFrom(at)}
-		>
-			Start a line here
-		</Button>
+		{#if onReadVersion}
+			<Button
+				variant="ghost"
+				class="h-control justify-start text-xs"
+				onclick={() => {
+					onReadVersion(at);
+					picked = null;
+				}}
+			>
+				Read the graph as it was here
+			</Button>
+		{/if}
 		<Button
 			variant="ghost"
 			class="h-control justify-start text-xs"
@@ -177,51 +160,7 @@
 {/snippet}
 
 <div class="flex min-h-0 flex-col gap-2">
-	{#if standingOn}
-		<p class="shrink-0 px-1 text-xs text-muted-foreground" role="status">
-			Working on a version, {standingOn}.
-		</p>
-	{/if}
-
-	{#if openedLine !== null}
-		<div class="flex shrink-0 flex-col gap-2 px-1">
-			<p class="text-xs text-muted-foreground" role="status">
-				Your writing opened a new line, {openedLine}.
-			</p>
-			{#if renaming === null}
-				<Button
-					variant="ghost"
-					class="h-control self-start text-xs"
-					onclick={() => (renaming = openedLine)}
-				>
-					Rename
-				</Button>
-			{:else}
-				<div class="flex gap-2">
-					<Input
-						bind:value={renaming}
-						class="h-control flex-1 text-sm"
-						autocomplete="off"
-						maxlength={128}
-						aria-label="What this line is called"
-						onkeydown={(event) => {
-							if (event.key !== 'Enter') return;
-							event.preventDefault();
-							void rename();
-						}}
-					/>
-					<Button
-						variant="outline"
-						class="h-control shrink-0 text-xs"
-						disabled={graphHistory.busy}
-						onclick={rename}
-					>
-						Rename it
-					</Button>
-				</div>
-			{/if}
-		</div>
-	{/if}
+	<Standing />
 
 	{#if lines.length > 0}
 		<div
@@ -277,6 +216,10 @@
 			{changed === 1 ? '1 note' : `${changed} notes`} unkept.
 		{/if}
 	</p>
+
+	{#if tried && !asking && graphHistory.says}
+		<p class="shrink-0 px-1 text-sm text-destructive" role="alert">{graphHistory.says}</p>
+	{/if}
 
 	{#if folded.drawn.length > 0}
 		<div class="min-h-0 flex-1 overflow-y-auto">

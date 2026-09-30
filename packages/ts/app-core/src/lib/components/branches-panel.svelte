@@ -23,13 +23,13 @@
 	import Check from '@lucide/svelte/icons/check';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
+	import Standing from './standing.svelte';
 
 	let {
 		lines,
 		anyVersion = false,
 		busy = false,
 		unsettled = false,
-		standingOn,
 		onStartLine,
 		onWorkOn,
 		onBringIn,
@@ -42,9 +42,6 @@
 		busy?: boolean;
 		/** Whether notes are still in two versions, which holds a merge back. */
 		unsettled?: boolean;
-		/** The short name of the version the folder stands on, absent where it is
-		 *  on a line — which is when a row says it is the one being worked on. */
-		standingOn?: string;
 		onStartLine: (name: string) => Promise<boolean>;
 		onWorkOn: (name: string) => Promise<boolean>;
 		onBringIn: (name: string) => Promise<boolean>;
@@ -81,11 +78,7 @@
 </script>
 
 <div class="space-y-4">
-	{#if standingOn}
-		<p class="text-xs text-muted-foreground" role="status">
-			Working on a version, {standingOn}.
-		</p>
-	{/if}
+	<Standing />
 
 	<ul class="space-y-2" aria-label="Lines of work here">
 		{#each here as one (one.name)}
@@ -106,6 +99,7 @@
 				{:else}
 					<button
 						type="button"
+						aria-label="Work on {one.name}"
 						class="flex min-h-control w-full items-baseline gap-2 rounded-lg ps-6 pe-1 text-left hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60"
 						disabled={busy}
 						onclick={() => void onWorkOn(one.name)}
