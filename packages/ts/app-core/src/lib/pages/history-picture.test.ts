@@ -265,7 +265,11 @@ describe('the history as a picture', () => {
 
 		expect(graphHistory.at).toBe(first);
 		expect(graphHistory.line).toBeUndefined();
-		expect(screen()).toContain('Working on a version, ');
+		const said = screen();
+		expect(said).toContain('Working on a version, ');
+		expect(said.indexOf('Working on a version, ')).toBeLessThan(
+			said.indexOf('Since your last version')
+		);
 	});
 
 	it('asks about writing nobody has kept before it goes, and can bring it along', async () => {

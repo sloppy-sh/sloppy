@@ -1277,11 +1277,7 @@
 		linking = true;
 		pointRefused = null;
 		try {
-			const stopped = await aLineToWriteOn();
-			if (stopped !== null) {
-				pointRefused = stopped;
-				return;
-			}
+			await graphHistory.lineToWriteOn();
 			if (!note.links.includes(target)) {
 				await nodes.update(from, { links: [...note.links, target] });
 			}
@@ -1378,11 +1374,7 @@
 
 	async function runAct(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
 		forgetLastAct();
-		const stopped = await aLineToWriteOn();
-		if (stopped !== null) {
-			actRefused = stopped;
-			return;
-		}
+		await graphHistory.lineToWriteOn();
 		// Read before the act, since a delete takes the notes out of the cache
 		// this reads their graph from.
 		const acrossGraphs = graphsOf(asked);
@@ -1598,17 +1590,6 @@
 		deleting = true;
 	}
 
-	/**
-	 * Nothing is written into this folder's graph until there is a line to write
-	 * it on: where the folder stands on a version, one opens where it stands and
-	 * no file moves — DESIGN.md § "The history as a picture". The words to show
-	 * where none could open, and `null` where the writing may go ahead.
-	 */
-	async function aLineToWriteOn(): Promise<string | null> {
-		if (await graphHistory.lineToWriteOn()) return null;
-		return graphHistory.says ?? 'Your writing could not start a line here. Try again in a moment.';
-	}
-
 	/** A branch of its own, in the graph the reader is in — against
 	 *  {@link writeUnder}, which continues the note it is given. */
 	function writeBranch(shape: NoteTemplate | null): void {
@@ -1637,11 +1618,7 @@
 	): Promise<void> {
 		if (creating) return;
 		refused = null;
-		const stopped = await aLineToWriteOn();
-		if (stopped !== null) {
-			refused = stopped;
-			return;
-		}
+		await graphHistory.lineToWriteOn();
 		if (creating) return;
 		if (from !== null && from !== open && openNotes.includes(from)) activate(from);
 		writingAt = behind.length;
@@ -1745,11 +1722,7 @@
 		citing = true;
 		citeRefused = null;
 		try {
-			const stopped = await aLineToWriteOn();
-			if (stopped !== null) {
-				citeRefused = stopped;
-				return;
-			}
+			await graphHistory.lineToWriteOn();
 			const written = await nodes.create({
 				from: { relation: 'branch', graph: graphs.current }
 			});
@@ -1842,8 +1815,7 @@
 
 	/** The same, for an act that writes into this folder's graph. */
 	async function writeInTheirWords(act: () => Promise<unknown>, otherwise: string): Promise<void> {
-		const stopped = await aLineToWriteOn();
-		if (stopped !== null) throw refusal(stopped, otherwise);
+		await graphHistory.lineToWriteOn();
 		await inTheirWords(act, otherwise);
 	}
 
@@ -2093,11 +2065,7 @@
 		arriving = { ...arriving, busy: true, refused: null };
 		const held = arriving;
 		try {
-			const stopped = await aLineToWriteOn();
-			if (stopped !== null) {
-				if (arriving === held) arriving = { ...held, busy: false, refused: stopped };
-				return;
-			}
+			await graphHistory.lineToWriteOn();
 			const brought = await graphs.importArchive(held.file, settle);
 			if (arriving === held) arriving = null;
 			closeUndrawn();
@@ -2221,11 +2189,7 @@
 		numberingWrite = true;
 		numberRefused = null;
 		try {
-			const stopped = await aLineToWriteOn();
-			if (stopped !== null) {
-				numberRefused = stopped;
-				return;
-			}
+			await graphHistory.lineToWriteOn();
 			const written = await nodes.create({
 				from: { relation: 'root', address: picked.data, graph: graphs.current }
 			});
@@ -2758,6 +2722,7 @@
 									<HistoryColumn
 										onOpenAll={() => (showingHistory = true)}
 										onReadVersion={(commit) => void readTheVersion(commit)}
+										onMoved={backToNow}
 									/>
 								</div>
 							{/if}
@@ -3120,6 +3085,7 @@
 
 <HistorySurface
 	bind:open={showingHistory}
+	onMoved={backToNow}
 	onShowVersion={(version) => {
 		stopActing();
 		comparing = null;

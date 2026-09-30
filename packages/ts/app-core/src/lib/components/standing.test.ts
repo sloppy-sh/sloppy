@@ -1,6 +1,6 @@
 // Being on a version rather than a line is said wherever the history is, and so
 // is the line somebody's writing opened — DESIGN.md § "The history as a
-// picture". This is the lines a phone reaches, where there is no column.
+// picture".
 
 import { LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import { flushSync, mount, unmount } from 'svelte';
@@ -12,7 +12,7 @@ import { graphHistory } from '../stores/history.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
-import BranchesPanel from './branches-panel.svelte';
+import Standing from './standing.svelte';
 
 const ROOT = '/Users/me/garden';
 
@@ -31,25 +31,8 @@ async function settle(): Promise<void> {
 	flushSync();
 }
 
-/** The lines panel, which is how a phone reaches the history's lines. */
 function show(): void {
-	mounted = mount(BranchesPanel, {
-		target,
-		props: {
-			lines: graphHistory.lines.map((one) => ({
-				name: one.name,
-				head: one.head,
-				here: one.current,
-				elsewhere: one.remote !== undefined
-			})),
-			anyVersion: true,
-			onStartLine: () => Promise.resolve(true),
-			onWorkOn: () => Promise.resolve(true),
-			onBringIn: () => Promise.resolve(true),
-			onDrop: () => Promise.resolve(true),
-			onStartFrom: () => Promise.resolve(true)
-		}
-	});
+	mounted = mount(Standing, { target, props: {} });
 	flushSync();
 }
 
@@ -110,7 +93,7 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-describe('where the folder stands, beside the lines', () => {
+describe('where the folder stands', () => {
 	it('says nothing at all while the folder is on a line', () => {
 		show();
 
@@ -125,8 +108,6 @@ describe('where the folder stands, beside the lines', () => {
 		expect(screen()).toContain(`Working on a version, ${older.slice(0, 8)}.`);
 	});
 
-	// A phone has no column, so an affordance only the column has is one the
-	// primary surface does without — AI.md § Project.
 	it('says the line writing opened there, and offers to rename it', async () => {
 		const older = theOlder();
 		await graphHistory.standOn(older);

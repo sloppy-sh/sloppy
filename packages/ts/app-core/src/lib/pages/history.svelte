@@ -21,7 +21,8 @@
 	import CommitDetails from '../components/commit-details.svelte';
 	import { drawnFrom, type DrawnVersion, keptBy, whenKept } from '../components/commit-graph.js';
 	import CommitGraph from '../components/commit-graph.svelte';
-	import { Moving } from '../components/moving.svelte.js';
+	import { type Leaving, Moving } from '../components/moving.svelte.js';
+	import Standing from '../components/standing.svelte';
 	import SyncControls, { type KeptAlso } from '../components/sync-controls.svelte';
 	import {
 		type DifferenceBetween,
@@ -33,7 +34,8 @@
 	let {
 		open = $bindable(false),
 		onShowVersion,
-		onShowDifference
+		onShowDifference,
+		onMoved
 	}: {
 		open?: boolean;
 		/** Absent where there is no graph on screen to draw a state on. */
@@ -47,6 +49,8 @@
 				difference: GraphDifference;
 			} | null
 		) => void;
+		/** The folder has moved onto another version or line. */
+		onMoved?: () => void;
 	} = $props();
 
 	const moving = new Moving();
@@ -219,14 +223,17 @@
 
 	function standOn(commit: string): void {
 		showingOpen = false;
-		void moving.leaveFor({
-			carries: true,
-			go: (carrying) => graphHistory.standOn(commit, carrying)
-		});
+		void moved({ carries: true, go: (carrying) => graphHistory.standOn(commit, carrying) });
 	}
 
 	function workOn(name: string): Promise<boolean> {
-		return moving.leaveFor({ carries: false, go: () => graphHistory.workOn(name) });
+		return moved({ carries: false, go: () => graphHistory.workOn(name) });
+	}
+
+	async function moved(leaving: Leaving): Promise<boolean> {
+		const went = await moving.leaveFor(leaving);
+		if (went) onMoved?.();
+		return went;
 	}
 
 	async function compare(
@@ -318,10 +325,15 @@
 	}}
 	onOpenVersion={onShowVersion ? (id) => void showVersion(id) : undefined}
 	onCompare={compare}
+	standing={graphHistory.stands ? theStanding : undefined}
 	picture={graphHistory.draws ? theShape : undefined}
 	branches={graphHistory.draws ? theLines : undefined}
 	elsewhere={graphHistory.draws ? theOtherPlaces : undefined}
 />
+
+{#snippet theStanding()}
+	<Standing />
+{/snippet}
 
 {#snippet theShape()}
 	<CommitGraph

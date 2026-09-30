@@ -23,7 +23,6 @@
 	import Check from '@lucide/svelte/icons/check';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
-	import Standing from './standing.svelte';
 
 	let {
 		lines,
@@ -78,8 +77,6 @@
 </script>
 
 <div class="space-y-4">
-	<Standing />
-
 	<ul class="space-y-2" aria-label="Lines of work here">
 		{#each here as one (one.name)}
 			<li class="space-y-1" data-line={one.name}>

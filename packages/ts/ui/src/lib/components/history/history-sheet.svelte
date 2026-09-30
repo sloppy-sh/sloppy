@@ -76,6 +76,7 @@
 		onSettle,
 		onOpenVersion,
 		onCompare,
+		standing,
 		picture,
 		branches,
 		elsewhere
@@ -118,6 +119,10 @@
 			before: StatePicked,
 			after: StatePicked
 		) => Promise<{ notes: readonly ChangedNote[]; pictures: ChangedPictures } | null>;
+		/** Where the folder stands, where that is a version rather than a line of
+		 *  work, and the line anybody's writing opened there. Absent → a platform
+		 *  whose folder is always on a line. */
+		standing?: Snippet;
 		/** The versions drawn as the shape they make. Absent → the list of them,
 		 *  which is what a platform whose history cannot say what shape it is in
 		 *  gets. */
@@ -217,6 +222,8 @@
 	description="Every version of your graph you have kept, and what has changed since."
 >
 	<div class="space-y-8 px-2 pt-4 pb-2">
+		{@render standing?.()}
+
 		{#if unsettled}
 			<section class="space-y-2">
 				<h3 class="text-sm font-medium">Written in on both lines</h3>

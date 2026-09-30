@@ -869,6 +869,7 @@
 		refuse(of, 'owner', null);
 		writingOwner = true;
 		try {
+			await graphHistory.lineToWriteOn();
 			await nodes.update(of, { owner });
 			gating = false;
 			acknowledge(owner === null ? 'Anyone writing here can write this.' : 'Only you write this.');
@@ -887,6 +888,7 @@
 		const of = ref;
 		const to = ownerName;
 		try {
+			await graphHistory.lineToWriteOn();
 			await offers.propose(of, message);
 		} catch {
 			// The sheet stands with what the store was told in its own words.
@@ -900,6 +902,7 @@
 		const mine = myOffer;
 		if (!mine) return;
 		try {
+			await graphHistory.lineToWriteOn();
 			await offers.withdraw(mine);
 			acknowledge('Your change is no longer offered.');
 		} catch {
@@ -910,6 +913,7 @@
 	async function takeOfferIn(offer: AmendmentView): Promise<void> {
 		const of = ref;
 		try {
+			await graphHistory.lineToWriteOn();
 			await offers.approve(offer);
 		} catch {
 			return;
@@ -930,6 +934,7 @@
 
 	async function turnOfferDown(offer: AmendmentView): Promise<void> {
 		try {
+			await graphHistory.lineToWriteOn();
 			await offers.decline(offer);
 		} catch {
 			return;
@@ -1152,6 +1157,7 @@
 		writingAddress = true;
 		refuse(of, 'address', null);
 		try {
+			await graphHistory.lineToWriteOn();
 			await nodes.setAddress(of, taking);
 			if (addressing === of) addressing = null;
 			nesting = null;
@@ -1210,6 +1216,7 @@
 		writingAddress = true;
 		refuse(of, 'address', null);
 		try {
+			await graphHistory.lineToWriteOn();
 			for (const address of write.missing) {
 				const written = await nodes.create({
 					from: under
@@ -1371,6 +1378,7 @@
 		refuse(of, 'checked', null);
 		try {
 			const at = await graphHistory.versionNow();
+			await graphHistory.lineToWriteOn();
 			await nodes.update(of, await readAgainstNow(stack, folder, at));
 			codeDrift.again();
 			movedUnder = [];
@@ -1752,6 +1760,7 @@
 		if (draft === nodes.get(of)?.title) return;
 		storing.add(of);
 		try {
+			await graphHistory.lineToWriteOn();
 			await nodes.update(of, { title: draft });
 			if (titles.get(of) === draft) titles.delete(of);
 			refuse(of, 'title', null);
@@ -1794,6 +1803,7 @@
 		let unwritten = first;
 		const joining = joinsAuthors(into);
 		try {
+			await graphHistory.lineToWriteOn();
 			let after = read.get(into)?.at(-1)?.ref;
 			if (unwritten) {
 				after = (await api.createBlock({ node: into, content: textDocument(unwritten) })).ref;
@@ -1935,6 +1945,7 @@
 		surfaceWrites += 1;
 		const joining = joinsAuthors(request.node as OwnedRef);
 		try {
+			await graphHistory.lineToWriteOn();
 			const block = await api.createBlock(request);
 			amend(block.node, (stack) => [...stack, block]);
 			reread(block.node, null, block.content, joining);
@@ -1954,6 +1965,7 @@
 		const before = sectionIn(of, block);
 		const joining = joinsAuthors(of);
 		try {
+			await graphHistory.lineToWriteOn();
 			const saved = await api.updateBlock(block, request);
 			amend(saved.node, (stack) => stack.map((held) => (held.ref === saved.ref ? saved : held)));
 			reread(saved.node, before, saved.content, joining);
@@ -1975,6 +1987,7 @@
 		const joining = of !== null && joinsAuthors(of);
 		surfaceWrites += 1;
 		try {
+			await graphHistory.lineToWriteOn();
 			await api.deleteBlock(block);
 			if (of) {
 				amend(of, (stack) => stack.filter((held) => held.ref !== block));
@@ -1999,6 +2012,7 @@
 		relinking.add(of);
 		refuse(of, act, null);
 		try {
+			await graphHistory.lineToWriteOn();
 			await nodes.update(of, { links });
 			return true;
 		} catch (error) {
@@ -2017,6 +2031,7 @@
 			return;
 		}
 		try {
+			await graphHistory.lineToWriteOn();
 			await nodes.update(of, { tags: picked });
 		} catch (error) {
 			// The field puts its chips back on a rejection and shows what is refused;
@@ -2037,6 +2052,7 @@
 		const of = ref;
 		refuse(of, 'look', null);
 		try {
+			await graphHistory.lineToWriteOn();
 			await nodes.update(of, { appearance });
 		} catch (error) {
 			// The field puts the choices back on a rejection and shows what is refused;
@@ -2081,6 +2097,7 @@
 		relocating.add(of);
 		refuse(of, asked, null);
 		try {
+			await graphHistory.lineToWriteOn();
 			await nodes.move(of, to, taking);
 			if (was) moved = { of, was };
 			carrying = false;
@@ -2236,6 +2253,7 @@
 		const above = node?.parent ?? null;
 		refuse(of, 'remove', null);
 		try {
+			await graphHistory.lineToWriteOn();
 			await nodes.remove(of);
 		} catch (error) {
 			refuse(

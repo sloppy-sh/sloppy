@@ -56,6 +56,8 @@ let served: LocalApi;
 let kept: MemoryHistory;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
+/** The note this folder starts with, which is what a write lands on. */
+let origins: OwnedRef;
 /** What this folder's own history would say about standing on a version, where
  *  it would not. */
 let standingRefused: string | null;
@@ -194,7 +196,7 @@ beforeEach(async () => {
 	resetApi();
 	target = document.createElement('div');
 	document.body.appendChild(target);
-	await served.createNode({ title: 'Origins' });
+	origins = (await served.createNode({ title: 'Origins' })).ref;
 	const viewer = (await served.me()) as Viewer;
 	session.adopt(viewer, 'this device');
 });
@@ -392,6 +394,69 @@ describe('standing on a version', () => {
 		expect(inColumn().querySelector('[aria-label="Your graphs"]')).not.toBeNull();
 		expect(rows()).toContain('New branch');
 		expect(screen()).not.toContain('Your graph as it was');
+	});
+
+	// Working on a version is working, not looking — DESIGN.md § "The history as
+	// a picture" — so the state drawn as it WAS does not stay over the folder
+	// that has just become it.
+	it('takes the graph as it was off the canvas', async () => {
+		await twoVersions();
+		await standing();
+		await openHistory();
+		await tap('A first version');
+		control('Read the graph as it was here').click();
+		await settle();
+		expect(screen()).toContain('Your graph as it was');
+
+		await tap('A first version');
+		control('Work on this version').click();
+		await settle();
+
+		expect(screen()).not.toContain('Your graph as it was');
+		expect(graphHistory.line).toBeUndefined();
+	});
+
+	it('takes it off when the folder goes back to a line as well', async () => {
+		await twoVersions();
+		await kept.branch('an-older-thought');
+		await standing();
+		await openHistory();
+		await tap('A first version');
+		control('Read the graph as it was here').click();
+		await settle();
+		expect(screen()).toContain('Your graph as it was');
+
+		control('an-older-thought').click();
+		await settle();
+
+		expect(screen()).not.toContain('Your graph as it was');
+		expect(graphHistory.line).toBe('an-older-thought');
+	});
+
+	// Changing a note that is already open is the commonest write there is, and
+	// it opens the line exactly as writing a new note does.
+	it('opens a line when a note already open is written in', async () => {
+		await twoVersions();
+		await standing();
+		await openHistory();
+		await tap('A first version');
+		control('Work on this version').click();
+		await settle();
+		const stood = graphHistory.at;
+
+		await type('Origins');
+		inColumn().querySelector<HTMLButtonElement>('[role="option"] button')?.click();
+		await settle();
+		const named = document.body.querySelector<HTMLTextAreaElement>('[aria-label="Title"]');
+		if (!named) throw new Error('No note is open to write in');
+		named.value = 'Origins, rewritten';
+		named.dispatchEvent(new Event('input', { bubbles: true }));
+		named.dispatchEvent(new Event('blur', { bubbles: true }));
+		await settle();
+
+		expect(graphHistory.line).toBe(`from-${stood?.slice(0, 8)}`);
+		expect(graphHistory.at).toBe(stood);
+		expect(nodes.get(origins)?.title).toBe('Origins, rewritten');
 	});
 
 	// The line opens on the first write, not at the checkout: standing on a

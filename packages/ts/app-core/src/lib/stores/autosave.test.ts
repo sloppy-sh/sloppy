@@ -1,4 +1,4 @@
-import type { History } from '@sloppy/local';
+import { HistoryError, type History } from '@sloppy/local';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
@@ -142,7 +142,11 @@ describe('keeping a version while somebody writes', () => {
 	// so a folder that cannot be given one is left alone.
 	it('keeps nothing where the folder stands on a version and no line can open', async () => {
 		history = aHistory({
-			status: async () => ({ changed: ['notes/one.md'], untracked: [], ahead: 0, behind: 0 })
+			status: async () => ({ changed: ['notes/one.md'], untracked: [], ahead: 0, behind: 0 }),
+			standOn: async () => {},
+			lineHere: async () => {
+				throw new HistoryError('Finish what you started here first, then try again.');
+			}
 		});
 		running();
 		await graphHistory.read();
@@ -155,12 +159,28 @@ describe('keeping a version while somebody writes', () => {
 		whatHappened.record(false);
 	});
 
+	// A folder this app cannot put on a version is on no line because the person
+	// put it there, in their own repository, and keeping what they wrote is what
+	// the clock is for — AI.md § "A container's repository is the person's".
+	it('keeps what was written where this platform opens no lines at all', async () => {
+		history = aHistory({
+			status: async () => ({ changed: ['notes/one.md'], untracked: [], ahead: 0, behind: 0 })
+		});
+		running();
+		await graphHistory.read();
+
+		await saveNow();
+
+		expect(history.kept).toEqual([WHILE_WRITING]);
+	});
+
 	// Standing on a version to read it leaves nothing behind — DESIGN.md § "The
 	// history as a picture". A line is opened by writing, never by a clock.
 	it('opens no line where the folder stands on a version and nobody wrote', async () => {
 		const lines: string[] = [];
 		history = aHistory({
 			status: async () => ({ changed: [], untracked: [], ahead: 0, behind: 0 }),
+			standOn: async () => {},
 			lineHere: async (name: string) => {
 				lines.push(name);
 				return { name, head: 'a-commit-id', current: true };

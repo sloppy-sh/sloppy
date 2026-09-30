@@ -10,12 +10,13 @@
 	import BeforeMoving from './before-moving.svelte';
 	import { drawnFrom, foldRuns } from './commit-graph.js';
 	import CommitGraph from './commit-graph.svelte';
-	import { Moving } from './moving.svelte.js';
+	import { type Leaving, Moving } from './moving.svelte.js';
 	import Standing from './standing.svelte';
 
 	let {
 		onOpenAll,
-		onReadVersion
+		onReadVersion,
+		onMoved
 	}: {
 		/** Everything a column has no room for: the lines in full, the other
 		 *  places, and what is different. */
@@ -23,6 +24,8 @@
 		/** Put a version on the graph as it was, to read against what is there
 		 *  now. Absent where there is no graph on screen to draw one on. */
 		onReadVersion?: (commit: string) => void;
+		/** The folder has moved onto another version or line. */
+		onMoved?: () => void;
 	} = $props();
 
 	const moving = new Moving();
@@ -65,18 +68,19 @@
 	}
 
 	function workOnVersion(at: string): Promise<boolean> {
-		picked = null;
-		tried = true;
-		return moving.leaveFor({
-			carries: true,
-			go: (carrying) => graphHistory.standOn(at, carrying)
-		});
+		return moved({ carries: true, go: (carrying) => graphHistory.standOn(at, carrying) });
 	}
 
 	function workOnLine(name: string): Promise<boolean> {
+		return moved({ carries: false, go: () => graphHistory.workOn(name) });
+	}
+
+	async function moved(leaving: Leaving): Promise<boolean> {
 		picked = null;
 		tried = true;
-		return moving.leaveFor({ carries: false, go: () => graphHistory.workOn(name) });
+		const went = await moving.leaveFor(leaving);
+		if (went) onMoved?.();
+		return went;
 	}
 </script>
 

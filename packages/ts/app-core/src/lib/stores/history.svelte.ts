@@ -574,12 +574,16 @@ class HistoryStore {
 	/**
 	 * A line for what is about to be written to land on. Where the folder stands
 	 * on a version rather than a line, one opens where it stands and no file
-	 * moves — DESIGN.md § "The history as a picture". False is a line that could
-	 * not open, and then nothing may be written; {@link HistoryStore.says}
-	 * carries why.
+	 * moves — DESIGN.md § "The history as a picture".
+	 *
+	 * False is a line that could not open, with {@link HistoryStore.says} carrying
+	 * why — **and writing goes ahead anyway.** It is keeping a version that needs
+	 * a line, and {@link HistoryStore.keep} is what refuses.
 	 */
 	async lineToWriteOn(): Promise<boolean> {
-		if (!this.keeps) return true;
+		// A platform that cannot put the folder on a version opens no lines, and
+		// its repository being on none is the person's own doing to undo.
+		if (!this.keeps || !this.stands) return true;
 		// Read again first: nothing may have asked this session, and a line is
 		// named against the names already taken.
 		if (!this.#readOnce || this.onAVersion) await this.read();
