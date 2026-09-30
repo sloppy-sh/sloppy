@@ -36,6 +36,7 @@
 
 	let {
 		open = $bindable(false),
+		inline = false,
 		query,
 		found,
 		acts = [],
@@ -71,6 +72,9 @@
 		onquery: (words: string) => void;
 		onopen: (ref: OwnedRef) => void;
 		onrun?: (id: string) => void;
+		/** Standing in a column beside the graph rather than over it: no surface
+		 *  of its own, and nothing it opens takes the page away. */
+		inline?: boolean;
 	} = $props();
 
 	let field = $state<HTMLInputElement | null>(null);
@@ -83,7 +87,9 @@
 		if (open) untrack(() => (words = query));
 	});
 
-	const rows = $derived(rowsFor(words, acts, found, exact));
+	/** Inline, nothing is offered until something is typed: the column it stands
+	 *  in already shows its own acts as rows, and would list them twice. */
+	const rows = $derived(inline && words.trim() === '' ? [] : rowsFor(words, acts, found, exact));
 	/** Which row the arrow keys have reached; none is the field's own Enter. */
 	let active = $state<number | null>(null);
 	$effect(() => {
@@ -141,18 +147,8 @@
 	}
 </script>
 
-<ResponsiveModal
-	bind:open
-	title={acts.length === 0 ? 'Find a note' : 'Find a note, or do something'}
-	description={acts.length === 0
-		? 'By its number, its title, or a word in it.'
-		: 'By its number, its title, a word in it — or the name of something to do.'}
-	onOpenAutoFocus={(event) => {
-		event.preventDefault();
-		field?.focus();
-	}}
->
-	<div class="space-y-3 px-2 pt-4 pb-2">
+{#snippet body()}
+	<div class={inline ? 'flex flex-col gap-1.5' : 'space-y-3 px-2 pt-4 pb-2'}>
 		<div class="relative">
 			<Search
 				class="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -170,9 +166,11 @@
 				aria-label={acts.length === 0
 					? 'Find a note by its number, its title or a word in it'
 					: 'Find a note by its number, its title or a word in it, or something to do by its name'}
-				placeholder={acts.length === 0
-					? '1a3, or a word you wrote'
-					: '1a3, a word you wrote, or what to do'}
+				placeholder={inline
+					? 'Find a note, or do something'
+					: acts.length === 0
+						? '1a3, or a word you wrote'
+						: '1a3, a word you wrote, or what to do'}
 				oninput={(event) => {
 					words = event.currentTarget.value;
 					onquery(words);
@@ -191,7 +189,9 @@
 				id="palette-rows"
 				role="listbox"
 				aria-label={words.trim() === '' ? 'What you can do here' : 'What matches'}
-				class="max-h-[40vh] space-y-0.5 overflow-y-auto scroll-fade-y [--scroll-fade:1rem]"
+				class="space-y-0.5 overflow-y-auto scroll-fade-y [--scroll-fade:1rem] {inline
+					? 'max-h-[min(20rem,35vh)]'
+					: 'max-h-[40vh]'}"
 				{@attach scrollFade('y')}
 			>
 				{#each rows as row, at (row.key)}
@@ -261,4 +261,22 @@
 			<p class="px-2 text-sm text-muted-foreground" role="status">{noMatch}</p>
 		{/if}
 	</div>
-</ResponsiveModal>
+{/snippet}
+
+{#if inline}
+	<div class="flex flex-col">{@render body()}</div>
+{:else}
+	<ResponsiveModal
+		bind:open
+		title={acts.length === 0 ? 'Find a note' : 'Find a note, or do something'}
+		description={acts.length === 0
+			? 'By its number, its title, or a word in it.'
+			: 'By its number, its title, a word in it — or the name of something to do.'}
+		onOpenAutoFocus={(event) => {
+			event.preventDefault();
+			field?.focus();
+		}}
+	>
+		{@render body()}
+	</ResponsiveModal>
+{/if}

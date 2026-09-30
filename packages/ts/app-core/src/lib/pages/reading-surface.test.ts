@@ -231,7 +231,11 @@ async function act(named: string): Promise<void> {
 
 /** What the tag field invites, on whichever surface it was opened on. */
 function tagInvite(): string {
-	const field = document.body.querySelector<HTMLInputElement>('input[role="combobox"]');
+	// The column beside the graph carries a field of its own, which is not the
+	// one a note's own surface just opened.
+	const field = [
+		...document.body.querySelectorAll<HTMLInputElement>('input[role="combobox"]')
+	].find((one) => one.closest('aside[aria-label="Sloppy"]') === null);
 	if (!field) throw new Error('Nothing on screen invites a tag');
 	return field.placeholder;
 }

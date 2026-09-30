@@ -817,6 +817,24 @@
 		show(ref);
 	}
 
+	/** Found from the column: the canvas goes to the note and marks it, the
+	 *  outline scrolls to its row — and the field keeps what was typed, because
+	 *  somebody looking through what they wrote is rarely done after one. */
+	function goToFound(ref: OwnedRef): void {
+		show(ref);
+	}
+
+	/** The field in the column, wherever the caret was. */
+	function findInPlace(): void {
+		const box = document.querySelector<HTMLInputElement>(
+			'[data-surface="find-in-place"] input[role="combobox"]'
+		);
+		if (box) {
+			box.focus();
+			box.select();
+		} else finding = true;
+	}
+
 	$effect(() => {
 		if (!finding) untrack(() => find.clear());
 	});
@@ -1821,6 +1839,13 @@
 	 *  project to chat about, and an assistant the person asked for. */
 	const offersChat = $derived(projectFiles !== undefined && chat.offered);
 
+	/** Put a version on the graph as it was, from wherever somebody asked. */
+	async function readTheVersion(commit: string): Promise<void> {
+		stopActing();
+		comparing = null;
+		asWas = await graphHistory.asItWas(commit);
+	}
+
 	/** The column's groups: both may stand open, and they share what it has
 	 *  left. Which are open is this device's (DESIGN.md § Persistence). */
 	function toggleGroup(which: 'history' | 'tags'): void {
@@ -1938,8 +1963,10 @@
 						label: 'History',
 						icon: HistoryIcon,
 						group: 'History',
-						where: ['palette', 'column', 'more', 'menu'] as const,
-						run: () => (showingHistory = true)
+						where: ['palette', 'more', 'menu'] as const,
+						// Beside the graph it opens the group the column keeps it in;
+						// over the canvas there is no column, so it is the surface.
+						run: () => (desk.current ? openGroup('history') : (showingHistory = true))
 					}
 				]
 			: []),
@@ -2184,7 +2211,10 @@
 		if (event.defaultPrevented || asked || pointing || foreign || notNow) return;
 		if (opensPalette(event)) {
 			event.preventDefault();
-			finding = true;
+			if (desk.current) {
+				prefs.set('deskNavOpen', true);
+				findInPlace();
+			} else finding = true;
 			return;
 		}
 		if (typedIntoWriting(event)) return;
@@ -2533,19 +2563,41 @@
 					</button>
 
 					<div class="flex {collapsed ? 'flex-col items-center gap-1' : 'flex-col gap-2'}">
-						<button
-							type="button"
-							aria-label="Find a note, or do something ({THE_PALETTE.says})"
-							aria-keyshortcuts={THE_PALETTE.keys}
-							title={collapsed ? 'Find a note' : undefined}
-							onclick={() => (finding = true)}
-							class="flex min-h-control items-center gap-2 rounded-full border border-input text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {collapsed
-								? 'w-control justify-center'
-								: 'w-full px-3'}"
-						>
-							<Search class="size-4 shrink-0" />
-							{#if !collapsed}<span class="min-w-0 truncate">Find a note</span>{/if}
-						</button>
+						{#if collapsed}
+							<button
+								type="button"
+								aria-label="Find a note, or do something ({THE_PALETTE.says})"
+								aria-keyshortcuts={THE_PALETTE.keys}
+								title="Find a note"
+								onclick={() => {
+									prefs.set('deskNavOpen', true);
+									finding = true;
+								}}
+								class="flex min-h-control w-control items-center justify-center gap-2 rounded-full border border-input text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+							>
+								<Search class="size-4 shrink-0" />
+							</button>
+						{:else}
+							<!-- In place, because a column has room for it: looking for a
+							     note does not take the graph away. -->
+							<div data-surface="find-in-place">
+								<Palette
+									inline
+									open
+									query={find.query}
+									found={foundNotes}
+									acts={paletteActs}
+									looking={find.looking}
+									settled={find.settled}
+									elsewhere={graphs.all.length > onCanvas.length}
+									unreadable={find.unreadable}
+									exact={find.exact}
+									onquery={(words) => find.type(words)}
+									onopen={goToFound}
+									onrun={(id) => acts.run(id)}
+								/>
+							</div>
+						{/if}
 
 						{#if collapsed}
 							<Button
@@ -2645,10 +2697,10 @@
 								type="button"
 								aria-expanded={open}
 								onclick={() => toggleGroup('history')}
-								class="flex min-h-control shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-sm text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								class="flex min-h-control shrink-0 items-center gap-1.5 border-t border-border px-1 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 							>
 								<ChevronDown
-									class="size-4 shrink-0 transition-transform {open ? '' : '-rotate-90'}"
+									class="size-3.5 shrink-0 transition-transform {open ? '' : '-rotate-90'}"
 								/>
 								<span class="min-w-0 truncate">History</span>
 							</button>
@@ -2656,7 +2708,7 @@
 								<div class="min-h-0 flex-1 overflow-y-auto pt-1">
 									<HistoryColumn
 										onOpenAll={() => (showingHistory = true)}
-										onOpenVersion={() => (showingHistory = true)}
+										onReadVersion={(commit) => void readTheVersion(commit)}
 									/>
 								</div>
 							{/if}
@@ -2682,10 +2734,10 @@
 								type="button"
 								aria-expanded={open}
 								onclick={() => toggleGroup('tags')}
-								class="flex min-h-control shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-sm text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								class="flex min-h-control shrink-0 items-center gap-1.5 border-t border-border px-1 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 							>
 								<ChevronDown
-									class="size-4 shrink-0 transition-transform {open ? '' : '-rotate-90'}"
+									class="size-3.5 shrink-0 transition-transform {open ? '' : '-rotate-90'}"
 								/>
 								<span class="min-w-0 truncate">Tags</span>
 							</button>

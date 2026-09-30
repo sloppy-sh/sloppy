@@ -193,13 +193,10 @@
 
 	async function showVersion(commit: string): Promise<void> {
 		if (!onShowVersion) return;
-		const notes = await graphHistory.notesAt(commit);
-		const version =
-			graphHistory.versions.find((one) => one.id === commit) ??
-			graphHistory.picture.find((one) => one.id === commit);
+		const shown = await graphHistory.asItWas(commit);
 		open = false;
 		showingOpen = false;
-		onShowVersion({ commit, message: version?.message ?? '', notes });
+		onShowVersion(shown);
 	}
 
 	/** A version set against the folder as it stands, drawn on the graph rather

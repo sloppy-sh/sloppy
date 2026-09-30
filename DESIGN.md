@@ -819,9 +819,13 @@ than a list because branches are a shape — where one left another and where th
 together is not a thing a column of rows can say.
 
 **It stands beside the graph on a desk, and is a surface a phone opens.** In the column it
-is what somebody keeps reaching for — what is unkept, somewhere to keep it, and the picture
-— with the lines, the other places and what is different one row away in the surface that
-has always held them. **What it folds by is its own width and never the window's**: the same
+is what somebody keeps reaching for — which line the folder is on and the others it keeps,
+what is unkept, somewhere to keep it, and the picture, where a version tapped offers to be
+put on the canvas as it was — with the other places, what is different, and everything about
+one version a row away in the surface that has always held them. **The lines are in the
+column and not only in that surface**, because moving onto another one is how somebody
+reaches an older state to read against this one, and a picture they cannot act from is a
+picture they open something else after. **What it folds by is its own width and never the window's**: the same
 picture is drawn in a column on a wide screen and across a whole phone, and only it knows
 which.
 
@@ -1116,6 +1120,11 @@ nothing under it.
   the row over the canvas keeps behind one, for want of room, stand as rows of their own
   beside the graph, and the tags below them can be found by typing and ordered by name or
   by how many notes carry each. A "More" holding nothing is not drawn at all.
+  **What stands below those acts is sections rather than more rows.** The history and the
+  tags each hold a surface of their own, so each folds behind a heading drawn as a heading —
+  a rule above it and the quiet voice a heading is given everywhere else — and never as
+  another row that runs when tapped. Each remembers whether it stands open (§ Persistence),
+  and on the icon rail each is one icon that widens the column onto it.
 - **One field reaches both a note and an act, in both arrangements.** The same keystroke that
   finds a note by its number, its title or a word in it does something by its name, and with
   nothing typed it lists everything this page can do with the keystroke beside each — so the
@@ -1123,6 +1132,13 @@ nothing under it.
   as a row is what somebody reaches every day; what is typed for is the rest — choosing a set
   of notes, taking the graph as a file, bringing one in. An act is declared once, in one
   place, and where it stands is a property of the act rather than a copy of it per surface.
+  **Beside the graph that field stands in the column and takes nothing away.** A note it
+  reaches is shown where the note already is — brought to the middle of the canvas, scrolled
+  to in the outline — with what was typed still in the field, so somebody can walk a list of
+  matches without the page moving out from under them. Over the canvas, where there is no
+  room for it to stand, the same field is what the keystroke opens. In the column it offers
+  nothing until something is typed: the acts are already rows beside it, and listing them
+  again would be the same page twice.
 - **On a desk the app has its own menu bar, and it is the same declaration again.** What a
   person expects to find under File, Edit, View and Window is there because the platform
   gives them that expectation, not because the product needs a third place to put things —

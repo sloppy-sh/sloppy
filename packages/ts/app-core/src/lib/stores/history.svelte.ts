@@ -344,6 +344,17 @@ class HistoryStore {
 	}
 
 	/** The surface has come up: what an earlier act said no longer stands. */
+	/** One version as a surface draws it on the graph: what it is called, and
+	 *  the notes as they stood. The one copy, so the column and the surface put
+	 *  the same thing on the canvas. */
+	async asItWas(commit: string): Promise<{ commit: string; message: string; notes: NodeView[] }> {
+		const notes = await this.notesAt(commit);
+		const version =
+			this.#commits.find((one) => one.id === commit) ??
+			this.#picture.find((one) => one.id === commit);
+		return { commit, message: version?.message ?? '', notes };
+	}
+
 	async opened(): Promise<void> {
 		this.#elsewhere = null;
 		await this.read();

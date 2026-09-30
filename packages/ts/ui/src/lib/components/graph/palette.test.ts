@@ -284,3 +284,34 @@ describe('doing something from the palette', () => {
 		expect(opened).toEqual([]);
 	});
 });
+
+describe('standing in a column rather than over the page', () => {
+	const ACTS = [
+		{ id: 'branch', label: 'New branch', says: '⌘ Return', group: 'Write' },
+		{ id: 'export', label: 'Export this graph', group: 'Graph' }
+	];
+
+	it('opens no surface of its own, and says nothing until something is typed', async () => {
+		await open({ inline: true, acts: ACTS, found: [found()] });
+
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
+		expect(field()).not.toBeNull();
+		expect(document.querySelectorAll('[role="option"]')).toHaveLength(0);
+	});
+
+	it('offers what the words reach once they are typed', async () => {
+		const ran: string[] = [];
+		await open({ inline: true, acts: ACTS, onrun: (id: string) => ran.push(id) });
+
+		field().value = 'exp';
+		field().dispatchEvent(new Event('input', { bubbles: true }));
+		flushSync();
+
+		const rows = [...document.querySelectorAll('[role="option"]')].map((row) =>
+			(row.textContent ?? '').replace(/\s+/g, ' ').trim()
+		);
+		expect(rows).toEqual(['Export this graph']);
+		field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		expect(ran).toEqual(['export']);
+	});
+});
