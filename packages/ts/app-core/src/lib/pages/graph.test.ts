@@ -3527,3 +3527,68 @@ describe('the chrome on a desk', () => {
 		expect(column()?.textContent).toContain('seed');
 	});
 });
+
+// A note deleted goes to the bin and comes back out of it for thirty days. The
+// promise is only kept if somebody can find the bin.
+describe('what you deleted', () => {
+	const THROWN = ref(9);
+
+	/** The palette is where an act nobody needs every day is reached by name. */
+	async function askFor(offer: string): Promise<void> {
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true })
+		);
+		await settle();
+		const field = document.body.querySelector<HTMLInputElement>('input[role="combobox"]');
+		if (!field) throw new Error('No field to type an act into');
+		field.value = offer;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		await settle();
+		const row = [...document.body.querySelectorAll<HTMLElement>('[role="option"] button')].find(
+			(one) => one.textContent?.includes(offer)
+		);
+		if (!row) throw new Error(`Nothing offered is called "${offer}"`);
+		row.click();
+		await settle();
+	}
+
+	beforeEach(() => {
+		api.on('GET /nodes/deleted', () => [
+			{
+				ref: THROWN,
+				address: '2',
+				graph: HOME,
+				title: 'A thought I threw away',
+				deleted_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+				notes: 2
+			}
+		]);
+	});
+
+	it('is reached by its own name, and says what is in it', async () => {
+		await open();
+		await askFor('What you deleted');
+
+		expect(screen()).toContain('A thought I threw away');
+		expect(screen()).toContain('2 notes');
+		expect(screen()).toContain('days left');
+	});
+
+	it('puts a note back where it was', async () => {
+		let restored: string | null = null;
+		api.on(`POST ${path(THROWN)}/restore`, () => {
+			restored = THROWN;
+			return node(9, '2');
+		});
+		await open();
+		await askFor('What you deleted');
+
+		const control = [...document.body.querySelectorAll('button')].find((one) =>
+			one.textContent?.includes('Put it back')
+		);
+		control?.click();
+		await settle();
+
+		expect(restored).toBe(THROWN);
+	});
+});

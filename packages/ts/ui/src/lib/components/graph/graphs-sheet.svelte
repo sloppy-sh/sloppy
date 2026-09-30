@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import { noteLabel, type GraphOwnership, type OwnedRef } from '@sloppy/types';
+	import { type GraphOwnership, type OwnedRef } from '@sloppy/types';
 
 	/** One of somebody's graphs, as this sheet lists it. */
 	export interface GraphChoice {
@@ -24,21 +24,6 @@
 		/** Whose graph it is, where that is somebody other than the reader. */
 		by?: string;
 	}
-
-	/** A branch its author deleted and can still put back. */
-	export interface DeletedChoice {
-		ref: OwnedRef;
-		/** The number they cite it by, which is how they will recognise it.
-		 *  Absent on a branch with none; the title names it. */
-		address?: string;
-		/** The graph it comes back into. An address only means one thing inside one. */
-		graph: OwnedRef;
-		title: string;
-		/** The root and everything that comes back with it. */
-		notes: number;
-		/** How long is left to put it back, in the words the row shows. */
-		within: string;
-	}
 </script>
 
 <script lang="ts">
@@ -50,7 +35,6 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import { untrack, type Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { refusedWith } from '$lib/refusal.js';
@@ -70,7 +54,6 @@
 		full = false,
 		busy = false,
 		says = null,
-		deleted = [],
 		publishedFrom = undefined,
 		onEnter,
 		onToggle,
@@ -83,7 +66,6 @@
 		onRename,
 		onOwnership,
 		onRemove,
-		onRestore,
 		onShow,
 		alsoOffer
 	}: {
@@ -107,7 +89,6 @@
 		/** Why the last thing asked for did not happen. */
 		says?: string | null;
 		/** Newest first. Empty leaves the section off the sheet entirely. */
-		deleted?: readonly DeletedChoice[];
 		/** The graphs somebody has published a branch out of. Absent is not
 		 *  knowing, and closing then says the consequence rather than withhold
 		 *  it. */
@@ -139,7 +120,6 @@
 		 *  the choice off the sheet. */
 		onOwnership?: (ref: OwnedRef, ownership: GraphOwnership) => Promise<void>;
 		onRemove?: (ref: OwnedRef) => Promise<void>;
-		onRestore?: (ref: OwnedRef) => Promise<void>;
 		/** The sheet has just opened, and what it lists is worth asking for again. */
 		onShow?: () => void;
 		/** Where else a graph can be opened from, for an app that reaches more
@@ -153,7 +133,6 @@
 	let naming = $state<{ ref: OwnedRef; title: string; owned: boolean } | null>(null);
 	let refused = $state<string | null>(null);
 	let working = $state(false);
-	let putting = $state<OwnedRef | null>(null);
 	let closing = $state<GraphChoice | null>(null);
 	let confirming = $state(false);
 	let closeRefused = $state<string | null>(null);
@@ -171,7 +150,7 @@
 		].join(' ')
 	);
 
-	function nameOf(graph: GraphChoice | DeletedChoice): string {
+	function nameOf(graph: GraphChoice): string {
 		return graph.title || 'Untitled';
 	}
 
@@ -205,21 +184,6 @@
 	 *  its own no longer say which folder a row means. */
 	function alsoElsewhere(graph: GraphChoice): boolean {
 		return graphs.filter((one) => one.ref !== undefined && one.ref === graph.ref).length > 1;
-	}
-
-	function graphHolding(branch: DeletedChoice): string {
-		const held = graphs.find((graph) => graph.ref === branch.graph);
-		return held ? nameOf(held) : 'Untitled';
-	}
-
-	async function putBack(branch: DeletedChoice): Promise<void> {
-		if (!onRestore || putting !== null) return;
-		putting = branch.ref;
-		try {
-			await act(() => onRestore(branch.ref));
-		} finally {
-			putting = null;
-		}
 	}
 
 	async function act(what: () => Promise<void>): Promise<boolean> {
@@ -560,41 +524,6 @@
 		{#if alsoOffer}
 			<section class="space-y-2 border-t border-border pt-4">
 				{@render alsoOffer()}
-			</section>
-		{/if}
-
-		{#if deleted.length > 0}
-			<section class="space-y-2 border-t border-border pt-4">
-				<h3 class="text-sm font-medium">Recently deleted</h3>
-				<ul class="space-y-1">
-					{#each deleted as branch (branch.ref)}
-						<li class="flex items-center gap-2 px-2">
-							<div class="min-w-0 flex-1">
-								<p class="flex min-w-0 items-baseline gap-2 text-sm">
-									{#if branch.address}
-										<span class="shrink-0 address text-xs">{branch.address}</span>
-									{/if}
-									<span class="min-w-0 flex-1 truncate">{nameOf(branch)}</span>
-								</p>
-								<p class="truncate text-xs text-muted-foreground">
-									{graphHolding(branch)} ·
-									{branch.notes === 1 ? '1 note' : `${branch.notes.toLocaleString()} notes`} ·
-									{branch.within}
-								</p>
-							</div>
-							<Button
-								variant="outline"
-								class="h-9 shrink-0 rounded-full text-xs"
-								disabled={working || onRestore === undefined}
-								aria-label={`Put ${noteLabel(branch)} in ${graphHolding(branch)} back`}
-								onclick={() => void putBack(branch)}
-							>
-								<Undo2 class="size-4" />
-								{putting === branch.ref ? 'Putting it back' : 'Put it back'}
-							</Button>
-						</li>
-					{/each}
-				</ul>
 			</section>
 		{/if}
 

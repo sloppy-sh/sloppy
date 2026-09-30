@@ -24,6 +24,7 @@
 	// The home surface: the whole graph, the tags it is lit by, and the note that
 	// opens beside it. DESIGN.md § Layout — the graph is the page.
 	import Check from '@lucide/svelte/icons/check';
+	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
@@ -60,6 +61,7 @@
 		type GraphTransform
 	} from '@sloppy/graph';
 	import {
+		DELETED_KEPT_FOR_DAYS,
 		MAX_NOTES_PER_BULK_ACT,
 		NodeBulkRequestSchema,
 		pictureTurn,
@@ -98,6 +100,7 @@
 		DeskNavParts,
 		DifferenceLegend,
 		type FoundNote,
+		BinSheet,
 		GraphsSheet,
 		GraphSurface,
 		GroundChoice,
@@ -188,6 +191,7 @@
 	let bringingTo = $state<OwnedRef | null>(null);
 	/** Whether the graphs this person keeps are being looked through. */
 	let switching = $state(false);
+	let showingBin = $state(false);
 	/** Whether a note is being looked for by number, title or a word in it. */
 	let finding = $state(false);
 	/** The graph itself is not here; it replaces the surface. */
@@ -1323,6 +1327,16 @@
 		hide();
 	}
 
+	/** A listing that crosses graphs says which, so an address means one thing. */
+	function nameOfGraph(ref: OwnedRef): string {
+		return graphs.all.find((one) => one.ref === ref)?.title?.trim() || 'Untitled';
+	}
+
+	function openTheBin(): void {
+		showingBin = true;
+		void deleted.reload().catch(() => {});
+	}
+
 	function backToNow(): void {
 		asWas = null;
 		comparing = null;
@@ -1901,6 +1915,14 @@
 			group: 'Write',
 			where: ['palette'],
 			run: () => writeBranch(null)
+		},
+		{
+			id: 'what-you-deleted',
+			label: 'What you deleted',
+			icon: Undo2,
+			group: 'Graph',
+			where: ['palette', 'menu'],
+			run: openTheBin
 		},
 		{
 			id: 'number-it',
@@ -3105,6 +3127,30 @@
 	}}
 />
 
+<BinSheet
+	bind:open={showingBin}
+	keptForDays={DELETED_KEPT_FOR_DAYS}
+	notes={deleted.all.map((branch) => ({
+		ref: branch.ref,
+		address: branch.address,
+		graph: nameOfGraph(branch.graph),
+		title: branch.title,
+		notes: branch.notes,
+		within: timeToPutBack(branch.deleted_at)
+	}))}
+	says={deleted.state.failed
+		? (deleted.state.error ?? 'What you deleted could not be listed.')
+		: null}
+	onRestore={(ref) =>
+		writeInTheirWords(async () => {
+			const back = await deleted.restore(ref);
+			const graph = graphOf(back);
+			await Promise.all([nodes.reload({ graph }), nodes.reload({ origin: back.origin })]);
+			void tags.reload(graph).catch(() => {});
+			void deleted.reload().catch(() => {});
+		}, 'That note could not be put back.')}
+/>
+
 <GraphsSheet
 	bind:open={switching}
 	graphs={graphChoices}
@@ -3114,34 +3160,11 @@
 	alsoUp={new Set(onCanvas.slice(1))}
 	full={graphs.canvasFull}
 	busy={graphs.state.loading}
-	says={graphs.state.failed
-		? (graphs.state.error ?? null)
-		: deleted.state.failed
-			? (deleted.state.error ?? 'What you deleted could not be listed.')
-			: null}
-	deleted={deleted.all.map((branch) => ({
-		ref: branch.ref,
-		address: branch.address,
-		graph: branch.graph,
-		title: branch.title,
-		notes: branch.notes,
-		within: timeToPutBack(branch.deleted_at)
-	}))}
+	says={graphs.state.failed ? (graphs.state.error ?? null) : null}
 	publishedFrom={publications.state.loaded
 		? new Set(publications.all.map((one) => one.graph ?? graphs.home))
 		: undefined}
-	onShow={() => {
-		void deleted.reload().catch(() => {});
-		void graphs.readFolders(true);
-	}}
-	onRestore={(ref) =>
-		writeInTheirWords(async () => {
-			const back = await deleted.restore(ref);
-			const graph = graphOf(back);
-			await Promise.all([nodes.reload({ graph }), nodes.reload({ origin: back.origin })]);
-			void tags.reload(graph).catch(() => {});
-			void deleted.reload().catch(() => {});
-		}, 'That branch could not be put back.')}
+	onShow={() => void graphs.readFolders(true)}
 	onEnter={(ref) => {
 		graphs.enter(ref);
 		closeUndrawn();

@@ -1337,6 +1337,13 @@ nothing under it.
   a look, pointing it at another note, taking it down. This is a ranking and never a
   removal, so every act is still one tap away and the phone gets exactly the acts the desk
   does.
+- **What you deleted is a place, and it is reachable by that name.** A promise that a note
+  comes back is only kept if somebody can find where it comes back from, so the listing is a
+  surface of its own, asked for by name and named in the question that makes the promise.
+  It was a section at the foot of the list of graphs, which is not where anybody looks for a
+  note they threw away. Each row is the note by its number and title, which graph it returns
+  to, how many notes return with it, and how long is left; an empty one says what empty means
+  rather than showing a blank page.
 - **The act that takes a note away sits apart.** Deleting a note is the last thing in that
   control, below a rule and in the destructive colour — never a full-width button in the
   flow of a note somebody is writing in, where a hand lands on its way to something else.

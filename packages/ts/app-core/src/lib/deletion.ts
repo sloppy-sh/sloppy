@@ -41,7 +41,7 @@ export function deletionCost(refs: readonly OwnedRef[]): string {
 				: grown === 1
 					? `${goes}, and so does the one note that grew out of ${it}.`
 					: `${goes}, and so do the ${grown.toLocaleString()} notes that grew out of ${it}.`;
-	const back = `You can put ${it} back from Your graphs for ${DELETED_KEPT_FOR_DAYS} days.`;
+	const back = `You can put ${it} back from What you deleted for ${DELETED_KEPT_FOR_DAYS} days.`;
 	const out = stillOut(refs, going);
 	return out === null ? `${takes} ${back}` : `${takes} ${out} ${back}`;
 }
