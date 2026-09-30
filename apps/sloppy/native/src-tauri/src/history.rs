@@ -2913,6 +2913,7 @@ pub(crate) mod tests {
     fn stopping_a_merge_leaves_the_folder_as_it_was_before_it() {
         let root = vault();
         write(&root, "notes/a.md", "was");
+        write(&root, "notes/elsewhere.md", "as it stood");
         let first = made(&root, "A note");
         branch(&root, "later").expect("the line");
 
@@ -2937,9 +2938,16 @@ pub(crate) mod tests {
             "Finish the merge you are in the middle of first."
         );
 
+        write(
+            &root,
+            "notes/elsewhere.md",
+            "and then I thought better of it",
+        );
+
         abandon_merge(&root).expect("the stop");
 
         assert_eq!(read(&root, "notes/a.md"), "mine");
+        assert_eq!(read(&root, "notes/elsewhere.md"), "as it stood");
         assert!(!root.join("notes/b.md").exists());
         let standing = status(&root).expect("the status");
         assert!(standing.merging.is_none());
