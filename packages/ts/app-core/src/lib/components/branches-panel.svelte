@@ -29,6 +29,7 @@
 		anyVersion = false,
 		busy = false,
 		unsettled = false,
+		standingOn,
 		onStartLine,
 		onWorkOn,
 		onBringIn,
@@ -41,6 +42,9 @@
 		busy?: boolean;
 		/** Whether notes are still in two versions, which holds a merge back. */
 		unsettled?: boolean;
+		/** The short name of the version the folder stands on, absent where it is
+		 *  on a line — which is when a row says it is the one being worked on. */
+		standingOn?: string;
 		onStartLine: (name: string) => Promise<boolean>;
 		onWorkOn: (name: string) => Promise<boolean>;
 		onBringIn: (name: string) => Promise<boolean>;
@@ -77,33 +81,41 @@
 </script>
 
 <div class="space-y-4">
+	{#if standingOn}
+		<p class="text-xs text-muted-foreground" role="status">
+			Working on a version, {standingOn}.
+		</p>
+	{/if}
+
 	<ul class="space-y-2" aria-label="Lines of work here">
 		{#each here as one (one.name)}
 			<li class="space-y-1" data-line={one.name}>
-				<div class="flex items-baseline gap-2">
-					<span class="w-4 shrink-0 text-muted-foreground">
-						{#if one.here}<Check class="size-4" aria-hidden="true" />{/if}
-					</span>
-					<span class="min-w-0 flex-1 truncate text-sm">{one.name}</span>
-				</div>
-				<div class="flex flex-wrap items-center gap-2 pl-6">
-					{#if one.here}
+				{#if one.here}
+					<div class="flex items-baseline gap-2">
+						<span class="w-4 shrink-0 text-muted-foreground">
+							<Check class="size-4" aria-hidden="true" />
+						</span>
+						<span class="min-w-0 flex-1 truncate text-sm">{one.name}</span>
+					</div>
+					<div class="flex flex-wrap items-center gap-2 pl-6">
 						<span class="text-xs text-muted-foreground">You are working on this one.</span>
-					{/if}
-					{#if distance(one)}
-						<span class="text-xs text-muted-foreground">{distance(one)}</span>
-					{/if}
-				</div>
-				{#if !one.here}
+						{#if distance(one)}
+							<span class="text-xs text-muted-foreground">{distance(one)}</span>
+						{/if}
+					</div>
+				{:else}
+					<button
+						type="button"
+						class="flex min-h-control w-full items-baseline gap-2 rounded-lg ps-6 pe-1 text-left hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60"
+						disabled={busy}
+						onclick={() => void onWorkOn(one.name)}
+					>
+						<span class="min-w-0 flex-1 truncate text-sm">{one.name}</span>
+						{#if distance(one)}
+							<span class="shrink-0 text-xs text-muted-foreground">{distance(one)}</span>
+						{/if}
+					</button>
 					<div class="flex flex-wrap gap-2 pl-6">
-						<Button
-							variant="ghost"
-							class="h-9 rounded-full text-xs"
-							disabled={busy}
-							onclick={() => void onWorkOn(one.name)}
-						>
-							Work on it
-						</Button>
 						<Button
 							variant="outline"
 							class="h-9 rounded-full text-xs"
