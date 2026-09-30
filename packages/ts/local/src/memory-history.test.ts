@@ -422,6 +422,52 @@ describe("a merge the folder is part-way through", () => {
     await expect(history.abandonMerge()).rejects.toBeInstanceOf(HistoryError);
   });
 
+  it("is refused where a note has been written since it began", async () => {
+    const { files, history } = await bothWrote();
+    await history.merge("aside");
+
+    await write(files, OTHER, "written while the merge waited");
+
+    await expect(history.abandonMerge()).rejects.toThrow(
+      "Something has been written here since this merge began",
+    );
+    expect(await files.read(OTHER)).toEqual(
+      encodeText("written while the merge waited"),
+    );
+    expect((await history.status()).merging).toBeDefined();
+
+    await write(files, OTHER, "beside it");
+    await history.abandonMerge();
+
+    expect(await files.read(OTHER)).toBeUndefined();
+  });
+
+  it("is stopped after a note in two versions was settled the other way", async () => {
+    const { files, history } = await bothWrote();
+    await history.merge("aside");
+    await history.resolve(NOTE, "theirs");
+    expect(await files.read(NOTE)).toEqual(encodeText("theirs"));
+
+    await history.abandonMerge();
+
+    expect(await files.read(NOTE)).toEqual(encodeText("mine"));
+    expect(await files.read(OTHER)).toBeUndefined();
+  });
+
+  it("leaves a note nothing is keeping yet where it is", async () => {
+    const { files, history } = await bothWrote();
+    await history.merge("aside");
+    const started = "notes/01J0000000000000000000000C.md";
+    await write(files, started, "started while the merge waited");
+
+    await history.abandonMerge();
+
+    expect(await files.read(started)).toEqual(
+      encodeText("started while the merge waited"),
+    );
+    expect(await files.read(NOTE)).toEqual(encodeText("mine"));
+  });
+
   it("is stopped with nothing settled the other line's way left behind", async () => {
     const { files, history } = graph();
     await write(files, NOTE, "one");

@@ -140,6 +140,12 @@ fn no_merge_here() -> HistoryError {
     HistoryError::new("There is no merge here to stop.")
 }
 
+fn written_since_the_merge() -> HistoryError {
+    HistoryError::new(
+        "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again.",
+    )
+}
+
 fn nothing_to_start_from() -> HistoryError {
     HistoryError::new(
         "There is nothing here to branch off yet. Commit what is in this folder first.",
@@ -915,6 +921,26 @@ fn unsettled(kept: &Kept) -> Result<Unsettled, HistoryError> {
     Ok(found)
 }
 
+/// Whether the folder holds a file at something other than what the merge left
+/// in the index. A path still in two versions is the merge's own doing rather
+/// than somebody's writing, and a file nothing is tracking is left where it is
+/// by anything that moves the tracked ones.
+fn written_since_the_merge_began(kept: &Kept) -> Result<bool, HistoryError> {
+    let mut how = StatusOptions::new();
+    how.include_untracked(false)
+        .include_ignored(false)
+        .include_unmodified(false);
+    let held = kept.repo().statuses(Some(&mut how))?;
+    Ok(held.iter().any(|entry| {
+        let status = entry.status();
+        entry.path().map_or(true, |path| !kept.kept_out(path))
+            && (status.is_wt_modified()
+                || status.is_wt_deleted()
+                || status.is_wt_typechange()
+                || status.is_wt_renamed())
+    }))
+}
+
 pub fn status(vault: &Opened) -> Result<Status, HistoryError> {
     let mut kept = at(vault)?;
     let with = merging(&mut kept.repo)?;
@@ -1624,6 +1650,9 @@ pub fn abandon_merge(vault: &Opened) -> Result<(), HistoryError> {
     }
     if !with.is_some_and(|head| ours_to_finish(&kept, head)) {
         return Err(no_merge_here());
+    }
+    if written_since_the_merge_began(&kept)? {
+        return Err(written_since_the_merge());
     }
     let Some(mine) = head_commit(kept.repo())?.map(|held| held.id()) else {
         return Err(no_merge_here());
@@ -2957,6 +2986,76 @@ pub(crate) mod tests {
         assert_eq!(read(&root, "identity.key"), "the seed this device holds");
     }
 
+    /// Going back to before a merge writes over everything the history is
+    /// keeping, so a note written while the merge waited would go with it.
+    #[test]
+    fn stopping_a_merge_is_refused_over_writing_done_since_it_began() {
+        const REFUSED: &str = "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again.";
+
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        write(&root, "notes/z.md", "somewhere else");
+        made(&root, "Two notes");
+        branch(&root, "later").expect("the line");
+
+        write(&root, "notes/a.md", "mine");
+        let mine = made(&root, "My way");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        made(&root, "Their way");
+        switch_to(&root, DEFAULT_BRANCH).expect("back");
+
+        merge_in(&root, &private_for(&root), "later").expect("the merge");
+        write(&root, "notes/z.md", "written while the merge waited");
+
+        assert_eq!(abandon_merge(&root).unwrap_err().said(), REFUSED);
+        assert_eq!(read(&root, "notes/z.md"), "written while the merge waited");
+        assert!(status(&root).expect("the status").merging.is_some());
+
+        // A note taken away since the merge began is the same writing.
+        fs::remove_file(root.join("notes/z.md")).expect("the note taken away");
+        assert_eq!(abandon_merge(&root).unwrap_err().said(), REFUSED);
+
+        // A note still in two versions is the merge's own doing and stops
+        // nothing, and neither does one settled since.
+        write(&root, "notes/z.md", "somewhere else");
+        settle(&root, "notes/a.md", ConflictSide::Theirs).expect("the choice");
+        abandon_merge(&root).expect("the stop");
+
+        assert_eq!(read(&root, "notes/a.md"), "mine");
+        assert_eq!(read(&root, "notes/z.md"), "somewhere else");
+        assert_eq!(head(&root).expect("the version"), Some(mine.id));
+    }
+
+    /// A note nothing is keeping yet is not written over by going back — the
+    /// folder's own files are left where they are — so it is no reason to
+    /// refuse.
+    #[test]
+    fn stopping_a_merge_leaves_a_note_nothing_is_keeping_yet_where_it_is() {
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        made(&root, "A note");
+        branch(&root, "later").expect("the line");
+
+        write(&root, "notes/a.md", "mine");
+        made(&root, "My way");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        made(&root, "Their way");
+        switch_to(&root, DEFAULT_BRANCH).expect("back");
+
+        merge_in(&root, &private_for(&root), "later").expect("the merge");
+        write(&root, "notes/new.md", "started while the merge waited");
+
+        abandon_merge(&root).expect("the stop");
+
+        assert_eq!(read(&root, "notes/a.md"), "mine");
+        assert_eq!(
+            read(&root, "notes/new.md"),
+            "started while the merge waited"
+        );
+    }
+
     #[test]
     fn a_commit_is_by_whoever_the_graph_says_owns_it() {
         let root = vault();
@@ -4082,6 +4181,40 @@ pub(crate) mod tests {
         );
         assert!(root.join(".git").join("MERGE_HEAD").exists());
         assert_eq!(read(&root, "src/c.ts"), "theirs");
+    }
+
+    /// A container's repository is the project's, so going back to before a
+    /// merge reaches the code as readily as the notes, and the code written
+    /// while the merge waited is the person's.
+    #[test]
+    fn stopping_a_merge_in_a_project_is_refused_over_code_written_since() {
+        let (root, held) = project("stop-over-code");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "was");
+        made(&held, "A note");
+        branch(&held, "later").expect("the line");
+
+        write(&held, "notes/a.md", "mine");
+        made(&held, "My way");
+        switch_to(&held, "later").expect("the switch");
+        write(&held, "notes/a.md", "theirs");
+        made(&held, "Their way");
+        switch_to(&held, DEFAULT_BRANCH).expect("back");
+
+        merge_in(&held, &private_for(&held), "later").expect("the merge");
+        write(&root, "src/a.ts", "what they are writing now");
+
+        assert_eq!(
+            abandon_merge(&held).unwrap_err().said(),
+            "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again."
+        );
+        assert_eq!(read(&root, "src/a.ts"), "what they are writing now");
+        assert!(status(&held).expect("the status").merging.is_some());
+
+        write(&root, "src/a.ts", "one");
+        abandon_merge(&held).expect("the stop");
+        assert_eq!(read(&held, "notes/a.md"), "mine");
+        assert!(status(&held).expect("the status").merging.is_none());
     }
 
     #[test]
