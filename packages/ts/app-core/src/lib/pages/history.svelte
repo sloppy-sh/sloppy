@@ -16,10 +16,13 @@
 		type StatePicked
 	} from '@sloppy/ui';
 	import { SvelteMap } from 'svelte/reactivity';
+	import BeforeMoving from '../components/before-moving.svelte';
 	import BranchesPanel, { type LineRow } from '../components/branches-panel.svelte';
 	import CommitDetails from '../components/commit-details.svelte';
 	import { drawnFrom, type DrawnVersion, keptBy, whenKept } from '../components/commit-graph.js';
 	import CommitGraph from '../components/commit-graph.svelte';
+	import { type Leaving, Moving } from '../components/moving.svelte.js';
+	import Standing from '../components/standing.svelte';
 	import SyncControls, { type KeptAlso } from '../components/sync-controls.svelte';
 	import {
 		type DifferenceBetween,
@@ -31,7 +34,8 @@
 	let {
 		open = $bindable(false),
 		onShowVersion,
-		onShowDifference
+		onShowDifference,
+		onMoved
 	}: {
 		open?: boolean;
 		/** Absent where there is no graph on screen to draw a state on. */
@@ -45,10 +49,15 @@
 				difference: GraphDifference;
 			} | null
 		) => void;
+		/** The folder has moved onto another version or line. */
+		onMoved?: () => void;
 	} = $props();
 
-	/** What each note left in two versions holds on either side, once read. */
-	const inTwo = new SvelteMap<string, NoteInTwoVersions | null>();
+	const moving = new Moving();
+
+	/** What each note left in two versions holds on either side. `undefined` is
+	 *  one still being read, `null` one that is not a note at all. */
+	const inTwo = new SvelteMap<string, NoteInTwoVersions | null | undefined>();
 	let settling = $state<string | null>(null);
 	let settleOpen = $state(false);
 	let showing = $state<string | null>(null);
@@ -132,7 +141,7 @@
 			return {
 				path,
 				title: held?.title ?? '',
-				isNote: held !== null && held !== undefined,
+				...(held === undefined ? {} : { isNote: held !== null }),
 				...(address === undefined ? {} : { address })
 			};
 		})
@@ -145,7 +154,7 @@
 		for (const path of inTwo.keys()) if (!unsettled.has(path)) inTwo.delete(path);
 		for (const path of unsettled) {
 			if (inTwo.has(path)) continue;
-			inTwo.set(path, null);
+			inTwo.set(path, undefined);
 			void graphHistory.inTwo(path).then((held) => inTwo.set(path, held));
 		}
 	});
@@ -213,6 +222,21 @@
 		showingOpen = true;
 	}
 
+	function standOn(commit: string): void {
+		showingOpen = false;
+		void moved({ carries: true, go: (carrying) => graphHistory.standOn(commit, carrying) });
+	}
+
+	function workOn(name: string): Promise<boolean> {
+		return moved({ carries: false, go: () => graphHistory.workOn(name) });
+	}
+
+	async function moved(leaving: Leaving): Promise<boolean> {
+		const went = await moving.leaveFor(leaving);
+		if (went) onMoved?.();
+		return went;
+	}
+
 	async function compare(
 		before: StatePicked,
 		after: StatePicked
@@ -261,19 +285,13 @@
 	async function settleWhole(side: 'mine' | 'theirs'): Promise<void> {
 		const path = settling;
 		if (path === null) return;
-		if (await graphHistory.settle(path, side)) {
-			inTwo.delete(path);
-			settleOpen = false;
-		}
+		if (await graphHistory.settle(path, side)) settleOpen = false;
 	}
 
 	async function settleBySection(take: ReadonlySet<string>): Promise<void> {
 		const note = settled;
 		if (!note) return;
-		if (await graphHistory.settleSections(note, take)) {
-			inTwo.delete(note.path);
-			settleOpen = false;
-		}
+		if (await graphHistory.settleSections(note, take)) settleOpen = false;
 	}
 </script>
 
@@ -288,24 +306,31 @@
 	{lines}
 	{conflicts}
 	taking={graphHistory.taking}
+	settled={graphHistory.settledAlready ?? undefined}
 	busy={graphHistory.busy}
 	says={graphHistory.says}
 	onShow={() => void graphHistory.opened()}
 	onKeep={(message) => graphHistory.keep(message)}
 	onOlder={() => void graphHistory.readOlder()}
 	onStartLine={(name) => graphHistory.startLine(name)}
-	onWorkOn={(name) => graphHistory.workOn(name)}
+	onWorkOn={workOn}
 	onBringIn={(name) => graphHistory.bringIn(name)}
 	onSettle={(path) => {
 		settling = path;
 		settleOpen = true;
 	}}
+	onStopBringingIn={graphHistory.stopsAMerge ? () => graphHistory.abandonMerge() : undefined}
 	onOpenVersion={onShowVersion ? (id) => void showVersion(id) : undefined}
 	onCompare={compare}
+	standing={graphHistory.stands ? theStanding : undefined}
 	picture={graphHistory.draws ? theShape : undefined}
 	branches={graphHistory.draws ? theLines : undefined}
 	elsewhere={graphHistory.draws ? theOtherPlaces : undefined}
 />
+
+{#snippet theStanding()}
+	<Standing />
+{/snippet}
 
 {#snippet theShape()}
 	<CommitGraph
@@ -328,7 +353,7 @@
 		busy={graphHistory.busy}
 		unsettled={graphHistory.inTwoVersions.length > 0}
 		onStartLine={(name) => graphHistory.startLine(name)}
-		onWorkOn={(name) => graphHistory.workOn(name)}
+		onWorkOn={workOn}
 		onBringIn={(name) => graphHistory.bringIn(name)}
 		onDrop={(name) => graphHistory.dropLine(name)}
 		onStartFrom={(name, head) => graphHistory.startLineAt(name, head)}
@@ -359,11 +384,14 @@
 		signs={graphHistory.signs}
 		busy={graphHistory.busy}
 		says={graphHistory.says}
+		onStandOn={graphHistory.stands && !(graphHistory.onAVersion && graphHistory.at === opened.id)
+			? standOn
+			: undefined}
 		onRead={onShowVersion ? (id) => void showVersion(id) : undefined}
 		onCompare={onShowDifference ? (id) => void compareWithNow(id) : undefined}
 		onOpen={openVersion}
 		onStartLine={(name, id) => graphHistory.startLineAt(name, id)}
-		onWorkOn={(name) => graphHistory.workOn(name)}
+		onWorkOn={workOn}
 	/>
 {/if}
 
@@ -385,3 +413,5 @@
 		onSettleSections={settleBySection}
 	/>
 {/if}
+
+<BeforeMoving {moving} />

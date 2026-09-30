@@ -52,6 +52,7 @@ let started: string[];
 let worked: string[];
 let brought: string[];
 let settled: string[];
+let stopped: string[];
 let opened: string[];
 let compares: [StatePicked, StatePicked][];
 
@@ -90,6 +91,10 @@ function open(over: Record<string, unknown> = {}): void {
 				return true;
 			},
 			onSettle: (path: string) => settled.push(path),
+			onStopBringingIn: async () => {
+				stopped.push('stopped');
+				return true;
+			},
 			onOpenVersion: (id: string) => opened.push(id),
 			onCompare: async (before: StatePicked, after: StatePicked) => {
 				compares.push([before, after]);
@@ -160,6 +165,7 @@ beforeEach(() => {
 	worked = [];
 	brought = [];
 	settled = [];
+	stopped = [];
 	opened = [];
 	compares = [];
 	target = document.createElement('div');
@@ -333,11 +339,34 @@ describe('the history of a graph', () => {
 			taking: 'an-argument'
 		});
 
-		expect(screen()).toContain('You and an-argument both wrote in these');
+		expect(screen()).toContain('Bringing in an-argument');
+		expect(screen()).toContain('you and an-argument both wrote in it');
 		expect(control('Keep this version').disabled).toBe(true);
 
 		control('Choose').click();
 
 		expect(settled).toEqual(['notes/01ARZ3NDEKTSV4RRFFQ69G5FAV.md']);
+	});
+
+	it('finishes a line being brought in with a version already spoken for', async () => {
+		open({ conflicts: [], taking: 'an-argument' });
+
+		expect(screen()).toContain('Every note is settled');
+
+		control('Keep a version').click();
+		await settle();
+
+		expect(field('What changed').value).toBe('Brought in an-argument');
+		control('Keep it').click();
+		await settle();
+
+		expect(kept).toEqual(['Brought in an-argument']);
+	});
+
+	it('says nothing about bringing a line in where the folder is in the middle of nothing', () => {
+		open();
+
+		expect(screen()).not.toContain('Bringing in');
+		expect(screen()).not.toContain('Stop bringing it in');
 	});
 });

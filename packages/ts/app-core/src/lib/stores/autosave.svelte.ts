@@ -1,8 +1,7 @@
 /**
  * Keeping a version while somebody writes, on their own clock —
  * docs/ARCHITECTURE.md § "The vault's history". It is off until somebody asks
- * for it, it keeps on the line the folder is already on, and it never says
- * anything on screen.
+ * for it, it keeps on a line of work, and it never says anything on screen.
  */
 
 import { runtime } from '../runtime.js';
@@ -21,8 +20,7 @@ function worthATry(): boolean {
 		graphHistory.keeps &&
 		prefs.current.autosave &&
 		!graphHistory.busy &&
-		graphHistory.inTwoVersions.length === 0 &&
-		graphHistory.taking === null
+		graphHistory.merging === null
 	);
 }
 
@@ -36,6 +34,14 @@ export async function saveNow(): Promise<void> {
 	if (!worthATry()) return;
 	const history = runtime.history();
 	if (!history) return;
+	if (!(await graphHistory.unkeptNow())) return;
+	if (!(await graphHistory.lineToWriteOn())) {
+		whatHappened.put(
+			'trouble',
+			`a version was not kept while writing: ${graphHistory.says ?? 'there was no line to keep it on'}`
+		);
+		return;
+	}
 	try {
 		await history.commit(WHILE_WRITING);
 		await graphHistory.read();

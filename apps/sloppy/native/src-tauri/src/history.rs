@@ -17,8 +17,9 @@ use base64::Engine as _;
 use chrono::{DateTime, SecondsFormat};
 use git2::{
     build::CheckoutBuilder, BranchType, Config, ConfigLevel, DiffOptions, ErrorCode, Index,
-    IndexAddOption, ObjectType, Oid, Repository, RepositoryInitOptions, RepositoryOpenFlags,
-    RepositoryState, Signature, Sort, StatusOptions, TreeWalkMode, TreeWalkResult,
+    IndexAddOption, IndexConflict, ObjectType, Oid, Repository, RepositoryInitOptions,
+    RepositoryOpenFlags, RepositoryState, ResetType, Signature, Sort, StatusOptions, TreeWalkMode,
+    TreeWalkResult,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -135,6 +136,22 @@ fn uncommitted() -> HistoryError {
     HistoryError::new("Commit what you have written here first, or put it back the way it was.")
 }
 
+fn no_merge_here() -> HistoryError {
+    HistoryError::new("There is no merge here to stop.")
+}
+
+fn written_since_the_merge() -> HistoryError {
+    HistoryError::new(
+        "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again.",
+    )
+}
+
+fn nothing_to_start_from() -> HistoryError {
+    HistoryError::new(
+        "There is nothing here to branch off yet. Commit what is in this folder first.",
+    )
+}
+
 /// The project's own files are settled where the person writes them, so a
 /// refusal over one names that and not an act this app offers.
 fn their_code_uncommitted() -> HistoryError {
@@ -236,6 +253,16 @@ pub struct Status {
     pub(crate) behind: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) upstream: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) merging: Option<Merging>,
+}
+
+/// `HistoryStatus["merging"]` in `@sloppy/local`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Merging {
+    pub(crate) taking: String,
+    pub(crate) in_two_versions: Vec<String>,
 }
 
 /// `MergeResult` in `@sloppy/local`: `conflicts` is there exactly where nothing
@@ -775,7 +802,7 @@ fn view(repo: &Repository, commit: &git2::Commit<'_>, trust: &Trust) -> Commit {
 
 /// What a person is shown of the folder: the vault and nothing else, so a
 /// listing in a project's container never shows the person's own code.
-fn standing(kept: &Kept) -> Result<Status, HistoryError> {
+fn standing(kept: &Kept, taking: Option<Oid>) -> Result<Status, HistoryError> {
     let repo = kept.repo();
     let mut how = StatusOptions::new();
     how.include_untracked(true)
@@ -807,6 +834,13 @@ fn standing(kept: &Kept) -> Result<Status, HistoryError> {
         Some((ahead, behind, upstream)) => (ahead, behind, Some(upstream)),
         None => (0, 0, None),
     };
+    let merging = match taking {
+        Some(head) => Some(Merging {
+            taking: head.to_string(),
+            in_two_versions: still_in_two(kept)?,
+        }),
+        None => None,
+    };
     Ok(Status {
         changed,
         untracked,
@@ -814,7 +848,37 @@ fn standing(kept: &Kept) -> Result<Status, HistoryError> {
         ahead,
         behind,
         upstream,
+        merging,
     })
+}
+
+/// Every path the merge in progress has left in two versions, from the vault
+/// root — what {@link one_version_each} answered as the merge was made, read
+/// off the repository rather than remembered.
+fn still_in_two(kept: &Kept) -> Result<Vec<String>, HistoryError> {
+    let mut held = Vec::new();
+    for found in kept.repo().index()?.conflicts()? {
+        let Some(path) = conflicted_path(&found?) else {
+            continue;
+        };
+        if let Some(inside) = kept.in_vault(&path) {
+            held.push(inside.to_owned());
+        }
+    }
+    held.sort();
+    Ok(held)
+}
+
+/// What a conflict is about, as the repository spells it: whichever of the
+/// three sides is there, since any one of them may be the side that took the
+/// file away.
+fn conflicted_path(found: &IndexConflict) -> Option<String> {
+    found
+        .our
+        .as_ref()
+        .or(found.their.as_ref())
+        .or(found.ancestor.as_ref())
+        .and_then(|entry| String::from_utf8(entry.path.clone()).ok())
 }
 
 /// What has been written since the commit the folder is on, and so what an act
@@ -857,8 +921,33 @@ fn unsettled(kept: &Kept) -> Result<Unsettled, HistoryError> {
     Ok(found)
 }
 
+/// Whether the folder holds a file at something other than what the merge left
+/// in the index. A path still in two versions is the merge's own doing rather
+/// than somebody's writing, and a file nothing is tracking is left where it is
+/// by anything that moves the tracked ones.
+fn written_since_the_merge_began(kept: &Kept) -> Result<bool, HistoryError> {
+    let mut how = StatusOptions::new();
+    how.include_untracked(false)
+        .include_ignored(false)
+        .include_unmodified(false);
+    let held = kept.repo().statuses(Some(&mut how))?;
+    Ok(held.iter().any(|entry| {
+        let status = entry.status();
+        // The working tree alone: a merge stages its own settling in the index,
+        // so a change there is the merge's own and not something to refuse over.
+        entry.path().map_or(true, |path| !kept.kept_out(path))
+            && (status.is_wt_modified()
+                || status.is_wt_deleted()
+                || status.is_wt_typechange()
+                || status.is_wt_renamed())
+    }))
+}
+
 pub fn status(vault: &Opened) -> Result<Status, HistoryError> {
-    standing(&at(vault)?)
+    let mut kept = at(vault)?;
+    let with = merging(&mut kept.repo)?;
+    let ours = with.filter(|_| theirs_unfinished(&kept, with).is_none());
+    standing(&kept, ours)
 }
 
 /// Whether a commit carries the vault at a state none of what it springs from
@@ -1180,9 +1269,7 @@ pub fn branch(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
         return Err(already_called(name));
     }
     let Some(head) = head_commit(repo)? else {
-        return Err(HistoryError::new(
-            "There is nothing here to branch off yet. Commit what is in this folder first.",
-        ));
+        return Err(nothing_to_start_from());
     };
     let made = repo
         .branch(name, &head, false)
@@ -1237,6 +1324,18 @@ pub fn set_signing(
     signing: &SigningConfig,
 ) -> Result<(), HistoryError> {
     crate::signing::write(&at(vault)?, vault, data, signing)
+}
+
+/// What a checkout that carries unkept writing along would have written over:
+/// a file the person has written, whether the history is keeping it or not.
+fn written_over(error: git2::Error) -> HistoryError {
+    if error.code() == ErrorCode::Conflict {
+        HistoryError::new(
+            "Some of what you have written here would be written over. Keep it first, then try again.",
+        )
+    } else {
+        error.into()
+    }
 }
 
 /// What a checkout would have written over. The folder is somebody's own, so
@@ -1390,16 +1489,34 @@ fn already_the_same(kept: &Kept, onto: Oid) -> Result<Vec<Aside>, HistoryError> 
     Ok(held)
 }
 
-pub(crate) fn lay(kept: &Kept, onto: Oid) -> Result<(), HistoryError> {
-    let repo = kept.repo();
-    let tree = repo.find_object(onto, Some(ObjectType::Commit))?;
-    let same = already_the_same(kept, onto)?;
-    let held = set_aside(kept, onto)?;
+/// What laying a state over the folder may write over, and so what it refuses.
+pub(crate) enum WritesOver {
+    /// Nothing the history is not keeping.
+    NothingUnkept,
+    /// Nothing the person has written, whether the history is keeping it or not.
+    NothingWritten,
+    /// Everything here, folder and index alike — what takes a half-settled merge
+    /// away.
+    Everything,
+}
+
+/// A checkout that leaves alone whatever the history is not keeping.
+fn safely(repo: &Repository, at: &git2::Object<'_>) -> Result<(), git2::Error> {
     let mut how = CheckoutBuilder::new();
     how.safe();
-    let laid = repo
-        .checkout_tree(&tree, Some(&mut how))
-        .map_err(in_the_way);
+    repo.checkout_tree(at, Some(&mut how))
+}
+
+pub(crate) fn lay(kept: &Kept, onto: Oid, over: WritesOver) -> Result<(), HistoryError> {
+    let repo = kept.repo();
+    let at = repo.find_object(onto, Some(ObjectType::Commit))?;
+    let same = already_the_same(kept, onto)?;
+    let held = set_aside(kept, onto)?;
+    let laid = match over {
+        WritesOver::Everything => repo.reset(&at, ResetType::Hard, None).map_err(Into::into),
+        WritesOver::NothingUnkept => safely(repo, &at).map_err(in_the_way),
+        WritesOver::NothingWritten => safely(repo, &at).map_err(written_over),
+    };
     put_back(kept, held)?;
     // A checkout that wrote them is a checkout that went through; one that was
     // refused leaves the folder holding everything it held before.
@@ -1437,8 +1554,113 @@ pub fn switch_to(vault: &Opened, name: &str) -> Result<(), HistoryError> {
     if let Some(why) = unsettled(&kept)?.refusal() {
         return Err(why);
     }
-    lay(&kept, head)?;
+    lay(&kept, head, WritesOver::NothingUnkept)?;
     kept.repo().set_head(&format!("refs/heads/{name}"))?;
+    Ok(())
+}
+
+/// The folder becomes that version and is on no line afterwards —
+/// `History.standOn` in `@sloppy/local` says what `carrying` means.
+pub fn stand_on(vault: &Opened, commit: &str, carrying: bool) -> Result<(), HistoryError> {
+    let mut kept = at(vault)?;
+    let onto = kept
+        .repo()
+        .revparse_single(commit)
+        .and_then(|found| found.peel_to_commit())
+        .map_err(|_| not_here())?
+        .id();
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(&kept, with) {
+        return Err(why);
+    }
+    if with.is_some() {
+        return Err(mid_merge());
+    }
+    if !carrying {
+        if let Some(why) = unsettled(&kept)?.refusal() {
+            return Err(why);
+        }
+    }
+    lay(
+        &kept,
+        onto,
+        if carrying {
+            WritesOver::NothingWritten
+        } else {
+            WritesOver::NothingUnkept
+        },
+    )?;
+    kept.repo().set_head_detached(onto)?;
+    Ok(())
+}
+
+/// A line starting where the folder stands, with the folder moved onto it and
+/// not a file touched, so it is taken while the folder holds unkept writing.
+pub fn line_here(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
+    if of_a_draft(name) {
+        return Err(wont_work(name));
+    }
+    let mut kept = at(vault)?;
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(&kept, with) {
+        return Err(why);
+    }
+    let repo = kept.repo();
+    if repo.find_branch(name, BranchType::Local).is_ok() {
+        return Err(already_called(name));
+    }
+    let Some(head) = head_commit(repo)? else {
+        return Err(nothing_to_start_from());
+    };
+    repo.branch(name, &head, false)
+        .map_err(|_| wont_work(name))?;
+    repo.set_head(&format!("refs/heads/{name}"))?;
+    Ok(Branch::here(name, head.id(), true))
+}
+
+/// A line called something else, with the folder on it under the new name where
+/// it was on it.
+pub fn rename_line(vault: &Opened, from: &str, to: &str) -> Result<Branch, HistoryError> {
+    if of_a_draft(from) {
+        return Err(no_branch(from));
+    }
+    if of_a_draft(to) {
+        return Err(wont_work(to));
+    }
+    let kept = at(vault)?;
+    let repo = kept.repo();
+    if repo.find_branch(to, BranchType::Local).is_ok() {
+        return Err(already_called(to));
+    }
+    let mut held = repo
+        .find_branch(from, BranchType::Local)
+        .map_err(|_| no_branch(from))?;
+    held.rename(to, false).map_err(|_| wont_work(to))?;
+    let Some(head) = branch_head(repo, to) else {
+        return Err(no_branch(to));
+    };
+    Ok(Branch::here(to, head, on(repo)?.as_deref() == Some(to)))
+}
+
+/// The folder as it was before the merge began — `History.abandonMerge` in
+/// `@sloppy/local`.
+pub fn abandon_merge(vault: &Opened) -> Result<(), HistoryError> {
+    let mut kept = at(vault)?;
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(&kept, with) {
+        return Err(why);
+    }
+    if !with.is_some_and(|head| ours_to_finish(&kept, head)) {
+        return Err(no_merge_here());
+    }
+    if written_since_the_merge_began(&kept)? {
+        return Err(written_since_the_merge());
+    }
+    let Some(mine) = head_commit(kept.repo())?.map(|held| held.id()) else {
+        return Err(no_merge_here());
+    };
+    lay(&kept, mine, WritesOver::Everything)?;
+    finished_the_merge(&kept)?;
     Ok(())
 }
 
@@ -1449,13 +1671,9 @@ fn one_version_each(kept: &Kept, index: &Index) -> Result<Vec<String>, HistoryEr
     let mut held = Vec::new();
     for found in index.conflicts()? {
         let found = found?;
-        let spelled = found
-            .our
-            .as_ref()
-            .or(found.their.as_ref())
-            .or(found.ancestor.as_ref())
-            .and_then(|entry| String::from_utf8(entry.path.clone()).ok());
-        let Some(path) = spelled else { continue };
+        let Some(path) = conflicted_path(&found) else {
+            continue;
+        };
         let file = kept.file(&path);
         match &found.our {
             Some(ours) => {
@@ -1530,7 +1748,7 @@ pub(crate) fn merge_commit(
         return Ok(Merged::whole());
     }
     if reading.is_fast_forward() {
-        lay(kept, theirs.id())?;
+        lay(kept, theirs.id(), WritesOver::NothingUnkept)?;
         repo.reference(
             &format!("refs/heads/{branch}"),
             theirs.id(),
@@ -1878,6 +2096,43 @@ pub fn history_switch(
     name: String,
 ) -> Result<(), HistoryError> {
     switch_to(&opened(&folders, &root)?, &name)
+}
+
+#[tauri::command]
+pub fn history_stand_on(
+    folders: State<'_, Folders>,
+    root: String,
+    commit: String,
+    carrying: bool,
+) -> Result<(), HistoryError> {
+    stand_on(&opened(&folders, &root)?, &commit, carrying)
+}
+
+#[tauri::command]
+pub fn history_line_here(
+    folders: State<'_, Folders>,
+    root: String,
+    name: String,
+) -> Result<Branch, HistoryError> {
+    line_here(&opened(&folders, &root)?, &name)
+}
+
+#[tauri::command]
+pub fn history_rename_line(
+    folders: State<'_, Folders>,
+    root: String,
+    from: String,
+    to: String,
+) -> Result<Branch, HistoryError> {
+    rename_line(&opened(&folders, &root)?, &from, &to)
+}
+
+#[tauri::command]
+pub fn history_abandon_merge(
+    folders: State<'_, Folders>,
+    root: String,
+) -> Result<(), HistoryError> {
+    abandon_merge(&opened(&folders, &root)?)
 }
 
 #[tauri::command]
@@ -2455,6 +2710,374 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn standing_on_a_version_writes_the_folder_as_it_was() {
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        let first = made(&root, "A note");
+        write(&root, "notes/a.md", "is");
+        write(&root, "notes/b.md", "later");
+        made(&root, "Another note");
+
+        stand_on(&root, &first.id, false).expect("the stand");
+
+        assert_eq!(read(&root, "notes/a.md"), "was");
+        assert!(!root.join("notes/b.md").exists());
+        assert_eq!(head(&root).expect("the version"), Some(first.id.clone()));
+
+        let standing = status(&root).expect("the status");
+        assert!(standing.branch.is_none());
+        assert_eq!((standing.ahead, standing.behind), (0, 0));
+        assert!(standing.upstream.is_none());
+        assert!(standing.merging.is_none());
+        assert!(standing.changed.is_empty() && standing.untracked.is_empty());
+        assert!(branches(&root)
+            .expect("the lines")
+            .iter()
+            .all(|one| !one.current));
+
+        assert_eq!(
+            stand_on(&root, "0000000000000000000000000000000000000000", false)
+                .unwrap_err()
+                .said(),
+            "That is not one of the states this graph has been in."
+        );
+    }
+
+    #[test]
+    fn a_refused_stand_leaves_every_file_where_it_was() {
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        let first = made(&root, "A note");
+        write(&root, "notes/a.md", "is");
+        made(&root, "Another note");
+        write(&root, "notes/a.md", "and now this");
+
+        assert_eq!(
+            stand_on(&root, &first.id, false).unwrap_err().said(),
+            "Commit what you have written here first, or put it back the way it was."
+        );
+        assert_eq!(read(&root, "notes/a.md"), "and now this");
+        assert_eq!(
+            status(&root).expect("the status").branch.as_deref(),
+            Some(DEFAULT_BRANCH)
+        );
+
+        // Carrying it along is refused only by what that version has otherwise,
+        // and leaves the folder alone just the same.
+        assert_eq!(
+            stand_on(&root, &first.id, true).unwrap_err().said(),
+            "Some of what you have written here would be written over. Keep it first, then try again."
+        );
+        assert_eq!(read(&root, "notes/a.md"), "and now this");
+        assert_eq!(
+            status(&root).expect("the status").branch.as_deref(),
+            Some(DEFAULT_BRANCH)
+        );
+    }
+
+    #[test]
+    fn a_stand_carrying_unkept_writing_takes_it_along() {
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        let first = made(&root, "A note");
+        write(&root, "notes/b.md", "later");
+        made(&root, "Another note");
+
+        write(&root, "notes/a.md", "written and not kept");
+        write(&root, "notes/c.md", "nothing is keeping this");
+
+        stand_on(&root, &first.id, true).expect("the stand");
+
+        assert_eq!(read(&root, "notes/a.md"), "written and not kept");
+        assert_eq!(read(&root, "notes/c.md"), "nothing is keeping this");
+        assert!(!root.join("notes/b.md").exists());
+        assert!(status(&root).expect("the status").branch.is_none());
+    }
+
+    /// `.sloppy/bin.json` carries every address this graph has spent, so a
+    /// version that carries an older one never lands on it — docs/ARCHITECTURE.md
+    /// § "The vault's history".
+    #[test]
+    fn standing_on_a_version_leaves_what_is_kept_out_of_the_history_alone() {
+        let root = scratch("stand-aside");
+        Repository::init(&root).expect("their repository");
+        write(&root, GRAPH_FILE, "{}");
+        beside_the_graph(&root);
+        write(&root, "notes/a.md", "was");
+        theirs(&root, "Everything I had");
+        let first = head(&root).expect("the version").expect("a version");
+
+        write(&root, "notes/a.md", "is");
+        made(&root, "A note");
+        write(&root, ".sloppy/bin.json", r#"{"spent":["1a","1b"]}"#);
+        write(&root, ".sloppy/bin/note.md", "still in the bin");
+        write(&root, "identity.key", "the seed this device holds");
+
+        stand_on(&root, &first, false).expect("the stand");
+
+        assert_eq!(read(&root, "notes/a.md"), "was");
+        assert_eq!(read(&root, ".sloppy/bin.json"), r#"{"spent":["1a","1b"]}"#);
+        assert_eq!(read(&root, ".sloppy/bin/note.md"), "still in the bin");
+        assert_eq!(read(&root, "identity.key"), "the seed this device holds");
+    }
+
+    /// A line opens where the folder stands without a file moving, which is what
+    /// lets it open on the first write rather than at the stand.
+    #[test]
+    fn a_line_opened_where_the_folder_stands_touches_no_file() {
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        let first = made(&root, "A note");
+        write(&root, "notes/a.md", "is");
+        let second = made(&root, "Another note");
+
+        stand_on(&root, &first.id, false).expect("the stand");
+        write(&root, "notes/a.md", "written while standing here");
+
+        let line = line_here(&root, "from-9f3c1a2b").expect("the line");
+        assert_eq!(line.name, "from-9f3c1a2b");
+        assert_eq!(line.head, first.id);
+        assert!(line.current);
+
+        assert_eq!(read(&root, "notes/a.md"), "written while standing here");
+        let standing = status(&root).expect("the status");
+        assert_eq!(standing.branch.as_deref(), Some("from-9f3c1a2b"));
+        assert_eq!(standing.changed, vec!["notes/a.md"]);
+
+        assert_eq!(
+            line_here(&root, "from-9f3c1a2b").unwrap_err().said(),
+            "There is already one called from-9f3c1a2b."
+        );
+
+        // And what is written there is kept on the new line, leaving the one it
+        // sprang from where it was.
+        let here = made(&root, "Written here");
+        assert_eq!(here.parents, vec![first.id]);
+        let lines = branches(&root).expect("the lines");
+        let opened = lines
+            .iter()
+            .find(|one| one.name == "from-9f3c1a2b")
+            .expect("the line opened here");
+        assert_eq!(opened.head, here.id);
+        assert!(opened.current);
+        let from = lines
+            .iter()
+            .find(|one| one.name == DEFAULT_BRANCH)
+            .expect("the line it sprang from");
+        assert_eq!(from.head, second.id);
+        assert!(!from.current);
+    }
+
+    #[test]
+    fn a_line_renamed_takes_the_folder_with_it() {
+        let root = vault();
+        made(&root, "A graph");
+        branch(&root, "later").expect("the line");
+
+        let renamed = rename_line(&root, DEFAULT_BRANCH, "trunk").expect("the rename");
+        assert_eq!(renamed.name, "trunk");
+        assert!(renamed.current);
+        assert_eq!(
+            status(&root).expect("the status").branch.as_deref(),
+            Some("trunk")
+        );
+
+        assert_eq!(
+            rename_line(&root, "later", "trunk").unwrap_err().said(),
+            "There is already one called trunk."
+        );
+        assert_eq!(
+            rename_line(&root, "nowhere", "elsewhere")
+                .unwrap_err()
+                .said(),
+            "There is nothing here called nowhere."
+        );
+        assert_eq!(
+            rename_line(&root, "trunk", "a..b").unwrap_err().said(),
+            "a..b will not work as a name. Try another."
+        );
+        assert_eq!(
+            status(&root).expect("the status").branch.as_deref(),
+            Some("trunk")
+        );
+
+        // One the folder is not on is renamed where it is, and the folder stays
+        // where it is.
+        let moved = rename_line(&root, "later", "sooner").expect("the rename");
+        assert!(!moved.current);
+        assert_eq!(
+            status(&root).expect("the status").branch.as_deref(),
+            Some("trunk")
+        );
+    }
+
+    #[test]
+    fn stopping_a_merge_leaves_the_folder_as_it_was_before_it() {
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        write(&root, "notes/elsewhere.md", "as it stood");
+        let first = made(&root, "A note");
+        branch(&root, "later").expect("the line");
+
+        write(&root, "notes/a.md", "mine");
+        let mine = made(&root, "My way");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        write(&root, "notes/b.md", "only on their line");
+        made(&root, "Their way");
+        switch_to(&root, DEFAULT_BRANCH).expect("back");
+
+        assert_eq!(
+            abandon_merge(&root).unwrap_err().said(),
+            "There is no merge here to stop."
+        );
+
+        merge_in(&root, &private_for(&root), "later").expect("the merge");
+        settle(&root, "notes/a.md", ConflictSide::Theirs).expect("the choice");
+        assert_eq!(read(&root, "notes/b.md"), "only on their line");
+        assert_eq!(
+            stand_on(&root, &first.id, false).unwrap_err().said(),
+            "Finish the merge you are in the middle of first."
+        );
+
+        // Putting the folder back writes over what the merge left, so writing
+        // done since is what the stop would take with it.
+        write(
+            &root,
+            "notes/elsewhere.md",
+            "and then I thought better of it",
+        );
+        assert_eq!(
+            abandon_merge(&root).unwrap_err().said(),
+            "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again."
+        );
+        assert_eq!(
+            read(&root, "notes/elsewhere.md"),
+            "and then I thought better of it"
+        );
+
+        write(&root, "notes/elsewhere.md", "as it stood");
+        abandon_merge(&root).expect("the stop");
+
+        assert_eq!(read(&root, "notes/a.md"), "mine");
+        assert_eq!(read(&root, "notes/elsewhere.md"), "as it stood");
+        assert!(!root.join("notes/b.md").exists());
+        let standing = status(&root).expect("the status");
+        assert!(standing.merging.is_none());
+        assert_eq!(standing.branch.as_deref(), Some(DEFAULT_BRANCH));
+        assert!(standing.changed.is_empty() && standing.untracked.is_empty());
+        assert_eq!(head(&root).expect("the version"), Some(mine.id));
+
+        // And the folder is somewhere a person writes again.
+        write(&root, "notes/c.md", "after");
+        made(&root, "After all that");
+    }
+
+    /// Going back to before a merge is the one act that writes over whatever is
+    /// here, so what a bare reset would hand back is an older bin.
+    #[test]
+    fn stopping_a_merge_leaves_what_is_kept_out_of_the_history_alone() {
+        let root = scratch("stop-aside");
+        Repository::init(&root).expect("their repository");
+        write(&root, GRAPH_FILE, "{}");
+        beside_the_graph(&root);
+        write(&root, "notes/a.md", "was");
+        theirs(&root, "Everything I had");
+        let theirs_line = status(&root)
+            .expect("the status")
+            .branch
+            .expect("the line their repository is on");
+
+        branch(&root, "later").expect("the line");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        theirs(&root, "Their way");
+        switch_to(&root, &theirs_line).expect("back");
+        write(&root, "notes/a.md", "mine");
+        theirs(&root, "My way");
+
+        merge_in(&root, &private_for(&root), "later").expect("the merge");
+        write(&root, ".sloppy/bin.json", r#"{"spent":["1a","1b"]}"#);
+        write(&root, "identity.key", "the seed this device holds");
+
+        abandon_merge(&root).expect("the stop");
+
+        assert_eq!(read(&root, "notes/a.md"), "mine");
+        assert_eq!(read(&root, ".sloppy/bin.json"), r#"{"spent":["1a","1b"]}"#);
+        assert_eq!(read(&root, "identity.key"), "the seed this device holds");
+    }
+
+    /// Going back to before a merge writes over everything the history is
+    /// keeping, so a note written while the merge waited would go with it.
+    #[test]
+    fn stopping_a_merge_is_refused_over_writing_done_since_it_began() {
+        const REFUSED: &str = "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again.";
+
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        write(&root, "notes/z.md", "somewhere else");
+        made(&root, "Two notes");
+        branch(&root, "later").expect("the line");
+
+        write(&root, "notes/a.md", "mine");
+        let mine = made(&root, "My way");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        made(&root, "Their way");
+        switch_to(&root, DEFAULT_BRANCH).expect("back");
+
+        merge_in(&root, &private_for(&root), "later").expect("the merge");
+        write(&root, "notes/z.md", "written while the merge waited");
+
+        assert_eq!(abandon_merge(&root).unwrap_err().said(), REFUSED);
+        assert_eq!(read(&root, "notes/z.md"), "written while the merge waited");
+        assert!(status(&root).expect("the status").merging.is_some());
+
+        // A note taken away since the merge began is the same writing.
+        fs::remove_file(root.join("notes/z.md")).expect("the note taken away");
+        assert_eq!(abandon_merge(&root).unwrap_err().said(), REFUSED);
+
+        // A note still in two versions is the merge's own doing and stops
+        // nothing, and neither does one settled since.
+        write(&root, "notes/z.md", "somewhere else");
+        settle(&root, "notes/a.md", ConflictSide::Theirs).expect("the choice");
+        abandon_merge(&root).expect("the stop");
+
+        assert_eq!(read(&root, "notes/a.md"), "mine");
+        assert_eq!(read(&root, "notes/z.md"), "somewhere else");
+        assert_eq!(head(&root).expect("the version"), Some(mine.id));
+    }
+
+    /// A note nothing is keeping yet is not written over by going back — the
+    /// folder's own files are left where they are — so it is no reason to
+    /// refuse.
+    #[test]
+    fn stopping_a_merge_leaves_a_note_nothing_is_keeping_yet_where_it_is() {
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        made(&root, "A note");
+        branch(&root, "later").expect("the line");
+
+        write(&root, "notes/a.md", "mine");
+        made(&root, "My way");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        made(&root, "Their way");
+        switch_to(&root, DEFAULT_BRANCH).expect("back");
+
+        merge_in(&root, &private_for(&root), "later").expect("the merge");
+        write(&root, "notes/new.md", "started while the merge waited");
+
+        abandon_merge(&root).expect("the stop");
+
+        assert_eq!(read(&root, "notes/a.md"), "mine");
+        assert_eq!(
+            read(&root, "notes/new.md"),
+            "started while the merge waited"
+        );
+    }
+
+    #[test]
     fn a_commit_is_by_whoever_the_graph_says_owns_it() {
         let root = vault();
         let first = made(&root, "A graph");
@@ -2728,6 +3351,42 @@ pub(crate) mod tests {
         assert!(commit(&root, &private_for(&root), "Again")
             .expect("nothing left")
             .is_none());
+    }
+
+    #[test]
+    fn the_merge_in_the_middle_is_read_off_the_folder() {
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        made(&root, "A note");
+        branch(&root, "later").expect("the branch");
+
+        write(&root, "notes/a.md", "mine");
+        made(&root, "My way");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        let theirs = made(&root, "Their way");
+        switch_to(&root, "main").expect("back");
+
+        assert!(status(&root).expect("the status").merging.is_none());
+        merge_in(&root, &private_for(&root), "later").expect("the merge");
+
+        let held = status(&root)
+            .expect("the status")
+            .merging
+            .expect("mid-merge");
+        assert_eq!(held.taking, theirs.id);
+        assert_eq!(held.in_two_versions, vec!["notes/a.md".to_owned()]);
+
+        settle(&root, "notes/a.md", ConflictSide::Theirs).expect("the choice");
+        let held = status(&root)
+            .expect("the status")
+            .merging
+            .expect("mid-merge");
+        assert_eq!(held.taking, theirs.id);
+        assert!(held.in_two_versions.is_empty());
+
+        made(&root, "Merge later");
+        assert!(status(&root).expect("the status").merging.is_none());
     }
 
     #[test]
@@ -3044,6 +3703,48 @@ pub(crate) mod tests {
             serde_json::json!({ "root": spelled, "name": "mine" })
         )
         .is_ok());
+
+        assert_eq!(
+            ask(
+                "history_rename_line",
+                serde_json::json!({ "root": spelled, "from": "later", "to": "sooner" })
+            )
+            .expect("the rename")
+            .deserialize::<serde_json::Value>()
+            .expect("what the page is handed"),
+            serde_json::json!({ "name": "sooner", "head": first, "current": true })
+        );
+        assert!(ask(
+            "history_stand_on",
+            serde_json::json!({ "root": spelled, "commit": "HEAD", "carrying": false })
+        )
+        .is_ok());
+        assert!(
+            ask("history_status", serde_json::json!({ "root": spelled }))
+                .expect("the status")
+                .deserialize::<serde_json::Value>()
+                .expect("what the page is handed")
+                .get("branch")
+                .is_none()
+        );
+        assert_eq!(
+            ask(
+                "history_line_here",
+                serde_json::json!({ "root": spelled, "name": "from-now" })
+            )
+            .expect("the line")
+            .deserialize::<serde_json::Value>()
+            .expect("what the page is handed"),
+            serde_json::json!({ "name": "from-now", "head": first, "current": true })
+        );
+        assert_eq!(
+            ask(
+                "history_abandon_merge",
+                serde_json::json!({ "root": spelled })
+            )
+            .unwrap_err(),
+            serde_json::json!("There is no merge here to stop.")
+        );
 
         // A folder nobody opened has no history here, whatever the page asks of
         // it.
@@ -3434,7 +4135,7 @@ pub(crate) mod tests {
         let (root, held) = project("mid-rebase");
         their_commit(&root, &["src/a.ts"], "The code");
         write(&held, "notes/a.md", "one");
-        made(&held, "A note");
+        let note = made(&held, "A note");
         branch(&held, "later").expect("a branch");
         let rebase = their_rebase(&root);
 
@@ -3447,6 +4148,14 @@ pub(crate) mod tests {
         );
         assert_eq!(
             switch_to(&held, "later").unwrap_err().said(),
+            "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
+        );
+        assert_eq!(
+            stand_on(&held, &note.id, false).unwrap_err().said(),
+            "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
+        );
+        assert_eq!(
+            line_here(&held, "from-then").unwrap_err().said(),
             "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
         );
 
@@ -3477,6 +4186,8 @@ pub(crate) mod tests {
         their_git(&root, &["merge", "--no-commit", "--no-ff", "theirs"]);
         assert!(root.join(".git").join("MERGE_HEAD").exists());
 
+        assert!(status(&held).expect("the status").merging.is_none());
+
         write(&held, "notes/b.md", "two");
         assert_eq!(
             commit(&held, &private_for(&held), "Another note")
@@ -3484,7 +4195,47 @@ pub(crate) mod tests {
                 .said(),
             "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
         );
+        // Nor one this app stops: what the person began is theirs to finish.
+        assert_eq!(
+            abandon_merge(&held).unwrap_err().said(),
+            "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
+        );
         assert!(root.join(".git").join("MERGE_HEAD").exists());
+        assert_eq!(read(&root, "src/c.ts"), "theirs");
+    }
+
+    /// A container's repository is the project's, so going back to before a
+    /// merge reaches the code as readily as the notes, and the code written
+    /// while the merge waited is the person's.
+    #[test]
+    fn stopping_a_merge_in_a_project_is_refused_over_code_written_since() {
+        let (root, held) = project("stop-over-code");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "was");
+        made(&held, "A note");
+        branch(&held, "later").expect("the line");
+
+        write(&held, "notes/a.md", "mine");
+        made(&held, "My way");
+        switch_to(&held, "later").expect("the switch");
+        write(&held, "notes/a.md", "theirs");
+        made(&held, "Their way");
+        switch_to(&held, DEFAULT_BRANCH).expect("back");
+
+        merge_in(&held, &private_for(&held), "later").expect("the merge");
+        write(&root, "src/a.ts", "what they are writing now");
+
+        assert_eq!(
+            abandon_merge(&held).unwrap_err().said(),
+            "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again."
+        );
+        assert_eq!(read(&root, "src/a.ts"), "what they are writing now");
+        assert!(status(&held).expect("the status").merging.is_some());
+
+        write(&root, "src/a.ts", "one");
+        abandon_merge(&held).expect("the stop");
+        assert_eq!(read(&held, "notes/a.md"), "mine");
+        assert!(status(&held).expect("the status").merging.is_none());
     }
 
     #[test]

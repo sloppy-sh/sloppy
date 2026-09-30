@@ -1277,6 +1277,7 @@
 		linking = true;
 		pointRefused = null;
 		try {
+			await graphHistory.lineToWriteOn();
 			if (!note.links.includes(target)) {
 				await nodes.update(from, { links: [...note.links, target] });
 			}
@@ -1373,6 +1374,7 @@
 
 	async function runAct(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
 		forgetLastAct();
+		await graphHistory.lineToWriteOn();
 		// Read before the act, since a delete takes the notes out of the cache
 		// this reads their graph from.
 		const acrossGraphs = graphsOf(asked);
@@ -1591,31 +1593,33 @@
 	/** A branch of its own, in the graph the reader is in — against
 	 *  {@link writeUnder}, which continues the note it is given. */
 	function writeBranch(shape: NoteTemplate | null): void {
-		startWriting({ from: { relation: 'branch', graph: graphs.current } }, null, shape);
+		void startWriting({ from: { relation: 'branch', graph: graphs.current } }, null, shape);
 	}
 
 	/** A note that springs from nothing and carries no address until the reader
 	 *  writes one on it. */
 	function writeAlone(): void {
-		startWriting({ from: { relation: 'free', graph: graphs.current } }, null, null);
+		void startWriting({ from: { relation: 'free', graph: graphs.current } }, null, null);
 	}
 
 	/** The note that springs from one already on the canvas, without opening it
 	 *  first. */
 	function writeUnder(on: OwnedRef): void {
-		startWriting({ from: { relation: 'under', note: on } }, on, null);
+		void startWriting({ from: { relation: 'under', note: on } }, on, null);
 	}
 
 	/** The surface opens on the asking, not on the answer: what is typed into it
 	 *  before the address lands goes to the note the moment there is one. It opens
 	 *  in the tab the note will land in, so the strip says where the reader is. */
-	function startWriting(
+	async function startWriting(
 		asked: CreateNodeRequest,
 		from: OwnedRef | null,
 		shape: NoteTemplate | null
-	): void {
+	): Promise<void> {
 		if (creating) return;
 		refused = null;
+		await graphHistory.lineToWriteOn();
+		if (creating) return;
 		if (from !== null && from !== open && openNotes.includes(from)) activate(from);
 		writingAt = behind.length;
 		writing = {
@@ -1661,7 +1665,7 @@
 		keys: WRITE_UNDER.keys,
 		typed: (event: KeyboardEvent) => acceleratorFor(event) === 'under',
 		write: (on: OwnedRef) => writeUnder(on),
-		beside: (on: OwnedRef) => startWriting({ from: { relation: 'after', note: on } }, on, null)
+		beside: (on: OwnedRef) => void startWriting({ from: { relation: 'after', note: on } }, on, null)
 	};
 
 	/**
@@ -1718,6 +1722,7 @@
 		citing = true;
 		citeRefused = null;
 		try {
+			await graphHistory.lineToWriteOn();
 			const written = await nodes.create({
 				from: { relation: 'branch', graph: graphs.current }
 			});
@@ -1806,6 +1811,12 @@
 		} catch (error) {
 			throw refusal(error, otherwise);
 		}
+	}
+
+	/** The same, for an act that writes into this folder's graph. */
+	async function writeInTheirWords(act: () => Promise<unknown>, otherwise: string): Promise<void> {
+		await graphHistory.lineToWriteOn();
+		await inTheirWords(act, otherwise);
 	}
 
 	// Whoever the sheet was raised about is who it was raised about that once:
@@ -2054,6 +2065,7 @@
 		arriving = { ...arriving, busy: true, refused: null };
 		const held = arriving;
 		try {
+			await graphHistory.lineToWriteOn();
 			const brought = await graphs.importArchive(held.file, settle);
 			if (arriving === held) arriving = null;
 			closeUndrawn();
@@ -2177,6 +2189,7 @@
 		numberingWrite = true;
 		numberRefused = null;
 		try {
+			await graphHistory.lineToWriteOn();
 			const written = await nodes.create({
 				from: { relation: 'root', address: picked.data, graph: graphs.current }
 			});
@@ -2709,6 +2722,7 @@
 									<HistoryColumn
 										onOpenAll={() => (showingHistory = true)}
 										onReadVersion={(commit) => void readTheVersion(commit)}
+										onMoved={backToNow}
 									/>
 								</div>
 							{/if}
@@ -3071,6 +3085,7 @@
 
 <HistorySurface
 	bind:open={showingHistory}
+	onMoved={backToNow}
 	onShowVersion={(version) => {
 		stopActing();
 		comparing = null;
@@ -3120,7 +3135,7 @@
 		void graphs.readFolders(true);
 	}}
 	onRestore={(ref) =>
-		inTheirWords(async () => {
+		writeInTheirWords(async () => {
 			const back = await deleted.restore(ref);
 			const graph = graphOf(back);
 			await Promise.all([nodes.reload({ graph }), nodes.reload({ origin: back.origin })]);
@@ -3136,7 +3151,7 @@
 		closeUndrawn();
 	}}
 	onOpen={graphs.startsGraphs
-		? (title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')
+		? (title) => writeInTheirWords(() => graphs.open({ title }), 'That graph could not be started.')
 		: undefined}
 	onOpenFolder={graphs.keepsFolders
 		? (folder) =>
@@ -3174,14 +3189,14 @@
 				inTheirWords(() => graphs.forgetFolder(folder), 'That folder could not be forgotten.')
 		: undefined}
 	onRename={(ref, title) =>
-		inTheirWords(() => graphs.rename(ref, { title }), 'That name could not be saved.')}
+		writeInTheirWords(() => graphs.rename(ref, { title }), 'That name could not be saved.')}
 	onOwnership={(ref, ownership) =>
-		inTheirWords(
+		writeInTheirWords(
 			() => graphs.setOwnership(ref, ownership),
 			'That could not be saved. Try again in a moment.'
 		)}
 	onRemove={(ref) =>
-		inTheirWords(async () => {
+		writeInTheirWords(async () => {
 			await graphs.close(ref);
 			closeUndrawn();
 			void deleted.reload().catch(() => {});
@@ -3399,7 +3414,11 @@
 			onSeeded={() => (seed = null)}
 			onTyped={() => (typed = null)}
 			onWrite={(want) =>
-				startWriting({ from: { relation: want.relation, note: want.from } }, want.from, want.shape)}
+				void startWriting(
+					{ from: { relation: want.relation, note: want.from } },
+					want.from,
+					want.shape
+				)}
 			onOpen={show}
 			onOpenAlso={showAlso}
 			onLinkOnGraph={() => pointFrom(open)}

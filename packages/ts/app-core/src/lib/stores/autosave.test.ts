@@ -1,4 +1,4 @@
-import type { History } from '@sloppy/local';
+import { HistoryError, type History } from '@sloppy/local';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
@@ -7,12 +7,19 @@ import { graphHistory } from './history.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { whatHappened } from './what-happened.svelte.js';
 
-/** A history that answers, and remembers what it was asked to keep. */
+/** A history that answers, and remembers what it was asked to keep. Somebody
+ *  has written into the folder, which is the case the clock is for. */
 function aHistory(over: Partial<History> = {}): History & { kept: string[] } {
 	const kept: string[] = [];
 	const held = {
 		kept,
-		status: async () => ({ changed: [], untracked: [], ahead: 0, behind: 0 }),
+		status: async () => ({
+			branch: 'main',
+			changed: ['notes/one.md'],
+			untracked: [],
+			ahead: 0,
+			behind: 0
+		}),
 		log: async () => ({ versions: [] }),
 		commit: async (message: string) => {
 			kept.push(message);
@@ -109,6 +116,87 @@ describe('keeping a version while somebody writes', () => {
 
 		expect(graphHistory.says ?? '').not.toContain('in the middle of something');
 		expect(whatHappened.asText()).toContain('a version was not kept while writing');
+		whatHappened.record(false);
+	});
+
+	it('keeps nothing while the folder is part-way through a merge', async () => {
+		history = aHistory({
+			status: async () => ({
+				branch: 'main',
+				changed: ['notes/one.md'],
+				untracked: [],
+				ahead: 0,
+				behind: 0,
+				merging: { taking: 'another-version', inTwoVersions: [] }
+			})
+		});
+		running();
+		await graphHistory.read();
+
+		await saveNow();
+
+		expect(history.kept).toEqual([]);
+	});
+
+	// A version kept where the folder is on no line is reachable from nothing,
+	// so a folder that cannot be given one is left alone.
+	it('keeps nothing where the folder stands on a version and no line can open', async () => {
+		history = aHistory({
+			status: async () => ({ changed: ['notes/one.md'], untracked: [], ahead: 0, behind: 0 }),
+			standOn: async () => {},
+			lineHere: async () => {
+				throw new HistoryError('Finish what you started here first, then try again.');
+			}
+		});
+		running();
+		await graphHistory.read();
+		whatHappened.record(true);
+
+		await saveNow();
+
+		expect(history.kept).toEqual([]);
+		expect(whatHappened.asText()).toContain('a version was not kept while writing');
+		whatHappened.record(false);
+	});
+
+	// A folder this app cannot put on a version is on no line because the person
+	// put it there, in their own repository, and keeping what they wrote is what
+	// the clock is for — AI.md § "A container's repository is the person's".
+	it('keeps what was written where this platform opens no lines at all', async () => {
+		history = aHistory({
+			status: async () => ({ changed: ['notes/one.md'], untracked: [], ahead: 0, behind: 0 })
+		});
+		running();
+		await graphHistory.read();
+
+		await saveNow();
+
+		expect(history.kept).toEqual([WHILE_WRITING]);
+	});
+
+	// Standing on a version to read it leaves nothing behind — DESIGN.md § "The
+	// history as a picture". A line is opened by writing, never by a clock.
+	it('opens no line where the folder stands on a version and nobody wrote', async () => {
+		const lines: string[] = [];
+		history = aHistory({
+			status: async () => ({ changed: [], untracked: [], ahead: 0, behind: 0 }),
+			standOn: async () => {},
+			lineHere: async (name: string) => {
+				lines.push(name);
+				return { name, head: 'a-commit-id', current: true };
+			}
+		});
+		running();
+		await graphHistory.read();
+		whatHappened.record(true);
+		const before = whatHappened.kept.length;
+
+		await saveNow();
+
+		expect(lines).toEqual([]);
+		expect(history.kept).toEqual([]);
+		expect(graphHistory.openedLine).toBeNull();
+		expect(whatHappened.kept.length).toBe(before);
 		whatHappened.record(false);
 	});
 

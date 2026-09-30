@@ -16,6 +16,7 @@ import type {
 	Credential,
 	GraphCommit,
 	History,
+	HistoryStatus,
 	MergeResult,
 	Remote
 } from '@sloppy/local';
@@ -30,6 +31,13 @@ import { tags } from './tags.svelte.js';
 
 /** How many versions a page of the log holds. */
 const PAGE = 30;
+
+/** How much of a version's name is the one a person reads and cites. */
+const SHORT_NAME = 8;
+
+/** A merge the folder is part-way through, as the folder itself says it — so it
+ *  is still here after the app has been closed and opened again. */
+export type MergeUnderway = NonNullable<HistoryStatus['merging']>;
 
 /** A state to read or compare: a version kept, or the folder as it stands where
  *  there is no commit. */
@@ -120,7 +128,6 @@ class HistoryStore {
 	#ahead = $state(0);
 	#changed = $state<DifferenceBetween | null>(null);
 	#dirty = $state(false);
-	#conflicts = $state<string[]>([]);
 	#picture = $state<GraphCommit[]>([]);
 	#drawnCursor = $state<string | undefined>(undefined);
 	#remotes = $state<Remote[]>([]);
@@ -129,8 +136,12 @@ class HistoryStore {
 	#upstream = $state<string | undefined>(undefined);
 	#elsewhere = $state<ElsewhereSaid | null>(null);
 	#signs = $state(false);
-	/** The line a merge was taking in, while any of it is still unsettled. */
-	#taking = $state<{ name: string; head: string } | null>(null);
+	#merging = $state<MergeUnderway | null>(null);
+	/** Whether the folder's standing has been read at all this session. */
+	#readOnce = $state(false);
+	/** The line somebody's writing opened where they stood on a version. */
+	#openedLine = $state<string | null>(null);
+	#settled = $state<number | null>(null);
 	/** Notes the history has already been asked to settle, while their sections
 	 *  are still being written. */
 	#taken = new Set<string>();
@@ -152,6 +163,19 @@ class HistoryStore {
 	 */
 	get draws(): boolean {
 		return runtime.history()?.graph !== undefined;
+	}
+
+	/** Whether this platform can put the folder on a version rather than on a
+	 *  line of work. False offers none of it. */
+	get stands(): boolean {
+		return runtime.history()?.standOn !== undefined;
+	}
+
+	/** Whether this platform can put the folder back the way it was before a
+	 *  merge began. False is a shell whose history cannot, and stopping one is
+	 *  not offered. */
+	get stopsAMerge(): boolean {
+		return runtime.history()?.abandonMerge !== undefined;
 	}
 
 	/** Why the last act did not happen, in the words it gave. */
@@ -302,20 +326,58 @@ class HistoryStore {
 		return this.#changed;
 	}
 
-	/** Whether there is anything at all to keep — the history answers this, and
-	 *  {@link changed} names notes and no more. */
+	/** Whether there is anything at all to keep, as the surface last read it —
+	 *  the history answers this, and {@link changed} names notes and no more.
+	 *  {@link HistoryStore.unkeptNow} asks the folder again. */
 	get unkept(): boolean {
 		return this.#dirty;
 	}
 
-	/** The notes a merge left in two versions, as the history names them. */
-	get inTwoVersions(): readonly string[] {
-		return this.#conflicts;
+	/** The merge the folder is part-way through, or `null` where it is in the
+	 *  middle of nothing. */
+	get merging(): MergeUnderway | null {
+		return this.#merging;
 	}
 
-	/** The line a merge is in the middle of taking in. */
+	/** The notes a merge left in two versions, as the history names them. */
+	get inTwoVersions(): readonly string[] {
+		return this.#merging?.inTwoVersions ?? [];
+	}
+
+	/** How many notes the merge the folder is part-way through settled by
+	 *  itself. `null` is a folder in the middle of nothing, and one whose two
+	 *  versions could not be read. */
+	get settledAlready(): number | null {
+		return this.#settled;
+	}
+
+	/** What a merge is taking in, as a person reads it: the line standing at that
+	 *  version, else its short name. `null` is a folder in the middle of
+	 *  nothing. */
 	get taking(): string | null {
-		return this.#taking?.name ?? null;
+		const merging = this.#merging;
+		if (!merging) return null;
+		const at = this.#branches.filter((one) => one.head === merging.taking);
+		const line = at.find((one) => one.remote === undefined) ?? at[0];
+		return line?.name ?? merging.taking.slice(0, SHORT_NAME);
+	}
+
+	/** Whether the folder stands on a version rather than on a line of work.
+	 *  Writing while it does is what opens one ({@link HistoryStore.lineHere}). */
+	get onAVersion(): boolean {
+		return this.#at !== undefined && this.#line === undefined;
+	}
+
+	/** The name a person reads and cites for the version the folder stands on;
+	 *  `undefined` where it is on a line of work. */
+	get standingOn(): string | undefined {
+		return this.onAVersion ? this.#at?.slice(0, SHORT_NAME) : undefined;
+	}
+
+	/** The line somebody's writing opened where they stood on a version, while
+	 *  the folder is still on it. */
+	get openedLine(): string | null {
+		return this.#line !== undefined && this.#line === this.#openedLine ? this.#openedLine : null;
 	}
 
 	clear(): void {
@@ -327,10 +389,11 @@ class HistoryStore {
 		this.#branches = [];
 		this.#at = undefined;
 		this.#line = undefined;
+		this.#readOnce = false;
+		this.#openedLine = null;
 		this.#ahead = 0;
 		this.#changed = null;
 		this.#dirty = false;
-		this.#conflicts = [];
 		this.#picture = [];
 		this.#drawnCursor = undefined;
 		this.#remotes = [];
@@ -340,7 +403,8 @@ class HistoryStore {
 		this.#elsewhere = null;
 		this.#signs = false;
 		this.#taken.clear();
-		this.#taking = null;
+		this.#merging = null;
+		this.#settled = null;
 	}
 
 	/** The surface has come up: what an earlier act said no longer stands. */
@@ -379,11 +443,13 @@ class HistoryStore {
 				history.signing?.()
 			]);
 			if (at !== this.#epoch) return;
+			this.#readOnce = true;
 			this.#line = status.branch;
 			this.#ahead = status.ahead;
 			this.#behind = status.behind;
 			this.#upstream = status.upstream;
 			this.#dirty = status.changed.length > 0 || status.untracked.length > 0;
+			this.#merging = status.merging ?? null;
 			this.#commits = page.commits;
 			this.#cursor = page.cursor;
 			this.#branches = branches;
@@ -397,14 +463,26 @@ class HistoryStore {
 			);
 			if (at !== this.#epoch) return;
 			this.#places = places;
-			const since = await this.between(commit, undefined);
+			const [since, settled] = await Promise.all([
+				this.between(commit, undefined),
+				this.settledBy(status.merging, commit)
+			]);
 			if (at !== this.#epoch) return;
 			this.#changed = since;
+			this.#settled = settled;
 		} catch (err) {
 			if (at === this.#epoch) this.#says = said(err);
 		} finally {
 			if (at === this.#epoch) this.#busy = false;
 		}
+	}
+
+	/** Whether there is anything at all to keep, asked of the folder now rather
+	 *  than as the surface last drew it — a write lands without anything on
+	 *  screen hearing of it. */
+	async unkeptNow(): Promise<boolean> {
+		await this.read();
+		return this.#dirty;
 	}
 
 	/** The page of older versions after the ones already read. */
@@ -440,17 +518,21 @@ class HistoryStore {
 	}
 
 	/**
-	 * Keep what is in the folder as a version. Answers whether anything was
-	 * kept: nothing to keep is not a failure.
+	 * Keep what is in the folder as a version, on a line of work — one opens
+	 * first where the folder stands on a version, so a version is never kept
+	 * where nothing leads back to it. Answers whether anything was kept:
+	 * nothing to keep is not a failure.
 	 *
-	 * **Keeping does not move the folder**, so nothing about the graph is read
-	 * again — only what the history itself now says. That is what lets this be
-	 * done on a clock (`autosave`) without the graph reloading under somebody's
-	 * cursor.
+	 * **Keeping itself does not move the folder**, so nothing about the graph is
+	 * read again — only what the history itself now says. That is what lets this
+	 * be done on a clock (`autosave`) without the graph reloading under
+	 * somebody's cursor.
 	 */
 	async keep(message: string): Promise<boolean> {
 		const history = runtime.history();
 		if (!history) return false;
+		if (!(await this.unkeptNow())) return false;
+		if (!(await this.lineToWriteOn())) return false;
 		this.#busy = true;
 		this.#says = null;
 		try {
@@ -482,13 +564,84 @@ class HistoryStore {
 		});
 	}
 
-	/** Take a line's versions into the one the folder is on. Answers false where
-	 *  notes are left in two versions for somebody to settle. */
-	async bringIn(name: string): Promise<boolean> {
+	/** The folder becomes that version, and is on no line afterwards. */
+	async standOn(commit: string, carrying?: boolean): Promise<boolean> {
 		return this.act(async (history) => {
-			const result = await history.merge(name);
-			return this.tookIn(history, result, name);
+			if (!history.standOn) return false;
+			await history.standOn(commit, carrying);
+			return true;
 		});
+	}
+
+	/** A line of work where the folder stands, named after the version it starts
+	 *  at, with the folder moved onto it. The name it took, and `null` where it
+	 *  could not. */
+	async lineHere(): Promise<string | null> {
+		const at = this.#at;
+		if (at === undefined) return null;
+		const taken = new Set(this.#branches.map((one) => one.name));
+		const from = `from-${at.slice(0, SHORT_NAME)}`;
+		let name = from;
+		for (let next = 2; taken.has(name); next += 1) name = `${from}-${next}`;
+		const done = await this.act(async (history) => {
+			if (!history.lineHere) return false;
+			await history.lineHere(name);
+			return true;
+		});
+		return done ? name : null;
+	}
+
+	/**
+	 * A line for what is about to be written to land on. Where the folder stands
+	 * on a version rather than a line, one opens where it stands and no file
+	 * moves — DESIGN.md § "The history as a picture".
+	 *
+	 * False is a line that could not open, with {@link HistoryStore.says} carrying
+	 * why — **and writing goes ahead anyway.** It is keeping a version that needs
+	 * a line, and {@link HistoryStore.keep} is what refuses.
+	 */
+	async lineToWriteOn(): Promise<boolean> {
+		// A platform that cannot put the folder on a version opens no lines, and
+		// its repository being on none is the person's own doing to undo.
+		if (!this.keeps || !this.stands) return true;
+		// Read again first: nothing may have asked this session, and a line is
+		// named against the names already taken.
+		if (!this.#readOnce || this.onAVersion) await this.read();
+		if (!this.onAVersion) return true;
+		const opened = await this.lineHere();
+		if (opened === null) return false;
+		this.#openedLine = opened;
+		return true;
+	}
+
+	/** A line of work called something else. Where the folder is on it, it stays
+	 *  on it under the new name. */
+	async renameLine(from: string, to: string): Promise<boolean> {
+		const done = await this.act(async (history) => {
+			if (!history.renameLine) return false;
+			await history.renameLine(from, to);
+			return true;
+		});
+		if (done && this.#openedLine === from) this.#openedLine = to;
+		return done;
+	}
+
+	/** Stop the merge the folder is part-way through, leaving it as it was before
+	 *  the merge began. */
+	async abandonMerge(): Promise<boolean> {
+		return this.act(async (history) => {
+			if (!history.abandonMerge) return false;
+			await history.abandonMerge();
+			return true;
+		});
+	}
+
+	/** Take a line's versions into the one the folder is on, opening one first
+	 *  where the folder stands on a version. Answers false where notes are left
+	 *  in two versions for somebody to settle. */
+	async bringIn(name: string): Promise<boolean> {
+		if (!(await this.lineToWriteOn())) return false;
+		return this.act(async (history) => this.tookIn(await history.merge(name)));
 	}
 
 	/** A line of work starting at a version further back than the one the folder
@@ -524,9 +677,17 @@ class HistoryStore {
 		);
 	}
 
-	/** Take in what is kept somewhere else. Answers false where notes are left
-	 *  in two versions for somebody to settle. */
+	/** Take in what is kept somewhere else, opening a line first where the folder
+	 *  stands on a version. Answers false where notes are left in two versions
+	 *  for somebody to settle. */
 	async takeIn(remote?: string): Promise<boolean> {
+		if (!(await this.lineToWriteOn())) {
+			this.#elsewhere = {
+				words: this.#says ?? 'Start a line to work on first, then try again.',
+				refused: true
+			};
+			return false;
+		}
 		const was = this.#at;
 		let settled = true;
 		const done = await this.withRemote(
@@ -534,7 +695,7 @@ class HistoryStore {
 			async (history, name, credential) => {
 				const result = await history.pull?.(name, credential);
 				if (!result) return;
-				settled = await this.tookIn(history, result, `${name}/${this.#line ?? ''}`);
+				settled = this.tookIn(result);
 			},
 			(where) =>
 				!settled ? null : this.#at === was ? 'Nothing to take.' : `What is on ${where} is here too.`
@@ -563,7 +724,6 @@ class HistoryStore {
 	async settle(path: string, side: ConflictSide): Promise<boolean> {
 		return this.act(async (history) => {
 			await history.resolve(path, side);
-			this.#conflicts = this.#conflicts.filter((held) => held !== path);
 			return true;
 		});
 	}
@@ -606,22 +766,20 @@ class HistoryStore {
 				}
 			}
 			this.#taken.delete(note.path);
-			this.#conflicts = this.#conflicts.filter((held) => held !== note.path);
 			return true;
 		});
 	}
 
 	/** What both sides of the merge have of one note left in two versions. */
 	async inTwo(path: string): Promise<NoteInTwoVersions | null> {
-		const taking = this.#taking;
+		const merging = this.#merging;
 		const history = runtime.history();
-		if (!taking || !history) return null;
+		if (!merging || !history) return null;
 		const { graphAsItWas } = await local();
-		const theirs = await graphAsItWas(await history.readAt(taking.head));
-		const ulid = path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, '');
+		const theirs = await graphAsItWas(await history.readAt(merging.taking));
 		const owner = (await theirs.me())?.did;
 		if (!owner) return null;
-		const ref = `${owner}/${ulid}` as OwnedRef;
+		const ref = `${owner}/${ulidIn(path)}` as OwnedRef;
 		const [mine, said, here, there] = await Promise.all([
 			api.listBlocks(ref).catch(() => [] as BlockView[]),
 			theirs.listBlocks(ref).catch(() => [] as BlockView[]),
@@ -689,14 +847,25 @@ class HistoryStore {
 		return graphAsItIs(api);
 	}
 
-	/** What a merge left behind, whichever line it took in. Answers whether it
-	 *  settled by itself. */
-	private async tookIn(history: History, result: MergeResult, name: string): Promise<boolean> {
+	/** How many notes a merge has settled by itself: what the two versions it is
+	 *  bringing together hold differently, less what is still in two versions.
+	 *  Neither side is the folder, so writing while the merge stands open does
+	 *  not move it — DESIGN.md § "The history". */
+	private async settledBy(
+		merging: MergeUnderway | undefined,
+		head: string | undefined
+	): Promise<number | null> {
+		if (!merging || head === undefined) return null;
+		const both = await this.between(head, merging.taking);
+		if (!both) return null;
+		const unsettled = new Set(merging.inTwoVersions.map(ulidIn));
+		return both.notes.filter((note) => !unsettled.has(localPart(note.ref))).length;
+	}
+
+	/** Whether a merge settled by itself. */
+	private tookIn(result: MergeResult): boolean {
 		if (result.merged) return true;
-		const head = (await history.branches()).find((one) => one.name === name)?.head;
 		this.#taken.clear();
-		this.#conflicts = [...result.conflicts];
-		this.#taking = head === undefined ? null : { name, head };
 		return false;
 	}
 
@@ -829,6 +998,11 @@ function apart(here: string, there: string, drawn: readonly GraphCommit[]): Stan
 
 function localPart(ref: OwnedRef): string {
 	return ref.slice(ref.lastIndexOf('/') + 1);
+}
+
+/** The note a history names by a path, as its ref spells it. */
+function ulidIn(path: string): string {
+	return path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, '');
 }
 
 /** What somebody calls a place their folder is also kept: the host it is at,

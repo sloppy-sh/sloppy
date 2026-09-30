@@ -50,7 +50,19 @@ interface Unsettled {
   /** The commit the other branch was at. */
   from: string;
   conflicts: Map<string, { mine?: Uint8Array; theirs?: Uint8Array }>;
+  /** Every path the merge may write that this branch did not have — settling
+   *  one with the other side's version writes it too — so
+   *  {@link MemoryHistory.abandonMerge} leaves none of it behind. */
+  brought: string[];
+  /** What the merge left in the folder, settled path by settled path, so
+   *  {@link MemoryHistory.abandonMerge} can tell writing done since from the
+   *  merge's own work. */
+  left: Tree;
 }
+
+/** The line the folder is on, or the version it stands on while it is on none —
+ *  where a commit advances the folder itself, as it does on a detached HEAD. */
+type Where = { line: string } | { version: string };
 
 const DEFAULT_BRANCH = "main";
 
@@ -103,7 +115,7 @@ export class MemoryHistory implements History {
   private readonly elsewhere?: MemoryRemotes;
   private user?: GitUser;
   private signs: SigningConfig = { kind: "none" };
-  private on: string;
+  private where: Where;
   private unsettled?: Unsettled;
 
   constructor(
@@ -119,7 +131,7 @@ export class MemoryHistory implements History {
       key?: string;
     } = {},
   ) {
-    this.on = options.branch ?? DEFAULT_BRANCH;
+    this.where = { line: options.branch ?? DEFAULT_BRANCH };
     this.author = options.author ?? "Sloppy";
     this.key = options.key ?? KEPT_KEY;
     this.elsewhere = options.remotes;
@@ -136,16 +148,26 @@ export class MemoryHistory implements History {
       else if (!sameBytes(was, bytes)) changed.push(path);
     }
     for (const path of tree.keys()) if (!now.has(path)) changed.push(path);
+    const line = this.line;
     return {
       changed: changed.sort(),
       untracked: untracked.sort(),
-      branch: this.on,
-      ...this.against(this.on),
+      ...(line === undefined
+        ? { ahead: 0, behind: 0 }
+        : { branch: line, ...this.against(line) }),
+      ...(this.unsettled
+        ? {
+            merging: {
+              taking: this.unsettled.from,
+              inTwoVersions: [...this.unsettled.conflicts.keys()],
+            },
+          }
+        : {}),
     };
   }
 
   async log(limit: number, cursor?: string): Promise<CommitPage> {
-    const held = this.reachable(this.heads.get(this.on));
+    const held = this.reachable(this.headId());
     let from = 0;
     if (cursor !== undefined) {
       from = held.findIndex((one) => one.id === cursor);
@@ -182,7 +204,7 @@ export class MemoryHistory implements History {
       return {
         name,
         head,
-        current: name === this.on,
+        current: name === this.line,
         ...(measured.upstream === undefined ? {} : measured),
       };
     });
@@ -198,11 +220,7 @@ export class MemoryHistory implements History {
   async branch(name: string): Promise<Branch> {
     if (this.heads.has(name)) throw alreadyCalled(name);
     const at = this.head();
-    if (!at) {
-      throw new HistoryError(
-        "There is nothing here to branch off yet. Commit what is in this folder first.",
-      );
-    }
+    if (!at) throw nothingToStartFrom();
     this.heads.set(name, at.id);
     return { name, head: at.id, current: false };
   }
@@ -211,17 +229,71 @@ export class MemoryHistory implements History {
     const to = this.heads.get(name);
     if (to === undefined) throw nothingCalled(name);
     if (this.unsettled) throw midMerge();
-    if (name === this.on) return;
+    if (name === this.line) return;
     if ((await this.status()).changed.length > 0) throw uncommitted();
     await this.lay(this.commits.get(to)?.tree ?? new Map());
-    this.on = name;
+    this.where = { line: name };
+  }
+
+  async standOn(commit: string, carrying?: boolean): Promise<void> {
+    const held = this.commits.get(commit);
+    if (!held) throw notHere();
+    if (this.unsettled) throw midMerge();
+    if (!carrying && (await this.status()).changed.length > 0) {
+      throw uncommitted();
+    }
+    if ((await this.inTheWay(held.tree)).length > 0) throw writtenOver();
+    const travelling = await this.travelling(held.tree);
+    await this.lay(held.tree);
+    for (const [path, bytes] of travelling) {
+      if (bytes === undefined) await this.files.remove(path);
+      else await this.files.write(path, bytes);
+    }
+    this.where = { version: commit };
+  }
+
+  async lineHere(name: string): Promise<Branch> {
+    if (this.heads.has(name)) throw alreadyCalled(name);
+    const at = this.headId();
+    if (at === undefined) throw nothingToStartFrom();
+    this.heads.set(name, at);
+    this.where = { line: name };
+    return { name, head: at, current: true };
+  }
+
+  async renameLine(from: string, to: string): Promise<Branch> {
+    const head = this.heads.get(from);
+    if (head === undefined) throw nothingCalled(from);
+    if (this.heads.has(to)) throw alreadyCalled(to);
+    this.heads.delete(from);
+    this.heads.set(to, head);
+    const followed = this.follows.get(from);
+    if (followed !== undefined) {
+      this.follows.delete(from);
+      this.follows.set(to, followed);
+    }
+    if (this.line === from) this.where = { line: to };
+    return { name: to, head, current: this.line === to };
+  }
+
+  async abandonMerge(): Promise<void> {
+    const merging = this.unsettled;
+    if (!merging) throw noMergeHere();
+    const now = await this.folder();
+    for (const [path, bytes] of merging.left) {
+      if (merging.conflicts.has(path)) continue;
+      if (!sameBytes(now.get(path), bytes)) throw writtenSinceTheMerge();
+    }
+    for (const path of merging.brought) await this.files.remove(path);
+    await this.lay(this.head()?.tree ?? new Map());
+    this.unsettled = undefined;
   }
 
   async merge(name: string): Promise<MergeResult> {
     const theirs = this.heads.get(name);
     if (theirs === undefined) throw nothingCalled(name);
     if (this.unsettled) throw midMerge();
-    if (name === this.on) {
+    if (name === this.line) {
       throw new HistoryError("That is the one you are working on.");
     }
     return this.take(theirs, name);
@@ -240,7 +312,7 @@ export class MemoryHistory implements History {
     if (this.holds(theirs, mine.id)) {
       const to = this.commits.get(theirs);
       if (to) await this.lay(to.tree);
-      this.heads.set(this.on, theirs);
+      this.moveTo(theirs);
       return { merged: true };
     }
     const base = this.commits.get(this.base(mine.id, theirs) ?? "")?.tree;
@@ -274,8 +346,16 @@ export class MemoryHistory implements History {
         if (ours) settled.set(path, ours);
       }
     }
+    const brought = [
+      ...new Set([...settled.keys(), ...conflicts.keys()]),
+    ].filter((path) => !mine.tree.has(path));
     await this.lay(settled);
-    this.unsettled = { from: theirs, conflicts };
+    this.unsettled = {
+      from: theirs,
+      conflicts,
+      brought,
+      left: new Map(settled),
+    };
     if (conflicts.size === 0) {
       await this.commit(`Merge ${called}`);
       return { merged: true };
@@ -289,8 +369,13 @@ export class MemoryHistory implements History {
       throw new HistoryError("That is not one of the ones in two versions.");
     }
     const bytes = side === "mine" ? held.mine : held.theirs;
-    if (bytes === undefined) await this.files.remove(path);
-    else await this.files.write(path, bytes);
+    if (bytes === undefined) {
+      await this.files.remove(path);
+      this.unsettled.left.delete(path);
+    } else {
+      await this.files.write(path, bytes);
+      this.unsettled.left.set(path, bytes);
+    }
     this.unsettled.conflicts.delete(path);
   }
 
@@ -301,7 +386,7 @@ export class MemoryHistory implements History {
   }
 
   async currentCommit(): Promise<string | undefined> {
-    return this.heads.get(this.on);
+    return this.headId();
   }
 
   async graph(limit: number, cursor?: string): Promise<CommitGraphPage> {
@@ -330,7 +415,7 @@ export class MemoryHistory implements History {
     const before = new Set(this.reachable(commit).map((one) => one.id));
     const wanted = [...new Set(paths)];
     const moved = new Set<string>();
-    for (const held of this.reachable(this.heads.get(this.on))) {
+    for (const held of this.reachable(this.headId())) {
       if (before.has(held.id)) continue;
       const was = this.treeOf(held.parents[0]);
       for (const path of wanted) {
@@ -395,22 +480,24 @@ export class MemoryHistory implements History {
   }
 
   async pull(remote?: string, credential?: Credential): Promise<MergeResult> {
-    const name = this.whichRemote(remote);
+    const line = this.onALine();
+    const name = this.whichRemote(line, remote);
     await this.fetch(name, credential);
-    const theirs = this.followed.get(`${name}/${this.on}`);
+    const theirs = this.followed.get(`${name}/${line}`);
     if (theirs === undefined) return { merged: true };
     if (!this.head()) {
       await this.lay(this.commits.get(theirs)?.tree ?? new Map());
-      this.heads.set(this.on, theirs);
-      this.follows.set(this.on, `${name}/${this.on}`);
+      this.heads.set(line, theirs);
+      this.follows.set(line, `${name}/${line}`);
       return { merged: true };
     }
     if (this.unsettled) throw midMerge();
-    return this.take(theirs, `${name}/${this.on}`);
+    return this.take(theirs, `${name}/${line}`);
   }
 
   async push(remote?: string, credential?: Credential): Promise<void> {
-    const name = this.whichRemote(remote);
+    const line = this.onALine();
+    const name = this.whichRemote(line, remote);
     const there = this.reach(name);
     const mine = this.head();
     if (!mine) {
@@ -418,20 +505,20 @@ export class MemoryHistory implements History {
         "There is nothing here to keep somewhere else yet. Commit what is in this folder first.",
       );
     }
-    const theirs = there.heads.get(this.on);
+    const theirs = there.heads.get(line);
     if (theirs !== undefined && !this.holds(mine.id, theirs)) {
       throw new HistoryError("Pull first, then push again.");
     }
     there.copy(this.leadingBack([mine.id]));
-    there.heads.set(this.on, mine.id);
-    this.followed.set(`${name}/${this.on}`, mine.id);
-    if (!this.follows.has(this.on)) {
-      this.follows.set(this.on, `${name}/${this.on}`);
+    there.heads.set(line, mine.id);
+    this.followed.set(`${name}/${line}`, mine.id);
+    if (!this.follows.has(line)) {
+      this.follows.set(line, `${name}/${line}`);
     }
   }
 
   async deleteBranch(name: string): Promise<void> {
-    if (name === this.on) {
+    if (name === this.line) {
       throw new HistoryError("That is the one you are working on.");
     }
     if (!this.heads.has(name)) throw nothingCalled(name);
@@ -469,9 +556,58 @@ export class MemoryHistory implements History {
     return held?.tree ?? new Map();
   }
 
+  private get line(): string | undefined {
+    return "line" in this.where ? this.where.line : undefined;
+  }
+
+  /** The line the folder is on, for an act that has to have one. */
+  private onALine(): string {
+    const line = this.line;
+    if (line === undefined) throw onNoLine();
+    return line;
+  }
+
+  private headId(): string | undefined {
+    return "line" in this.where
+      ? this.heads.get(this.where.line)
+      : this.where.version;
+  }
+
   private head(): Held | undefined {
-    const at = this.heads.get(this.on);
+    const at = this.headId();
     return at === undefined ? undefined : this.commits.get(at);
+  }
+
+  /** What laying `tree` would lose: somewhere it writes, holding something
+   *  nothing has kept, that is not already what it would write. */
+  private async inTheWay(tree: Tree): Promise<string[]> {
+    const on = this.head()?.tree ?? new Map<string, Uint8Array>();
+    const now = await this.folder();
+    const held: string[] = [];
+    for (const path of new Set([...on.keys(), ...tree.keys(), ...now.keys()])) {
+      const laid = !sameBytes(on.get(path), tree.get(path));
+      const written = !sameBytes(on.get(path), now.get(path));
+      const alreadyThat = sameBytes(now.get(path), tree.get(path));
+      if (laid && written && !alreadyThat) held.push(path);
+    }
+    return held.sort();
+  }
+
+  /** What is written here that both versions have alike, so laying one over the
+   *  other leaves it where it is and it travels with the folder. Absent bytes
+   *  are a file taken away here. */
+  private async travelling(
+    tree: Tree,
+  ): Promise<Map<string, Uint8Array | undefined>> {
+    const on = this.head()?.tree ?? new Map<string, Uint8Array>();
+    const now = await this.folder();
+    const held = new Map<string, Uint8Array | undefined>();
+    for (const path of new Set([...on.keys(), ...tree.keys()])) {
+      if (!sameBytes(on.get(path), tree.get(path))) continue;
+      if (sameBytes(on.get(path), now.get(path))) continue;
+      held.set(path, now.get(path));
+    }
+    return held;
   }
 
   private async folder(): Promise<Tree> {
@@ -507,8 +643,13 @@ export class MemoryHistory implements History {
       made: at,
     };
     this.commits.set(held.id, held);
-    this.heads.set(this.on, held.id);
+    this.moveTo(held.id);
     return held;
+  }
+
+  private moveTo(commit: string): void {
+    if ("line" in this.where) this.heads.set(this.where.line, commit);
+    else this.where = { version: commit };
   }
 
   /** What a commit made now says it is signed by, and nothing where the folder
@@ -590,8 +731,8 @@ export class MemoryHistory implements History {
 
   /** Which remote an act with none named is with: the one the branch follows,
    *  else the only one there is, else the one a first push makes. */
-  private whichRemote(remote?: string): string {
-    const followed = this.follows.get(this.on);
+  private whichRemote(line: string, remote?: string): string {
+    const followed = this.follows.get(line);
     const only = this.named.size === 1 ? [...this.named.keys()][0] : undefined;
     const name =
       remote ??
@@ -694,5 +835,33 @@ function midMerge(): HistoryError {
 function uncommitted(): HistoryError {
   return new HistoryError(
     "Commit what you have written here first, or put it back the way it was.",
+  );
+}
+
+function nothingToStartFrom(): HistoryError {
+  return new HistoryError(
+    "There is nothing here to branch off yet. Commit what is in this folder first.",
+  );
+}
+
+function writtenOver(): HistoryError {
+  return new HistoryError(
+    "Some of what you have written here would be written over. Keep it first, then try again.",
+  );
+}
+
+function onNoLine(): HistoryError {
+  return new HistoryError(
+    "You are on a version rather than a line of work. Start a line here first, then try again.",
+  );
+}
+
+function noMergeHere(): HistoryError {
+  return new HistoryError("There is no merge here to stop.");
+}
+
+function writtenSinceTheMerge(): HistoryError {
+  return new HistoryError(
+    "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again.",
   );
 }

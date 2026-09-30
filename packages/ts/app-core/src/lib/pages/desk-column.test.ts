@@ -2,7 +2,7 @@
 // can be reached, and a field that goes to a note without taking the page
 // away — DESIGN.md § Layout.
 
-import { LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
+import { HistoryError, LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import type { OwnedRef, Viewer } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -56,9 +56,23 @@ let served: LocalApi;
 let kept: MemoryHistory;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
+/** The note this folder starts with, which is what a write lands on. */
+let origins: OwnedRef;
+/** What this folder's own history would say about standing on a version, where
+ *  it would not. */
+let standingRefused: string | null;
 
 function folder(): MemoryFiles {
 	return new MemoryFiles({ root: ROOT, store, data: '/data' });
+}
+
+function theHistory(): MemoryHistory {
+	const says = standingRefused;
+	if (says === null) return kept;
+	return new Proxy(kept, {
+		get: (on, name) =>
+			name === 'standOn' ? () => Promise.reject(new HistoryError(says)) : Reflect.get(on, name, on)
+	});
 }
 
 /** Wide enough that the chrome stands beside the graph rather than over it. */
@@ -124,6 +138,23 @@ function field(): HTMLInputElement {
 	return found;
 }
 
+/** Everything the canvas is drawing, as the stub spells it. */
+function drawn(): string {
+	const canvas = document.body.querySelector('[aria-label="The graph"]');
+	return (canvas?.textContent ?? '').replace(/\s+/g, ' ');
+}
+
+/** A control anywhere, including the surfaces a question opens over the page. */
+function anywhere(labelled: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].find(
+		(one) => (one.textContent ?? '').replace(/\s+/g, ' ').trim() === labelled
+	);
+	if (!found) throw new Error(`Nothing on the screen is labelled "${labelled}"`);
+	return found;
+}
+
+const screen = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
+
 async function type(words: string): Promise<void> {
 	field().value = words;
 	field().dispatchEvent(new Event('input', { bubbles: true }));
@@ -147,6 +178,7 @@ beforeEach(async () => {
 	people.hold(null);
 	graphHistory.clear();
 	store = new Map();
+	standingRefused = null;
 	served = new LocalApi(folder());
 	kept = new MemoryHistory(folder(), { author: 'Ada' });
 	initRuntime({
@@ -159,12 +191,12 @@ beforeEach(async () => {
 			asks: true,
 			open: async () => ROOT
 		},
-		history: () => kept
+		history: () => theHistory()
 	});
 	resetApi();
 	target = document.createElement('div');
 	document.body.appendChild(target);
-	await served.createNode({ title: 'Origins' });
+	origins = (await served.createNode({ title: 'Origins' })).ref;
 	const viewer = (await served.me()) as Viewer;
 	session.adopt(viewer, 'this device');
 });
@@ -236,7 +268,9 @@ describe('the history beside the graph', () => {
 		expect(graphHistory.line).toBe('an-older-thought');
 	});
 
-	it('offers to put a version on the canvas when one is tapped', async () => {
+	// The documents come first and the code grows out of them (AI.md § Project),
+	// so a version is somewhere to write from rather than somewhere to look.
+	it('offers to work on a version when one is tapped', async () => {
 		await graphHistory.keep('A first version');
 		await standing();
 		await openHistory();
@@ -248,7 +282,374 @@ describe('the history beside the graph', () => {
 		version?.click();
 		await settle();
 
+		expect(rows()).toContain('Work on this version');
 		expect(rows()).toContain('Read the graph as it was here');
+		expect(rows()).toContain('Everything about this version');
+	});
+
+	// Reading a version is still reading — DESIGN.md § "The history as a
+	// picture" — so the act that moves nothing stands beside the one that does.
+	it('puts a version on the canvas as it was, without moving the folder', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		await graphHistory.keep('A second version');
+		await standing();
+		await openHistory();
+		const found = [
+			...inColumn().querySelectorAll<HTMLButtonElement>('[aria-label="The history"] li button')
+		].find((one) => (one.textContent ?? '').includes('A first version'));
+		found?.click();
+		await settle();
+
+		control('Read the graph as it was here').click();
+		await settle();
+
+		expect(screen()).toContain('Your graph as it was');
+		expect(drawn()).not.toContain('A second thought');
+		expect(graphHistory.line).toBe('main');
+	});
+
+	// A refusal is the answer somebody gets, rather than a control that looks
+	// like it did nothing.
+	it('says what the folder would not do when nothing is unkept', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		await graphHistory.keep('A second version');
+		standingRefused = 'Finish what you started here first, then try again.';
+		await standing();
+		await openHistory();
+		const found = [
+			...inColumn().querySelectorAll<HTMLButtonElement>('[aria-label="The history"] li button')
+		].find((one) => (one.textContent ?? '').includes('A first version'));
+		found?.click();
+		await settle();
+
+		control('Work on this version').click();
+		await settle();
+
+		expect(screen()).toContain('Finish what you started here first, then try again.');
+		expect(graphHistory.line).toBe('main');
+	});
+});
+
+describe('standing on a version', () => {
+	async function standing(): Promise<void> {
+		mounted = mount(Chrome, { target });
+		await settle();
+	}
+
+	/** Two versions, the older one holding only what the folder started with. */
+	async function twoVersions(): Promise<void> {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		await graphHistory.keep('A second version');
+	}
+
+	async function openHistory(): Promise<void> {
+		control('History').click();
+		await settle();
+	}
+
+	/** Somebody tapping the row a version is drawn on, which offers its acts. */
+	async function tap(message: string): Promise<void> {
+		const found = [
+			...inColumn().querySelectorAll<HTMLButtonElement>('[aria-label="The history"] li button')
+		].find((one) => (one.textContent ?? '').includes(message));
+		if (!found) throw new Error(`No version in the picture says "${message}"`);
+		found.click();
+		await settle();
+	}
+
+	// The whole point: the folder becomes that version, so what is read there is
+	// read off the disk rather than out of a snapshot held on the canvas.
+	it('makes the folder that version, on no line', async () => {
+		await twoVersions();
+		await standing();
+		await openHistory();
+		const now = graphHistory.at;
+
+		await tap('A first version');
+		control('Work on this version').click();
+		await settle();
+
+		expect(graphHistory.at).not.toBe(now);
+		expect(graphHistory.line).toBeUndefined();
+		expect(drawn()).toContain('Origins');
+		expect(drawn()).not.toContain('A second thought');
+		expect(screen()).toContain('Working on a version,');
+	});
+
+	// Nothing is greyed out and there is no mode to leave — DESIGN.md § "The
+	// history as a picture".
+	it('leaves every control live', async () => {
+		await twoVersions();
+		await standing();
+		await openHistory();
+		await tap('A first version');
+		control('Work on this version').click();
+		await settle();
+
+		expect(document.body.querySelectorAll('[data-menu]').length).toBeGreaterThan(0);
+		expect(field()).not.toBeNull();
+		expect(inColumn().querySelector('[aria-label="Your graphs"]')).not.toBeNull();
+		expect(rows()).toContain('New branch');
+		expect(screen()).not.toContain('Your graph as it was');
+	});
+
+	// Working on a version is working, not looking — DESIGN.md § "The history as
+	// a picture" — so the state drawn as it WAS does not stay over the folder
+	// that has just become it.
+	it('takes the graph as it was off the canvas', async () => {
+		await twoVersions();
+		await standing();
+		await openHistory();
+		await tap('A first version');
+		control('Read the graph as it was here').click();
+		await settle();
+		expect(screen()).toContain('Your graph as it was');
+
+		await tap('A first version');
+		control('Work on this version').click();
+		await settle();
+
+		expect(screen()).not.toContain('Your graph as it was');
+		expect(graphHistory.line).toBeUndefined();
+	});
+
+	it('takes it off when the folder goes back to a line as well', async () => {
+		await twoVersions();
+		await kept.branch('an-older-thought');
+		await standing();
+		await openHistory();
+		await tap('A first version');
+		control('Read the graph as it was here').click();
+		await settle();
+		expect(screen()).toContain('Your graph as it was');
+
+		control('an-older-thought').click();
+		await settle();
+
+		expect(screen()).not.toContain('Your graph as it was');
+		expect(graphHistory.line).toBe('an-older-thought');
+	});
+
+	// Changing a note that is already open is the commonest write there is, and
+	// it opens the line exactly as writing a new note does.
+	it('opens a line when a note already open is written in', async () => {
+		await twoVersions();
+		await standing();
+		await openHistory();
+		await tap('A first version');
+		control('Work on this version').click();
+		await settle();
+		const stood = graphHistory.at;
+
+		await type('Origins');
+		inColumn().querySelector<HTMLButtonElement>('[role="option"] button')?.click();
+		await settle();
+		const named = document.body.querySelector<HTMLTextAreaElement>('[aria-label="Title"]');
+		if (!named) throw new Error('No note is open to write in');
+		named.value = 'Origins, rewritten';
+		named.dispatchEvent(new Event('input', { bubbles: true }));
+		named.dispatchEvent(new Event('blur', { bubbles: true }));
+		await settle();
+
+		expect(graphHistory.line).toBe(`from-${stood?.slice(0, 8)}`);
+		expect(graphHistory.at).toBe(stood);
+		expect(nodes.get(origins)?.title).toBe('Origins, rewritten');
+	});
+
+	// The line opens on the first write, not at the checkout: standing on a
+	// version to read it leaves nothing behind.
+	it('opens a line on the first thing written, and offers to rename it', async () => {
+		await twoVersions();
+		await standing();
+		await openHistory();
+		await tap('A first version');
+		control('Work on this version').click();
+		await settle();
+		const stood = graphHistory.at;
+		expect(graphHistory.line).toBeUndefined();
+
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
+		);
+		await settle();
+
+		expect(graphHistory.line).toBe(`from-${stood?.slice(0, 8)}`);
+		// No file moved to open it: the line begins at the version stood on.
+		expect(graphHistory.at).toBe(stood);
+		expect(document.body.querySelectorAll('[data-expand]')).toHaveLength(2);
+		expect(screen()).toContain(`Your writing opened a new line, from-${stood?.slice(0, 8)}.`);
+		expect(rows()).toContain('Rename');
+	});
+
+	it('renames that line when somebody asks', async () => {
+		await twoVersions();
+		await standing();
+		await openHistory();
+		await tap('A first version');
+		control('Work on this version').click();
+		await settle();
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
+		);
+		await settle();
+
+		control('Rename').click();
+		await settle();
+		const named = inColumn().querySelector<HTMLInputElement>(
+			'[aria-label="What this line is called"]'
+		);
+		if (!named) throw new Error('Nothing in the column names the line');
+		named.value = 'the-other-way';
+		named.dispatchEvent(new Event('input', { bubbles: true }));
+		await settle();
+		control('Rename it').click();
+		await settle();
+
+		expect(graphHistory.line).toBe('the-other-way');
+	});
+});
+
+describe('writing nobody has kept, on the way to somewhere else', () => {
+	async function standing(): Promise<void> {
+		mounted = mount(Chrome, { target });
+		await settle();
+	}
+
+	async function openHistory(): Promise<void> {
+		control('History').click();
+		await settle();
+	}
+
+	async function tapTheFirst(): Promise<void> {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		await graphHistory.keep('A second version');
+		await served.createNode({ title: 'Something unkept' });
+		await standing();
+		await openHistory();
+		const found = [
+			...inColumn().querySelectorAll<HTMLButtonElement>('[aria-label="The history"] li button')
+		].find((one) => (one.textContent ?? '').includes('A first version'));
+		found?.click();
+		await settle();
+		control('Work on this version').click();
+		await settle();
+	}
+
+	// A person's own writing is never guessed at — DESIGN.md § "The history as a
+	// picture".
+	it('asks, rather than moving the folder', async () => {
+		await tapTheFirst();
+		const now = graphHistory.at;
+
+		expect(screen()).toContain('You have writing nobody has kept');
+		expect(anywhere('Keep a version first')).not.toBeNull();
+		expect(anywhere('Bring them with me')).not.toBeNull();
+		expect(anywhere('Stay here')).not.toBeNull();
+		expect(graphHistory.at).toBe(now);
+	});
+
+	it('does nothing at all when the answer is to stay', async () => {
+		await tapTheFirst();
+		const now = graphHistory.at;
+
+		anywhere('Stay here').click();
+		await settle();
+
+		expect(graphHistory.at).toBe(now);
+		expect(graphHistory.line).toBe('main');
+		expect(drawn()).toContain('Something unkept');
+	});
+
+	it('keeps a version on the line being left, then goes', async () => {
+		await tapTheFirst();
+		const wasAt = graphHistory.lines.find((one) => one.name === 'main')?.head;
+
+		anywhere('Keep a version first').click();
+		await settle();
+
+		expect(graphHistory.line).toBeUndefined();
+		expect(drawn()).not.toContain('Something unkept');
+		expect(graphHistory.lines.find((one) => one.name === 'main')?.head).not.toBe(wasAt);
+	});
+
+	it('brings the writing along when asked to', async () => {
+		await tapTheFirst();
+
+		anywhere('Bring them with me').click();
+		await settle();
+
+		expect(graphHistory.line).toBeUndefined();
+		expect(drawn()).toContain('Origins');
+		expect(drawn()).toContain('Something unkept');
+		expect(drawn()).not.toContain('A second thought');
+	});
+
+	// A refusal in a person's own writing is the answer they get, rather than a
+	// silence they have to work out.
+	it('says what the folder would not do when the writing cannot travel', async () => {
+		await graphHistory.keep('A first version');
+		const second = await served.createNode({ title: 'A second thought' });
+		await graphHistory.keep('A second version');
+		await served.updateNode(second.ref, { title: 'A second thought, rewritten' });
+		await standing();
+		await openHistory();
+		const found = [
+			...inColumn().querySelectorAll<HTMLButtonElement>('[aria-label="The history"] li button')
+		].find((one) => (one.textContent ?? '').includes('A first version'));
+		found?.click();
+		await settle();
+		control('Work on this version').click();
+		await settle();
+
+		anywhere('Bring them with me').click();
+		await settle();
+
+		expect(screen()).toContain('would be written over');
+		expect(graphHistory.line).toBe('main');
+		expect(drawn()).toContain('A second thought, rewritten');
+	});
+
+	// A folder is written into while the column stands beside it, so what is
+	// unkept is asked of the folder as somebody moves rather than remembered
+	// from when the picture was drawn.
+	it('asks though the writing came after the picture was drawn', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		await graphHistory.keep('A second version');
+		await standing();
+		await openHistory();
+		await served.createNode({ title: 'Something unkept' });
+		const found = [
+			...inColumn().querySelectorAll<HTMLButtonElement>('[aria-label="The history"] li button')
+		].find((one) => (one.textContent ?? '').includes('A first version'));
+		found?.click();
+		await settle();
+
+		control('Work on this version').click();
+		await settle();
+
+		expect(screen()).toContain('You have writing nobody has kept');
+		expect(anywhere('Bring them with me')).not.toBeNull();
+		expect(graphHistory.line).toBe('main');
+	});
+
+	// The chips move the folder too, so they ask the same question.
+	it('asks before a line is tapped as well', async () => {
+		await graphHistory.keep('A first version');
+		await kept.branch('an-older-thought');
+		await served.createNode({ title: 'Something unkept' });
+		await standing();
+		await openHistory();
+
+		control('an-older-thought').click();
+		await settle();
+
+		expect(screen()).toContain('You have writing nobody has kept');
+		expect(graphHistory.line).toBe('main');
 	});
 });
 

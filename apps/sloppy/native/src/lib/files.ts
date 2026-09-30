@@ -47,6 +47,10 @@ const HISTORY_COMMIT = 'history_commit';
 const HISTORY_BRANCHES = 'history_branches';
 const HISTORY_BRANCH = 'history_branch';
 const HISTORY_SWITCH = 'history_switch';
+const HISTORY_STAND_ON = 'history_stand_on';
+const HISTORY_LINE_HERE = 'history_line_here';
+const HISTORY_RENAME_LINE = 'history_rename_line';
+const HISTORY_ABANDON_MERGE = 'history_abandon_merge';
 const HISTORY_MERGE = 'history_merge';
 const HISTORY_RESOLVE = 'history_resolve';
 const HISTORY_READ_AT = 'history_read_at';
@@ -198,6 +202,26 @@ class TauriHistory implements History {
 
 	async switch(name: string): Promise<void> {
 		await this.asked<void>(HISTORY_SWITCH, { root: this.root, name });
+	}
+
+	async standOn(commit: string, carrying?: boolean): Promise<void> {
+		await this.asked<void>(HISTORY_STAND_ON, {
+			root: this.root,
+			commit,
+			carrying: carrying ?? false
+		});
+	}
+
+	async lineHere(name: string): Promise<Branch> {
+		return this.asked<Branch>(HISTORY_LINE_HERE, { root: this.root, name });
+	}
+
+	async renameLine(from: string, to: string): Promise<Branch> {
+		return this.asked<Branch>(HISTORY_RENAME_LINE, { root: this.root, from, to });
+	}
+
+	async abandonMerge(): Promise<void> {
+		await this.asked<void>(HISTORY_ABANDON_MERGE, { root: this.root });
 	}
 
 	async merge(name: string): Promise<MergeResult> {

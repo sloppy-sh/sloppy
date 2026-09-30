@@ -116,8 +116,9 @@ export interface HistoryStatus {
   changed: string[];
   /** What the history is not keeping. */
   untracked: string[];
-  /** The branch the folder is on. Absent is a folder left on a commit of its
-   *  own, which nothing here does and somebody's own git may have. */
+  /** The branch the folder is on. Absent is a folder standing on a version of
+   *  its own rather than on a line, which {@link History.standOn} leaves it on
+   *  and somebody's own git may have left it on too. */
   branch?: string;
   /** How many commits this branch has that the one it tracks does not. `0`
    *  where nobody set one up, which is every folder this app made itself. */
@@ -128,6 +129,17 @@ export interface HistoryStatus {
   /** The branch this one follows, spelled `origin/main`. Absent is a branch
    *  that follows none, which is every folder nothing has been pushed from. */
   upstream?: string;
+  /**
+   * The merge the folder is part-way through, read from the repository rather
+   * than remembered, so it is still here after the app has been closed and
+   * opened again. `taking` is the commit being taken in, and `inTwoVersions`
+   * every path still in two versions — empty where they have all been settled
+   * and the merge is waiting to be committed.
+   *
+   * Absent is a folder in the middle of nothing, and one in the middle of a
+   * merge begun outside this app, which nothing here settles or stops.
+   */
+  merging?: { taking: string; inTwoVersions: readonly string[] };
 }
 
 /** Which version of a file a conflict is settled with. */
@@ -195,6 +207,34 @@ export interface History {
   readAt(commit: string): Promise<Vault>;
   /** The commit the folder is on; `undefined` before the first one is made. */
   currentCommit(): Promise<string | undefined>;
+  /**
+   * The folder becomes that version, and is on no line afterwards — writing
+   * there is what opens one ({@link History.lineHere}).
+   *
+   * `carrying` absent or false refuses where the folder holds changes that
+   * would be lost, exactly as {@link History.switch} does. `carrying` true
+   * takes them along instead, and the one refusal left is a file that version
+   * has differently, which would be written over. **A refused stand leaves the
+   * folder exactly as it was.**
+   *
+   * Absent, and so for the three below it, is a platform whose histories cannot
+   * move the folder off a line at all; the four are one family, and a shell
+   * that defines any of them defines all four.
+   */
+  standOn?(commit: string, carrying?: boolean): Promise<void>;
+  /** A line starting at the version the folder stands on, with the folder moved
+   *  onto it. **Nothing in the folder changes**, so this is taken while it
+   *  holds changes nothing has kept yet. */
+  lineHere?(name: string): Promise<Branch>;
+  /** A line called something else, refusing every name {@link History.branch}
+   *  refuses. Where it is the line the folder is on, the folder ends up on it
+   *  under the new name. */
+  renameLine?(from: string, to: string): Promise<Branch>;
+  /** The folder as it was before the merge began, with nothing half-settled
+   *  left behind. Refused where no merge this app began is in progress, and
+   *  where anything has been written since it began — going back writes over
+   *  everything the history is keeping, and that writing is not the merge's. */
+  abandonMerge?(): Promise<void>;
   /**
    * Every commit here, across every branch, newest first and never ahead of
    * what it springs from — {@link History.log} is the one line the folder is
