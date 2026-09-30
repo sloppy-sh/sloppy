@@ -1276,11 +1276,15 @@ nothing under it.
   a look, pointing it at another note, taking it down. This is a ranking and never a
   removal, so every act is still one tap away and the phone gets exactly the acts the desk
   does.
-- **The one act that cannot be taken back sits apart.** Deleting a note is the last thing in
-  that control, below a rule and in the destructive colour — never a full-width button in
-  the flow of a note somebody is writing in, where a hand lands on its way to something
-  else. The question it then asks is the same question the canvas asks about a whole chosen
-  set, in one wording that is derived rather than written twice.
+- **The act that takes a note away sits apart.** Deleting a note is the last thing in that
+  control, below a rule and in the destructive colour — never a full-width button in the
+  flow of a note somebody is writing in, where a hand lands on its way to something else.
+  The question it then asks is the same question the canvas asks about a whole chosen set,
+  in one wording that is derived rather than written twice. **It is not the one act that
+  cannot be taken back**: a deleted note goes to the bin and comes back out of it for the
+  next thirty days, and the question says so, in the one number the sweep that ends the
+  window also reads. What cannot be taken back is what happens when that window closes, and
+  publishing, which a peer who already pulled a copy keeps whatever anybody does next.
 - **A block reads as a section, not a paragraph.** Each is a bounded region of the page —
   a ruled band with its own handle — quiet enough that a note of three sections still
   reads as one page. Everything inside is ordinary prose; the boundary is the only

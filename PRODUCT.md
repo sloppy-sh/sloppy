@@ -77,6 +77,13 @@ them, and neither half is the senior one. So a note is not a record of a decisio
 taken — it is the thing the code is answerable to, and an earlier version of the project is
 somewhere they can write from rather than only look at.
 
+**Nothing a person deletes is gone the moment they delete it.** A note they take away goes
+to the bin with everything that sprang from it, is listed where they can see it, and comes
+back where it was for the next thirty days. After that it is gone for good, and the number it
+was cited by is never given to another note — a citation somebody wrote down never quietly
+starts leading somewhere else. Publishing is the act that cannot be taken back, because a
+peer who has already pulled a copy keeps it.
+
 A person can write on a line between two notes — a word for what it is, an arrow for which
 way it runs, a line that runs solid or breaks — without any of it moving a mark or changing what
 sprang from what. And a graph kept in a folder on somebody's own machine opens in the web
