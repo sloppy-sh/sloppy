@@ -819,7 +819,8 @@ than a list because branches are a shape — where one left another and where th
 together is not a thing a column of rows can say.
 
 **It stands beside the graph on a desk, and is a surface a phone opens.** In the column it
-is what somebody keeps reaching for — which line the folder is on and the others it keeps,
+is what somebody keeps reaching for — which line the folder is on, or the version it stands
+on where it is on none, and the other lines it keeps,
 what is unkept, somewhere to keep it, and the picture, where a version tapped offers to be
 put on the canvas as it was — with the other places, what is different, and everything about
 one version a row away in the surface that has always held them. **The lines are in the
@@ -885,8 +886,49 @@ to a second, quieter line under the message. The lanes and the labels never drop
 and the name at a head are the two things somebody opened this to read.
 Tapping a commit opens its details as a sheet (§ Layout, the one modal): the message, who
 made it, whether it is signed and by which key, what it springs from, the branches at it,
-and the acts — read the graph as it was, compare it with now, branch from here, switch to a
-branch at it.
+and the acts — **Work on this version**, read the graph as it was, compare it with now,
+branch from here, switch to a branch at it.
+
+**Working on a version is working, not looking.** _Work on this version_ makes the folder
+that version, and then it is simply the graph: every control is live, every act is where it
+was, and a person writes there the way they write anywhere. This is the whole point — what is
+written comes first and the code grows out of it (AI.md § Project), so an earlier version is
+somewhere somebody WRITES from. Nothing is greyed out, nothing says read-only, and there is
+no second, quieter mode of the app to learn. **Reading a version is still reading** — putting
+one on the canvas as it was, and comparing it with now, move nothing and are how a difference
+is drawn.
+
+**Being on a version rather than a line is said plainly, wherever the history is.** One quiet
+line at the head of the history, in the column and in the sheet alike: _Working on a version,
+9f3c1a2b_ — the short name, because that is what a person cites — with the lines a tap away,
+which is how somebody goes back to one. It is a statement of where you are, never a warning:
+nothing about it is coloured, and it does not repeat itself anywhere else on the page.
+
+**Writing there opens a line, and the line is said after the fact.** A person is not asked to
+name a line before they know they want one. The first note written, changed or deleted while
+the folder is on a version rather than a line opens one where they stand — **no file moves** —
+and they are told once, quietly, beside the history: _Your writing opened a new line,
+from-9f3c1a2b._ with **Rename** next to it. The name is `from-` and the short version name,
+stepping to `-2` past one that is taken, because a name somebody has to think of before they
+have written anything is a question asked at the wrong moment.
+
+**Writing nobody has kept is asked about, every time, and never guessed at.** Going to another
+version while there is unkept writing puts three ways out in front of the person, in this
+order and this wording: **Keep a version first** — kept on the line they are on, then go;
+**Bring them with me** — go, and the writing travels, except where that version has one of
+those files otherwise, and then the refusal is what they are told; and **Stay here**. There is
+no remembered preference and no "don't ask again": this is a person's own writing, and the
+one thing worse than asking twice is losing it once.
+
+**A merge is settled note by note, and it is there until it is finished.** The list is one row
+per note the merge could not settle, each offering keep what is here, take theirs, or choose
+section by section (§ "A difference between two states" carries the vocabulary), and above it
+one line saying how many notes the merge took in by itself. **It is reachable whenever the
+folder is part-way through a merge**, including after the app has been closed and opened
+again — a person who shuts the laptop mid-merge comes back to the same list, not to a folder
+that looks settled and is not. **Stop the merge** sits at the foot of it, plainly and not in
+the destructive colour: it puts the folder back the way it was before the merge began, which
+is an ordinary way out rather than a loss.
 
 **Every number is the distance from the place in front of you.** Where a folder is kept in
 more than one place, the picker over those acts opens on the one the line the folder is on
@@ -1144,6 +1186,11 @@ nothing under it.
   a rule above it and the quiet voice a heading is given everywhere else — and never as
   another row that runs when tapped. Each remembers whether it stands open (§ Persistence),
   and on the icon rail each is one icon that widens the column onto it.
+  **Where the folder stands is said in the history section and nowhere else.** A folder on a
+  version rather than a line says so at the head of that section, in the column and in the
+  sheet alike (§ "The history as a picture"), and the rest of the page is untouched: the row
+  that writes, the canvas and the docks are exactly what they are on a line, because that is
+  what working on a version means.
 - **One field reaches both a note and an act, in both arrangements.** The same keystroke that
   finds a note by its number, its title or a word in it does something by its name, and with
   nothing typed it lists everything this page can do with the keystroke beside each — so the

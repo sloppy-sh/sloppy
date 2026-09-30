@@ -3883,22 +3883,51 @@ folder with a remote must not turn one they left here into something pushed. It 
 vault's either (`vaultOwned` in `@sloppy/local`), so no copy of a graph carries it out. The
 bin is the third, and its reason is the protocol:
 `.sloppy/bin.json` carries every address this graph has spent and will not assign again, and
-that ledger only ever grows — a switch to an older commit that handed those addresses back
+that ledger only ever grows — going back to an older commit and handing those addresses back
 would let a second note be written at one, which AI.md § "The Genealogy Is the Protocol"
 forbids. The bin is the folder's and travels neither in an archive nor through the
 history. An ignore alone cannot hold that line, so three things do: the repository
 excludes them for itself, a commit lets go of any a folder was already tracking before
 the app opened it, and a checkout keeps the folder's own aside and puts them back, so no
-switch or merge writes an older bin or identity over the live one. The files themselves
+switch, no merge and no standing on an older version writes an older bin or identity over
+the live one. The files themselves
 stay where they are throughout — only the history lets go of them. **A checkout that is
 refused leaves the folder exactly as it was**, including whatever it moved out of the way
-to make room, so a switch nothing could take costs nobody a file.
+to make room, so a switch nothing could take costs nobody a file. **Every path that moves
+the working tree goes through `lay`**, which is what makes that one rule rather than one
+per act.
 
 **Any commit's vault is readable, and reading one moves nothing.** `readAt` answers the
 whole vault as it was at a commit — the same `Vault` a folder and an archive already are, so
-a past state is read by the code that reads the present one and drawn on the canvas and in
-the outline with every act that would change a note gone. Going back to a state is a
-`switch` onto a branch, which somebody decides rather than falls into by looking.
+a past state is read by the code that reads the present one. That is what a difference
+between two states is drawn out of, and it is the whole of what reading one does.
+
+**Going back to a state is a real checkout, and the folder is then on no line.** The
+documents come first and the code grows out of them (AI.md § Project), so an earlier version
+of a project is somewhere a person WRITES from rather than only somewhere they look.
+`standOn(commit, carrying?)` lays that commit over the folder and moves no ref: what is in
+front of somebody IS that version, with every act a graph has still theirs. `status().branch`
+is absent while the folder stands there, which is the one thing `standOn` and a detached HEAD
+in somebody's own repository have in common. Unkept writing is refused exactly as `switch`
+refuses it, or carried where the person says to carry it — and then the only refusal left is
+the one a safe checkout makes, a file that version has otherwise and the checkout would write
+over.
+
+**A line opens on the first write, not at the checkout.** Standing on a version to read it
+leaves nothing behind. `lineHere(name)` is what the first write there calls: a branch at the
+version the folder stands on, with the folder moved onto it and **no file touched**, which is
+why it is taken while the folder holds writing nothing has kept yet. The name is
+`from-<short version name>` — `from-9f3c1a2b` — stepping to `-2` past one already taken, and
+`renameLine` is the person changing it afterwards.
+
+**A merge in progress is read from the repository rather than remembered.**
+`status().merging` answers the commit being taken in and every path still in two versions,
+out of the merge state the repository itself holds, so the surface that settles them is
+reachable whenever the folder is part-way through a merge — after the app has been closed and
+opened again, and not only in the session the merge began in. Empty `inTwoVersions` with a
+`merging` still there is a merge waiting to be committed. `abandonMerge` is the way back out
+of one: the folder as it was before the merge began, refused where the merge is not one this
+app began.
 
 **A difference between two states is computed from the two vaults, note by note and section
 by section.** `vaultDifference` in `@sloppy/vault` reads both sides as notes and answers

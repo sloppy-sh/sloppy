@@ -16,6 +16,7 @@ import type {
 	Credential,
 	GraphCommit,
 	History,
+	HistoryStatus,
 	MergeResult,
 	Remote
 } from '@sloppy/local';
@@ -30,6 +31,13 @@ import { tags } from './tags.svelte.js';
 
 /** How many versions a page of the log holds. */
 const PAGE = 30;
+
+/** How much of a version's name is the one a person reads and cites. */
+const SHORT_NAME = 8;
+
+/** A merge the folder is part-way through, as the folder itself says it — so it
+ *  is still here after the app has been closed and opened again. */
+export type MergeUnderway = NonNullable<HistoryStatus['merging']>;
 
 /** A state to read or compare: a version kept, or the folder as it stands where
  *  there is no commit. */
@@ -120,7 +128,6 @@ class HistoryStore {
 	#ahead = $state(0);
 	#changed = $state<DifferenceBetween | null>(null);
 	#dirty = $state(false);
-	#conflicts = $state<string[]>([]);
 	#picture = $state<GraphCommit[]>([]);
 	#drawnCursor = $state<string | undefined>(undefined);
 	#remotes = $state<Remote[]>([]);
@@ -129,8 +136,7 @@ class HistoryStore {
 	#upstream = $state<string | undefined>(undefined);
 	#elsewhere = $state<ElsewhereSaid | null>(null);
 	#signs = $state(false);
-	/** The line a merge was taking in, while any of it is still unsettled. */
-	#taking = $state<{ name: string; head: string } | null>(null);
+	#merging = $state<MergeUnderway | null>(null);
 	/** Notes the history has already been asked to settle, while their sections
 	 *  are still being written. */
 	#taken = new Set<string>();
@@ -308,14 +314,32 @@ class HistoryStore {
 		return this.#dirty;
 	}
 
-	/** The notes a merge left in two versions, as the history names them. */
-	get inTwoVersions(): readonly string[] {
-		return this.#conflicts;
+	/** The merge the folder is part-way through, or `null` where it is in the
+	 *  middle of nothing. */
+	get merging(): MergeUnderway | null {
+		return this.#merging;
 	}
 
-	/** The line a merge is in the middle of taking in. */
+	/** The notes a merge left in two versions, as the history names them. */
+	get inTwoVersions(): readonly string[] {
+		return this.#merging?.inTwoVersions ?? [];
+	}
+
+	/** What a merge is taking in, as a person reads it: the line standing at that
+	 *  version, else its short name. `null` is a folder in the middle of
+	 *  nothing. */
 	get taking(): string | null {
-		return this.#taking?.name ?? null;
+		const merging = this.#merging;
+		if (!merging) return null;
+		const at = this.#branches.filter((one) => one.head === merging.taking);
+		const line = at.find((one) => one.remote === undefined) ?? at[0];
+		return line?.name ?? merging.taking.slice(0, SHORT_NAME);
+	}
+
+	/** Whether the folder stands on a version rather than on a line of work.
+	 *  Writing while it does is what opens one ({@link HistoryStore.lineHere}). */
+	get onAVersion(): boolean {
+		return this.#at !== undefined && this.#line === undefined;
 	}
 
 	clear(): void {
@@ -330,7 +354,6 @@ class HistoryStore {
 		this.#ahead = 0;
 		this.#changed = null;
 		this.#dirty = false;
-		this.#conflicts = [];
 		this.#picture = [];
 		this.#drawnCursor = undefined;
 		this.#remotes = [];
@@ -340,7 +363,7 @@ class HistoryStore {
 		this.#elsewhere = null;
 		this.#signs = false;
 		this.#taken.clear();
-		this.#taking = null;
+		this.#merging = null;
 	}
 
 	/** The surface has come up: what an earlier act said no longer stands. */
@@ -384,6 +407,7 @@ class HistoryStore {
 			this.#behind = status.behind;
 			this.#upstream = status.upstream;
 			this.#dirty = status.changed.length > 0 || status.untracked.length > 0;
+			this.#merging = status.merging ?? null;
 			this.#commits = page.commits;
 			this.#cursor = page.cursor;
 			this.#branches = branches;
@@ -482,13 +506,62 @@ class HistoryStore {
 		});
 	}
 
+	/**
+	 * The folder becomes that version, and is on no line afterwards.
+	 *
+	 * `carrying` takes what is written here along rather than refusing over it;
+	 * a file that version has otherwise is refused either way.
+	 */
+	async standOn(commit: string, carrying?: boolean): Promise<boolean> {
+		return this.act(async (history) => {
+			if (!history.standOn) return false;
+			await history.standOn(commit, carrying);
+			return true;
+		});
+	}
+
+	/** A line of work where the folder stands, named after the version it starts
+	 *  at, with the folder moved onto it. The name it took, and `null` where it
+	 *  could not. */
+	async lineHere(): Promise<string | null> {
+		const at = this.#at;
+		if (at === undefined) return null;
+		const taken = new Set(this.#branches.map((one) => one.name));
+		const from = `from-${at.slice(0, SHORT_NAME)}`;
+		let name = from;
+		for (let next = 2; taken.has(name); next += 1) name = `${from}-${next}`;
+		const done = await this.act(async (history) => {
+			if (!history.lineHere) return false;
+			await history.lineHere(name);
+			return true;
+		});
+		return done ? name : null;
+	}
+
+	/** A line of work called something else. Where the folder is on it, it stays
+	 *  on it under the new name. */
+	async renameLine(from: string, to: string): Promise<boolean> {
+		return this.act(async (history) => {
+			if (!history.renameLine) return false;
+			await history.renameLine(from, to);
+			return true;
+		});
+	}
+
+	/** Stop the merge the folder is part-way through, leaving it as it was before
+	 *  the merge began. */
+	async abandonMerge(): Promise<boolean> {
+		return this.act(async (history) => {
+			if (!history.abandonMerge) return false;
+			await history.abandonMerge();
+			return true;
+		});
+	}
+
 	/** Take a line's versions into the one the folder is on. Answers false where
 	 *  notes are left in two versions for somebody to settle. */
 	async bringIn(name: string): Promise<boolean> {
-		return this.act(async (history) => {
-			const result = await history.merge(name);
-			return this.tookIn(history, result, name);
-		});
+		return this.act(async (history) => this.tookIn(await history.merge(name)));
 	}
 
 	/** A line of work starting at a version further back than the one the folder
@@ -534,7 +607,7 @@ class HistoryStore {
 			async (history, name, credential) => {
 				const result = await history.pull?.(name, credential);
 				if (!result) return;
-				settled = await this.tookIn(history, result, `${name}/${this.#line ?? ''}`);
+				settled = this.tookIn(result);
 			},
 			(where) =>
 				!settled ? null : this.#at === was ? 'Nothing to take.' : `What is on ${where} is here too.`
@@ -563,7 +636,6 @@ class HistoryStore {
 	async settle(path: string, side: ConflictSide): Promise<boolean> {
 		return this.act(async (history) => {
 			await history.resolve(path, side);
-			this.#conflicts = this.#conflicts.filter((held) => held !== path);
 			return true;
 		});
 	}
@@ -606,18 +678,17 @@ class HistoryStore {
 				}
 			}
 			this.#taken.delete(note.path);
-			this.#conflicts = this.#conflicts.filter((held) => held !== note.path);
 			return true;
 		});
 	}
 
 	/** What both sides of the merge have of one note left in two versions. */
 	async inTwo(path: string): Promise<NoteInTwoVersions | null> {
-		const taking = this.#taking;
+		const merging = this.#merging;
 		const history = runtime.history();
-		if (!taking || !history) return null;
+		if (!merging || !history) return null;
 		const { graphAsItWas } = await local();
-		const theirs = await graphAsItWas(await history.readAt(taking.head));
+		const theirs = await graphAsItWas(await history.readAt(merging.taking));
 		const ulid = path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, '');
 		const owner = (await theirs.me())?.did;
 		if (!owner) return null;
@@ -689,14 +760,10 @@ class HistoryStore {
 		return graphAsItIs(api);
 	}
 
-	/** What a merge left behind, whichever line it took in. Answers whether it
-	 *  settled by itself. */
-	private async tookIn(history: History, result: MergeResult, name: string): Promise<boolean> {
+	/** Whether a merge settled by itself. */
+	private tookIn(result: MergeResult): boolean {
 		if (result.merged) return true;
-		const head = (await history.branches()).find((one) => one.name === name)?.head;
 		this.#taken.clear();
-		this.#conflicts = [...result.conflicts];
-		this.#taking = head === undefined ? null : { name, head };
 		return false;
 	}
 

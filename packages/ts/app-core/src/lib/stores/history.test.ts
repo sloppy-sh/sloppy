@@ -152,22 +152,22 @@ describe('the lines of work a graph stands on', () => {
 	});
 });
 
-describe('a note both lines changed', () => {
-	/** Two lines of work that each wrote into the one note. */
-	async function bothWrote(): Promise<{ note: OwnedRef; section: OwnedRef }> {
-		const note = await api.createNode({ title: 'Origins' });
-		const section = await api.createBlock({ node: note.ref, content: words('The seed') });
-		await graphHistory.keep('A first version');
-		await graphHistory.startLine('an-argument');
-		await graphHistory.workOn('an-argument');
-		await api.updateBlock(section.ref, { content: words('The seed of the argument') });
-		await graphHistory.keep('Over there');
-		await graphHistory.workOn('main');
-		await api.updateBlock(section.ref, { content: words('The seed of it all') });
-		await graphHistory.keep('Over here');
-		return { note: note.ref, section: section.ref };
-	}
+/** Two lines of work that each wrote into the one note. */
+async function bothWrote(): Promise<{ note: OwnedRef; section: OwnedRef }> {
+	const note = await api.createNode({ title: 'Origins' });
+	const section = await api.createBlock({ node: note.ref, content: words('The seed') });
+	await graphHistory.keep('A first version');
+	await graphHistory.startLine('an-argument');
+	await graphHistory.workOn('an-argument');
+	await api.updateBlock(section.ref, { content: words('The seed of the argument') });
+	await graphHistory.keep('Over there');
+	await graphHistory.workOn('main');
+	await api.updateBlock(section.ref, { content: words('The seed of it all') });
+	await graphHistory.keep('Over here');
+	return { note: note.ref, section: section.ref };
+}
 
+describe('a note both lines changed', () => {
 	it('is left for somebody to settle rather than written into with markers', async () => {
 		const { note } = await bothWrote();
 
@@ -276,6 +276,133 @@ describe('sections one line wrote and the other did not', () => {
 		expect(graphHistory.says).toBe(null);
 		expect((await api.listBlocks(note.ref)).map((one) => text(one.content))).toEqual(['Bee']);
 		expect(graphHistory.inTwoVersions).toEqual([]);
+	});
+});
+
+describe('a version somebody works on', () => {
+	/** A version with one note in it, and a second note kept after it. */
+	async function twoVersions(): Promise<{ first: string; second: OwnedRef }> {
+		await graphHistory.keep('A first version');
+		const first = graphHistory.at as string;
+		const second = await api.createNode({ title: 'A second thought' });
+		await graphHistory.keep('And the second');
+		return { first, second: second.ref };
+	}
+
+	it('becomes the graph in front of them, with every act still theirs', async () => {
+		const { first, second } = await twoVersions();
+
+		expect(await graphHistory.standOn(first)).toBe(true);
+
+		expect(graphHistory.onAVersion).toBe(true);
+		expect(graphHistory.line).toBeUndefined();
+		expect(graphHistory.at).toBe(first);
+		expect(await api.getNode(second)).toBe(null);
+
+		const written = await api.createNode({ title: 'Written from here' });
+		expect(await graphHistory.keep('Written from here')).toBe(true);
+
+		expect(await api.getNode(written.ref)).not.toBe(null);
+		expect(graphHistory.onAVersion).toBe(true);
+		expect(graphHistory.versions[0].parents).toEqual([first]);
+	});
+
+	it('opens a line where it stands, named after that version', async () => {
+		const { first } = await twoVersions();
+		await graphHistory.standOn(first);
+
+		const name = await graphHistory.lineHere();
+
+		expect(name).toBe(`from-${first.slice(0, 8)}`);
+		expect(graphHistory.line).toBe(name);
+		expect(graphHistory.onAVersion).toBe(false);
+		expect(graphHistory.at).toBe(first);
+	});
+
+	it('steps past a name already taken', async () => {
+		const { first } = await twoVersions();
+		await graphHistory.standOn(first);
+		const taken = await graphHistory.lineHere();
+		await graphHistory.standOn(first);
+
+		expect(await graphHistory.lineHere()).toBe(`${taken}-2`);
+	});
+
+	it('leaves the folder where it was where it will not stand, and says why', async () => {
+		const note = await api.createNode({ title: 'Origins' });
+		const { first } = await twoVersions();
+		await api.updateNode(note.ref, { title: 'Still being written' });
+
+		expect(await graphHistory.standOn(first)).toBe(false);
+
+		expect(graphHistory.says).toMatch(/Commit what you have written here first/);
+		expect(graphHistory.line).toBe('main');
+		expect(graphHistory.onAVersion).toBe(false);
+		expect((await api.getNode(note.ref))?.title).toBe('Still being written');
+	});
+
+	it('carries what is written here where that version has none of it', async () => {
+		const note = await api.createNode({ title: 'Origins' });
+		const { first } = await twoVersions();
+		await api.updateNode(note.ref, { title: 'Still being written' });
+
+		expect(await graphHistory.standOn(first, true)).toBe(true);
+
+		expect(graphHistory.onAVersion).toBe(true);
+		expect((await api.getNode(note.ref))?.title).toBe('Still being written');
+		expect(graphHistory.unkept).toBe(true);
+	});
+
+	it('calls a line something else, and stays on it', async () => {
+		await graphHistory.keep('A first version');
+
+		expect(await graphHistory.renameLine('main', 'the-thesis')).toBe(true);
+
+		expect(graphHistory.line).toBe('the-thesis');
+		expect(graphHistory.lines.map((one) => one.name)).toEqual(['the-thesis']);
+	});
+});
+
+describe('a merge the folder is part-way through', () => {
+	it('is still there after the surface has been put away and read again', async () => {
+		const { note } = await bothWrote();
+		await graphHistory.bringIn('an-argument');
+		expect(graphHistory.inTwoVersions).toHaveLength(1);
+
+		graphHistory.clear();
+		await graphHistory.read();
+
+		expect(graphHistory.taking).toBe('an-argument');
+		expect(graphHistory.inTwoVersions).toHaveLength(1);
+		expect(await graphHistory.inTwo(graphHistory.inTwoVersions[0])).toMatchObject({ ref: note });
+	});
+
+	it('says nothing is in two versions once each has been settled', async () => {
+		await bothWrote();
+		await graphHistory.bringIn('an-argument');
+
+		await graphHistory.settle(graphHistory.inTwoVersions[0], 'theirs');
+
+		expect(graphHistory.merging?.inTwoVersions).toEqual([]);
+		expect(graphHistory.taking).toBe('an-argument');
+
+		await graphHistory.keep('Both lines');
+
+		expect(graphHistory.merging).toBe(null);
+		expect(graphHistory.taking).toBe(null);
+	});
+
+	it('is stopped, and the graph is the one it was before the merge began', async () => {
+		const { note, section } = await bothWrote();
+		await graphHistory.bringIn('an-argument');
+
+		expect(await graphHistory.abandonMerge()).toBe(true);
+
+		expect(graphHistory.merging).toBe(null);
+		expect(graphHistory.inTwoVersions).toEqual([]);
+		expect(graphHistory.unkept).toBe(false);
+		const blocks = await api.listBlocks(note);
+		expect(blocks.find((one) => one.ref === section)?.content).toEqual(words('The seed of it all'));
 	});
 });
 
