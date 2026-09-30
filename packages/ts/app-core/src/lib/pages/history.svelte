@@ -139,10 +139,6 @@
 		})
 	);
 
-	/** How many notes are settled already: what the folder holds that the version
-	 *  it stands on does not is what bringing a line in has put there. */
-	const settledAlready = $derived(graphHistory.changed?.notes.length);
-
 	const settled = $derived(settling === null ? null : (inTwo.get(settling) ?? null));
 
 	$effect(() => {
@@ -287,7 +283,6 @@
 	{lines}
 	{conflicts}
 	taking={graphHistory.taking}
-	settled={settledAlready}
 	busy={graphHistory.busy}
 	says={graphHistory.says}
 	onShow={() => void graphHistory.opened()}

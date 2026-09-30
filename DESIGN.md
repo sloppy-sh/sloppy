@@ -922,13 +922,17 @@ one thing worse than asking twice is losing it once.
 
 **A merge is settled note by note, and it is there until it is finished.** The list is one row
 per note the merge could not settle, each offering keep what is here, take theirs, or choose
-section by section (§ "A difference between two states" carries the vocabulary), and above it
-one line saying how many notes the merge took in by itself. **It is reachable whenever the
-folder is part-way through a merge**, including after the app has been closed and opened
-again — a person who shuts the laptop mid-merge comes back to the same list, not to a folder
-that looks settled and is not. **Stop the merge** sits at the foot of it, plainly and not in
-the destructive colour: it puts the folder back the way it was before the merge began, which
-is an ordinary way out rather than a loss.
+section by section (§ "A difference between two states" carries the vocabulary), headed by how
+many are still in two versions and who wrote in them. **What the merge settled by itself is not
+counted beside them.** Every control stays enabled while a merge is part-way through, so the
+folder cannot tell the merge's own work from the writing somebody has done since: such a count
+would climb when they wrote an unrelated note and stand still when they settled one by keeping
+what is here. What is left to do is the number a person can act on, and it is the only one
+shown. **It is reachable whenever the folder is part-way through a merge**, including after the
+app has been closed and opened again — a person who shuts the laptop mid-merge comes back to
+the same list, not to a folder that looks settled and is not. **Stop the merge** sits at the
+foot of it, plainly and not in the destructive colour: it puts the folder back the way it was
+before the merge began, which is an ordinary way out rather than a loss.
 
 **Every number is the distance from the place in front of you.** Where a folder is kept in
 more than one place, the picker over those acts opens on the one the line the folder is on

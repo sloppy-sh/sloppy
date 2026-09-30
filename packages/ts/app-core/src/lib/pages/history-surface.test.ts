@@ -188,14 +188,13 @@ async function origins(): Promise<OwnedRef> {
 
 /** Two lines of work that each wrote into the one note, brought together and
  *  left part-way through. */
-async function bothWrote(alsoThere?: string): Promise<OwnedRef> {
+async function bothWrote(): Promise<OwnedRef> {
 	const note = await origins();
 	const section = await served.createBlock({ node: note, content: words('The seed') });
 	await graphHistory.keep('A first version');
 	await graphHistory.startLine('an-argument');
 	await graphHistory.workOn('an-argument');
 	await served.updateBlock(section.ref, { content: words('The seed of the argument') });
-	if (alsoThere !== undefined) await served.createNode({ title: alsoThere });
 	await graphHistory.keep('Over there');
 	await graphHistory.workOn('main');
 	await served.updateBlock(section.ref, { content: words('The seed of it all') });
@@ -489,15 +488,6 @@ describe('a line being brought in, part-way through', () => {
 		expect(screen()).toContain('One note is in two versions');
 		expect(said('Bringing in an-argument')).toContain('Origins');
 		expect(screen()).not.toContain('.md');
-	});
-
-	it('says how much came in settled, so what is left in two versions has a size', async () => {
-		await bothWrote('Written over there');
-
-		await openHistory();
-
-		expect(said('Bringing in an-argument')).toContain('One note is in two versions');
-		expect(said('Bringing in an-argument')).toContain('One other note is settled already');
 	});
 
 	it('offers to keep a version once the last note has been settled', async () => {

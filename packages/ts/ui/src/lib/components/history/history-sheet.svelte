@@ -56,7 +56,6 @@
 		lines,
 		conflicts = [],
 		taking = null,
-		settled = undefined,
 		busy = false,
 		says = null,
 		onShow,
@@ -97,8 +96,6 @@
 		/** The line being brought in. `null` is a folder in the middle of
 		 *  nothing, and the whole of what says one is part-way through. */
 		taking?: string | null;
-		/** How many notes a line being brought in has settled already. */
-		settled?: number;
 		busy?: boolean;
 		says?: string | null;
 		/** The surface has just opened, and what it shows is worth asking for. */
@@ -227,7 +224,6 @@
 			<MergeUnderway
 				{taking}
 				notes={conflicts}
-				{settled}
 				{busy}
 				{says}
 				{onSettle}

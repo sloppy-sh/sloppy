@@ -86,21 +86,11 @@ describe('a line part-way into the one being worked on', () => {
 		expect(chosen).toEqual([ORIGINS.path]);
 	});
 
-	it('says how many are settled already, so what is left has a size', () => {
-		open({
-			notes: [ORIGINS, { ...ORIGINS, path: 'notes/01B.md', title: 'A second thought' }],
-			settled: 12
-		});
+	it('counts what is left in two versions, so the work left has a size', () => {
+		open({ notes: [ORIGINS, { ...ORIGINS, path: 'notes/01B.md', title: 'A second thought' }] });
 
 		expect(screen()).toContain('2 notes are in two versions');
-		expect(screen()).toContain('12 other notes are settled already');
-	});
-
-	it('leaves the count unsaid where nothing has been settled', () => {
-		open({ settled: 0 });
-
-		expect(screen()).toContain('One note is in two versions');
-		expect(screen()).not.toContain('settled already');
+		expect(screen()).toContain('A second thought');
 	});
 
 	it('names something that is not a note without showing what it is called', () => {
