@@ -3927,7 +3927,8 @@ reachable whenever the folder is part-way through a merge — after the app has 
 opened again, and not only in the session the merge began in. Empty `inTwoVersions` with a
 `merging` still there is a merge waiting to be committed. `abandonMerge` is the way back out
 of one: the folder as it was before the merge began, refused where the merge is not one this
-app began.
+app began — and a merge the person began themselves is absent from `merging` for the same
+reason, since offering to settle one this app will not touch is a surface that only refuses.
 
 **A difference between two states is computed from the two vaults, note by note and section
 by section.** `vaultDifference` in `@sloppy/vault` reads both sides as notes and answers

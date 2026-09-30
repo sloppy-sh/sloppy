@@ -301,6 +301,21 @@ describe("a folder standing on a version rather than a line", () => {
     expect((await history.status()).changed).toEqual([NOTE]);
   });
 
+  it("stands where what is written here is already what that version has", async () => {
+    const { files, history, first } = await twoVersions();
+    await files.remove(OTHER);
+    await write(files, NOTE, "one");
+
+    await history.standOn(first, true);
+
+    expect(await files.read(NOTE)).toEqual(encodeText("one"));
+    expect(await files.read(OTHER)).toBeUndefined();
+    expect(await history.status()).toMatchObject({
+      changed: [],
+      untracked: [],
+    });
+  });
+
   it("will not carry what that version has otherwise", async () => {
     const { files, history, first } = await twoVersions();
     await write(files, NOTE, "one, written again");
@@ -405,6 +420,32 @@ describe("a merge the folder is part-way through", () => {
     expect((await history.status()).merging).toBeUndefined();
     expect(await history.currentCommit()).toBe(before);
     await expect(history.abandonMerge()).rejects.toBeInstanceOf(HistoryError);
+  });
+
+  it("is stopped with nothing settled the other line's way left behind", async () => {
+    const { files, history } = graph();
+    await write(files, NOTE, "one");
+    await history.commit("A first note");
+    await history.branch("aside");
+    await history.switch("aside");
+    await write(files, NOTE, "theirs");
+    await history.commit("Written there");
+    await history.switch("main");
+    await files.remove(NOTE);
+    await history.commit("It goes");
+
+    await history.merge("aside");
+    await history.resolve(NOTE, "theirs");
+    expect(await files.read(NOTE)).toEqual(encodeText("theirs"));
+
+    await history.abandonMerge();
+
+    expect(await files.read(NOTE)).toBeUndefined();
+    expect(await history.status()).toMatchObject({
+      branch: "main",
+      changed: [],
+      untracked: [],
+    });
   });
 });
 

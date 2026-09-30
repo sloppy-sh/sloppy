@@ -50,7 +50,8 @@ interface Unsettled {
   /** The commit the other branch was at. */
   from: string;
   conflicts: Map<string, { mine?: Uint8Array; theirs?: Uint8Array }>;
-  /** What the merge put in the folder that this branch did not have, so
+  /** Every path the merge may write that this branch did not have — settling
+   *  one with the other side's version writes it too — so
    *  {@link MemoryHistory.abandonMerge} leaves none of it behind. */
   brought: string[];
 }
@@ -336,7 +337,9 @@ export class MemoryHistory implements History {
         if (ours) settled.set(path, ours);
       }
     }
-    const brought = [...settled.keys()].filter((path) => !mine.tree.has(path));
+    const brought = [
+      ...new Set([...settled.keys(), ...conflicts.keys()]),
+    ].filter((path) => !mine.tree.has(path));
     await this.lay(settled);
     this.unsettled = { from: theirs, conflicts, brought };
     if (conflicts.size === 0) {
@@ -534,7 +537,6 @@ export class MemoryHistory implements History {
     return held?.tree ?? new Map();
   }
 
-  /** The line the folder is on; nothing while it stands on a version. */
   private get line(): string | undefined {
     return "line" in this.where ? this.where.line : undefined;
   }
@@ -557,17 +559,17 @@ export class MemoryHistory implements History {
     return at === undefined ? undefined : this.commits.get(at);
   }
 
-  /** What laying `tree` would write over: a path it has otherwise than the
-   *  version the folder is on, so the laying writes it, and which the folder
-   *  holds otherwise again, so writing it loses something. */
+  /** What laying `tree` would lose: somewhere it writes, holding something
+   *  nothing has kept, that is not already what it would write. */
   private async inTheWay(tree: Tree): Promise<string[]> {
     const on = this.head()?.tree ?? new Map<string, Uint8Array>();
     const now = await this.folder();
     const held: string[] = [];
     for (const path of new Set([...on.keys(), ...tree.keys(), ...now.keys()])) {
-      if (sameBytes(on.get(path), tree.get(path))) continue;
-      if (sameBytes(on.get(path), now.get(path))) continue;
-      held.push(path);
+      const laid = !sameBytes(on.get(path), tree.get(path));
+      const written = !sameBytes(on.get(path), now.get(path));
+      const alreadyThat = sameBytes(now.get(path), tree.get(path));
+      if (laid && written && !alreadyThat) held.push(path);
     }
     return held.sort();
   }
@@ -626,8 +628,6 @@ export class MemoryHistory implements History {
     return held;
   }
 
-  /** The folder comes to be at `commit`: the line it is on if it is on one,
-   *  and the folder itself where it stands on a version. */
   private moveTo(commit: string): void {
     if ("line" in this.where) this.heads.set(this.where.line, commit);
     else this.where = { version: commit };

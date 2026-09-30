@@ -21,8 +21,7 @@ function worthATry(): boolean {
 		graphHistory.keeps &&
 		prefs.current.autosave &&
 		!graphHistory.busy &&
-		graphHistory.inTwoVersions.length === 0 &&
-		graphHistory.taking === null
+		graphHistory.merging === null
 	);
 }
 

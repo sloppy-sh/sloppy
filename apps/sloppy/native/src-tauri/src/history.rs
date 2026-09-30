@@ -17,8 +17,9 @@ use base64::Engine as _;
 use chrono::{DateTime, SecondsFormat};
 use git2::{
     build::CheckoutBuilder, BranchType, Config, ConfigLevel, DiffOptions, ErrorCode, Index,
-    IndexAddOption, ObjectType, Oid, Repository, RepositoryInitOptions, RepositoryOpenFlags,
-    RepositoryState, Signature, Sort, StatusOptions, TreeWalkMode, TreeWalkResult,
+    IndexAddOption, IndexConflict, ObjectType, Oid, Repository, RepositoryInitOptions,
+    RepositoryOpenFlags, RepositoryState, Signature, Sort, StatusOptions, TreeWalkMode,
+    TreeWalkResult,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -236,6 +237,16 @@ pub struct Status {
     pub(crate) behind: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) upstream: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) merging: Option<Merging>,
+}
+
+/// `HistoryStatus["merging"]` in `@sloppy/local`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Merging {
+    pub(crate) taking: String,
+    pub(crate) in_two_versions: Vec<String>,
 }
 
 /// `MergeResult` in `@sloppy/local`: `conflicts` is there exactly where nothing
@@ -775,7 +786,7 @@ fn view(repo: &Repository, commit: &git2::Commit<'_>, trust: &Trust) -> Commit {
 
 /// What a person is shown of the folder: the vault and nothing else, so a
 /// listing in a project's container never shows the person's own code.
-fn standing(kept: &Kept) -> Result<Status, HistoryError> {
+fn standing(kept: &Kept, taking: Option<Oid>) -> Result<Status, HistoryError> {
     let repo = kept.repo();
     let mut how = StatusOptions::new();
     how.include_untracked(true)
@@ -807,6 +818,13 @@ fn standing(kept: &Kept) -> Result<Status, HistoryError> {
         Some((ahead, behind, upstream)) => (ahead, behind, Some(upstream)),
         None => (0, 0, None),
     };
+    let merging = match taking {
+        Some(head) => Some(Merging {
+            taking: head.to_string(),
+            in_two_versions: still_in_two(kept)?,
+        }),
+        None => None,
+    };
     Ok(Status {
         changed,
         untracked,
@@ -814,7 +832,37 @@ fn standing(kept: &Kept) -> Result<Status, HistoryError> {
         ahead,
         behind,
         upstream,
+        merging,
     })
+}
+
+/// Every path the merge in progress has left in two versions, from the vault
+/// root — what {@link one_version_each} answered as the merge was made, read
+/// off the repository rather than remembered.
+fn still_in_two(kept: &Kept) -> Result<Vec<String>, HistoryError> {
+    let mut held = Vec::new();
+    for found in kept.repo().index()?.conflicts()? {
+        let Some(path) = conflicted_path(&found?) else {
+            continue;
+        };
+        if let Some(inside) = kept.in_vault(&path) {
+            held.push(inside.to_owned());
+        }
+    }
+    held.sort();
+    Ok(held)
+}
+
+/// What a conflict is about, as the repository spells it: whichever of the
+/// three sides is there, since any one of them may be the side that took the
+/// file away.
+fn conflicted_path(found: &IndexConflict) -> Option<String> {
+    found
+        .our
+        .as_ref()
+        .or(found.their.as_ref())
+        .or(found.ancestor.as_ref())
+        .and_then(|entry| String::from_utf8(entry.path.clone()).ok())
 }
 
 /// What has been written since the commit the folder is on, and so what an act
@@ -858,7 +906,10 @@ fn unsettled(kept: &Kept) -> Result<Unsettled, HistoryError> {
 }
 
 pub fn status(vault: &Opened) -> Result<Status, HistoryError> {
-    standing(&at(vault)?)
+    let mut kept = at(vault)?;
+    let with = merging(&mut kept.repo)?;
+    let ours = with.filter(|_| theirs_unfinished(&kept, with).is_none());
+    standing(&kept, ours)
 }
 
 /// Whether a commit carries the vault at a state none of what it springs from
@@ -1449,13 +1500,9 @@ fn one_version_each(kept: &Kept, index: &Index) -> Result<Vec<String>, HistoryEr
     let mut held = Vec::new();
     for found in index.conflicts()? {
         let found = found?;
-        let spelled = found
-            .our
-            .as_ref()
-            .or(found.their.as_ref())
-            .or(found.ancestor.as_ref())
-            .and_then(|entry| String::from_utf8(entry.path.clone()).ok());
-        let Some(path) = spelled else { continue };
+        let Some(path) = conflicted_path(&found) else {
+            continue;
+        };
         let file = kept.file(&path);
         match &found.our {
             Some(ours) => {
@@ -2731,6 +2778,42 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_merge_in_the_middle_is_read_off_the_folder() {
+        let root = vault();
+        write(&root, "notes/a.md", "was");
+        made(&root, "A note");
+        branch(&root, "later").expect("the branch");
+
+        write(&root, "notes/a.md", "mine");
+        made(&root, "My way");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        let theirs = made(&root, "Their way");
+        switch_to(&root, "main").expect("back");
+
+        assert!(status(&root).expect("the status").merging.is_none());
+        merge_in(&root, &private_for(&root), "later").expect("the merge");
+
+        let held = status(&root)
+            .expect("the status")
+            .merging
+            .expect("mid-merge");
+        assert_eq!(held.taking, theirs.id);
+        assert_eq!(held.in_two_versions, vec!["notes/a.md".to_owned()]);
+
+        settle(&root, "notes/a.md", ConflictSide::Theirs).expect("the choice");
+        let held = status(&root)
+            .expect("the status")
+            .merging
+            .expect("mid-merge");
+        assert_eq!(held.taking, theirs.id);
+        assert!(held.in_two_versions.is_empty());
+
+        made(&root, "Merge later");
+        assert!(status(&root).expect("the status").merging.is_none());
+    }
+
+    #[test]
     fn a_note_one_side_took_away_and_the_other_wrote_is_settled_either_way() {
         let root = vault();
         write(&root, "notes/a.md", "was");
@@ -3476,6 +3559,8 @@ pub(crate) mod tests {
         their_git(&root, &["checkout", DEFAULT_BRANCH]);
         their_git(&root, &["merge", "--no-commit", "--no-ff", "theirs"]);
         assert!(root.join(".git").join("MERGE_HEAD").exists());
+
+        assert!(status(&held).expect("the status").merging.is_none());
 
         write(&held, "notes/b.md", "two");
         assert_eq!(

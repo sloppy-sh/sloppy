@@ -506,12 +506,7 @@ class HistoryStore {
 		});
 	}
 
-	/**
-	 * The folder becomes that version, and is on no line afterwards.
-	 *
-	 * `carrying` takes what is written here along rather than refusing over it;
-	 * a file that version has otherwise is refused either way.
-	 */
+	/** The folder becomes that version, and is on no line afterwards. */
 	async standOn(commit: string, carrying?: boolean): Promise<boolean> {
 		return this.act(async (history) => {
 			if (!history.standOn) return false;

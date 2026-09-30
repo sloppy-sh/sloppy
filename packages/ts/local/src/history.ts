@@ -136,7 +136,8 @@ export interface HistoryStatus {
    * every path still in two versions — empty where they have all been settled
    * and the merge is waiting to be committed.
    *
-   * Absent is a folder in the middle of nothing.
+   * Absent is a folder in the middle of nothing, and one in the middle of a
+   * merge begun outside this app, which nothing here settles or stops.
    */
   merging?: { taking: string; inTwoVersions: readonly string[] };
 }
