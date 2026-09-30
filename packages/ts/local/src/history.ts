@@ -231,7 +231,9 @@ export interface History {
    *  under the new name. */
   renameLine?(from: string, to: string): Promise<Branch>;
   /** The folder as it was before the merge began, with nothing half-settled
-   *  left behind. Refused where no merge this app began is in progress. */
+   *  left behind. Refused where no merge this app began is in progress, and
+   *  where anything has been written since it began — going back writes over
+   *  everything the history is keeping, and that writing is not the merge's. */
   abandonMerge?(): Promise<void>;
   /**
    * Every commit here, across every branch, newest first and never ahead of

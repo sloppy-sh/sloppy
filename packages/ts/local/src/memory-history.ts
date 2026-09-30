@@ -54,6 +54,10 @@ interface Unsettled {
    *  one with the other side's version writes it too — so
    *  {@link MemoryHistory.abandonMerge} leaves none of it behind. */
   brought: string[];
+  /** What the merge left in the folder, settled path by settled path, so
+   *  {@link MemoryHistory.abandonMerge} can tell writing done since from the
+   *  merge's own work. */
+  left: Tree;
 }
 
 /** The line the folder is on, or the version it stands on while it is on none —
@@ -275,6 +279,11 @@ export class MemoryHistory implements History {
   async abandonMerge(): Promise<void> {
     const merging = this.unsettled;
     if (!merging) throw noMergeHere();
+    const now = await this.folder();
+    for (const [path, bytes] of merging.left) {
+      if (merging.conflicts.has(path)) continue;
+      if (!sameBytes(now.get(path), bytes)) throw writtenSinceTheMerge();
+    }
     for (const path of merging.brought) await this.files.remove(path);
     await this.lay(this.head()?.tree ?? new Map());
     this.unsettled = undefined;
@@ -341,7 +350,12 @@ export class MemoryHistory implements History {
       ...new Set([...settled.keys(), ...conflicts.keys()]),
     ].filter((path) => !mine.tree.has(path));
     await this.lay(settled);
-    this.unsettled = { from: theirs, conflicts, brought };
+    this.unsettled = {
+      from: theirs,
+      conflicts,
+      brought,
+      left: new Map(settled),
+    };
     if (conflicts.size === 0) {
       await this.commit(`Merge ${called}`);
       return { merged: true };
@@ -355,8 +369,13 @@ export class MemoryHistory implements History {
       throw new HistoryError("That is not one of the ones in two versions.");
     }
     const bytes = side === "mine" ? held.mine : held.theirs;
-    if (bytes === undefined) await this.files.remove(path);
-    else await this.files.write(path, bytes);
+    if (bytes === undefined) {
+      await this.files.remove(path);
+      this.unsettled.left.delete(path);
+    } else {
+      await this.files.write(path, bytes);
+      this.unsettled.left.set(path, bytes);
+    }
     this.unsettled.conflicts.delete(path);
   }
 
@@ -839,4 +858,10 @@ function onNoLine(): HistoryError {
 
 function noMergeHere(): HistoryError {
   return new HistoryError("There is no merge here to stop.");
+}
+
+function writtenSinceTheMerge(): HistoryError {
+  return new HistoryError(
+    "Something has been written here since this merge began, and stopping it would write over that. Put it back the way it was, then try again.",
+  );
 }

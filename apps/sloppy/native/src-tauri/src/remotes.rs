@@ -313,7 +313,7 @@ pub fn pull(
             return Ok(Merged::whole());
         };
         let taken = theirs_in(&tracking, &name).to_owned();
-        history::lay(&kept, theirs)?;
+        history::lay(&kept, theirs, history::WritesOver::NothingUnkept)?;
         repo.reference(
             &format!("refs/heads/{taken}"),
             theirs,

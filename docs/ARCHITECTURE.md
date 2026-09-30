@@ -3929,6 +3929,11 @@ opened again, and not only in the session the merge began in. Empty `inTwoVersio
 of one: the folder as it was before the merge began, refused where the merge is not one this
 app began — and a merge the person began themselves is absent from `merging` for the same
 reason, since offering to settle one this app will not touch is a surface that only refuses.
+It is the one act that writes over everything the history is keeping, so it is **also refused
+where anything has been written since the merge began** — a note, or a line of the project's
+own code. A path still in two versions is the merge's own doing and stops nothing; a file
+nothing is tracking is left where it is and stops nothing either. Stopping a merge is a way
+back out, never a way to lose an afternoon's writing.
 
 **A difference between two states is computed from the two vaults, note by note and section
 by section.** `vaultDifference` in `@sloppy/vault` reads both sides as notes and answers
