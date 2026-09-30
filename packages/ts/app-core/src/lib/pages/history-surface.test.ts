@@ -2,7 +2,7 @@
 // drawn in place of the graph and taking nothing.
 
 import { LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
-import type { OwnedRef, Viewer } from '@sloppy/types';
+import type { BlockDocument, OwnedRef, Viewer } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetApi } from '../api.js';
@@ -153,6 +153,63 @@ function said(heading: string): string {
 	);
 	if (!found) throw new Error(`Nothing on the screen is headed "${heading}"`);
 	return (found.parentElement?.textContent ?? '').replace(/\s+/g, ' ');
+}
+
+/** A control inside the section under a heading, where the same words label
+ *  something elsewhere on the screen too. */
+function under(heading: string, labelled: string): HTMLButtonElement {
+	const head = [...document.body.querySelectorAll('h3')].find(
+		(one) => one.textContent?.trim() === heading
+	);
+	if (!head) throw new Error(`Nothing on the screen is headed "${heading}"`);
+	const found = [...(head.parentElement?.querySelectorAll('button') ?? [])].find((one) =>
+		one.textContent?.includes(labelled)
+	);
+	if (!found) throw new Error(`Nothing under "${heading}" is labelled "${labelled}"`);
+	return found;
+}
+
+function field(labelled: string): HTMLInputElement {
+	const found = document.body.querySelector<HTMLInputElement>(`[aria-label="${labelled}"]`);
+	if (!found) throw new Error(`No field is labelled "${labelled}"`);
+	return found;
+}
+
+function words(said: string): BlockDocument {
+	return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: said }] }] };
+}
+
+/** The one note of the graph this file starts with. */
+async function origins(): Promise<OwnedRef> {
+	const fresh = new LocalApi(folder());
+	const held = await fresh.listNodes({ graph: await fresh.graphHere() });
+	return held[0].ref;
+}
+
+/** Two lines of work that each wrote into the one note, brought together and
+ *  left part-way through. */
+async function bothWrote(alsoThere?: string): Promise<OwnedRef> {
+	const note = await origins();
+	const section = await served.createBlock({ node: note, content: words('The seed') });
+	await graphHistory.keep('A first version');
+	await graphHistory.startLine('an-argument');
+	await graphHistory.workOn('an-argument');
+	await served.updateBlock(section.ref, { content: words('The seed of the argument') });
+	if (alsoThere !== undefined) await served.createNode({ title: alsoThere });
+	await graphHistory.keep('Over there');
+	await graphHistory.workOn('main');
+	await served.updateBlock(section.ref, { content: words('The seed of it all') });
+	await graphHistory.keep('Over here');
+	await graphHistory.bringIn('an-argument');
+	return section.ref;
+}
+
+async function openHistory(): Promise<void> {
+	mounted = mount(Graph, { target });
+	await settle();
+	await openMore();
+	item('History').click();
+	await settle();
 }
 
 function menu(on: string): HTMLButtonElement {
@@ -418,5 +475,64 @@ describe('a version of the graph, opened from the history', () => {
 
 		expect(screen()).not.toContain('Your graph as it was');
 		expect(drawn().join(' ')).toContain('A second thought');
+	});
+});
+
+describe('a line being brought in, part-way through', () => {
+	it('is still there when the app has done nothing but read the folder again', async () => {
+		await bothWrote();
+		graphHistory.clear();
+
+		await openHistory();
+
+		expect(screen()).toContain('Bringing in an-argument');
+		expect(screen()).toContain('One note is in two versions');
+		expect(said('Bringing in an-argument')).toContain('Origins');
+		expect(screen()).not.toContain('.md');
+	});
+
+	it('says how much came in settled, so what is left in two versions has a size', async () => {
+		await bothWrote('Written over there');
+
+		await openHistory();
+
+		expect(said('Bringing in an-argument')).toContain('One note is in two versions');
+		expect(said('Bringing in an-argument')).toContain('One other note is settled already');
+	});
+
+	it('offers to keep a version once the last note has been settled', async () => {
+		await bothWrote();
+		await openHistory();
+
+		under('Bringing in an-argument', 'Origins').click();
+		await settle();
+		control("Take an-argument's").click();
+		await settle();
+
+		expect(screen()).toContain('Every note is settled');
+		under('Bringing in an-argument', 'Keep a version').click();
+		await settle();
+
+		expect(field('What changed').value).toBe('Brought in an-argument');
+		control('Keep it').click();
+		await settle();
+
+		expect(screen()).not.toContain('Bringing in an-argument');
+		expect(graphHistory.versions[0].parents).toHaveLength(2);
+	});
+
+	it('stops, and the graph goes back the way it was before it began', async () => {
+		const section = await bothWrote();
+		await openHistory();
+
+		under('Bringing in an-argument', 'Stop bringing it in').click();
+		await settle();
+		control('Stop it').click();
+		await settle();
+
+		expect(screen()).not.toContain('Bringing in an-argument');
+		const fresh = new LocalApi(folder());
+		const blocks = await fresh.listBlocks(await origins());
+		expect(blocks.find((one) => one.ref === section)?.content).toEqual(words('The seed of it all'));
 	});
 });
