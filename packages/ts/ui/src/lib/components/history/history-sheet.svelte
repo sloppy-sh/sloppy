@@ -29,16 +29,6 @@
 		/** What the picker called it, for a surface that says which two. */
 		label: string;
 	}
-
-	/** One note two lines of work both wrote in. */
-	export interface NoteInTwo {
-		/** What the history calls it, which is what settles it. */
-		path: string;
-		title: string;
-		address?: string;
-		/** False where it is not a note at all, and can only be taken whole. */
-		isNote: boolean;
-	}
 </script>
 
 <script lang="ts">
@@ -53,6 +43,7 @@
 	import * as Select from '$lib/components/ui/select/index.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import ChangedNotes, { type ChangedNote, type ChangedPictures } from './changed-notes.svelte';
+	import MergeUnderway, { type NoteInTwo } from './merge-underway.svelte';
 
 	let {
 		open = $bindable(false),
@@ -65,6 +56,7 @@
 		lines,
 		conflicts = [],
 		taking = null,
+		settled = undefined,
 		busy = false,
 		says = null,
 		onShow,
@@ -74,6 +66,7 @@
 		onWorkOn,
 		onBringIn,
 		onSettle,
+		onStopBringingIn,
 		onOpenVersion,
 		onCompare,
 		standing,
@@ -99,10 +92,14 @@
 		/** Whether there are older ones than these. */
 		older?: boolean;
 		lines: readonly LineOfWork[];
-		/** Notes a merge left in two versions; empty is a graph with none. */
+		/** What a line being brought in left in two versions; empty is one waiting
+		 *  to be kept. */
 		conflicts?: readonly NoteInTwo[];
-		/** The line being brought in, while any of it is unsettled. */
+		/** The line being brought in. `null` is a folder in the middle of
+		 *  nothing, and the whole of what says one is part-way through. */
 		taking?: string | null;
+		/** How many notes a line being brought in settled by itself. */
+		settled?: number;
 		busy?: boolean;
 		says?: string | null;
 		/** The surface has just opened, and what it shows is worth asking for. */
@@ -113,6 +110,10 @@
 		onWorkOn: (name: string) => Promise<boolean>;
 		onBringIn: (name: string) => Promise<boolean>;
 		onSettle: (path: string) => void;
+		/** The folder back at the last version kept, holding nothing of the line
+		 *  that was being brought in and nothing written since. Absent where this
+		 *  platform cannot, and stopping is not offered. */
+		onStopBringingIn?: () => Promise<boolean>;
 		/** Absent where a version cannot be put on the graph from here. */
 		onOpenVersion?: (id: string) => void;
 		onCompare: (
@@ -183,6 +184,13 @@
 		return { ...(held === undefined ? {} : { at: held }), label: labelled(value) };
 	}
 
+	/** A line brought in is finished by keeping a version, so the message is
+	 *  already written and the person has only to keep it. */
+	function finishBringingIn(): void {
+		if (message.trim() === '') message = `Brought in ${taking}`;
+		keeping = true;
+	}
+
 	async function keep(): Promise<void> {
 		const said = message.trim();
 		if (said === '') return;
@@ -224,36 +232,17 @@
 	<div class="space-y-8 px-2 pt-4 pb-2">
 		{@render standing?.()}
 
-		{#if unsettled}
-			<section class="space-y-2">
-				<h3 class="text-sm font-medium">Written in on both lines</h3>
-				<p class="text-sm text-muted-foreground">
-					{taking
-						? `You and ${taking} both wrote in these. Choose what each one says, then keep the version.`
-						: 'Two lines of work both wrote in these. Choose what each one says, then keep the version.'}
-				</p>
-				<ul class="space-y-1">
-					{#each conflicts as note (note.path)}
-						<li>
-							<button
-								type="button"
-								class="flex min-h-control w-full items-baseline gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"
-								onclick={() => onSettle(note.path)}
-							>
-								{#if note.address}
-									<span class="shrink-0 address text-xs">{note.address}</span>
-								{/if}
-								<span class="min-w-0 flex-1 truncate">
-									{note.isNote
-										? note.title || 'Untitled'
-										: 'Something else your graph keeps for you'}
-								</span>
-								<span class="shrink-0 text-xs text-muted-foreground">Choose</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
-			</section>
+		{#if taking}
+			<MergeUnderway
+				{taking}
+				notes={conflicts}
+				{settled}
+				{busy}
+				{says}
+				{onSettle}
+				onFinish={finishBringingIn}
+				onStop={onStopBringingIn}
+			/>
 		{/if}
 
 		<section class="space-y-3">

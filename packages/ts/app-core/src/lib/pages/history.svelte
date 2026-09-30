@@ -55,8 +55,9 @@
 
 	const moving = new Moving();
 
-	/** What each note left in two versions holds on either side, once read. */
-	const inTwo = new SvelteMap<string, NoteInTwoVersions | null>();
+	/** What each note left in two versions holds on either side. `undefined` is
+	 *  one still being read, `null` one that is not a note at all. */
+	const inTwo = new SvelteMap<string, NoteInTwoVersions | null | undefined>();
 	let settling = $state<string | null>(null);
 	let settleOpen = $state(false);
 	let showing = $state<string | null>(null);
@@ -140,7 +141,7 @@
 			return {
 				path,
 				title: held?.title ?? '',
-				isNote: held !== null && held !== undefined,
+				...(held === undefined ? {} : { isNote: held !== null }),
 				...(address === undefined ? {} : { address })
 			};
 		})
@@ -153,7 +154,7 @@
 		for (const path of inTwo.keys()) if (!unsettled.has(path)) inTwo.delete(path);
 		for (const path of unsettled) {
 			if (inTwo.has(path)) continue;
-			inTwo.set(path, null);
+			inTwo.set(path, undefined);
 			void graphHistory.inTwo(path).then((held) => inTwo.set(path, held));
 		}
 	});
@@ -284,19 +285,13 @@
 	async function settleWhole(side: 'mine' | 'theirs'): Promise<void> {
 		const path = settling;
 		if (path === null) return;
-		if (await graphHistory.settle(path, side)) {
-			inTwo.delete(path);
-			settleOpen = false;
-		}
+		if (await graphHistory.settle(path, side)) settleOpen = false;
 	}
 
 	async function settleBySection(take: ReadonlySet<string>): Promise<void> {
 		const note = settled;
 		if (!note) return;
-		if (await graphHistory.settleSections(note, take)) {
-			inTwo.delete(note.path);
-			settleOpen = false;
-		}
+		if (await graphHistory.settleSections(note, take)) settleOpen = false;
 	}
 </script>
 
@@ -311,6 +306,7 @@
 	{lines}
 	{conflicts}
 	taking={graphHistory.taking}
+	settled={graphHistory.settledAlready ?? undefined}
 	busy={graphHistory.busy}
 	says={graphHistory.says}
 	onShow={() => void graphHistory.opened()}
@@ -323,6 +319,7 @@
 		settling = path;
 		settleOpen = true;
 	}}
+	onStopBringingIn={graphHistory.stopsAMerge ? () => graphHistory.abandonMerge() : undefined}
 	onOpenVersion={onShowVersion ? (id) => void showVersion(id) : undefined}
 	onCompare={compare}
 	standing={graphHistory.stands ? theStanding : undefined}
