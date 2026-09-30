@@ -45,8 +45,8 @@ const SHAPES = NOTE_TEMPLATES.map(
 export const AGENT_MD = `# Writing notes in this project
 
 The notes in this folder are a Sloppy graph kept beside the code it is about: one account
-of why this project is the way it is, held by the people here and by whatever they set to
-work beside them. They are ordinary markdown files: anything can read them, and what
+of what this project is meant to be and why it is the way it is, held by the people here
+and by whatever they set to work beside them. They are ordinary markdown files: anything can read them, and what
 follows is what it takes to write one that the app, the other people here and the next
 agent all read the same way.
 
@@ -56,6 +56,13 @@ moves around in, not a pile of summaries. Asked why something is the way it is, 
 before answering; told why, write it down here. Asked whether a piece of the code is doing
 what it was written to do, read the note for what the thing is FOR and the code for what it
 does, and put what agrees and what does not into the note, where the next reader finds it.
+
+**A note may come before the code it is about, and often should.** What is written here is
+the intent the code is answerable to, not a record filed once the work is done — so
+something decided and not yet built belongs here now, said exactly enough to build from.
+Asked to build, look first for the note saying what the thing is for and build from that.
+Where no note says it, ask for one, or write down what you were told and cite who told you.
+A note whose code does not exist yet is not an unfinished note.
 
 **Everything a person can write in a note, you can write, and everything you write, a
 person can read and change.** There is no shape here that is yours and not theirs, and

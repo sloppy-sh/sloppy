@@ -52,6 +52,16 @@ and whether the note still reads to somebody arriving now — and write the answ
 the next reader finds it. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "A project's
 container" is the mechanism.
 
+**And the documents come first: this is a tool for intent-driven development.** A person
+writes down what they want, as exactly as they can say it, with or without something set to
+work beside them — and the code sprouts from what is written, with or without it. So a note
+is not a record filed beside the code after the decision was taken. It is the intent the code
+is answerable to, which is why the check runs in both directions rather than only from the
+repository towards the notes. **The consequence is that a version of the project is somewhere
+a person WRITES from, not only somewhere they look**: standing on an earlier version keeps
+every control it had, writing there opens a line, and bringing that line back is an act this
+product carries rather than one it leaves to a terminal.
+
 Domain: `sloppy.sh` · bundle id `sh.sloppy.app` · packages `@sloppy/*`.
 
 ## The Genealogy Is the Protocol (required)

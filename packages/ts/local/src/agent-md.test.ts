@@ -199,7 +199,17 @@ describe("what AGENT.md teaches", () => {
   });
 
   it("says what the notes are for before it says how to write one", () => {
-    expect(AGENT_MD).toContain("why this project is the way it is");
+    expect(AGENT_MD).toContain("what this project is meant to be");
+    expect(AGENT_MD).toContain("why it is the way it is");
+  });
+
+  // AI.md: the documents come first and the code sprouts from them, so a note
+  // written before its code is not a note waiting on anything.
+  it("says a note may come before the code it is about", () => {
+    expect(AGENT_MD).toContain("the intent the code is answerable to");
+    expect(AGENT_MD).toContain(
+      "A note whose code does not exist yet is not an unfinished note.",
+    );
   });
 
   it("lets a reason be written from a source the note names, and not otherwise", () => {

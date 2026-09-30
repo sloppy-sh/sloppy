@@ -1,7 +1,7 @@
 // The table the history is drawn as.
 
 import { TAG_HUE_SLOTS } from '@sloppy/types';
-import { flushSync, mount, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, type Snippet, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DrawnVersion } from './commit-graph.js';
 import CommitGraph, { HUES } from './commit-graph.svelte';
@@ -9,6 +9,20 @@ import CommitGraph, { HUES } from './commit-graph.svelte';
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let opened: string[];
+let older: boolean[];
+let watchers: ((seen: { isIntersecting: boolean }[]) => void)[];
+
+/** The foot of the list coming into view, which is what asks for a page. */
+function reachTheFoot(): void {
+	for (const look of watchers) look([{ isIntersecting: true }]);
+	flushSync();
+}
+
+function acts(said: string): Snippet<[string]> {
+	return createRawSnippet<[string]>((at) => ({
+		render: () => `<button type="button">${said} ${at()}</button>`
+	}));
+}
 
 function version(id: string, parents: string[], over: Partial<DrawnVersion> = {}): DrawnVersion {
 	return { id, message: id, when: '1 Jan 2026', parents, refs: [], ...over };
@@ -36,15 +50,24 @@ function room(wide: boolean): void {
 
 function draw(
 	versions: DrawnVersion[],
-	over: { at?: string; on?: string; elsewhere?: string[]; signs?: boolean } = {}
+	over: {
+		at?: string;
+		on?: string;
+		elsewhere?: string[];
+		signs?: boolean;
+		older?: boolean;
+		openAt?: string | null;
+		acts?: Snippet<[string]>;
+		onOlder?: () => void;
+	} = {}
 ): void {
 	mounted = mount(CommitGraph, {
 		target,
 		props: {
 			versions,
 			signs: false,
+			onOlder: () => older.push(true),
 			...over,
-			onOlder: () => {},
 			onOpen: (id: string) => opened.push(id)
 		}
 	});
@@ -75,6 +98,24 @@ function said(one: Element): string {
 beforeEach(() => {
 	room(true);
 	opened = [];
+	older = [];
+	watchers = [];
+	Object.defineProperty(globalThis, 'IntersectionObserver', {
+		configurable: true,
+		writable: true,
+		value: class {
+			look: (seen: { isIntersecting: boolean }[]) => void;
+			constructor(look: (seen: { isIntersecting: boolean }[]) => void) {
+				this.look = look;
+				watchers.push(look);
+			}
+			observe() {}
+			unobserve() {}
+			disconnect() {
+				watchers = watchers.filter((one) => one !== this.look);
+			}
+		}
+	});
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -216,5 +257,93 @@ describe('the lanes beside the rows', () => {
 		draw([version('a', []), version('b', ['nothing here'])]);
 
 		expect(target.querySelectorAll('path')).toHaveLength(0);
+	});
+});
+
+describe('the version the folder stands on', () => {
+	it('is marked on its row and not only on its lane', () => {
+		draw([version('c', ['a']), version('a', [])], { at: 'c', on: 'main' });
+
+		expect(rows()[0].getAttribute('data-standing')).toBe('true');
+		expect(rows()[1].getAttribute('data-standing')).toBeNull();
+		expect(said(rows()[0])).toContain('Here');
+		expect(said(rows()[1])).not.toContain('Here');
+	});
+
+	// Once standing on a version is a place somebody can write from, the version
+	// they are on and the head of the line they are on need not be the same one.
+	it('is told apart from the head of the line the folder is on', () => {
+		draw([version('c', ['a'], { refs: ['main'] }), version('a', [])], { at: 'a', on: 'main' });
+
+		expect(rows()[1].getAttribute('data-standing')).toBe('true');
+		expect(said(rows()[0])).toContain('main');
+		expect(said(rows()[0])).not.toContain('Here');
+		const chip = [...rows()[0].querySelectorAll('span')].find((one) => said(one) === 'main');
+		expect(chip?.className).toContain('border-foreground');
+	});
+});
+
+describe('what a version offers', () => {
+	it('is drawn against that version, and nowhere a reader has to go and find it', () => {
+		draw([version('c', ['a']), version('a', [])], {
+			openAt: 'c',
+			acts: acts('Stand on')
+		});
+
+		const panel = rows()[0].querySelector('[aria-label="What you can do with this version"]');
+		expect(panel).not.toBeNull();
+		expect(said(panel as Element)).toBe('Stand on c');
+		expect(rows()[1].querySelector('[aria-label="What you can do with this version"]')).toBeNull();
+	});
+
+	it('is drawn for no version until one is opened', () => {
+		draw([version('c', ['a'])], { acts: acts('Stand on') });
+
+		expect(target.querySelector('[aria-label="What you can do with this version"]')).toBeNull();
+	});
+});
+
+describe('older versions', () => {
+	it('are asked for as the foot of the list comes into view', () => {
+		draw([version('c', ['a']), version('a', [])], { older: true });
+
+		expect(said(target)).not.toContain('Older versions');
+		reachTheFoot();
+		expect(older).toEqual([true]);
+	});
+
+	it('are asked for once, however often the foot is seen', () => {
+		draw([version('c', ['a'])], { older: true });
+
+		reachTheFoot();
+		reachTheFoot();
+		reachTheFoot();
+
+		expect(older).toEqual([true]);
+	});
+
+	it('are not asked for where there are none left', () => {
+		draw([version('c', ['a'])], { older: false });
+
+		expect(watchers).toHaveLength(0);
+		expect(older).toEqual([]);
+	});
+
+	// A browser that cannot watch for the foot still has to reach them.
+	it('keep a control where nothing can watch the foot of the list', () => {
+		Object.defineProperty(globalThis, 'IntersectionObserver', {
+			configurable: true,
+			writable: true,
+			value: undefined
+		});
+		draw([version('c', ['a'])], { older: true });
+
+		const control = [...target.querySelectorAll('button')].find(
+			(one) => said(one) === 'Older versions'
+		);
+		expect(control).not.toBeUndefined();
+		control?.click();
+		flushSync();
+		expect(older).toEqual([true]);
 	});
 });

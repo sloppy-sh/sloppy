@@ -28,6 +28,10 @@
 	const FOLD_UNDER = 36;
 	const SHORT_NAME = 8;
 
+	/** On the row the folder stands on. Short, because it sits in a 16rem column
+	 *  beside a branch name; the sentence beside it is what a reader hears. */
+	const HERE = 'Here';
+
 	type Point = [number, number];
 
 	function midpoint(from: Point, to: Point): Point {
@@ -60,6 +64,8 @@
 	// version, its lane beside it, the lines between them in the lane's hue.
 	import Check from '@lucide/svelte/icons/check';
 	import { Button } from '@sloppy/ui/button';
+	import { Skeleton } from '@sloppy/ui/skeleton';
+	import type { Snippet } from 'svelte';
 	import type { DrawnVersion } from './commit-graph.js';
 	import { lanes, type LaneLink, type Lanes } from './commit-lanes.js';
 
@@ -73,6 +79,8 @@
 		busy = false,
 		standingFor,
 		onStandingFor,
+		acts,
+		openAt = null,
 		onOlder,
 		onOpen
 	}: {
@@ -97,6 +105,11 @@
 		standingFor?: ReadonlyMap<string, number>;
 		/** Somebody asked to see the versions a folded row stands for. */
 		onStandingFor?: (id: string) => void;
+		/** What a version offers, drawn against that version's own row rather
+		 *  than anywhere a reader would have to go and find it. */
+		acts?: Snippet<[string]>;
+		/** Which version's acts are showing; the caller toggles it in `onOpen`. */
+		openAt?: string | null;
 		onOlder: () => void;
 		onOpen: (id: string) => void;
 	} = $props();
@@ -122,6 +135,28 @@
 		watching.observe(held);
 		return () => watching.disconnect();
 	});
+	let foot = $state.raw<HTMLElement | null>(null);
+	/** Whether the foot of the list asks for the next page by itself. A browser
+	 *  that cannot watch for it keeps the control, so nothing is out of reach. */
+	const watching = $derived(typeof IntersectionObserver !== 'undefined');
+	/** One page asked for at a time: `onOlder` answers on its own clock and the
+	 *  foot stays in view the whole while it does. */
+	let asking = false;
+	$effect(() => {
+		const at = foot;
+		void versions.length;
+		asking = false;
+		if (!at || !older || !watching) return;
+		const look = new IntersectionObserver((seen) => {
+			if (!asking && seen.some((one) => one.isIntersecting)) {
+				asking = true;
+				onOlder();
+			}
+		});
+		look.observe(at);
+		return () => look.disconnect();
+	});
+
 	const folded = $derived(across > 0 && across < FOLD_UNDER * rootPx);
 	const tall = $derived(Math.round((folded ? FOLDED : DENSE) * rootPx));
 	const laid = $derived(lanes(versions));
@@ -184,10 +219,11 @@
 		{@const named = version.id.slice(0, SHORT_NAME)}
 		{@const holds = standingFor?.get(version.id)}
 		<li
-			class="[content-visibility:auto]"
-			style="height: {tall}px; contain-intrinsic-size: auto {tall}px"
+			class="relative {standing ? 'rounded-md bg-muted/60 inset-ring-1 inset-ring-border' : ''}"
+			style="height: {tall}px"
 			data-version={version.id}
 			data-lane={place.lane}
+			data-standing={standing ? 'true' : undefined}
 		>
 			<button
 				type="button"
@@ -224,6 +260,14 @@
 				</svg>
 
 				<span class="flex min-w-0 items-center gap-1.5">
+					{#if standing}
+						<span
+							class="shrink-0 rounded-full bg-foreground px-1.5 py-px text-[0.6875rem] font-medium text-background"
+						>
+							{HERE}
+						</span>
+						<span class="sr-only">Your graph stands on this version.</span>
+					{/if}
 					{#if version.signed}
 						<Check class="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
 						<span class="sr-only">Signed.</span>
@@ -255,11 +299,31 @@
 					</span>
 				</span>
 			</button>
+
+			{#if acts && openAt === version.id}
+				<div
+					class="absolute inset-x-0 top-full z-20 mt-0.5 rounded-md border border-border bg-popover p-1 shadow-md"
+					role="group"
+					aria-label="What you can do with this version"
+				>
+					{@render acts(version.id)}
+				</div>
+			{/if}
 		</li>
 	{/each}
 </ul>
 {#if older}
-	<Button variant="ghost" class="h-9 w-full rounded-full" disabled={busy} onclick={onOlder}>
-		Older versions
-	</Button>
+	<div bind:this={foot} class="px-2 py-1">
+		{#if watching}
+			<div class="space-y-1.5" aria-hidden="true">
+				<Skeleton class="h-3 w-2/3" />
+				<Skeleton class="h-3 w-1/2" />
+			</div>
+			<span class="sr-only" role="status">Reading older versions.</span>
+		{:else}
+			<Button variant="ghost" class="h-9 w-full rounded-full" disabled={busy} onclick={onOlder}>
+				Older versions
+			</Button>
+		{/if}
+	</div>
 {/if}

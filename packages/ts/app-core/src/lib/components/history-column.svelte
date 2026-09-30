@@ -56,6 +56,33 @@
 	}
 </script>
 
+{#snippet acts(at: string)}
+	<div class="flex flex-col gap-0.5">
+		{#if onReadVersion}
+			<Button
+				variant="ghost"
+				class="h-control justify-start text-xs"
+				onclick={() => {
+					onReadVersion(at);
+					picked = null;
+				}}
+			>
+				Read the graph as it was here
+			</Button>
+		{/if}
+		<Button
+			variant="ghost"
+			class="h-control justify-start text-xs"
+			onclick={() => {
+				picked = null;
+				onOpenAll();
+			}}
+		>
+			Everything about this version
+		</Button>
+	</div>
+{/snippet}
+
 <div class="flex min-h-0 flex-col gap-2">
 	{#if lines.length > 0}
 		<div
@@ -112,34 +139,6 @@
 		{/if}
 	</p>
 
-	{#if picked !== null}
-		{@const at = picked}
-		<div class="flex shrink-0 flex-col gap-1 rounded-md border border-border p-1">
-			{#if onReadVersion}
-				<Button
-					variant="ghost"
-					class="h-control justify-start text-xs"
-					onclick={() => {
-						onReadVersion(at);
-						picked = null;
-					}}
-				>
-					Read the graph as it was here
-				</Button>
-			{/if}
-			<Button
-				variant="ghost"
-				class="h-control justify-start text-xs"
-				onclick={() => {
-					picked = null;
-					onOpenAll();
-				}}
-			>
-				Everything about this version
-			</Button>
-		</div>
-	{/if}
-
 	{#if folded.drawn.length > 0}
 		<div class="min-h-0 flex-1 overflow-y-auto">
 			<CommitGraph
@@ -151,9 +150,11 @@
 				older={graphHistory.morePicture}
 				busy={graphHistory.busy}
 				standingFor={folded.holding}
+				openAt={picked}
 				onStandingFor={(id) => (opened = new Set([...opened, id]))}
 				onOlder={() => void graphHistory.readOlderPicture()}
 				onOpen={(id) => (picked = picked === id ? null : id)}
+				{acts}
 			/>
 		</div>
 	{/if}

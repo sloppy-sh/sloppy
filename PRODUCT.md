@@ -70,6 +70,13 @@ so the reasoning is a field either of them can move around in, and so either of 
 put what a note says a thing is for next to what the code now does and say whether the two
 still agree. Success is that nobody has to work the same decision out twice.
 
+Read forwards, that is intent-driven development, and it is what the tool is for. A person
+writes down what they want built, as exactly as they can say it, and the code grows out of
+what they wrote. Either half may be written by them or by whatever they set to work beside
+them, and neither half is the senior one. So a note is not a record of a decision already
+taken — it is the thing the code is answerable to, and an earlier version of the project is
+somewhere they can write from rather than only look at.
+
 A person can write on a line between two notes — a word for what it is, an arrow for which
 way it runs, a line that runs solid or breaks — without any of it moving a mark or changing what
 sprang from what. And a graph kept in a folder on somebody's own machine opens in the web

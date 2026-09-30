@@ -833,8 +833,27 @@ which.
 at it beside it, then when it was kept, who kept it, and the short name it is cited by. A
 branch kept here is a chip with a border; one kept somewhere else, which the history spells
 `origin/main`, is drawn dashed, so where a branch lives is read from form rather than from a
-second colour (§ "The graph's colour language"). The version the folder stands on is an open mark on its
-lane, and a version nobody is at is a filled one and nothing more.
+second colour (§ "The graph's colour language").
+
+**Two rows are marked, and they are marked differently, because they answer different
+questions.** Where the folder STANDS is its own row: an open mark on its lane, the row itself
+held in a lighter ground within its own edge, and a short pill on it. Where a LINE is is its
+name at its head, in the strong border the line being worked on gets. They are usually the
+same row and they are not always, and the day they come apart is the day somebody most needs
+to see which is which. A version nobody is at and no line points at is a filled mark and
+nothing more.
+
+**What a version offers is drawn against that version.** A picture is scrolled, so acts that
+appear anywhere but beside the row somebody tapped are acts they have to go and look for —
+and by the time they have found them they have lost which version they meant. The panel opens
+under its own row, over the rows below rather than moving them, and tapping the row again
+closes it.
+
+**Older versions arrive as somebody reaches them.** A history is read by scrolling back
+through it, and a control at the foot asking to be pressed before the scrolling may continue
+is a question with one answer. The foot of the list asks for the next page as it comes into
+view, one page at a time, and says it is reading while it does. Where the browser cannot
+watch for that the control stays, because a version out of reach is worse than a button.
 
 **A run of versions nobody wrote a message for folds into one row.** Saving as you write
 keeps them under one name, and a hundred of those are one thing that happened, not a
