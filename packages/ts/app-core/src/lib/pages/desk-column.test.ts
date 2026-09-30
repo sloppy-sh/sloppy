@@ -548,6 +548,30 @@ describe('writing nobody has kept, on the way to somewhere else', () => {
 		expect(drawn()).toContain('A second thought, rewritten');
 	});
 
+	// A folder is written into while the column stands beside it, so what is
+	// unkept is asked of the folder as somebody moves rather than remembered
+	// from when the picture was drawn.
+	it('asks though the writing came after the picture was drawn', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		await graphHistory.keep('A second version');
+		await standing();
+		await openHistory();
+		await served.createNode({ title: 'Something unkept' });
+		const found = [
+			...inColumn().querySelectorAll<HTMLButtonElement>('[aria-label="The history"] li button')
+		].find((one) => (one.textContent ?? '').includes('A first version'));
+		found?.click();
+		await settle();
+
+		control('Work on this version').click();
+		await settle();
+
+		expect(screen()).toContain('You have writing nobody has kept');
+		expect(anywhere('Bring them with me')).not.toBeNull();
+		expect(graphHistory.line).toBe('main');
+	});
+
 	// The chips move the folder too, so they ask the same question.
 	it('asks before a line is tapped as well', async () => {
 		await graphHistory.keep('A first version');

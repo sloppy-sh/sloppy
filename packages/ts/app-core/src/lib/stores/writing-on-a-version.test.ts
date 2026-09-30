@@ -106,6 +106,30 @@ describe('a line to write on', () => {
 	});
 });
 
+describe('bringing a line in while the folder stands on one', () => {
+	// A merge kept where the folder is on no line is reachable from nothing, so
+	// the next line somebody taps takes what it brought in away with it.
+	it('opens a line first, and the merge lands on it', async () => {
+		await graphHistory.startLine('an-argument');
+		await graphHistory.workOn('an-argument');
+		await somethingIsWritten('Written over there');
+		await graphHistory.keep('Over there');
+		await graphHistory.workOn('main');
+		await somethingIsWritten('Written over here');
+		await graphHistory.keep('Over here');
+		const here = graphHistory.at as string;
+		await graphHistory.standOn(here);
+
+		expect(await graphHistory.bringIn('an-argument')).toBe(true);
+
+		expect(graphHistory.line).toBe(lineFrom(here));
+		expect(graphHistory.lines.find((one) => one.name === graphHistory.line)?.head).toBe(
+			graphHistory.at
+		);
+		expect(graphHistory.versions[0].parents).toHaveLength(2);
+	});
+});
+
 describe('keeping a version while the folder stands on one', () => {
 	// A version kept on no line is reachable from nothing, and the folder reads
 	// as having nothing unkept the moment after — so the next move takes the
@@ -122,6 +146,18 @@ describe('keeping a version while the folder stands on one', () => {
 			graphHistory.at
 		);
 		expect(graphHistory.unkept).toBe(false);
+	});
+
+	// A line opens for what somebody wrote, and reading a version is not writing.
+	it('opens none where nothing was written', async () => {
+		const older = theOlder();
+		await graphHistory.standOn(older);
+
+		expect(await graphHistory.keep('Nothing happened')).toBe(false);
+
+		expect(graphHistory.line).toBeUndefined();
+		expect(graphHistory.openedLine).toBeNull();
+		expect(graphHistory.lines.map((one) => one.name)).toEqual(['main']);
 	});
 
 	it('does the same for a version kept on the clock', async () => {

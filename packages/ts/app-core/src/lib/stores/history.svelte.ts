@@ -318,8 +318,9 @@ class HistoryStore {
 		return this.#changed;
 	}
 
-	/** Whether there is anything at all to keep — the history answers this, and
-	 *  {@link changed} names notes and no more. */
+	/** Whether there is anything at all to keep, as the surface last read it —
+	 *  the history answers this, and {@link changed} names notes and no more.
+	 *  {@link HistoryStore.unkeptNow} asks the folder again. */
 	get unkept(): boolean {
 		return this.#dirty;
 	}
@@ -456,6 +457,14 @@ class HistoryStore {
 		}
 	}
 
+	/** Whether there is anything at all to keep, asked of the folder now rather
+	 *  than as the surface last drew it — a write lands without anything on
+	 *  screen hearing of it. */
+	async unkeptNow(): Promise<boolean> {
+		await this.read();
+		return this.#dirty;
+	}
+
 	/** The page of older versions after the ones already read. */
 	async readOlder(): Promise<void> {
 		const history = runtime.history();
@@ -502,6 +511,7 @@ class HistoryStore {
 	async keep(message: string): Promise<boolean> {
 		const history = runtime.history();
 		if (!history) return false;
+		if (!(await this.unkeptNow())) return false;
 		if (!(await this.lineToWriteOn())) return false;
 		this.#busy = true;
 		this.#says = null;
@@ -602,9 +612,11 @@ class HistoryStore {
 		});
 	}
 
-	/** Take a line's versions into the one the folder is on. Answers false where
-	 *  notes are left in two versions for somebody to settle. */
+	/** Take a line's versions into the one the folder is on, opening one first
+	 *  where the folder stands on a version. Answers false where notes are left
+	 *  in two versions for somebody to settle. */
 	async bringIn(name: string): Promise<boolean> {
+		if (!(await this.lineToWriteOn())) return false;
 		return this.act(async (history) => this.tookIn(await history.merge(name)));
 	}
 
@@ -641,9 +653,17 @@ class HistoryStore {
 		);
 	}
 
-	/** Take in what is kept somewhere else. Answers false where notes are left
-	 *  in two versions for somebody to settle. */
+	/** Take in what is kept somewhere else, opening a line first where the folder
+	 *  stands on a version. Answers false where notes are left in two versions
+	 *  for somebody to settle. */
 	async takeIn(remote?: string): Promise<boolean> {
+		if (!(await this.lineToWriteOn())) {
+			this.#elsewhere = {
+				words: this.#says ?? 'Start a line to work on first, then try again.',
+				refused: true
+			};
+			return false;
+		}
 		const was = this.#at;
 		let settled = true;
 		const done = await this.withRemote(

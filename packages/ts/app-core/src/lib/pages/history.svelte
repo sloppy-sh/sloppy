@@ -16,10 +16,12 @@
 		type StatePicked
 	} from '@sloppy/ui';
 	import { SvelteMap } from 'svelte/reactivity';
+	import BeforeMoving from '../components/before-moving.svelte';
 	import BranchesPanel, { type LineRow } from '../components/branches-panel.svelte';
 	import CommitDetails from '../components/commit-details.svelte';
 	import { drawnFrom, type DrawnVersion, keptBy, whenKept } from '../components/commit-graph.js';
 	import CommitGraph from '../components/commit-graph.svelte';
+	import { Moving } from '../components/moving.svelte.js';
 	import SyncControls, { type KeptAlso } from '../components/sync-controls.svelte';
 	import {
 		type DifferenceBetween,
@@ -46,6 +48,8 @@
 			} | null
 		) => void;
 	} = $props();
+
+	const moving = new Moving();
 
 	/** What each note left in two versions holds on either side, once read. */
 	const inTwo = new SvelteMap<string, NoteInTwoVersions | null>();
@@ -213,6 +217,18 @@
 		showingOpen = true;
 	}
 
+	function standOn(commit: string): void {
+		showingOpen = false;
+		void moving.leaveFor({
+			carries: true,
+			go: (carrying) => graphHistory.standOn(commit, carrying)
+		});
+	}
+
+	function workOn(name: string): Promise<boolean> {
+		return moving.leaveFor({ carries: false, go: () => graphHistory.workOn(name) });
+	}
+
 	async function compare(
 		before: StatePicked,
 		after: StatePicked
@@ -294,7 +310,7 @@
 	onKeep={(message) => graphHistory.keep(message)}
 	onOlder={() => void graphHistory.readOlder()}
 	onStartLine={(name) => graphHistory.startLine(name)}
-	onWorkOn={(name) => graphHistory.workOn(name)}
+	onWorkOn={workOn}
 	onBringIn={(name) => graphHistory.bringIn(name)}
 	onSettle={(path) => {
 		settling = path;
@@ -328,7 +344,7 @@
 		busy={graphHistory.busy}
 		unsettled={graphHistory.inTwoVersions.length > 0}
 		onStartLine={(name) => graphHistory.startLine(name)}
-		onWorkOn={(name) => graphHistory.workOn(name)}
+		onWorkOn={workOn}
 		onBringIn={(name) => graphHistory.bringIn(name)}
 		onDrop={(name) => graphHistory.dropLine(name)}
 		onStartFrom={(name, head) => graphHistory.startLineAt(name, head)}
@@ -359,11 +375,14 @@
 		signs={graphHistory.signs}
 		busy={graphHistory.busy}
 		says={graphHistory.says}
+		onStandOn={graphHistory.stands && !(graphHistory.onAVersion && graphHistory.at === opened.id)
+			? standOn
+			: undefined}
 		onRead={onShowVersion ? (id) => void showVersion(id) : undefined}
 		onCompare={onShowDifference ? (id) => void compareWithNow(id) : undefined}
 		onOpen={openVersion}
 		onStartLine={(name, id) => graphHistory.startLineAt(name, id)}
-		onWorkOn={(name) => graphHistory.workOn(name)}
+		onWorkOn={workOn}
 	/>
 {/if}
 
@@ -385,3 +404,5 @@
 		onSettleSections={settleBySection}
 	/>
 {/if}
+
+<BeforeMoving {moving} />

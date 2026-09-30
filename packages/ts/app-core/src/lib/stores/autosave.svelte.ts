@@ -34,6 +34,7 @@ export async function saveNow(): Promise<void> {
 	if (!worthATry()) return;
 	const history = runtime.history();
 	if (!history) return;
+	if (!(await graphHistory.unkeptNow())) return;
 	if (!(await graphHistory.lineToWriteOn())) {
 		whatHappened.put(
 			'trouble',

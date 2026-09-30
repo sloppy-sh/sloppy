@@ -3,16 +3,15 @@
 	// somewhere to keep it, and the versions — DESIGN.md § "The history as a
 	// picture". Everything a narrow column has no room for is one row away, in
 	// the surface that has always held it.
-	import { ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { WHILE_WRITING } from '../stores/autosave.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
+	import BeforeMoving from './before-moving.svelte';
 	import { drawnFrom, foldRuns } from './commit-graph.js';
 	import CommitGraph from './commit-graph.svelte';
+	import { Moving } from './moving.svelte.js';
 	import Standing from './standing.svelte';
-
-	const BEFORE_MOVING = 'Before moving on';
 
 	let {
 		onOpenAll,
@@ -26,12 +25,7 @@
 		onReadVersion?: (commit: string) => void;
 	} = $props();
 
-	/** Somewhere the folder is going, once writing nobody has kept is answered
-	 *  for. `carries` is whether the act can take that writing along. */
-	interface Leaving {
-		carries: boolean;
-		go: (carrying: boolean) => Promise<boolean>;
-	}
+	const moving = new Moving();
 
 	let message = $state('');
 	let keeping = $state(false);
@@ -39,13 +33,9 @@
 	let opened = $state.raw<ReadonlySet<string>>(new Set());
 	/** The version somebody tapped, offered its acts. */
 	let picked = $state.raw<string | null>(null);
-	let leaving = $state.raw<Leaving | null>(null);
-	let asking = $state(false);
-	let going = $state(false);
 	/** So a refusal from before this column asked for anything is not read as
 	 *  the answer to what it asked. */
 	let tried = $state(false);
-	let leavingMessage = $state(BEFORE_MOVING);
 
 	// The history is asked for as soon as this stands: a picture nobody asked
 	// for is an empty one, and an empty one reads as a graph with no history.
@@ -74,52 +64,19 @@
 		}
 	}
 
-	/** Nothing moves the folder over writing nobody has kept without asking
-	 *  first, every time — DESIGN.md § "The history as a picture". */
-	async function leaveFor(what: Leaving): Promise<void> {
+	function workOnVersion(at: string): Promise<boolean> {
 		picked = null;
-		if (!graphHistory.unkept) {
-			await takeTheWayOut(() => what.go(false));
-			return;
-		}
-		leavingMessage = BEFORE_MOVING;
-		tried = false;
-		leaving = what;
-		asking = true;
-	}
-
-	async function takeTheWayOut(run: () => Promise<boolean>): Promise<void> {
-		if (going) return;
-		going = true;
 		tried = true;
-		try {
-			if (await run()) asking = false;
-		} finally {
-			going = false;
-		}
-	}
-
-	function keepFirst(): Promise<void> {
-		const what = leaving;
-		const says = leavingMessage.trim();
-		if (!what || says === '') return Promise.resolve();
-		return takeTheWayOut(async () => {
-			if (graphHistory.unkept && !(await graphHistory.keep(says))) return false;
-			return what.go(false);
+		return moving.leaveFor({
+			carries: true,
+			go: (carrying) => graphHistory.standOn(at, carrying)
 		});
 	}
 
-	function bringThem(): Promise<void> {
-		const what = leaving;
-		return what ? takeTheWayOut(() => what.go(true)) : Promise.resolve();
-	}
-
-	function workOnVersion(at: string): Promise<void> {
-		return leaveFor({ carries: true, go: (carrying) => graphHistory.standOn(at, carrying) });
-	}
-
-	function workOnLine(name: string): Promise<void> {
-		return leaveFor({ carries: false, go: () => graphHistory.workOn(name) });
+	function workOnLine(name: string): Promise<boolean> {
+		picked = null;
+		tried = true;
+		return moving.leaveFor({ carries: false, go: () => graphHistory.workOn(name) });
 	}
 </script>
 
@@ -217,7 +174,7 @@
 		{/if}
 	</p>
 
-	{#if tried && !asking && graphHistory.says}
+	{#if tried && !moving.asking && graphHistory.says}
 		<p class="shrink-0 px-1 text-sm text-destructive" role="alert">{graphHistory.says}</p>
 	{/if}
 
@@ -246,44 +203,4 @@
 	</Button>
 </div>
 
-<ResponsiveModal
-	bind:open={asking}
-	title="You have writing nobody has kept"
-	description={leaving?.carries
-		? 'Keep it as a version first, or bring it with you.'
-		: 'Keep it as a version first, or stay where you are.'}
->
-	<div class="flex flex-col gap-3 px-2 pt-4">
-		<Input
-			bind:value={leavingMessage}
-			class="h-control text-sm"
-			aria-label="What this version is"
-			placeholder="What you did"
-		/>
-		{#if tried && graphHistory.says}
-			<p class="text-sm text-destructive" role="alert">{graphHistory.says}</p>
-		{/if}
-		<div class="flex flex-col gap-2">
-			<Button
-				class="h-control sm:h-9"
-				disabled={going || leavingMessage.trim() === ''}
-				onclick={keepFirst}
-			>
-				Keep a version first
-			</Button>
-			{#if leaving?.carries}
-				<Button variant="outline" class="h-control sm:h-9" disabled={going} onclick={bringThem}>
-					Bring them with me
-				</Button>
-			{/if}
-			<Button
-				variant="ghost"
-				class="h-control sm:h-9"
-				disabled={going}
-				onclick={() => (asking = false)}
-			>
-				Stay here
-			</Button>
-		</div>
-	</div>
-</ResponsiveModal>
+<BeforeMoving {moving} />

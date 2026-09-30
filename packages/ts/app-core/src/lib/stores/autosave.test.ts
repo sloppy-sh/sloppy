@@ -7,12 +7,19 @@ import { graphHistory } from './history.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { whatHappened } from './what-happened.svelte.js';
 
-/** A history that answers, and remembers what it was asked to keep. */
+/** A history that answers, and remembers what it was asked to keep. Somebody
+ *  has written into the folder, which is the case the clock is for. */
 function aHistory(over: Partial<History> = {}): History & { kept: string[] } {
 	const kept: string[] = [];
 	const held = {
 		kept,
-		status: async () => ({ branch: 'main', changed: [], untracked: [], ahead: 0, behind: 0 }),
+		status: async () => ({
+			branch: 'main',
+			changed: ['notes/one.md'],
+			untracked: [],
+			ahead: 0,
+			behind: 0
+		}),
 		log: async () => ({ versions: [] }),
 		commit: async (message: string) => {
 			kept.push(message);
@@ -116,7 +123,7 @@ describe('keeping a version while somebody writes', () => {
 		history = aHistory({
 			status: async () => ({
 				branch: 'main',
-				changed: [],
+				changed: ['notes/one.md'],
 				untracked: [],
 				ahead: 0,
 				behind: 0,
@@ -135,7 +142,7 @@ describe('keeping a version while somebody writes', () => {
 	// so a folder that cannot be given one is left alone.
 	it('keeps nothing where the folder stands on a version and no line can open', async () => {
 		history = aHistory({
-			status: async () => ({ changed: [], untracked: [], ahead: 0, behind: 0 })
+			status: async () => ({ changed: ['notes/one.md'], untracked: [], ahead: 0, behind: 0 })
 		});
 		running();
 		await graphHistory.read();
@@ -145,6 +152,31 @@ describe('keeping a version while somebody writes', () => {
 
 		expect(history.kept).toEqual([]);
 		expect(whatHappened.asText()).toContain('a version was not kept while writing');
+		whatHappened.record(false);
+	});
+
+	// Standing on a version to read it leaves nothing behind — DESIGN.md § "The
+	// history as a picture". A line is opened by writing, never by a clock.
+	it('opens no line where the folder stands on a version and nobody wrote', async () => {
+		const lines: string[] = [];
+		history = aHistory({
+			status: async () => ({ changed: [], untracked: [], ahead: 0, behind: 0 }),
+			lineHere: async (name: string) => {
+				lines.push(name);
+				return { name, head: 'a-commit-id', current: true };
+			}
+		});
+		running();
+		await graphHistory.read();
+		whatHappened.record(true);
+		const before = whatHappened.kept.length;
+
+		await saveNow();
+
+		expect(lines).toEqual([]);
+		expect(history.kept).toEqual([]);
+		expect(graphHistory.openedLine).toBeNull();
+		expect(whatHappened.kept.length).toBe(before);
 		whatHappened.record(false);
 	});
 

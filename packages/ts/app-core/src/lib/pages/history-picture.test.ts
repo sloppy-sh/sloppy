@@ -249,6 +249,48 @@ describe('the history as a picture', () => {
 		expect(graphHistory.at).not.toBe(first);
 	});
 
+	// The act the picture exists for is reachable at phone width, where there is
+	// no column to put it in — AI.md § Design, mobile and tablet first.
+	it('puts the folder on a version, and leaves every control live', async () => {
+		await graphHistory.keep('A first version');
+		const first = graphHistory.at as string;
+		await api.createNode({ title: 'A second thought' });
+		await graphHistory.keep('And the second');
+		await open();
+
+		control('A first version').click();
+		await settle();
+		control('Work on this version').click();
+		await settle();
+
+		expect(graphHistory.at).toBe(first);
+		expect(graphHistory.line).toBeUndefined();
+		expect(screen()).toContain('Working on a version, ');
+	});
+
+	it('asks about writing nobody has kept before it goes, and can bring it along', async () => {
+		await graphHistory.keep('A first version');
+		const first = graphHistory.at as string;
+		await api.createNode({ title: 'A second thought' });
+		await graphHistory.keep('And the second');
+		await api.createNode({ title: 'Something unkept' });
+		await open();
+
+		control('A first version').click();
+		await settle();
+		control('Work on this version').click();
+		await settle();
+
+		expect(screen()).toContain('You have writing nobody has kept');
+		expect(graphHistory.at).not.toBe(first);
+
+		control('Bring them with me').click();
+		await settle();
+
+		expect(graphHistory.at).toBe(first);
+		expect(graphHistory.line).toBeUndefined();
+	});
+
 	it('says a version is signed and by which key', async () => {
 		await kept.setSigning({ kind: 'ssh', key: { kind: 'kept' } });
 		await graphHistory.keep('A first version');
