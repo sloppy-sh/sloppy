@@ -10,6 +10,7 @@ import {
 import {
   authorsOf,
   CreateNodeRequestSchema,
+  liesInARun,
   MoveNoteRequestSchema,
   type Node,
   NodeSchema,
@@ -288,5 +289,26 @@ describe("when a note's reasoning was last read against the code", () => {
     expect(UpdateNodeRequestSchema.safeParse({ checked: 7 }).success).toBe(
       false,
     );
+  });
+});
+
+describe("whether a note lies in a run", () => {
+  const PARENT = `${DID}/01JSPREAD00000000000000001` as const;
+
+  it("takes in a note that sprang from another, numbered or not", () => {
+    expect(liesInARun({ parent: PARENT, address: "1a" as Address })).toBe(true);
+    expect(liesInARun({ parent: PARENT, address: undefined })).toBe(true);
+  });
+
+  it("takes in a branch, which is a note with a number and nothing above it", () => {
+    expect(liesInARun({ parent: undefined, address: "2" as Address })).toBe(
+      true,
+    );
+  });
+
+  // AI.md § "The Genealogy Is the Protocol": a note with no parent and no
+  // address opens no branch, so no run carries on from it or into it.
+  it("leaves out a note that sprang from nothing and carries no number", () => {
+    expect(liesInARun({ parent: undefined, address: undefined })).toBe(false);
   });
 });

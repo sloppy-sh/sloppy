@@ -449,6 +449,66 @@ describe("the run of thought", () => {
     expect(runsOf(gapped)).toEqual([[whole[0].ref, whole[2].ref]]);
   });
 
+  // AI.md § "The Genealogy Is the Protocol": a note written with no parent and
+  // no address opens no branch. The run says "this thought carries on from that
+  // one" (DESIGN.md § Edges), which is not true of a thought that sprang from
+  // nothing, so nothing runs into it or out of it.
+  it("leaves a note that sprang from nothing out of the run entirely", () => {
+    const first = note("1");
+    const second = note("2");
+    const { address: _none, ...alone } = note("3");
+    const built = buildModel(drawnNodes([first, second, alone], new Set()), {
+      selection: [],
+      palette,
+    });
+
+    expect(runsOf(built)).toEqual([[first.ref, second.ref]]);
+    expect(built.graph.hasEdge(second.ref, alone.ref)).toBe(false);
+    expect(built.graph.hasEdge(first.ref, alone.ref)).toBe(false);
+    expect(built.graph.degree(alone.ref)).toBe(0);
+  });
+
+  it("joins no two notes that both sprang from nothing", () => {
+    const { address: _first, ...one } = note("1");
+    const { address: _second, ...two } = note("2");
+    const built = buildModel(drawnNodes([one, two], new Set()), {
+      selection: [],
+      palette,
+    });
+
+    expect(runsOf(built)).toEqual([]);
+    expect(built.graph.hasEdge(one.ref, two.ref)).toBe(false);
+  });
+
+  // Giving it a number is what puts it in the run, and that is the whole of
+  // what "an address connects it" means: the label is never read to place it.
+  it("takes a note into the run once somebody numbers it", () => {
+    const first = note("1");
+    const { address: _none, ...alone } = note("2");
+    const numbered = { ...alone, address: "2" as Address };
+    const built = buildModel(drawnNodes([first, numbered], new Set()), {
+      selection: [],
+      palette,
+    });
+
+    expect(runsOf(built)).toEqual([[first.ref, numbered.ref]]);
+  });
+
+  // A note that sprang from one already here is alongside its siblings whether
+  // anybody numbered it or not — that run is the parent's, not the address's.
+  it("keeps an unnumbered note in the run under the note it sprang from", () => {
+    const parent = note("1");
+    const first = { ...note("1a"), parent: parent.ref, depth: 2 };
+    const { address: _none, ...second } = note("1b");
+    const beside = { ...second, parent: parent.ref, depth: 2 };
+    const built = buildModel(drawnNodes([parent, first, beside], new Set()), {
+      selection: [],
+      palette,
+    });
+
+    expect(runsOf(built)).toEqual([[first.ref, beside.ref]]);
+  });
+
   // DESIGN.md § Edges: the hand leads, so a link drawn along a run takes the
   // run's line — and a note's own writing naming its neighbour does not.
   it("gives way to a link somebody drew along it", () => {

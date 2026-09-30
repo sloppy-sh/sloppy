@@ -557,12 +557,13 @@ across them. Each one is drawn as a **field**: the same shape it has alone, laid
 beside the last rather than over it.
 
 - **A field's place is what tells it from the next, because place is the only channel
-  nothing else had spent.** Within one graph, where a mark sits is the address's
-  (`geometry.ts`), and that is untouched: the whole field moves, and every mark keeps the
-  place its address gave it inside it. Two graphs each holding a `1` seed the same point,
-  so without this they would be drawn on top of each other — the gutter between fields is
-  what stops them. `model.test.ts` in `@sloppy/graph` holds both of those: a mark keeps
-  the place its address gave it, and no field is seeded inside another's span. The force
+  nothing else had spent.** Within one graph, where a mark sits is the genealogy's
+  (`geometry.ts`) — the ref and the parent chain, never the address, which is what keeps a
+  label from moving a mark — and that is untouched: the whole field moves, and every mark
+  keeps the place it had inside it. Two notes seeded from the same ref land on the same
+  point, so without this two graphs would be drawn on top of each other — the gutter
+  between fields is what stops them. `model.test.ts` in `@sloppy/graph` holds both of
+  those: a mark keeps the place it had, and no field is seeded inside another's span. The force
   pass afterwards is not held to the gutter — a field of a few hundred notes spreads
   wider than one — so what keeps the fields apart on screen is where each one's weight
   settles, not a line no mark ever crosses.
@@ -630,7 +631,7 @@ broken.
 | **Genealogy** — parent to child                  | the depth ramp, thinnest, lowest alpha, solid      | this thought sprang out of that one   |
 | **A reference** — `references`, from the writing | ink, solid, a middle weight and lightness          | this note's own words name that one   |
 | **A link** — `links`, drawn by hand              | ink, broken, at a reference's weight and lightness | somebody put these two together       |
-| **The run** — consecutive addresses              | ink, solid, the heaviest and darkest line drawn    | this thought carries on from that one |
+| **The run** — the notes alongside each other     | ink, solid, the heaviest and darkest line drawn    | this thought carries on from that one |
 
 **The canvas draws three of those four.** `model.ts` in `@sloppy/graph` still builds one
 `connection` out of `links` and `references` together and `scene.ts` strokes it broken, so a
@@ -638,7 +639,15 @@ note's own words currently read as a line somebody drew by hand — which is the
 break is supposed to mean. `EDGE_KINDS` in `@sloppy/types` is the vocabulary that tells them
 apart; nothing reads it yet. Splitting the two is what the table above is a ruling for.
 
-Seven rulings hold that table together:
+Seven rulings hold that table together, and one condition sits under all of them:
+
+- **A note that sprang from nothing and carries no number is in no run, and so is drawn with
+  no line at all.** The run says one thought carries on from another, and nothing carries on
+  from a thought that sprang from nothing — a note written on its own is a beginning, not the
+  next item in a list. It still stands in its graph, in the same place every time it is drawn,
+  and it is still linked to, published and read like any other. Numbering it is what puts it in
+  a run, and that is the whole of what "an address connects it" means: the label is read to
+  decide whether a note is alongside others, never to decide where it sits.
 
 - **The three solid kinds are three steps of one ladder, and they move on both channels at
   once.** Genealogy is the depth ramp at the thinnest line and the faintest ink; a reference
@@ -1463,8 +1472,8 @@ up and the lift can be 0 in the panned case.
 - **Where a mark STARTS when the field is rebuilt is this reader's session, not the
   protocol.** One already drawn stays where the last settle left it, and one re-entering
   the drawn set — an unfolded branch — starts at its parent's current place plus the step
-  its own address takes, so a branch comes back where it was rather than in from the
-  seeds. The seeds themselves are untouched, and they are what a peer agrees with
+  its own place in the run takes, so a branch comes back where it was rather than in from
+  the seeds. The seeds themselves are untouched, and they are what a peer agrees with
   (§ "Several graphs on one canvas").
 - **Level of detail is the design, not an optimisation.** A subtree past a depth threshold
   draws as one mega-node sized by descendant count; a tag selection lights the notes that

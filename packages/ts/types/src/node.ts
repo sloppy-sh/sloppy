@@ -262,6 +262,17 @@ export function runKeyOf(
   return node.parent ?? `graph/${graphOf(node)}`;
 }
 
+/**
+ * Whether a note lies in a run at all. One with no parent and no address is an
+ * independent note: it opens no branch, so no run carries on from it and none
+ * carries on into it — AI.md § "The Genealogy Is the Protocol". Giving it an
+ * address is what puts it in one, which is why the address is read here and
+ * nowhere that decides a position.
+ */
+export function liesInARun(node: Pick<Node, "parent" | "address">): boolean {
+  return node.parent !== undefined || node.address !== undefined;
+}
+
 /** What `NodeSchema` cannot refuse: a `graph` belonging to somebody else. */
 export function requireNodeConsistent(
   node: Pick<Node, "created_by" | "graph">,

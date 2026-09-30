@@ -17,6 +17,7 @@ import {
   resolveAppearance,
   type RingStyle,
   type RingWeight,
+  liesInARun,
   runKeyOf,
   runPairs,
   strongestEdge,
@@ -572,7 +573,8 @@ function seedFields(
 /**
  * The run of thought, in pairs. Only which notes are alongside each other is
  * decided here: those that sprang from the same note, or the branches of one
- * graph.
+ * graph. A note with no parent and no address lies in neither, so nothing runs
+ * into it or out of it (`liesInARun`).
  *
  * `went` is the notes this state does not hold. They stand on the canvas to be
  * compared and take no place in the run — the two either side of one read as
@@ -584,7 +586,7 @@ function runs(
 ): [NodeView, NodeView][] {
   const levels = new Map<string, NodeView[]>();
   for (const { node } of drawn) {
-    if (went.has(node.ref)) continue;
+    if (went.has(node.ref) || !liesInARun(node)) continue;
     const level = runKeyOf(node);
     const alongside = levels.get(level);
     if (alongside === undefined) levels.set(level, [node]);
