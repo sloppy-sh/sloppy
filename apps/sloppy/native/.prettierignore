@@ -3,3 +3,7 @@ build
 src-tauri/target
 src-tauri/gen
 src-tauri/Cargo.lock
+
+# Somebody else's source, kept as it arrived. Formatting it to this
+# project's style would put a diff in the way of every update.
+src-tauri/vendor

@@ -44,7 +44,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "now"] 
 # down only as something this device can read back — docs/ARCHITECTURE.md
 # § "Asking a tool to write the notes". A path while it is being built here;
 # it becomes a version before this ships.
-tauri-plugin-crypto-hw = { path = "../../../../../playground/tauri-plugin-crypto-hw" }
+tauri-plugin-crypto-hw = { path = "vendor/tauri-plugin-crypto-hw" }
 # The sign-in round trip: out through opener, back through deep-link.
 tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"

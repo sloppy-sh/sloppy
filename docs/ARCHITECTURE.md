@@ -3659,6 +3659,13 @@ app's own otherwise, and which of the three is said as `backing` — and the sea
 `ai-keys.json` under the app's private data. It is opened only where the request that needs it
 is made, never in the webview; `DeviceAiKeys` is the page's side and holds no secret.
 
+**That plugin is vendored, not depended on.** Its source sits under
+`apps/sloppy/native/src-tauri/vendor/`, which is what lets a fresh clone of this repository
+build the native app without reaching a registry or a second checkout. It is kept in its own
+repository as well, and the README beside the vendored copy names the commit it was taken at
+and how to take a newer one. A change made to the copy here does not travel back, so one worth
+keeping is made there first.
+
 **What a turn spent is said on `ended`.** `ChatSpend` is the shape — what was put in front of the
 agent, what it wrote, and what the conversation has cost where the agent says — and
 `spentTogether` is the one copy of the rule: the counts are the turn's own and add up, the cost
