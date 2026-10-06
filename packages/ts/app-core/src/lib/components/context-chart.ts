@@ -6,9 +6,9 @@
 import { heldAsideIn, type ContextUsage, usedIn } from '@sloppy/types';
 import { tokensSaid } from '../chat-said.js';
 
-/** The slots a band borrows, the same eight a lane takes and a selected tag
- *  lends (DESIGN.md § "The history as a picture"). A ninth band wraps onto the
- *  first. */
+/** The slots a part the assistant named borrows, the same eight a lane takes
+ *  and a selected tag lends (DESIGN.md § "The history as a picture"). A ninth
+ *  part wraps onto the first. */
 export const HUES = [
 	'text-facet-1',
 	'text-facet-2',
@@ -24,18 +24,13 @@ export const HUES = [
  *  what was in the window, and the whole of it before it has said once. */
 export const NOT_LISTED = 'Not yet listed';
 
-export const LIGHT_OPACITY = 0.35;
-
 /** One band of the bar. */
 export interface ContextBand {
 	name: string;
 	tokens: number;
-	/** Absent on the one band the assistant did not name, which is drawn in ink
-	 *  rather than given a slot of its own. */
+	/** Absent on a band drawn in ink rather than given a slot of the eight: the
+	 *  fill the assistant has not broken down, and the room it keeps back. */
 	hue?: string;
-	/** Drawn at `LIGHT_OPACITY` in the bar and in the list alike: room kept back,
-	 *  and fill not yet broken down, are not spent the way a named part is. */
-	light?: boolean;
 }
 
 /** The bar as it is drawn: how far it fills, in what bands, against what. */
@@ -63,19 +58,14 @@ export function barOf(usage: ContextUsage): ContextBar {
 		tokens: part.tokens,
 		hue: HUES[at % HUES.length]
 	}));
-	if (filled > counted) bands.push({ name: NOT_LISTED, tokens: filled - counted, light: true });
+	if (filled > counted) bands.push({ name: NOT_LISTED, tokens: filled - counted });
 	return {
 		limit: usage.limit,
 		filled,
 		bands,
 		kept: usage.parts
 			.filter((part) => part.kind === 'buffer')
-			.map((part, at) => ({
-				name: part.name,
-				tokens: part.tokens,
-				hue: HUES[(parts.length + at) % HUES.length],
-				light: true
-			})),
+			.map((part) => ({ name: part.name, tokens: part.tokens })),
 		heldAside: heldAsideIn(usage),
 		compactsAt: usage.compactsAt,
 		compactedFrom: usage.compacted?.from

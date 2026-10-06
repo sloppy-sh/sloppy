@@ -5,15 +5,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { HUES as LANE_HUES } from './commit-graph.svelte';
 import ContextChart from './context-chart.svelte';
-import {
-	barOf,
-	contextSaid,
-	HUES,
-	LIGHT_OPACITY,
-	NOT_LISTED,
-	shareSaid,
-	spans
-} from './context-chart.js';
+import { barOf, contextSaid, HUES, NOT_LISTED, shareSaid, spans } from './context-chart.js';
 
 /** The bar's own width, which is what it reads — never the window's. */
 const ACROSS = 400;
@@ -51,7 +43,7 @@ function draw(usage: ContextUsage | null, over: { open?: boolean } = {}): void {
 
 /** Drawn lengths read back as a reader sees them: a difference a screen cannot
  *  paint is a difference this suite has no business asserting. */
-function round(said: string | null): number {
+function round(said: string | number | null): number {
 	return Math.round(Number(said) * 1e4) / 1e4;
 }
 
@@ -72,25 +64,44 @@ function kept(): { name: string; x: number; width: number }[] {
 	}));
 }
 
-/** What the bar draws each thing at, by the name it carries. */
-function weights(): Record<string, number> {
-	const got: Record<string, number> = {};
+/** How the bar draws each thing, by the name it carries: ink it has spent, or
+ *  the hatch over room it has not. */
+function looks(): Record<string, string> {
+	const got: Record<string, string> = {};
 	for (const one of target.querySelectorAll('rect[data-band], rect[data-kept]')) {
 		const name = one.getAttribute('data-band') ?? one.getAttribute('data-kept') ?? '';
-		got[name] = Number(one.getAttribute('opacity') ?? 1);
+		got[name] = one.getAttribute('fill') === 'currentColor' ? 'solid' : 'hatched';
 	}
 	return got;
 }
 
-/** What the list draws each swatch at, by the name beside it. */
-function listWeights(): Record<string, number> {
-	const got: Record<string, number> = {};
+/** How the list draws each swatch, by the name beside it. */
+function listLooks(): Record<string, string> {
+	const got: Record<string, string> = {};
 	for (const row of target.querySelectorAll('li')) {
 		const name = (row.querySelector('span:not([aria-hidden])')?.textContent ?? '').trim();
-		const swatch = row.querySelector<HTMLElement>('span[aria-hidden]');
-		got[name] = Number(swatch?.style.opacity || 1);
+		got[name] = row.querySelector('span[aria-hidden]') ? 'solid' : 'hatched';
 	}
 	return got;
+}
+
+/** Whether the list's hatched swatches are painted by the bar's own hatch,
+ *  rather than by a second one that could drift from it. */
+function swatchPaints(): (string | null)[] {
+	return [...target.querySelectorAll('li svg rect')].map((one) => one.getAttribute('fill'));
+}
+
+/** Anything the chart paints at less than its own strength. A colour composited
+ *  onto the page is a colour nothing has measured. */
+function washed(): string[] {
+	return [...target.querySelectorAll('*')].flatMap((one) => {
+		const said =
+			one.getAttribute('opacity') ??
+			/opacity:\s*([\d.]+)/.exec(one.getAttribute('style') ?? '')?.[1];
+		return said !== undefined && said !== null && Number(said) < 1
+			? [one.tagName.toLowerCase()]
+			: [];
+	});
 }
 
 function lines(): string[] {
@@ -168,6 +179,20 @@ describe('the bar', () => {
 		expect(bands()[0].width).toBe(20);
 	});
 
+	// DESIGN.md § "The context as a bar": a band at a third of its strength on
+	// the page reads under 2:1, and a graphical object owes 3:1.
+	it('paints nothing at less than its own strength, in the bar or in the list', () => {
+		draw(
+			usage({
+				total: 400,
+				limit: 1000,
+				parts: [part('Instructions', 300), part('Room to answer', 100, 'buffer')]
+			}),
+			{ open: true }
+		);
+		expect(washed()).toEqual([]);
+	});
+
 	it('keeps a band inside the bar where the counts run past the window', () => {
 		draw(
 			usage({ total: 1500, limit: 1000, parts: [part('Instructions', 900), part('Tools', 600)] })
@@ -222,7 +247,7 @@ describe('room kept back for the answer', () => {
 		expect(kept()[0].x).toBeGreaterThanOrEqual(band.x + band.width);
 	});
 
-	it('reads lighter than a part the assistant counted as spent', () => {
+	it('is hatched rather than filled like ink the assistant has spent', () => {
 		draw(
 			usage({
 				total: 400,
@@ -231,10 +256,10 @@ describe('room kept back for the answer', () => {
 			}),
 			{ open: true }
 		);
-		expect(weights()).toEqual({
-			Instructions: 1,
-			[NOT_LISTED]: LIGHT_OPACITY,
-			'Room to answer': LIGHT_OPACITY
+		expect(looks()).toEqual({
+			Instructions: 'solid',
+			[NOT_LISTED]: 'solid',
+			'Room to answer': 'hatched'
 		});
 	});
 });
@@ -321,7 +346,7 @@ describe('the list under the bar', () => {
 		expect(legend()).toEqual(['Instructions 300 30%']);
 	});
 
-	it('draws every swatch at the weight the bar draws its band at', () => {
+	it('draws every swatch the way the bar draws its band', () => {
 		draw(
 			usage({
 				total: 400,
@@ -330,7 +355,9 @@ describe('the list under the bar', () => {
 			}),
 			{ open: true }
 		);
-		expect(listWeights()).toEqual(weights());
+		expect(listLooks()).toEqual(looks());
+		const bar = target.querySelector('rect[data-kept]')?.getAttribute('fill');
+		expect(swatchPaints()).toEqual([bar]);
 	});
 
 	it('opens from a target a finger can hit, whatever the bar is drawn at', () => {

@@ -1078,25 +1078,35 @@ whether there was room.
 
 **Hue is spent here, the second of the two surfaces outside the canvas that spend it** (the
 other is § "The history as a picture"). Which band is which is the question the bar exists
-to answer, and six adjacent lengths in one row are a question ink weight cannot carry —
-weight is already what separates room from what is in it. So a band borrows a slot from the
-same eight the canvas lends a selected tag, taken in the order the assistant gave its parts
-and wrapping onto the first past eight, which is the lanes' rule because it is the same ramp
-for the same reason.
+to answer, and six adjacent lengths in one row are a question ink weight cannot carry. So a
+part the assistant named borrows a slot from the same eight the canvas lends a selected tag,
+taken in the order it gave its parts and wrapping onto the first past eight, which is the
+lanes' rule because it is the same ramp for the same reason.
 
 **The bands are drawn on the page inside a hairline, not in a filled track.** A slot against
 `--muted` reads 2.89:1 at its worst across the themes, under the 3:1 a graphical object
-owes, and `token-contrast.test.ts` holds that figure — so what is unspent is the page, which
-puts every band back on the surfaces § "Contrast is measured, not assumed" already sweeps.
+owes, and `token-contrast.test.ts` holds that figure — so what is unspent is the page.
 
-**Two things are drawn lighter than a solid band**: room the assistant keeps back for its
-own answer, at the far end of the window where it is, and the fill it has not broken down,
-which is ink rather than a slot of the eight. Neither is a part the assistant has counted
-as spent. The weight is the same in the bar and in the list, so the two cannot say
-different things about one band, and both carry the name and the count, so nothing is read
-from weight alone. Where the fill has run into the room kept back, what is drawn is what is
-left of it — room that has been spent is not room, and drawing it over the fill would say
-there is more left than there is.
+**Nothing in the bar is a wash of its own colour.** A slot composited onto the page at a
+third of its strength reads under 2:1, so a band drawn that way is a band measured against
+nothing — and the band a reader watches to see the window fill is exactly the one that must
+move visibly. Three looks carry what the bar has to say, and the bar and its list draw each
+the same way, so a swatch cannot read as something its band is not:
+
+- **A part the assistant named is solid, in its slot.**
+- **The fill it has not broken down is solid, in ink.** That fill IS in the window; what it
+  is missing is a name, not a weight, and ink rather than a slot of the eight is what says
+  so.
+- **Room it keeps back for its own answer is hatched in that same ink**, at the far end of
+  the window where it is. The hatch is solid ink over half the stretch rather than a wash
+  over all of it, which is how a stretch reads as claimed without reading as spent — an
+  outline could not, because its own line is the bar's hairline a pixel away.
+
+Every colour there is one § "Contrast is measured, not assumed" sweeps solid, and each band
+carries its name and its count in the list, so nothing is read from a look alone. Where the
+fill has run into the room kept back, what is drawn is what is left of it — room that has
+been spent is not room, and drawing it over the fill would say there is more left than there
+is.
 
 **Phone first, which here means there is nothing to fold.** The bar is the dock's width, the
 line under it wraps, and at the dock's least width the bar is simply shorter — which is what

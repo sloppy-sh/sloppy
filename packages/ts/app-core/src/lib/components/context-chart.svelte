@@ -5,10 +5,10 @@
 	import { tokensSaid } from '../chat-said.js';
 	import {
 		barOf,
+		type ContextBand,
 		contextSaid,
 		fillSaid,
 		keptSpans,
-		LIGHT_OPACITY,
 		shareSaid,
 		spans
 	} from './context-chart.js';
@@ -30,6 +30,7 @@
 	 *  against whichever band it crosses. */
 	const MARK_OVERHANG_REM = 0.1875;
 	const CORNER_REM = 0.375;
+	const HATCH = 4;
 
 	let box = $state.raw<HTMLElement | null>(null);
 	let across = $state(0);
@@ -87,6 +88,16 @@
 			<clipPath id={clip}>
 				<rect x="0" y={over} width={wide} height={tall} rx={CORNER_REM * rootPx} />
 			</clipPath>
+			<pattern
+				id="{clip}-kept"
+				class="text-muted-foreground"
+				width={HATCH}
+				height={HATCH}
+				patternUnits="userSpaceOnUse"
+				patternTransform="rotate(45)"
+			>
+				<rect x="0" y="0" width={HATCH / 2} height={HATCH} fill="currentColor" />
+			</pattern>
 		</defs>
 		<g clip-path="url(#{clip})">
 			{#each bands as span, at (at)}
@@ -98,19 +109,16 @@
 					width={span.width}
 					height={tall}
 					fill="currentColor"
-					opacity={span.band.light ? LIGHT_OPACITY : 1}
 				/>
 			{/each}
 			{#each kept as span, at (at)}
 				<rect
-					class={span.band.hue}
 					data-kept={span.band.name}
 					x={span.from}
 					y={over}
 					width={span.width}
 					height={tall}
-					fill="currentColor"
-					opacity={span.band.light ? LIGHT_OPACITY : 1}
+					fill="url(#{clip}-kept)"
 				/>
 			{/each}
 		</g>
@@ -161,23 +169,33 @@
 			<p class="text-xs text-muted-foreground">Compacted from {tokensSaid(bar.compactedFrom)}</p>
 		{/if}
 
+		{#snippet listed(band: ContextBand, spent: boolean)}
+			<li class="flex min-w-0 items-center gap-2">
+				{#if spent}
+					<span
+						class="size-2 shrink-0 rounded-[2px] bg-current {band.hue ?? 'text-muted-foreground'}"
+						aria-hidden="true"
+					></span>
+				{:else}
+					<svg class="size-2 shrink-0" viewBox="0 0 8 8" aria-hidden="true">
+						<rect width="8" height="8" rx="2" fill="url(#{clip}-kept)" />
+					</svg>
+				{/if}
+				<span class="min-w-0 flex-1 truncate">{band.name}</span>
+				<span class="shrink-0 tabular-nums text-muted-foreground">{tokensSaid(band.tokens)}</span>
+				<span class="w-9 shrink-0 text-right tabular-nums text-muted-foreground">
+					{shareSaid(band.tokens, bar.limit)}
+				</span>
+			</li>
+		{/snippet}
+
 		{#if open && bar.bands.length > 0}
 			<ul class="flex flex-col gap-0.5 text-xs" aria-label="What the assistant is holding">
-				{#each [...bar.bands, ...bar.kept] as band, at (at)}
-					<li class="flex min-w-0 items-center gap-2">
-						<span
-							class="size-2 shrink-0 rounded-[2px] bg-current {band.hue ?? 'text-muted-foreground'}"
-							style={band.light ? `opacity:${LIGHT_OPACITY}` : undefined}
-							aria-hidden="true"
-						></span>
-						<span class="min-w-0 flex-1 truncate">{band.name}</span>
-						<span class="shrink-0 tabular-nums text-muted-foreground">
-							{tokensSaid(band.tokens)}
-						</span>
-						<span class="w-9 shrink-0 text-right tabular-nums text-muted-foreground">
-							{shareSaid(band.tokens, bar.limit)}
-						</span>
-					</li>
+				{#each bar.bands as band, at (at)}
+					{@render listed(band, true)}
+				{/each}
+				{#each bar.kept as band, at (at)}
+					{@render listed(band, false)}
 				{/each}
 			</ul>
 		{/if}
