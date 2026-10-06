@@ -1108,6 +1108,17 @@ describe("a place a thread reads besides its own project", () => {
     expect(far.length).toBeLessThanOrEqual(CHAT_THREAD_NAME_MAX);
   });
 
+  it("is a name a place can be kept under, however long the folder it names is called", () => {
+    const long = "A graph somebody gave a whole sentence for a title. ".repeat(
+      10,
+    );
+    const named = placeNamed([], { root: "/work/notes", name: long });
+    expect(
+      ChatPlaceSchema.safeParse({ root: "/work/notes", name: named }).success,
+    ).toBe(true);
+    expect(named.startsWith("A graph somebody gave")).toBe(true);
+  });
+
   it("is a name every place a thread may read can be given", () => {
     const named: string[] = [];
     for (let at = 0; at < MOST_PLACES; at += 1)
@@ -1214,6 +1225,18 @@ describe("how full the agent's window is", () => {
     expect(together.total).toBe(44);
     expect(together.parts).toEqual(FULL.parts);
     expect(usedIn(together)).toBe(30);
+    expect(together.compactsAt).toBe(80);
+  });
+
+  it("takes where room will be made from the newer count where it says", () => {
+    const filling: ContextUsage = {
+      total: 44,
+      limit: 100,
+      compactsAt: 70,
+      at: NOW,
+      parts: [],
+    };
+    expect(contextTogether(FULL, filling).compactsAt).toBe(70);
   });
 
   it("drops the breakdown where the turn made room, because it replaced what it counted", () => {

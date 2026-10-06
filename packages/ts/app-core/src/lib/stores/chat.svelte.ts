@@ -69,7 +69,7 @@ const UNDELETED = 'That thread could not be deleted just now. Try again.';
 const STILL_ANSWERING = 'The assistant is still answering. Stop it first.';
 const NO_SUCH_THREAD = "That thread isn't here any more.";
 const TOO_MANY_PLACES = `A thread reads ${MOST_PLACES} places besides its own project.`;
-const UNREACHED_PLACE = 'Sloppy cannot read that folder from here. Open it and try again.';
+const UNREACHED_PLACE = 'Sloppy cannot read that folder from here. Choose another.';
 const SETTLE_FIRST =
 	'Some of what that thread wrote has to be settled against your own notes first. Read the draft.';
 
@@ -512,12 +512,6 @@ class ChatStore {
 		await chatDraft.standingFor();
 	}
 
-	// TODO(chat panel): the header's "Start again", which the three-dots menu
-	// replaces. Delete with that button.
-	startAgain(): void {
-		void this.startThread();
-	}
-
 	/** Call the chat being read something else. Nothing is what
 	 *  {@link threadNameFrom} makes of nothing. */
 	async rename(name: string): Promise<void> {
@@ -657,7 +651,6 @@ class ChatStore {
 		this.#running = true;
 		this.#writing = false;
 		this.#attached = [];
-		const first = this.#turns.length === 0;
 		const blocks: ChatBlock[] = [
 			...(said === '' ? [] : [{ kind: 'said' as const, said }]),
 			...(attached.length === 0 ? [] : [{ kind: 'attached' as const, attached: [...attached] }])
@@ -670,7 +663,7 @@ class ChatStore {
 			const model = this.model;
 			let thread: ChatThread;
 			try {
-				thread = await this.#threadSaying(said, first);
+				thread = await this.#threadSaying(said);
 				// The agent runs where the draft is, so the copy exists before the
 				// session that works in it.
 				await this.#writesInto();
@@ -890,12 +883,13 @@ class ChatStore {
 	}
 
 	/** The thread these words belong to: the one being read, one minted where
-	 *  none is, and named from the first thing said in it — which is where a
-	 *  chat is first written down. */
-	async #threadSaying(said: string, first: boolean): Promise<ChatThread> {
-		const name = threadNameFrom(said);
-		const held = this.#current ?? (await this.#mint(name));
-		if (first) await this.#keepCurrent({ name });
+	 *  none is, and written down here where this device holds no record of it
+	 *  yet. **Only a thread not yet written down is named from what was said**;
+	 *  one this device already holds keeps the name it carries, which is its
+	 *  person's. */
+	async #threadSaying(said: string): Promise<ChatThread> {
+		const held = this.#current ?? (await this.#mint(threadNameFrom(said)));
+		if (this.#unwritten === held.id) await this.#keepCurrent({ name: threadNameFrom(said) });
 		return this.#current ?? held;
 	}
 
@@ -1010,6 +1004,7 @@ class ChatStore {
 		this.#unwritten = null;
 		this.#turns = [];
 		this.#places = [];
+		this.#carrying = null;
 		this.#spentSession = undefined;
 		this.#done.clear();
 		this.#kept.clear();

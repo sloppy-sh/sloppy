@@ -107,8 +107,12 @@ class Stub implements ChatAccess {
 
 	readonly drafts = drafts;
 
+	/** The agents this device reaches, which is one until a test gives it the
+	 *  second a conversation can be moved to. */
+	offers: ChatAgent[] = ['claude_code'];
+
 	agents(): Promise<ChatAgent[]> {
-		return Promise.resolve(['claude_code']);
+		return Promise.resolve([...this.offers]);
 	}
 
 	open(
@@ -276,6 +280,29 @@ describe('a chat this device keeps', () => {
 		expect(chat.threads.map((one) => one.id)).toEqual([chat.current?.id]);
 		expect((await (await kept()).list()).map((one) => one.name)).toEqual([
 			'Why is the parser two passes?'
+		]);
+	});
+
+	it('keeps the name a person gave it, where its first turn never landed', async () => {
+		await aTurn('Why two passes?');
+		const id = chat.current?.id as Ulid;
+		await chat.rename('How the parser reads a note');
+		// A turn whose end never arrived wrote nothing down, so what another run
+		// finds is a named chat with nothing said in it.
+		await (await kept()).write({ ...(chat.current as ChatThread), turns: [] });
+		chat.clear();
+		chatDraft.clear();
+		await chat.opened(graph);
+
+		const saying = chat.say('And the lexer?');
+		await settled();
+		stub.begins();
+		await saying;
+
+		expect(chat.current?.id).toBe(id);
+		expect(chat.current?.name).toBe('How the parser reads a note');
+		expect((await (await kept()).list()).map((one) => one.name)).toEqual([
+			'How the parser reads a note'
 		]);
 	});
 
@@ -553,7 +580,7 @@ describe('the places a chat reads besides its own project', () => {
 		await chat.addPlace({ root: ELSEWHERE, name: 'theirs' });
 
 		expect(chat.places).toEqual([]);
-		expect(chat.trouble).toBe('Sloppy cannot read that folder from here. Open it and try again.');
+		expect(chat.trouble).toBe('Sloppy cannot read that folder from here. Choose another.');
 	});
 
 	it('is not added twice', async () => {
@@ -594,6 +621,23 @@ describe('the places a chat reads besides its own project', () => {
 		await stub.serve({ call: 'c2', act: 'list_notes', arguments: { in: 'lexer' } } as ChatToolCall);
 
 		expect(served.roots).toEqual([ALSO, PLACE]);
+	});
+
+	it('leaves the chat readable where the folder it names is called something far too long', async () => {
+		await aTurn('Why two passes?');
+		const id = chat.current?.id as Ulid;
+
+		await chat.addPlace({
+			root: PLACE,
+			name: 'The lexer, and every reason it was written the way it was. '.repeat(10)
+		});
+
+		chat.clear();
+		chatDraft.clear();
+		await chat.opened(graph);
+
+		expect(chat.current?.id).toBe(id);
+		expect(chat.places.map((one) => one.root)).toEqual([PLACE]);
 	});
 
 	it('is not changed while the agent is answering', async () => {
@@ -831,6 +875,37 @@ describe('picking a chat up where it was left', () => {
 		expect(stub.said.at(-1)).toContain('And the lexer?');
 		// Which conversation answered is unknown, so nothing is claimed about it.
 		expect(chat.says).toBe(null);
+	});
+
+	it('hands over what was said where the agent under the chat was changed', async () => {
+		stub.offers = ['claude_code', 'anthropic'];
+		await chat.lookForAgents();
+		await aTurn('Why two passes?');
+
+		chat.pick('anthropic', undefined);
+		await aTurn('And the lexer?');
+
+		expect(stub.said.at(-1)).toContain('Why two passes?');
+		expect(stub.said.at(-1)).toContain('And the lexer?');
+	});
+
+	it('hands it to the chat it was said in and to no other', async () => {
+		stub.offers = ['claude_code', 'anthropic'];
+		await chat.lookForAgents();
+		await aTurn('Why two passes?');
+		const first = chat.current?.id as Ulid;
+		chat.pick('anthropic', undefined);
+
+		await chat.startThread();
+		await aTurn('What does the emitter do?');
+
+		expect(stub.said.at(-1)).toBe('What does the emitter do?');
+
+		// And the chat it belongs to still opens with it when it is read again.
+		await chat.openThread(first);
+		await aTurn('And the lexer?');
+
+		expect(stub.said.at(-1)).toContain('Why two passes?');
 	});
 
 	it('hands over what was said where there is no session to pick up', async () => {

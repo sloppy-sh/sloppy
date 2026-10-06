@@ -53,6 +53,12 @@ vi.mock('../chat-acts.js', () => ({
 	}
 }));
 
+// The bar itself is its own file's test; what belongs here is whether the panel
+// mounts one at all.
+vi.mock('./context-chart.svelte', async () => ({
+	default: (await import('./context-chart.test-support.svelte')).default
+}));
+
 const HOME = homeOf(DID);
 const PARSER = ref(1);
 
@@ -166,6 +172,16 @@ const labelled = (label: string): HTMLButtonElement | undefined =>
 		(one) => one.getAttribute('aria-label') === label
 	);
 
+const menuItem = (label: string): HTMLElement => {
+	const found = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+		(row) => row.textContent?.trim() === label
+	);
+	if (!found) throw new Error(`The menu does not offer "${label}"`);
+	return found;
+};
+
+const chartShown = () => document.body.querySelector('[data-slot="context-chart"]');
+
 /** Whether the chat is still there to be said into. */
 const composerThere = (): boolean =>
 	document.body.querySelector('[aria-label="What you want written about"]') !== null;
@@ -212,6 +228,14 @@ function show(): void {
 		}
 	});
 	flushSync();
+}
+
+/** Another chat, begun the way somebody begins one. */
+async function newThread(): Promise<void> {
+	labelled('Which thread')?.click();
+	await settle();
+	menuItem('New thread').click();
+	await settle();
 }
 
 /** The chat open, with one thing said into it and the turn underway. */
@@ -847,8 +871,7 @@ describe('putting a file in front of it', () => {
 		stub.tell({ event: 'ended' });
 		await settle();
 
-		named('Start again')?.click();
-		await settle();
+		await newThread();
 
 		expect(await files.list('.sloppy/attached')).toEqual([]);
 	});
@@ -903,7 +926,7 @@ describe('which model answers', () => {
 		await settle();
 
 		expect(screen()).toContain('This one is being answered with Sonnet.');
-		expect(screen()).toContain('Start again to use Haiku.');
+		expect(screen()).toContain('Begin a new thread to use Haiku.');
 	});
 
 	// Picking after a while is the commonest way round, and the one the notice
@@ -916,22 +939,20 @@ describe('which model answers', () => {
 		await settle();
 
 		expect(screen()).toContain('This one is being answered with its own choice.');
-		expect(screen()).toContain('Start again to use Sonnet.');
+		expect(screen()).toContain('Begin a new thread to use Sonnet.');
 	});
 });
 
-describe('starting again', () => {
+describe('beginning another thread', () => {
 	it('lets the conversation go, and says how to talk into the next one', async () => {
 		await saying('What is in here?');
 		stub.tell({ event: 'ended' });
 		await settle();
-		expect(named('Start again')).toBeDefined();
 
-		named('Start again')?.click();
-		await settle();
+		await newThread();
 
 		expect(stub.closes).toBe(1);
-		expect(named('Start again')).toBeUndefined();
+		expect(labelled('Which thread')?.textContent?.trim()).toBe('New thread');
 		expect(screen()).toContain('Say what you want written about');
 	});
 
@@ -1021,5 +1042,60 @@ describe('answering with', () => {
 
 		expect(screen()).toContain("That model isn't one this assistant knows. Pick another.");
 		expect(screen()).not.toContain('model not found');
+	});
+});
+
+// DESIGN.md § Layout: the chat's head is the name of the thread you are in and
+// the way to every other.
+describe('the head of the chat', () => {
+	it('is what can be done to this thread, which thread it is, and the way out', async () => {
+		await chat.opened(HOME);
+		show();
+		await settle();
+
+		expect(labelled('More about this thread')).toBeDefined();
+		expect(labelled('Which thread')?.textContent?.trim()).toBe('New thread');
+		expect(labelled('Close the chat')).toBeDefined();
+	});
+
+	it('reads the name the first thing said gave the thread', async () => {
+		await saying('What is in the parser?');
+
+		expect(labelled('Which thread')?.textContent?.trim()).toBe('What is in the parser?');
+	});
+});
+
+describe('how full the window is', () => {
+	it('is drawn under the spend line, and only once the agent has said', async () => {
+		await saying('What is in here?');
+		expect(chartShown()).toBeNull();
+
+		stub.tell({
+			event: 'context',
+			usage: {
+				total: 12_000,
+				limit: 200_000,
+				parts: [{ name: 'System prompt', tokens: 12_000, kind: 'used' }],
+				at: new Date().toISOString()
+			}
+		});
+		await settle();
+
+		expect(chartShown()?.textContent?.trim()).toBe('12000 of 200000');
+	});
+
+	it('goes with the conversation it was counted for', async () => {
+		await saying('What is in here?');
+		stub.tell({
+			event: 'context',
+			usage: { total: 12_000, limit: 200_000, parts: [], at: new Date().toISOString() }
+		});
+		await settle();
+		expect(chartShown()).not.toBeNull();
+
+		stub.tell({ event: 'over' });
+		await settle();
+
+		expect(chartShown()).toBeNull();
 	});
 });

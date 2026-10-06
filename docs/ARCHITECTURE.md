@@ -3447,13 +3447,17 @@ one project is the way it is often has the answer in another, so a thread carrie
 Rust's**: a place must already be a folder somebody picked, which `Folders::allows` is the
 one record of, and `AppRuntime.placeFiles` answers `undefined` for anything else — nothing
 typed on the page and no scan of the disk reaches a folder. Sloppy's three READING acts
-reach a place's notes through an `in` argument naming the place by NAME. **Both halves of
-reaching a place are the native shell's, and both have landed**: `placeFiles` there answers
-from a copy of that record, so a folder nobody picked is refused while somebody is still
-choosing rather than when the chat will not start; and every place is named on the agent's
-launch line, which is what gives its own file tools the folder. A folder that was picked and
-has since moved is caught at launch all the same, and `chat.rs` says which one.
-**The eight writing
+reach a place's notes through an `in` argument naming the place by NAME. **Naming a folder is
+how it joins that list, and `AppRuntime.askPlace` is the one way in**: it asks the person and
+admits what they name, and it OPENS nothing — reading a folder is not serving it, so no graph
+is started inside it and the one in front of somebody does not move. Opening a project is a
+different act with different consequences and is not this one. **Every half of reaching a
+place is the native shell's, and all three have landed**: `askPlace` asks through the same
+dialog that writes the record; `placeFiles` answers from a copy of that record, so a folder
+nobody picked is refused while somebody is still choosing rather than when the chat will not
+start; and every place is named on the agent's launch line, which is what gives its own file
+tools the folder. A folder that was picked and has since moved is caught at launch all the
+same, and `chat.rs` says which one. **The eight writing
 acts take no `in` and land in the thread's own draft**, whatever they say: `chatToolWrites`
 is what decides, so a place is read and never written. A place the thread does not carry, or
 one the shell will not serve, is refused to the agent in words it can act on.
