@@ -15,7 +15,8 @@ import {
 	NotesListedSchema,
 	NoteWrittenSchema,
 	type OwnedRef,
-	splitOwnedRef
+	splitOwnedRef,
+	UNNAMED_GRAPH_ULID
 } from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { containerApi, serveChatCall } from './chat-acts.js';
@@ -1020,6 +1021,17 @@ describe('a place beside the project', () => {
 		return serveChatCall(at, call, true);
 	}
 
+	/** Every file on the disk and what is in each one, so a test says the folder
+	 *  was left as it was FOUND and not only that the same files are in it. */
+	function everyFile(): Record<string, string> {
+		const read = new TextDecoder();
+		return Object.fromEntries(
+			[...device]
+				.sort(([one], [two]) => one.localeCompare(two))
+				.map(([at, bytes]) => [at, read.decode(bytes)])
+		);
+	}
+
 	beforeEach(async () => {
 		device = new Map();
 		place = new MemoryFiles({ root: PLACE, data: '/data/other', store: device });
@@ -1033,33 +1045,48 @@ describe('a place beside the project', () => {
 		// put them back would be a write in somebody else's repository.
 		await place.remove('.sloppy/.gitignore');
 		await place.remove(`.sloppy/${AGENT_FILE}`);
-		const before = [...device.keys()].sort();
+		const before = everyFile();
 
 		const said = await reads(place, { call: 'c1', act: 'list_notes', arguments: {} });
 
 		expect(NotesListedSchema.parse(JSON.parse(said.said)).notes).toHaveLength(1);
-		expect([...device.keys()].sort()).toEqual(before);
+		expect(everyFile()).toEqual(before);
 	});
 
 	it('writes nothing into a folder holding no notes, and says there are none', async () => {
 		const plain = new MemoryFiles({ root: PLAIN, data: '/data/other', store: device });
 		await plain.write(PARSER, new TextEncoder().encode('export const three = 3;\n'));
-		const before = [...device.keys()].sort();
+		const before = everyFile();
 
 		await expect(reads(plain, { call: 'c1', act: 'list_notes', arguments: {} })).rejects.toThrow(
 			'There are no notes in that folder'
 		);
 
-		expect([...device.keys()].sort()).toEqual(before);
+		expect(everyFile()).toEqual(before);
 	});
 
 	it('refuses an act that would write, whatever routed it here', async () => {
-		const before = [...device.keys()].sort();
+		const before = everyFile();
 
 		const done = await reads(place, writes(PARSER, [ABOUT_THE_PARSER]));
 
 		expect(done.trouble).toBe(true);
 		expect(done.said).toContain('can only be read');
-		expect([...device.keys()].sort()).toEqual(before);
+		expect(everyFile()).toEqual(before);
+	});
+
+	it('reads a folder that shares the first ulid without giving it one of its own', async () => {
+		const graphFile = '.sloppy/graph.json';
+		const said = JSON.parse(new TextDecoder().decode(await place.read(graphFile)));
+		await place.write(
+			graphFile,
+			new TextEncoder().encode(`${JSON.stringify({ ...said, graph: UNNAMED_GRAPH_ULID })}\n`)
+		);
+		const before = everyFile();
+
+		const answered = await reads(place, { call: 'c1', act: 'list_notes', arguments: {} });
+
+		expect(NotesListedSchema.parse(JSON.parse(answered.said)).notes).toHaveLength(1);
+		expect(everyFile()).toEqual(before);
 	});
 });

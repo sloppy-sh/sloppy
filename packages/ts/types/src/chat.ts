@@ -148,8 +148,8 @@ export const MOST_PLACES = 8;
  * `root` is where it is, as the platform spells a folder, and is the shell's
  * own business — no path is shown. `name` is what a person and the agent both
  * call it, and {@link placeNamed} is what keeps two of them apart. **Absent
- * `graph` is a folder that holds no graph**: the agent's own file tools read it
- * and Sloppy's note acts answer nothing for it.
+ * `graph` is a folder that holds no graph**: Sloppy's note acts answer nothing
+ * for it, so nothing names it to the agent.
  */
 export const ChatPlaceSchema = z.object({
   root: z.string().min(1).max(DRAFT_PATH_MAX),

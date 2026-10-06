@@ -136,7 +136,7 @@ import {
 import { CONTAINER_DIR, containerOf } from "./container.js";
 import { keepAgentFile } from "./agent-md.js";
 import { keepOut } from "./kept-out.js";
-import { type Files, MemoryFiles } from "./files.js";
+import { type Files, MemoryFiles, ONLY_READ, readOnly } from "./files.js";
 import {
   LocalGraph,
   localOf,
@@ -172,7 +172,6 @@ import {
 /** Where the code is, from a container at `<project>/.sloppy`. */
 const PROJECT_FROM_CONTAINER = "..";
 
-const ONLY_READ = "Those notes can only be read from here.";
 const NO_NOTES_THERE = "There are no notes in that folder.";
 
 /** Whether a folder holds a graph — its own, or a project's container inside
@@ -193,6 +192,8 @@ export async function holdsAGraph(files: Files): Promise<boolean> {
  * second machine to exist, and a surface that offers them here has a bug.
  */
 export class LocalApi implements SloppyApi {
+  readonly files: Files;
+
   private identity?: LocalIdentity;
   private known?: KnownVault[];
   private readonly starting = new Map<string, Promise<LocalGraph>>();
@@ -213,17 +214,20 @@ export class LocalApi implements SloppyApi {
    * identity — docs/ARCHITECTURE.md § "A graph off the device".
    *
    * `reading` is a folder nothing here touches: the graph it already holds
-   * answers, a folder holding none is said rather than made into one, and every
-   * act that would write REFUSES. It is what serves somebody else's folder —
-   * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+   * answers as the folder spells it, a folder holding none is said rather than
+   * made into one, and every act that would write REFUSES — over files that
+   * refuse one as well ({@link readOnly}), so a read path that would write is
+   * refused rather than left to remember. It is what serves somebody else's
+   * folder — docs/ARCHITECTURE.md § "Asking a tool to write the notes".
    */
   constructor(
-    readonly files: Files,
+    files: Files,
     options: { as?: LocalIdentity; writer?: DidSyr; reading?: boolean } = {},
   ) {
+    this.reading = options.reading ?? false;
+    this.files = this.reading ? readOnly(files) : files;
     this.identity = options.as;
     this.writingAs = options.writer;
-    this.reading = options.reading ?? false;
   }
 
   /** Whose writing a note written here carries. */
@@ -1826,12 +1830,8 @@ export class LocalApi implements SloppyApi {
       const at = this.files.at(root);
       const own = await at.exists(GRAPH_FILE);
       const inside = own ? undefined : await containerOf(at);
-      const held =
-        inside !== undefined
-          ? await LocalGraph.open(inside)
-          : own
-            ? await LocalGraph.open(at)
-            : undefined;
+      const vault = inside ?? (own ? at : undefined);
+      const held = vault === undefined ? undefined : await this.vaultIn(vault);
       if (this.reading) {
         if (!held) throw absent(NO_NOTES_THERE);
         this.opened.set(root, held);
@@ -1857,6 +1857,12 @@ export class LocalApi implements SloppyApi {
     })();
     this.starting.set(root, opening);
     return opening;
+  }
+
+  /** The vault in a folder: adopted where this store writes in the folder, read
+   *  as it stands where it only reads it. */
+  private vaultIn(vault: Files): Promise<LocalGraph> {
+    return this.reading ? LocalGraph.read(vault) : LocalGraph.open(vault);
   }
 
   /** A folder made into a graph: the project's notes go in the container

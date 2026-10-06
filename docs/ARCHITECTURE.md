@@ -3442,23 +3442,28 @@ one project is the way it is often has the answer in another, so a thread carrie
 `MOST_PLACES` folders the person added to it. **The allow-list is the gate, and it is
 Rust's**: a place must already be a folder somebody picked, which `Folders::allows` is the
 one record of, and `AppRuntime.placeFiles` answers `undefined` for anything else — nothing
-typed on the page and no scan of the disk reaches a folder. The agent's own file tools reach
-a place because the shell names it at launch, and Sloppy's three READING acts reach its
-notes through an `in` argument naming the place by NAME. **The eight writing acts take no
-`in` and land in the thread's own draft**, whatever they say: `chatToolWrites` is what
-decides, so a place is read and never written. A place the thread does not carry, or one the
-shell will not serve, is refused to the agent in words it can act on.
+typed on the page and no scan of the disk reaches a folder. Sloppy's three READING acts
+reach a place's notes through an `in` argument naming the place by NAME, and that is the
+whole of what reaches one today: **no shell names a place to the agent at launch yet**, so
+the agent's own file tools see the folder it runs in and nothing beside it, and naming one
+there is the native shell's half to land. **The eight writing acts take no `in` and land in
+the thread's own draft**, whatever they say: `chatToolWrites` is what decides, so a place is
+read and never written. A place the thread does not carry, or one the shell will not serve,
+is refused to the agent in words it can act on.
 
 **Read and never written is the STORE's job as much as the routing's.** Opening a folder is
 normally how somebody says a graph is in it, so the ordinary store starts one where there is
 none and keeps `.gitignore` and `AGENT.md` beside the one there is — which in somebody else's
 repository would be a graph, and a key, that nobody asked for. So a place is served by
-`placeApi`, a store whose `reading` option makes `LocalApi` open only the graph the folder
-already holds, say a folder holding none rather than make one, and refuse every act that
-writes. The routing above decides WHICH folder; this decides what can happen in it. And a
-place carries whether it holds a graph at all — `ChatPlace.graph` — so a folder that holds no
-notes is named to the agent nowhere and refused by name, leaving it to the agent's own file
-tools, which is all it ever was.
+`placeApi`, a store whose `reading` option makes `LocalApi` read only the graph the folder
+already holds and read it as the folder spells it, say a folder holding none rather than make
+one, and refuse every act that writes — over files that refuse one as well, `readOnly` in
+`@sloppy/local`, so a read path that would write is refused rather than healing the file it
+read. The routing above decides WHICH folder; this decides what can happen in it. And a
+place carries whether it holds a graph at all — `ChatPlace.graph` — so a folder that holds
+no notes is named to the agent nowhere and refused by name: a reading act has nothing to
+answer for it, and until the launch half above lands there is nothing else that reaches it
+either.
 
 **A place is reached by NAME, so two under one name would answer whichever was added first
 for both**: `placeNamed` is the one gate, and a name already taken is given the folder it

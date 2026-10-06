@@ -13,6 +13,7 @@ import {
   PickingFiles,
   body,
   device,
+  everyFile,
   reopened,
   textDocument,
 } from "./local.test-support.js";
@@ -657,52 +658,79 @@ describe("a section saved into a folder written in elsewhere", () => {
 });
 
 describe("a folder this store only reads", () => {
+  /** A store over somebody else's folder, reading and nothing else. */
+  function reading(store: Map<string, Uint8Array>): LocalApi {
+    return new LocalApi(new PickingFiles({ store, root: "/graphs/theirs" }), {
+      reading: true,
+    });
+  }
+
   /** Somebody else's folder, with a graph of their own in it and a note they
-   *  wrote, and a store over it that only reads. */
+   *  wrote. */
   async function theirs() {
     const held = device(["/graphs/theirs"]);
     await held.api.createGraph({ title: "The lexer" });
     const note = await held.api.createNode({ title: "Two passes" });
-    const reading = new LocalApi(
-      new PickingFiles({ store: held.store, root: "/graphs/theirs" }),
-      { reading: true },
-    );
-    return { held, note, reading };
+    return { held, note, only: reading(held.store) };
   }
 
-  it("answers the notes it holds without writing a byte", async () => {
-    const { held, note, reading } = await theirs();
-    const before = [...held.store.keys()].sort();
+  it("answers the notes it holds and leaves every file as it was", async () => {
+    const { held, note, only } = await theirs();
+    const before = everyFile(held.store);
 
-    expect((await reading.getNode(note.ref))?.title).toBe("Two passes");
+    expect((await only.getNode(note.ref))?.title).toBe("Two passes");
     expect(
-      (await reading.listNodes({ graph: await reading.graphHere() })).map(
+      (await only.listNodes({ graph: await only.graphHere() })).map(
         (one) => one.title,
       ),
     ).toEqual(["Two passes"]);
-    expect([...held.store.keys()].sort()).toEqual(before);
+    expect(everyFile(held.store)).toEqual(before);
   });
 
   it("refuses every act that would write", async () => {
-    const { held, reading } = await theirs();
-    const before = [...held.store.keys()].sort();
+    const { held, only } = await theirs();
+    const before = everyFile(held.store);
 
-    await expect(reading.createNode({ title: "Mine" })).rejects.toMatchObject({
+    await expect(only.createNode({ title: "Mine" })).rejects.toMatchObject({
       status: 400,
     });
-    await expect(reading.createGraph({ title: "Mine" })).rejects.toMatchObject({
+    await expect(only.createGraph({ title: "Mine" })).rejects.toMatchObject({
       status: 400,
     });
-    expect([...held.store.keys()].sort()).toEqual(before);
+    expect(everyFile(held.store)).toEqual(before);
   });
 
   it("says a folder holding no graph rather than starting one in it", async () => {
     const store = new Map<string, Uint8Array>();
     const files = new PickingFiles({ store, root: "/graphs/empty" });
     await files.write("README.md", encodeText("Not a graph.\n"));
-    const reading = new LocalApi(files, { reading: true });
+    const before = everyFile(store);
 
-    await expect(reading.graphHere()).rejects.toMatchObject({ status: 404 });
-    expect([...store.keys()]).toEqual(["/graphs/empty/README.md"]);
+    await expect(
+      new LocalApi(files, { reading: true }).graphHere(),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(everyFile(store)).toEqual(before);
+  });
+
+  it("answers a folder sharing everybody's first ulid with the ref it spells", async () => {
+    const { held, note } = await theirs();
+
+    // The folder a graph carried out of a hosted one leaves. Opened to be
+    // written in, it is given a ulid of its own and written back.
+    const said = JSON.parse(
+      decodeText(held.store.get("/graphs/theirs/graph.json") as Uint8Array),
+    );
+    held.store.set(
+      "/graphs/theirs/graph.json",
+      encodeText(`${JSON.stringify({ ...said, graph: UNNAMED_GRAPH_ULID })}\n`),
+    );
+    const before = everyFile(held.store);
+
+    const only = reading(held.store);
+    expect(splitOwnedRef(await only.graphHere()).localId).toBe(
+      UNNAMED_GRAPH_ULID,
+    );
+    expect((await only.getNode(note.ref))?.title).toBe("Two passes");
+    expect(everyFile(held.store)).toEqual(before);
   });
 });

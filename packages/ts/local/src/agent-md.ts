@@ -457,8 +457,8 @@ export async function keepAgentFile(container: Files): Promise<void> {
  *
  * `places` are the other folders the thread may read. They are named here by
  * NAME and never by path, because the name is what a reading act takes — so
- * only the ones holding notes are named, the rest being folders the agent's own
- * file tools read and that no name of ours reaches.
+ * only the ones holding notes are named, there being nothing a reading act can
+ * answer about the rest.
  */
 export function chatBrief(places: readonly ChatPlace[] = []): string {
   const named = places

@@ -3,6 +3,7 @@
 
 import { insideVault } from "@sloppy/vault";
 import type { Credential } from "./history.js";
+import { refuse } from "./refusal.js";
 
 /** What a folder is being asked for: somewhere to keep a graph, or the project
  *  whose notes it holds — docs/ARCHITECTURE.md § "A project's container". */
@@ -106,6 +107,33 @@ export function keepingDataAt(files: Files, data: string): Files {
     pickFolder: (asking) => files.pickFolder(asking),
     ...(clone === undefined ? {} : { clone }),
     dataPath: async () => data,
+  };
+}
+
+/** What anything that would write in a folder this device only reads is
+ *  refused with. */
+export const ONLY_READ = "Those notes can only be read from here.";
+
+/**
+ * The same files, read and never written: `write`, `remove` and `mkdir` refuse,
+ * `clone` is not offered, and `at` carries that to every folder reached from
+ * here. It is what a store over somebody else's folder is given —
+ * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+ */
+export function readOnly(files: Files): Files {
+  const no = () => Promise.reject(refuse(ONLY_READ));
+  return {
+    root: files.root,
+    read: (path) => files.read(path),
+    write: no,
+    list: (path) => files.list(path),
+    remove: no,
+    exists: (path) => files.exists(path),
+    mkdir: no,
+    at: (root) => readOnly(files.at(root)),
+    url: (path) => files.url(path),
+    pickFolder: (asking) => files.pickFolder(asking),
+    dataPath: () => files.dataPath(),
   };
 }
 

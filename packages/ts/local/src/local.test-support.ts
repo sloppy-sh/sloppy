@@ -3,7 +3,7 @@
 
 import type { BlockDocument, DidSyr } from "@sloppy/types";
 import { ulid } from "@sloppy/types";
-import { VAULT_FORMAT } from "@sloppy/vault";
+import { VAULT_FORMAT, decodeText } from "@sloppy/vault";
 import { LocalApi } from "./api.js";
 import { type Files, MemoryFiles } from "./files.js";
 import { LocalGraph } from "./graph.js";
@@ -65,6 +65,19 @@ export function reread(
   root = "/graphs/one",
 ): Promise<LocalGraph> {
   return LocalGraph.open(files.at(root));
+}
+
+/** Every file on a device and what is in each one, so a test can say a folder
+ *  was left exactly as it was FOUND rather than only that the same files are
+ *  still in it. */
+export function everyFile(
+  store: Map<string, Uint8Array>,
+): Record<string, string> {
+  return Object.fromEntries(
+    [...store]
+      .sort(([one], [two]) => one.localeCompare(two))
+      .map(([at, bytes]) => [at, decodeText(bytes)]),
+  );
 }
 
 /** Bytes as the body a surface hands the client — `slice()` so the blob holds a
