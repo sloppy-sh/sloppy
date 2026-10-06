@@ -14,6 +14,7 @@
 //! will serve, and words; the words reach the agent on its own input rather
 //! than as an argument.
 
+use std::ffi::OsStr;
 use std::io::{BufReader, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -73,6 +74,19 @@ const NOTHING_OPEN: &str = "That chat is over. Start another one.";
 const DIDNT_START: &str = "That did not start. Try again.";
 const DIDNT_FINISH: &str = "That did not finish. Try again.";
 const TOO_MUCH: &str = "That answer was too long to read. Ask for less, then try again.";
+const NO_PLACE: &str =
+    "Sloppy could not give this chat one of its folders. Open it again, or take it off the chat.";
+
+/// Which folder a chat could not be given, named the way the person named it —
+/// the last part of where it is, which is what they call that folder.
+fn no_place(place: &str) -> ChatError {
+    match Path::new(place).file_name().and_then(OsStr::to_str) {
+        Some(name) => ChatError::new(format!(
+            "Sloppy could not give this chat the folder “{name}”. Open it again, or take it off the chat."
+        )),
+        None => ChatError::new(NO_PLACE),
+    }
+}
 
 /// What a person is told where a chat could not start or could not go on.
 #[derive(Debug)]
@@ -259,16 +273,25 @@ fn marked() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Start the agent in `at`, pointed at an endpoint serving `tools`, and carry
-/// what it says to `heard` until it is done.
 /// What a session is opened with, beside where it runs.
 struct Opening<'a> {
     tools: &'a [Advertised],
     brief: &'a str,
     /// Absent is whatever the agent would answer with on its own.
     model: Option<&'a str>,
+    /// Which conversation this is. Absent is one this app names itself, which
+    /// is every chat nobody has opened before.
+    session: Option<&'a str>,
+    /// Whether that conversation is being picked up where it was left rather
+    /// than opened as a new one.
+    resume: bool,
+    /// The folders the agent may read besides the one it runs in, each already
+    /// held to what this app is allowed to reach.
+    places: &'a [PathBuf],
 }
 
+/// Start the agent in `at`, pointed at an endpoint serving `with.tools`, and
+/// carry what it says to `heard` until it is done.
 fn open(
     agent: &'static Agent,
     program: &Path,
@@ -289,15 +312,7 @@ fn open(
         }),
     )
     .map_err(|_| ChatError::new(DIDNT_START))?;
-    let mut child = start(
-        program,
-        agent.args,
-        &named(),
-        &endpoint.config(),
-        with.brief,
-        with.model,
-        at,
-    )?;
+    let mut child = start(program, agent.args, &endpoint.config(), &with, at)?;
     let saying = child
         .stdin
         .take()
@@ -331,33 +346,57 @@ fn open(
     Ok(())
 }
 
-/// `session` and `config` are this one session's, so they are given here rather
-/// than standing in the agent's own options.
+/// The options this one session is opened under — `config` and everything on
+/// `with`; the agent's own standing options are `args`.
+///
+/// A conversation picked up restores what was SAID in it and not the folders it
+/// was given, so every place is passed again on every open.
 fn start(
     program: &Path,
     args: &[&str],
-    session: &str,
     config: &str,
-    brief: &str,
-    model: Option<&str>,
+    with: &Opening<'_>,
     at: &Path,
 ) -> Result<Child, ChatError> {
     let mut how = Command::new(program);
-    how.args(args)
-        .arg("--session-id")
-        .arg(session)
-        .arg("--mcp-config")
+    how.args(args);
+    match with.session.filter(|_| with.resume) {
+        Some(session) => how.arg("--resume").arg(session),
+        None => how
+            .arg("--session-id")
+            .arg(with.session.map_or_else(named, str::to_owned)),
+    };
+    how.arg("--mcp-config")
         .arg(config)
         .arg("--append-system-prompt")
-        .arg(brief)
+        .arg(with.brief)
         .current_dir(at)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if let Some(model) = model {
+    for place in with.places {
+        how.arg("--add-dir").arg(place);
+    }
+    if let Some(model) = with.model {
         how.arg("--model").arg(model);
     }
     started(&mut how).map_err(|_| ChatError::new(NO_PROGRAM))
+}
+
+/// Where each of a chat's places is, every one of them held to what this app
+/// may reach and still there. A place it may not reach, or one that has moved,
+/// is REFUSED rather than left out: a chat that quietly cannot read a folder
+/// somebody added to it answers wrongly and says nothing about why.
+fn places_in(folders: &Folders, places: &[String]) -> Result<Vec<PathBuf>, ChatError> {
+    places
+        .iter()
+        .map(|place| {
+            let held = PathBuf::from(place);
+            (folders.picked_holds(&held) && held.is_dir())
+                .then(|| crate::vault::settled(&held))
+                .ok_or_else(|| no_place(place))
+        })
+        .collect()
 }
 
 /// Every line the agent writes out, handed on as it arrives. `false` is a line
@@ -406,13 +445,23 @@ pub struct Asked {
     pub tools: Vec<Advertised>,
     pub brief: String,
     pub model: Option<String>,
+    /// The conversation to open as, or to pick up where `resume`. Absent is a
+    /// chat nobody has opened before, which this app names itself.
+    pub session: Option<String>,
+    pub resume: bool,
+    /// The folders this chat reads besides its own project, as the page holds
+    /// them. Each is checked against what this app may reach before anything
+    /// starts.
+    pub places: Vec<String>,
 }
 
 /// Start a session, ending whatever stood. `tools` are the acts the webview
 /// will serve, as `advertisedChatTools` in `@sloppy/types` answered; `brief` is
 /// what the agent is told before it hears the person, which is `chatBrief` in
 /// `@sloppy/local` and without which it does not know it is in Sloppy at all;
-/// `model` absent is whatever the agent would answer with on its own.
+/// `model` absent is whatever the agent would answer with on its own; `places`
+/// are the folders this chat reads besides its own project, and a session is
+/// refused rather than started where this app may not reach one of them.
 #[tauri::command]
 pub async fn chat_open(
     folders: State<'_, Folders>,
@@ -426,12 +475,16 @@ pub async fn chat_open(
         tools,
         brief,
         model,
+        session,
+        resume,
+        places,
     } = asked;
     let held = AGENTS
         .iter()
         .find(|one| one.id == agent)
         .ok_or_else(|| ChatError::new(NO_PROGRAM))?;
     let at = folders.opened(&root)?.to_path_buf();
+    let places = places_in(&folders, &places)?;
     let chat = chat.inner().clone();
     let telling: Arc<dyn Fn(Heard) + Send + Sync> = Arc::new(move |message| {
         let _ = heard.send(message);
@@ -442,6 +495,9 @@ pub async fn chat_open(
             tools: &tools,
             brief: &brief,
             model: model.as_deref(),
+            session: session.as_deref(),
+            resume,
+            places: &places,
         };
         open(held, &program, &at, with, telling, chat)
     })
@@ -490,12 +546,16 @@ mod tests {
 
     use super::*;
 
-    /// A session opened with no acts, nothing said first and no model named.
+    /// A session opened with no acts, nothing said first, no model named, no
+    /// conversation to pick up and nowhere to read but where it runs.
     fn nothing() -> Opening<'static> {
         Opening {
             tools: &[],
             brief: "",
             model: None,
+            session: None,
+            resume: false,
+            places: &[],
         }
     }
 
@@ -718,6 +778,189 @@ mod tests {
             .iter()
             .any(|held| parts[3].starts_with(held)));
         assert_ne!(named, self::named());
+    }
+
+    /// A stub that writes out the options it was started with, one to a line,
+    /// so a test reads the argv the agent would have been given.
+    #[cfg(unix)]
+    fn echoing(at: &Path) -> PathBuf {
+        stub(at, "agent", "for one in \"$@\"; do echo \"$one\"; done")
+    }
+
+    /// What follows `flag` in the options the stub wrote out, and nothing where
+    /// the flag is not among them.
+    #[cfg(unix)]
+    fn after(lines: &[String], flag: &str) -> Option<String> {
+        let at = lines.iter().position(|one| one == flag)?;
+        lines.get(at + 1).cloned()
+    }
+
+    /// Every value `flag` was given, in the order they were given.
+    #[cfg(unix)]
+    fn every(lines: &[String], flag: &str) -> Vec<String> {
+        lines
+            .windows(2)
+            .filter(|pair| pair[0] == flag)
+            .map(|pair| pair[1].clone())
+            .collect()
+    }
+
+    /// A chat nobody has opened before is named here, and the agent is told to
+    /// open that conversation rather than to pick one up.
+    #[cfg(unix)]
+    #[test]
+    fn a_chat_opened_for_the_first_time_is_given_a_name_of_its_own() {
+        let at = scratch("named");
+        let program = echoing(&at);
+        let thread = Thread::default();
+
+        open(
+            &STUB,
+            &program,
+            &at,
+            nothing(),
+            thread.sink(),
+            Chat::default(),
+        )
+        .expect("a session");
+
+        waits("the end", || thread.overs().len() == 1);
+        let lines = thread.lines();
+        let named = after(&lines, "--session-id").expect("a name for the conversation");
+        assert_eq!(named.len(), 36);
+        assert_eq!(after(&lines, "--resume"), None);
+        assert_eq!(every(&lines, "--add-dir"), Vec::<String>::new());
+    }
+
+    /// Reopening a thread hands the agent the conversation it already holds,
+    /// which is what makes everything said in it still there.
+    #[cfg(unix)]
+    #[test]
+    fn a_chat_opened_again_picks_up_the_conversation_it_left() {
+        let at = scratch("resumed");
+        let program = echoing(&at);
+        let thread = Thread::default();
+        let with = Opening {
+            session: Some("the-conversation"),
+            resume: true,
+            ..nothing()
+        };
+
+        open(&STUB, &program, &at, with, thread.sink(), Chat::default()).expect("a session");
+
+        waits("the end", || thread.overs().len() == 1);
+        let lines = thread.lines();
+        assert_eq!(
+            after(&lines, "--resume").as_deref(),
+            Some("the-conversation")
+        );
+        assert_eq!(after(&lines, "--session-id"), None);
+    }
+
+    /// A conversation named but not picked up is the one the session opens as,
+    /// so the thread that asked for it finds it again.
+    #[cfg(unix)]
+    #[test]
+    fn a_chat_opening_under_a_name_it_was_given_opens_as_that_one() {
+        let at = scratch("as-named");
+        let program = echoing(&at);
+        let thread = Thread::default();
+        let with = Opening {
+            session: Some("the-conversation"),
+            resume: false,
+            ..nothing()
+        };
+
+        open(&STUB, &program, &at, with, thread.sink(), Chat::default()).expect("a session");
+
+        waits("the end", || thread.overs().len() == 1);
+        let lines = thread.lines();
+        assert_eq!(
+            after(&lines, "--session-id").as_deref(),
+            Some("the-conversation")
+        );
+        assert_eq!(after(&lines, "--resume"), None);
+    }
+
+    /// Every place the person added, given again on every open, because
+    /// nothing can be added to a session that is already running.
+    #[cfg(unix)]
+    #[test]
+    fn every_place_a_chat_reads_is_given_to_the_agent() {
+        let at = scratch("places");
+        let program = echoing(&at);
+        let thread = Thread::default();
+        let places = [at.join("lexer"), at.join("parser")];
+        let with = Opening {
+            places: &places,
+            ..nothing()
+        };
+
+        open(&STUB, &program, &at, with, thread.sink(), Chat::default()).expect("a session");
+
+        waits("the end", || thread.overs().len() == 1);
+        assert_eq!(
+            every(&thread.lines(), "--add-dir"),
+            places
+                .iter()
+                .map(|one| one.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// A chat is handed a folder this app may reach, and nothing else — the
+    /// page says which places, and this says whether it may.
+    #[test]
+    fn a_place_this_app_may_not_reach_is_refused_rather_than_left_out() {
+        let data = scratch("place-data");
+        let picked = scratch("place-picked");
+        let elsewhere = scratch("place-elsewhere");
+        let folders = Folders::new(data).expect("this app's own data");
+        folders.pick(picked.clone()).expect("the folder");
+        let spelled = |at: &Path| at.to_string_lossy().into_owned();
+        let named = |at: &Path| {
+            at.file_name()
+                .and_then(OsStr::to_str)
+                .expect("a folder with a name")
+                .to_owned()
+        };
+
+        assert_eq!(
+            places_in(&folders, &[spelled(&picked)]).expect("the place"),
+            [crate::vault::settled(&picked)]
+        );
+        // A chat may carry several folders, so knowing WHICH one is what makes
+        // the next step the person's to take — and the name is what they call
+        // it, never the whole of where it is.
+        let refused =
+            places_in(&folders, &[spelled(&elsewhere)]).expect_err("a folder nobody opened");
+        assert!(
+            refused.said().contains(&named(&elsewhere)),
+            "{}",
+            refused.said()
+        );
+        assert!(!refused.said().contains(&spelled(&elsewhere)));
+
+        // And one this app may reach that is not where it was: the chat says so
+        // rather than starting an agent that cannot read it.
+        let moved = picked.join("lexer");
+        fs::create_dir_all(&moved).expect("a folder inside it");
+        assert!(places_in(&folders, &[spelled(&moved)]).is_ok());
+        fs::remove_dir_all(&moved).expect("the folder gone");
+        let gone = places_in(&folders, &[spelled(&moved)]).expect_err("a folder that moved");
+        assert!(gone.said().contains("lexer"), "{}", gone.said());
+
+        // This app's own private data is somewhere it may read, and not a place:
+        // the drafts of other chats and what the device keeps for itself live
+        // there, and nothing somebody picked does.
+        let inside = PathBuf::from(folders.data_path()).join("drafts");
+        fs::create_dir_all(&inside).expect("the app's own folder");
+        let kept = places_in(&folders, &[spelled(&inside)]).expect_err("the app's own data");
+        assert!(kept.said().contains("drafts"), "{}", kept.said());
+
+        // A folder with no name of its own leaves nothing to say but what went
+        // wrong.
+        assert_eq!(no_place("/").said(), NO_PLACE);
     }
 
     /// An agent that loops, or another program that happens to answer to the

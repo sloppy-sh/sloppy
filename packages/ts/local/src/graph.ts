@@ -181,13 +181,36 @@ export class LocalGraph {
    * somebody else's first graph — docs/ARCHITECTURE.md § "A graph on disk".
    */
   static async open(files: Files): Promise<LocalGraph> {
+    const said = await LocalGraph.spelled(files);
+    if (said.graph !== UNNAMED_GRAPH_ULID) {
+      return await LocalGraph.indexed(files, said);
+    }
+    const own = { ...said, graph: ulid() };
+    await files.write(GRAPH_FILE, graphFile(own));
+    return await LocalGraph.indexed(files, own);
+  }
+
+  /**
+   * The graph the folder holds, left exactly as the folder spells it — the ref
+   * included, where {@link open} gives a folder still spelling that first ulid
+   * one of its own and writes it back. It is what serves a folder this device
+   * only reads — docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+   */
+  static async read(files: Files): Promise<LocalGraph> {
+    return await LocalGraph.indexed(files, await LocalGraph.spelled(files));
+  }
+
+  private static async spelled(files: Files): Promise<VaultGraph> {
     const bytes = await files.read(GRAPH_FILE);
     if (!bytes) throw absent("There is no graph in that folder.");
-    const said = readGraphFile(bytes);
-    const own =
-      said.graph === UNNAMED_GRAPH_ULID ? { ...said, graph: ulid() } : said;
-    if (own !== said) await files.write(GRAPH_FILE, graphFile(own));
-    const graph = new LocalGraph(files, own);
+    return readGraphFile(bytes);
+  }
+
+  private static async indexed(
+    files: Files,
+    said: VaultGraph,
+  ): Promise<LocalGraph> {
+    const graph = new LocalGraph(files, said);
     await graph.build();
     return graph;
   }

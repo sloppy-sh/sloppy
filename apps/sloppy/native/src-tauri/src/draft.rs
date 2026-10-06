@@ -57,7 +57,7 @@ const BEGAN: &str = "The notes as the draft found them";
 
 const NOTHING_KEPT: &str = "Keep a version of these notes first. A draft needs one to start from.";
 const NOT_A_DRAFT: &str = "That draft is not here any more.";
-const ALREADY_THERE: &str = "There is already a draft of these notes.";
+const ALREADY_THERE: &str = "This chat already has a draft of these notes.";
 const DIDNT_WORK: &str = "That did not work. Try again.";
 
 /// One draft standing — `StandingDraft` in `@sloppy/types`, which says what
@@ -754,9 +754,9 @@ mod tests {
         start(&folders, &said(&container), ID).expect("a draft");
 
         assert!(start(&folders, &said(&container), ID).is_err());
-        // One per folder is the page's rule, kept by asking what is standing
-        // before starting one; another ulid here is another copy, and both are
-        // listed so neither is stranded.
+        // One per chat, and a device holds as many chats as somebody keeps: a
+        // second ulid is a second chat's copy, and both are listed so neither
+        // is stranded.
         start(&folders, &said(&container), OTHER).expect("a second");
         let held = standing(&folders, &said(&container)).expect("both");
         assert_eq!(

@@ -1,7 +1,7 @@
 // Sloppy's own acts, done against a project's container — the page's half of
 // docs/ARCHITECTURE.md § "Asking a tool to write the notes".
 
-import { LocalApi, MemoryFiles } from '@sloppy/local';
+import { AGENT_FILE, LocalApi, MemoryFiles } from '@sloppy/local';
 import {
 	CHAT_TOLD_MAX,
 	ChatActDoneSchema,
@@ -15,7 +15,8 @@ import {
 	NotesListedSchema,
 	NoteWrittenSchema,
 	type OwnedRef,
-	splitOwnedRef
+	splitOwnedRef,
+	UNNAMED_GRAPH_ULID
 } from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { containerApi, serveChatCall } from './chat-acts.js';
@@ -1003,5 +1004,120 @@ describe('what a person reads of an act', () => {
 		expect(done.told).toBe('That note is not here.');
 		expect(done.said).toContain('ref');
 		expect(done.touched).toEqual([]);
+	});
+});
+
+describe('a place beside the project', () => {
+	const PLACE = '/work/lexer';
+	const PLAIN = '/work/scratch';
+
+	/** One device's disk, so the project and the folders beside it sit on it
+	 *  together. */
+	let device: Map<string, Uint8Array>;
+	let place: MemoryFiles;
+
+	/** An act against `at` served the way a place is served. */
+	function reads(at: MemoryFiles, call: ChatToolCall) {
+		return serveChatCall(at, call, true);
+	}
+
+	/** Every file on the disk and what is in each one, so a test says the folder
+	 *  was left as it was FOUND and not only that the same files are in it. */
+	function everyFile(): Record<string, string> {
+		const read = new TextDecoder();
+		return Object.fromEntries(
+			[...device]
+				.sort(([one], [two]) => one.localeCompare(two))
+				.map(([at, bytes]) => [at, read.decode(bytes)])
+		);
+	}
+
+	/** The three reading acts, every one of them, so a test says the folder was
+	 *  left as it was found by all of them and not only by the one it asked. */
+	async function everyRead(
+		at: MemoryFiles
+	): Promise<{ notes: OwnedRef[]; listed: string[]; read: string[] }> {
+		const notes = NotesListedSchema.parse(
+			JSON.parse((await reads(at, { call: 'c1', act: 'list_notes', arguments: {} })).said)
+		).notes;
+		await reads(at, { call: 'c2', act: 'search_notes', arguments: { words: 'parser' } });
+		const read: string[] = [];
+		for (const one of notes) {
+			const answered = await reads(at, {
+				call: 'c3',
+				act: 'read_note',
+				arguments: { note: one.note }
+			});
+			read.push(answered.said);
+		}
+		return { notes: notes.map((one) => one.note), listed: notes.map((one) => one.title), read };
+	}
+
+	beforeEach(async () => {
+		device = new Map();
+		place = new MemoryFiles({ root: PLACE, data: '/data/other', store: device });
+		await place.write(PARSER, new TextEncoder().encode('export const two = 2;\n'));
+		await containerApi(place).openProject(PLACE);
+		await serveChatCall(place, writes(PARSER, [ABOUT_THE_PARSER], { title: 'The lexer' }));
+	});
+
+	it('answers the notes it holds, and nothing is written in it', async () => {
+		// Gone, the two files a project of this device's own carries: a read that
+		// put them back would be a write in somebody else's repository.
+		await place.remove('.sloppy/.gitignore');
+		await place.remove(`.sloppy/${AGENT_FILE}`);
+		const before = everyFile();
+
+		const answered = await everyRead(place);
+
+		expect(answered.listed).toEqual(['The lexer']);
+		expect(answered.read[0]).toContain('The lexer');
+		expect(everyFile()).toEqual(before);
+	});
+
+	it('writes nothing into a folder holding no notes, and finds none there to read', async () => {
+		const plain = new MemoryFiles({ root: PLAIN, data: '/data/other', store: device });
+		await plain.write(PARSER, new TextEncoder().encode('export const three = 3;\n'));
+		const note = (await everyRead(place)).notes[0];
+		const before = everyFile();
+
+		await expect(reads(plain, { call: 'c1', act: 'list_notes', arguments: {} })).rejects.toThrow(
+			'There are no notes in that folder'
+		);
+		const searched = await reads(plain, {
+			call: 'c2',
+			act: 'search_notes',
+			arguments: { words: 'parser' }
+		});
+		const read = await reads(plain, { call: 'c3', act: 'read_note', arguments: { note } });
+
+		expect(JSON.parse(searched.said)).toEqual({ found: [] });
+		expect(read.told).toBe('That note is not here.');
+		expect(everyFile()).toEqual(before);
+	});
+
+	it('refuses an act that would write, whatever routed it here', async () => {
+		const before = everyFile();
+
+		const done = await reads(place, writes(PARSER, [ABOUT_THE_PARSER]));
+		await everyRead(place);
+
+		expect(done.trouble).toBe(true);
+		expect(done.said).toContain('can only be read');
+		expect(everyFile()).toEqual(before);
+	});
+
+	it('reads a folder that shares the first ulid without giving it one of its own', async () => {
+		const graphFile = '.sloppy/graph.json';
+		const said = JSON.parse(new TextDecoder().decode(await place.read(graphFile)));
+		await place.write(
+			graphFile,
+			new TextEncoder().encode(`${JSON.stringify({ ...said, graph: UNNAMED_GRAPH_ULID })}\n`)
+		);
+		const before = everyFile();
+
+		expect((await everyRead(place)).listed).toEqual(['The lexer']);
+
+		expect(everyFile()).toEqual(before);
 	});
 });

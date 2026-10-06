@@ -234,6 +234,30 @@ impl Folders {
         self.data.join(DRAFTS_DIR)
     }
 
+    /// Every folder somebody picked, as they are written down.
+    pub fn picked_folders(&self) -> Vec<String> {
+        self.picked
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|folder| folder.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// Whether `root` is a folder somebody picked, or sits inside one. Narrower
+    /// than `allows`: this app's own private data is not a place.
+    pub fn picked_holds(&self, root: &Path) -> bool {
+        if !root.is_absolute() {
+            return false;
+        }
+        let root = settled(root);
+        self.picked
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|folder| root.starts_with(folder))
+    }
+
     pub fn pick(&self, folder: PathBuf) -> io::Result<()> {
         let mut picked = self.picked.lock().unwrap();
         picked.insert(settled(&folder));
@@ -491,6 +515,14 @@ pub fn files_mkdir(
 #[tauri::command]
 pub fn app_data_path(folders: State<'_, Folders>) -> String {
     folders.data_path()
+}
+
+/// The folders this app may reach because somebody picked them. The page keeps
+/// a copy so that it can refuse a folder it will not serve while somebody is
+/// still choosing; refusing for real stays here.
+#[tauri::command]
+pub fn folders_picked(folders: State<'_, Folders>) -> Vec<String> {
+    folders.picked_folders()
 }
 
 /// What a folder is being asked for; `FolderAsked` in `@sloppy/local` spells
@@ -781,6 +813,28 @@ mod tests {
             relative("notes/a:b.md", false),
             Some(PathBuf::from("notes/a:b.md"))
         );
+    }
+
+    /// A device holds as many copies as it has chats that have written
+    /// something, and each is a checkout of its own: a history command inside
+    /// one is bounded there, and never at the folder holding every copy.
+    #[test]
+    fn each_draft_copy_is_bounded_at_itself() {
+        let held = folders(&scratch("drafts"));
+        let one = held.drafts_path().join("01JAPART000000000000000000");
+        let two = held.drafts_path().join("01JAPART000000000000000001");
+        fs::create_dir_all(one.join(".sloppy")).expect("one copy");
+        fs::create_dir_all(two.join(".sloppy")).expect("another");
+
+        for copy in [&one, &two] {
+            let notes = copy.join(".sloppy");
+            assert_eq!(
+                held.opened(&notes.to_string_lossy())
+                    .expect("the notes in the copy")
+                    .within(),
+                copy.as_path()
+            );
+        }
     }
 
     #[test]

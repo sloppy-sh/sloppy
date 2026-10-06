@@ -876,7 +876,9 @@ hundred — so the run stands as its first version, says how many it holds, and 
 the quieter ink the curated ones are not. It expands where somebody asks, and it never folds
 a version a line points at, because that is one somebody looks for by name.
 
-**Lanes are drawn in hue, and this is the one surface outside the canvas that spends it.**
+**Lanes are drawn in hue, one of the two surfaces outside the canvas that spend it** — the
+other is the context bar in the chat dock (§ "The context as a bar"), on this same
+justification and under this same measured bound.
 Which of a dozen lines a row belongs to is the question this picture exists to answer, and
 over hundreds of rows ink weight cannot carry it — a reader following one line down the page
 has to be able to see where it went. So a lane borrows a slot from the same eight the canvas
@@ -1016,15 +1018,99 @@ work you asked for and throwing it away is an ordinary choice rather than a warn
 no third act: a draft is taken whole or not at all, and a person who wants half of it says so
 to the agent and reads it again.
 
-**A standing draft is said once, quietly, where the chat is.** Not a badge, not a count on
-the canvas, not a nag: a line at the head of the chat saying a draft is standing, with going
-on with it, reading it, or throwing it away. It is still there tomorrow, and the line reads
-the same then.
+**A standing draft is said once, quietly, where the chat is — and it is THAT thread's.** Not
+a badge, not a count on the canvas, not a nag: a line at the head of the chat saying a draft
+is standing, with going on with it, reading it, or throwing it away. Each thread writes into
+a draft of its own, so the line belongs to the thread in front of you and says nothing about
+anybody else's; it is still there tomorrow, and it reads the same then. **Deleting a thread
+whose draft holds writing asks about the writing first** — merge it, throw it away with the
+thread, or keep the thread and delete nothing — because a delete that quietly took unread
+work with it is the one thing this whole surface exists to prevent. The third is the way out
+of the question, not a third thing to do to the writing: writing kept is writing you can
+still read, and a draft nothing is left pointing at is not. Writing that has anything to
+settle against your own notes is not merged on the way out either: the delete is refused and
+says to read the draft, because settling is the review's act.
 
-**The words are draft, review, merge, discard, version and kept.** Never branch, never a
-commit, never a checkout, never a conflict marker — AI.md § "User-Facing Copy Names the
-Outcome". The history surfaces say "branch" because a branch is what a person is looking at
-there; a draft is not one of those surfaces.
+**The words are draft, review, merge, discard, version, kept, thread and place.** Never
+branch, never a commit, never a checkout, never a conflict marker, never a session — AI.md
+§ "User-Facing Copy Names the Outcome". The history surfaces say "branch" because a branch
+is what a person is looking at there; a draft is not one of those surfaces. One conversation
+is a **thread** wherever a person reads one, and the dock it is read in is the **chat**:
+"this thread" is one of the several a project has, and "the chat" is where they all are.
+**"Tokens" is allowed**, and only as the unit the chart is read in: it is what somebody
+asking how much room is left already calls it, and `tokensSaid` is the one place it is
+written.
+
+## The context as a bar
+
+An assistant answers out of a window it can hold only so much in, and somebody who cannot
+see how full it is finds out by being told it is full. So the chat dock carries one quiet
+bar under the spend line: the window end to end, filled from the near end by what is in it,
+and one line under it saying how far it has filled and against what.
+
+**The bands are the assistant's own, and nothing here estimates one.** What it is holding
+arrives as parts it names and counts itself — its instructions, its tools, the conversation,
+what it read — and each is drawn at the width its own count gives it against the window. A
+band carries the assistant's wording rather than ours: renaming its parts into Sloppy's
+vocabulary would put a second name on something only it can count, and the day it counts
+something new we would be inventing a word for it. Nothing is grouped and nothing is rounded
+into a neighbour. The one band Sloppy names is the fill the assistant has not broken down —
+it reads **Not yet listed**, and it is what the window grows by between one breakdown and
+the next, because the fill follows what the assistant says is in there turn by turn while
+the bands only move when it says what they are again.
+
+**What is held aside is said and not drawn.** Some of what an assistant carries is kept out
+of the window rather than in it, and a band for it would read as room spent. It goes in the
+line under the bar instead, after what is in the window: `48k of 200k · 24k held aside`.
+
+**Where it will make room is a mark, and making room is a line.** The mark stands where the
+assistant says it compacts, so somebody writing a long thread sees it coming; it stands a
+little past the bar at the top and bottom so it reads against the page rather than against
+whichever band it crosses. A turn that made room draws the bar down and says what it came
+down from, once, for that turn. Both are the assistant's own; where it says neither, neither
+is drawn.
+
+**Quiet by default, and the list is on tap.** The bar and one line are the whole of it until
+somebody asks — tapping opens a row per band, its swatch, its name, its count and its share
+of the window, and tapping again closes it. A legend standing open under every chat is six
+rows of numbers in front of somebody who was writing, and what they wanted to know was
+whether there was room.
+
+**Hue is spent here, the second of the two surfaces outside the canvas that spend it** (the
+other is § "The history as a picture"). Which band is which is the question the bar exists
+to answer, and six adjacent lengths in one row are a question ink weight cannot carry. So a
+part the assistant named borrows a slot from the same eight the canvas lends a selected tag,
+taken in the order it gave its parts and wrapping onto the first past eight, which is the
+lanes' rule because it is the same ramp for the same reason.
+
+**The bands are drawn on the page inside a hairline, not in a filled track.** A slot against
+`--muted` reads 2.89:1 at its worst across the themes, under the 3:1 a graphical object
+owes, and `token-contrast.test.ts` holds that figure — so what is unspent is the page.
+
+**Nothing in the bar is a wash of its own colour.** A slot composited onto the page at a
+third of its strength reads under 2:1, so a band drawn that way is a band measured against
+nothing — and the band a reader watches to see the window fill is exactly the one that must
+move visibly. Three looks carry what the bar has to say, and the bar and its list draw each
+the same way, so a swatch cannot read as something its band is not:
+
+- **A part the assistant named is solid, in its slot.**
+- **The fill it has not broken down is solid, in ink.** That fill IS in the window; what it
+  is missing is a name, not a weight, and ink rather than a slot of the eight is what says
+  so.
+- **Room it keeps back for its own answer is hatched in that same ink**, at the far end of
+  the window where it is. The hatch is solid ink over half the stretch rather than a wash
+  over all of it, which is how a stretch reads as claimed without reading as spent — an
+  outline could not, because its own line is the bar's hairline a pixel away.
+
+Every colour there is one § "Contrast is measured, not assumed" sweeps solid, and each band
+carries its name and its count in the list, so nothing is read from a look alone. Where the
+fill has run into the room kept back, what is drawn is what is left of it — room that has
+been spent is not room, and drawing it over the fill would say there is more left than there
+is.
+
+**Phone first, which here means there is nothing to fold.** The bar is the dock's width, the
+line under it wraps, and at the dock's least width the bar is simply shorter — which is what
+a bar is for.
 
 ## An anchor into code
 
@@ -1259,6 +1345,43 @@ nothing under it.
   the composer, one quiet line saying who is answering and what the conversation has spent,
   the cost only where the agent says one. Anything else that wants to stand beside the graph
   is a third use of the same dock, never a second copy of it.
+  **The chat's head is the name of the thread you are in, and the way to every other.** A
+  person keeps as many threads about a project as they started, so the head reads like the row
+  where a graph is named: the thread's own name, the way to the rest of them and to a new one,
+  and beside the name a three-dots button holding what can be done to this one — **Rename**,
+  **Archive** (or **Put back**, where it is already archived), **Copy the whole chat**,
+  **Delete** — in that order, with Delete last and asking. The ones put aside stand under
+  their own heading, **Archived**, below the live ones, where putting one back is the only
+  act offered. The name is taken from the first thing said and is theirs to change, so a
+  thread is never called "Untitled" for long.
+  **Under the spend line, one bar says how much room is left.** It is a single horizontal
+  stack across the dock: a segment per part the agent named, in the agent's own order, the
+  free remainder left unfilled, what the agent keeps back for its answer drawn as what is
+  left of the room, and a thin tick where it will make room. Parts held aside rather than in the
+  window are in none of it and are said in one line under it. The bar alone is the quiet
+  default; a legend of one row per part — swatch, the agent's own name for it, the count —
+  opens on tap, because a reader who is not asking does not want a key. A turn that made room
+  draws the bar down and says what it came from, and stands as one unbroken fill until the
+  agent is asked for the parts again: what made room replaced what the window held, so the
+  parts counted before it are gone rather than stale.
+  **The bar is the second surface outside the canvas that spends hue**, on the same
+  justification as the commit lanes (§ "The history as a picture"): which part of the window
+  a band is, is the question the picture exists to answer, and over a dozen stacked bands ink
+  weight cannot carry it. So a part borrows a slot from the same eight the canvas lends a
+  selected tag (§ "Hue — the tags you selected, and only those"), taken in the order the
+  agent named them and wrapping onto the first past eight — **each one measured to 3:1
+  against every surface on every theme in `token-contrast.test.ts`**, the same bound a lane
+  is held to and for the same reason: a band and its legend swatch carry their meaning alone.
+  Nothing about the canvas changes: there, still, nothing is coloured until the reader selects
+  a tag.
+  **The places a thread reads are its own, and they are read-only.** They are offered from
+  the folders this device already knows and from the folder picker, named by what the folder
+  is called rather than by where it is, and shown as a short row the person adds to and takes
+  from. **Two folders called the same thing are held apart** — the agent reaches a place by
+  its name, so the second one in reads as the folder it sits in. Changing them is not offered
+  while an answer is underway — the assistant is reading as it writes — and changing them
+  afterwards picks the conversation up with them when you next say something, which one line
+  says.
 - **Both may stand at once, and they stack.** You read the note while you chat about it, so
   the chat is outermost — it is the companion that stays — and a note opened to read sits
   between it and the graph. A second dock opens beside the first only where the graph would

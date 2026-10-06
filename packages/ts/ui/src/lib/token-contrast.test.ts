@@ -189,6 +189,22 @@ describe('token contrast', () => {
 		});
 	});
 
+	// DESIGN.md § "The context as a bar": the bar outlines its track and leaves
+	// what is unspent as the page, because a band on muted does not clear the
+	// floor everywhere. Flip this row the day the palette lets it be filled.
+	it('keeps a slot off muted, which is why the context bar fills the page', () => {
+		const worst = Math.min(
+			...THEMES.flatMap((theme) => {
+				const resolved = tokens(theme, 'indigo');
+				return FACET_SLOTS.map((slot) =>
+					contrastRatio(color(resolved, `--facet-${slot}`), color(resolved, '--muted'))
+				);
+			})
+		);
+		expect(worst).toBeLessThan(NON_TEXT_FLOOR);
+		expect(worst).toBeCloseTo(2.89, 2);
+	});
+
 	describe.each(THEMES)('%s accents', (theme) => {
 		it.each(ACCENTS)('%s draws a mark that clears 3:1 on every surface', (accent) => {
 			expect(onSurfaces(tokens(theme, accent), '--primary-mark')).toBeGreaterThanOrEqual(

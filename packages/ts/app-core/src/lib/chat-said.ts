@@ -13,7 +13,9 @@ import {
 	type ChatBlockKind,
 	type ChatCallId,
 	type ChatCard,
+	type ChatPlace,
 	type ChatSpend,
+	type ChatThread,
 	type ChatToolCall,
 	ChatToolCallSchema,
 	type ChatToolName,
@@ -230,6 +232,34 @@ export function spentSaid(spent: { turn?: ChatSpend; session?: ChatSpend }): str
 	return parts.join(' · ');
 }
 
+/**
+ * A whole chat as markdown, for somebody taking it somewhere else: the name
+ * and the day it began, then each turn as who it was from and what they said.
+ * A tool call is one line saying what was done; what a call ANSWERED is left
+ * out, because it was written for the agent and the thread never showed it
+ * either.
+ */
+export function threadAsMarkdown(thread: ChatThread): string {
+	const said = [`# ${thread.name}`, thread.created_at.split('T')[0]];
+	for (const turn of thread.turns) {
+		const body = turn.blocks.flatMap((block) => {
+			const known = knownBlock(block);
+			return known?.kind === 'attached'
+				? [`*Attached: ${known.attached.map((one) => one.name).join(', ')}*`]
+				: [];
+		});
+		for (const row of threadRows(turn)) {
+			if (row.kind === 'said') body.push(row.said);
+			else if (row.kind === 'call') {
+				const line = toolLine(row.call);
+				body.push(`*${line.doing}${line.subject === undefined ? '' : `: ${line.subject}`}*`);
+			}
+		}
+		if (body.length > 0) said.push(`**${turn.from === 'person' ? 'You' : 'Assistant'}**`, ...body);
+	}
+	return `${said.join('\n\n')}\n`;
+}
+
 /** How much of an earlier conversation is carried to an agent that was not
  *  there for it, in characters. The most recent is what matters, so the head
  *  goes first. */
@@ -258,9 +288,26 @@ export function carriedOver(turns: readonly ChatTurn[]): string {
 	return whole.length <= CARRIED_MAX ? whole : `…${whole.slice(-CARRIED_MAX)}`;
 }
 
-/** What a person's words become where an earlier conversation is carried
- *  into a new session with them. */
+/** What a person's words become where an earlier conversation is carried into a
+ *  new session with them — another agent's, or the same agent's own that could
+ *  not be picked up, so the preamble claims neither. */
 export function withCarried(carried: string, said: string): string {
 	if (carried === '') return said;
-	return `Earlier in this conversation, answered by another assistant:\n\n${carried}\n\n---\n\n${said}`;
+	return `Earlier in this conversation, before you were in it:\n\n${carried}\n\n---\n\n${said}`;
+}
+
+/** The places a thread reads, as one value that changes only where the set
+ *  itself does, so a session is told them again only then. */
+export function placesKey(places: readonly ChatPlace[]): string {
+	return places
+		.map((one) => one.root)
+		.sort()
+		.join('\n');
+}
+
+/** What a person's words become where the agent has to be told which places it
+ *  may read — the names it reaches them by. */
+export function withPlaces(places: readonly ChatPlace[], said: string): string {
+	const named = places.map((one) => one.name).join(', ');
+	return `Places you may also read, by name: ${named}.\n\n${said}`;
 }

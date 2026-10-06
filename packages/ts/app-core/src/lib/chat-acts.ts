@@ -110,10 +110,28 @@ export function containerApi(files: Files): LocalApi {
 	return new LocalApi(keepingDataAt(files, containerDataAt(files.root)));
 }
 
-/** One of Sloppy's own acts, done and answered. The arguments arrived parsed;
- *  `said` is what the agent reads and the rest is the person's. */
-export async function serveChatCall(files: Files, call: ChatToolCall): Promise<ChatActDone> {
-	const done = await act(containerApi(files), call);
+/**
+ * A store over the notes a PLACE already holds: a folder beside the project
+ * that a thread reads. A folder holding none is said rather than made into a
+ * graph, and every act that would write refuses.
+ */
+export function placeApi(files: Files): LocalApi {
+	return new LocalApi(keepingDataAt(files, containerDataAt(files.root)), { reading: true });
+}
+
+/**
+ * One of Sloppy's own acts, done and answered. The arguments arrived parsed;
+ * `said` is what the agent reads and the rest is the person's.
+ *
+ * `reading` is a folder beside the project, served by {@link placeApi} — so
+ * nothing an act does there lands.
+ */
+export async function serveChatCall(
+	files: Files,
+	call: ChatToolCall,
+	reading = false
+): Promise<ChatActDone> {
+	const done = await act(reading ? placeApi(files) : containerApi(files), call);
 	return done.told === undefined ? done : { ...done, told: shortly(done.told) };
 }
 

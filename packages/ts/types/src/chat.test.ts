@@ -13,6 +13,7 @@ import {
   CHAT_SAID_MAX,
   CHAT_SECTION_MAX,
   CHAT_SHOWN_MAX,
+  CHAT_THREAD_NAME_MAX,
   CHAT_TOOL_SPECS,
   CHAT_TOOLS,
   ChatActDoneSchema,
@@ -24,15 +25,22 @@ import {
   ChatEventSchema,
   chatModels,
   ChatModelSchema,
+  ChatPlaceSchema,
   ChatSpendSchema,
+  ChatThreadSchema,
   ChatToolAnswerSchema,
   ChatToolCallSchema,
   chatToolWrites,
   ChatTurnSchema,
+  CONTEXT_PART_KINDS,
+  ContextUsageSchema,
+  contextTogether,
   DeleteNoteArgumentsSchema,
   foundAnswer,
+  heldAsideIn,
   LinkNotesArgumentsSchema,
   ListedNoteSchema,
+  ListNotesArgumentsSchema,
   listingAnswer,
   MAX_SECTIONS_PER_WRITE,
   MOST_ATTACHED_PER_TURN,
@@ -41,6 +49,7 @@ import {
   MOST_NOTES_FOUND,
   MOST_NOTES_LISTED,
   MOST_NOTES_TOUCHED,
+  MOST_PLACES,
   MOST_SECTIONS_READ,
   MoveNoteArgumentsSchema,
   noteAnswer,
@@ -49,6 +58,7 @@ import {
   NotesListedSchema,
   NoteWrittenSchema,
   NumberNoteArgumentsSchema,
+  placeNamed,
   ReadNoteArgumentsSchema,
   SearchNotesArgumentsSchema,
   sectionHeadings,
@@ -56,10 +66,14 @@ import {
   StyleEdgeArgumentsSchema,
   StyleNoteArgumentsSchema,
   TagNoteArgumentsSchema,
+  threadNameFrom,
   turnFits,
+  type ChatThread,
+  type ContextUsage,
   type FoundNote,
   type ListedNote,
   type NoteSection,
+  usedIn,
   WriteNoteArgumentsSchema,
 } from "./chat.js";
 import { WRITE_DONE } from "./authority.js";
@@ -153,8 +167,11 @@ describe("the acts Sloppy hands an agent", () => {
     }
 
     expect(named).toEqual([
+      "list_notes.in",
       "search_notes.words",
+      "search_notes.in",
       "read_note.note",
+      "read_note.in",
       "write_note.about",
       "write_note.title",
       "write_note.sections",
@@ -939,5 +956,318 @@ describe("how an agent is reached, and what a turn spent", () => {
     expect(ChatSpendSchema.safeParse({ sent: -1, answered: 0 }).success).toBe(
       false,
     );
+  });
+});
+
+const THREAD_ID = "01JQ7X3K9M2N4P5R6S7T8V9W0X";
+const GRAPH =
+  "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z";
+
+function aThread(more: Partial<ChatThread> = {}): ChatThread {
+  return {
+    id: THREAD_ID,
+    name: "Why the parser is two passes",
+    graph: GRAPH,
+    project: "/work/compiler",
+    created_at: NOW,
+    updated_at: NOW,
+    places: [],
+    turns: [],
+    ...more,
+  };
+}
+
+describe("what a thread is called", () => {
+  it("is the first line of what was said in it", () => {
+    expect(
+      threadNameFrom("Why is the parser two passes?\nAnd the lexer?"),
+    ).toBe("Why is the parser two passes?");
+    expect(threadNameFrom("  padded  ")).toBe("padded");
+  });
+
+  it("is Untitled where nothing was said", () => {
+    expect(threadNameFrom("")).toBe("Untitled");
+    expect(threadNameFrom("   \n  ")).toBe("Untitled");
+  });
+
+  it("is never longer than a name a list can read", () => {
+    const name = threadNameFrom("x".repeat(CHAT_THREAD_NAME_MAX + 80));
+    expect(name.length).toBe(CHAT_THREAD_NAME_MAX);
+    expect(ChatThreadSchema.parse(aThread({ name })).name).toBe(name);
+  });
+});
+
+describe("a thread this device holds", () => {
+  it("carries the chat, and absent is a live one no agent has opened", () => {
+    const held = ChatThreadSchema.parse(aThread());
+    expect(held.archived_at).toBeUndefined();
+    expect(held.session).toBeUndefined();
+    expect(held.agent).toBeUndefined();
+    expect(held.spent).toBeUndefined();
+    expect(held.places).toEqual([]);
+  });
+
+  it("holds what was said in it, up to a session's worth of turns", () => {
+    const turn = ChatTurnSchema.parse({
+      from: "person",
+      blocks: [{ kind: "said", said: "why two passes?" }],
+      at: NOW,
+    });
+    expect(
+      ChatThreadSchema.parse(aThread({ turns: [turn] })).turns,
+    ).toHaveLength(1);
+  });
+
+  it("refuses a name nothing calls it, and a project nowhere", () => {
+    expect(ChatThreadSchema.safeParse(aThread({ name: "" })).success).toBe(
+      false,
+    );
+    expect(ChatThreadSchema.safeParse(aThread({ project: "" })).success).toBe(
+      false,
+    );
+  });
+
+  it("reads more places than one chat has anything to gain from", () => {
+    const place = { root: "/work/other", name: "other" };
+    expect(
+      ChatThreadSchema.safeParse(
+        aThread({ places: new Array(MOST_PLACES).fill(place) }),
+      ).success,
+    ).toBe(true);
+    expect(
+      ChatThreadSchema.safeParse(
+        aThread({ places: new Array(MOST_PLACES + 1).fill(place) }),
+      ).success,
+    ).toBe(false);
+  });
+});
+
+describe("a place a thread reads besides its own project", () => {
+  it("is a folder and a name, and absent graph is one holding no notes", () => {
+    const held = ChatPlaceSchema.parse({ root: "/work/other", name: "other" });
+    expect(held.graph).toBeUndefined();
+    expect(
+      ChatPlaceSchema.parse({
+        root: "/work/other",
+        name: "other",
+        graph: GRAPH,
+      }).graph,
+    ).toBe(GRAPH);
+  });
+
+  it("is nowhere with no folder and nothing with no name", () => {
+    expect(ChatPlaceSchema.safeParse({ root: "", name: "other" }).success).toBe(
+      false,
+    );
+    expect(ChatPlaceSchema.safeParse({ root: "/work", name: "" }).success).toBe(
+      false,
+    );
+  });
+
+  it("keeps its own name where nothing else has it", () => {
+    expect(placeNamed([], { root: "/work/a/notes", name: "notes" })).toBe(
+      "notes",
+    );
+    expect(
+      placeNamed(["lexer"], { root: "/work/a/notes", name: "notes" }),
+    ).toBe("notes");
+  });
+
+  it("is named under the folder it sits in where a place already has its name", () => {
+    expect(
+      placeNamed(["notes"], { root: "/work/a/notes", name: "notes" }),
+    ).toBe("a/notes");
+    expect(
+      placeNamed(["notes", "a/notes"], {
+        root: "/work/a/notes",
+        name: "notes",
+      }),
+    ).toBe("work/a/notes");
+    // A name of its own, rather than the folder's, is still qualified by it.
+    expect(
+      placeNamed(["My thesis"], { root: "/work/a/notes", name: "My thesis" }),
+    ).toBe("notes/My thesis");
+  });
+
+  it("is named apart whatever the platform spells a folder with", () => {
+    expect(
+      placeNamed(["notes"], { root: "C:\\work\\a\\notes", name: "notes" }),
+    ).toBe("a/notes");
+  });
+
+  it("is a name no other place has, every time, and one a list can read", () => {
+    const taken = ["notes", "a/notes", "work/a/notes"];
+    const named = placeNamed(taken, { root: "/work/a/notes", name: "notes" });
+    expect(taken).not.toContain(named);
+    expect(named).toBe("notes (2)");
+
+    const long = "x".repeat(CHAT_THREAD_NAME_MAX);
+    const deep = `/${new Array(40).fill("folder").join("/")}/${long}`;
+    const far = placeNamed([long], { root: deep, name: long });
+    expect(far).not.toBe(long);
+    expect(far.length).toBeLessThanOrEqual(CHAT_THREAD_NAME_MAX);
+  });
+
+  it("is a name a place can be kept under, however long the folder it names is called", () => {
+    const long = "A graph somebody gave a whole sentence for a title. ".repeat(
+      10,
+    );
+    const named = placeNamed([], { root: "/work/notes", name: long });
+    expect(
+      ChatPlaceSchema.safeParse({ root: "/work/notes", name: named }).success,
+    ).toBe(true);
+    expect(named.startsWith("A graph somebody gave")).toBe(true);
+  });
+
+  it("is a name every place a thread may read can be given", () => {
+    const named: string[] = [];
+    for (let at = 0; at < MOST_PLACES; at += 1)
+      named.push(placeNamed(named, { root: "/work/notes", name: "notes" }));
+    expect(new Set(named).size).toBe(MOST_PLACES);
+  });
+});
+
+describe("which place a reading act answers for", () => {
+  it("is on every act that reads and on none that writes", () => {
+    const reads = ["list_notes", "search_notes", "read_note"];
+    for (const tool of advertisedChatTools()) {
+      const properties = tool.arguments.properties as Record<string, unknown>;
+      expect(Object.hasOwn(properties, "in")).toBe(reads.includes(tool.name));
+    }
+  });
+
+  it("is absent for the project the chat is about", () => {
+    expect(ListNotesArgumentsSchema.parse({}).in).toBeUndefined();
+    expect(
+      SearchNotesArgumentsSchema.parse({ words: "parser" }).in,
+    ).toBeUndefined();
+    expect(ReadNoteArgumentsSchema.parse({ note: NOTE }).in).toBeUndefined();
+  });
+
+  it("carries the name of one, held to what a thread calls a place", () => {
+    expect(ReadNoteArgumentsSchema.parse({ note: NOTE, in: "other" }).in).toBe(
+      "other",
+    );
+    expect(
+      ReadNoteArgumentsSchema.safeParse({
+        note: NOTE,
+        in: "x".repeat(CHAT_THREAD_NAME_MAX + 1),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("reaches a page through the call it arrived on", () => {
+    expect(
+      ChatToolCallSchema.parse({
+        call: "c1",
+        act: "list_notes",
+        arguments: { in: "other" },
+      }),
+    ).toEqual({ call: "c1", act: "list_notes", arguments: { in: "other" } });
+  });
+});
+
+const FULL: ContextUsage = {
+  total: 30,
+  limit: 100,
+  compactsAt: 80,
+  at: NOW,
+  parts: [
+    { name: "System prompt", tokens: 10, kind: "used" },
+    { name: "Messages", tokens: 20, kind: "used" },
+    { name: "Free space", tokens: 55, kind: "free" },
+    { name: "Autocompact buffer", tokens: 15, kind: "buffer" },
+    { name: "Deferred tools", tokens: 400, kind: "deferred" },
+  ],
+};
+
+describe("how full the agent's window is", () => {
+  it("sums what is in the window, and holds what is held aside out of it", () => {
+    const held = ContextUsageSchema.parse(FULL);
+    expect(usedIn(held)).toBe(30);
+    expect(heldAsideIn(held)).toBe(400);
+  });
+
+  it("classifies on the kind and never on the name", () => {
+    expect([...CONTEXT_PART_KINDS]).toEqual([
+      "used",
+      "free",
+      "buffer",
+      "deferred",
+    ]);
+    const renamed = ContextUsageSchema.parse({
+      ...FULL,
+      parts: FULL.parts.map((part) => ({ ...part, name: "something else" })),
+    });
+    expect(usedIn(renamed)).toBe(30);
+    expect(heldAsideIn(renamed)).toBe(400);
+  });
+
+  it("reaches a page as its own event", () => {
+    expect(ChatEventSchema.parse({ event: "context", usage: FULL })).toEqual({
+      event: "context",
+      usage: FULL,
+    });
+  });
+
+  it("refuses a window that holds nothing", () => {
+    expect(ContextUsageSchema.safeParse({ ...FULL, limit: 0 }).success).toBe(
+      false,
+    );
+    expect(ContextUsageSchema.safeParse({ ...FULL, total: -1 }).success).toBe(
+      false,
+    );
+  });
+
+  it("keeps the last breakdown under a count that carries none", () => {
+    const filling: ContextUsage = { total: 44, limit: 100, at: NOW, parts: [] };
+    const together = contextTogether(FULL, filling);
+    expect(together.total).toBe(44);
+    expect(together.parts).toEqual(FULL.parts);
+    expect(usedIn(together)).toBe(30);
+    expect(together.compactsAt).toBe(80);
+  });
+
+  it("takes where room will be made from the newer count where it says", () => {
+    const filling: ContextUsage = {
+      total: 44,
+      limit: 100,
+      compactsAt: 70,
+      at: NOW,
+      parts: [],
+    };
+    expect(contextTogether(FULL, filling).compactsAt).toBe(70);
+  });
+
+  it("drops the breakdown where the turn made room, because it replaced what it counted", () => {
+    const made: ContextUsage = {
+      total: 15,
+      limit: 100,
+      at: NOW,
+      parts: [],
+      compacted: { from: 90 },
+    };
+    const together = contextTogether(FULL, made);
+    expect(together).toEqual(made);
+    expect(usedIn(together)).toBe(0);
+    expect(together.total).toBe(15);
+  });
+
+  it("replaces the breakdown where a new one arrives, and stands alone first", () => {
+    const narrower: ContextUsage = {
+      total: 10,
+      limit: 100,
+      at: NOW,
+      parts: [{ name: "System prompt", tokens: 10, kind: "used" }],
+    };
+    expect(contextTogether(FULL, narrower)).toEqual(narrower);
+    expect(contextTogether(undefined, narrower)).toEqual(narrower);
+  });
+
+  it("says what a turn made room from, and absent is a turn that made none", () => {
+    expect(ContextUsageSchema.parse(FULL).compacted).toBeUndefined();
+    expect(
+      ContextUsageSchema.parse({ ...FULL, compacted: { from: 90 } }).compacted,
+    ).toEqual({ from: 90 });
   });
 });

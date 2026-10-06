@@ -3,7 +3,7 @@
 // nothing here starts a program.
 
 import 'fake-indexeddb/auto';
-import { LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
+import { DeviceThreads, LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import {
 	draftBranch,
 	ulid,
@@ -11,7 +11,8 @@ import {
 	type ChatAgent,
 	type ChatEvent,
 	type OwnedRef,
-	type StandingDraft
+	type StandingDraft,
+	type Ulid
 } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -41,9 +42,12 @@ function words(said: string): BlockDocument {
 }
 
 const drafts: DraftAccess = {
-	standing: async () => standing?.draft,
-	start: async () => {
-		if (standing) return standing.draft;
+	standing: async () => (standing ? [standing.draft] : []),
+	start: async (id) => {
+		if (standing) {
+			if (standing.draft.id !== id) throw new Error('a second draft for a second thread');
+			return standing.draft;
+		}
 		copyStore = new Map();
 		for (const [path, bytes] of store) {
 			if (path.startsWith('/data/')) copyStore.set(path, bytes);
@@ -53,7 +57,6 @@ const drafts: DraftAccess = {
 		const history = new MemoryHistory(copyFiles(), { author: 'Ada' });
 		const began = await history.commit('The notes as the draft found them');
 		if (!began) throw new Error('a copy of nothing');
-		const id = ulid();
 		standing = {
 			draft: { id, root: COPY, vault: COPY, branch: draftBranch(id), from: began.id },
 			history
@@ -162,10 +165,28 @@ async function say(words: string): Promise<void> {
 	await settle();
 }
 
-/** One turn of the chat, which is the draft where none stands, what it wrote,
- *  and the version kept on the draft when the turn ends. */
+/** A chat kept the way the device keeps one, so the panel opens on it and the
+ *  draft below belongs to it. */
+async function aThread(): Promise<Ulid> {
+	const id = ulid();
+	const at = new Date().toISOString();
+	await new DeviceThreads(folder()).write({
+		id,
+		name: 'About the parser',
+		graph,
+		project: ROOT,
+		created_at: at,
+		updated_at: at,
+		places: [],
+		turns: []
+	});
+	return id;
+}
+
+/** One turn of the chat, which is a chat, the draft where none stands, what it
+ *  wrote, and the version kept on the draft when the turn ends. */
 async function aTurn(wrote: (drafted: LocalApi) => Promise<void>): Promise<void> {
-	await chatDraft.start();
+	await chatDraft.start(await aThread());
 	await wrote(inTheDraft());
 	await chatDraft.keepWhatTheTurnWrote();
 }
@@ -200,6 +221,7 @@ beforeEach(async () => {
 		},
 		history: () => kept,
 		chat: chatting,
+		threads: new DeviceThreads(folder()),
 		project: async () => folder()
 	});
 	seamSettledAgain();
@@ -241,6 +263,7 @@ afterEach(() => {
 		vault: undefined,
 		history: () => undefined,
 		chat: undefined,
+		threads: undefined,
 		project: undefined
 	});
 	seamSettledAgain();
@@ -453,7 +476,7 @@ describe('the review', () => {
 	});
 
 	it('says so in one line where nothing in it is different, and offers only throwing it away', async () => {
-		await chatDraft.start();
+		await chatDraft.start(await aThread());
 		await reading();
 
 		expect(screen()).toContain('Nothing in your notes is different, so there is nothing to merge.');

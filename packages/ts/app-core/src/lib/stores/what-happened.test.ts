@@ -83,7 +83,7 @@ function reject(reason: unknown): void {
 
 let stub: Stub;
 
-beforeEach(() => {
+beforeEach(async () => {
 	localStorage.clear();
 	prefs.init();
 	whatHappened.clear();
@@ -96,6 +96,9 @@ beforeEach(() => {
 		project: async () =>
 			new MemoryFiles({ root: '/home/ada/code', store: new Map(), data: '/data' })
 	});
+	// A chat is about a graph and the project its notes are of, so it is opened
+	// on one before anything is said into it.
+	await chat.opened(ref(9));
 });
 
 afterEach(() => {

@@ -1,6 +1,14 @@
-import type { AppRuntime } from '@sloppy/app-core';
+import type { AppRuntime, ChatAsked } from '@sloppy/app-core';
 import type { Credential } from '@sloppy/local';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/** Whose graph the folders in these tests hold, as `graph.json` names them. */
+const OWNER = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
+
+/** What a thread asks a session to be opened as. */
+const asking = (): ChatAsked => ({
+	thread: { id: '01JAPART000000000000000000', places: [] }
+});
 
 vi.stubEnv('PUBLIC_ENABLE_LOCAL_MODE', 'true');
 
@@ -25,6 +33,8 @@ const broughtOver: { url: string; into: string; credential?: Credential }[] = []
 const held = new Map<string, string>();
 let picks: string | null = '/Users/me/garden';
 let picking: 'answers' | 'fails' = 'answers';
+/** The folders somebody has picked, which is what `src-tauri` will reach. */
+const admits = new Set<string>();
 /** What each ask for a folder said it was for. */
 const askedFor: (string | undefined)[] = [];
 /** Each act asked of the history, with the folder it was asked about. */
@@ -49,7 +59,10 @@ vi.mock('@tauri-apps/api/core', () => ({
 			case 'pick_folder':
 				askedFor.push(args?.asking as string | undefined);
 				if (picking === 'fails') throw new Error('the folder could not be opened');
+				if (picks !== null) admits.add(picks);
 				return picks;
+			case 'folders_picked':
+				return [...admits];
 			case 'files_read':
 				return held.get(at) ?? null;
 			case 'files_write':
@@ -156,6 +169,7 @@ function servedFrom(): string {
 describe('the native shell in local mode', () => {
 	beforeEach(() => {
 		held.clear();
+		admits.clear();
 		picks = '/Users/me/garden';
 		picking = 'answers';
 		historyAsked.length = 0;
@@ -319,17 +333,40 @@ describe('the native shell in local mode', () => {
 
 		expect(await registered.chat?.agents()).toEqual(['claude_code']);
 		await registered.chat?.open(
-			{},
+			asking(),
 			() => {},
 			async () => ({ said: '' })
 		);
 
 		// The copy is taken of the notes, and the agent is started in it rather
 		// than in the folder somebody has open.
-		const draft = await registered.chat?.drafts?.standing();
+		const [draft] = (await registered.chat?.drafts?.standing()) ?? [];
 		expect(copies.get('/Users/me/compiler/.sloppy')).toBeDefined();
 		expect(chattedIn).toEqual([draft?.root]);
 		expect(chattedIn[0]).not.toBe('/Users/me/compiler');
+	});
+
+	it('keeps the chats about a project where this device keeps its own things', async () => {
+		await launch();
+		projectAt('/Users/me/compiler');
+		await registered.vault?.open();
+
+		const at = new Date().toISOString();
+		await registered.threads?.write({
+			id: '01JAPART000000000000000000',
+			name: 'Why two passes?',
+			graph: `${OWNER}/01ARZ3NDEKTSV4RRFFQ69G5FAY`,
+			project: '/Users/me/compiler',
+			created_at: at,
+			updated_at: at,
+			places: [],
+			turns: []
+		});
+
+		// What another run of the app finds: the chat is on the device, not in
+		// the page that was showing it.
+		await launch();
+		expect((await registered.threads?.list())?.map((one) => one.name)).toEqual(['Why two passes?']);
 	});
 
 	it("has nowhere to start a chat about a graph that is nobody's project", async () => {
@@ -339,7 +376,7 @@ describe('the native shell in local mode', () => {
 
 		await expect(
 			registered.chat?.open(
-				{},
+				asking(),
 				() => {},
 				async () => ({ said: '' })
 			)
@@ -425,6 +462,7 @@ describe('which identity the shell serves a folder under', () => {
 
 	beforeEach(() => {
 		held.clear();
+		admits.clear();
 		picks = '/Users/me/garden';
 		picking = 'answers';
 	});
@@ -710,6 +748,22 @@ describe('the project whose notes this device opens', () => {
 		expect(askedFor).toEqual(['project', 'graph']);
 	});
 
+	// A place is read beside the project and never opened: the folder in front
+	// of somebody does not move, and nothing is served from the one named.
+	it('names a place without opening it', async () => {
+		graphIn(CONTAINER, 'Engine', '..');
+		await launch();
+		const before = servedFrom();
+
+		const place = await registered.askPlace?.();
+
+		expect(askedFor).toEqual(['project']);
+		expect(place).toMatchObject({ root: PROJECT, reachable: true });
+		expect(place?.graph?.name).toBe('Engine');
+		expect(servedFrom()).toBe(before);
+		expect(resetApi).not.toHaveBeenCalled();
+	});
+
 	it('is the folder somebody picked, and its notes are the ones kept inside it', async () => {
 		graphIn(CONTAINER, 'Engine', '..');
 		await launch();
@@ -799,5 +853,46 @@ describe('the project whose notes this device opens', () => {
 
 		expect(await registered.vault?.openProject?.()).toBeUndefined();
 		expect(registered.vault?.folder()).toBeUndefined();
+	});
+});
+
+describe('the folders a chat may be given beside its own project', () => {
+	beforeEach(() => {
+		held.clear();
+		admits.clear();
+		picks = '/Users/me/garden';
+		picking = 'answers';
+	});
+
+	it('are the ones somebody picked', async () => {
+		await launch();
+		await registered.vault?.open?.();
+
+		expect(registered.placeFiles?.('/Users/me/garden')).toBeDefined();
+		expect(registered.placeFiles?.('/Users/me/garden/notes')).toBeDefined();
+	});
+
+	// The gate `src-tauri` holds is the one that matters; this is the same answer
+	// given early, so a folder it will not serve is refused while somebody is
+	// still choosing rather than when the chat will not start.
+	it('are nothing else, whatever a page asks for', async () => {
+		await launch();
+		await registered.vault?.open?.();
+
+		expect(registered.placeFiles?.('/Users/me/secrets')).toBeUndefined();
+		// A folder whose path merely starts the same way is a different folder.
+		expect(registered.placeFiles?.('/Users/me/gardenshed')).toBeUndefined();
+	});
+
+	/** They outlive the launch that picked them, because `src-tauri` writes them
+	 *  down and the page reads that record on the way up. */
+	it('are still theirs on the next launch', async () => {
+		await launch();
+		await registered.vault?.open?.();
+
+		const again = await launch();
+		await again.openRememberedVault();
+
+		expect(registered.placeFiles?.('/Users/me/garden')).toBeDefined();
 	});
 });

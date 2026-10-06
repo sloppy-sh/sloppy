@@ -15,26 +15,41 @@ import {
 	CHAT_SHOWN_MAX,
 	CHAT_TOOL_NAME_MAX,
 	CHAT_TOOLS,
+	CONTEXT_PART_KINDS,
+	CONTEXT_PART_NAME_MAX,
 	ChatBlockSchema,
 	MAX_BLOCKS_PER_TURN,
 	MAX_TOOLS_LISTED,
+	MOST_CONTEXT_PARTS,
 	argumentsFit,
 	type ChatBlock,
 	type ChatEvent,
 	type ChatSpend,
-	type ChatToolName
+	type ChatToolName,
+	type ContextPart,
+	type ContextPartKind,
+	type ContextUsage
 } from '@sloppy/types';
 
 /** What one line came to. `ended` is the line that ends the turn underway;
  *  whether somebody STOPPED it is the seam's to say, so the `ended` event is
- *  composed there. `spent` is what that line said the turn cost, where it said. */
+ *  composed there. `spent` is what that line said the turn cost, where it said.
+ *  `answered` is the ask a line answered, where it answered one, and `refused`
+ *  says that answer carried no breakdown — an agent to ask in words instead. */
 export interface Heard {
 	events: ChatEvent[];
 	ended: boolean;
 	spent?: ChatSpend;
+	answered?: string;
+	refused?: true;
 }
 
 const NOTHING: Heard = { events: [], ended: false };
+
+/** How far the window has to move between one breakdown and the next before
+ *  the page is told again, as a share of what the window holds. Under it the
+ *  bar would redraw on every message and read as noise. */
+const MOVED_BY = 0.02;
 
 /**
  * Which of Sloppy's own acts a call is, read off the name it arrived under.
@@ -74,6 +89,18 @@ export class AgentStream {
 	/** Where a call's answer stands, by the call it answers. */
 	private results = new Map<string, number>();
 	private growing = new Map<number, Growing>();
+	/** What the window holds, which only the agent says — nothing here guesses
+	 *  one, so until it has said, no count is drawn. */
+	private limit?: number;
+	/** What the agent's last request carried, which is the window as of now. */
+	private live = 0;
+	/** The count the page was last told, so the bar redraws on a real move. */
+	private told?: number;
+	/** Where the agent says it will make room, kept across the counts that
+	 *  carry no breakdown. */
+	private compactsAt?: number;
+	/** What the agent is answering as, for reading the window it answers in. */
+	private model?: string;
 
 	/** A turn begins, and its blocks stand from 0 again. */
 	turned(): void {
@@ -88,16 +115,27 @@ export class AgentStream {
 		const held = parsed(line);
 		switch (field(held, 'type')) {
 			case 'system':
-				return field(held, 'subtype') === 'init'
-					? { events: started(held), ended: false }
-					: NOTHING;
+				return this.aboutItself(held);
 			case 'stream_event':
 				return { events: this.grew(field(held, 'event')), ended: false };
-			case 'assistant':
-				return { events: this.settled(field(held, 'message')), ended: false };
+			case 'assistant': {
+				const message = field(held, 'message');
+				this.model = text(field(message, 'model'), CHAT_MODEL_MAX) ?? this.model;
+				return {
+					events: [
+						...this.settled(message),
+						...this.saidInWords(field(held, 'context_usage')),
+						...this.filled(field(message, 'usage'))
+					],
+					ended: false
+				};
+			}
 			case 'user':
 				return { events: this.answered(field(held, 'message')), ended: false };
+			case 'control_response':
+				return this.askedFor(field(held, 'response'));
 			case 'result': {
+				this.windowIn(held);
 				const spent = spentIn(held);
 				return { events: [], ended: true, ...(spent === undefined ? {} : { spent }) };
 			}
@@ -106,15 +144,150 @@ export class AgentStream {
 		}
 	}
 
+	/** What the agent says about itself rather than about the turn. */
+	private aboutItself(held: unknown): Heard {
+		switch (field(held, 'subtype')) {
+			case 'init':
+				this.model = text(field(held, 'model'), CHAT_MODEL_MAX) ?? this.model;
+				return { events: started(held), ended: false };
+			case 'compact_boundary':
+				return { events: this.madeRoom(held), ended: false };
+			default:
+				return NOTHING;
+		}
+	}
+
+	/**
+	 * What the agent answered the ask on its own channel with. An answer this
+	 * cannot read a breakdown out of is `refused`, which is what has the agent
+	 * asked in words instead — a refusal in so many words, and a success with
+	 * nothing countable in it, cost the same nothing and are worth the same
+	 * second try.
+	 */
+	private askedFor(response: unknown): Heard {
+		const answered = text(field(response, 'request_id'), CHAT_ID_MAX);
+		const asked = answered === undefined ? {} : { answered };
+		const events = this.breakdownIn(field(response, 'response'));
+		return events === undefined
+			? { events: [], ended: false, ...asked, refused: true }
+			: { events, ended: false, ...asked };
+	}
+
+	/**
+	 * The breakdown the agent was asked for, which is the one line that says
+	 * what each part of the window is holding. `undefined` is an answer with no
+	 * breakdown in it.
+	 *
+	 * A part's `kind` is the agent's own and is kept as it arrived; one spelled
+	 * in a way this build knows nothing about counts as being IN the window,
+	 * where a part nobody can classify does the least harm — it is drawn and
+	 * counted rather than silently left out of a total.
+	 */
+	private breakdownIn(inside: unknown): ChatEvent[] | undefined {
+		const categories = field(inside, 'categories');
+		if (!Array.isArray(categories)) return undefined;
+		const limit = count(field(inside, 'rawMaxTokens')) ?? count(field(inside, 'maxTokens'));
+		if (limit !== undefined && limit >= 1) this.limit = limit;
+		if (this.limit === undefined) return undefined;
+		this.live = count(field(inside, 'totalTokens')) ?? this.live;
+		this.compactsAt =
+			field(inside, 'isAutoCompactEnabled') === false
+				? undefined
+				: (count(field(inside, 'autoCompactThreshold')) ?? this.compactsAt);
+		return this.counts(categories.flatMap(partIn));
+	}
+
+	/**
+	 * The same breakdown where the agent was asked in words instead, which it
+	 * answers beside its message rather than inside it, and in its other
+	 * spelling. Read by its own code, so that neither spelling has to bend to
+	 * the other.
+	 *
+	 * This spelling says nothing about where the agent will make room, so where
+	 * it will is left as the last answer that did say put it.
+	 */
+	private saidInWords(said: unknown): ChatEvent[] {
+		const categories = field(said, 'categories');
+		if (!Array.isArray(categories)) return [];
+		const limit = count(field(said, 'raw_max_tokens'));
+		if (limit !== undefined && limit >= 1) this.limit = limit;
+		if (this.limit === undefined) return [];
+		this.live = count(field(said, 'total_tokens')) ?? this.live;
+		return this.counts(categories.flatMap(partIn));
+	}
+
+	/** The window as the agent's own request carried it, which is what it holds
+	 *  going into that answer. */
+	private filled(usage: unknown): ChatEvent[] {
+		const sent = count(field(usage, 'input_tokens'));
+		if (sent === undefined) return [];
+		this.live =
+			sent +
+			(count(field(usage, 'cache_read_input_tokens')) ?? 0) +
+			(count(field(usage, 'cache_creation_input_tokens')) ?? 0);
+		return this.moved();
+	}
+
+	/** The window after the agent made room for itself. What it held before is
+	 *  the count that goes with it; the parts are left behind, because every
+	 *  one of them was counted against what is no longer there. */
+	private madeRoom(held: unknown): ChatEvent[] {
+		const about = field(held, 'compact_metadata');
+		this.live = count(field(about, 'post_tokens')) ?? count(field(held, 'post_tokens')) ?? 0;
+		return this.counts([], { from: count(field(about, 'pre_tokens')) ?? this.told ?? 0 });
+	}
+
+	/** How much the window holds, as the line ending a turn says it for the
+	 *  model that answered — and the widest it names where it does not say for
+	 *  that one. */
+	private windowIn(result: unknown): void {
+		const byModel = field(result, 'modelUsage');
+		if (typeof byModel !== 'object' || byModel === null) return;
+		const held = byModel as Record<string, unknown>;
+		const mine =
+			this.model === undefined ? undefined : count(field(held[this.model], 'contextWindow'));
+		const widest = Math.max(
+			0,
+			...Object.values(held).map((one) => count(field(one, 'contextWindow')) ?? 0)
+		);
+		const limit = mine ?? widest;
+		if (limit >= 1) this.limit = limit;
+	}
+
+	/** The window as of now, where it has moved far enough to be worth
+	 *  redrawing. */
+	private moved(): ChatEvent[] {
+		if (this.limit === undefined) return [];
+		if (this.told !== undefined && Math.abs(this.live - this.told) <= this.limit * MOVED_BY)
+			return [];
+		return this.counts([]);
+	}
+
+	private counts(parts: ContextPart[], compacted?: { from: number }): ChatEvent[] {
+		if (this.limit === undefined) return [];
+		this.told = this.live;
+		const usage: ContextUsage = {
+			total: this.live,
+			limit: this.limit,
+			parts: parts.slice(0, MOST_CONTEXT_PARTS),
+			at: new Date().toISOString(),
+			...(this.compactsAt === undefined ? {} : { compactsAt: this.compactsAt }),
+			...(compacted === undefined ? {} : { compacted })
+		};
+		return [{ event: 'context', usage }];
+	}
+
 	/** A block as it arrives, which is what draws writing appearing. */
 	private grew(event: unknown): ChatEvent[] {
 		switch (field(event, 'type')) {
 			case 'message_start': {
 				const message = { base: this.placed, settled: 0 };
-				const id = text(field(field(event, 'message'), 'id'), CHAT_ID_MAX);
+				const started = field(event, 'message');
+				const id = text(field(started, 'id'), CHAT_ID_MAX);
 				if (id !== undefined) this.messages.set(id, message);
 				this.underway = message;
-				return [];
+				this.model = text(field(started, 'model'), CHAT_MODEL_MAX) ?? this.model;
+				return this.filled(field(started, 'usage'));
 			}
 			case 'content_block_start': {
 				const at = this.place(field(event, 'index'));
@@ -249,6 +422,19 @@ function costIn(held: unknown): number | undefined {
 
 function count(held: unknown): number | undefined {
 	return typeof held === 'number' && Number.isInteger(held) && held >= 0 ? held : undefined;
+}
+
+/** One part of what the agent is holding, named and counted as the agent gave
+ *  it. A part missing either is one nothing can be drawn of. */
+function partIn(one: unknown): ContextPart[] {
+	const name = text(field(one, 'name'), CONTEXT_PART_NAME_MAX);
+	const tokens = count(field(one, 'tokens'));
+	if (name === undefined || tokens === undefined) return [];
+	return [{ name, tokens, kind: kindOf(field(one, 'kind')) }];
+}
+
+function kindOf(held: unknown): ContextPartKind {
+	return CONTEXT_PART_KINDS.includes(held as ContextPartKind) ? (held as ContextPartKind) : 'used';
 }
 
 function started(held: unknown): ChatEvent[] {
