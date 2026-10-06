@@ -401,6 +401,19 @@ export interface AppRuntime {
 	 * adding a place is offered.
 	 */
 	placeFiles?(root: string): Files | undefined;
+	/**
+	 * Ask somebody for another folder a thread may read, and admit it — the one
+	 * way a root {@link placeFiles} did not already serve becomes one it does.
+	 * Resolves with the folder and whatever graph it already holds, or
+	 * `undefined` where nobody named one.
+	 *
+	 * **The folder is read and nothing else.** It is not opened, not served, and
+	 * no graph is started in it, so a folder somebody reads from is left exactly
+	 * as they keep it and the graph in front of them does not move. Absent → the
+	 * places a chat reads are the folders this device already knows, and naming
+	 * another is not offered.
+	 */
+	askPlace?(): Promise<KnownFolder | undefined>;
 	/** How a stored picture's address becomes one this page can load. Absent →
 	 *  the API's proxy, so viewing somebody else's note never reaches their
 	 *  instance from here. A shell serving a graph off the device answers with
@@ -518,6 +531,7 @@ export const runtime = {
 	chat: (): ChatAccess | undefined => current.chat,
 	threads: (): ThreadsAccess | undefined => current.threads,
 	placeFiles: (): AppRuntime['placeFiles'] => current.placeFiles,
+	askPlace: (): AppRuntime['askPlace'] => current.askPlace,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,
 	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc

@@ -1303,10 +1303,11 @@ function partsSummed(usage: ContextUsage, kind: ContextPartKind): number {
 
 /**
  * A count arriving onto the one held: the newer counts, with the older
- * breakdown kept where the newer carries none — **except where the turn made
- * room**, which replaced what the window held and left every part counted
- * before it stale, so the newer count stands alone until the agent is asked
- * for a breakdown again.
+ * breakdown kept where the newer carries none — and where it said where room
+ * would be made, that too, because only a breakdown carries it. **Except where
+ * the turn made room**, which replaced what the window held and left every part
+ * counted before it stale, so the newer count stands alone until the agent is
+ * asked for a breakdown again.
  */
 export function contextTogether(
   held: ContextUsage | undefined,
@@ -1318,7 +1319,11 @@ export function contextTogether(
     more.compacted !== undefined
   )
     return more;
-  return { ...more, parts: held.parts };
+  return {
+    ...(held.compactsAt === undefined ? {} : { compactsAt: held.compactsAt }),
+    ...more,
+    parts: held.parts,
+  };
 }
 
 /**

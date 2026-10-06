@@ -3445,11 +3445,15 @@ one project is the way it is often has the answer in another, so a thread carrie
 Rust's**: a place must already be a folder somebody picked, which `Folders::allows` is the
 one record of, and `AppRuntime.placeFiles` answers `undefined` for anything else — nothing
 typed on the page and no scan of the disk reaches a folder. Sloppy's three READING acts
-reach a place's notes through an `in` argument naming the place by NAME. **Both halves of
-reaching a place are the native shell's, and neither has landed**: `AppRuntime.placeFiles`
-is defined by no shell yet, so no place can be added on any surface and the reading path has
-run only in the test shell; and the directory on the agent's launch line, which is what gives
-its own file tools the folder, is not passed yet either. Until both land, the agent sees the
+reach a place's notes through an `in` argument naming the place by NAME. **Naming a folder is
+how it joins that list, and `AppRuntime.askPlace` is the one way in**: it asks the person and
+admits what they name, and it OPENS nothing — reading a folder is not serving it, so no graph
+is started inside it and the one in front of somebody does not move. Opening a project is a
+different act with different consequences and is not this one. **Every half of reaching a
+place is the native shell's, and none has landed**: `askPlace` and `AppRuntime.placeFiles` are
+defined by no shell yet, so no place can be added on any surface and the reading path has run
+only in the test shell; and the directory on the agent's launch line, which is what gives its
+own file tools the folder, is not passed yet either. Until they land, the agent sees the
 folder it runs in and nothing beside it. **The eight writing
 acts take no `in` and land in the thread's own draft**, whatever they say: `chatToolWrites`
 is what decides, so a place is read and never written. A place the thread does not carry, or

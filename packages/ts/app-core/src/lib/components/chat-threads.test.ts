@@ -410,7 +410,7 @@ describe('deleting a thread', () => {
 		await settle();
 
 		expect(screen()).toContain('Delete this thread?');
-		expect(named('Merge the draft first')).toBeUndefined();
+		expect(named('Merge it, then delete')).toBeUndefined();
 		expect(named('Keep it')).toBeDefined();
 
 		named('Delete')?.click();
@@ -428,23 +428,25 @@ describe('deleting a thread', () => {
 		await settle();
 
 		expect(screen()).toContain('Its draft holds 1 new note.');
-		expect(named('Merge the draft first')).toBeDefined();
+		expect(named('Merge it, then delete')).toBeDefined();
 		expect(named('Delete it with the thread')).toBeDefined();
 		expect(named('Keep the thread')).toBeDefined();
 	});
 
-	it('reads the draft rather than deleting anything, where that is the way chosen', async () => {
+	it('takes the draft into your own notes first, where that is the way chosen', async () => {
 		const id = await aThreadThatWrote('About the parser', '2026-10-01T09:00:00.000Z');
 		await open();
 		await aboutThisThread();
 		row('Delete').click();
 		await settle();
 
-		named('Merge the draft first')?.click();
+		named('Merge it, then delete')?.click();
 		await settle();
 
-		expect(screen()).toContain('The parser');
-		expect(await new DeviceThreads(folder()).read(id)).toBeDefined();
+		const titles = (await new LocalApi(folder()).listNodes({})).map((note) => note.title);
+		expect(titles).toContain('The parser');
+		expect(await new DeviceThreads(folder()).read(id)).toBeUndefined();
+		expect(standing).toBeNull();
 	});
 
 	it('throws the draft away with the thread where that is the way chosen', async () => {

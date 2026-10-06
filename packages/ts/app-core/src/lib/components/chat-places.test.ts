@@ -26,7 +26,10 @@ const folder = () => new MemoryFiles({ root: ROOT, store, data: '/data' });
 let admits: Map<string, Files>;
 /** The folders it lists, and what the picker answers with. */
 let known: KnownFolder[];
-let picks: string | undefined;
+let picked: KnownFolder | undefined;
+/** The folder this device serves. Opening one moves it; admitting a place to
+ *  read must not. */
+let served: string;
 
 let hear: ((event: ChatEvent) => void) | null;
 
@@ -134,7 +137,8 @@ async function alsoReadFrom(): Promise<void> {
 beforeEach(async () => {
 	store = new Map();
 	hear = null;
-	picks = undefined;
+	picked = undefined;
+	served = ROOT;
 	admits = new Map([
 		[BESIDE, new MemoryFiles({ root: BESIDE, store: new Map(), data: '/data' })],
 		[NAMED, new MemoryFiles({ root: NAMED, store: new Map(), data: '/data' })]
@@ -147,17 +151,21 @@ beforeEach(async () => {
 		mode: () => 'local',
 		createApi: () => new LocalApi(folder()),
 		vault: {
-			folder: () => ROOT,
+			folder: () => served,
 			graph: () => new LocalApi(folder()).graphHere(),
 			asks: true,
-			open: async () => ROOT,
+			open: async () => served,
 			known: async () => known,
-			openProject: async () => picks
+			openProject: async () => {
+				served = NAMED;
+				return NAMED;
+			}
 		},
 		chat: chatting,
 		threads: new DeviceThreads(folder()),
 		project: async () => folder(),
-		placeFiles: (root: string) => admits.get(root)
+		placeFiles: (root: string) => admits.get(root),
+		askPlace: async () => picked
 	});
 	seamSettledAgain();
 	resetApi();
@@ -222,7 +230,8 @@ afterEach(() => {
 		chat: undefined,
 		threads: undefined,
 		project: undefined,
-		placeFiles: undefined
+		placeFiles: undefined,
+		askPlace: undefined
 	});
 	seamSettledAgain();
 	resetApi();
@@ -255,7 +264,7 @@ describe('the folders a thread also reads', () => {
 	});
 
 	it('adds a folder somebody names, which this device had not been told about', async () => {
-		picks = NAMED;
+		picked = { root: NAMED, reachable: true };
 		await open();
 		await say('What is in here?');
 		await alsoReadFrom();
@@ -263,6 +272,57 @@ describe('the folders a thread also reads', () => {
 		await settle();
 
 		expect(chat.places).toEqual([{ root: NAMED, name: 'almanac' }]);
+	});
+
+	it('leaves the folder it was given as it found it, and the graph where it was', async () => {
+		picked = {
+			root: NAMED,
+			graph: {
+				ref: 'did:syr:me/01HZZZZZZZZZZZZZZZZZZZZZZX' as OwnedRef,
+				name: 'The almanac',
+				owner: 'did:syr:me'
+			},
+			reachable: true
+		};
+		await open();
+		await say('What is in here?');
+		await alsoReadFrom();
+		item('Another folder…').click();
+		await settle();
+
+		// The notes it already holds are what a place is read through, so the
+		// graph comes with it rather than being started there.
+		expect(chat.places).toEqual([{ root: NAMED, name: 'The almanac', graph: picked.graph?.ref }]);
+		expect(served).toBe(ROOT);
+		expect(chat.current?.project).toBe(ROOT);
+	});
+
+	it('offers no folder of its own to name where this device cannot ask for one', async () => {
+		picked = undefined;
+		initRuntime({
+			apiHost: () => '',
+			mode: () => 'local',
+			createApi: () => new LocalApi(folder()),
+			vault: {
+				folder: () => served,
+				graph: () => new LocalApi(folder()).graphHere(),
+				asks: true,
+				open: async () => served,
+				known: async () => known
+			},
+			chat: chatting,
+			threads: new DeviceThreads(folder()),
+			project: async () => folder(),
+			placeFiles: (root: string) => admits.get(root),
+			askPlace: undefined
+		});
+		seamSettledAgain();
+		await open();
+		await say('What is in here?');
+		await alsoReadFrom();
+
+		expect(offered().some((row) => row.startsWith('Another folder'))).toBe(false);
+		expect(offered()).toContain('parser /Users/me/work/parser');
 	});
 
 	it('takes one back off', async () => {
@@ -299,7 +359,8 @@ describe('the folders a thread also reads', () => {
 			chat: chatting,
 			threads: new DeviceThreads(folder()),
 			project: async () => folder(),
-			placeFiles: undefined
+			placeFiles: undefined,
+			askPlace: undefined
 		});
 		seamSettledAgain();
 		await open();

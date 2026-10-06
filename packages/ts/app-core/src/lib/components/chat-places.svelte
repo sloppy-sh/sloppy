@@ -5,7 +5,8 @@
 	import X from '@lucide/svelte/icons/x';
 	import { Button } from '@sloppy/ui/button';
 	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
-	import { type KnownFolder, runtime } from '../runtime.js';
+	import type { KnownFolder } from '../runtime.js';
+	import { seam } from '../seam.svelte.js';
 	import { chat } from '../stores/chat.svelte.js';
 	import { graphs, projectOf } from '../stores/graphs.svelte.js';
 
@@ -24,7 +25,8 @@
 			? graphs.folders.filter((folder) => folder.reachable && !own.has(folder.root))
 			: []
 	);
-	const offers = $derived(graphs.opensProjects || known.length > 0);
+	const asksForOne = $derived(seam().askPlace() !== undefined);
+	const offers = $derived(asksForOne || known.length > 0);
 
 	function folderName(root: string): string {
 		return root.split(/[\\/]/).filter(Boolean).at(-1) ?? root;
@@ -45,10 +47,8 @@
 	/** A folder somebody names, which this device has to be told about before it
 	 *  can read anything in it. */
 	async function another(): Promise<void> {
-		const root = await runtime.vault()?.openProject?.();
-		if (root === undefined) return;
-		await graphs.readFolders(true);
-		await add(graphs.folders.find((folder) => folder.root === root) ?? { root, reachable: true });
+		const folder = await seam().askPlace()?.();
+		if (folder !== undefined) await add(folder);
 	}
 </script>
 
@@ -99,7 +99,7 @@
 								</span>
 							</DropdownMenu.Item>
 						{/each}
-						{#if graphs.opensProjects}
+						{#if asksForOne}
 							{#if known.length > 0}<DropdownMenu.Separator />{/if}
 							<DropdownMenu.Item class="min-h-control" onSelect={() => void another()}>
 								Another folder…

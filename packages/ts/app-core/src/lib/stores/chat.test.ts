@@ -279,6 +279,29 @@ describe('a chat this device keeps', () => {
 		]);
 	});
 
+	it('keeps the name a person gave it, where its first turn never landed', async () => {
+		await aTurn('Why two passes?');
+		const id = chat.current?.id as Ulid;
+		await chat.rename('How the parser reads a note');
+		// A turn whose end never arrived wrote nothing down, so what another run
+		// finds is a named chat with nothing said in it.
+		await (await kept()).write({ ...(chat.current as ChatThread), turns: [] });
+		chat.clear();
+		chatDraft.clear();
+		await chat.opened(graph);
+
+		const saying = chat.say('And the lexer?');
+		await settled();
+		stub.begins();
+		await saying;
+
+		expect(chat.current?.id).toBe(id);
+		expect(chat.current?.name).toBe('How the parser reads a note');
+		expect((await (await kept()).list()).map((one) => one.name)).toEqual([
+			'How the parser reads a note'
+		]);
+	});
+
 	it('keeps what was said and what it spent, and is picked up again on another run', async () => {
 		await aTurn('Why two passes?');
 		const id = chat.current?.id;
@@ -553,7 +576,7 @@ describe('the places a chat reads besides its own project', () => {
 		await chat.addPlace({ root: ELSEWHERE, name: 'theirs' });
 
 		expect(chat.places).toEqual([]);
-		expect(chat.trouble).toBe('Sloppy cannot read that folder from here. Open it and try again.');
+		expect(chat.trouble).toBe('Sloppy cannot read that folder from here. Choose another.');
 	});
 
 	it('is not added twice', async () => {

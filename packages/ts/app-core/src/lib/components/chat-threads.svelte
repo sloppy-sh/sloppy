@@ -10,12 +10,12 @@
 	import { Input } from '@sloppy/ui/input';
 	import { onDestroy } from 'svelte';
 	import { draftHolds } from '../draft-said.js';
-	import { chat } from '../stores/chat.svelte.js';
+	import { chat, type DraftOnDelete } from '../stores/chat.svelte.js';
 	import { chatDraft } from '../stores/chat-draft.svelte.js';
 
 	let {
-		/** Read the draft of the thread in front of somebody, which is the way out
-		 *  of deleting one that holds writing. */
+		/** Read the draft of the thread in front of somebody, which is where a
+		 *  delete that could not merge it says to go. */
 		onReview
 	}: { onReview: () => void } = $props();
 
@@ -90,11 +90,11 @@
 		asking = true;
 	}
 
-	async function remove(): Promise<void> {
+	async function remove(draft: DraftOnDelete): Promise<void> {
 		const id = thread?.id;
 		if (id === undefined) return;
 		refused = null;
-		if (await chat.remove(id)) asking = false;
+		if (await chat.remove(id, draft)) asking = false;
 		else refused = chat.trouble;
 	}
 
@@ -103,16 +103,9 @@
 		if (id !== undefined) void chat.putBack(id);
 	}
 
-	function mergeFirst(): void {
+	function readTheDraft(): void {
 		asking = false;
 		onReview();
-	}
-
-	function lastWritten(at: string): string {
-		const day = new Date(at);
-		return Number.isNaN(day.getTime())
-			? ''
-			: day.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 	}
 </script>
 
@@ -201,12 +194,7 @@
 						>
 							{#each live as one (one.id)}
 								<DropdownMenu.RadioItem class="min-h-control" value={one.id}>
-									<span class="block min-w-0 flex-1">
-										<span class="block truncate">{one.name}</span>
-										<span class="block truncate text-xs text-muted-foreground">
-											{lastWritten(one.updated_at)}
-										</span>
-									</span>
+									<span class="block min-w-0 flex-1 truncate">{one.name}</span>
 								</DropdownMenu.RadioItem>
 							{/each}
 						</DropdownMenu.RadioGroup>
@@ -246,17 +234,24 @@
 	<div class="flex flex-col gap-2 px-2 pt-4">
 		{#if refused}
 			<p class="text-sm text-destructive" role="alert">{refused}</p>
+			{#if unmerged}
+				<Button variant="outline" class="h-control sm:h-9" onclick={readTheDraft}>
+					Read the draft
+				</Button>
+			{/if}
 		{/if}
 		{#if unmerged}
-			<Button class="h-control sm:h-9" onclick={mergeFirst}>Merge the draft first</Button>
-			<Button variant="outline" class="h-control sm:h-9" onclick={() => void remove()}>
+			<Button class="h-control sm:h-9" onclick={() => void remove('merge')}>
+				Merge it, then delete
+			</Button>
+			<Button variant="outline" class="h-control sm:h-9" onclick={() => void remove('discard')}>
 				Delete it with the thread
 			</Button>
 			<Button variant="ghost" class="h-control sm:h-9" onclick={() => (asking = false)}>
 				Keep the thread
 			</Button>
 		{:else}
-			<Button class="h-control sm:h-9" onclick={() => void remove()}>Delete</Button>
+			<Button class="h-control sm:h-9" onclick={() => void remove('discard')}>Delete</Button>
 			<Button variant="ghost" class="h-control sm:h-9" onclick={() => (asking = false)}>
 				Keep it
 			</Button>
