@@ -107,13 +107,6 @@ function summed(bands: ContextBand[]): number {
 	return bands.reduce((total, band) => total + band.tokens, 0);
 }
 
-/** A share of the window, as a reader reads one. */
-export function shareSaid(tokens: number, limit: number): string {
-	const share = (tokens / limit) * 100;
-	if (share > 0 && share < 0.5) return '<1%';
-	return `${Math.round(share)}%`;
-}
-
 /** The line under the bar: how far it fills, against what, and what the
  *  assistant is holding outside the window altogether. */
 export function fillSaid(bar: ContextBar): string {

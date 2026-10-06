@@ -748,6 +748,22 @@ describe('the project whose notes this device opens', () => {
 		expect(askedFor).toEqual(['project', 'graph']);
 	});
 
+	// A place is read beside the project and never opened: the folder in front
+	// of somebody does not move, and nothing is served from the one named.
+	it('names a place without opening it', async () => {
+		graphIn(CONTAINER, 'Engine', '..');
+		await launch();
+		const before = servedFrom();
+
+		const place = await registered.askPlace?.();
+
+		expect(askedFor).toEqual(['project']);
+		expect(place).toMatchObject({ root: PROJECT, reachable: true });
+		expect(place?.graph?.name).toBe('Engine');
+		expect(servedFrom()).toBe(before);
+		expect(resetApi).not.toHaveBeenCalled();
+	});
+
 	it('is the folder somebody picked, and its notes are the ones kept inside it', async () => {
 		graphIn(CONTAINER, 'Engine', '..');
 		await launch();

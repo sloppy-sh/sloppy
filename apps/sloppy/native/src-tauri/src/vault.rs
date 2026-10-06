@@ -244,6 +244,20 @@ impl Folders {
             .collect()
     }
 
+    /// Whether `root` is a folder somebody picked, or sits inside one. Narrower
+    /// than `allows`: this app's own private data is not a place.
+    pub fn picked_holds(&self, root: &Path) -> bool {
+        if !root.is_absolute() {
+            return false;
+        }
+        let root = settled(root);
+        self.picked
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|folder| root.starts_with(folder))
+    }
+
     pub fn pick(&self, folder: PathBuf) -> io::Result<()> {
         let mut picked = self.picked.lock().unwrap();
         picked.insert(settled(&folder));

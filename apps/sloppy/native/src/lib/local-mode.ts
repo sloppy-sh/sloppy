@@ -85,7 +85,7 @@ async function folderAt(files: Files, root: string): Promise<KnownFolder> {
 	return graph ? { root, graph, reachable: true } : { root, reachable: false };
 }
 
-async function graphIn(files: Files, root: string): Promise<KnownFolder['graph']> {
+export async function graphIn(files: Files, root: string): Promise<KnownFolder['graph']> {
 	try {
 		const at = files.at(root);
 		const bytes = (await at.read(GRAPH_FILE)) ?? (await (await containerOf(at))?.read(GRAPH_FILE));

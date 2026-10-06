@@ -1356,8 +1356,8 @@ nothing under it.
   thread is never called "Untitled" for long.
   **Under the spend line, one bar says how much room is left.** It is a single horizontal
   stack across the dock: a segment per part the agent named, in the agent's own order, the
-  free remainder left unfilled, what the agent keeps back for its answer drawn lighter at
-  the tail, and a thin tick where it will make room. Parts held aside rather than in the
+  free remainder left unfilled, what the agent keeps back for its answer drawn as what is
+  left of the room, and a thin tick where it will make room. Parts held aside rather than in the
   window are in none of it and are said in one line under it. The bar alone is the quiet
   default; a legend of one row per part — swatch, the agent's own name for it, the count —
   opens on tap, because a reader who is not asking does not want a key. A turn that made room

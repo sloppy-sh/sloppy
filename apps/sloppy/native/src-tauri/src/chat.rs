@@ -391,11 +391,9 @@ fn places_in(folders: &Folders, places: &[String]) -> Result<Vec<PathBuf>, ChatE
     places
         .iter()
         .map(|place| {
-            folders
-                .opened(place)
-                .ok()
-                .map(|held| held.to_path_buf())
-                .filter(|held| held.is_dir())
+            let held = PathBuf::from(place);
+            (folders.picked_holds(&held) && held.is_dir())
+                .then(|| crate::vault::settled(&held))
                 .ok_or_else(|| no_place(place))
         })
         .collect()
@@ -951,6 +949,14 @@ mod tests {
         fs::remove_dir_all(&moved).expect("the folder gone");
         let gone = places_in(&folders, &[spelled(&moved)]).expect_err("a folder that moved");
         assert!(gone.said().contains("lexer"), "{}", gone.said());
+
+        // This app's own private data is somewhere it may read, and not a place:
+        // the drafts of other chats and what the device keeps for itself live
+        // there, and nothing somebody picked does.
+        let inside = PathBuf::from(folders.data_path()).join("drafts");
+        fs::create_dir_all(&inside).expect("the app's own folder");
+        let kept = places_in(&folders, &[spelled(&inside)]).expect_err("the app's own data");
+        assert!(kept.said().contains("drafts"), "{}", kept.said());
 
         // A folder with no name of its own leaves nothing to say but what went
         // wrong.

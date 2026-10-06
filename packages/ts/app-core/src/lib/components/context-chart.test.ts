@@ -5,7 +5,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { HUES as LANE_HUES } from './commit-graph.svelte';
 import ContextChart from './context-chart.svelte';
-import { barOf, contextSaid, HUES, NOT_LISTED, shareSaid, spans } from './context-chart.js';
+import { barOf, contextSaid, HUES, NOT_LISTED, spans } from './context-chart.js';
 
 /** The bar's own width, which is what it reads — never the window's. */
 const ACROSS = 400;
@@ -333,17 +333,13 @@ describe('the list under the bar', () => {
 		);
 		target.querySelector('button')?.click();
 		flushSync();
-		expect(legend()).toEqual([
-			'Instructions 100 10%',
-			'Conversation 300 30%',
-			'Room to answer 50 5%'
-		]);
+		expect(legend()).toEqual(['Instructions 100', 'Conversation 300', 'Room to answer 50']);
 		expect(target.querySelector('button')?.getAttribute('aria-expanded')).toBe('true');
 	});
 
 	it('opens where the caller says it is open', () => {
 		draw(usage({ total: 300, limit: 1000, parts: [part('Instructions', 300)] }), { open: true });
-		expect(legend()).toEqual(['Instructions 300 30%']);
+		expect(legend()).toEqual(['Instructions 300']);
 	});
 
 	it('draws every swatch the way the bar draws its band', () => {
@@ -420,12 +416,6 @@ describe('the bar as numbers', () => {
 			{ band: { name: 'A', tokens: 100, hue: 'text-facet-1' }, from: 0, width: 50 },
 			{ band: { name: 'B', tokens: 200, hue: 'text-facet-2' }, from: 50, width: 100 }
 		]);
-	});
-
-	it('reads a share as a reader reads one', () => {
-		expect(shareSaid(300, 1000)).toBe('30%');
-		expect(shareSaid(2, 1000)).toBe('<1%');
-		expect(shareSaid(0, 1000)).toBe('0%');
 	});
 
 	it('says nothing about bands where there are none', () => {

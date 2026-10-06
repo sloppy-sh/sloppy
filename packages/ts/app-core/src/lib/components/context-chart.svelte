@@ -9,7 +9,6 @@
 		contextSaid,
 		fillSaid,
 		keptSpans,
-		shareSaid,
 		spans
 	} from './context-chart.js';
 
@@ -183,9 +182,6 @@
 				{/if}
 				<span class="min-w-0 flex-1 truncate">{band.name}</span>
 				<span class="shrink-0 tabular-nums text-muted-foreground">{tokensSaid(band.tokens)}</span>
-				<span class="w-9 shrink-0 text-right tabular-nums text-muted-foreground">
-					{shareSaid(band.tokens, bar.limit)}
-				</span>
 			</li>
 		{/snippet}
 

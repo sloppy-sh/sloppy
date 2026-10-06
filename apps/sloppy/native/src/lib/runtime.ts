@@ -4,7 +4,7 @@
  * the ones a webview inside a native process can answer differently from a tab.
  */
 
-import { initRuntime, resetApi, session } from '@sloppy/app-core';
+import { initRuntime, resetApi, session, type KnownFolder } from '@sloppy/app-core';
 import {
 	containerOf,
 	DeviceCredentials,
@@ -32,7 +32,8 @@ import {
 	LOCAL_MODE,
 	openedFolder,
 	rememberedVault,
-	rememberVault
+	rememberVault,
+	graphIn
 } from './local-mode';
 import { picked, readsPicked } from './places';
 import { IS_MOBILE, TAURI_PLATFORM } from './platform';
@@ -157,6 +158,15 @@ async function openFolder(files: Files): Promise<string | undefined> {
  * `LocalApi` is what settles where the notes go inside it, so nothing is served
  * and nothing is written down until it has.
  */
+/** A folder somebody names for a chat to read. The dialog writes it down as
+ *  one this app may reach; nothing is opened, served or started in it. */
+async function askPlace(files: Files): Promise<KnownFolder | undefined> {
+	const root = await files.pickFolder('project');
+	if (root === undefined) return undefined;
+	await readsPicked();
+	return { root, graph: await graphIn(files, root), reachable: true };
+}
+
 async function openProject(files: Files): Promise<string | undefined> {
 	const root = await files.pickFolder('project');
 	if (!root) return undefined;
@@ -257,6 +267,7 @@ export function initNativeRuntime(): void {
 					aiKeys: deviceAiKeys(device),
 					threads: new DeviceThreads(device),
 					placeFiles: (root: string) => (picked(root) ? device.at(root) : undefined),
+					askPlace: () => askPlace(device),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,
