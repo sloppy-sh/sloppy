@@ -877,8 +877,8 @@ the quieter ink the curated ones are not. It expands where somebody asks, and it
 a version a line points at, because that is one somebody looks for by name.
 
 **Lanes are drawn in hue, one of the two surfaces outside the canvas that spend it** — the
-other is the window bar in the chat dock (§ Layout), on this same justification and under
-this same measured bound.
+other is the context bar in the chat dock (§ "The context as a bar"), on this same
+justification and under this same measured bound.
 Which of a dozen lines a row belongs to is the question this picture exists to answer, and
 over hundreds of rows ink weight cannot carry it — a reader following one line down the page
 has to be able to see where it went. So a lane borrows a slot from the same eight the canvas
@@ -1040,6 +1040,77 @@ is a **thread** wherever a person reads one, and the dock it is read in is the *
 **"Tokens" is allowed**, and only as the unit the chart is read in: it is what somebody
 asking how much room is left already calls it, and `tokensSaid` is the one place it is
 written.
+
+## The context as a bar
+
+An assistant answers out of a window it can hold only so much in, and somebody who cannot
+see how full it is finds out by being told it is full. So the chat dock carries one quiet
+bar under the spend line: the window end to end, filled from the near end by what is in it,
+and one line under it saying how far it has filled and against what.
+
+**The bands are the assistant's own, and nothing here estimates one.** What it is holding
+arrives as parts it names and counts itself — its instructions, its tools, the conversation,
+what it read — and each is drawn at the width its own count gives it against the window. A
+band carries the assistant's wording rather than ours: renaming its parts into Sloppy's
+vocabulary would put a second name on something only it can count, and the day it counts
+something new we would be inventing a word for it. Nothing is grouped and nothing is rounded
+into a neighbour. The one band Sloppy names is the fill the assistant has not broken down —
+it reads **Not yet listed**, and it is what the window grows by between one breakdown and
+the next, because the fill follows what the assistant says is in there turn by turn while
+the bands only move when it says what they are again.
+
+**What is held aside is said and not drawn.** Some of what an assistant carries is kept out
+of the window rather than in it, and a band for it would read as room spent. It goes in the
+line under the bar instead, after what is in the window: `48k of 200k · 24k held aside`.
+
+**Where it will make room is a mark, and making room is a line.** The mark stands where the
+assistant says it compacts, so somebody writing a long thread sees it coming; it stands a
+little past the bar at the top and bottom so it reads against the page rather than against
+whichever band it crosses. A turn that made room draws the bar down and says what it came
+down from, once, for that turn. Both are the assistant's own; where it says neither, neither
+is drawn.
+
+**Quiet by default, and the list is on tap.** The bar and one line are the whole of it until
+somebody asks — tapping opens a row per band, its swatch, its name, its count and its share
+of the window, and tapping again closes it. A legend standing open under every chat is six
+rows of numbers in front of somebody who was writing, and what they wanted to know was
+whether there was room.
+
+**Hue is spent here, the second of the two surfaces outside the canvas that spend it** (the
+other is § "The history as a picture"). Which band is which is the question the bar exists
+to answer, and six adjacent lengths in one row are a question ink weight cannot carry. So a
+part the assistant named borrows a slot from the same eight the canvas lends a selected tag,
+taken in the order it gave its parts and wrapping onto the first past eight, which is the
+lanes' rule because it is the same ramp for the same reason.
+
+**The bands are drawn on the page inside a hairline, not in a filled track.** A slot against
+`--muted` reads 2.89:1 at its worst across the themes, under the 3:1 a graphical object
+owes, and `token-contrast.test.ts` holds that figure — so what is unspent is the page.
+
+**Nothing in the bar is a wash of its own colour.** A slot composited onto the page at a
+third of its strength reads under 2:1, so a band drawn that way is a band measured against
+nothing — and the band a reader watches to see the window fill is exactly the one that must
+move visibly. Three looks carry what the bar has to say, and the bar and its list draw each
+the same way, so a swatch cannot read as something its band is not:
+
+- **A part the assistant named is solid, in its slot.**
+- **The fill it has not broken down is solid, in ink.** That fill IS in the window; what it
+  is missing is a name, not a weight, and ink rather than a slot of the eight is what says
+  so.
+- **Room it keeps back for its own answer is hatched in that same ink**, at the far end of
+  the window where it is. The hatch is solid ink over half the stretch rather than a wash
+  over all of it, which is how a stretch reads as claimed without reading as spent — an
+  outline could not, because its own line is the bar's hairline a pixel away.
+
+Every colour there is one § "Contrast is measured, not assumed" sweeps solid, and each band
+carries its name and its count in the list, so nothing is read from a look alone. Where the
+fill has run into the room kept back, what is drawn is what is left of it — room that has
+been spent is not room, and drawing it over the fill would say there is more left than there
+is.
+
+**Phone first, which here means there is nothing to fold.** The bar is the dock's width, the
+line under it wraps, and at the dock's least width the bar is simply shorter — which is what
+a bar is for.
 
 ## An anchor into code
 
