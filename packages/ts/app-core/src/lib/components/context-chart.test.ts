@@ -5,7 +5,15 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { HUES as LANE_HUES } from './commit-graph.svelte';
 import ContextChart from './context-chart.svelte';
-import { barOf, contextSaid, HUES, NOT_LISTED, shareSaid, spans } from './context-chart.js';
+import {
+	barOf,
+	contextSaid,
+	HUES,
+	LIGHT_OPACITY,
+	NOT_LISTED,
+	shareSaid,
+	spans
+} from './context-chart.js';
 
 /** The bar's own width, which is what it reads — never the window's. */
 const ACROSS = 400;
@@ -62,6 +70,27 @@ function kept(): { name: string; x: number; width: number }[] {
 		x: round(one.getAttribute('x')),
 		width: round(one.getAttribute('width'))
 	}));
+}
+
+/** What the bar draws each thing at, by the name it carries. */
+function weights(): Record<string, number> {
+	const got: Record<string, number> = {};
+	for (const one of target.querySelectorAll('rect[data-band], rect[data-kept]')) {
+		const name = one.getAttribute('data-band') ?? one.getAttribute('data-kept') ?? '';
+		got[name] = Number(one.getAttribute('opacity') ?? 1);
+	}
+	return got;
+}
+
+/** What the list draws each swatch at, by the name beside it. */
+function listWeights(): Record<string, number> {
+	const got: Record<string, number> = {};
+	for (const row of target.querySelectorAll('li')) {
+		const name = (row.querySelector('span:not([aria-hidden])')?.textContent ?? '').trim();
+		const swatch = row.querySelector<HTMLElement>('span[aria-hidden]');
+		got[name] = Number(swatch?.style.opacity || 1);
+	}
+	return got;
 }
 
 function lines(): string[] {
@@ -179,6 +208,35 @@ describe('room kept back for the answer', () => {
 		);
 		expect(kept()).toEqual([{ name: 'Room to answer', x: 360, width: 40 }]);
 	});
+
+	it('gives up what the fill has taken rather than drawing over it', () => {
+		draw(
+			usage({
+				total: 950,
+				limit: 1000,
+				parts: [part('Conversation', 950), part('Room to answer', 200, 'buffer')]
+			})
+		);
+		const band = bands()[0];
+		expect(kept()).toEqual([{ name: 'Room to answer', x: 380, width: 20 }]);
+		expect(kept()[0].x).toBeGreaterThanOrEqual(band.x + band.width);
+	});
+
+	it('reads lighter than a part the assistant counted as spent', () => {
+		draw(
+			usage({
+				total: 400,
+				limit: 1000,
+				parts: [part('Instructions', 300), part('Room to answer', 100, 'buffer')]
+			}),
+			{ open: true }
+		);
+		expect(weights()).toEqual({
+			Instructions: 1,
+			[NOT_LISTED]: LIGHT_OPACITY,
+			'Room to answer': LIGHT_OPACITY
+		});
+	});
 });
 
 describe('the compaction mark', () => {
@@ -261,6 +319,23 @@ describe('the list under the bar', () => {
 	it('opens where the caller says it is open', () => {
 		draw(usage({ total: 300, limit: 1000, parts: [part('Instructions', 300)] }), { open: true });
 		expect(legend()).toEqual(['Instructions 300 30%']);
+	});
+
+	it('draws every swatch at the weight the bar draws its band at', () => {
+		draw(
+			usage({
+				total: 400,
+				limit: 1000,
+				parts: [part('Instructions', 300), part('Room to answer', 100, 'buffer')]
+			}),
+			{ open: true }
+		);
+		expect(listWeights()).toEqual(weights());
+	});
+
+	it('opens from a target a finger can hit, whatever the bar is drawn at', () => {
+		draw(usage({ total: 300, limit: 1000, parts: [part('Instructions', 300)] }));
+		expect(target.querySelector('button')?.className).toContain('min-h-control');
 	});
 
 	it('offers nothing to open where there is nothing in the window', () => {

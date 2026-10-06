@@ -24,12 +24,18 @@ export const HUES = [
  *  what was in the window, and the whole of it before it has said once. */
 export const NOT_LISTED = 'Not yet listed';
 
-/** One band of the bar. **Absent `hue` is the one band the assistant did not
- *  name**, drawn in ink rather than given a slot of its own. */
+export const LIGHT_OPACITY = 0.35;
+
+/** One band of the bar. */
 export interface ContextBand {
 	name: string;
 	tokens: number;
+	/** Absent on the one band the assistant did not name, which is drawn in ink
+	 *  rather than given a slot of its own. */
 	hue?: string;
+	/** Drawn at `LIGHT_OPACITY` in the bar and in the list alike: room kept back,
+	 *  and fill not yet broken down, are not spent the way a named part is. */
+	light?: boolean;
 }
 
 /** The bar as it is drawn: how far it fills, in what bands, against what. */
@@ -39,7 +45,7 @@ export interface ContextBar {
 	 *  under what its own bands already account for. */
 	filled: number;
 	bands: ContextBand[];
-	/** Room the assistant keeps back for its answer, drawn at the far end. */
+	/** Room the assistant keeps back for its answer. */
 	kept: ContextBand[];
 	heldAside: number;
 	compactsAt?: number;
@@ -47,7 +53,7 @@ export interface ContextBar {
 }
 
 /** What the assistant is holding, as the bar draws it. Nothing here is counted
- *  twice and nothing is named that the assistant did not name. */
+ *  twice. */
 export function barOf(usage: ContextUsage): ContextBar {
 	const parts = usage.parts.filter((part) => part.kind === 'used');
 	const counted = usedIn(usage);
@@ -57,7 +63,7 @@ export function barOf(usage: ContextUsage): ContextBar {
 		tokens: part.tokens,
 		hue: HUES[at % HUES.length]
 	}));
-	if (filled > counted) bands.push({ name: NOT_LISTED, tokens: filled - counted });
+	if (filled > counted) bands.push({ name: NOT_LISTED, tokens: filled - counted, light: true });
 	return {
 		limit: usage.limit,
 		filled,
@@ -67,7 +73,8 @@ export function barOf(usage: ContextUsage): ContextBar {
 			.map((part, at) => ({
 				name: part.name,
 				tokens: part.tokens,
-				hue: HUES[(parts.length + at) % HUES.length]
+				hue: HUES[(parts.length + at) % HUES.length],
+				light: true
 			})),
 		heldAside: heldAsideIn(usage),
 		compactsAt: usage.compactsAt,
@@ -88,10 +95,12 @@ export function spans(bar: ContextBar, across: number): ContextSpan[] {
 	return laid(bar.bands, 0, bar.limit, across / bar.limit);
 }
 
-/** What the assistant keeps back, laid out so it ends at the window's far end. */
+/** What the assistant keeps back, laid out so it ends at the window's far end —
+ *  and never back over fill that has already reached into it, because room that
+ *  has been spent is not room. */
 export function keptSpans(bar: ContextBar, across: number): ContextSpan[] {
-	const kept = summed(bar.kept);
-	return laid(bar.kept, Math.max(0, bar.limit - kept), bar.limit, across / bar.limit);
+	const from = Math.max(bar.filled, bar.limit - summed(bar.kept));
+	return laid(bar.kept, from, bar.limit, across / bar.limit);
 }
 
 function laid(bands: ContextBand[], from: number, limit: number, scale: number): ContextSpan[] {

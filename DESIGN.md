@@ -1088,9 +1088,15 @@ for the same reason.
 `--muted` reads 2.89:1 at its worst across the themes, under the 3:1 a graphical object
 owes, and `token-contrast.test.ts` holds that figure — so what is unspent is the page, which
 puts every band back on the surfaces § "Contrast is measured, not assumed" already sweeps.
-Room the assistant keeps back for its own answer is the one thing drawn lighter than its
-slot, at the far end of the window where it is; its name and its count are in the list and
-in the sentence a reader hears, so nothing is read from that weight alone.
+
+**Two things are drawn lighter than a solid band**: room the assistant keeps back for its
+own answer, at the far end of the window where it is, and the fill it has not broken down,
+which is ink rather than a slot of the eight. Neither is a part the assistant has counted
+as spent. The weight is the same in the bar and in the list, so the two cannot say
+different things about one band, and both carry the name and the count, so nothing is read
+from weight alone. Where the fill has run into the room kept back, what is drawn is what is
+left of it — room that has been spent is not room, and drawing it over the fill would say
+there is more left than there is.
 
 **Phone first, which here means there is nothing to fold.** The bar is the dock's width, the
 line under it wraps, and at the dock's least width the bar is simply shorter — which is what
