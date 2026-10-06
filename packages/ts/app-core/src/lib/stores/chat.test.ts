@@ -107,8 +107,12 @@ class Stub implements ChatAccess {
 
 	readonly drafts = drafts;
 
+	/** The agents this device reaches, which is one until a test gives it the
+	 *  second a conversation can be moved to. */
+	offers: ChatAgent[] = ['claude_code'];
+
 	agents(): Promise<ChatAgent[]> {
-		return Promise.resolve(['claude_code']);
+		return Promise.resolve([...this.offers]);
 	}
 
 	open(
@@ -619,6 +623,23 @@ describe('the places a chat reads besides its own project', () => {
 		expect(served.roots).toEqual([ALSO, PLACE]);
 	});
 
+	it('leaves the chat readable where the folder it names is called something far too long', async () => {
+		await aTurn('Why two passes?');
+		const id = chat.current?.id as Ulid;
+
+		await chat.addPlace({
+			root: PLACE,
+			name: 'The lexer, and every reason it was written the way it was. '.repeat(10)
+		});
+
+		chat.clear();
+		chatDraft.clear();
+		await chat.opened(graph);
+
+		expect(chat.current?.id).toBe(id);
+		expect(chat.places.map((one) => one.root)).toEqual([PLACE]);
+	});
+
 	it('is not changed while the agent is answering', async () => {
 		await chat.say('What does the parser do?');
 
@@ -854,6 +875,37 @@ describe('picking a chat up where it was left', () => {
 		expect(stub.said.at(-1)).toContain('And the lexer?');
 		// Which conversation answered is unknown, so nothing is claimed about it.
 		expect(chat.says).toBe(null);
+	});
+
+	it('hands over what was said where the agent under the chat was changed', async () => {
+		stub.offers = ['claude_code', 'anthropic'];
+		await chat.lookForAgents();
+		await aTurn('Why two passes?');
+
+		chat.pick('anthropic', undefined);
+		await aTurn('And the lexer?');
+
+		expect(stub.said.at(-1)).toContain('Why two passes?');
+		expect(stub.said.at(-1)).toContain('And the lexer?');
+	});
+
+	it('hands it to the chat it was said in and to no other', async () => {
+		stub.offers = ['claude_code', 'anthropic'];
+		await chat.lookForAgents();
+		await aTurn('Why two passes?');
+		const first = chat.current?.id as Ulid;
+		chat.pick('anthropic', undefined);
+
+		await chat.startThread();
+		await aTurn('What does the emitter do?');
+
+		expect(stub.said.at(-1)).toBe('What does the emitter do?');
+
+		// And the chat it belongs to still opens with it when it is read again.
+		await chat.openThread(first);
+		await aTurn('And the lexer?');
+
+		expect(stub.said.at(-1)).toContain('Why two passes?');
 	});
 
 	it('hands over what was said where there is no session to pick up', async () => {

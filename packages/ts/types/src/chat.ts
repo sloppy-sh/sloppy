@@ -133,10 +133,14 @@ const UNTITLED_THREAD = "Untitled";
  */
 export function threadNameFrom(words: string): string {
   const line = words.trim().split("\n")[0].trim();
-  if (line === "") return UNTITLED_THREAD;
-  return line.length > CHAT_THREAD_NAME_MAX
-    ? `${line.slice(0, CHAT_THREAD_NAME_MAX - 1)}…`
-    : line;
+  return line === "" ? UNTITLED_THREAD : cutToLine(line);
+}
+
+/** A name cut to the line a list of them reads as, with what was cut said. */
+function cutToLine(name: string): string {
+  return name.length > CHAT_THREAD_NAME_MAX
+    ? `${name.slice(0, CHAT_THREAD_NAME_MAX - 1)}…`
+    : name;
 }
 
 /** More places than one thread reads besides its own project. */
@@ -165,8 +169,9 @@ const BETWEEN_FOLDERS = /[/\\]+/;
 
 /**
  * What one place is called among the places a thread already reads: the name it
- * came with where that is free, and otherwise that name under as much of the
- * folder above it as it takes to tell the two apart.
+ * came with, cut to the line a list of them reads as, where that is free, and
+ * otherwise that name under as much of the folder above it as it takes to tell
+ * the two apart.
  *
  * **A place is reached by this name and by nothing else** — the agent is handed
  * the names and a reading act carries one — so whatever adds a place carries
@@ -175,18 +180,19 @@ const BETWEEN_FOLDERS = /[/\\]+/;
  */
 export function placeNamed(taken: readonly string[], place: ChatPlace): string {
   const held = new Set(taken);
-  if (!held.has(place.name)) return place.name;
+  const name = cutToLine(place.name);
+  if (!held.has(name)) return name;
   const folders = place.root.split(BETWEEN_FOLDERS).filter((one) => one !== "");
   const above =
-    folders[folders.length - 1] === place.name ? folders.slice(0, -1) : folders;
+    folders[folders.length - 1] === name ? folders.slice(0, -1) : folders;
   for (let from = above.length - 1; from >= 0; from -= 1) {
-    const tried = [...above.slice(from), place.name].join("/");
+    const tried = [...above.slice(from), name].join("/");
     if (tried.length > CHAT_THREAD_NAME_MAX) break;
     if (!held.has(tried)) return tried;
   }
   let second = 2;
-  let tried = numbered(place.name, second);
-  while (held.has(tried)) tried = numbered(place.name, (second += 1));
+  let tried = numbered(name, second);
+  while (held.has(tried)) tried = numbered(name, (second += 1));
   return tried;
 }
 

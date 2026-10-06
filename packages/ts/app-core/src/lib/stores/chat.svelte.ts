@@ -1004,6 +1004,7 @@ class ChatStore {
 		this.#unwritten = null;
 		this.#turns = [];
 		this.#places = [];
+		this.#carrying = null;
 		this.#spentSession = undefined;
 		this.#done.clear();
 		this.#kept.clear();

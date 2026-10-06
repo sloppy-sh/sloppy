@@ -1108,6 +1108,17 @@ describe("a place a thread reads besides its own project", () => {
     expect(far.length).toBeLessThanOrEqual(CHAT_THREAD_NAME_MAX);
   });
 
+  it("is a name a place can be kept under, however long the folder it names is called", () => {
+    const long = "A graph somebody gave a whole sentence for a title. ".repeat(
+      10,
+    );
+    const named = placeNamed([], { root: "/work/notes", name: long });
+    expect(
+      ChatPlaceSchema.safeParse({ root: "/work/notes", name: named }).success,
+    ).toBe(true);
+    expect(named.startsWith("A graph somebody gave")).toBe(true);
+  });
+
   it("is a name every place a thread may read can be given", () => {
     const named: string[] = [];
     for (let at = 0; at < MOST_PLACES; at += 1)
