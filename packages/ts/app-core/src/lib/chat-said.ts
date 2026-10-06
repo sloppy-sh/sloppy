@@ -13,6 +13,7 @@ import {
 	type ChatBlockKind,
 	type ChatCallId,
 	type ChatCard,
+	type ChatPlace,
 	type ChatSpend,
 	type ChatThread,
 	type ChatToolCall,
@@ -293,4 +294,20 @@ export function carriedOver(turns: readonly ChatTurn[]): string {
 export function withCarried(carried: string, said: string): string {
 	if (carried === '') return said;
 	return `Earlier in this conversation, before you were in it:\n\n${carried}\n\n---\n\n${said}`;
+}
+
+/** The places a thread reads, as one value that changes only where the set
+ *  itself does, so a session is told them again only then. */
+export function placesKey(places: readonly ChatPlace[]): string {
+	return places
+		.map((one) => one.root)
+		.sort()
+		.join('\n');
+}
+
+/** What a person's words become where the agent has to be told which places it
+ *  may read — the names it reaches them by. */
+export function withPlaces(places: readonly ChatPlace[], said: string): string {
+	const named = places.map((one) => one.name).join(', ');
+	return `Places you may also read, by name: ${named}.\n\n${said}`;
 }

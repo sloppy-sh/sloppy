@@ -844,6 +844,8 @@ describe('putting a file in front of it', () => {
 		chose(new File(['a picture'], 'the board.png'));
 		await settle();
 		expect(await files.list('.sloppy/attached')).toHaveLength(1);
+		stub.tell({ event: 'ended' });
+		await settle();
 
 		named('Start again')?.click();
 		await settle();
@@ -921,6 +923,8 @@ describe('which model answers', () => {
 describe('starting again', () => {
 	it('lets the conversation go, and says how to talk into the next one', async () => {
 		await saying('What is in here?');
+		stub.tell({ event: 'ended' });
+		await settle();
 		expect(named('Start again')).toBeDefined();
 
 		named('Start again')?.click();

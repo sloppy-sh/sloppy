@@ -2,6 +2,7 @@ import { ServerRequiredError, type SloppyApi } from "@sloppy/client";
 import {
   type BlockDocument,
   type DidSyr,
+  type OwnedRef,
   UNNAMED_GRAPH_ULID,
   splitOwnedRef,
 } from "@sloppy/types";
@@ -674,21 +675,35 @@ describe("a folder this store only reads", () => {
     return { held, note, only: reading(held.store) };
   }
 
+  /** Every way of reading the folder, so a test says it was left as it was
+   *  found by all of them and not only by the one it asked for. */
+  async function everyRead(only: LocalApi, note: OwnedRef) {
+    const graph = await only.graphHere();
+    return {
+      graphs: (await only.listGraphs()).map((one) => one.title),
+      listed: (await only.listNodes({ graph })).map((one) => one.title),
+      found: (await only.searchNotes("passes", graph)).map((one) => one.title),
+      read: (await only.getNode(note))?.title,
+      blocks: (await only.listBlocks(note)).length,
+    };
+  }
+
   it("answers the notes it holds and leaves every file as it was", async () => {
     const { held, note, only } = await theirs();
     const before = everyFile(held.store);
 
-    expect((await only.getNode(note.ref))?.title).toBe("Two passes");
-    expect(
-      (await only.listNodes({ graph: await only.graphHere() })).map(
-        (one) => one.title,
-      ),
-    ).toEqual(["Two passes"]);
+    expect(await everyRead(only, note.ref)).toEqual({
+      graphs: ["The lexer"],
+      listed: ["Two passes"],
+      found: ["Two passes"],
+      read: "Two passes",
+      blocks: 0,
+    });
     expect(everyFile(held.store)).toEqual(before);
   });
 
   it("refuses every act that would write", async () => {
-    const { held, only } = await theirs();
+    const { held, note, only } = await theirs();
     const before = everyFile(held.store);
 
     await expect(only.createNode({ title: "Mine" })).rejects.toMatchObject({
@@ -697,6 +712,7 @@ describe("a folder this store only reads", () => {
     await expect(only.createGraph({ title: "Mine" })).rejects.toMatchObject({
       status: 400,
     });
+    await everyRead(only, note.ref);
     expect(everyFile(held.store)).toEqual(before);
   });
 
@@ -705,10 +721,12 @@ describe("a folder this store only reads", () => {
     const files = new PickingFiles({ store, root: "/graphs/empty" });
     await files.write("README.md", encodeText("Not a graph.\n"));
     const before = everyFile(store);
+    const only = new LocalApi(files, { reading: true });
 
-    await expect(
-      new LocalApi(files, { reading: true }).graphHere(),
-    ).rejects.toMatchObject({ status: 404 });
+    await expect(only.graphHere()).rejects.toMatchObject({ status: 404 });
+    await expect(only.listNodes({})).rejects.toMatchObject({ status: 404 });
+    expect(await only.listGraphs()).toEqual([]);
+    expect(await only.searchNotes("passes")).toEqual([]);
     expect(everyFile(store)).toEqual(before);
   });
 
@@ -730,7 +748,10 @@ describe("a folder this store only reads", () => {
     expect(splitOwnedRef(await only.graphHere()).localId).toBe(
       UNNAMED_GRAPH_ULID,
     );
-    expect((await only.getNode(note.ref))?.title).toBe("Two passes");
+    expect(await everyRead(only, note.ref)).toMatchObject({
+      listed: ["Two passes"],
+      read: "Two passes",
+    });
     expect(everyFile(held.store)).toEqual(before);
   });
 });

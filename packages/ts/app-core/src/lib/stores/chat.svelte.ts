@@ -50,7 +50,7 @@ import {
 } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { serveChatCall } from '../chat-acts.js';
-import { carriedOver, threadAsMarkdown, withCarried } from '../chat-said.js';
+import { carriedOver, placesKey, threadAsMarkdown, withCarried, withPlaces } from '../chat-said.js';
 import { runtime } from '../runtime.js';
 import { seam } from '../seam.svelte.js';
 import { chatDraft } from './chat-draft.svelte.js';
@@ -178,6 +178,9 @@ class ChatStore {
 	#project: string | null = null;
 	#threads = $state.raw<readonly ChatThread[]>([]);
 	#current = $state.raw<ChatThread | null>(null);
+	/** The chat in front of somebody that this device holds no record of yet:
+	 *  somewhere for a file to land before anything has been said. */
+	#unwritten: Ulid | null = null;
 	/** Unasked until somebody opens the chat: asking sooner would look for a
 	 *  program nobody asked for. */
 	#agents = $state.raw<ChatAgents>(null);
@@ -208,6 +211,9 @@ class ChatStore {
 	/** An earlier conversation to carry into the next session, where the
 	 *  person moved it to another agent. */
 	#carrying: string | null = null;
+	/** The places the standing session has been told it may read, as
+	 *  {@link placesKey}; `null` is a session that has not been told. */
+	#placesTold: string | null = null;
 	/** The writes to the chats this device holds, in the order they were asked
 	 *  for. */
 	#writes: Promise<void> = Promise.resolve();
@@ -484,22 +490,27 @@ class ChatStore {
 			return;
 		}
 		this.#letSessionGo();
+		await this.#unwrittenGoes(this.#letThreadGo());
 		await this.#pickUp(thread);
 	}
 
 	/** Begin another chat about this project. It takes an id and a name the
 	 *  first time anything is said into it, and whatever is standing is let go
 	 *  of — which is the way out of a conversation that is going nowhere. */
-	startThread(): void {
+	async startThread(): Promise<void> {
+		if (this.#running) {
+			this.#trouble = STILL_ANSWERING;
+			return;
+		}
 		this.#letSessionGo();
-		this.#letThreadGo();
-		void chatDraft.standingFor();
+		await this.#unwrittenGoes(this.#letThreadGo());
+		await chatDraft.standingFor();
 	}
 
 	// TODO(chat panel): the header's "Start again", which the three-dots menu
 	// replaces. Delete with that button.
 	startAgain(): void {
-		this.startThread();
+		void this.startThread();
 	}
 
 	/** Call the chat being read something else. Nothing is what
@@ -539,7 +550,9 @@ class ChatStore {
 	 * its own draft in hand either way.
 	 */
 	async remove(id: Ulid, draft: DraftOnDelete = 'discard'): Promise<boolean> {
-		const thread = this.#threads.find((one) => one.id === id);
+		const thread =
+			this.#threads.find((one) => one.id === id) ??
+			(this.#current?.id === id ? this.#current : undefined);
 		if (!thread) {
 			this.#trouble = NO_SUCH_THREAD;
 			return false;
@@ -646,7 +659,8 @@ class ChatStore {
 		];
 		const before = this.#turns;
 		this.#turns = [...this.#turns, { from: 'person', blocks, at: new Date().toISOString() }];
-		if (!this.#standing) {
+		const opening = !this.#standing;
+		if (opening) {
 			const agent = this.agent;
 			const model = this.model;
 			let thread: ChatThread;
@@ -665,6 +679,7 @@ class ChatStore {
 			const session =
 				thread.session !== undefined && thread.agent === agent ? thread.session : undefined;
 			this.#asked = session;
+			this.#placesTold = this.#placesOpenedWith(session);
 			this.#carryIfUnpicked = session === undefined ? null : carriedOver(before);
 			if (session === undefined && before.length > 0) this.#carrying ??= carriedOver(before);
 			const introduced = session === undefined ? null : this.#introduces();
@@ -706,7 +721,7 @@ class ChatStore {
 		const carried = this.#carrying ?? '';
 		this.#carrying = null;
 		try {
-			await access.say(withCarried(carried, withAttached(said, attached)));
+			await access.say(withCarried(carried, this.#namingPlaces(withAttached(said, attached))));
 		} catch (error) {
 			whatHappened.put('trouble', `the agent was not told: ${troubleIn(error)}`);
 			if (epoch !== this.#epoch) return;
@@ -870,11 +885,11 @@ class ChatStore {
 	}
 
 	/** The thread these words belong to: the one being read, one minted where
-	 *  none is, and named from the first thing said in it. */
+	 *  none is, and named from the first thing said in it — which is where a
+	 *  chat is first written down. */
 	async #threadSaying(said: string, first: boolean): Promise<ChatThread> {
 		const name = threadNameFrom(said);
-		const held = this.#current;
-		if (held === null) return this.#mint(name);
+		const held = this.#current ?? (await this.#mint(name));
 		if (first) await this.#keepCurrent({ name });
 		return this.#current ?? held;
 	}
@@ -903,12 +918,11 @@ class ChatStore {
 			turns: []
 		};
 		this.#current = thread;
-		await this.#keep(thread);
+		this.#unwritten = thread.id;
 		return thread;
 	}
 
-	/** The chat being read, changed and kept. A chat longer than
-	 *  {@link MAX_TURNS_PER_SESSION} keeps its most recent turns. */
+	/** The chat being read, changed and kept. */
 	async #keepCurrent(changed: Partial<ChatThread>): Promise<void> {
 		const thread = this.#current;
 		if (thread === null) return;
@@ -921,6 +935,7 @@ class ChatStore {
 	async #keep(thread: ChatThread): Promise<void> {
 		this.#threads = [thread, ...this.#threads.filter((one) => one.id !== thread.id)];
 		if (this.#current?.id === thread.id) this.#current = thread;
+		if (this.#unwritten === thread.id) this.#unwritten = null;
 		const threads = runtime.threads();
 		if (!threads) return;
 		this.#writes = this.#writes
@@ -973,13 +988,27 @@ class ChatStore {
 		return false;
 	}
 
-	#letThreadGo(): void {
+	/** A chat this device holds no record of goes when it stops being the one
+	 *  in front of somebody: nothing reaches it again, so the draft it was
+	 *  given somewhere to write would be a copy nobody could read or throw
+	 *  away. */
+	async #unwrittenGoes(id: Ulid | null): Promise<void> {
+		if (id === null) return;
+		if ((await chatDraft.standingFor(id)) !== null) await chatDraft.discard();
+	}
+
+	/** Nothing in front of somebody, answering the chat this device holds no
+	 *  record of where that is the one let go of. */
+	#letThreadGo(): Ulid | null {
+		const unwritten = this.#unwritten;
 		this.#current = null;
+		this.#unwritten = null;
 		this.#turns = [];
 		this.#places = [];
 		this.#spentSession = undefined;
 		this.#done.clear();
 		this.#kept.clear();
+		return unwritten;
 	}
 
 	/** Settled where the agent says which session answered, and where it says
@@ -1025,6 +1054,7 @@ class ChatStore {
 		this.#introduced?.();
 		this.#spentTurn = undefined;
 		this.#context = null;
+		this.#placesTold = null;
 		this.#trouble = null;
 		this.#says = null;
 	}
@@ -1040,6 +1070,22 @@ class ChatStore {
 			.catch(() => {});
 	}
 
+	/** What the conversation now standing has been told about its places: the
+	 *  set the brief names for a session Sloppy OPENED, and nothing for one
+	 *  picked up, which never reads that brief. */
+	#placesOpenedWith(session: ChatSessionId | undefined): string | null {
+		return session === undefined ? placesKey(this.#places) : null;
+	}
+
+	/** What is said, with the places this thread reads named to the agent where
+	 *  what its conversation was told is not the set in front of the person. */
+	#namingPlaces(said: string): string {
+		const key = placesKey(this.#places);
+		if (key === this.#placesTold) return said;
+		this.#placesTold = key;
+		return this.#places.length === 0 ? said : withPlaces(this.#places, said);
+	}
+
 	#heard(epoch: number, event: ChatEvent): void {
 		if (epoch !== this.#epoch) return;
 		switch (event.event) {
@@ -1050,16 +1096,17 @@ class ChatStore {
 					'turn',
 					`the chat opened with ${named ?? 'whatever the agent answers with'}, and the agent has ${event.tools.length} tools`
 				);
-				const asked = this.#asked;
+				// A compaction arrives as another `started` for the same session,
+				// so only the first of them decides whether it was picked up.
 				const carry = this.#carryIfUnpicked;
-				this.#asked = undefined;
 				this.#carryIfUnpicked = null;
-				if (asked !== undefined && asked !== event.session) {
+				if (carry !== null && this.#asked !== event.session) {
 					whatHappened.put('turn', 'the conversation was not picked up where it was left');
 					this.#says = PICKED_UP;
-					if (carry !== null && carry !== '') this.#carrying = carry;
+					if (carry !== '') this.#carrying = carry;
 				}
 				this.#introduced?.();
+				this.#placesTold = this.#placesOpenedWith(this.#asked);
 				void this.#keepCurrent({ session: event.session });
 				break;
 			}
@@ -1080,8 +1127,9 @@ class ChatStore {
 					this.#spentTurn = event.spent;
 					this.#spentSession = spentTogether(this.#spentSession, event.spent);
 				}
+				this.#turns = this.#turns.slice(-MAX_TURNS_PER_SESSION);
 				void this.#keepCurrent({
-					turns: this.#turns.slice(-MAX_TURNS_PER_SESSION),
+					turns: [...this.#turns],
 					...(this.#spentSession === undefined ? {} : { spent: this.#spentSession })
 				});
 				void chatDraft.keepWhatTheTurnWrote();

@@ -114,7 +114,8 @@ export const MAX_TOOLS_LISTED = 128;
 /** A turn holding more blocks than this is one nobody is reading. */
 export const MAX_BLOCKS_PER_TURN = 512;
 
-/** A session longer than this is a new chat. */
+/** The turns one chat holds. Past it the oldest go and the most recent stay,
+ *  in what is on screen, what the device keeps and what is copied out. */
 export const MAX_TURNS_PER_SESSION = 512;
 
 /** Long enough for the line a thread is called by where somebody reads a list
@@ -148,8 +149,9 @@ export const MOST_PLACES = 8;
  * `root` is where it is, as the platform spells a folder, and is the shell's
  * own business — no path is shown. `name` is what a person and the agent both
  * call it, and {@link placeNamed} is what keeps two of them apart. **Absent
- * `graph` is a folder that holds no graph**: Sloppy's note acts answer nothing
- * for it, so nothing names it to the agent.
+ * `graph` is a folder that holds no graph**: a reading act naming it is refused
+ * rather than answered, and it is named to the agent all the same, because the
+ * name is how its files are reached.
  */
 export const ChatPlaceSchema = z.object({
   root: z.string().min(1).max(DRAFT_PATH_MAX),

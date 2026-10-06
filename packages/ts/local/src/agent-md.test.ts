@@ -253,35 +253,31 @@ describe("what the agent in a chat is told before it hears anybody", () => {
   });
 
   it("says nothing about places where the chat reads none", () => {
-    expect(chatBrief()).not.toContain("also read the notes of these places");
+    expect(chatBrief()).not.toContain("You may also read these places");
     expect(chatBrief([])).toBe(chatBrief());
   });
 
-  it("names the places whose notes it may read, and says it writes in none of them", () => {
+  it("names the places it may read, says it writes in none, and says a name arrives again where they change", () => {
     const brief = chatBrief([
       { root: "/work/lexer", name: "lexer", graph: GRAPH },
       { root: "/work/runtime", name: "runtime", graph: ELSEWHERE },
     ]);
 
-    expect(brief).toContain(
-      "You may also read the notes of these places: lexer, runtime.",
-    );
-    expect(brief).toContain("nothing of yours is written there");
+    expect(brief).toContain("You may also read these places: lexer, runtime.");
+    expect(brief).toContain("nothing of yours is written in any of them");
+    expect(brief).toContain("the message that follows names them");
     // Where they are is this device's business and not the agent's.
     expect(brief).not.toContain("/work/lexer");
     expect(brief.startsWith(chatBrief())).toBe(true);
   });
 
-  it("names no place holding no notes, because no act of ours answers for one", () => {
+  it("names a place holding no notes too, because its files are read by name", () => {
     const brief = chatBrief([
       { root: "/work/lexer", name: "lexer", graph: GRAPH },
       { root: "/work/scratch", name: "scratch" },
     ]);
 
-    expect(brief).toContain(
-      "You may also read the notes of these places: lexer.",
-    );
-    expect(brief).not.toContain("scratch");
+    expect(brief).toContain("You may also read these places: lexer, scratch.");
   });
 });
 

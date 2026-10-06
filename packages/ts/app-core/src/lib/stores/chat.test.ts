@@ -7,6 +7,7 @@ import 'fake-indexeddb/auto';
 import { DeviceThreads, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import {
 	draftBranch,
+	MAX_TURNS_PER_SESSION,
 	MOST_PLACES,
 	ulid,
 	type ChatActDone,
@@ -15,6 +16,7 @@ import {
 	type ChatToolAnswer,
 	type ChatThread,
 	type ChatToolCall,
+	type ChatTurn,
 	type ContextUsage,
 	type OwnedRef,
 	type StandingDraft,
@@ -190,6 +192,24 @@ async function aTurn(words: string): Promise<void> {
 	await settled();
 }
 
+/** Another turn in the session already standing, which says what it is once
+ *  and not again — so a test can tell what reaches a standing conversation
+ *  apart from what reaches one beginning. */
+async function another(words: string): Promise<void> {
+	await chat.say(words);
+	stub.tell({ event: 'ended' });
+	await settled();
+}
+
+/** The chat being read let go of and read again, which is how the agent comes
+ *  to be going on from its own conversation rather than one Sloppy opened. */
+async function pickedUpAgain(): Promise<Ulid> {
+	const id = chat.current?.id as Ulid;
+	await chat.startThread();
+	await chat.openThread(id);
+	return id;
+}
+
 /** The thread is kept without anybody waiting on it, so this is how a test
  *  reads what was kept. */
 async function settled(): Promise<void> {
@@ -286,6 +306,68 @@ describe('a chat this device keeps', () => {
 
 		expect(chat.threads.map((one) => one.id)).toEqual([second, first]);
 		expect(await (await kept()).list()).toHaveLength(2);
+	});
+
+	it('is written down the first time something is said, and not for a file put in front of it', async () => {
+		expect(await chat.attach([new File(['a picture'], 'the board.png')])).toBe(null);
+
+		// Somewhere for the file to land, and nothing on the device yet.
+		expect(chat.current).not.toBe(null);
+		expect(chat.threads).toEqual([]);
+		expect(await (await kept()).list()).toEqual([]);
+
+		await aTurn('What is this?');
+
+		expect((await (await kept()).list()).map((one) => one.id)).toEqual([chat.current?.id]);
+	});
+
+	it('takes the draft of a chat nothing was said in away with it', async () => {
+		await chat.attach([new File(['a picture'], 'the board.png')]);
+		const id = chat.current?.id as Ulid;
+		expect(copies.has(id)).toBe(true);
+
+		await chat.startThread();
+
+		expect(discarded).toEqual([id]);
+		expect(await (await kept()).list()).toEqual([]);
+	});
+
+	it('lets its oldest turns go past the bound, in what is read, kept and copied alike', async () => {
+		await aTurn('The first thing');
+		const id = chat.current?.id as Ulid;
+		const many: ChatTurn[] = Array.from({ length: MAX_TURNS_PER_SESSION }, (_, at) => ({
+			from: 'person',
+			blocks: [{ kind: 'said', said: `turn ${at}` }],
+			at: '2026-10-06T10:00:00.000Z'
+		}));
+		await (await kept()).write({ ...(chat.current as ChatThread), turns: many });
+		chat.clear();
+		chatDraft.clear();
+		await chat.opened(graph);
+
+		await aTurn('The last thing');
+
+		const copied = chat.copyAsMarkdown();
+		const held = (await (await kept()).read(id))?.turns ?? [];
+		expect(chat.turns).toHaveLength(MAX_TURNS_PER_SESSION);
+		expect(held).toEqual(chat.turns);
+		expect(copied).toContain('The last thing');
+		expect(copied).toContain('turn 511');
+		expect(copied).not.toContain('turn 0\n');
+		expect(copied).not.toContain('turn 1\n');
+	});
+
+	it('is not begun again while the agent is answering', async () => {
+		const saying = chat.say('Why two passes?');
+		await settled();
+		const id = chat.current?.id;
+
+		await chat.startThread();
+
+		expect(chat.current?.id).toBe(id);
+		expect(chat.trouble).toBe('The assistant is still answering. Stop it first.');
+		stub.begins();
+		await saying;
 	});
 
 	it('is called something else where a person says so, and Untitled where they say nothing', async () => {
@@ -521,6 +603,44 @@ describe('the places a chat reads besides its own project', () => {
 
 		expect(chat.places).toEqual([]);
 		expect(chat.trouble).toBe('The assistant is still answering. Stop it first.');
+	});
+
+	it('is not named in the words to a conversation the brief opened, which carries it already', async () => {
+		await chat.addPlace({ root: PLACE, name: 'lexer' });
+
+		await aTurn('What does the lexer do?');
+
+		expect(stub.asked.at(-1)?.thread.places).toEqual([{ root: PLACE, name: 'lexer' }]);
+		expect(stub.said.at(-1)).toBe('What does the lexer do?');
+	});
+
+	it('is named in the words to one the brief never reached, once, until it begins again', async () => {
+		await chat.addPlace({ root: PLACE, name: 'lexer' });
+		await aTurn('What does the lexer do?');
+		const id = await pickedUpAgain();
+
+		await aTurn('And the parser?');
+		expect(stub.said.at(-1)).toContain('Places you may also read, by name: lexer.');
+
+		await another('And the emitter?');
+		expect(stub.said.at(-1)).toBe('And the emitter?');
+
+		// Summarised and begun again, so what it was told went with the rest.
+		stub.begins();
+		await another('And the printer?');
+		expect(stub.said.at(-1)).toContain('Places you may also read, by name: lexer.');
+		expect(id).toBe(chat.current?.id);
+	});
+
+	it('is not named to a conversation with none to name', async () => {
+		await chat.addPlace({ root: PLACE, name: 'lexer' });
+		await aTurn('What does the lexer do?');
+		await pickedUpAgain();
+		await chat.removePlace(PLACE);
+
+		await aTurn('And the parser?');
+
+		expect(stub.said.at(-1)).toBe('And the parser?');
 	});
 
 	it('picks the conversation up again when it changes under a standing one', async () => {

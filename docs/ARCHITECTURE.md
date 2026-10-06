@@ -3397,7 +3397,9 @@ edited by hand.
 **A chat is a THREAD, and a device keeps as many as somebody started.** A conversation that
 dies with the window is one nobody builds a week of work on, so a thread is kept: what it is
 called, what was said in it, what it spent, which agent and model answered, the session that
-answered, and the places it reads. `ChatThread` in `@sloppy/types` is the shape and
+answered, and the places it reads. What was said is bounded at `MAX_TURNS_PER_SESSION` turns
+and the OLDEST go — one bound, so the turns on screen, the turns the device holds and the
+turns a person copies out are the same turns. `ChatThread` in `@sloppy/types` is the shape and
 `ThreadsAccess` in `@sloppy/local` is where it lives — one JSON file per thread under the
 app's own private data, beside `ai-keys.json`, because a thread is where somebody got to in a
 conversation and not something a peer reads. **A file that does not parse is left out of the
@@ -3443,13 +3445,21 @@ one project is the way it is often has the answer in another, so a thread carrie
 Rust's**: a place must already be a folder somebody picked, which `Folders::allows` is the
 one record of, and `AppRuntime.placeFiles` answers `undefined` for anything else — nothing
 typed on the page and no scan of the disk reaches a folder. Sloppy's three READING acts
-reach a place's notes through an `in` argument naming the place by NAME, and that is the
-whole of what reaches one today: **no shell names a place to the agent at launch yet**, so
-the agent's own file tools see the folder it runs in and nothing beside it, and naming one
-there is the native shell's half to land. **The eight writing acts take no `in` and land in
-the thread's own draft**, whatever they say: `chatToolWrites` is what decides, so a place is
-read and never written. A place the thread does not carry, or one the shell will not serve,
-is refused to the agent in words it can act on.
+reach a place's notes through an `in` argument naming the place by NAME, and **that is the
+whole of what reaches a place today**: giving the agent's own file tools the folder as well
+is the native shell's half — the directory on the launch line — and it has not landed, so
+until it does the agent sees the folder it runs in and nothing beside it. **The eight writing
+acts take no `in` and land in the thread's own draft**, whatever they say: `chatToolWrites`
+is what decides, so a place is read and never written. A place the thread does not carry, or
+one the shell will not serve, is refused to the agent in words it can act on.
+
+**A name reaches the agent at launch and in the words after it.** `chatBrief` names every
+place a thread carries, and a session PICKED UP never reads that brief — the text is
+snapshotted on a session's first request — so the store names the set again in one line
+above what the person says, whenever it differs from what the standing session was last
+told. `placesKey` and `withPlaces` in `@sloppy/app-core` are that pair. What the standing
+session has been told is settled on `started`: the set it was launched with for a session
+Sloppy opened, which read the brief, and nothing for one picked up, which did not.
 
 **Read and never written is the STORE's job as much as the routing's.** Opening a folder is
 normally how somebody says a graph is in it, so the ordinary store starts one where there is
@@ -3460,10 +3470,11 @@ already holds and read it as the folder spells it, say a folder holding none rat
 one, and refuse every act that writes — over files that refuse one as well, `readOnly` in
 `@sloppy/local`, so a read path that would write is refused rather than healing the file it
 read. The routing above decides WHICH folder; this decides what can happen in it. And a
-place carries whether it holds a graph at all — `ChatPlace.graph` — so a folder that holds
-no notes is named to the agent nowhere and refused by name: a reading act has nothing to
-answer for it, and until the launch half above lands there is nothing else that reaches it
-either.
+place carries whether it holds a graph at all — `ChatPlace.graph` — so a reading act naming
+one that holds none is refused in words rather than answered with a graph nobody started.
+**Every place is NAMED to the agent all the same**, notes or not: the name is how its files
+are reached the moment the launch half above lands, and one withheld costs a read that would
+have worked.
 
 **A place is reached by NAME, so two under one name would answer whichever was added first
 for both**: `placeNamed` is the one gate, and a name already taken is given the folder it
