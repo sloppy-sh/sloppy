@@ -783,6 +783,28 @@ mod tests {
         );
     }
 
+    /// A device holds as many copies as it has chats that have written
+    /// something, and each is a checkout of its own: a history command inside
+    /// one is bounded there, and never at the folder holding every copy.
+    #[test]
+    fn each_draft_copy_is_bounded_at_itself() {
+        let held = folders(&scratch("drafts"));
+        let one = held.drafts_path().join("01JAPART000000000000000000");
+        let two = held.drafts_path().join("01JAPART000000000000000001");
+        fs::create_dir_all(one.join(".sloppy")).expect("one copy");
+        fs::create_dir_all(two.join(".sloppy")).expect("another");
+
+        for copy in [&one, &two] {
+            let notes = copy.join(".sloppy");
+            assert_eq!(
+                held.opened(&notes.to_string_lossy())
+                    .expect("the notes in the copy")
+                    .within(),
+                copy.as_path()
+            );
+        }
+    }
+
     #[test]
     fn only_a_folder_somebody_picked_can_be_reached() {
         let held = folders(&scratch("data"));

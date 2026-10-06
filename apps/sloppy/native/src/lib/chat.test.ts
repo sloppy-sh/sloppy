@@ -3,12 +3,15 @@ import type { AiKeysAccess } from '@sloppy/local';
 import {
 	CHAT_TOOLS,
 	draftBranch,
+	heldAsideIn,
+	usedIn,
 	type ChatEvent,
 	type ChatToolAnswer,
 	type ChatToolCall,
+	type ContextUsage,
 	type StandingDraft
 } from '@sloppy/types';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tauriChat, type Telling, type Told } from './chat';
 import { tauriDrafts, type DraftAccess } from './draft';
 import { tauriFiles } from './files';
@@ -19,8 +22,10 @@ const PARSER = 'src/parser.ts';
 
 /** Where this app keeps its own copies, as `draft_start` answers them. */
 const COPIES = '/data/drafts';
-/** The thread a session is opened for, whose draft it works in. */
+/** The thread a session is opened for, whose draft it works in, and another
+ *  the same person keeps about the same project. */
 const THREAD = '01JAPART000000000000000000';
+const SECOND = '01JAPART000000000000000001';
 
 /** The graphs two folders beside the project hold, which is what makes them
  *  places Sloppy's own acts answer for. */
@@ -45,13 +50,17 @@ function copy(id: string): StandingDraft {
 
 /** The agents this device has, as `chat_agents` answers. */
 let here: string[];
-let opens: {
+type Opened = {
 	agent: string;
 	root: string;
 	tools: { name: string }[];
 	brief: string;
+	places: string[];
+	resume: boolean;
 	model?: string;
-}[];
+	session?: string;
+};
+let opens: Opened[];
 /** Every line written onto the agent's own input. */
 let lines: string[];
 let answers: { call: string; said: string; trouble: boolean }[];
@@ -88,22 +97,7 @@ const call = async <T>(command: string, args?: Record<string, unknown>): Promise
 		case 'chat_agents':
 			return here as T;
 		case 'chat_open':
-			{
-				const asked = held.asked as {
-					agent: string;
-					root: string;
-					tools: { name: string }[];
-					brief: string;
-					model?: string;
-				};
-				opens.push({
-					agent: asked.agent,
-					root: asked.root,
-					tools: asked.tools,
-					brief: asked.brief,
-					...(asked.model === undefined ? {} : { model: asked.model })
-				});
-			}
+			opens.push(held.asked as Opened);
 			channel = held.heard as Telling;
 			return undefined as T;
 		case 'chat_say':
@@ -124,8 +118,11 @@ const call = async <T>(command: string, args?: Record<string, unknown>): Promise
 			return standing as T;
 		case 'draft_start': {
 			const made = copy(held.id as string);
+			if (standing.some((one) => one.id === made.id)) {
+				throw 'This chat already has a draft of these notes.';
+			}
 			started.push({ root: held.root as string, id: made.id });
-			standing = [made];
+			standing = [...standing, made];
 			return made as T;
 		}
 		case 'draft_discard':
@@ -145,6 +142,40 @@ function tells(told: Told): void {
 
 function says(line: string): void {
 	tells({ from: 'said', line });
+}
+
+/** What was written onto the agent's own input, read back. */
+function written(): {
+	type?: string;
+	request_id?: string;
+	request?: { subtype?: string };
+	message?: unknown;
+}[] {
+	return lines.map((line) => JSON.parse(line));
+}
+
+/** The turns the person's own words went out as, apart from what this shell
+ *  writes on its own — an interrupt, and a question about the window. */
+function spoken(): unknown[] {
+	return written()
+		.filter((one) => one.type === 'user')
+		.map((one) => one.message);
+}
+
+/** Every question about what is in the agent's window, however it was asked. */
+function askedAbout(): { type?: string; request_id?: string; request?: { subtype?: string } }[] {
+	return written().filter(
+		(one) =>
+			one.request?.subtype === 'get_context_usage' ||
+			(one.type === 'user' && JSON.stringify(one.message).includes('/context'))
+	);
+}
+
+/** The id of the ask still waiting, which the agent answers under. */
+function waitingOn(): string {
+	const [asked] = askedAbout();
+	if (asked?.request_id === undefined) throw new Error('nothing was asked');
+	return asked.request_id;
 }
 
 function calls(act: string, args: unknown, id = 'c1'): void {
@@ -212,8 +243,59 @@ function textDelta(index: number, text: string): string {
 	});
 }
 
-function assistant(id: string, content: unknown[]): string {
-	return JSON.stringify({ type: 'assistant', message: { id, content } });
+function assistant(id: string, content: unknown[], more: Record<string, unknown> = {}): string {
+	return JSON.stringify({ type: 'assistant', message: { id, content, ...more } });
+}
+
+/** What the window holds, as the agent answers the ask it is given over its
+ *  own channel. */
+const WINDOW = 200_000;
+
+function breakdown(id: string, more: Record<string, unknown> = {}): string {
+	return JSON.stringify({
+		type: 'control_response',
+		response: {
+			subtype: 'success',
+			request_id: id,
+			response: {
+				categories: [
+					{ name: 'System prompt', tokens: 3_000, kind: 'used' },
+					{ name: 'Messages', tokens: 12_000, kind: 'used' },
+					{ name: 'Free space', tokens: 185_000, kind: 'free' },
+					{ name: 'Autocompact buffer', tokens: 45_000, kind: 'buffer' },
+					{ name: 'Tool definitions', tokens: 9_000, kind: 'deferred' }
+				],
+				totalTokens: 15_000,
+				maxTokens: WINDOW,
+				autoCompactThreshold: 160_000,
+				isAutoCompactEnabled: true,
+				...more
+			}
+		}
+	});
+}
+
+/** The window as an agent's own request carried it, which is what it holds
+ *  going into that answer. */
+function carrying(sent: number, recalled = 0): string {
+	return JSON.stringify({
+		type: 'stream_event',
+		event: {
+			type: 'message_start',
+			message: {
+				id: `m${sent}`,
+				usage: { input_tokens: sent, cache_read_input_tokens: recalled }
+			}
+		}
+	});
+}
+
+/** The last thing the page was told about the window. */
+function windowNow(heard: ChatEvent[]): ContextUsage {
+	const held = heard.filter((one) => one.event === 'context');
+	const last = held[held.length - 1];
+	if (last === undefined) throw new Error('nothing was said about the window');
+	return last.usage;
 }
 
 const WROTE = { sections: ['## What it does\n\nIt reads a file and hands back the sections.'] };
@@ -342,7 +424,7 @@ describe('a session', () => {
 		await access.say('second');
 
 		expect(heard).toContainEqual({ event: 'ended' });
-		expect(lines).toHaveLength(2);
+		expect(spoken()).toHaveLength(2);
 	});
 
 	it('says what a turn spent where the agent says, and nothing where it does not', async () => {
@@ -748,6 +830,308 @@ describe('the draft a chat works in', () => {
 
 		expect(discarded).toEqual([{ root: NOTES, id: draft.id }]);
 		expect(await access.drafts?.standing()).toEqual([]);
+	});
+
+	/** A person keeps as many chats as they like, and each writes into its own
+	 *  copy, so neither thread's writing lands in the other's. */
+	it('is one per chat, and two of them stand at once', async () => {
+		const access = chat();
+
+		await access.open(asking(), () => {}, serve);
+		await access.open(asking({ thread: { id: SECOND, places: [] } }), () => {}, serve);
+
+		expect((await access.drafts?.standing())?.map((one) => one.id)).toEqual([THREAD, SECOND]);
+		expect(opens.map((one) => one.root)).toEqual([`${COPIES}/${THREAD}`, `${COPIES}/${SECOND}`]);
+	});
+});
+
+describe('the conversation a chat is opened as', () => {
+	it('is one of its own where no agent has opened this chat before', async () => {
+		await opened();
+
+		expect(opens[0].resume).toBe(false);
+		expect(opens[0].session).toBeUndefined();
+	});
+
+	/** Everything said in it is still there, which is what makes reopening a
+	 *  chat different from starting one about the same thing. */
+	it('is the one left off where the chat has one', async () => {
+		await chat().open(
+			asking({ thread: { id: THREAD, session: 'the-conversation', places: [] } }),
+			() => {},
+			serve
+		);
+
+		expect(opens[0].resume).toBe(true);
+		expect(opens[0].session).toBe('the-conversation');
+	});
+
+	it('is one of its own again where the agent would not pick that one up', async () => {
+		const heard: ChatEvent[] = [];
+		const access = chat();
+		await access.open(
+			asking({ thread: { id: THREAD, session: 'long-gone', places: [] } }),
+			(event) => heard.push(event),
+			serve
+		);
+
+		// The program ends before it has said anything about itself.
+		tells({ from: 'over', stopped: false, trouble: 'No conversation by that name.' });
+		await until(() => opens.length === 2);
+
+		expect(opens[1].resume).toBe(false);
+		expect(opens[1].session).toBeUndefined();
+		// Nothing is said about a session nobody saw; what the page is told is
+		// the conversation that did answer, which is not the one it asked for.
+		expect(heard).toEqual([]);
+		says(INIT);
+		expect(heard).toContainEqual(
+			expect.objectContaining({ event: 'started', session: 's1' }) as ChatEvent
+		);
+	});
+
+	it('is over for good where the agent said what it was and then stopped', async () => {
+		const heard: ChatEvent[] = [];
+		const access = chat();
+		await access.open(
+			asking({ thread: { id: THREAD, session: 'the-conversation', places: [] } }),
+			(event) => heard.push(event),
+			serve
+		);
+		says(INIT);
+
+		tells({ from: 'over', stopped: false, trouble: 'Sign in to keep going.' });
+
+		expect(opens).toHaveLength(1);
+		expect(heard.at(-1)).toEqual({ event: 'over', said: 'Sign in to keep going.' });
+	});
+});
+
+describe('the places a chat reads', () => {
+	const PLACES = [
+		{ root: '/work/lexer', name: 'lexer', graph: THEIRS },
+		{ root: '/work/old/lexer', name: 'old/lexer', graph: ALSO_THEIRS }
+	];
+
+	it('are given to the agent every time, because none can be added to one running', async () => {
+		const access = chat();
+
+		await access.open(asking({ thread: { id: THREAD, places: PLACES } }), () => {}, serve);
+		await access.open(
+			asking({ thread: { id: THREAD, session: 'the-conversation', places: PLACES } }),
+			() => {},
+			serve
+		);
+
+		expect(opens[0].places).toEqual(['/work/lexer', '/work/old/lexer']);
+		expect(opens[1].places).toEqual(['/work/lexer', '/work/old/lexer']);
+	});
+
+	it('are none for a chat that reads nothing but its own project', async () => {
+		await opened();
+
+		expect(opens[0].places).toEqual([]);
+	});
+});
+
+describe('what the agent says is in its window', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/** A chat open, the agent introduced, and the one ask that follows already
+	 *  written out. */
+	async function introduced(): Promise<ChatEvent[]> {
+		const heard: ChatEvent[] = [];
+		await chat().open(asking(), (event) => heard.push(event), serve);
+		says(INIT);
+		await until(() => askedAbout().length === 1);
+		return heard;
+	}
+
+	it('is asked for as soon as the agent has said what it is', async () => {
+		await introduced();
+
+		expect(askedAbout()[0]).toMatchObject({
+			type: 'control_request',
+			request: { subtype: 'get_context_usage', detail: 'summary' }
+		});
+	});
+
+	it('is asked for again once a turn has ended', async () => {
+		const access = chat();
+		await access.open(asking(), () => {}, serve);
+		says(INIT);
+		await until(() => askedAbout().length === 1);
+		await access.say('go');
+
+		says(RESULT);
+
+		await until(() => askedAbout().length === 2);
+	});
+
+	/** The parts are the agent's own, named and counted as it gave them, and
+	 *  what it holds ASIDE is never in what the window is holding. */
+	it('is the breakdown it answers with, with what it holds aside left out', async () => {
+		const heard = await introduced();
+
+		says(breakdown(waitingOn()));
+
+		const usage = windowNow(heard);
+		expect(usage.parts.map((one) => one.name)).toEqual([
+			'System prompt',
+			'Messages',
+			'Free space',
+			'Autocompact buffer',
+			'Tool definitions'
+		]);
+		expect(usedIn(usage)).toBe(15_000);
+		expect(heldAsideIn(usage)).toBe(9_000);
+		expect(usage.total).toBe(15_000);
+		expect(usage.limit).toBe(WINDOW);
+		expect(usage.compactsAt).toBe(160_000);
+	});
+
+	it('says nothing about where room is made for an agent that never makes any', async () => {
+		const heard = await introduced();
+
+		says(breakdown(waitingOn(), { isAutoCompactEnabled: false }));
+
+		expect(windowNow(heard).compactsAt).toBeUndefined();
+	});
+
+	/** Between one breakdown and the next, the agent's own requests say how full
+	 *  the window is; the parts stay as of the last ask and only the total
+	 *  moves. */
+	it('follows what the agent is carrying between one breakdown and the next', async () => {
+		const heard = await introduced();
+		says(breakdown(waitingOn()));
+		const asked = heard.length;
+
+		// Under a fiftieth of the window: not worth redrawing for.
+		says(carrying(17_000));
+		expect(heard).toHaveLength(asked);
+
+		says(carrying(20_000, 5_000));
+		expect(windowNow(heard)).toMatchObject({ total: 25_000, limit: WINDOW, parts: [] });
+	});
+
+	it('draws down to what is left once the agent has made room', async () => {
+		const heard = await introduced();
+		says(breakdown(waitingOn()));
+
+		says(
+			JSON.stringify({
+				type: 'system',
+				subtype: 'compact_boundary',
+				compact_metadata: { trigger: 'auto', pre_tokens: 150_000, post_tokens: 20_000 }
+			})
+		);
+
+		expect(windowNow(heard)).toMatchObject({
+			total: 20_000,
+			compacted: { from: 150_000 },
+			parts: []
+		});
+	});
+
+	/** An agent re-introduces itself after making room, and that is what has it
+	 *  told again about the places it may read. */
+	it('says the agent started again where it starts again', async () => {
+		const heard = await introduced();
+
+		says(INIT);
+
+		expect(heard.filter((one) => one.event === 'started')).toHaveLength(2);
+	});
+
+	it('is asked for in words where the agent answers no other way', async () => {
+		vi.useFakeTimers();
+		const heard: ChatEvent[] = [];
+		await chat().open(asking(), (event) => heard.push(event), serve);
+		says(INIT);
+		await vi.advanceTimersByTimeAsync(0);
+
+		await vi.advanceTimersByTimeAsync(8_000);
+
+		expect(askedAbout()).toHaveLength(2);
+		expect(spoken()).toEqual([{ role: 'user', content: [{ type: 'text', text: '/context' }] }]);
+	});
+
+	/** What the agent writes answering a question nobody typed is the chart's,
+	 *  so none of it reaches the thread. */
+	it('reads the answer in words and shows none of it in the thread', async () => {
+		vi.useFakeTimers();
+		const heard: ChatEvent[] = [];
+		await chat().open(asking(), (event) => heard.push(event), serve);
+		says(INIT);
+		await vi.advanceTimersByTimeAsync(8_000);
+
+		says(
+			assistant('m1', [{ type: 'text', text: 'Here is what I am holding.' }], {
+				context_usage: {
+					categories: [
+						{ name: 'System prompt', tokens: 4_000, kind: 'used' },
+						{ name: 'Free space', tokens: 196_000, kind: 'free' }
+					],
+					total_tokens: 4_000,
+					max_tokens: WINDOW,
+					auto_compact_threshold: 160_000
+				}
+			})
+		);
+		says(RESULT);
+
+		expect(windowNow(heard)).toMatchObject({ total: 4_000, limit: WINDOW });
+		expect(usedIn(windowNow(heard))).toBe(4_000);
+		expect(heard.filter((one) => one.event === 'block')).toEqual([]);
+		expect(heard.filter((one) => one.event === 'ended')).toEqual([]);
+	});
+
+	it('is asked in words from the start once the agent has answered no other way', async () => {
+		vi.useFakeTimers();
+		const access = chat();
+		await access.open(asking(), () => {}, serve);
+		says(INIT);
+		await vi.advanceTimersByTimeAsync(8_000);
+		says(RESULT);
+		await vi.advanceTimersByTimeAsync(0);
+		lines.length = 0;
+
+		await access.context?.('summary');
+
+		expect(askedAbout()).toHaveLength(1);
+		expect(askedAbout()[0].type).toBe('user');
+	});
+
+	/** It is what the chart offers a refresh on, so a shell that cannot ask is
+	 *  one that offers nothing. */
+	it('is something this shell can be asked for at any time', () => {
+		expect(chat().context).toBeDefined();
+	});
+
+	it('is nothing to ask about where no chat is open', async () => {
+		const access = chat();
+
+		await expect(access.context?.('summary')).resolves.toBeUndefined();
+		expect(lines).toEqual([]);
+	});
+
+	/** An agent grows what it says, and a kind of line this build knows nothing
+	 *  about must not end a chat or be drawn as one of its own. */
+	it('passes over what it says that is about neither the turn nor the window', async () => {
+		const heard = await introduced();
+		const before = heard.length;
+
+		for (const line of [
+			JSON.stringify({ type: 'rate_limit_event', reset_at: 1 }),
+			JSON.stringify({ type: 'system', subtype: 'status', status: 'compacting' }),
+			JSON.stringify({ type: 'system', subtype: 'thinking_tokens', tokens: 12 })
+		]) {
+			says(line);
+		}
+
+		expect(heard).toHaveLength(before);
 	});
 });
 

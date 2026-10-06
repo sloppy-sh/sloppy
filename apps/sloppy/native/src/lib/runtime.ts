@@ -254,6 +254,9 @@ export function initNativeRuntime(): void {
 					credentials: new DeviceCredentials(device),
 					aiKeys: deviceAiKeys(device),
 					threads: new DeviceThreads(device),
+					// Which folders this app may reach is `src-tauri`'s own list, and
+					// every read through these is held to it there.
+					placeFiles: (root: string) => device.at(root),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,

@@ -15,6 +15,7 @@ import {
 } from '@sloppy/app-core';
 import {
 	advertisedChatTools,
+	type AdvertisedTool,
 	CHAT_AGENTS,
 	CHAT_ASKED_MAX,
 	type ChatAgent,
@@ -41,6 +42,11 @@ const OPEN = 'chat_open';
 const SAY = 'chat_say';
 const ANSWER = 'chat_answer';
 const CLOSE = 'chat_close';
+
+/** How long the agent has to answer what is in its window over its own channel
+ *  before it is asked in words instead. An agent that does not answer the one
+ *  is not one to leave the chart blank over. */
+const ANSWERS_WITHIN = 8_000;
 
 const NO_PROJECT = 'Open the project these notes are about first.';
 const NO_CHAT = 'That chat is over. Start another one.';
@@ -104,6 +110,25 @@ interface Turn extends Settling {
 	stopped: boolean;
 }
 
+/** What `chat_open` is handed, kept so that a conversation the agent would not
+ *  pick up can be opened again as a new one. */
+interface Opening {
+	agent: ChatAgent;
+	root: string;
+	tools: AdvertisedTool[];
+	brief: string;
+	places: string[];
+	resume: boolean;
+	model?: string;
+	session?: string;
+}
+
+/** An ask for what is in the window that has not been answered yet. */
+interface Asking {
+	id: string;
+	waited: ReturnType<typeof setTimeout>;
+}
+
 /** One session, held so that what it is told reaches the page that opened it
  *  and nothing else — a session another was opened over is let go of here
  *  while its own program is still being reaped. */
@@ -112,6 +137,22 @@ class Session {
 	readonly over = settling();
 	turn?: Turn;
 	gone = false;
+	/** What this one was opened with, for opening it again as a conversation of
+	 *  its own where the agent would not pick the one it was given back up. */
+	opening?: Opening;
+	/** Whether the agent has said what it is, which is what tells a session it
+	 *  turned down from one it is running. */
+	introduced = false;
+	/** The ask for what is in the window that is still waiting. */
+	asking?: Asking;
+	/** Whether the agent answers that ask on its own channel. Undefined until
+	 *  it has had the chance, false once it has been asked in words instead —
+	 *  so no later ask waits the agent out again. */
+	answersAsks?: boolean;
+	/** Whether the turn underway is the one asking in words. What the agent
+	 *  writes in it is the answer to a question nobody typed, so the thread
+	 *  shows none of it. */
+	reading = false;
 
 	constructor(
 		readonly hear: (event: ChatEvent) => void,
@@ -141,9 +182,17 @@ class Session {
 	letGo(trouble?: string): void {
 		if (this.gone) return;
 		this.gone = true;
+		this.waitsNoLonger();
 		this.ends();
 		this.tell({ event: 'over', ...(trouble === undefined ? {} : { said: trouble }) });
 		this.over.ends();
+	}
+
+	/** Nothing is waiting on an answer about the window any more. */
+	waitsNoLonger(): void {
+		if (this.asking === undefined) return;
+		clearTimeout(this.asking.waited);
+		this.asking = undefined;
 	}
 }
 
@@ -174,24 +223,51 @@ class TauriChat implements ChatAccess {
 		const root = (await this.drafts?.start(asked.thread.id))?.root ?? here;
 		this.replaces();
 		const session = new Session(hear, serve);
-		const told = this.telling();
-		told.onmessage = (one) => this.told(session, one);
 		this.held = session;
-		await this.call<void>(OPEN, {
-			asked: {
-				agent,
-				root,
-				tools: advertisedChatTools(),
-				brief: chatBrief(asked.thread.places),
-				...(asked.model === undefined ? {} : { model: asked.model })
-			},
-			heard: told
+		await this.starts(session, {
+			agent,
+			root,
+			tools: advertisedChatTools(),
+			brief: chatBrief(asked.thread.places),
+			places: asked.thread.places.map((place) => place.root),
+			resume: asked.thread.session !== undefined,
+			...(asked.model === undefined ? {} : { model: asked.model }),
+			...(asked.thread.session === undefined ? {} : { session: asked.thread.session })
 		}).catch((reason) => {
 			if (this.held === session) this.held = undefined;
 			// Nothing started, so the page that asked is told by the rejection and
 			// never by an `over` for a session it never saw.
 			session.gone = true;
 			throw refuse(said(reason));
+		});
+	}
+
+	/**
+	 * Ask the agent what is in its window. The answer reaches the page as its
+	 * own event rather than coming back here, because the agent says it on the
+	 * channel it says everything else on — and where it does not answer at all,
+	 * it is asked in words instead.
+	 */
+	async context(detail: 'summary' | 'full'): Promise<void> {
+		const session = this.held;
+		if (!session || session.gone) return;
+		if (session.answersAsks === false) {
+			await this.asksInWords(session);
+			return;
+		}
+		session.waitsNoLonger();
+		const id = ulid();
+		session.asking = {
+			id,
+			waited: setTimeout(() => {
+				if (this.held !== session || session.asking?.id !== id) return;
+				session.waitsNoLonger();
+				session.answersAsks = false;
+				void this.asksInWords(session);
+			}, ANSWERS_WITHIN)
+		};
+		await this.call<void>(SAY, { line: JSON.stringify(aboutTheWindow(id, detail)) }).catch(() => {
+			session.waitsNoLonger();
 		});
 	}
 
@@ -230,6 +306,14 @@ class TauriChat implements ChatAccess {
 		await session.over.done;
 	}
 
+	/** Start the agent and read what it says into `session`. */
+	private async starts(session: Session, opening: Opening): Promise<void> {
+		session.opening = opening;
+		const told = this.telling();
+		told.onmessage = (one) => this.told(session, one);
+		await this.call<void>(OPEN, { asked: opening, heard: told });
+	}
+
 	/** Let go of the session that stood, so that a page waiting on its end is
 	 *  not left waiting on a program this one is about to replace. */
 	private replaces(): void {
@@ -243,17 +327,75 @@ class TauriChat implements ChatAccess {
 		switch (one.from) {
 			case 'said': {
 				const heard = session.stream.read(one.line);
-				for (const event of heard.events) session.tell(event);
-				if (heard.ended) session.ends(heard.spent);
+				if (heard.answered !== undefined && heard.answered === session.asking?.id) {
+					session.waitsNoLonger();
+					session.answersAsks = true;
+				}
+				for (const event of heard.events) {
+					// What the agent writes while answering a question nobody typed
+					// belongs to the chart and not to the thread.
+					if (session.reading && event.event === 'block') continue;
+					if (event.event === 'started') {
+						session.introduced = true;
+						void this.context('summary');
+					}
+					session.tell(event);
+				}
+				// Results arrive in the order the turns did, so the first after the
+				// agent was asked in words is that ask's and ends nothing of the
+				// person's.
+				if (!heard.ended) return;
+				if (session.reading) session.reading = false;
+				else {
+					session.ends(heard.spent);
+					void this.context('summary');
+				}
 				return;
 			}
 			case 'called':
 				void this.does(session, one);
 				return;
 			case 'over':
+				if (this.opensAsItsOwn(session)) return;
 				session.letGo(one.trouble ?? undefined);
 				return;
 		}
+	}
+
+	/**
+	 * A conversation the agent would not pick up: the program ended before it
+	 * said anything about itself. The chat opens again as a conversation of its
+	 * OWN, and the page is told by the `started` that follows — which names one
+	 * it did not ask for, and is what has it go on from a summary instead.
+	 */
+	private opensAsItsOwn(session: Session): boolean {
+		const opening = session.opening;
+		if (
+			opening === undefined ||
+			!opening.resume ||
+			session.introduced ||
+			this.held !== session ||
+			session.gone
+		)
+			return false;
+		const again: Opening = { ...opening, resume: false };
+		delete again.session;
+		void this.starts(session, again).catch((reason) => {
+			session.letGo(said(reason));
+		});
+		return true;
+	}
+
+	/** Ask what is in the window in words, for an agent that does not answer it
+	 *  any other way. Nothing is asked while the agent is answering somebody:
+	 *  the next turn to end asks again. */
+	private async asksInWords(session: Session): Promise<void> {
+		if (this.held !== session || session.gone || session.turn || session.reading) return;
+		session.reading = true;
+		session.stream.turned();
+		await this.call<void>(SAY, { line: JSON.stringify(aTurn(THE_WINDOW_IN_WORDS)) }).catch(() => {
+			session.reading = false;
+		});
 	}
 
 	/**
@@ -339,8 +481,10 @@ class TauriChat implements ChatAccess {
 	}
 }
 
-/** The agent's own dialect, and the only two lines this shell writes in it:
- *  what somebody said, and an end to what it is doing now. */
+/** The agent's own dialect, and the only lines this shell writes in it: what
+ *  somebody said, an end to what it is doing now, and what is in its window —
+ *  asked on its own channel, and asked in words for an agent that answers no
+ *  other way. */
 function aTurn(said: string): unknown {
 	return { type: 'user', message: { role: 'user', content: [{ type: 'text', text: said }] } };
 }
@@ -348,6 +492,19 @@ function aTurn(said: string): unknown {
 function anInterrupt(): unknown {
 	return { type: 'control_request', request_id: ulid(), request: { subtype: 'interrupt' } };
 }
+
+function aboutTheWindow(id: string, detail: 'summary' | 'full'): unknown {
+	return {
+		type: 'control_request',
+		request_id: id,
+		request: {
+			subtype: 'get_context_usage',
+			...(detail === 'summary' ? { detail } : {})
+		}
+	};
+}
+
+const THE_WINDOW_IN_WORDS = '/context';
 
 /** `here` is the folder holding the code the notes are about, and `drafts` is
  *  where the copy of it the agent is started in comes from. */
