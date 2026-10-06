@@ -243,6 +243,24 @@ describe("what the agent in a chat is told before it hears anybody", () => {
     expect(brief).toContain("look in the notes before you answer");
     expect(brief).toContain("Told why, write it down there");
   });
+
+  it("says nothing about places where the chat reads none", () => {
+    expect(chatBrief()).not.toContain("also read these places");
+    expect(chatBrief([])).toBe(chatBrief());
+  });
+
+  it("names the places it may read, and says it writes in none of them", () => {
+    const brief = chatBrief([
+      { root: "/work/lexer", name: "lexer" },
+      { root: "/work/runtime", name: "runtime" },
+    ]);
+
+    expect(brief).toContain("You may also read these places: lexer, runtime.");
+    expect(brief).toContain("nothing of yours is written there");
+    // Where they are is this device's business and not the agent's.
+    expect(brief).not.toContain("/work/lexer");
+    expect(brief.startsWith(chatBrief())).toBe(true);
+  });
 });
 
 describe("keeping the file an agent reads current", () => {

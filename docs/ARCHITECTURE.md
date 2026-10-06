@@ -3394,6 +3394,52 @@ numbers a note it writes, and leaves the number on a note already there alone, b
 number that note gives up has to go on leading to it and that does not happen in a file
 edited by hand.
 
+**A chat is a THREAD, and a device keeps as many as somebody started.** A conversation that
+dies with the window is one nobody builds a week of work on, so a thread is kept: what it is
+called, what was said in it, what it spent, which agent and model answered, the session that
+answered, and the places it reads. `ChatThread` in `@sloppy/types` is the shape and
+`ThreadsAccess` in `@sloppy/local` is where it lives — one JSON file per thread under the
+app's own private data, beside `ai-keys.json`, because a thread is where somebody got to in a
+conversation and not something a peer reads. **A file that does not parse is left out of the
+listing rather than thrown on**: one chat somebody cannot reopen is not worth the app.
+
+**A thread is what it is a chat ABOUT**, which is the graph and the project its notes are
+of, so a device holding the threads of six projects puts the right ones in front of
+somebody. It is named from the first thing said in it (`threadNameFrom`), renameable, and
+put aside into an archive rather than deleted by accident. Deleting one is the person's own
+act and asks first.
+
+**One thread, one draft, and the id is the same id.** The thread is what opens a session and
+the draft is where that session writes, so `DraftAccess.start` takes the thread's id and
+`DraftAccess.standing` answers every draft the device holds. A thread's draft outlives its
+session and the app, so deleting a thread asks what becomes of its draft — merged first,
+thrown away with it, or left standing — and never takes unread writing quietly with it.
+
+**Reopening a thread picks the agent's OWN session up.** `ChatAsked.thread` carries the
+session the thread last answered as, and the shell asks the agent to go on from it, which
+restores the whole conversation including what its tools answered — far more than anything
+we could replay. **A session asked for may not be there**: a transcript has an age and an
+agent may turn one down, so the shell opens a new one and the `started` event names which
+session answered. Where that is not the one asked for, the page says so in one quiet line
+and hands the agent `carriedOver`'s summary of the thread with the next thing said. There is
+no second channel for this: the id that came back is the whole of the evidence.
+
+**A thread reads PLACES beside its own project, and reads them only.** Somebody asking why
+one project is the way it is often has the answer in another, so a thread carries up to
+`MOST_PLACES` folders the person added to it. **The allow-list is the gate, and it is
+Rust's**: a place must already be a folder somebody picked, which `Folders::allows` is the
+one record of, and `AppRuntime.placeFiles` answers `undefined` for anything else — nothing
+typed on the page and no scan of the disk reaches a folder. The agent's own file tools reach
+a place because the shell names it at launch, and Sloppy's three READING acts reach its
+notes through an `in` argument naming the place by NAME. **The eight writing acts take no
+`in` and land in the thread's own draft**, whatever they say: `chatToolWrites` is what
+decides, so a place is read and never written. A place the thread does not carry, or one the
+shell will not serve, is refused to the agent in words it can act on. Changing places under
+a standing session lets it go, because nothing can be added to a session that is already
+running; the next thing said opens another with them, and the person is told why. Changing
+them while a TURN is underway is refused in the same words switching threads is, because
+letting the session go there would throw away the answer being written.
+
 **Every act LANDS, and the draft is what makes that safe.** A session works in a DRAFT: a
 second checkout of the repository keeping the notes, under the app's own data, on a branch
 of its own. The agent runs there, every act writes there, and the folder in front of the
@@ -3410,8 +3456,8 @@ yes to is finished work, read whole. So they read it whole.
 a branch and a folder on the disk, so `draft.rs` in the native shell lists the drafts of a
 folder out of the repository rather than out of anything a run remembers, and `DraftAccess`
 in `@sloppy/app-core` is the whole of what a page can do to one: what is standing, start or
-go on with one, and let one go. One per folder — opening the chat while one stands offers
-going on with it, reading it, or throwing it away.
+go on with one, and let one go. One per thread — reading a thread while its draft stands
+offers going on with it, reading it, or throwing it away.
 
 **A version is kept on the draft when a turn ends**, through the same `History` every other
 version goes through; the draft's branch is where those go and no commit of it ever touches
@@ -3563,8 +3609,8 @@ reason AI.md § "A Block Is a Section" gives about a note's own elements; a bloc
 we DO know and whose bounds it breaks is refused rather than carried as an unknown one. What
 a person ATTACHED is the one block a page composes itself, and it is held to its own bounds
 the same way. An event is composed by the shell rather than read off anything, so a page
-renders by exhausting the six of them: a session started, a block arriving or growing, a
-call waiting on the person, that question settled, a turn ended, and the session over. A
+renders by exhausting the five of them: a session started, a block arriving or growing, how
+full the agent's window is, a turn ended, and the session over. A
 block arriving again at a place already held is that block GROWN, and replaces it, which is
 the whole of how writing draws itself as it arrives.
 
@@ -3578,10 +3624,12 @@ after the rest, so a read that refused a long note would refuse exactly the note
 reading. An agent handed a cut answer with nothing said reads it as the whole of them,
 which is why the count it left is in the answer itself.
 
-**One session at a time on a device, and opening one replaces what stood.** A person sees
-one chat, so there is no second thread for a session to go on into unseen. Saying something
-while a turn is underway is refused rather than queued — the agent is answering the last
-thing it was told. **The draft is not the session**: closing the chat ends the program and
+**One LIVE session at a time on a device, and opening one replaces what stood.** A person
+keeps many threads and reads one of them, so there is no second conversation for a session
+to go on into unseen; reading another thread ends the session that stood and the next thing
+said opens that thread's own. Saying something while a turn is underway is refused rather
+than queued — the agent is answering the last thing it was told — and switching to another
+thread is refused for the same reason. **The draft is not the session**: closing the chat ends the program and
 leaves the draft standing, which is what lets somebody walk away from a long pass and read
 it tomorrow.
 
@@ -3624,7 +3672,8 @@ can reach is not a shell anybody may have. `AppRuntime.chat` is absent everywher
 native shell, which is what puts nothing in front of a reader in a tab.
 
 **The shapes are `chat.ts` in `@sloppy/types` and the seam is `AppRuntime.chat`.**
-`ChatSession`, `ChatTurn` and the blocks it carries are what a surface holds; `ChatEvent`
+`ChatThread` is the conversation a device keeps and `ChatPlace` one folder it may read;
+`ChatTurn` and the blocks it carries are what a surface holds; `ChatEvent`
 is what it is told; `ChatToolCall` is one act asked for, `ChatActDone` what it came to and `ChatToolAnswer`
 the half of that the agent is handed, `ChatCard` what a person is shown of it;
 `CHAT_TOOL_SPECS` is the acts themselves. `ChatAccess` in `@sloppy/app-core`'s runtime is
@@ -3672,6 +3721,21 @@ agent, what it wrote, and what the conversation has cost where the agent says �
 arrives as the conversation's total and is read as the latest rather than added. An agent that
 says nothing about spend is a turn nothing is said about, which is not a free one. The chat draws
 it as one quiet line, and the cost only where it was said.
+
+**How full the agent's window is, is READ from the agent and never estimated here.**
+Nothing on this side of the seam can count what an agent is holding — the system prompt it
+composed, the tool schemas it was handed, what it has already read — and a number we guessed
+would be a confident lie on a bar somebody is deciding by. So the page asks
+(`ChatAccess.context`) and the agent answers on the same channel it says everything else on,
+as a `context` event. `ContextUsage` is the shape: how much is in the window, how much it
+holds, where it will make room, and the parts the agent itself named — carried under the
+agent's own wording, because a name we rewrote would stop matching the one it uses. **A part
+is classified on its `kind` and never on its name**, and `deferred` — what the agent holds
+aside rather than in the window — is never in the used total; `usedIn` and `heldAsideIn` are
+the one place either is summed. **An empty breakdown is a count with no parts**, which is
+what arrives between one ask and the next, and `contextTogether` keeps the last breakdown
+standing under it so a bar has something to draw. A turn that made room says what the window
+held before it did.
 
 **A conversation moves to another agent by being carried.** A session is one agent's. Picking
 another lets the standing session go and carries what was said so far into the next one, as the

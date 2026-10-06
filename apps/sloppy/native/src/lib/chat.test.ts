@@ -1,4 +1,4 @@
-import { whatHappened, type ChatAccess } from '@sloppy/app-core';
+import { whatHappened, type ChatAccess, type ChatAsked } from '@sloppy/app-core';
 import type { AiKeysAccess } from '@sloppy/local';
 import {
 	CHAT_TOOLS,
@@ -19,7 +19,14 @@ const PARSER = 'src/parser.ts';
 
 /** Where this app keeps its own copies, as `draft_start` answers them. */
 const COPIES = '/data/drafts';
-const STOOD = '01JAPART000000000000000000';
+/** The thread a session is opened for, whose draft it works in. */
+const THREAD = '01JAPART000000000000000000';
+
+/** What a thread asks a session to be opened as. */
+const asking = (more: Partial<ChatAsked> = {}): ChatAsked => ({
+	thread: { id: THREAD, places: [] },
+	...more
+});
 
 function copy(id: string): StandingDraft {
 	return {
@@ -156,7 +163,7 @@ function chat(): ChatAccess {
 async function opened(): Promise<{ access: ChatAccess; heard: ChatEvent[] }> {
 	const heard: ChatEvent[] = [];
 	const access = chat();
-	await access.open({}, (event) => heard.push(event), serve);
+	await access.open(asking(), (event) => heard.push(event), serve);
 	return { access, heard };
 }
 
@@ -251,7 +258,7 @@ describe('the agents this device can reach', () => {
 	it('says what to install where a chat is opened anyway', async () => {
 		here = [];
 
-		await expect(chat().open({}, () => {}, serve)).rejects.toThrow(
+		await expect(chat().open(asking(), () => {}, serve)).rejects.toThrow(
 			'Sloppy has nothing on this computer to chat with. Install Claude Code, or give it a key in Settings, and try again.'
 		);
 	});
@@ -259,7 +266,7 @@ describe('the agents this device can reach', () => {
 	it('says which one is missing where somebody chose it', async () => {
 		here = [];
 
-		await expect(chat().open({ agent: 'claude_code' }, () => {}, serve)).rejects.toThrow(
+		await expect(chat().open(asking({ agent: 'claude_code' }), () => {}, serve)).rejects.toThrow(
 			'Claude Code is not on this computer. Install it and try again.'
 		);
 	});
@@ -282,7 +289,7 @@ describe('a session', () => {
 			() => channel
 		);
 
-		await expect(access.open({}, () => {}, serve)).rejects.toThrow(
+		await expect(access.open(asking(), () => {}, serve)).rejects.toThrow(
 			'Open the project these notes are about first.'
 		);
 		expect(started).toEqual([]);
@@ -291,7 +298,7 @@ describe('a session', () => {
 	it('starts the agent in the project itself where this shell keeps no draft', async () => {
 		const access = tauriChat(project, undefined, call, () => channel);
 
-		await access.open({}, () => {}, serve);
+		await access.open(asking(), () => {}, serve);
 
 		expect(opens[0].root).toBe(PROJECT);
 	});
@@ -431,7 +438,7 @@ describe('a session', () => {
 	it('lets go of a session another was opened over', async () => {
 		const { access, heard } = await opened();
 
-		await access.open({}, () => {}, serve);
+		await access.open(asking(), () => {}, serve);
 
 		expect(heard.at(-1)).toEqual({ event: 'over' });
 		expect(opens).toHaveLength(2);
@@ -678,18 +685,18 @@ describe('the draft a chat works in', () => {
 	});
 
 	it('works in the one already standing rather than taking a second', async () => {
-		standing = [copy(STOOD)];
+		standing = [copy(THREAD)];
 
 		await opened();
 
 		expect(started).toEqual([]);
-		expect(opens[0].root).toBe(`${COPIES}/${STOOD}`);
+		expect(opens[0].root).toBe(`${COPIES}/${THREAD}`);
 	});
 
 	it('takes one copy where a page and a session ask for it at once', async () => {
 		const held = drafts();
 
-		const [one, other] = await Promise.all([held.start(), held.start()]);
+		const [one, other] = await Promise.all([held.start(THREAD), held.start(THREAD)]);
 
 		expect(started).toHaveLength(1);
 		expect(one).toEqual(other);
@@ -699,13 +706,13 @@ describe('the draft a chat works in', () => {
 		notes = undefined;
 		const held = drafts();
 
-		expect(await held.standing()).toBeUndefined();
-		await expect(held.start()).rejects.toThrow('Open the notes you want a draft of first.');
+		expect(await held.standing()).toEqual([]);
+		await expect(held.start(THREAD)).rejects.toThrow('Open the notes you want a draft of first.');
 	});
 
 	it('reaches the copy at the project and its states at the notes inside it', async () => {
 		const held = drafts();
-		const draft = await held.start();
+		const draft = await held.start(THREAD);
 
 		expect(held.files(draft).root).toBe(draft.root);
 		await held.history(draft).currentCommit();
@@ -725,7 +732,7 @@ describe('the draft a chat works in', () => {
 		await access.close();
 
 		expect(discarded).toEqual([]);
-		expect(await access.drafts?.standing()).toEqual(draft);
+		expect(await access.drafts?.standing()).toEqual([draft]);
 	});
 
 	it('is gone once the person discards it', async () => {
@@ -735,13 +742,13 @@ describe('the draft a chat works in', () => {
 		await access.drafts?.discard(draft);
 
 		expect(discarded).toEqual([{ root: NOTES, id: draft.id }]);
-		expect(await access.drafts?.standing()).toBeUndefined();
+		expect(await access.drafts?.standing()).toEqual([]);
 	});
 });
 
 describe('what the agent is told before it hears anybody', () => {
 	it('is sent the brief, so it knows it is in Sloppy at all', async () => {
-		await chat().open({}, () => {}, serve);
+		await chat().open(asking(), () => {}, serve);
 
 		const { brief } = opens[0];
 		expect(brief).toContain('.sloppy/AGENT.md');
@@ -751,10 +758,10 @@ describe('what the agent is told before it hears anybody', () => {
 	});
 
 	it('answers with the model somebody chose, and with none where they chose nothing', async () => {
-		await chat().open({ model: 'opus' }, () => {}, serve);
+		await chat().open(asking({ model: 'opus' }), () => {}, serve);
 		expect(opens[0].model).toBe('opus');
 
-		await chat().open({}, () => {}, serve);
+		await chat().open(asking(), () => {}, serve);
 		expect(opens[1].model).toBeUndefined();
 	});
 });

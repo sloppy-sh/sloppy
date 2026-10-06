@@ -883,7 +883,13 @@ describe('which model answers', () => {
 		labelled('Send')?.click();
 		await settle();
 
-		expect(stub.asked).toEqual([{ agent: 'claude_code', model: 'sonnet' }]);
+		expect(stub.asked).toEqual([
+			{
+				agent: 'claude_code',
+				model: 'sonnet',
+				thread: { id: chat.current?.id, places: [] }
+			}
+		]);
 	});
 
 	it('leaves the chat in front of them with the one it started with, and says so', async () => {

@@ -13,6 +13,7 @@ import {
 } from "./appearance.js";
 import { WRITE_DONE } from "./authority.js";
 import { OwnedRefSchema, TimestampSchema, UlidSchema } from "./common.js";
+import { DRAFT_PATH_MAX } from "./draft.js";
 import {
   EDGE_DIRECTIONS,
   EDGE_LABEL_MAX,
@@ -116,6 +117,46 @@ export const MAX_BLOCKS_PER_TURN = 512;
 /** A session longer than this is a new chat. */
 export const MAX_TURNS_PER_SESSION = 512;
 
+/** Long enough for the line a thread is called by where somebody reads a list
+ *  of them. */
+export const CHAT_THREAD_NAME_MAX = 120;
+
+/** What a thread is called before anything has been said in it. */
+const UNTITLED_THREAD = "Untitled";
+
+/**
+ * What a thread is called, taken from what was said in it: the first line of
+ * it, cut to {@link CHAT_THREAD_NAME_MAX}. **Said nothing, it is
+ * {@link UNTITLED_THREAD}**, which is what a thread opened and not yet spoken
+ * into is called, and what a person renaming one to nothing gets.
+ */
+export function threadNameFrom(words: string): string {
+  const line = words.trim().split("\n")[0].trim();
+  if (line === "") return UNTITLED_THREAD;
+  return line.length > CHAT_THREAD_NAME_MAX
+    ? `${line.slice(0, CHAT_THREAD_NAME_MAX - 1)}…`
+    : line;
+}
+
+/** More places than one thread reads besides its own project. */
+export const MOST_PLACES = 8;
+
+/**
+ * A place the thread may read besides its own project: a folder on this device
+ * the person added to it, named so the agent can ask for it by name.
+ *
+ * `root` is where it is, as the platform spells a folder, and is the shell's
+ * own business — nothing shows it. `name` is what a person and the agent both
+ * call it. **Absent `graph` is a folder that holds no graph**: the agent's own
+ * file tools read it and Sloppy's note acts answer nothing for it.
+ */
+export const ChatPlaceSchema = z.object({
+  root: z.string().min(1).max(DRAFT_PATH_MAX),
+  name: z.string().min(1).max(CHAT_THREAD_NAME_MAX),
+  graph: OwnedRefSchema.optional(),
+});
+export type ChatPlace = z.infer<typeof ChatPlaceSchema>;
+
 /** What a tool call's arguments may run to, encoded — {@link argumentsFit}. */
 export const CHAT_ARGUMENTS_MAX = 8192;
 
@@ -205,7 +246,21 @@ export const CHAT_SECTION_MAX = 16384;
  *  reach. */
 const ABOUT_MAX = 64;
 
-export const ListNotesArgumentsSchema = z.object({});
+/**
+ * Which of the thread's places a reading act answers for. **Absent is the
+ * project the chat is about**, which is where everything a reading act is not
+ * told otherwise is read; the writing acts carry none of this and land in the
+ * chat's own draft.
+ */
+const InPlaceSchema = z
+  .string()
+  .max(CHAT_THREAD_NAME_MAX)
+  .optional()
+  .describe(
+    "Which place to read: the name of one the person added to this thread. Absent is this project.",
+  );
+
+export const ListNotesArgumentsSchema = z.object({ in: InPlaceSchema });
 export type ListNotesArguments = z.infer<typeof ListNotesArgumentsSchema>;
 
 export const SearchNotesArgumentsSchema = z.object({
@@ -217,11 +272,13 @@ export const SearchNotesArgumentsSchema = z.object({
     .describe(
       "The words to look for, or an address like 1a1. A note is found where its title, its tags or its writing carry all of them.",
     ),
+  in: InPlaceSchema,
 });
 export type SearchNotesArguments = z.infer<typeof SearchNotesArgumentsSchema>;
 
 export const ReadNoteArgumentsSchema = z.object({
   note: OwnedRefSchema.describe("The note, as a listing of them gives it."),
+  in: InPlaceSchema,
 });
 export type ReadNoteArguments = z.infer<typeof ReadNoteArgumentsSchema>;
 
@@ -757,8 +814,9 @@ export const ChatTurnSchema = z.object({
 });
 export type ChatTurn = z.infer<typeof ChatTurnSchema>;
 
-/** A chat as the surface holding it has it. Nothing stores one: a session
- *  lasts as long as the surface showing it. */
+/** One run of an agent as the surface holding it has it, lasting as long as
+ *  that run does. {@link ChatThreadSchema} is what is KEPT: the conversation
+ *  outlives any session of it. */
 export const ChatSessionSchema = z.object({
   id: ChatSessionIdSchema,
   /** What the agent said it is. **Absent is one that said nothing about
@@ -1130,6 +1188,133 @@ export function spentTogether(
   ) as ChatSpend;
 }
 
+/**
+ * What a part of what the agent is holding counts towards. **Classify on this
+ * and never on a part's name**, which is the agent's own wording and changes
+ * under us.
+ *
+ * - `used` — in the window now, and what the bar is drawn from.
+ * - `free` — room left in the window.
+ * - `buffer` — room the agent keeps back for its own answer.
+ * - `deferred` — held aside rather than in the window, and NEVER in the used
+ *   total; it is said beside the bar and drawn in none of it.
+ */
+export const CONTEXT_PART_KINDS = [
+  "used",
+  "free",
+  "buffer",
+  "deferred",
+] as const;
+export type ContextPartKind = (typeof CONTEXT_PART_KINDS)[number];
+
+/** Longer than what any agent calls a part of what it is holding. */
+export const CONTEXT_PART_NAME_MAX = 80;
+
+/** More parts than a bar can be read as, let alone a legend beside it. */
+export const MOST_CONTEXT_PARTS = 32;
+
+/** One part of what the agent is holding, as the agent itself names and counts
+ *  it. **The name is the agent's own and is shown as it arrived** — nothing
+ *  here invents, translates or groups one. */
+export const ContextPartSchema = z.object({
+  name: z.string().min(1).max(CONTEXT_PART_NAME_MAX),
+  tokens: z.int().min(0),
+  kind: z.enum(CONTEXT_PART_KINDS),
+});
+export type ContextPart = z.infer<typeof ContextPartSchema>;
+
+/**
+ * How full the agent's window is — read from the agent, never estimated here.
+ *
+ * `total` is what is in the window now and `limit` is how much it holds, both
+ * in tokens. **An EMPTY `parts` is a count with no breakdown**, which is what
+ * arrives between one asked-for breakdown and the next;
+ * {@link contextTogether} is what keeps the last breakdown standing under it,
+ * so no surface works that out for itself.
+ *
+ * **Absent `compactsAt` is an agent that does not say** where it will make
+ * room, which is not the same as one that never will. **Absent `compacted` is
+ * a turn that made no room**; a count is what the window held before it did.
+ */
+export const ContextUsageSchema = z.object({
+  total: z.int().min(0),
+  limit: z.int().min(1),
+  compactsAt: z.int().min(0).optional(),
+  parts: z.array(ContextPartSchema).max(MOST_CONTEXT_PARTS),
+  at: TimestampSchema,
+  compacted: z.object({ from: z.int().min(0) }).optional(),
+});
+export type ContextUsage = z.infer<typeof ContextUsageSchema>;
+
+/** What of the window the parts account for — the one place they are summed. */
+export function usedIn(usage: ContextUsage): number {
+  return partsSummed(usage, "used");
+}
+
+/** What the agent is holding aside rather than in the window. */
+export function heldAsideIn(usage: ContextUsage): number {
+  return partsSummed(usage, "deferred");
+}
+
+function partsSummed(usage: ContextUsage, kind: ContextPartKind): number {
+  return usage.parts.reduce(
+    (summed, part) => (part.kind === kind ? summed + part.tokens : summed),
+    0,
+  );
+}
+
+/**
+ * A count arriving onto the one held: the newer counts, with the older
+ * breakdown kept where the newer carries none. A count with no breakdown is
+ * how full the window is NOW, and dropping the last breakdown under it would
+ * leave a bar with nothing to draw between two asks.
+ */
+export function contextTogether(
+  held: ContextUsage | undefined,
+  more: ContextUsage,
+): ContextUsage {
+  if (held === undefined || more.parts.length > 0) return more;
+  return { ...more, parts: held.parts };
+}
+
+/**
+ * One chat, kept on this device until somebody deletes it. `id` is the thread
+ * everywhere: the draft it writes into is this id's and so is the session the
+ * agent was opened with, so reopening a thread picks up both.
+ *
+ * `graph` and `project` are what it is a chat ABOUT, which is what says which
+ * threads belong in front of somebody — a device holds the threads of every
+ * project it has opened.
+ *
+ * **Absent `archived_at` is a live thread**, and a time is one put aside;
+ * **absent `session`** is a thread no agent has opened yet, or one whose agent
+ * said nothing about a session, and reopening it opens a new one. `agent` and
+ * `model` are what it last opened with — **absent is a thread that has not
+ * opened one yet**. **Absent `spent` is a thread nothing was said about**,
+ * which is not a free one.
+ */
+export const ChatThreadSchema = z.object({
+  id: UlidSchema,
+  name: z.string().min(1).max(CHAT_THREAD_NAME_MAX),
+  graph: OwnedRefSchema,
+  project: z.string().min(1).max(DRAFT_PATH_MAX),
+  created_at: TimestampSchema,
+  updated_at: TimestampSchema,
+  archived_at: TimestampSchema.optional(),
+  agent: z.enum(CHAT_AGENTS).optional(),
+  model: z.string().max(CHAT_MODEL_MAX).optional(),
+  session: ChatSessionIdSchema.optional(),
+  places: z.array(ChatPlaceSchema).max(MOST_PLACES),
+  turns: z.array(ChatTurnSchema).max(MAX_TURNS_PER_SESSION),
+  spent: ChatSpendSchema.optional(),
+});
+export type ChatThread = z.infer<typeof ChatThreadSchema>;
+
+const ContextEventSchema = z.object({
+  event: z.literal("context"),
+  usage: ContextUsageSchema,
+});
+
 const EndedEventSchema = z.object({
   event: z.literal("ended"),
   /** **Absent is a turn that finished.** True is one the person stopped, which
@@ -1157,6 +1342,7 @@ const OverEventSchema = z.object({
 export const ChatEventSchema = z.discriminatedUnion("event", [
   StartedEventSchema,
   BlockEventSchema,
+  ContextEventSchema,
   EndedEventSchema,
   OverEventSchema,
 ]);

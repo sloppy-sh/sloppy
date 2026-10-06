@@ -56,9 +56,12 @@ function textIn(content: BlockDocument): string {
  * names.
  */
 const drafts: DraftAccess = {
-	standing: async () => standing?.draft,
-	start: async () => {
-		if (standing) return standing.draft;
+	standing: async () => (standing ? [standing.draft] : []),
+	start: async (id) => {
+		if (standing) {
+			if (standing.draft.id !== id) throw new Error('a second draft for a second thread');
+			return standing.draft;
+		}
 		copyStore = new Map();
 		for (const [path, bytes] of store) {
 			if (path.startsWith('/data/')) copyStore.set(path, bytes);
@@ -68,7 +71,6 @@ const drafts: DraftAccess = {
 		const history = new MemoryHistory(copyFiles(), { author: 'Ada' });
 		const began = await history.commit('The notes as the draft found them');
 		if (!began) throw new Error('a copy of nothing');
-		const id = ulid();
 		standing = {
 			draft: { id, root: COPY, vault: COPY, branch: draftBranch(id), from: began.id },
 			history
@@ -85,6 +87,9 @@ const drafts: DraftAccess = {
 		return standing.history;
 	}
 };
+
+/** The thread whose draft these tests drive: one chat, one draft. */
+const THREAD = ulid();
 
 const chatting: ChatAccess = {
 	agents: async () => ['claude_code'] as ChatAgent[],
@@ -116,7 +121,7 @@ function shell(): void {
 /** One turn of the chat: the draft where none stands, what it wrote, and the
  *  version kept on it when the turn ends. */
 async function aTurn(wrote: (drafted: LocalApi) => Promise<void>): Promise<void> {
-	await chatDraft.start();
+	await chatDraft.start(THREAD);
 	await wrote(inTheDraft());
 	await chatDraft.keepWhatTheTurnWrote();
 }
@@ -153,25 +158,25 @@ afterEach(() => {
 	resetApi();
 });
 
-describe('a draft standing for the folder', () => {
+describe('a draft standing for a thread', () => {
 	it('is not there until a turn wants one, and is found again afterwards', async () => {
 		await chatDraft.look();
 		expect(chatDraft.standing).toBe(null);
 		expect(chatDraft.keeps).toBe(true);
 
-		await chatDraft.start();
+		await chatDraft.start(THREAD);
 		const held = chatDraft.standing;
 		expect(held).not.toBe(null);
 
 		// What a run of the app finds when it opens on a draft left standing.
 		chatDraft.clear();
-		await chatDraft.look();
+		await chatDraft.standingFor(THREAD);
 		expect(chatDraft.standing?.id).toBe(held?.id);
 	});
 
 	it('answers the standing one rather than making a second', async () => {
-		const first = await chatDraft.start();
-		const second = await chatDraft.start();
+		const first = await chatDraft.start(THREAD);
+		const second = await chatDraft.start(THREAD);
 		expect(second.id).toBe(first.id);
 	});
 });
@@ -291,7 +296,7 @@ describe('reading a draft', () => {
 	});
 
 	it('says so in one line where nothing in it is different', async () => {
-		await chatDraft.start();
+		await chatDraft.start(THREAD);
 		await chatDraft.review();
 		expect(chatDraft.read?.nothing).toBe(true);
 	});
@@ -302,7 +307,7 @@ describe('reading a draft', () => {
 	it('lists nothing of what the person wrote and has not kept', async () => {
 		const since = await api.createNode({ title: 'Written and not kept' });
 
-		await chatDraft.start();
+		await chatDraft.start(THREAD);
 		await chatDraft.review();
 
 		expect((await inTheDraft().getNode(since.ref))?.title).toBe('Written and not kept');

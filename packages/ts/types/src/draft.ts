@@ -25,7 +25,8 @@ export const DRAFT_COMMIT_MAX = 128;
 /** {@link DRAFT_BRANCH_PREFIX} and a ulid, with room to spare. */
 export const DRAFT_BRANCH_MAX = 128;
 
-/** The branch a draft with that ulid is written on. */
+/** The branch a draft with that ulid is written on. The ulid is the THREAD's:
+ *  one chat, one draft. */
 export function draftBranch(id: string): string {
   return `${DRAFT_BRANCH_PREFIX}${id}`;
 }
@@ -39,8 +40,10 @@ export function draftIdIn(branch: string): string | undefined {
 }
 
 /**
- * A draft standing for one folder: a copy of it the chat writes into, kept
- * apart from the folder a person has open until they merge it or discard it.
+ * A draft standing for one THREAD of the chat: a copy of the folder that
+ * thread writes into, kept apart from the folder a person has open until they
+ * merge it or discard it. `id` is the thread's own — a device holds as many
+ * drafts as it has threads that have written anything.
  *
  * `root` and `vault` are where that copy is, as the platform spells a folder,
  * and are the shell's own business — nothing shows either. They are two paths

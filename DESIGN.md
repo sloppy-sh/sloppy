@@ -1016,15 +1016,23 @@ work you asked for and throwing it away is an ordinary choice rather than a warn
 no third act: a draft is taken whole or not at all, and a person who wants half of it says so
 to the agent and reads it again.
 
-**A standing draft is said once, quietly, where the chat is.** Not a badge, not a count on
-the canvas, not a nag: a line at the head of the chat saying a draft is standing, with going
-on with it, reading it, or throwing it away. It is still there tomorrow, and the line reads
-the same then.
+**A standing draft is said once, quietly, where the chat is — and it is THAT chat's.** Not a
+badge, not a count on the canvas, not a nag: a line at the head of the chat saying a draft is
+standing, with going on with it, reading it, or throwing it away. Each chat writes into a
+draft of its own, so the line belongs to the chat in front of you and says nothing about
+anybody else's; it is still there tomorrow, and it reads the same then. **Deleting a chat
+whose draft holds writing asks about the writing first** — merge it, throw it away with the
+chat, or keep the chat — because a delete that quietly took unread work with it is the one
+thing this whole surface exists to prevent.
 
-**The words are draft, review, merge, discard, version and kept.** Never branch, never a
-commit, never a checkout, never a conflict marker — AI.md § "User-Facing Copy Names the
-Outcome". The history surfaces say "branch" because a branch is what a person is looking at
-there; a draft is not one of those surfaces.
+**The words are draft, review, merge, discard, version, kept, chat and place.** Never
+branch, never a commit, never a checkout, never a conflict marker, never a session — AI.md
+§ "User-Facing Copy Names the Outcome". The history surfaces say "branch" because a branch
+is what a person is looking at there; a draft is not one of those surfaces. A conversation
+is a **chat** wherever a person reads one, because "thread" already names the run of turns
+inside it. **"Tokens" is allowed**, and only as the unit the chart is read in: it is what
+somebody asking how much room is left already calls it, and `tokensSaid` is the one place it
+is written.
 
 ## An anchor into code
 
@@ -1259,6 +1267,36 @@ nothing under it.
   the composer, one quiet line saying who is answering and what the conversation has spent,
   the cost only where the agent says one. Anything else that wants to stand beside the graph
   is a third use of the same dock, never a second copy of it.
+  **The chat's head is the name of the chat you are in, and the way to every other.** A
+  person keeps as many chats about a project as they started, so the head reads like the row
+  where a graph is named: the chat's own name, the way to the rest of them and to a new one,
+  and beside the name a three-dots button holding what can be done to this one — **Rename**,
+  **Archive** (or **Put back**, where it is already archived), **Copy the whole chat**,
+  **Delete** — in that order, with Delete last and asking. The ones put aside stand under
+  their own heading, **Archived**, below the live ones, where putting one back is the only
+  act offered. The name is taken from the first thing said and is theirs to change, so a
+  chat is never called "Untitled" for long.
+  **Under the spend line, one bar says how much room is left.** It is a single horizontal
+  stack across the dock: a segment per part the agent named, in the agent's own order, the
+  free remainder left unfilled, what the agent keeps back for its answer drawn lighter at
+  the tail, and a thin tick where it will make room. Parts held aside rather than in the
+  window are in none of it and are said in one line under it. The bar alone is the quiet
+  default; a legend of one row per part — swatch, the agent's own name for it, the count —
+  opens on tap, because a reader who is not asking does not want a key. A turn that made
+  room draws the bar down and says what it came from.
+  **The bar is the second surface outside the canvas that spends hue**, on the same
+  justification as the commit lanes (§ "The history as a picture"): which part of the window
+  a band is, is the question the picture exists to answer, and over a dozen stacked bands ink
+  weight cannot carry it. So a part borrows a slot from the same eight the canvas lends a
+  selected tag (§ "Hue — the tags you selected, and only those"), taken in the order the
+  agent named them and wrapping onto the first past eight. Nothing about the canvas changes:
+  there, still, nothing is coloured until the reader selects a tag.
+  **The places a chat reads are its own, and they are read-only.** They are offered from the
+  folders this device already knows and from the folder picker, named by what the folder is
+  called rather than by where it is, and shown as a short row the person adds to and takes
+  from. Changing them is not offered while an answer is underway — the assistant is
+  reading as it writes — and changing them afterwards picks the conversation up with them
+  when you next say something, which one line says.
 - **Both may stand at once, and they stack.** You read the note while you chat about it, so
   the chat is outermost — it is the companion that stays — and a note opened to read sits
   between it and the graph. A second dock opens beside the first only where the graph would

@@ -7,7 +7,7 @@
 
 import type { ChatAccess } from '@sloppy/app-core';
 import type { Files, History } from '@sloppy/local';
-import { StandingDraftSchema, ulid, type StandingDraft } from '@sloppy/types';
+import { StandingDraftSchema, type StandingDraft, type Ulid } from '@sloppy/types';
 import { invoke } from '@tauri-apps/api/core';
 import { refusal, tauriHistory, type Invoke } from './files';
 
@@ -24,9 +24,9 @@ const NO_NOTES = 'Open the notes you want a draft of first.';
 const DIDNT_WORK = 'That did not work. Try again.';
 
 class TauriDrafts implements DraftAccess {
-	/** One being taken, so that the page asking and a session opening do not
-	 *  make two copies of one folder. */
-	private starting?: Promise<StandingDraft>;
+	/** One being taken per thread, so that the page asking and a session
+	 *  opening do not make two copies of one folder. */
+	private readonly starting = new Map<Ulid, Promise<StandingDraft>>();
 
 	constructor(
 		private readonly notes: () => string | undefined,
@@ -34,19 +34,19 @@ class TauriDrafts implements DraftAccess {
 		private readonly call: Invoke
 	) {}
 
-	async standing(): Promise<StandingDraft | undefined> {
+	async standing(): Promise<StandingDraft[]> {
 		const root = this.notes();
-		if (root === undefined) return undefined;
+		if (root === undefined) return [];
 		return this.held(root);
 	}
 
-	async start(): Promise<StandingDraft> {
-		this.starting ??= this.takes(this.here());
-		try {
-			return await this.starting;
-		} finally {
-			this.starting = undefined;
+	async start(id: Ulid): Promise<StandingDraft> {
+		let starting = this.starting.get(id);
+		if (!starting) {
+			starting = this.takes(this.here(), id).finally(() => this.starting.delete(id));
+			this.starting.set(id, starting);
 		}
+		return starting;
 	}
 
 	async discard(draft: StandingDraft): Promise<void> {
@@ -61,13 +61,13 @@ class TauriDrafts implements DraftAccess {
 		return tauriHistory(draft.vault, this.call);
 	}
 
-	private async takes(root: string): Promise<StandingDraft> {
-		return (await this.held(root)) ?? read(await this.asked(START, { root, id: ulid() }));
+	private async takes(root: string, id: Ulid): Promise<StandingDraft> {
+		const held = (await this.held(root)).find((draft) => draft.id === id);
+		return held ?? read(await this.asked(START, { root, id }));
 	}
 
-	private async held(root: string): Promise<StandingDraft | undefined> {
-		const [first] = await this.asked<unknown[]>(STANDING, { root });
-		return first === undefined ? undefined : read(first);
+	private async held(root: string): Promise<StandingDraft[]> {
+		return (await this.asked<unknown[]>(STANDING, { root })).map(read);
 	}
 
 	private here(): string {

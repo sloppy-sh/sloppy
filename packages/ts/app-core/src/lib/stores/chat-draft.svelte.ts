@@ -3,6 +3,9 @@
  * apart from the one in front of somebody until they take it in or throw it
  * away — docs/ARCHITECTURE.md § "Asking a tool to write the notes".
  *
+ * One draft per THREAD: {@link ChatDraftStore.standingFor} is how the thread
+ * in front of somebody finds its own, and the draft in this store is that one.
+ *
  * `DraftAccess` in `runtime.ts` is the platform's half — making the copy and
  * reaching it. Reading two copies of one graph against each other and settling
  * them is the store's, and it is `previewVault` and `importVault` in
@@ -25,7 +28,8 @@ import type {
 	ImportSettlement,
 	NodeView,
 	OwnedRef,
-	StandingDraft
+	StandingDraft,
+	Ulid
 } from '@sloppy/types';
 import {
 	countsIn,
@@ -100,6 +104,7 @@ interface TwoCopies {
 }
 
 class ChatDraftStore {
+	#all = $state.raw<readonly StandingDraft[]>([]);
 	#standing = $state.raw<StandingDraft | null>(null);
 	#counts = $state.raw<DifferenceCounts | null>(null);
 	#read = $state.raw<DraftAsRead | null>(null);
@@ -107,9 +112,10 @@ class ChatDraftStore {
 	#reading = $state(false);
 	#busy = $state(false);
 	#says = $state.raw<string | null>(null);
-	/** One start at a time: the agent calls several acts at once and each one
-	 *  wants the draft, and two starts would be two copies of one folder. */
-	#starting: Promise<StandingDraft> | null = null;
+	/** One start at a time per thread: the agent calls several acts at once and
+	 *  each one wants the draft, and two starts would be two copies of one
+	 *  folder. */
+	readonly #starting = new Map<Ulid, Promise<StandingDraft>>();
 	/** The two copies of the graph, for reading one note as each has it.
 	 *  Nothing watches them: a row asks a question and draws the answer. */
 	#copies: Record<DraftSide, GraphAsItWas | null> = { draft: null, folder: null };
@@ -120,9 +126,15 @@ class ChatDraftStore {
 		return this.#access() !== undefined;
 	}
 
-	/** The draft standing for the folder in front of somebody. */
+	/** The draft of the thread in front of somebody. */
 	get standing(): StandingDraft | null {
 		return this.#standing;
+	}
+
+	/** Every draft this device holds, for whichever threads have written
+	 *  anything. */
+	get all(): readonly StandingDraft[] {
+		return this.#all;
 	}
 
 	/** How much is in it, for a line saying so before anybody reads it. Null
@@ -156,35 +168,50 @@ class ChatDraftStore {
 		return this.#says;
 	}
 
-	/** Look for a draft left standing — by an earlier turn, or by an earlier
-	 *  run of the app. Not finding one is not a failure. */
+	/** Look for the drafts left standing — by an earlier turn, or by an earlier
+	 *  run of the app. Finding none is not a failure, and this makes none of
+	 *  them the one in front of somebody. */
 	async look(): Promise<void> {
 		const drafts = this.#access();
 		if (!drafts) return;
 		try {
-			this.#standing = (await drafts.standing()) ?? null;
+			this.#all = await drafts.standing();
 		} catch (error) {
-			this.#standing = null;
-			whatHappened.put('trouble', `the draft was not looked up: ${troubleIn(error)}`);
+			this.#all = [];
+			whatHappened.put('trouble', `the drafts were not looked up: ${troubleIn(error)}`);
 		}
-		if (this.#standing) {
-			await this.count();
-			return;
-		}
-		this.#counts = null;
-		this.#wrote = false;
 	}
 
-	/** The draft to work in: the one standing, or a new one holding the notes
-	 *  as the folder has them now. REJECTS in words for the person. */
-	async start(): Promise<StandingDraft> {
+	/** The thread `id`'s draft, read again and made the one in front of
+	 *  somebody. `null` is a thread that has written nothing yet, and NO thread
+	 *  is none of them — which is what a chat nobody has said anything into
+	 *  has. */
+	async standingFor(id?: Ulid): Promise<StandingDraft | null> {
+		await this.look();
+		const held = id === undefined ? null : (this.#all.find((draft) => draft.id === id) ?? null);
+		const same = held !== null && this.#standing?.id === held.id;
+		this.#standing = held;
+		if (same) return held;
+		this.#letReadGo();
+		if (held) await this.count();
+		return held;
+	}
+
+	/** The draft the thread `id` works in: the one standing for it, or a new
+	 *  one holding the notes as the folder has them now. REJECTS in words for
+	 *  the person. */
+	async start(id: Ulid): Promise<StandingDraft> {
 		const drafts = this.#access();
 		if (!drafts) throw new Error('There is no draft of the notes to write into.');
-		this.#starting ??= drafts.start().finally(() => {
-			this.#starting = null;
-		});
-		const draft = await this.#starting;
+		let starting = this.#starting.get(id);
+		if (!starting) {
+			starting = drafts.start(id).finally(() => this.#starting.delete(id));
+			this.#starting.set(id, starting);
+		}
+		const draft = await starting;
+		if (this.#standing?.id !== draft.id) this.#letReadGo();
 		this.#standing = draft;
+		this.#all = [draft, ...this.#all.filter((one) => one.id !== draft.id)];
 		return draft;
 	}
 
@@ -323,17 +350,24 @@ class ChatDraftStore {
 		}
 	}
 
-	/** Another graph has not had this one's draft. The draft on the disk is
-	 *  left exactly where it is: only what was read of it is let go. */
+	/** Another graph has not had this one's drafts. The drafts on the disk are
+	 *  left exactly where they are: only what was read of them is let go. */
 	clear(): void {
+		this.#all = [];
 		this.#standing = null;
+		this.#letReadGo();
+		this.#says = null;
+		this.#reading = false;
+		this.#busy = false;
+	}
+
+	/** What was read of whichever draft was in front of somebody, which is
+	 *  nothing once another one is. */
+	#letReadGo(): void {
 		this.#counts = null;
 		this.#wrote = false;
 		this.#read = null;
 		this.#copies = { draft: null, folder: null };
-		this.#says = null;
-		this.#reading = false;
-		this.#busy = false;
 	}
 
 	#access() {
@@ -350,11 +384,9 @@ class ChatDraftStore {
 		const drafts = this.#access();
 		const draft = this.#standing;
 		if (drafts && draft) await drafts.discard(draft);
+		if (draft) this.#all = this.#all.filter((one) => one.id !== draft.id);
 		this.#standing = null;
-		this.#counts = null;
-		this.#wrote = false;
-		this.#read = null;
-		this.#copies = { draft: null, folder: null };
+		this.#letReadGo();
 	}
 
 	async #twoCopies(): Promise<TwoCopies | null> {

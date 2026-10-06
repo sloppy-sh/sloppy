@@ -5,6 +5,7 @@
 import { decodeText, encodeText } from "@sloppy/vault";
 import type { Files } from "./files.js";
 import {
+  type ChatPlace,
   COMPASS_DIRECTIONS,
   COMPASS_KINDS,
   compassMethod,
@@ -453,8 +454,12 @@ export async function keepAgentFile(container: Files): Promise<void> {
  * FOR, and what it cannot do; the format and the rules are {@link AGENT_MD},
  * which it reads rather than being handed, because that file is also what an
  * agent at a terminal reads and there is one copy of it.
+ *
+ * `places` are the other folders the thread may read. They are named here by
+ * NAME and never by path, because the name is what a reading act takes.
  */
-export function chatBrief(): string {
+export function chatBrief(places: readonly ChatPlace[] = []): string {
+  const named = places.map((place) => place.name).join(", ");
   return [
     "You are answering inside Sloppy, a knowledge graph. The notes for this project are a Sloppy graph in the .sloppy folder beside the code: the record of why this project is the way it is, read by the people here and by you.",
     "Asked why something is the way it is, look in the notes before you answer. Told why, write it down there — with what said so named in the note, and the open question written down instead where nothing did.",
@@ -463,5 +468,10 @@ export function chatBrief(): string {
     "Look before you write. Search the notes for what you are about to say: a fact this graph already carries is cited, never written a second time.",
     "You cannot write or change any file in this project, and you have no tool that could. Sloppy reads the project and never writes in it. Do not offer to, and do not ask for permission you cannot be given — the notes are where your writing goes.",
     "An act that writes lands on a draft of the notes; the person reads the whole draft and merges it once. So make the write, and never ask in prose whether you may.",
+    ...(named === ""
+      ? []
+      : [
+          `You may also read these places: ${named}. Their notes are reached by naming the place; nothing of yours is written there.`,
+        ]),
   ].join("\n\n");
 }

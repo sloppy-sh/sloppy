@@ -1,6 +1,11 @@
-import type { AppRuntime } from '@sloppy/app-core';
+import type { AppRuntime, ChatAsked } from '@sloppy/app-core';
 import type { Credential } from '@sloppy/local';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/** What a thread asks a session to be opened as. */
+const asking = (): ChatAsked => ({
+	thread: { id: '01JAPART000000000000000000', places: [] }
+});
 
 vi.stubEnv('PUBLIC_ENABLE_LOCAL_MODE', 'true');
 
@@ -319,14 +324,14 @@ describe('the native shell in local mode', () => {
 
 		expect(await registered.chat?.agents()).toEqual(['claude_code']);
 		await registered.chat?.open(
-			{},
+			asking(),
 			() => {},
 			async () => ({ said: '' })
 		);
 
 		// The copy is taken of the notes, and the agent is started in it rather
 		// than in the folder somebody has open.
-		const draft = await registered.chat?.drafts?.standing();
+		const [draft] = (await registered.chat?.drafts?.standing()) ?? [];
 		expect(copies.get('/Users/me/compiler/.sloppy')).toBeDefined();
 		expect(chattedIn).toEqual([draft?.root]);
 		expect(chattedIn[0]).not.toBe('/Users/me/compiler');
@@ -339,7 +344,7 @@ describe('the native shell in local mode', () => {
 
 		await expect(
 			registered.chat?.open(
-				{},
+				asking(),
 				() => {},
 				async () => ({ said: '' })
 			)

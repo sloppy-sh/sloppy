@@ -17,16 +17,19 @@ import type {
 	Files,
 	GitDefaultsAccess,
 	History,
-	IdentityAccess
+	IdentityAccess,
+	ThreadsAccess
 } from '@sloppy/local';
 import type {
 	ChatAgent,
 	ChatEvent,
+	ChatThread,
 	ChatToolAnswer,
 	ChatToolCall,
 	DidSyr,
 	OwnedRef,
-	StandingDraft
+	StandingDraft,
+	Ulid
 } from '@sloppy/types';
 import type { SloppyApi } from './api.js';
 import { storedOrigin } from './stores/prefs.svelte.js';
@@ -111,11 +114,12 @@ export interface VaultAccess {
  * apart from the one somebody has open until they merge it or discard it —
  * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
  *
- * **A draft outlives the session and outlives the app.** It is a branch and a
- * copy on the disk, so {@link DraftAccess.standing} reads what is there rather
- * than what this run remembers, and a draft is still standing after the app is
- * closed and opened again. **One per folder**: {@link DraftAccess.start} while
- * one stands answers that one rather than making a second.
+ * **One per thread, and it outlives the session and the app.** It is a branch
+ * and a copy on the disk, so {@link DraftAccess.standing} reads what is there
+ * rather than what this run remembers, and a draft is still standing after the
+ * app is closed and opened again. The draft's id IS its thread's, so
+ * {@link DraftAccess.start} for a thread whose draft stands answers that one
+ * rather than making a second.
  *
  * **Reviewing and merging are NOT here, and deliberately.** What a draft holds
  * is a copy of a graph, and reading two copies of a graph against each other
@@ -129,14 +133,15 @@ export interface VaultAccess {
  * Every act here REJECTS with words for the person in its message.
  */
 export interface DraftAccess {
-	/** The draft standing for the folder in front of somebody. `undefined` is
-	 *  none, and is not a failure. */
-	standing(): Promise<StandingDraft | undefined>;
-	/** The draft to work in: the one standing where there is one, and otherwise
-	 *  a new one whose notes are the folder's as they stand, kept as the draft's
-	 *  first version — so {@link StandingDraft.from} is that version and not
-	 *  whichever one the folder was last kept at. */
-	start(): Promise<StandingDraft>;
+	/** Every draft standing on this device, for whichever threads have written
+	 *  anything. An EMPTY list is none, and is not a failure. */
+	standing(): Promise<StandingDraft[]>;
+	/** The draft the thread `id` works in: the one standing for it where there
+	 *  is one, and otherwise a new one whose notes are the folder's as they
+	 *  stand, kept as the draft's first version — so
+	 *  {@link StandingDraft.from} is that version and not whichever one the
+	 *  folder was last kept at. */
+	start(id: Ulid): Promise<StandingDraft>;
 	/** The draft gone, both halves of it, with nothing of it left behind. The
 	 *  folder in front of somebody is untouched either way, and a draft that is
 	 *  not there is not a failure. */
@@ -161,6 +166,19 @@ export interface ChatAsked {
 	 *  **Absent is whatever the agent would answer with on its own**, which is
 	 *  what somebody who has chosen nothing gets. */
 	model?: string;
+	/**
+	 * Which thread is opening this: its `id`, which is the draft to run in and
+	 * the session to open as; its `session`, which is the conversation to pick
+	 * up where there is one to pick up — **absent is a thread no agent has
+	 * opened yet, and a new conversation**; and its `places`, which the agent
+	 * is given to read beside the project, every one of them again every time,
+	 * because nothing can be added to a session once it is running.
+	 *
+	 * **A session asked to be picked up may not be**: it may be gone, or the
+	 * agent may turn it down. The shell opens a new one in that case, and the
+	 * `started` event's `session` is what says which one answered.
+	 */
+	thread: Pick<ChatThread, 'id' | 'session' | 'places'>;
 }
 
 /**
@@ -170,9 +188,12 @@ export interface ChatAsked {
  * asked to do Sloppy's own acts when the agent calls one, and answers for the
  * person when one of those acts would write.
  *
- * **One session at a time, and {@link ChatAccess.open} REPLACES.** A person
- * sees one chat, so opening a session ends whatever stood — there is no second
- * thread for a session to go on into unseen. {@link ChatAccess.say} while a
+ * **One LIVE session at a time, and {@link ChatAccess.open} REPLACES.** A
+ * person keeps as many threads as they like and reads one of them, so opening
+ * a session ends whatever stood — there is no second conversation for a
+ * session to go on into unseen. A THREAD is what opens one, and what it opens
+ * is that thread's: its draft, its places, and the conversation picked up
+ * where there is one. {@link ChatAccess.say} while a
  * turn is underway REJECTS, because the agent is answering the last thing it
  * was told. {@link ChatAccess.stop} ends the turn underway and the session
  * stands, so the next `say` goes on with it; {@link ChatAccess.close} ends the
@@ -254,6 +275,17 @@ export interface ChatAccess {
 	 *  is not a failure. The draft is untouched: it stands until somebody merges
 	 *  it or discards it. */
 	close(): Promise<void>;
+	/**
+	 * Ask the agent how full its window is. The answer arrives at `hear` as a
+	 * `context` event rather than here, because an agent answers this on the
+	 * same channel it says everything else on. `'summary'` is the cheap form
+	 * and `'full'` the whole breakdown. Nothing underway is not a failure, and
+	 * neither is an agent that does not answer.
+	 *
+	 * Absent → this shell cannot ask, so the chart draws only what a turn
+	 * already said and nothing offers a refresh.
+	 */
+	context?(detail: 'summary' | 'full'): Promise<void>;
 	/** The draft a session works in — {@link DraftAccess} declares every act.
 	 *  Absent → this shell keeps no draft, so nothing about one is put in front
 	 *  of anybody. */
@@ -351,6 +383,24 @@ export interface AppRuntime {
 	 *  front of anybody, which is every browser tab. {@link ChatAccess}
 	 *  declares every act. */
 	chat?: ChatAccess;
+	/** The chats this device holds — a shell that defines it also defines
+	 *  {@link AppRuntime.chat}. Absent → nothing here keeps a conversation, so
+	 *  a chat lasts as long as the page showing it and nothing about a list of
+	 *  them is put in front of anybody. `ThreadsAccess` in `@sloppy/local`
+	 *  declares every act. */
+	threads?: ThreadsAccess;
+	/**
+	 * The files for a place a thread may read, rooted at `root` — what a store
+	 * serving that place's note acts is handed, exactly as
+	 * {@link AppRuntime.project} answers for the project the chat is about.
+	 *
+	 * `undefined` is a root this shell will NOT serve, which is the answer for
+	 * anything the person has not opened: the shell holds the list of folders
+	 * it admits and this is where that list is read. Absent → this platform
+	 * reads no folder but the one in front of somebody, so nothing about
+	 * adding a place is offered.
+	 */
+	placeFiles?(root: string): Files | undefined;
 	/** How a stored picture's address becomes one this page can load. Absent →
 	 *  the API's proxy, so viewing somebody else's note never reaches their
 	 *  instance from here. A shell serving a graph off the device answers with
@@ -466,6 +516,8 @@ export const runtime = {
 	credentials: (): CredentialsAccess | undefined => current.credentials,
 	aiKeys: (): AiKeysAccess | undefined => current.aiKeys,
 	chat: (): ChatAccess | undefined => current.chat,
+	threads: (): ThreadsAccess | undefined => current.threads,
+	placeFiles: (): AppRuntime['placeFiles'] => current.placeFiles,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,
 	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc

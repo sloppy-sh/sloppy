@@ -171,7 +171,7 @@ class TauriChat implements ChatAccess {
 		// A chat is about a project, so there being none is refused before a copy
 		// is taken — and the agent works in the copy, never in the folder itself.
 		const here = await this.project();
-		const root = (await this.drafts?.start())?.root ?? here;
+		const root = (await this.drafts?.start(asked.thread.id))?.root ?? here;
 		this.replaces();
 		const session = new Session(hear, serve);
 		const told = this.telling();

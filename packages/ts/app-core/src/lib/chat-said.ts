@@ -14,6 +14,7 @@ import {
 	type ChatCallId,
 	type ChatCard,
 	type ChatSpend,
+	type ChatThread,
 	type ChatToolCall,
 	ChatToolCallSchema,
 	type ChatToolName,
@@ -228,6 +229,34 @@ export function spentSaid(spent: { turn?: ChatSpend; session?: ChatSpend }): str
 	const cost = spent.session?.cost ?? spent.turn?.cost;
 	if (cost !== undefined) parts.push(cost > 0 && cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`);
 	return parts.join(' · ');
+}
+
+/**
+ * A whole chat as markdown, for somebody taking it somewhere else: the name
+ * and the day it began, then each turn as who it was from and what they said.
+ * A tool call is one line saying what was done; what a call ANSWERED is left
+ * out, because it was written for the agent and the thread never showed it
+ * either.
+ */
+export function threadAsMarkdown(thread: ChatThread): string {
+	const said = [`# ${thread.name}`, thread.created_at.split('T')[0]];
+	for (const turn of thread.turns) {
+		const body = turn.blocks.flatMap((block) => {
+			const known = knownBlock(block);
+			return known?.kind === 'attached'
+				? [`*Attached: ${known.attached.map((one) => one.name).join(', ')}*`]
+				: [];
+		});
+		for (const row of threadRows(turn)) {
+			if (row.kind === 'said') body.push(row.said);
+			else if (row.kind === 'call') {
+				const line = toolLine(row.call);
+				body.push(`*${line.doing}${line.subject === undefined ? '' : `: ${line.subject}`}*`);
+			}
+		}
+		if (body.length > 0) said.push(`**${turn.from === 'person' ? 'You' : 'Assistant'}**`, ...body);
+	}
+	return `${said.join('\n\n')}\n`;
 }
 
 /** How much of an earlier conversation is carried to an agent that was not
