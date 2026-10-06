@@ -31,6 +31,14 @@ import {
 } from "./agent-md.js";
 import { type Files, MemoryFiles } from "./files.js";
 
+/** Two graphs that are not this project's, for the places a chat reads. */
+const GRAPH = OwnedRefSchema.parse(
+  "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W0X",
+);
+const ELSEWHERE = OwnedRefSchema.parse(
+  "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W1Y",
+);
+
 /** The first indented block under a heading, as the file's own examples are
  *  written, with the indent taken off and the blank lines inside it kept. */
 function example(heading: string): string {
@@ -245,21 +253,35 @@ describe("what the agent in a chat is told before it hears anybody", () => {
   });
 
   it("says nothing about places where the chat reads none", () => {
-    expect(chatBrief()).not.toContain("also read these places");
+    expect(chatBrief()).not.toContain("also read the notes of these places");
     expect(chatBrief([])).toBe(chatBrief());
   });
 
-  it("names the places it may read, and says it writes in none of them", () => {
+  it("names the places whose notes it may read, and says it writes in none of them", () => {
     const brief = chatBrief([
-      { root: "/work/lexer", name: "lexer" },
-      { root: "/work/runtime", name: "runtime" },
+      { root: "/work/lexer", name: "lexer", graph: GRAPH },
+      { root: "/work/runtime", name: "runtime", graph: ELSEWHERE },
     ]);
 
-    expect(brief).toContain("You may also read these places: lexer, runtime.");
+    expect(brief).toContain(
+      "You may also read the notes of these places: lexer, runtime.",
+    );
     expect(brief).toContain("nothing of yours is written there");
     // Where they are is this device's business and not the agent's.
     expect(brief).not.toContain("/work/lexer");
     expect(brief.startsWith(chatBrief())).toBe(true);
+  });
+
+  it("names no place holding no notes, because no act of ours answers for one", () => {
+    const brief = chatBrief([
+      { root: "/work/lexer", name: "lexer", graph: GRAPH },
+      { root: "/work/scratch", name: "scratch" },
+    ]);
+
+    expect(brief).toContain(
+      "You may also read the notes of these places: lexer.",
+    );
+    expect(brief).not.toContain("scratch");
   });
 });
 

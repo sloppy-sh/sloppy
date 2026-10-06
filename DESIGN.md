@@ -1024,10 +1024,12 @@ is standing, with going on with it, reading it, or throwing it away. Each thread
 a draft of its own, so the line belongs to the thread in front of you and says nothing about
 anybody else's; it is still there tomorrow, and it reads the same then. **Deleting a thread
 whose draft holds writing asks about the writing first** — merge it, throw it away with the
-thread, or keep the thread — because a delete that quietly took unread work with it is the
-one thing this whole surface exists to prevent. Writing that has anything to settle against
-your own notes is not merged on the way out: the delete is refused and says to read the
-draft, because settling is the review's act.
+thread, or keep the thread and delete nothing — because a delete that quietly took unread
+work with it is the one thing this whole surface exists to prevent. The third is the way out
+of the question, not a third thing to do to the writing: writing kept is writing you can
+still read, and a draft nothing is left pointing at is not. Writing that has anything to
+settle against your own notes is not merged on the way out either: the delete is refused and
+says to read the draft, because settling is the review's act.
 
 **The words are draft, review, merge, discard, version, kept, thread and place.** Never
 branch, never a commit, never a checkout, never a conflict marker, never a session — AI.md

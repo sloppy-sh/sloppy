@@ -172,6 +172,9 @@ import {
 /** Where the code is, from a container at `<project>/.sloppy`. */
 const PROJECT_FROM_CONTAINER = "..";
 
+const ONLY_READ = "Those notes can only be read from here.";
+const NO_NOTES_THERE = "There are no notes in that folder.";
+
 /** Whether a folder holds a graph — its own, or a project's container inside
  *  it. A shell asks this of a folder it wrote down before serving it, so that
  *  both sides read a folder that has been moved or emptied the same way. */
@@ -199,6 +202,7 @@ export class LocalApi implements SloppyApi {
   private queue: Promise<unknown> = Promise.resolve();
 
   private readonly writingAs?: DidSyr;
+  private readonly reading: boolean;
 
   /**
    * `as` is whose graph this is reading, for a folder that is not this device's
@@ -207,13 +211,19 @@ export class LocalApi implements SloppyApi {
    * `writer` is which of the identities this device holds is doing the writing.
    * Absent is the graph's own owner, which is every device holding one
    * identity — docs/ARCHITECTURE.md § "A graph off the device".
+   *
+   * `reading` is a folder nothing here touches: the graph it already holds
+   * answers, a folder holding none is said rather than made into one, and every
+   * act that would write REFUSES. It is what serves somebody else's folder —
+   * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
    */
   constructor(
     readonly files: Files,
-    options: { as?: LocalIdentity; writer?: DidSyr } = {},
+    options: { as?: LocalIdentity; writer?: DidSyr; reading?: boolean } = {},
   ) {
     this.identity = options.as;
     this.writingAs = options.writer;
+    this.reading = options.reading ?? false;
   }
 
   /** Whose writing a note written here carries. */
@@ -1640,6 +1650,7 @@ export class LocalApi implements SloppyApi {
   // ── What every act above stands on ───────────────────────────────────────
 
   private write<T>(task: () => Promise<T>): Promise<T> {
+    if (this.reading) return Promise.reject(refuse(ONLY_READ));
     const done = this.queue.then(task, task);
     this.queue = done.catch(() => {});
     return done;
@@ -1795,10 +1806,11 @@ export class LocalApi implements SloppyApi {
   /**
    * The graph in one of this device's folders: opening a folder is how somebody
    * says a graph is in it, so one that holds a graph is read and one that does
-   * not becomes it. The name is the folder's, which is what they called the
-   * place; it is renamed like any other. A folder this device wrote a graph
-   * into and that now holds none has been moved or emptied, and is said rather
-   * than started over.
+   * not becomes it — unless this store is only READING the folder, where one
+   * holding none is said rather than made into one. The name is the folder's,
+   * which is what they called the place; it is renamed like any other. A folder
+   * this device wrote a graph into and that now holds none has been moved or
+   * emptied, and is said rather than started over.
    *
    * Held as the promise rather than the graph, one per folder, so every read of
    * a folder answers with the one graph it holds — two landing together start
@@ -1812,20 +1824,26 @@ export class LocalApi implements SloppyApi {
       const already = this.opened.get(root);
       if (already) return already;
       const at = this.files.at(root);
-      const written = (await this.vaults()).some((one) => one.root === root);
       const own = await at.exists(GRAPH_FILE);
       const inside = own ? undefined : await containerOf(at);
-      if (!own && inside === undefined && written) {
-        throw absent(
-          "The folder your notes are in is not there any more. Open it again, or choose another folder.",
-        );
-      }
-      const graph =
+      const held =
         inside !== undefined
           ? await LocalGraph.open(inside)
           : own
             ? await LocalGraph.open(at)
-            : await this.startGraphIn(at, root, project);
+            : undefined;
+      if (this.reading) {
+        if (!held) throw absent(NO_NOTES_THERE);
+        this.opened.set(root, held);
+        return held;
+      }
+      const written = (await this.vaults()).some((one) => one.root === root);
+      if (!held && written) {
+        throw absent(
+          "The folder your notes are in is not there any more. Open it again, or choose another folder.",
+        );
+      }
+      const graph = held ?? (await this.startGraphIn(at, root, project));
       this.opened.set(root, graph);
       // Every way in, not only the one that makes it: a container an app
       // started, or one made before these lines existed, holds a key the

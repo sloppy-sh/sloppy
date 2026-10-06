@@ -655,3 +655,54 @@ describe("a section saved into a folder written in elsewhere", () => {
     expect(await reopened(held).listBlocks(note.ref)).toEqual([]);
   });
 });
+
+describe("a folder this store only reads", () => {
+  /** Somebody else's folder, with a graph of their own in it and a note they
+   *  wrote, and a store over it that only reads. */
+  async function theirs() {
+    const held = device(["/graphs/theirs"]);
+    await held.api.createGraph({ title: "The lexer" });
+    const note = await held.api.createNode({ title: "Two passes" });
+    const reading = new LocalApi(
+      new PickingFiles({ store: held.store, root: "/graphs/theirs" }),
+      { reading: true },
+    );
+    return { held, note, reading };
+  }
+
+  it("answers the notes it holds without writing a byte", async () => {
+    const { held, note, reading } = await theirs();
+    const before = [...held.store.keys()].sort();
+
+    expect((await reading.getNode(note.ref))?.title).toBe("Two passes");
+    expect(
+      (await reading.listNodes({ graph: await reading.graphHere() })).map(
+        (one) => one.title,
+      ),
+    ).toEqual(["Two passes"]);
+    expect([...held.store.keys()].sort()).toEqual(before);
+  });
+
+  it("refuses every act that would write", async () => {
+    const { held, reading } = await theirs();
+    const before = [...held.store.keys()].sort();
+
+    await expect(reading.createNode({ title: "Mine" })).rejects.toMatchObject({
+      status: 400,
+    });
+    await expect(reading.createGraph({ title: "Mine" })).rejects.toMatchObject({
+      status: 400,
+    });
+    expect([...held.store.keys()].sort()).toEqual(before);
+  });
+
+  it("says a folder holding no graph rather than starting one in it", async () => {
+    const store = new Map<string, Uint8Array>();
+    const files = new PickingFiles({ store, root: "/graphs/empty" });
+    await files.write("README.md", encodeText("Not a graph.\n"));
+    const reading = new LocalApi(files, { reading: true });
+
+    await expect(reading.graphHere()).rejects.toMatchObject({ status: 404 });
+    expect([...store.keys()]).toEqual(["/graphs/empty/README.md"]);
+  });
+});

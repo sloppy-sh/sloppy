@@ -22,6 +22,11 @@ const COPIES = '/data/drafts';
 /** The thread a session is opened for, whose draft it works in. */
 const THREAD = '01JAPART000000000000000000';
 
+/** The graphs two folders beside the project hold, which is what makes them
+ *  places Sloppy's own acts answer for. */
+const THEIRS = 'did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W0X';
+const ALSO_THEIRS = 'did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W1Y';
+
 /** What a thread asks a session to be opened as. */
 const asking = (more: Partial<ChatAsked> = {}): ChatAsked => ({
 	thread: { id: THREAD, places: [] },
@@ -756,7 +761,7 @@ describe('what the agent is told before it hears anybody', () => {
 		// The one thing it got wrong without this: offering to write a file.
 		expect(brief).toContain('cannot write or change any file in this project');
 		// A thread with no places beside its own project says nothing about any.
-		expect(brief).not.toContain('You may also read these places');
+		expect(brief).not.toContain('You may also read the notes of these places');
 	});
 
 	it('names the places that thread reads, because a name is how it asks for one', async () => {
@@ -765,8 +770,8 @@ describe('what the agent is told before it hears anybody', () => {
 				thread: {
 					id: THREAD,
 					places: [
-						{ root: '/work/lexer', name: 'lexer' },
-						{ root: '/work/old/lexer', name: 'old/lexer' }
+						{ root: '/work/lexer', name: 'lexer', graph: THEIRS },
+						{ root: '/work/old/lexer', name: 'old/lexer', graph: ALSO_THEIRS }
 					]
 				}
 			}),
@@ -774,7 +779,9 @@ describe('what the agent is told before it hears anybody', () => {
 			serve
 		);
 
-		expect(opens[0].brief).toContain('You may also read these places: lexer, old/lexer');
+		expect(opens[0].brief).toContain(
+			'You may also read the notes of these places: lexer, old/lexer'
+		);
 	});
 
 	it('answers with the model somebody chose, and with none where they chose nothing', async () => {

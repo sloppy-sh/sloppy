@@ -456,10 +456,15 @@ export async function keepAgentFile(container: Files): Promise<void> {
  * agent at a terminal reads and there is one copy of it.
  *
  * `places` are the other folders the thread may read. They are named here by
- * NAME and never by path, because the name is what a reading act takes.
+ * NAME and never by path, because the name is what a reading act takes — so
+ * only the ones holding notes are named, the rest being folders the agent's own
+ * file tools read and that no name of ours reaches.
  */
 export function chatBrief(places: readonly ChatPlace[] = []): string {
-  const named = places.map((place) => place.name).join(", ");
+  const named = places
+    .filter((place) => place.graph !== undefined)
+    .map((place) => place.name)
+    .join(", ");
   return [
     "You are answering inside Sloppy, a knowledge graph. The notes for this project are a Sloppy graph in the .sloppy folder beside the code: the record of why this project is the way it is, read by the people here and by you.",
     "Asked why something is the way it is, look in the notes before you answer. Told why, write it down there — with what said so named in the note, and the open question written down instead where nothing did.",
@@ -471,7 +476,7 @@ export function chatBrief(places: readonly ChatPlace[] = []): string {
     ...(named === ""
       ? []
       : [
-          `You may also read these places: ${named}. Their notes are reached by naming the place; nothing of yours is written there.`,
+          `You may also read the notes of these places: ${named}. They are reached by naming the place, and nothing of yours is written there.`,
         ]),
   ].join("\n\n");
 }

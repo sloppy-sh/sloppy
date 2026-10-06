@@ -1,7 +1,7 @@
 // Sloppy's own acts, done against a project's container — the page's half of
 // docs/ARCHITECTURE.md § "Asking a tool to write the notes".
 
-import { LocalApi, MemoryFiles } from '@sloppy/local';
+import { AGENT_FILE, LocalApi, MemoryFiles } from '@sloppy/local';
 import {
 	CHAT_TOLD_MAX,
 	ChatActDoneSchema,
@@ -1003,5 +1003,63 @@ describe('what a person reads of an act', () => {
 		expect(done.told).toBe('That note is not here.');
 		expect(done.said).toContain('ref');
 		expect(done.touched).toEqual([]);
+	});
+});
+
+describe('a place beside the project', () => {
+	const PLACE = '/work/lexer';
+	const PLAIN = '/work/scratch';
+
+	/** One device's disk, so the project and the folders beside it sit on it
+	 *  together. */
+	let device: Map<string, Uint8Array>;
+	let place: MemoryFiles;
+
+	/** An act against `at` served the way a place is served. */
+	function reads(at: MemoryFiles, call: ChatToolCall) {
+		return serveChatCall(at, call, true);
+	}
+
+	beforeEach(async () => {
+		device = new Map();
+		place = new MemoryFiles({ root: PLACE, data: '/data/other', store: device });
+		await place.write(PARSER, new TextEncoder().encode('export const two = 2;\n'));
+		await containerApi(place).openProject(PLACE);
+		await serveChatCall(place, writes(PARSER, [ABOUT_THE_PARSER], { title: 'The lexer' }));
+	});
+
+	it('answers the notes it holds, and nothing is written in it', async () => {
+		// Gone, the two files a project of this device's own carries: a read that
+		// put them back would be a write in somebody else's repository.
+		await place.remove('.sloppy/.gitignore');
+		await place.remove(`.sloppy/${AGENT_FILE}`);
+		const before = [...device.keys()].sort();
+
+		const said = await reads(place, { call: 'c1', act: 'list_notes', arguments: {} });
+
+		expect(NotesListedSchema.parse(JSON.parse(said.said)).notes).toHaveLength(1);
+		expect([...device.keys()].sort()).toEqual(before);
+	});
+
+	it('writes nothing into a folder holding no notes, and says there are none', async () => {
+		const plain = new MemoryFiles({ root: PLAIN, data: '/data/other', store: device });
+		await plain.write(PARSER, new TextEncoder().encode('export const three = 3;\n'));
+		const before = [...device.keys()].sort();
+
+		await expect(reads(plain, { call: 'c1', act: 'list_notes', arguments: {} })).rejects.toThrow(
+			'There are no notes in that folder'
+		);
+
+		expect([...device.keys()].sort()).toEqual(before);
+	});
+
+	it('refuses an act that would write, whatever routed it here', async () => {
+		const before = [...device.keys()].sort();
+
+		const done = await reads(place, writes(PARSER, [ABOUT_THE_PARSER]));
+
+		expect(done.trouble).toBe(true);
+		expect(done.said).toContain('can only be read');
+		expect([...device.keys()].sort()).toEqual(before);
 	});
 });

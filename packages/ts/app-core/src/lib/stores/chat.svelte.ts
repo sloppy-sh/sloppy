@@ -94,6 +94,7 @@ const NO_GRAPH = 'There are no notes open here to work on.';
 const NO_PLACE =
 	'There is no place here by that name. Name one you were given, or leave it out to read this project.';
 const PLACE_UNREAD = 'That place cannot be read from here.';
+const NO_NOTES_THERE = 'There are no notes in that place. Read its files with your own tools.';
 
 /** What a file with no name of its own is called. */
 const UNNAMED = 'A file';
@@ -103,10 +104,17 @@ const UNNAMED = 'A file';
  *  device with no agent gives. */
 export type ChatAgents = readonly ChatAgent[] | 'untold' | null;
 
-/** What becomes of a thread's draft when the thread is deleted. `'merge'` is
- *  refused where the two copies have anything to settle, because settling is
- *  the review's act and not this one's. */
-export type DraftOnDelete = 'merge' | 'discard' | 'keep';
+/**
+ * What becomes of a thread's draft when the thread is deleted: taken into the
+ * person's notes first, or thrown away with the thread. `'merge'` is refused
+ * where the two copies have anything to settle, because settling is the
+ * review's act and not this one's.
+ *
+ * **Keeping the draft is not one of these.** A draft is reached by its thread's
+ * id and by nothing else, so keeping the writing is keeping the THREAD —
+ * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+ */
+export type DraftOnDelete = 'merge' | 'discard';
 
 /**
  * An answer somebody asked to keep as a note, waiting on their say-so. It is
@@ -525,10 +533,12 @@ class ChatStore {
 
 	/**
 	 * Delete a chat, with what became of its draft already answered —
-	 * {@link DraftOnDelete}. False is one that is still there, with
-	 * {@link trouble} saying why.
+	 * {@link DraftOnDelete}, and **absent is thrown away with it**, which is a
+	 * delete nothing had to be asked about. False is a chat that is still
+	 * there, with {@link trouble} saying why; the chat being READ is left with
+	 * its own draft in hand either way.
 	 */
-	async remove(id: Ulid, draft: DraftOnDelete): Promise<boolean> {
+	async remove(id: Ulid, draft: DraftOnDelete = 'discard'): Promise<boolean> {
 		const thread = this.#threads.find((one) => one.id === id);
 		if (!thread) {
 			this.#trouble = NO_SUCH_THREAD;
@@ -537,23 +547,18 @@ class ChatStore {
 		const reading = this.#current?.id === id;
 		// One draft is read and settled at a time, so settling one while a turn
 		// writes into another would settle whichever of the two is in hand.
-		if (this.#running && (reading || draft !== 'keep')) {
+		if (this.#running) {
 			this.#trouble = STILL_ANSWERING;
 			return false;
 		}
 		if (reading) this.#letSessionGo();
-		if (!(await this.#draftGoes(id, draft))) return false;
-		try {
-			await runtime.threads()?.remove(id);
-		} catch (error) {
-			whatHappened.put('trouble', `the chat was not deleted: ${troubleIn(error)}`);
-			this.#trouble = wordsFor(error) ?? UNDELETED;
-			return false;
-		}
-		this.#threads = this.#threads.filter((one) => one.id !== id);
-		if (reading) await this.#readNext();
+		// The draft goes first: a thread deleted with its draft still standing
+		// leaves writing nothing can reach.
+		const gone = (await this.#draftGoes(id, draft)) && (await this.#threadGoes(id));
+		if (gone) this.#threads = this.#threads.filter((one) => one.id !== id);
+		if (gone && reading) await this.#readNext();
 		else await chatDraft.standingFor(this.#current?.id);
-		return true;
+		return gone;
 	}
 
 	/** Add a place this thread may read besides its own project. A folder
@@ -935,10 +940,23 @@ class ChatStore {
 		}
 	}
 
+	/** The thread's own record gone. False is one still there, with
+	 *  {@link trouble} saying so. */
+	async #threadGoes(id: Ulid): Promise<boolean> {
+		try {
+			await runtime.threads()?.remove(id);
+			return true;
+		} catch (error) {
+			whatHappened.put('trouble', `the chat was not deleted: ${troubleIn(error)}`);
+			this.#trouble = wordsFor(error) ?? UNDELETED;
+			return false;
+		}
+	}
+
 	/** What becomes of a thread's draft as the thread goes. False is a draft
 	 *  that could not be settled, with {@link trouble} saying what to do. */
 	async #draftGoes(id: Ulid, draft: DraftOnDelete): Promise<boolean> {
-		if (draft === 'keep' || !chatDraft.keeps) return true;
+		if (!chatDraft.keeps) return true;
 		if ((await chatDraft.standingFor(id)) === null) return true;
 		if (draft === 'discard') {
 			if (await chatDraft.discard()) return true;
@@ -1134,20 +1152,28 @@ class ChatStore {
 	}
 
 	/**
-	 * Where one act reads or writes. A writing act lands in this thread's own
-	 * draft, whatever it says; a reading act answers for the place it names,
-	 * and for this project where it names none. REJECTS in words the agent
-	 * reads.
+	 * Where one act reads or writes, and whether that folder is one this chat
+	 * only reads. A writing act lands in this thread's own draft, whatever it
+	 * says; a reading act answers for the place it names, and for this project
+	 * where it names none. REJECTS in words the agent reads.
 	 */
-	async #filesFor(call: ChatToolCall): Promise<Files> {
-		if (chatToolWrites(call.act)) return this.#writesInto();
-		const named = 'in' in call.arguments ? call.arguments.in : undefined;
-		if (named === undefined || named === '') return this.#writesInto();
-		const place = this.#places.find((one) => one.name === named);
-		if (!place) throw new Error(NO_PLACE);
+	async #filesFor(call: ChatToolCall): Promise<{ files: Files; reading: boolean }> {
+		const place = chatToolWrites(call.act) ? undefined : this.#placeNamed(call);
+		if (!place) return { files: await this.#writesInto(), reading: false };
+		if (place.graph === undefined) throw new Error(NO_NOTES_THERE);
 		const files = seam().placeFiles()?.(place.root);
 		if (!files) throw new Error(PLACE_UNREAD);
-		return files;
+		return { files, reading: true };
+	}
+
+	/** The place a reading act asks for, or none where it asks for this
+	 *  project. REJECTS for a place this thread does not read. */
+	#placeNamed(call: ChatToolCall): ChatPlace | undefined {
+		const named = 'in' in call.arguments ? call.arguments.in : undefined;
+		if (named === undefined || named === '') return undefined;
+		const place = this.#places.find((one) => one.name === named);
+		if (!place) throw new Error(NO_PLACE);
+		return place;
 	}
 
 	/** One of Sloppy's own acts, done here and answered to the agent. What the
@@ -1162,7 +1188,8 @@ class ChatStore {
 	async #act(call: ChatToolCall): Promise<ChatActDone> {
 		whatHappened.put('act', `${doingIn(call.act)} began`, call.call);
 		try {
-			const done: ChatActDone = await serveChatCall(await this.#filesFor(call), call);
+			const where = await this.#filesFor(call);
+			const done: ChatActDone = await serveChatCall(where.files, call, where.reading);
 			whatHappened.put(
 				done.trouble === true ? 'trouble' : 'act',
 				`${doingIn(call.act)} ${cameTo(done)}`,

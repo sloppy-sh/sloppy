@@ -37,12 +37,14 @@ const PLACE = '/work/lexer';
 const ALSO = '/work/old/lexer';
 const ELSEWHERE = '/somebody/else';
 
-/** Which folder each of Sloppy's own acts was served against, newest last. */
-const served = vi.hoisted(() => ({ roots: [] as string[] }));
+/** Which folder each of Sloppy's own acts was served against, newest last, and
+ *  whether it was served by the store that only reads one. */
+const served = vi.hoisted(() => ({ roots: [] as string[], reading: [] as boolean[] }));
 
 vi.mock('../chat-acts.js', () => ({
-	serveChatCall: (files: { root: string }) => {
+	serveChatCall: (files: { root: string }, _call: unknown, reading = false) => {
 		served.roots.push(files.root);
+		served.reading.push(reading);
 		return Promise.resolve({ said: '{}', touched: [] } as ChatActDone);
 	}
 }));
@@ -219,6 +221,7 @@ beforeEach(async () => {
 	copies.clear();
 	discarded.length = 0;
 	served.roots.length = 0;
+	served.reading.length = 0;
 	stub = new Stub();
 	chat.clear();
 	chatDraft.clear();
@@ -377,14 +380,19 @@ describe('deleting a chat', () => {
 		expect(await (await kept()).read(id)).toBeUndefined();
 	});
 
-	it('leaves the draft standing where that is the answer', async () => {
+	it('leaves the thread standing over its own draft where the draft could not go', async () => {
 		const id = await wroteSomething();
+		const refuses = vi.spyOn(drafts, 'discard').mockRejectedValue(new Error('no'));
+		try {
+			expect(await chat.remove(id, 'discard')).toBe(false);
+		} finally {
+			refuses.mockRestore();
+		}
 
-		expect(await chat.remove(id, 'keep')).toBe(true);
-
-		expect(discarded).toEqual([]);
+		// Neither half went, so nothing is left that nothing points at.
 		expect(copies.has(id)).toBe(true);
-		expect(chat.threads).toEqual([]);
+		expect(chat.threads.map((one) => one.id)).toEqual([id]);
+		expect(await (await kept()).read(id)).not.toBeUndefined();
 	});
 
 	it('reads the one before it afterwards', async () => {
@@ -408,9 +416,7 @@ describe('deleting a chat', () => {
 		expect(await chat.remove(id, 'discard')).toBe(false);
 		expect(chat.trouble).toBe('The assistant is still answering. Stop it first.');
 		expect(discarded).toEqual([]);
-
-		// The chat itself still goes, as long as its draft is left where it is.
-		expect(await chat.remove(id, 'keep')).toBe(true);
+		expect(chat.threads.map((one) => one.id)).toContain(id);
 	});
 
 	it('says nothing is there for a chat this device does not hold', async () => {
@@ -429,6 +435,24 @@ describe('deleting a chat', () => {
 		expect(discarded).toEqual([first]);
 		expect(chatDraft.standing?.id).toBe(second);
 		expect(chat.current?.id).toBe(second);
+	});
+
+	it('leaves it with its own draft in hand where the delete was refused too', async () => {
+		const first = await wroteSomething();
+		chat.startThread();
+		const second = await wroteSomething();
+
+		const refuses = vi.spyOn(drafts, 'discard').mockRejectedValue(new Error('no'));
+		try {
+			expect(await chat.remove(first, 'discard')).toBe(false);
+		} finally {
+			refuses.mockRestore();
+		}
+
+		// Which is what the next thing they throw away is thrown away from.
+		expect(chatDraft.standing?.id).toBe(second);
+		expect(chat.current?.id).toBe(second);
+		expect(chat.threads.map((one) => one.id)).toEqual([second, first]);
 	});
 });
 
@@ -469,12 +493,12 @@ describe('the places a chat reads besides its own project', () => {
 	});
 
 	it('is held apart from a place already called the same thing', async () => {
-		await chat.addPlace({ root: PLACE, name: 'lexer' });
-		await chat.addPlace({ root: ALSO, name: 'lexer' });
+		await chat.addPlace({ root: PLACE, name: 'lexer', graph: ref(2) });
+		await chat.addPlace({ root: ALSO, name: 'lexer', graph: ref(3) });
 
 		expect(chat.places).toEqual([
-			{ root: PLACE, name: 'lexer' },
-			{ root: ALSO, name: 'old/lexer' }
+			{ root: PLACE, name: 'lexer', graph: ref(2) },
+			{ root: ALSO, name: 'old/lexer', graph: ref(3) }
 		]);
 
 		// Which is the whole of the point: each name reaches its own folder.
@@ -516,18 +540,20 @@ describe('the places a chat reads besides its own project', () => {
 
 describe('where one of Sloppy’s own acts is served', () => {
 	beforeEach(async () => {
-		await chat.addPlace({ root: PLACE, name: 'lexer' });
+		await chat.addPlace({ root: PLACE, name: 'lexer', graph: ref(2) });
+		await chat.addPlace({ root: ALSO, name: 'just files' });
 		await chat.say('Read the notes');
 		stub.begins();
 	});
 
-	it('is this chat’s own draft where the act names no place', async () => {
+	it('is this chat’s own draft where the act names no place, and is written in', async () => {
 		await stub.serve({ call: 'c1', act: 'list_notes', arguments: {} } as ChatToolCall);
 
 		expect(served.roots).toEqual([`${COPIES}/${chat.current?.id}`]);
+		expect(served.reading).toEqual([false]);
 	});
 
-	it('is the place where a reading act names one', async () => {
+	it('is the place where a reading act names one, by a store that only reads it', async () => {
 		await stub.serve({
 			call: 'c2',
 			act: 'list_notes',
@@ -535,6 +561,7 @@ describe('where one of Sloppy’s own acts is served', () => {
 		} as ChatToolCall);
 
 		expect(served.roots).toEqual([PLACE]);
+		expect(served.reading).toEqual([true]);
 	});
 
 	it('is the draft for a writing act whatever it names', async () => {
@@ -545,6 +572,7 @@ describe('where one of Sloppy’s own acts is served', () => {
 		} as ChatToolCall);
 
 		expect(served.roots).toEqual([`${COPIES}/${chat.current?.id}`]);
+		expect(served.reading).toEqual([false]);
 	});
 
 	it('is nowhere for a place this chat does not read, and the agent is told so', async () => {
@@ -555,6 +583,17 @@ describe('where one of Sloppy’s own acts is served', () => {
 				arguments: { note: ref(2), in: 'runtime' }
 			} as ChatToolCall)
 		).rejects.toThrow('There is no place here by that name');
+		expect(served.roots).toEqual([]);
+	});
+
+	it('is nowhere for a place that holds no notes, so nothing starts a graph in it', async () => {
+		await expect(
+			stub.serve({
+				call: 'c5',
+				act: 'list_notes',
+				arguments: { in: 'just files' }
+			} as ChatToolCall)
+		).rejects.toThrow('There are no notes in that place');
 		expect(served.roots).toEqual([]);
 	});
 });

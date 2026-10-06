@@ -131,12 +131,6 @@ class ChatDraftStore {
 		return this.#standing;
 	}
 
-	/** Every draft this device holds, for whichever threads have written
-	 *  anything. */
-	get all(): readonly StandingDraft[] {
-		return this.#all;
-	}
-
 	/** How much is in it, for a line saying so before anybody reads it. Null
 	 *  until it has been counted. */
 	get counts(): DifferenceCounts | null {

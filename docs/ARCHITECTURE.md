@@ -3412,19 +3412,27 @@ act and asks first.
 **One thread, one draft, and the id is the same id.** The thread is what opens a session and
 the draft is where that session writes, so `DraftAccess.start` takes the thread's id and
 `DraftAccess.standing` answers every draft the device holds. A thread's draft outlives its
-session and the app, so deleting a thread asks what becomes of its draft — merged first,
-thrown away with it, or left standing — and never takes unread writing quietly with it.
+session and the app, so deleting a thread asks what becomes of its draft — merged into the
+person's own notes first, or thrown away with the thread — and never takes unread writing
+quietly with it. **Those are the only two, and the third offer is not to delete**: nothing
+reaches a draft whose thread is gone, because a draft is selected by its thread's id and by
+nothing else, so a person who wants the writing kept keeps the thread. `DraftOnDelete` in
+`@sloppy/app-core` is the pair, and the delete goes in that order — the draft first, then the
+thread — so a delete that half-fails leaves the thread standing over its own draft rather
+than the draft standing over nothing.
 
-**Reopening a thread picks the agent's OWN session up.** `ChatAsked.thread` carries the
-session the thread last answered as, and the shell asks the agent to go on from it, which
-restores the whole conversation including what its tools answered — far more than anything
-we could replay. **A session asked for may not be there**: a transcript has an age and an
-agent may turn one down, so the shell opens a new one and the `started` event names which
-session answered. There is no second channel for this: the id that came back is the whole of
-the evidence. So the words that OPENED the session wait on `started` before they go out —
-where the session answering is not the one asked for, the page says so in one quiet line and
-hands the agent `carriedOver`'s summary of the thread WITH those words, because a first
-exchange answered with no history is the one the summary afterwards can never contain. An
+**Reopening a thread is to OFFER the agent its own session back.** `ChatAsked.thread` carries
+the session the thread last answered as, for a shell to ask the agent to go on from — which
+restores the whole conversation including what its tools answered, far more than anything we
+could replay. **No shell asks for one yet**: `chat.rs` opens a fresh session every time, so
+every reopened thread takes the other road below until that lands, and it is the native
+shell's half to land. **A session asked for may not be there** either way: a transcript has an
+age and an agent may turn one down, so the shell opens a new one and the `started` event names
+which session answered. There is no second channel for this: the id that came back is the
+whole of the evidence. So the words that OPENED the session wait on `started` before they go
+out — where the session answering is not the one asked for, the page says so in one quiet
+line and hands the agent `carriedOver`'s summary of the thread WITH those words, because a
+first exchange answered with no history is the one the summary afterwards can never contain. An
 agent that starts and never says which session it is, is not held onto: the words go out
 with the summary rather than behind it, and nothing is said to the person, because nothing
 is known.
@@ -3439,14 +3447,26 @@ a place because the shell names it at launch, and Sloppy's three READING acts re
 notes through an `in` argument naming the place by NAME. **The eight writing acts take no
 `in` and land in the thread's own draft**, whatever they say: `chatToolWrites` is what
 decides, so a place is read and never written. A place the thread does not carry, or one the
-shell will not serve, is refused to the agent in words it can act on. **A place is reached
-by NAME, so two under one name would answer whichever was added first for both**: `placeNamed`
-is the one gate, and a name already taken is given the folder it sits in until it is
-distinct. Changing places under a standing session lets it go, because nothing can be added
-to a session that is already running; the next thing said opens another with them, and the
-person is told why. Changing them while a TURN is underway is refused in the same words
-switching threads is, because letting the session go there would throw away the answer being
-written.
+shell will not serve, is refused to the agent in words it can act on.
+
+**Read and never written is the STORE's job as much as the routing's.** Opening a folder is
+normally how somebody says a graph is in it, so the ordinary store starts one where there is
+none and keeps `.gitignore` and `AGENT.md` beside the one there is — which in somebody else's
+repository would be a graph, and a key, that nobody asked for. So a place is served by
+`placeApi`, a store whose `reading` option makes `LocalApi` open only the graph the folder
+already holds, say a folder holding none rather than make one, and refuse every act that
+writes. The routing above decides WHICH folder; this decides what can happen in it. And a
+place carries whether it holds a graph at all — `ChatPlace.graph` — so a folder that holds no
+notes is named to the agent nowhere and refused by name, leaving it to the agent's own file
+tools, which is all it ever was.
+
+**A place is reached by NAME, so two under one name would answer whichever was added first
+for both**: `placeNamed` is the one gate, and a name already taken is given the folder it
+sits in until it is distinct. Changing places under a standing session lets it go, because
+nothing can be added to a session that is already running; the next thing said opens another
+with them, and the person is told why. Changing them while a TURN is underway is refused in
+the same words switching threads is, because letting the session go there would throw away
+the answer being written.
 
 **Every act LANDS, and the draft is what makes that safe.** A session works in a DRAFT: a
 second checkout of the repository keeping the notes, under the app's own data, on a branch
