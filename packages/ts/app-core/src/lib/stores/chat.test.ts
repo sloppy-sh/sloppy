@@ -702,7 +702,10 @@ describe('where one of Sloppy’s own acts is served', () => {
 				act: 'read_note',
 				arguments: { note: ref(2), in: 'runtime' }
 			} as ChatToolCall)
-		).rejects.toThrow('There is no place here by that name');
+		).resolves.toMatchObject({
+			said: expect.stringContaining('There is no place here by that name'),
+			trouble: true
+		});
 		expect(served.roots).toEqual([]);
 	});
 
@@ -713,7 +716,10 @@ describe('where one of Sloppy’s own acts is served', () => {
 				act: 'list_notes',
 				arguments: { in: 'just files' }
 			} as ChatToolCall)
-		).rejects.toThrow('There are no notes in that place');
+		).resolves.toMatchObject({
+			said: expect.stringContaining('There are no notes in that place'),
+			trouble: true
+		});
 		expect(served.roots).toEqual([]);
 	});
 });

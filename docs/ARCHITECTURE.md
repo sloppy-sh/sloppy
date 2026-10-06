@@ -3445,10 +3445,12 @@ one project is the way it is often has the answer in another, so a thread carrie
 Rust's**: a place must already be a folder somebody picked, which `Folders::allows` is the
 one record of, and `AppRuntime.placeFiles` answers `undefined` for anything else — nothing
 typed on the page and no scan of the disk reaches a folder. Sloppy's three READING acts
-reach a place's notes through an `in` argument naming the place by NAME, and **that is the
-whole of what reaches a place today**: giving the agent's own file tools the folder as well
-is the native shell's half — the directory on the launch line — and it has not landed, so
-until it does the agent sees the folder it runs in and nothing beside it. **The eight writing
+reach a place's notes through an `in` argument naming the place by NAME. **Both halves of
+reaching a place are the native shell's, and neither has landed**: `AppRuntime.placeFiles`
+is defined by no shell yet, so no place can be added on any surface and the reading path has
+run only in the test shell; and the directory on the agent's launch line, which is what gives
+its own file tools the folder, is not passed yet either. Until both land, the agent sees the
+folder it runs in and nothing beside it. **The eight writing
 acts take no `in` and land in the thread's own draft**, whatever they say: `chatToolWrites`
 is what decides, so a place is read and never written. A place the thread does not carry, or
 one the shell will not serve, is refused to the agent in words it can act on.

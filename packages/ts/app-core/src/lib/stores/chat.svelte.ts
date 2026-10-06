@@ -96,6 +96,11 @@ const NO_PLACE =
 const PLACE_UNREAD = 'That place cannot be read from here.';
 const NO_NOTES_THERE = 'There are no notes in that place. Read its files with your own tools.';
 
+/** A reading act asked for a place it cannot have. The agent reads these
+ *  words and acts on them, so one is answered rather than thrown past the
+ *  shell, which has no words of its own for what went wrong. */
+class PlaceRefused extends Error {}
+
 /** What a file with no name of its own is called. */
 const UNNAMED = 'A file';
 
@@ -838,7 +843,7 @@ class ChatStore {
 
 	clear(): void {
 		this.#letSessionGo();
-		this.#letThreadGo();
+		void this.#unwrittenGoes(this.#letThreadGo());
 		this.#threads = [];
 		chatDraft.clear();
 		this.#of = null;
@@ -868,7 +873,7 @@ class ChatStore {
 	/** The chat most recently written to, or none where this project has none
 	 *  left — what somebody is reading once the one they were is gone. */
 	async #readNext(): Promise<void> {
-		this.#letThreadGo();
+		void this.#unwrittenGoes(this.#letThreadGo());
 		const [newest] = this.threads;
 		if (newest) await this.#pickUp(newest);
 		else await chatDraft.standingFor();
@@ -1203,24 +1208,25 @@ class ChatStore {
 	 * Where one act reads or writes, and whether that folder is one this chat
 	 * only reads. A writing act lands in this thread's own draft, whatever it
 	 * says; a reading act answers for the place it names, and for this project
-	 * where it names none. REJECTS in words the agent reads.
+	 * where it names none. A place it cannot have is answered in words the
+	 * agent reads.
 	 */
 	async #filesFor(call: ChatToolCall): Promise<{ files: Files; reading: boolean }> {
 		const place = chatToolWrites(call.act) ? undefined : this.#placeNamed(call);
 		if (!place) return { files: await this.#writesInto(), reading: false };
-		if (place.graph === undefined) throw new Error(NO_NOTES_THERE);
+		if (place.graph === undefined) throw new PlaceRefused(NO_NOTES_THERE);
 		const files = seam().placeFiles()?.(place.root);
-		if (!files) throw new Error(PLACE_UNREAD);
+		if (!files) throw new PlaceRefused(PLACE_UNREAD);
 		return { files, reading: true };
 	}
 
 	/** The place a reading act asks for, or none where it asks for this
-	 *  project. REJECTS for a place this thread does not read. */
+	 *  project. A place this thread does not read is answered as such. */
 	#placeNamed(call: ChatToolCall): ChatPlace | undefined {
 		const named = 'in' in call.arguments ? call.arguments.in : undefined;
 		if (named === undefined || named === '') return undefined;
 		const place = this.#places.find((one) => one.name === named);
-		if (!place) throw new Error(NO_PLACE);
+		if (!place) throw new PlaceRefused(NO_PLACE);
 		return place;
 	}
 
@@ -1250,6 +1256,7 @@ class ChatStore {
 				`${doingIn(call.act)} did not answer: ${troubleIn(error)}`,
 				call.call
 			);
+			if (error instanceof PlaceRefused) return { said: error.message, trouble: true };
 			throw error;
 		}
 	}
