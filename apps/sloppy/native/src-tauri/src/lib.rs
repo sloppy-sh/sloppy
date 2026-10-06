@@ -25,6 +25,7 @@ pub(crate) fn commands<R: Runtime>(
         vault::files_exists,
         vault::files_mkdir,
         vault::app_data_path,
+        vault::folders_picked,
         vault::pick_folder,
         vault::pick_file,
         vault::save_file,

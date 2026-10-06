@@ -3426,12 +3426,14 @@ than the draft standing over nothing.
 **Reopening a thread is to OFFER the agent its own session back.** `ChatAsked.thread` carries
 the session the thread last answered as, for a shell to ask the agent to go on from — which
 restores the whole conversation including what its tools answered, far more than anything we
-could replay. **No shell asks for one yet**: `chat.rs` opens a fresh session every time, so
-every reopened thread takes the other road below until that lands, and it is the native
-shell's half to land. **A session asked for may not be there** either way: a transcript has an
-age and an agent may turn one down, so the shell opens a new one and the `started` event names
-which session answered. There is no second channel for this: the id that came back is the
-whole of the evidence. So the words that OPENED the session wait on `started` before they go
+could replay. **The native shell asks for one**: `chat.rs` names the session on the agent's
+launch line where the thread has one, and opens a fresh one where it has not. **A session
+asked for may not be there** either way: a transcript has an age and an agent may turn one
+down, so the shell opens a new one and the `started` event names which session answered. A
+turned-down session is a program that ends before it says what it is, which is what has
+`chat.ts` open the conversation again as one of its own; the page is not told about the one
+that never answered. There is no second channel for this: the id that came back is the whole
+of the evidence. So the words that OPENED the session wait on `started` before they go
 out — where the session answering is not the one asked for, the page says so in one quiet
 line and hands the agent `carriedOver`'s summary of the thread WITH those words, because a
 first exchange answered with no history is the one the summary afterwards can never contain. An
@@ -3446,11 +3448,12 @@ Rust's**: a place must already be a folder somebody picked, which `Folders::allo
 one record of, and `AppRuntime.placeFiles` answers `undefined` for anything else — nothing
 typed on the page and no scan of the disk reaches a folder. Sloppy's three READING acts
 reach a place's notes through an `in` argument naming the place by NAME. **Both halves of
-reaching a place are the native shell's, and neither has landed**: `AppRuntime.placeFiles`
-is defined by no shell yet, so no place can be added on any surface and the reading path has
-run only in the test shell; and the directory on the agent's launch line, which is what gives
-its own file tools the folder, is not passed yet either. Until both land, the agent sees the
-folder it runs in and nothing beside it. **The eight writing
+reaching a place are the native shell's, and both have landed**: `placeFiles` there answers
+from a copy of that record, so a folder nobody picked is refused while somebody is still
+choosing rather than when the chat will not start; and every place is named on the agent's
+launch line, which is what gives its own file tools the folder. A folder that was picked and
+has since moved is caught at launch all the same, and `chat.rs` says which one.
+**The eight writing
 acts take no `in` and land in the thread's own draft**, whatever they say: `chatToolWrites`
 is what decides, so a place is read and never written. A place the thread does not carry, or
 one the shell will not serve, is refused to the agent in words it can act on.
@@ -3475,8 +3478,7 @@ read. The routing above decides WHICH folder; this decides what can happen in it
 place carries whether it holds a graph at all — `ChatPlace.graph` — so a reading act naming
 one that holds none is refused in words rather than answered with a graph nobody started.
 **Every place is NAMED to the agent all the same**, notes or not: the name is how its files
-are reached the moment the launch half above lands, and one withheld costs a read that would
-have worked.
+are reached, and one withheld costs a read that would have worked.
 
 **A place is reached by NAME, so two under one name would answer whichever was added first
 for both**: `placeNamed` is the one gate, and a name already taken is given the folder it

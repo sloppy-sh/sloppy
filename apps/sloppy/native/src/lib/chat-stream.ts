@@ -34,12 +34,14 @@ import {
 /** What one line came to. `ended` is the line that ends the turn underway;
  *  whether somebody STOPPED it is the seam's to say, so the `ended` event is
  *  composed there. `spent` is what that line said the turn cost, where it said.
- *  `answered` is the ask a line answered, where it answered one. */
+ *  `answered` is the ask a line answered, where it answered one, and `refused`
+ *  says that answer carried no breakdown — an agent to ask in words instead. */
 export interface Heard {
 	events: ChatEvent[];
 	ended: boolean;
 	spent?: ChatSpend;
 	answered?: string;
+	refused?: true;
 }
 
 const NOTHING: Heard = { events: [], ended: false };
@@ -122,7 +124,7 @@ export class AgentStream {
 				return {
 					events: [
 						...this.settled(message),
-						...this.saidInWords(field(message, 'context_usage')),
+						...this.saidInWords(field(held, 'context_usage')),
 						...this.filled(field(message, 'usage'))
 					],
 					ended: false
@@ -142,9 +144,7 @@ export class AgentStream {
 		}
 	}
 
-	/** What the agent says about itself rather than about the turn: that it has
-	 *  started, which it says again after making room, and that it has made
-	 *  room. Everything else it says about itself is passed over. */
+	/** What the agent says about itself rather than about the turn. */
 	private aboutItself(held: unknown): Heard {
 		switch (field(held, 'subtype')) {
 			case 'init':
@@ -158,48 +158,61 @@ export class AgentStream {
 	}
 
 	/**
+	 * What the agent answered the ask on its own channel with. An answer this
+	 * cannot read a breakdown out of is `refused`, which is what has the agent
+	 * asked in words instead — a refusal in so many words, and a success with
+	 * nothing countable in it, cost the same nothing and are worth the same
+	 * second try.
+	 */
+	private askedFor(response: unknown): Heard {
+		const answered = text(field(response, 'request_id'), CHAT_ID_MAX);
+		const asked = answered === undefined ? {} : { answered };
+		const events = this.breakdownIn(field(response, 'response'));
+		return events === undefined
+			? { events: [], ended: false, ...asked, refused: true }
+			: { events, ended: false, ...asked };
+	}
+
+	/**
 	 * The breakdown the agent was asked for, which is the one line that says
-	 * what each part of the window is holding.
+	 * what each part of the window is holding. `undefined` is an answer with no
+	 * breakdown in it.
 	 *
 	 * A part's `kind` is the agent's own and is kept as it arrived; one spelled
 	 * in a way this build knows nothing about counts as being IN the window,
 	 * where a part nobody can classify does the least harm — it is drawn and
 	 * counted rather than silently left out of a total.
 	 */
-	private askedFor(response: unknown): Heard {
-		const inside = field(response, 'response');
+	private breakdownIn(inside: unknown): ChatEvent[] | undefined {
 		const categories = field(inside, 'categories');
-		if (!Array.isArray(categories)) return NOTHING;
-		const limit = count(field(inside, 'maxTokens')) ?? this.limit;
-		if (limit === undefined || limit < 1) return NOTHING;
-		this.limit = limit;
+		if (!Array.isArray(categories)) return undefined;
+		const limit = count(field(inside, 'rawMaxTokens')) ?? count(field(inside, 'maxTokens'));
+		if (limit !== undefined && limit >= 1) this.limit = limit;
+		if (this.limit === undefined) return undefined;
 		this.live = count(field(inside, 'totalTokens')) ?? this.live;
 		this.compactsAt =
 			field(inside, 'isAutoCompactEnabled') === false
 				? undefined
-				: count(field(inside, 'autoCompactThreshold'));
-		const answered = text(field(response, 'request_id'), CHAT_ID_MAX);
-		return {
-			events: this.counts(categories.flatMap(partIn)),
-			ended: false,
-			...(answered === undefined ? {} : { answered })
-		};
+				: (count(field(inside, 'autoCompactThreshold')) ?? this.compactsAt);
+		return this.counts(categories.flatMap(partIn));
 	}
 
-	/** The same breakdown where the agent was asked in words instead, which it
-	 *  answers in its other spelling. Read by its own code, so that neither
-	 *  spelling has to bend to the other. */
+	/**
+	 * The same breakdown where the agent was asked in words instead, which it
+	 * answers beside its message rather than inside it, and in its other
+	 * spelling. Read by its own code, so that neither spelling has to bend to
+	 * the other.
+	 *
+	 * This spelling says nothing about where the agent will make room, so where
+	 * it will is left as the last answer that did say put it.
+	 */
 	private saidInWords(said: unknown): ChatEvent[] {
 		const categories = field(said, 'categories');
 		if (!Array.isArray(categories)) return [];
-		const limit = count(field(said, 'max_tokens')) ?? this.limit;
-		if (limit === undefined || limit < 1) return [];
-		this.limit = limit;
+		const limit = count(field(said, 'raw_max_tokens'));
+		if (limit !== undefined && limit >= 1) this.limit = limit;
+		if (this.limit === undefined) return [];
 		this.live = count(field(said, 'total_tokens')) ?? this.live;
-		this.compactsAt =
-			field(said, 'is_auto_compact_enabled') === false
-				? undefined
-				: count(field(said, 'auto_compact_threshold'));
 		return this.counts(categories.flatMap(partIn));
 	}
 
@@ -242,9 +255,7 @@ export class AgentStream {
 	}
 
 	/** The window as of now, where it has moved far enough to be worth
-	 *  redrawing. The PARTS are as of the last breakdown the agent was asked
-	 *  for and are not sent again; only the total moves, which is what the
-	 *  page's `contextTogether` reads one of these onto the last by. */
+	 *  redrawing. */
 	private moved(): ChatEvent[] {
 		if (this.limit === undefined) return [];
 		if (this.told !== undefined && Math.abs(this.live - this.told) <= this.limit * MOVED_BY)

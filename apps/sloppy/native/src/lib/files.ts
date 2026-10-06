@@ -26,6 +26,7 @@ import {
 } from '@sloppy/local';
 import type { Vault } from '@sloppy/vault';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { readsPicked } from './places';
 
 export type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -135,7 +136,9 @@ class TauriFiles implements Files {
 	}
 
 	async pickFolder(asking: FolderAsked = 'graph'): Promise<string | undefined> {
-		return (await this.call<string | null>(PICK_FOLDER, { asking })) ?? undefined;
+		const picked = (await this.call<string | null>(PICK_FOLDER, { asking })) ?? undefined;
+		if (picked !== undefined) await readsPicked(this.call);
+		return picked;
 	}
 
 	async clone(url: string, into: string, credential?: Credential): Promise<void> {

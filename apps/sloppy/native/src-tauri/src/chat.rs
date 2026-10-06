@@ -14,6 +14,7 @@
 //! will serve, and words; the words reach the agent on its own input rather
 //! than as an argument.
 
+use std::ffi::OsStr;
 use std::io::{BufReader, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -75,6 +76,17 @@ const DIDNT_FINISH: &str = "That did not finish. Try again.";
 const TOO_MUCH: &str = "That answer was too long to read. Ask for less, then try again.";
 const NO_PLACE: &str =
     "Sloppy could not give this chat one of its folders. Open it again, or take it off the chat.";
+
+/// Which folder a chat could not be given, named the way the person named it —
+/// the last part of where it is, which is what they call that folder.
+fn no_place(place: &str) -> ChatError {
+    match Path::new(place).file_name().and_then(OsStr::to_str) {
+        Some(name) => ChatError::new(format!(
+            "Sloppy could not give this chat the folder “{name}”. Open it again, or take it off the chat."
+        )),
+        None => ChatError::new(NO_PLACE),
+    }
+}
 
 /// What a person is told where a chat could not start or could not go on.
 #[derive(Debug)]
@@ -384,7 +396,7 @@ fn places_in(folders: &Folders, places: &[String]) -> Result<Vec<PathBuf>, ChatE
                 .ok()
                 .map(|held| held.to_path_buf())
                 .filter(|held| held.is_dir())
-                .ok_or_else(|| ChatError::new(NO_PLACE))
+                .ok_or_else(|| no_place(place))
         })
         .collect()
 }
@@ -908,29 +920,41 @@ mod tests {
         let folders = Folders::new(data).expect("this app's own data");
         folders.pick(picked.clone()).expect("the folder");
         let spelled = |at: &Path| at.to_string_lossy().into_owned();
+        let named = |at: &Path| {
+            at.file_name()
+                .and_then(OsStr::to_str)
+                .expect("a folder with a name")
+                .to_owned()
+        };
 
         assert_eq!(
             places_in(&folders, &[spelled(&picked)]).expect("the place"),
             [crate::vault::settled(&picked)]
         );
-        assert_eq!(
-            places_in(&folders, &[spelled(&elsewhere)])
-                .expect_err("a folder nobody opened")
-                .said(),
-            NO_PLACE
+        // A chat may carry several folders, so knowing WHICH one is what makes
+        // the next step the person's to take — and the name is what they call
+        // it, never the whole of where it is.
+        let refused =
+            places_in(&folders, &[spelled(&elsewhere)]).expect_err("a folder nobody opened");
+        assert!(
+            refused.said().contains(&named(&elsewhere)),
+            "{}",
+            refused.said()
         );
+        assert!(!refused.said().contains(&spelled(&elsewhere)));
+
         // And one this app may reach that is not where it was: the chat says so
         // rather than starting an agent that cannot read it.
         let moved = picked.join("lexer");
         fs::create_dir_all(&moved).expect("a folder inside it");
         assert!(places_in(&folders, &[spelled(&moved)]).is_ok());
         fs::remove_dir_all(&moved).expect("the folder gone");
-        assert_eq!(
-            places_in(&folders, &[spelled(&moved)])
-                .expect_err("a folder that moved")
-                .said(),
-            NO_PLACE
-        );
+        let gone = places_in(&folders, &[spelled(&moved)]).expect_err("a folder that moved");
+        assert!(gone.said().contains("lexer"), "{}", gone.said());
+
+        // A folder with no name of its own leaves nothing to say but what went
+        // wrong.
+        assert_eq!(no_place("/").said(), NO_PLACE);
     }
 
     /// An agent that loops, or another program that happens to answer to the

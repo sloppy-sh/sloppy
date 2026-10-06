@@ -234,6 +234,16 @@ impl Folders {
         self.data.join(DRAFTS_DIR)
     }
 
+    /// Every folder somebody picked, as they are written down.
+    pub fn picked_folders(&self) -> Vec<String> {
+        self.picked
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|folder| folder.to_string_lossy().into_owned())
+            .collect()
+    }
+
     pub fn pick(&self, folder: PathBuf) -> io::Result<()> {
         let mut picked = self.picked.lock().unwrap();
         picked.insert(settled(&folder));
@@ -491,6 +501,14 @@ pub fn files_mkdir(
 #[tauri::command]
 pub fn app_data_path(folders: State<'_, Folders>) -> String {
     folders.data_path()
+}
+
+/// The folders this app may reach because somebody picked them. The page keeps
+/// a copy so that it can refuse a folder it will not serve while somebody is
+/// still choosing; refusing for real stays here.
+#[tauri::command]
+pub fn folders_picked(folders: State<'_, Folders>) -> Vec<String> {
+    folders.picked_folders()
 }
 
 /// What a folder is being asked for; `FolderAsked` in `@sloppy/local` spells

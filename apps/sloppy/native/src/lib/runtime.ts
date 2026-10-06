@@ -34,6 +34,7 @@ import {
 	rememberedVault,
 	rememberVault
 } from './local-mode';
+import { picked, readsPicked } from './places';
 import { IS_MOBILE, TAURI_PLATFORM } from './platform';
 
 /** An Android emulator's loopback is the emulated device itself; 10.0.2.2 is
@@ -217,6 +218,7 @@ function stillHoldsIt(files: Files, folder: string): Promise<boolean> {
  */
 export async function openRememberedVault(): Promise<string | undefined> {
 	if (!device) return undefined;
+	await readsPicked();
 	if (!ASKS_WHERE) return openFolder(device).catch(() => undefined);
 	const remembered = await rememberedVault(device);
 	if (!remembered) return undefined;
@@ -254,9 +256,7 @@ export function initNativeRuntime(): void {
 					credentials: new DeviceCredentials(device),
 					aiKeys: deviceAiKeys(device),
 					threads: new DeviceThreads(device),
-					// Which folders this app may reach is `src-tauri`'s own list, and
-					// every read through these is held to it there.
-					placeFiles: (root: string) => device.at(root),
+					placeFiles: (root: string) => (picked(root) ? device.at(root) : undefined),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,

@@ -267,10 +267,46 @@ function breakdown(id: string, more: Record<string, unknown> = {}): string {
 				],
 				totalTokens: 15_000,
 				maxTokens: WINDOW,
+				rawMaxTokens: WINDOW,
 				autoCompactThreshold: 160_000,
 				isAutoCompactEnabled: true,
 				...more
 			}
+		}
+	});
+}
+
+/** What an agent that has no breakdown to give answers the same ask with. */
+function noBreakdown(id: string): string {
+	return JSON.stringify({
+		type: 'control_response',
+		response: {
+			subtype: 'error',
+			request_id: id,
+			error: 'get_context_usage is not supported in this context'
+		}
+	});
+}
+
+/**
+ * The same breakdown as the agent answers it when it was asked in WORDS: beside
+ * the message rather than inside it, in its other spelling, and saying nothing
+ * about where room will be made.
+ */
+function breakdownInWords(said: string, total: number): string {
+	return JSON.stringify({
+		type: 'assistant',
+		message: { id: 'm1', content: [{ type: 'text', text: said }] },
+		context_usage: {
+			model: 'a-model',
+			categories: [
+				{ name: 'System prompt', tokens: 4_000, kind: 'used' },
+				{ name: 'Free space', tokens: WINDOW - 4_000, kind: 'free' },
+				{ name: 'Tool definitions', tokens: 9_000, kind: 'deferred' }
+			],
+			total_tokens: total,
+			raw_max_tokens: WINDOW,
+			percentage: 2
 		}
 	});
 }
@@ -875,8 +911,19 @@ describe('the conversation a chat is opened as', () => {
 			serve
 		);
 
-		// The program ends before it has said anything about itself.
-		tells({ from: 'over', stopped: false, trouble: 'No conversation by that name.' });
+		// The agent turns the session down and ends without ever saying what it
+		// is — which is a line about a turn nobody took, and then the program.
+		says(
+			JSON.stringify({
+				type: 'result',
+				subtype: 'error_during_execution',
+				is_error: true,
+				num_turns: 0,
+				session_id: 'long-gone',
+				errors: ['No conversation found with session ID: long-gone']
+			})
+		);
+		tells({ from: 'over', stopped: false, trouble: null });
 		await until(() => opens.length === 2);
 
 		expect(opens[1].resume).toBe(false);
@@ -884,6 +931,9 @@ describe('the conversation a chat is opened as', () => {
 		// Nothing is said about a session nobody saw; what the page is told is
 		// the conversation that did answer, which is not the one it asked for.
 		expect(heard).toEqual([]);
+		// And nothing was asked of the program that refused, so the one taking
+		// its place is not left answering a question about a window it never had.
+		expect(askedAbout()).toEqual([]);
 		says(INIT);
 		expect(heard).toContainEqual(
 			expect.objectContaining({ event: 'started', session: 's1' }) as ChatEvent
@@ -1067,25 +1117,48 @@ describe('what the agent says is in its window', () => {
 		says(INIT);
 		await vi.advanceTimersByTimeAsync(8_000);
 
-		says(
-			assistant('m1', [{ type: 'text', text: 'Here is what I am holding.' }], {
-				context_usage: {
-					categories: [
-						{ name: 'System prompt', tokens: 4_000, kind: 'used' },
-						{ name: 'Free space', tokens: 196_000, kind: 'free' }
-					],
-					total_tokens: 4_000,
-					max_tokens: WINDOW,
-					auto_compact_threshold: 160_000
-				}
-			})
-		);
+		says(breakdownInWords('Here is what I am holding.', 4_000));
 		says(RESULT);
 
 		expect(windowNow(heard)).toMatchObject({ total: 4_000, limit: WINDOW });
 		expect(usedIn(windowNow(heard))).toBe(4_000);
+		expect(heldAsideIn(windowNow(heard))).toBe(9_000);
 		expect(heard.filter((one) => one.event === 'block')).toEqual([]);
 		expect(heard.filter((one) => one.event === 'ended')).toEqual([]);
+	});
+
+	/** The answer in words carries no window of its own BEFORE the agent has
+	 *  said what the window is, which is the first thing asked for — so the
+	 *  count has to come out of the answer itself. */
+	it('reads the window out of the answer in words with nothing said before it', async () => {
+		vi.useFakeTimers();
+		const heard: ChatEvent[] = [];
+		await chat().open(asking(), (event) => heard.push(event), serve);
+		says(INIT);
+		await vi.advanceTimersByTimeAsync(8_000);
+
+		says(breakdownInWords('Here is what I am holding.', 4_000));
+
+		expect(windowNow(heard).limit).toBe(WINDOW);
+	});
+
+	/** An agent that says it cannot answer has answered: nothing is gained by
+	 *  waiting the rest of the timeout out before asking the other way. */
+	it('is asked for in words as soon as the agent says it cannot answer that way', async () => {
+		vi.useFakeTimers();
+		const access = chat();
+		await access.open(asking(), () => {}, serve);
+		says(INIT);
+		await vi.advanceTimersByTimeAsync(0);
+		await access.say('go');
+		says(noBreakdown(waitingOn()));
+		says(RESULT);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(spoken()).toContainEqual({
+			role: 'user',
+			content: [{ type: 'text', text: '/context' }]
+		});
 	});
 
 	it('is asked in words from the start once the agent has answered no other way', async () => {

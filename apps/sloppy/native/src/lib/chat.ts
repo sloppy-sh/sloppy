@@ -188,6 +188,14 @@ class Session {
 		this.over.ends();
 	}
 
+	/** The program this was reading is gone, and another is taking its place:
+	 *  nothing it was going to answer is still coming. */
+	startsOver(): void {
+		this.waitsNoLonger();
+		this.reading = false;
+		this.stream.turned();
+	}
+
 	/** Nothing is waiting on an answer about the window any more. */
 	waitsNoLonger(): void {
 		if (this.asking === undefined) return;
@@ -329,7 +337,8 @@ class TauriChat implements ChatAccess {
 				const heard = session.stream.read(one.line);
 				if (heard.answered !== undefined && heard.answered === session.asking?.id) {
 					session.waitsNoLonger();
-					session.answersAsks = true;
+					session.answersAsks = heard.refused !== true;
+					if (heard.refused) void this.asksInWords(session);
 				}
 				for (const event of heard.events) {
 					// What the agent writes while answering a question nobody typed
@@ -346,7 +355,7 @@ class TauriChat implements ChatAccess {
 				// person's.
 				if (!heard.ended) return;
 				if (session.reading) session.reading = false;
-				else {
+				else if (session.turn) {
 					session.ends(heard.spent);
 					void this.context('summary');
 				}
@@ -378,6 +387,7 @@ class TauriChat implements ChatAccess {
 			session.gone
 		)
 			return false;
+		session.startsOver();
 		const again: Opening = { ...opening, resume: false };
 		delete again.session;
 		void this.starts(session, again).catch((reason) => {
