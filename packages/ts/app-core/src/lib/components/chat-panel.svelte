@@ -38,7 +38,10 @@
 	import { offers } from '../stores/offers.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { askedShown } from './chat-card.js';
+	import ChatPlaces from './chat-places.svelte';
 	import ChatThread from './chat-thread.svelte';
+	import ChatThreads from './chat-threads.svelte';
+	import ContextChart from './context-chart.svelte';
 	import DraftNote from './draft-note.svelte';
 	import DraftReview from './draft-review.svelte';
 	import { noteFromAnswer, placeForAnswer } from './chat-keep.js';
@@ -143,6 +146,8 @@
 	/** What the line at the head of the chat says a standing draft holds. */
 	const standsAs = $derived(holds !== '' ? holds : chatDraft.wrote ? WRITTEN_IN : NOTHING_YET);
 
+	/** Whether the chart's legend is open beside it. */
+	let chartOpen = $state(false);
 	/** Whether the panel is the review rather than the conversation. On a phone
 	 *  the two are one surface, so this is what swaps it. */
 	let reviewing = $state(false);
@@ -172,6 +177,14 @@
 		void chat.turns;
 		const box = thread;
 		if (box && following) box.scrollTop = box.scrollHeight;
+	});
+
+	// What was said about the last thing somebody did is about the thread they
+	// did it in, so it goes when another one is in front of them.
+	const reading = $derived(chat.current?.id);
+	$effect(() => {
+		void reading;
+		aside = null;
 	});
 
 	// The canvas draws the two states for exactly as long as the review is the
@@ -280,21 +293,7 @@
 	{:else}
 		<div class="flex min-h-0 flex-1 flex-col gap-3 pt-2">
 			<div class="flex shrink-0 items-start gap-2">
-				<div class="min-w-0 flex-1 px-1">
-					<h2 class="truncate text-sm font-medium">Chat about the code</h2>
-				</div>
-				{#if chat.turns.length > 0}
-					<Button
-						variant="ghost"
-						class="h-9 shrink-0 px-2 text-xs"
-						onclick={() => {
-							aside = null;
-							chat.startAgain();
-						}}
-					>
-						Start again
-					</Button>
-				{/if}
+				<ChatThreads onReview={() => void review()} />
 				<Button
 					variant="ghost"
 					class="size-9 shrink-0"
@@ -419,6 +418,12 @@
 					</ul>
 				{/if}
 
+				<ChatPlaces />
+
+				{#if chat.says}
+					<p class="shrink-0 px-1 text-xs text-muted-foreground" role="status">{chat.says}</p>
+				{/if}
+
 				{#if aside}
 					<p class="shrink-0 px-1 text-xs text-muted-foreground" role="alert">{aside}</p>
 				{/if}
@@ -536,10 +541,13 @@
 					{#if answering}
 						<p class="min-w-0 flex-1 text-xs text-muted-foreground">
 							This one is being answered with {answering === 'its own' ? ITS_OWN : answering.name}.
-							Start again to use {picked?.name ?? ITS_OWN}.
+							Begin a new thread to use {picked?.name ?? ITS_OWN}.
 						</p>
 					{/if}
 				</div>
+				{#if chat.context}
+					<ContextChart usage={chat.context} bind:open={chartOpen} />
+				{/if}
 				{#if naming !== null}
 					<form
 						class="flex shrink-0 items-center gap-2"
