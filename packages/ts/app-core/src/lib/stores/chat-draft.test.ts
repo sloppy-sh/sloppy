@@ -3,7 +3,7 @@
 // docs/ARCHITECTURE.md § "Asking a tool to write the notes".
 
 import 'fake-indexeddb/auto';
-import { LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
+import { DeviceThreads, LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import {
 	draftBranch,
 	ulid,
@@ -17,6 +17,7 @@ import { api, resetApi } from '../api.js';
 import { draftOnTheCanvas, draftRows, sectionsDrafted } from '../draft-said.js';
 import { initRuntime, type ChatAccess, type DraftAccess } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
+import { chat } from './chat.svelte.js';
 import { chatDraft } from './chat-draft.svelte.js';
 
 const ROOT = '/Users/me/garden';
@@ -112,7 +113,9 @@ function shell(): void {
 			open: async () => ROOT
 		},
 		history: () => kept,
-		chat: chatting
+		chat: chatting,
+		threads: new DeviceThreads(folder()),
+		project: async () => folder()
 	});
 	seamSettledAgain();
 	resetApi();
@@ -134,6 +137,7 @@ beforeEach(async () => {
 	copyStore = new Map();
 	standing = null;
 	kept = new MemoryHistory(folder(), { author: 'Ada' });
+	chat.clear();
 	chatDraft.clear();
 	shell();
 	const note = await api.createNode({ title: 'Origins' });
@@ -144,6 +148,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+	chat.clear();
 	chatDraft.clear();
 	standing = null;
 	initRuntime({
@@ -152,7 +157,9 @@ afterEach(() => {
 		createApi: undefined,
 		vault: undefined,
 		history: () => undefined,
-		chat: undefined
+		chat: undefined,
+		threads: undefined,
+		project: undefined
 	});
 	seamSettledAgain();
 	resetApi();
@@ -408,5 +415,60 @@ describe('throwing a draft away', () => {
 		const here = await api.listNodes({ graph: await new LocalApi(folder()).graphHere() });
 		expect(here.map((one) => one.title)).toEqual(['Origins']);
 		expect((await kept.log(30)).commits.length).toBe(versions);
+	});
+});
+
+describe('deleting the thread a draft stands for', () => {
+	/** The thread this device holds for that draft, read the way another run of
+	 *  the app finds it. */
+	async function theThreadIsRead(): Promise<void> {
+		const graph = await new LocalApi(folder()).graphHere();
+		const at = new Date().toISOString();
+		await new DeviceThreads(folder()).write({
+			id: THREAD,
+			name: 'Why two passes?',
+			graph,
+			project: ROOT,
+			created_at: at,
+			updated_at: at,
+			places: [],
+			turns: []
+		});
+		await chat.opened(graph);
+	}
+
+	it('takes the writing in first where that is the answer', async () => {
+		await aTurn(async (drafted) => {
+			await drafted.createNode({ title: 'The parser' });
+		});
+		await theThreadIsRead();
+		expect(chatDraft.standing?.id).toBe(THREAD);
+
+		expect(await chat.remove(THREAD, 'merge')).toBe(true);
+
+		const here = await api.listNodes({ graph: await new LocalApi(folder()).graphHere() });
+		expect(here.map((one) => one.title).sort()).toEqual(['Origins', 'The parser']);
+		expect(chatDraft.standing).toBe(null);
+		expect(chat.threads).toEqual([]);
+		expect(await new DeviceThreads(folder()).read(THREAD)).toBeUndefined();
+	});
+
+	it('is refused where the two copies have something to settle, and takes nothing', async () => {
+		await aTurn(async (drafted) => {
+			await drafted.updateBlock(seed, { content: words('The seed, as the chat has it') });
+		});
+		await api.updateBlock(seed, { content: words('The seed, as I have it') });
+		await theThreadIsRead();
+
+		expect(await chat.remove(THREAD, 'merge')).toBe(false);
+
+		expect(chat.trouble).toBe(
+			'Some of what that thread wrote has to be settled against your own notes first. Read the draft.'
+		);
+		expect(chatDraft.standing?.id).toBe(THREAD);
+		expect(chat.threads.map((one) => one.id)).toEqual([THREAD]);
+		expect((await api.listBlocks(origins)).map((one) => textIn(one.content))).toEqual([
+			'The seed, as I have it'
+		]);
 	});
 });

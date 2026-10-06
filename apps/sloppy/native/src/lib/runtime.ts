@@ -9,6 +9,7 @@ import {
 	containerOf,
 	DeviceCredentials,
 	DeviceGitDefaults,
+	DeviceThreads,
 	holdsAGraph,
 	LocalApi,
 	readIdentities,
@@ -252,6 +253,7 @@ export function initNativeRuntime(): void {
 					gitDefaults: new DeviceGitDefaults(device),
 					credentials: new DeviceCredentials(device),
 					aiKeys: deviceAiKeys(device),
+					threads: new DeviceThreads(device),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,

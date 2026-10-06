@@ -2,6 +2,9 @@ import type { AppRuntime, ChatAsked } from '@sloppy/app-core';
 import type { Credential } from '@sloppy/local';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+/** Whose graph the folders in these tests hold, as `graph.json` names them. */
+const OWNER = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
+
 /** What a thread asks a session to be opened as. */
 const asking = (): ChatAsked => ({
 	thread: { id: '01JAPART000000000000000000', places: [] }
@@ -335,6 +338,29 @@ describe('the native shell in local mode', () => {
 		expect(copies.get('/Users/me/compiler/.sloppy')).toBeDefined();
 		expect(chattedIn).toEqual([draft?.root]);
 		expect(chattedIn[0]).not.toBe('/Users/me/compiler');
+	});
+
+	it('keeps the chats about a project where this device keeps its own things', async () => {
+		await launch();
+		projectAt('/Users/me/compiler');
+		await registered.vault?.open();
+
+		const at = new Date().toISOString();
+		await registered.threads?.write({
+			id: '01JAPART000000000000000000',
+			name: 'Why two passes?',
+			graph: `${OWNER}/01ARZ3NDEKTSV4RRFFQ69G5FAY`,
+			project: '/Users/me/compiler',
+			created_at: at,
+			updated_at: at,
+			places: [],
+			turns: []
+		});
+
+		// What another run of the app finds: the chat is on the device, not in
+		// the page that was showing it.
+		await launch();
+		expect((await registered.threads?.list())?.map((one) => one.name)).toEqual(['Why two passes?']);
 	});
 
 	it("has nowhere to start a chat about a graph that is nobody's project", async () => {

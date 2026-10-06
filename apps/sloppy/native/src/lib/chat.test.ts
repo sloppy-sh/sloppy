@@ -755,6 +755,26 @@ describe('what the agent is told before it hears anybody', () => {
 		expect(brief).toContain('belongs in a note');
 		// The one thing it got wrong without this: offering to write a file.
 		expect(brief).toContain('cannot write or change any file in this project');
+		// A thread with no places beside its own project says nothing about any.
+		expect(brief).not.toContain('You may also read these places');
+	});
+
+	it('names the places that thread reads, because a name is how it asks for one', async () => {
+		await chat().open(
+			asking({
+				thread: {
+					id: THREAD,
+					places: [
+						{ root: '/work/lexer', name: 'lexer' },
+						{ root: '/work/old/lexer', name: 'old/lexer' }
+					]
+				}
+			}),
+			() => {},
+			serve
+		);
+
+		expect(opens[0].brief).toContain('You may also read these places: lexer, old/lexer');
 	});
 
 	it('answers with the model somebody chose, and with none where they chose nothing', async () => {

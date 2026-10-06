@@ -182,7 +182,7 @@ class TauriChat implements ChatAccess {
 				agent,
 				root,
 				tools: advertisedChatTools(),
-				brief: chatBrief(),
+				brief: chatBrief(asked.thread.places),
 				...(asked.model === undefined ? {} : { model: asked.model })
 			},
 			heard: told

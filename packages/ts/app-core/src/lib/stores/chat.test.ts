@@ -32,6 +32,9 @@ import { whatHappened } from './what-happened.svelte.js';
 const ROOT = '/work/compiler';
 const COPIES = '/data/drafts';
 const PLACE = '/work/lexer';
+/** A second folder whose own name is the first's, which is what two projects
+ *  holding a `lexer` looks like. */
+const ALSO = '/work/old/lexer';
 const ELSEWHERE = '/somebody/else';
 
 /** Which folder each of Sloppy's own acts was served against, newest last. */
@@ -165,16 +168,21 @@ function shell(): void {
 		chat: stub,
 		threads: new DeviceThreads(folder()),
 		project: async () => folder(),
-		placeFiles: (root) => (root === PLACE ? folder().at(root) : undefined)
+		// A shell serves only the folders somebody picked; here that is /work.
+		placeFiles: (root) => (root.startsWith('/work/') ? folder().at(root) : undefined)
 	});
 	seamSettledAgain();
 }
 
-/** What somebody says, the agent answering it, and the turn ending — which is
- *  where a thread is kept. */
+/** What somebody says, the agent saying which conversation answered, the answer
+ *  itself, and the turn ending — which is where a thread is kept. The words of
+ *  a turn that opens a session wait on the agent saying what it is, so a test
+ *  cannot say the one before the other. */
 async function aTurn(words: string): Promise<void> {
-	await chat.say(words);
+	const saying = chat.say(words);
+	await settled();
 	stub.begins();
+	await saying;
 	stub.tell({ event: 'block', at: 0, block: { kind: 'said', said: 'Noted.' } });
 	stub.tell({ event: 'ended', spent: { sent: 100, answered: 20 } });
 	await settled();
@@ -299,11 +307,14 @@ describe('a chat this device keeps', () => {
 		expect(chat.current?.id).toBe(first);
 		expect(chat.turns.some((turn) => JSON.stringify(turn).includes('About the parser'))).toBe(true);
 
-		await chat.say('And the emitter?');
+		const saying = chat.say('And the emitter?');
+		await settled();
 		expect(chat.running).toBe(true);
 		await chat.openThread(second);
 		expect(chat.current?.id).toBe(first);
 		expect(chat.trouble).toBe('The assistant is still answering. Stop it first.');
+		stub.begins();
+		await saying;
 	});
 });
 
@@ -404,7 +415,20 @@ describe('deleting a chat', () => {
 
 	it('says nothing is there for a chat this device does not hold', async () => {
 		expect(await chat.remove(ulid(), 'discard')).toBe(false);
-		expect(chat.trouble).toBe("That chat isn't here any more.");
+		expect(chat.trouble).toBe("That thread isn't here any more.");
+	});
+
+	it('leaves the chat being read with its own draft in hand', async () => {
+		const first = await wroteSomething();
+		chat.startThread();
+		const second = await wroteSomething();
+		expect(chatDraft.standing?.id).toBe(second);
+
+		expect(await chat.remove(first, 'discard')).toBe(true);
+
+		expect(discarded).toEqual([first]);
+		expect(chatDraft.standing?.id).toBe(second);
+		expect(chat.current?.id).toBe(second);
 	});
 });
 
@@ -426,14 +450,44 @@ describe('the places a chat reads besides its own project', () => {
 		expect(chat.trouble).toBe('Sloppy cannot read that folder from here. Open it and try again.');
 	});
 
-	it('is not added twice, and is bounded', async () => {
+	it('is not added twice', async () => {
 		await chat.addPlace({ root: PLACE, name: 'lexer' });
 		await chat.addPlace({ root: PLACE, name: 'again' });
 		expect(chat.places).toEqual([{ root: PLACE, name: 'lexer' }]);
 
 		await chat.removePlace(PLACE);
 		expect(chat.places).toEqual([]);
-		expect(MOST_PLACES).toBeGreaterThan(1);
+	});
+
+	it('stops at the most one chat reads, and says so', async () => {
+		for (let at = 0; at <= MOST_PLACES; at += 1)
+			await chat.addPlace({ root: `/work/p${at}`, name: `p${at}` });
+
+		expect(chat.places).toHaveLength(MOST_PLACES);
+		expect(chat.places.map((one) => one.root)).not.toContain(`/work/p${MOST_PLACES}`);
+		expect(chat.trouble).toBe(`A thread reads ${MOST_PLACES} places besides its own project.`);
+	});
+
+	it('is held apart from a place already called the same thing', async () => {
+		await chat.addPlace({ root: PLACE, name: 'lexer' });
+		await chat.addPlace({ root: ALSO, name: 'lexer' });
+
+		expect(chat.places).toEqual([
+			{ root: PLACE, name: 'lexer' },
+			{ root: ALSO, name: 'old/lexer' }
+		]);
+
+		// Which is the whole of the point: each name reaches its own folder.
+		await chat.say('What did the old lexer do?');
+		stub.begins();
+		await stub.serve({
+			call: 'c1',
+			act: 'list_notes',
+			arguments: { in: 'old/lexer' }
+		} as ChatToolCall);
+		await stub.serve({ call: 'c2', act: 'list_notes', arguments: { in: 'lexer' } } as ChatToolCall);
+
+		expect(served.roots).toEqual([ALSO, PLACE]);
 	});
 
 	it('is not changed while the agent is answering', async () => {
@@ -561,31 +615,57 @@ describe('picking a chat up where it was left', () => {
 		chat.startThread();
 
 		await chat.openThread(id);
-		await chat.say('And the lexer?');
+		const saying = chat.say('And the lexer?');
+		await settled();
+		stub.begins();
+		await saying;
 
 		expect(stub.asked.at(-1)?.thread.session).toBe('s-1');
 		// The conversation is the agent's own, so nothing is handed to it again.
 		expect(stub.said.at(-1)).toBe('And the lexer?');
 	});
 
-	it('says so, and hands over what was said, where the agent answered as another', async () => {
+	it('says so, and hands over what was said with the words that opened it, where the agent answered as another', async () => {
 		await aTurn('Why two passes?');
 		const id = chat.current?.id as Ulid;
 		chat.startThread();
 		await chat.openThread(id);
 		stub.answersAs = 'another-session';
 
-		await chat.say('And the lexer?');
-		stub.begins();
-
-		expect(chat.says).toBe('The assistant is going on from a summary of this chat.');
-		expect(chat.current?.session).toBe('another-session');
-
-		stub.tell({ event: 'ended' });
+		const before = stub.said.length;
+		const saying = chat.say('And the lexer?');
 		await settled();
-		await chat.say('And the emitter?');
+		// Which conversation answered is what says whether this one has to be
+		// handed over, so nothing has gone to the agent until it is said.
+		expect(stub.said).toHaveLength(before);
+		stub.begins();
+		await saying;
+
+		expect(chat.says).toBe('The assistant is going on from a summary of this thread.');
+		expect(chat.current?.session).toBe('another-session');
 		expect(stub.said.at(-1)).toContain('Why two passes?');
-		expect(stub.said.at(-1)).toContain('And the emitter?');
+		expect(stub.said.at(-1)).toContain('And the lexer?');
+	});
+
+	it('hands over what was said where the agent never says which session answered', async () => {
+		await aTurn('Why two passes?');
+		const id = chat.current?.id as Ulid;
+		chat.startThread();
+		await chat.openThread(id);
+
+		vi.useFakeTimers();
+		try {
+			const saying = chat.say('And the lexer?');
+			await vi.advanceTimersByTimeAsync(20_000);
+			await saying;
+		} finally {
+			vi.useRealTimers();
+		}
+
+		expect(stub.said.at(-1)).toContain('Why two passes?');
+		expect(stub.said.at(-1)).toContain('And the lexer?');
+		// Which conversation answered is unknown, so nothing is claimed about it.
+		expect(chat.says).toBe(null);
 	});
 
 	it('hands over what was said where there is no session to pick up', async () => {

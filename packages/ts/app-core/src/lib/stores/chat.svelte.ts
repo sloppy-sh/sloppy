@@ -41,6 +41,7 @@ import {
 	MOST_ATTACHED_PER_TURN,
 	MOST_PLACES,
 	type OwnedRef,
+	placeNamed,
 	spentTogether,
 	threadNameFrom,
 	ulid,
@@ -63,22 +64,27 @@ const MODEL_UNKNOWN = "That model isn't one this assistant knows. Pick another."
 const UNKEPT = 'Sloppy could not keep that just now. Try again.';
 const UNATTACHED = 'Sloppy could not put that where the chat can read it. Try again.';
 const TOO_MANY = `You can put ${MOST_ATTACHED_PER_TURN} things in front of it at once.`;
-const UNDELETED = 'That chat could not be deleted just now. Try again.';
+const UNDELETED = 'That thread could not be deleted just now. Try again.';
 
 const STILL_ANSWERING = 'The assistant is still answering. Stop it first.';
-const NO_SUCH_CHAT = "That chat isn't here any more.";
-const TOO_MANY_PLACES = `A chat reads ${MOST_PLACES} places besides its own project.`;
+const NO_SUCH_THREAD = "That thread isn't here any more.";
+const TOO_MANY_PLACES = `A thread reads ${MOST_PLACES} places besides its own project.`;
 const UNREACHED_PLACE = 'Sloppy cannot read that folder from here. Open it and try again.';
 const SETTLE_FIRST =
-	'Some of what that chat wrote has to be settled against your own notes first. Read the draft.';
+	'Some of what that thread wrote has to be settled against your own notes first. Read the draft.';
 
 /** Said once, quietly, where a conversation goes on without what came before
  *  it: the agent's own session was not there to pick up. */
-const PICKED_UP = 'The assistant is going on from a summary of this chat.';
+const PICKED_UP = 'The assistant is going on from a summary of this thread.';
 
 /** And where the places changed under a conversation that is standing. */
 const PLACES_MOVED =
 	'The next thing you say starts the assistant again, so it can read what you changed.';
+
+/** How long a session has to say which conversation answered before the words
+ *  that opened it go out anyway. A program that has started and not introduced
+ *  itself is not one to hold somebody's turn behind. */
+const INTRODUCES_WITHIN = 10_000;
 
 /** Words for the AGENT, which reads a rejection rather than being left
  *  waiting on it. */
@@ -198,9 +204,12 @@ class ChatStore {
 	 *  for. */
 	#writes: Promise<void> = Promise.resolve();
 	/** The session this thread asked to be picked up, and the conversation to
-	 *  hand over where it was not — `started` is what says which happened. */
+	 *  hand over where it was not — `started` is what says which happened. The
+	 *  words that OPENED the session wait on that, because a conversation that
+	 *  was not picked up goes over with them rather than after them. */
 	#asked: ChatSessionId | undefined = undefined;
 	#carryIfUnpicked: string | null = null;
+	#introduced: (() => void) | null = null;
 	/** The agent and model the last session died under, for the person to be
 	 *  offered another. */
 	#failed = $state.raw<{ agent: ChatAgent; model?: string } | null>(null);
@@ -463,7 +472,7 @@ class ChatStore {
 		}
 		const thread = this.#threads.find((one) => one.id === id);
 		if (!thread) {
-			this.#trouble = NO_SUCH_CHAT;
+			this.#trouble = NO_SUCH_THREAD;
 			return;
 		}
 		this.#letSessionGo();
@@ -508,7 +517,7 @@ class ChatStore {
 	async putBack(id: Ulid): Promise<void> {
 		const thread = this.#threads.find((one) => one.id === id);
 		if (!thread) {
-			this.#trouble = NO_SUCH_CHAT;
+			this.#trouble = NO_SUCH_THREAD;
 			return;
 		}
 		await this.#keep({ ...liveAgain(thread), updated_at: new Date().toISOString() });
@@ -522,7 +531,7 @@ class ChatStore {
 	async remove(id: Ulid, draft: DraftOnDelete): Promise<boolean> {
 		const thread = this.#threads.find((one) => one.id === id);
 		if (!thread) {
-			this.#trouble = NO_SUCH_CHAT;
+			this.#trouble = NO_SUCH_THREAD;
 			return false;
 		}
 		const reading = this.#current?.id === id;
@@ -547,8 +556,9 @@ class ChatStore {
 		return true;
 	}
 
-	/** Add a place this chat may read besides its own project. A place already
-	 *  there is no second one. */
+	/** Add a place this thread may read besides its own project. A folder
+	 *  already there is no second place, and a name already taken is held apart
+	 *  from the place that has it — {@link placeNamed}. */
 	async addPlace(place: ChatPlace): Promise<void> {
 		if (this.#places.some((one) => one.root === place.root)) return;
 		if (this.#running) {
@@ -563,7 +573,11 @@ class ChatStore {
 			this.#trouble = UNREACHED_PLACE;
 			return;
 		}
-		await this.#placesNow([...this.#places, place]);
+		const named = placeNamed(
+			this.#places.map((one) => one.name),
+			place
+		);
+		await this.#placesNow([...this.#places, { ...place, name: named }]);
 	}
 
 	/** Take one back off it. */
@@ -648,6 +662,7 @@ class ChatStore {
 			this.#asked = session;
 			this.#carryIfUnpicked = session === undefined ? null : carriedOver(before);
 			if (session === undefined && before.length > 0) this.#carrying ??= carriedOver(before);
+			const introduced = session === undefined ? null : this.#introduces();
 			try {
 				await access.open(
 					{
@@ -664,6 +679,7 @@ class ChatStore {
 				);
 			} catch (error) {
 				whatHappened.put('trouble', `the chat would not start: ${troubleIn(error)}`);
+				this.#introduced?.();
 				if (epoch !== this.#epoch) return;
 				this.#trouble = wordsFor(error) ?? UNSTARTED;
 				this.#running = false;
@@ -677,6 +693,10 @@ class ChatStore {
 				...(agent === undefined ? {} : { agent }),
 				...(model === undefined ? {} : { model })
 			});
+			if (introduced !== null) {
+				await introduced;
+				if (epoch !== this.#epoch) return;
+			}
 		}
 		const carried = this.#carrying ?? '';
 		this.#carrying = null;
@@ -944,6 +964,27 @@ class ChatStore {
 		this.#kept.clear();
 	}
 
+	/** Settled where the agent says which session answered, and where it says
+	 *  nothing for {@link INTRODUCES_WITHIN}: nothing said is nothing known, so
+	 *  the conversation is handed over rather than risked on a session that may
+	 *  not have been picked up, and the person is told nothing either way. */
+	#introduces(): Promise<void> {
+		return new Promise((settle) => {
+			const waited = setTimeout(() => {
+				this.#introduced = null;
+				const carry = this.#carryIfUnpicked;
+				this.#carryIfUnpicked = null;
+				if (carry !== null && carry !== '') this.#carrying = carry;
+				settle();
+			}, INTRODUCES_WITHIN);
+			this.#introduced = () => {
+				clearTimeout(waited);
+				this.#introduced = null;
+				settle();
+			};
+		});
+	}
+
 	#letSessionGo(): void {
 		if (this.#standing) {
 			void seam()
@@ -963,6 +1004,7 @@ class ChatStore {
 		this.#answered = false;
 		this.#asked = undefined;
 		this.#carryIfUnpicked = null;
+		this.#introduced?.();
 		this.#spentTurn = undefined;
 		this.#context = null;
 		this.#trouble = null;
@@ -999,6 +1041,7 @@ class ChatStore {
 					this.#says = PICKED_UP;
 					if (carry !== null && carry !== '') this.#carrying = carry;
 				}
+				this.#introduced?.();
 				void this.#keepCurrent({ session: event.session });
 				break;
 			}
@@ -1044,6 +1087,7 @@ class ChatStore {
 				this.#answered = false;
 				this.#asked = undefined;
 				this.#carryIfUnpicked = null;
+				this.#introduced?.();
 				this.#context = null;
 				this.#trouble = refusedModel ? MODEL_UNKNOWN : (event.said ?? null);
 				break;

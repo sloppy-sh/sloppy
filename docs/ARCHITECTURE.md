@@ -3420,9 +3420,14 @@ session the thread last answered as, and the shell asks the agent to go on from 
 restores the whole conversation including what its tools answered — far more than anything
 we could replay. **A session asked for may not be there**: a transcript has an age and an
 agent may turn one down, so the shell opens a new one and the `started` event names which
-session answered. Where that is not the one asked for, the page says so in one quiet line
-and hands the agent `carriedOver`'s summary of the thread with the next thing said. There is
-no second channel for this: the id that came back is the whole of the evidence.
+session answered. There is no second channel for this: the id that came back is the whole of
+the evidence. So the words that OPENED the session wait on `started` before they go out —
+where the session answering is not the one asked for, the page says so in one quiet line and
+hands the agent `carriedOver`'s summary of the thread WITH those words, because a first
+exchange answered with no history is the one the summary afterwards can never contain. An
+agent that starts and never says which session it is, is not held onto: the words go out
+with the summary rather than behind it, and nothing is said to the person, because nothing
+is known.
 
 **A thread reads PLACES beside its own project, and reads them only.** Somebody asking why
 one project is the way it is often has the answer in another, so a thread carries up to
@@ -3434,11 +3439,14 @@ a place because the shell names it at launch, and Sloppy's three READING acts re
 notes through an `in` argument naming the place by NAME. **The eight writing acts take no
 `in` and land in the thread's own draft**, whatever they say: `chatToolWrites` is what
 decides, so a place is read and never written. A place the thread does not carry, or one the
-shell will not serve, is refused to the agent in words it can act on. Changing places under
-a standing session lets it go, because nothing can be added to a session that is already
-running; the next thing said opens another with them, and the person is told why. Changing
-them while a TURN is underway is refused in the same words switching threads is, because
-letting the session go there would throw away the answer being written.
+shell will not serve, is refused to the agent in words it can act on. **A place is reached
+by NAME, so two under one name would answer whichever was added first for both**: `placeNamed`
+is the one gate, and a name already taken is given the folder it sits in until it is
+distinct. Changing places under a standing session lets it go, because nothing can be added
+to a session that is already running; the next thing said opens another with them, and the
+person is told why. Changing them while a TURN is underway is refused in the same words
+switching threads is, because letting the session go there would throw away the answer being
+written.
 
 **Every act LANDS, and the draft is what makes that safe.** A session works in a DRAFT: a
 second checkout of the repository keeping the notes, under the app's own data, on a branch
@@ -3734,8 +3742,10 @@ is classified on its `kind` and never on its name**, and `deferred` — what the
 aside rather than in the window — is never in the used total; `usedIn` and `heldAsideIn` are
 the one place either is summed. **An empty breakdown is a count with no parts**, which is
 what arrives between one ask and the next, and `contextTogether` keeps the last breakdown
-standing under it so a bar has something to draw. A turn that made room says what the window
-held before it did.
+standing under it so a bar has something to draw. **A turn that made room is the exception**:
+it says what the window held before it did, and it replaced the conversation under that
+count, so every part of the breakdown before it is dropped rather than kept — the count
+stands alone until the agent is asked for the parts again.
 
 **A conversation moves to another agent by being carried.** A session is one agent's. Picking
 another lets the standing session go and carries what was said so far into the next one, as the

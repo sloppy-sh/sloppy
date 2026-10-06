@@ -146,9 +146,10 @@ export const MOST_PLACES = 8;
  * the person added to it, named so the agent can ask for it by name.
  *
  * `root` is where it is, as the platform spells a folder, and is the shell's
- * own business — nothing shows it. `name` is what a person and the agent both
- * call it. **Absent `graph` is a folder that holds no graph**: the agent's own
- * file tools read it and Sloppy's note acts answer nothing for it.
+ * own business — no path is shown. `name` is what a person and the agent both
+ * call it, and {@link placeNamed} is what keeps two of them apart. **Absent
+ * `graph` is a folder that holds no graph**: the agent's own file tools read it
+ * and Sloppy's note acts answer nothing for it.
  */
 export const ChatPlaceSchema = z.object({
   root: z.string().min(1).max(DRAFT_PATH_MAX),
@@ -156,6 +157,41 @@ export const ChatPlaceSchema = z.object({
   graph: OwnedRefSchema.optional(),
 });
 export type ChatPlace = z.infer<typeof ChatPlaceSchema>;
+
+/** Folders, however the platform spells the way between them. */
+const BETWEEN_FOLDERS = /[/\\]+/;
+
+/**
+ * What one place is called among the places a thread already reads: the name it
+ * came with where that is free, and otherwise that name under as much of the
+ * folder above it as it takes to tell the two apart.
+ *
+ * **A place is reached by this name and by nothing else** — the agent is handed
+ * the names and a reading act carries one — so whatever adds a place carries
+ * the name from here rather than the one the place arrived under.
+ * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
+ */
+export function placeNamed(taken: readonly string[], place: ChatPlace): string {
+  const held = new Set(taken);
+  if (!held.has(place.name)) return place.name;
+  const folders = place.root.split(BETWEEN_FOLDERS).filter((one) => one !== "");
+  const above =
+    folders[folders.length - 1] === place.name ? folders.slice(0, -1) : folders;
+  for (let from = above.length - 1; from >= 0; from -= 1) {
+    const tried = [...above.slice(from), place.name].join("/");
+    if (tried.length > CHAT_THREAD_NAME_MAX) break;
+    if (!held.has(tried)) return tried;
+  }
+  let second = 2;
+  let tried = numbered(place.name, second);
+  while (held.has(tried)) tried = numbered(place.name, (second += 1));
+  return tried;
+}
+
+function numbered(name: string, second: number): string {
+  const after = ` (${second})`;
+  return `${name.slice(0, CHAT_THREAD_NAME_MAX - after.length)}${after}`;
+}
 
 /** What a tool call's arguments may run to, encoded — {@link argumentsFit}. */
 export const CHAT_ARGUMENTS_MAX = 8192;
@@ -1193,11 +1229,11 @@ export function spentTogether(
  * and never on a part's name**, which is the agent's own wording and changes
  * under us.
  *
- * - `used` — in the window now, and what the bar is drawn from.
+ * - `used` — in the window now.
  * - `free` — room left in the window.
  * - `buffer` — room the agent keeps back for its own answer.
  * - `deferred` — held aside rather than in the window, and NEVER in the used
- *   total; it is said beside the bar and drawn in none of it.
+ *   total.
  */
 export const CONTEXT_PART_KINDS = [
   "used",
@@ -1225,12 +1261,12 @@ export type ContextPart = z.infer<typeof ContextPartSchema>;
 
 /**
  * How full the agent's window is — read from the agent, never estimated here.
+ * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
  *
  * `total` is what is in the window now and `limit` is how much it holds, both
  * in tokens. **An EMPTY `parts` is a count with no breakdown**, which is what
  * arrives between one asked-for breakdown and the next;
- * {@link contextTogether} is what keeps the last breakdown standing under it,
- * so no surface works that out for itself.
+ * {@link contextTogether} is what reads one of these onto the last.
  *
  * **Absent `compactsAt` is an agent that does not say** where it will make
  * room, which is not the same as one that never will. **Absent `compacted` is
@@ -1265,15 +1301,21 @@ function partsSummed(usage: ContextUsage, kind: ContextPartKind): number {
 
 /**
  * A count arriving onto the one held: the newer counts, with the older
- * breakdown kept where the newer carries none. A count with no breakdown is
- * how full the window is NOW, and dropping the last breakdown under it would
- * leave a bar with nothing to draw between two asks.
+ * breakdown kept where the newer carries none — **except where the turn made
+ * room**, which replaced what the window held and left every part counted
+ * before it stale, so the newer count stands alone until the agent is asked
+ * for a breakdown again.
  */
 export function contextTogether(
   held: ContextUsage | undefined,
   more: ContextUsage,
 ): ContextUsage {
-  if (held === undefined || more.parts.length > 0) return more;
+  if (
+    held === undefined ||
+    more.parts.length > 0 ||
+    more.compacted !== undefined
+  )
+    return more;
   return { ...more, parts: held.parts };
 }
 

@@ -287,9 +287,10 @@ export function carriedOver(turns: readonly ChatTurn[]): string {
 	return whole.length <= CARRIED_MAX ? whole : `…${whole.slice(-CARRIED_MAX)}`;
 }
 
-/** What a person's words become where an earlier conversation is carried
- *  into a new session with them. */
+/** What a person's words become where an earlier conversation is carried into a
+ *  new session with them — another agent's, or the same agent's own that could
+ *  not be picked up, so the preamble claims neither. */
 export function withCarried(carried: string, said: string): string {
 	if (carried === '') return said;
-	return `Earlier in this conversation, answered by another assistant:\n\n${carried}\n\n---\n\n${said}`;
+	return `Earlier in this conversation, before you were in it:\n\n${carried}\n\n---\n\n${said}`;
 }

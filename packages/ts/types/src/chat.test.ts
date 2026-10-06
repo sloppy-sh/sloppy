@@ -58,6 +58,7 @@ import {
   NotesListedSchema,
   NoteWrittenSchema,
   NumberNoteArgumentsSchema,
+  placeNamed,
   ReadNoteArgumentsSchema,
   SearchNotesArgumentsSchema,
   sectionHeadings,
@@ -1062,6 +1063,57 @@ describe("a place a thread reads besides its own project", () => {
       false,
     );
   });
+
+  it("keeps its own name where nothing else has it", () => {
+    expect(placeNamed([], { root: "/work/a/notes", name: "notes" })).toBe(
+      "notes",
+    );
+    expect(
+      placeNamed(["lexer"], { root: "/work/a/notes", name: "notes" }),
+    ).toBe("notes");
+  });
+
+  it("is named under the folder it sits in where a place already has its name", () => {
+    expect(
+      placeNamed(["notes"], { root: "/work/a/notes", name: "notes" }),
+    ).toBe("a/notes");
+    expect(
+      placeNamed(["notes", "a/notes"], {
+        root: "/work/a/notes",
+        name: "notes",
+      }),
+    ).toBe("work/a/notes");
+    // A name of its own, rather than the folder's, is still qualified by it.
+    expect(
+      placeNamed(["My thesis"], { root: "/work/a/notes", name: "My thesis" }),
+    ).toBe("notes/My thesis");
+  });
+
+  it("is named apart whatever the platform spells a folder with", () => {
+    expect(
+      placeNamed(["notes"], { root: "C:\\work\\a\\notes", name: "notes" }),
+    ).toBe("a/notes");
+  });
+
+  it("is a name no other place has, every time, and one a list can read", () => {
+    const taken = ["notes", "a/notes", "work/a/notes"];
+    const named = placeNamed(taken, { root: "/work/a/notes", name: "notes" });
+    expect(taken).not.toContain(named);
+    expect(named).toBe("notes (2)");
+
+    const long = "x".repeat(CHAT_THREAD_NAME_MAX);
+    const deep = `/${new Array(40).fill("folder").join("/")}/${long}`;
+    const far = placeNamed([long], { root: deep, name: long });
+    expect(far).not.toBe(long);
+    expect(far.length).toBeLessThanOrEqual(CHAT_THREAD_NAME_MAX);
+  });
+
+  it("is a name every place a thread may read can be given", () => {
+    const named: string[] = [];
+    for (let at = 0; at < MOST_PLACES; at += 1)
+      named.push(placeNamed(named, { root: "/work/notes", name: "notes" }));
+    expect(new Set(named).size).toBe(MOST_PLACES);
+  });
 });
 
 describe("which place a reading act answers for", () => {
@@ -1162,6 +1214,20 @@ describe("how full the agent's window is", () => {
     expect(together.total).toBe(44);
     expect(together.parts).toEqual(FULL.parts);
     expect(usedIn(together)).toBe(30);
+  });
+
+  it("drops the breakdown where the turn made room, because it replaced what it counted", () => {
+    const made: ContextUsage = {
+      total: 15,
+      limit: 100,
+      at: NOW,
+      parts: [],
+      compacted: { from: 90 },
+    };
+    const together = contextTogether(FULL, made);
+    expect(together).toEqual(made);
+    expect(usedIn(together)).toBe(0);
+    expect(together.total).toBe(15);
   });
 
   it("replaces the breakdown where a new one arrives, and stands alone first", () => {

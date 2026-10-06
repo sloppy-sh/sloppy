@@ -29,8 +29,8 @@ export interface ThreadsAccess {
 export class DeviceThreads implements ThreadsAccess {
   constructor(private readonly files: Files) {}
 
-  /** A file that does not parse is LEFT OUT rather than thrown on: one chat
-   *  somebody cannot reopen is not worth the app. */
+  /** A file that does not parse is LEFT OUT rather than thrown on —
+   *  docs/ARCHITECTURE.md § "Asking a tool to write the notes". */
   async list(): Promise<ChatThread[]> {
     const data = await this.data();
     const held = await data.list(THREADS_DIR).catch(() => [] as string[]);
