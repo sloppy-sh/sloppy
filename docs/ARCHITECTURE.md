@@ -3691,6 +3691,16 @@ arguments do not parse never reaches the page at all: the agent is told what the
 refused it for, as trouble, so that it can call again. A page spells no check of its own,
 exactly as a caller of `Files` spells no check that a path stays inside the root.
 
+**A call carries what it cost, as far as anything measured it.** The shell stamps a call with
+the moment it was made and its answer with how long it took; what the answer ADDED to the
+agent's window is what the agent's next request carries, less what it held going into the
+message that asked and what that message wrote, shared evenly among answers that arrived
+together — the only measure the agent gives, and absent where no request followed. The
+thread shows those on the call's own line and opens the whole of what was asked and what came
+back on a tap; `CHAT_SHOWN_MAX` is how much of an answer a thread keeps for that. Each thread's
+session is its own program on its own loopback port (`tools.rs`), so two threads answering at
+once share neither a tool endpoint nor a draft.
+
 **What a turn is MADE of is an open set; what a page is TOLD is a closed one.** A block —
 what was said, what was thought, a call, what a call came to — arrives from the agent, so a
 kind this build has no renderer for is carried untouched rather than refused, for the

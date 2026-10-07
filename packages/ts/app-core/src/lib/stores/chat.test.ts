@@ -293,6 +293,23 @@ afterEach(() => {
 });
 
 describe('a chat this device keeps', () => {
+	/** Merging or throwing away the draft ends the conversation that ran in it,
+	 *  and nothing else: what was said, what it spent and what its window held
+	 *  stay in front of the person until they say the next thing. */
+	it('keeps what was said and what the window held once the draft is gone', async () => {
+		await aTurn('Why two passes?');
+		stub.tell({ event: 'context', usage: FULL });
+		await settled();
+		expect(chat.context?.total).toBe(30);
+
+		chat.draftGone();
+
+		expect(chat.context?.total).toBe(30);
+		expect(chat.turns).toHaveLength(2);
+		expect(chat.spent.session).toEqual({ sent: 100, answered: 20 });
+		expect(chat.current?.id).toBeDefined();
+	});
+
 	it('takes an id and its name from the first thing said', async () => {
 		expect(chat.current).toBe(null);
 

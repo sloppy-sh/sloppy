@@ -643,6 +643,38 @@ describe("the blocks a turn carries", () => {
     });
   });
 
+  it("carries when a call was made, how long it took and what its answer cost", () => {
+    expect(
+      ChatBlockSchema.safeParse({
+        kind: "tool_call",
+        call: "c",
+        tool: "Read",
+        at: "2026-10-07T10:00:00.000Z",
+      }).success,
+    ).toBe(true);
+    expect(
+      ChatBlockSchema.safeParse({
+        kind: "tool_result",
+        call: "c",
+        said: "x",
+        took: 1200,
+        tokens: 300,
+      }).success,
+    ).toBe(true);
+    for (const broken of [{ took: -1 }, { tokens: 1.5 }, { at: "noon" }]) {
+      const kind = "at" in broken ? "tool_call" : "tool_result";
+      expect(
+        ChatBlockSchema.safeParse({
+          kind,
+          call: "c",
+          tool: "Read",
+          said: "x",
+          ...broken,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("refuses a block of a kind it knows that breaks its own bounds", () => {
     for (const block of [
       { kind: "said", said: "a".repeat(CHAT_SAID_MAX + 1) },

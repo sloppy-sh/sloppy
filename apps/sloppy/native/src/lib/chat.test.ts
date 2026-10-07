@@ -6,6 +6,7 @@ import {
 	heldAsideIn,
 	usedIn,
 	type ChatEvent,
+	type ToolResultBlock,
 	type ChatToolAnswer,
 	type ChatToolCall,
 	type ContextUsage,
@@ -259,6 +260,23 @@ function textDelta(index: number, text: string): string {
 
 function assistant(id: string, content: unknown[], more: Record<string, unknown> = {}): string {
 	return JSON.stringify({ type: 'assistant', message: { id, content, ...more } });
+}
+
+/** One of the agent's tools answered, as the agent hands it back to itself. */
+function result(
+	call: string,
+	content: string
+): { type: 'tool_result'; tool_use_id: string; content: string } {
+	return { type: 'tool_result', tool_use_id: call, content };
+}
+
+/** The answers the page was told of, as they were told. */
+function resultBlocks(heard: ChatEvent[]): ToolResultBlock[] {
+	return heard.flatMap((event) =>
+		event.event === 'block' && event.block.kind === 'tool_result'
+			? [event.block as ToolResultBlock]
+			: []
+	);
 }
 
 /** What the window holds, as the agent answers the ask it is given over its
@@ -743,7 +761,13 @@ describe('what the agent says', () => {
 			{
 				event: 'block',
 				at: 0,
-				block: { kind: 'tool_call', call: 't1', tool: 'Read', arguments: { file_path: 'a.ts' } }
+				block: {
+					kind: 'tool_call',
+					call: 't1',
+					tool: 'Read',
+					arguments: { file_path: 'a.ts' },
+					at: expect.any(String)
+				}
 			},
 			{
 				event: 'block',
@@ -753,7 +777,8 @@ describe('what the agent says', () => {
 					call: 't2',
 					tool: 'mcp__sloppy__write_note',
 					act: 'write_note',
-					arguments: { about: 'src' }
+					arguments: { about: 'src' },
+					at: expect.any(String)
 				}
 			}
 		]);
@@ -776,8 +801,81 @@ describe('what the agent says', () => {
 		expect(heard.at(-1)).toEqual({
 			event: 'block',
 			at: 1,
-			block: { kind: 'tool_result', call: 't1', said: 'it says hello' }
+			block: { kind: 'tool_result', call: 't1', said: 'it says hello', took: expect.any(Number) }
 		});
+	});
+
+	/** A call is stamped when it is first seen, so the moment the stream started
+	 *  it is the moment its whole message repeats. */
+	it('keeps the moment a call was made across the block arriving again', async () => {
+		const { live, heard } = await opened();
+		await live.say('go');
+
+		says(messageStart('m1'));
+		says(blockStart(0, { type: 'tool_use', id: 't1', name: 'Read', input: {} }));
+		says(assistant('m1', [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }]));
+
+		const calls = heard.flatMap((event) =>
+			event.event === 'block' && event.block.kind === 'tool_call' ? [event.block] : []
+		);
+		expect(calls).toHaveLength(2);
+		expect(calls[0].at).toBe(calls[1].at);
+	});
+
+	/** What an answer added to the window is what the agent's next request
+	 *  carries, less what it held going into the message that asked and what
+	 *  that message wrote. */
+	it("costs an answer by the agent's next request, once it comes", async () => {
+		const { live, heard } = await opened();
+		await live.say('go');
+
+		says(
+			assistant('m1', [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }], {
+				usage: { input_tokens: 100, output_tokens: 20 }
+			})
+		);
+		says(JSON.stringify({ type: 'user', message: { content: [result('t1', 'it says hello')] } }));
+		expect(resultBlocks(heard).at(-1)?.tokens).toBeUndefined();
+
+		says(
+			assistant('m2', [{ type: 'text', text: 'Read it.' }], {
+				usage: { input_tokens: 300, cache_read_input_tokens: 100 }
+			})
+		);
+
+		expect(resultBlocks(heard).at(-1)).toMatchObject({
+			call: 't1',
+			said: 'it says hello',
+			tokens: 280
+		});
+	});
+
+	it('shares that cost evenly among answers that arrived together', async () => {
+		const { live, heard } = await opened();
+		await live.say('go');
+
+		says(
+			assistant(
+				'm1',
+				[
+					{ type: 'tool_use', id: 't1', name: 'Read', input: {} },
+					{ type: 'tool_use', id: 't2', name: 'Read', input: {} }
+				],
+				{ usage: { input_tokens: 100, output_tokens: 30 } }
+			)
+		);
+		says(
+			JSON.stringify({
+				type: 'user',
+				message: { content: [result('t1', 'one'), result('t2', 'two')] }
+			})
+		);
+		says(assistant('m2', [{ type: 'text', text: 'Both.' }], { usage: { input_tokens: 501 } }));
+
+		expect(resultBlocks(heard).slice(-2)).toEqual([
+			expect.objectContaining({ call: 't1', tokens: 186 }),
+			expect.objectContaining({ call: 't2', tokens: 185 })
+		]);
 	});
 
 	/** A dialect grows, and an agent that grew one must not end the chat. */

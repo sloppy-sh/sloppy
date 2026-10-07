@@ -87,10 +87,10 @@ export const CHAT_SAID_MAX = 65536;
  *  a container's notes, or a note read whole. */
 export const CHAT_ANSWER_MAX = 65536;
 
-/** What the thread SHOWS of an answer. A person reads the first of it and
- *  opens the note itself for the rest, so this is far shorter than what the
- *  agent was handed. */
-export const CHAT_SHOWN_MAX = 2048;
+/** What the thread KEEPS of an answer, for the person who opens the call to
+ *  read it whole. A listing or a long read is cut here, and the note itself is
+ *  where the rest is. */
+export const CHAT_SHOWN_MAX = 16384;
 
 /** Long enough for what a session that could not go on has to say. */
 export const CHAT_TROUBLE_MAX = 2048;
@@ -806,6 +806,9 @@ export const ToolCallBlockSchema = z.object({
    *  nothing it has not read. **Absent is a call with none.** Bounded by
    *  {@link argumentsFit}. */
   arguments: z.unknown().optional(),
+  /** When the agent called it. **Absent is a call written down before times
+   *  were kept.** */
+  at: TimestampSchema.optional(),
 });
 export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
 
@@ -818,7 +821,14 @@ export const ToolResultBlockSchema = z.object({
   /** **Absent is a call that came to an answer.** True is one that did not,
    *  which the agent was told about and may act on. */
   trouble: z.boolean().optional(),
+  /** How long the call took to answer, in ms. **Absent is one nobody timed.** */
+  took: z.int().min(0).optional(),
+  /** What the answer added to the agent's window, in tokens, as the agent's
+   *  next request measured it — shared evenly among answers that arrived
+   *  together. **Absent is an answer nothing measured**, which is not free. */
+  tokens: z.int().min(0).optional(),
 });
+export type ToolResultBlock = z.infer<typeof ToolResultBlockSchema>;
 
 const KNOWN_KINDS: ReadonlySet<string> = new Set(CHAT_BLOCK_KINDS);
 

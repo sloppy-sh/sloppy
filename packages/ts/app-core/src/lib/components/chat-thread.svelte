@@ -17,14 +17,17 @@
 		type OwnedRef,
 		type ToolCallBlock
 	} from '@sloppy/types';
+	import { ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import {
 		actOutcome,
+		callDetails,
 		type CallOutcome,
 		callOutcome,
 		saidIn,
 		type ThreadRow,
 		threadRows,
+		type ToolAnswer,
 		toolLine,
 		type ToolLine
 	} from '../chat-said.js';
@@ -65,6 +68,25 @@
 	} = $props();
 
 	const drawn = $derived(turns.map((turn) => ({ turn, rows: threadRows(turn) })));
+
+	/** The call somebody opened to read whole: what was asked, and what came
+	 *  back. */
+	let looking = $state<{ call: ToolCallBlock; answer?: ToolAnswer; line: ToolLine } | null>(null);
+	let lookingOpen = $state(false);
+
+	function look(row: ThreadRow & { kind: 'call' }, line: ToolLine): void {
+		looking = { call: row.call, line, ...(row.answer === undefined ? {} : { answer: row.answer }) };
+		lookingOpen = true;
+	}
+
+	function askedIn(call: ToolCallBlock): string {
+		if (call.arguments === undefined) return '';
+		try {
+			return JSON.stringify(call.arguments, null, 2);
+		} catch {
+			return String(call.arguments);
+		}
+	}
 
 	/** What one call came to, with the one note it left for a surface offering
 	 *  to open it. */
@@ -205,8 +227,14 @@
 							{@const came = outcomeOf(row)}
 							{@const subject = subjectOf(line, came)}
 							{@const Icon = iconFor(row.call)}
+							{@const details = callDetails(row.call, row.answer).join(' · ')}
 							<div class="rounded-md border border-border/60 px-2.5 py-1.5">
-								<p class="flex min-w-0 items-center gap-2 text-xs">
+								<button
+									type="button"
+									class="flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm text-left text-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+									title={details === '' ? undefined : details}
+									onclick={() => look(row, line)}
+								>
 									<Icon
 										class="size-3.5 shrink-0 text-muted-foreground {row.answer
 											? ''
@@ -216,7 +244,7 @@
 									{#if subject}
 										<span class="min-w-0 truncate text-muted-foreground">{subject}</span>
 									{/if}
-								</p>
+								</button>
 								{@render outcome(came, came.note)}
 							</div>
 						{:else}
@@ -273,3 +301,39 @@
 		</li>
 	{/each}
 </ol>
+
+{#if looking}
+	{@const details = callDetails(looking.call, looking.answer)}
+	{@const asked = askedIn(looking.call)}
+	<ResponsiveModal
+		bind:open={lookingOpen}
+		title={looking.line.subject
+			? `${looking.line.doing} · ${looking.line.subject}`
+			: looking.line.doing}
+		description={details.length === 0 ? undefined : details.join(' · ')}
+	>
+		<div class="flex flex-col gap-3 px-2 pt-4" data-call-transcript={looking.call.call}>
+			<section>
+				<h3 class="text-xs font-medium text-muted-foreground">Asked</h3>
+				{#if asked === ''}
+					<p class="mt-1 text-xs text-muted-foreground">Nothing beyond the call itself.</p>
+				{:else}
+					<pre
+						class="mt-1 max-h-64 overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 text-xs break-words whitespace-pre-wrap select-text">{asked}</pre>
+				{/if}
+			</section>
+			<section>
+				<h3 class="text-xs font-medium text-muted-foreground">Answered</h3>
+				{#if looking.answer === undefined}
+					<p class="mt-1 text-xs text-muted-foreground">Nothing yet.</p>
+				{:else}
+					<pre
+						class="mt-1 max-h-96 overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 text-xs break-words whitespace-pre-wrap select-text {looking
+							.answer.trouble
+							? 'text-destructive'
+							: ''}">{looking.answer.said}</pre>
+				{/if}
+			</section>
+		</div>
+	</ResponsiveModal>
+{/if}

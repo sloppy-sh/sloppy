@@ -28,7 +28,9 @@ import {
 	type ChatToolName,
 	type ContextPart,
 	type ContextPartKind,
-	type ContextUsage
+	type ContextUsage,
+	type ToolCallBlock,
+	type ToolResultBlock
 } from '@sloppy/types';
 
 /** What one line came to. `ended` is the line that ends the turn underway;
@@ -89,6 +91,18 @@ export class AgentStream {
 	/** Where a call's answer stands, by the call it answers. */
 	private results = new Map<string, number>();
 	private growing = new Map<number, Growing>();
+	/** When each call was made, by call: the clock for how long it took. */
+	private called = new Map<string, { at: string; ms: number }>();
+	/** Tokens the agent wrote in its last whole message, which stand between
+	 *  that message's window and the next one's with the answers in between. */
+	private lastAnswered = 0;
+	/** Answers whose cost is not yet known: the agent's next request says it. */
+	private pending: {
+		at: number;
+		block: ToolResultBlock;
+		before: number;
+		answered: number;
+	}[] = [];
 	/** What the window holds, which only the agent says — nothing here guesses
 	 *  one, so until it has said, no count is drawn. */
 	private limit?: number;
@@ -108,6 +122,8 @@ export class AgentStream {
 		this.messages.clear();
 		this.results.clear();
 		this.growing.clear();
+		this.called.clear();
+		this.pending = [];
 		this.underway = undefined;
 	}
 
@@ -125,7 +141,7 @@ export class AgentStream {
 					events: [
 						...this.settled(message),
 						...this.saidInWords(field(held, 'context_usage')),
-						...this.filled(field(message, 'usage'))
+						...this.filled(field(message, 'usage'), true)
 					],
 					ended: false
 				};
@@ -217,15 +233,36 @@ export class AgentStream {
 	}
 
 	/** The window as the agent's own request carried it, which is what it holds
-	 *  going into that answer. */
-	private filled(usage: unknown): ChatEvent[] {
+	 *  going into that answer. `whole` is a message that has finished, whose
+	 *  output count is final. */
+	private filled(usage: unknown, whole = false): ChatEvent[] {
 		const sent = count(field(usage, 'input_tokens'));
 		if (sent === undefined) return [];
 		this.live =
 			sent +
 			(count(field(usage, 'cache_read_input_tokens')) ?? 0) +
 			(count(field(usage, 'cache_creation_input_tokens')) ?? 0);
-		return this.moved();
+		const measured = this.measured(this.live);
+		if (whole) this.lastAnswered = count(field(usage, 'output_tokens')) ?? this.lastAnswered;
+		return [...measured, ...this.moved()];
+	}
+
+	/** What the answers waiting to be costed added to the window: what the
+	 *  agent's next request carries, less what it held going into the message
+	 *  that asked and what that message wrote. Shared evenly among them. */
+	private measured(after: number): ChatEvent[] {
+		const waiting = this.pending;
+		if (waiting.length === 0) return [];
+		this.pending = [];
+		const first = waiting[0];
+		const gap = Math.max(0, after - first.before - first.answered);
+		const each = Math.floor(gap / waiting.length);
+		return waiting.flatMap((one, index) =>
+			this.block(one.at, {
+				...one.block,
+				tokens: each + (index === 0 ? gap - each * waiting.length : 0)
+			})
+		);
 	}
 
 	/** The window after the agent made room for itself. What it held before is
@@ -295,7 +332,7 @@ export class AgentStream {
 				const opening = field(event, 'content_block');
 				const kind = growingKind(field(opening, 'type'));
 				if (kind !== undefined) this.growing.set(at, { kind, said: '' });
-				return this.block(at, spoken(opening));
+				return this.block(at, this.stamped(spoken(opening)));
 			}
 			case 'content_block_delta': {
 				const at = this.place(field(event, 'index'));
@@ -323,7 +360,7 @@ export class AgentStream {
 			const at = this.taken(held.base + held.settled);
 			held.settled += 1;
 			this.growing.delete(at);
-			events.push(...this.block(at, spoken(one)));
+			events.push(...this.block(at, this.stamped(spoken(one))));
 		}
 		return events;
 	}
@@ -340,16 +377,28 @@ export class AgentStream {
 			if (call === undefined) continue;
 			const at = this.results.get(call) ?? this.taken(this.placed);
 			this.results.set(call, at);
-			events.push(
-				...this.block(at, {
-					kind: 'tool_result',
-					call,
-					said: cut(saidIn(field(one, 'content')), CHAT_SHOWN_MAX),
-					...(field(one, 'is_error') === true ? { trouble: true } : {})
-				})
-			);
+			const made = this.called.get(call);
+			const block: ToolResultBlock = {
+				kind: 'tool_result',
+				call,
+				said: cut(saidIn(field(one, 'content')), CHAT_SHOWN_MAX),
+				...(field(one, 'is_error') === true ? { trouble: true } : {}),
+				...(made === undefined ? {} : { took: Math.max(0, Date.now() - made.ms) })
+			};
+			this.pending.push({ at, block, before: this.live, answered: this.lastAnswered });
+			events.push(...this.block(at, block));
 		}
 		return events;
+	}
+
+	/** A call carries the moment it was made, the first time it is seen; a
+	 *  block arriving again keeps that moment rather than the later one. */
+	private stamped(block: ChatBlock | undefined): ChatBlock | undefined {
+		if (block === undefined || block.kind !== 'tool_call') return block;
+		const call = block as ToolCallBlock;
+		const made = this.called.get(call.call) ?? { at: new Date().toISOString(), ms: Date.now() };
+		this.called.set(call.call, made);
+		return { ...call, at: made.at };
 	}
 
 	private messageOf(id: string | undefined): Message {

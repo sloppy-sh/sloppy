@@ -1381,6 +1381,10 @@ nothing under it.
   draws the bar down and says what it came from, and stands as one unbroken fill until the
   agent is asked for the parts again: what made room replaced what the window held, so the
   parts counted before it are gone rather than stale.
+  **A call's line says what it did, and opens what it asked and what came back.** Hover says
+  when it was made, how long it took and what its answer added to the window — each only
+  where it was measured — and a tap opens the whole of what was asked and what came back, in
+  the one modal, so nothing the agent did is a line a person cannot read past.
   **The bar is the second surface outside the canvas that spends hue**, on the same
   justification as the commit lanes (§ "The history as a picture"): which part of the window
   a band is, is the question the picture exists to answer, and over a dozen stacked bands ink

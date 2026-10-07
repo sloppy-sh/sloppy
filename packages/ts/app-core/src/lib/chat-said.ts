@@ -47,10 +47,14 @@ export type ThreadRow =
 	| { kind: 'call'; key: string; call: ToolCallBlock; answer?: ToolAnswer }
 	| { kind: 'answer'; key: string; answer: ToolAnswer };
 
-/** What a call came to, as the thread was told it. */
+/** What a call came to, as the thread was told it, and what it cost where
+ *  the shell measured that. */
 export interface ToolAnswer {
 	said: string;
 	trouble?: boolean;
+	/** ms */
+	took?: number;
+	tokens?: number;
 }
 
 /** One turn as rows to draw, each answer folded into the call it answers. */
@@ -71,7 +75,9 @@ export function threadRows(turn: ChatTurn): ThreadRow[] {
 			case 'tool_result': {
 				const answer: ToolAnswer = {
 					said: known.said,
-					...(known.trouble === undefined ? {} : { trouble: known.trouble })
+					...(known.trouble === undefined ? {} : { trouble: known.trouble }),
+					...(known.took === undefined ? {} : { took: known.took }),
+					...(known.tokens === undefined ? {} : { tokens: known.tokens })
 				};
 				const asked = callRow(rows, known.call);
 				if (asked) asked.answer = answer;
@@ -210,6 +216,39 @@ function firstString(args: unknown): string | undefined {
 function shortly(said: string): string {
 	const line = said.split('\n')[0].trim();
 	return line.length > SHOWN_MAX ? `${line.slice(0, SHOWN_MAX - 1)}…` : line;
+}
+
+/** How long a call took, as somebody reads it: `0.4 s`, `12 s`, `2 min 5 s`. */
+export function tookSaid(ms: number): string {
+	const seconds = ms / 1000;
+	if (seconds < 10) return `${seconds.toFixed(1).replace(/\.0$/, '')} s`;
+	if (seconds < 60) return `${Math.round(seconds)} s`;
+	const minutes = Math.floor(seconds / 60);
+	const rest = Math.round(seconds - minutes * 60);
+	return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
+}
+
+/** The moment a call was made, as the clock on this device says it. */
+export function whenSaid(at: string): string {
+	const moment = new Date(at);
+	return Number.isNaN(moment.getTime())
+		? ''
+		: moment.toLocaleTimeString(undefined, {
+				hour: '2-digit',
+				minute: '2-digit',
+				second: '2-digit'
+			});
+}
+
+/** What is known about one call beyond what it did: when, how long, and what
+ *  its answer added to the agent's window. Each only where it was recorded. */
+export function callDetails(call: ToolCallBlock, answer: ToolAnswer | undefined): string[] {
+	const lines: string[] = [];
+	const when = call.at === undefined ? '' : whenSaid(call.at);
+	if (when !== '') lines.push(`Called at ${when}`);
+	if (answer?.took !== undefined) lines.push(`Took ${tookSaid(answer.took)}`);
+	if (answer?.tokens !== undefined) lines.push(`${tokensSaid(answer.tokens)} tokens`);
+	return lines;
 }
 
 /** Tokens as somebody reads them: `812`, `12.4k`, `1.2M`. */

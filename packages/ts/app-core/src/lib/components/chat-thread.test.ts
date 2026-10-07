@@ -90,7 +90,36 @@ function show(
 	flushSync();
 }
 
+/** The modal reads the viewport to pick its presentation. */
+function stubViewport(): void {
+	Object.defineProperty(globalThis, 'innerWidth', {
+		configurable: true,
+		writable: true,
+		value: 390
+	});
+	Object.defineProperty(globalThis, 'matchMedia', {
+		configurable: true,
+		writable: true,
+		value: (query: string) => {
+			const most = /max-width:\s*(\d+)px/.exec(query);
+			return {
+				matches: most ? 390 <= Number(most[1]) : false,
+				addEventListener: () => {},
+				removeEventListener: () => {}
+			};
+		}
+	});
+}
+
+async function settle(): Promise<void> {
+	for (let turn = 0; turn < 20; turn += 1) {
+		await new Promise((wake) => setTimeout(wake));
+		flushSync();
+	}
+}
+
 beforeEach(async () => {
+	stubViewport();
 	nodes.clear();
 	opened = [];
 	keeps = [];
@@ -202,6 +231,72 @@ describe('what an act comes to', () => {
 
 		expect(screen()).toContain('Read');
 		expect(screen()).toContain('export function parse() {}');
+	});
+});
+
+describe('reading a call whole', () => {
+	const CALLED = '2026-09-27T00:00:01.000Z';
+	const read = () =>
+		agent([
+			{
+				kind: 'tool_call',
+				call: 'c2',
+				tool: 'Read',
+				arguments: { file: 'src/parser.ts' },
+				at: CALLED
+			},
+			{
+				kind: 'tool_result',
+				call: 'c2',
+				said: 'export function parse() {}',
+				took: 1200,
+				tokens: 300
+			}
+		]);
+	const line = () => document.body.querySelector<HTMLButtonElement>('button[title]');
+
+	it('says on the line when it was made, how long it took and what it cost', () => {
+		show([read()]);
+
+		expect(line()?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Read src/parser.ts');
+		expect(line()?.title).toContain('Took 1.2 s');
+		expect(line()?.title).toContain('300 tokens');
+		expect(line()?.title).toContain('Called at');
+	});
+
+	it('opens what was asked and what came back, whole', async () => {
+		show([read()]);
+
+		line()?.click();
+		await settle();
+
+		const transcript = document.body.querySelector('[data-call-transcript="c2"]');
+		expect(transcript).not.toBeNull();
+		const shown = transcript?.textContent?.replace(/\s+/g, ' ') ?? '';
+		expect(shown).toContain('Asked');
+		expect(shown).toContain('"file": "src/parser.ts"');
+		expect(shown).toContain('Answered');
+		expect(shown).toContain('export function parse() {}');
+	});
+
+	it('still opens a call that has nothing to say about itself yet', async () => {
+		show([
+			agent([{ kind: 'tool_call', call: 'c3', tool: 'Glob', arguments: { pattern: '*.ts' } }])
+		]);
+
+		const call = [...document.body.querySelectorAll('button')].find((one) =>
+			one.textContent?.includes('Glob')
+		);
+		expect(call?.title).toBe('');
+		call?.click();
+		await settle();
+
+		const shown =
+			document.body
+				.querySelector('[data-call-transcript="c3"]')
+				?.textContent?.replace(/\s+/g, ' ') ?? '';
+		expect(shown).toContain('"pattern": "*.ts"');
+		expect(shown).toContain('Nothing yet.');
 	});
 });
 

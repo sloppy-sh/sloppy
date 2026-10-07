@@ -3,7 +3,7 @@
 
 import type { ChatThread, ChatTurn } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
-import { threadAsMarkdown } from './chat-said.js';
+import { callDetails, threadAsMarkdown, threadRows, tookSaid, whenSaid } from './chat-said.js';
 
 const GRAPH = 'did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z';
 const NOTE = 'did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W0X';
@@ -125,5 +125,47 @@ describe('a chat as markdown', () => {
 
 		expect(said).toContain('Still here.');
 		expect(said).not.toContain('a_kind_from_later');
+	});
+});
+
+describe('what one call cost', () => {
+	const CALLED = '2026-10-06T10:00:01.000Z';
+
+	it('carries how long an answer took and what it added, where the shell measured them', () => {
+		const rows = threadRows({
+			from: 'agent',
+			at: AT,
+			blocks: [
+				{ kind: 'tool_call', call: 'c', tool: 'Read', arguments: { file: 'a.ts' }, at: CALLED },
+				{ kind: 'tool_result', call: 'c', said: 'hello', took: 1200, tokens: 300 }
+			]
+		});
+
+		expect(rows).toEqual([
+			expect.objectContaining({
+				kind: 'call',
+				call: expect.objectContaining({ at: CALLED }),
+				answer: { said: 'hello', took: 1200, tokens: 300 }
+			})
+		]);
+	});
+
+	it('says each thing only where it was recorded', () => {
+		expect(callDetails({ kind: 'tool_call', call: 'c', tool: 'Read' }, undefined)).toEqual([]);
+		expect(callDetails({ kind: 'tool_call', call: 'c', tool: 'Read' }, { said: '' })).toEqual([]);
+		expect(
+			callDetails(
+				{ kind: 'tool_call', call: 'c', tool: 'Read', at: CALLED },
+				{ said: '', took: 1200, tokens: 3400 }
+			)
+		).toEqual([`Called at ${whenSaid(CALLED)}`, 'Took 1.2 s', '3.4k tokens']);
+	});
+
+	it('reads how long a call took as somebody would', () => {
+		expect(tookSaid(400)).toBe('0.4 s');
+		expect(tookSaid(1200)).toBe('1.2 s');
+		expect(tookSaid(12_400)).toBe('12 s');
+		expect(tookSaid(120_000)).toBe('2 min');
+		expect(tookSaid(125_000)).toBe('2 min 5 s');
 	});
 });
