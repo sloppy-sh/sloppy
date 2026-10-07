@@ -1357,6 +1357,15 @@ nothing under it.
   their own heading, **Archived**, below the live ones, where putting one back is the only
   act offered. The name is taken from the first thing said and is theirs to change, so a
   thread is never called "Untitled" for long.
+  **A chat waits for the person who left it.** Reading another thread, or another folder,
+  ends the one they were in: what was said is kept, and the next thing they say there goes
+  on from it — so leaving costs nothing and nothing goes on happening behind them. Somebody
+  who wants the other reading has it in Settings, under working with an assistant: **Keep
+  answering while you are elsewhere**, off by default. On, a thread they leave goes on until
+  it is done, and the switcher says which one that is — one quiet word, **answering**,
+  beside its name, and what arrived is there when they come back to it. Leaving a thread
+  mid-answer is refused only while the chat is waiting, because that is the only reading
+  under which leaving throws the answer away.
   **Under the spend line, one bar says how much room is left.** It is a single horizontal
   stack across the dock: a segment per part the agent named, in the agent's own order, the
   free remainder left unfilled, what the agent keeps back for its answer drawn as what is

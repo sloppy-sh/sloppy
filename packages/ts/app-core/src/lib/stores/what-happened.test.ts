@@ -12,7 +12,7 @@ import type {
 	ChatToolCall
 } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initRuntime, type ChatAccess, type ChatAsked } from '../runtime.js';
+import { initRuntime, type ChatAccess, type ChatAsked, type ChatLive } from '../runtime.js';
 import { ref } from './fake-api.test-support.js';
 import { chat } from './chat.svelte.js';
 import { prefs } from './prefs.svelte.js';
@@ -43,22 +43,14 @@ class Stub implements ChatAccess {
 		_asked: ChatAsked,
 		hear: (event: ChatEvent) => void,
 		serve: (call: ChatToolCall) => Promise<ChatToolAnswer>
-	): Promise<void> {
+	): Promise<ChatLive> {
 		this.#hear = hear;
 		this.#serve = serve;
-		return Promise.resolve();
-	}
-
-	say(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	stop(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	close(): Promise<void> {
-		return Promise.resolve();
+		return Promise.resolve({
+			say: () => Promise.resolve(),
+			stop: () => Promise.resolve(),
+			close: () => Promise.resolve()
+		});
 	}
 
 	tell(event: ChatEvent): void {

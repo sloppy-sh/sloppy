@@ -37,10 +37,8 @@ const chatting: ChatAccess = {
 	agents: async () => ['claude_code'] as ChatAgent[],
 	open: async (_asked, heard) => {
 		hear = heard;
-	},
-	say: async () => {},
-	stop: async () => {},
-	close: async () => {}
+		return { say: async () => {}, stop: async () => {}, close: async () => {} };
+	}
 };
 
 function stubViewport(): void {

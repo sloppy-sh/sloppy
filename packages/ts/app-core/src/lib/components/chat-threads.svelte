@@ -195,6 +195,14 @@
 							{#each live as one (one.id)}
 								<DropdownMenu.RadioItem class="min-h-control" value={one.id}>
 									<span class="block min-w-0 flex-1 truncate">{one.name}</span>
+									{#if chat.answeringAway(one.id)}
+										<span
+											class="shrink-0 text-xs text-muted-foreground"
+											aria-label={`${one.name} is still answering`}
+										>
+											answering
+										</span>
+									{/if}
 								</DropdownMenu.RadioItem>
 							{/each}
 						</DropdownMenu.RadioGroup>

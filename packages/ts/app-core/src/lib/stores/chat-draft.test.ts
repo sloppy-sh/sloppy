@@ -94,10 +94,11 @@ const THREAD = ulid();
 
 const chatting: ChatAccess = {
 	agents: async () => ['claude_code'] as ChatAgent[],
-	open: async () => {},
-	say: async () => {},
-	stop: async () => {},
-	close: async () => {},
+	open: async () => ({
+		say: async () => {},
+		stop: async () => {},
+		close: async () => {}
+	}),
 	drafts
 };
 

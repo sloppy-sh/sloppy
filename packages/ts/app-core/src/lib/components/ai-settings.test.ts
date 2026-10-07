@@ -39,10 +39,11 @@ const access: ChatAccess = {
 		looked += 1;
 		return [...programs, ...(await keys.held()).map((one) => one.provider)];
 	},
-	open: async () => {},
-	say: async () => {},
-	stop: async () => {},
-	close: async () => {}
+	open: async () => ({
+		say: async () => {},
+		stop: async () => {},
+		close: async () => {}
+	})
 };
 
 async function settle(): Promise<void> {
@@ -56,6 +57,7 @@ const screen = () => (target.textContent ?? '').replace(/\s+/g, ' ');
 const button = (words: string): HTMLButtonElement | undefined =>
 	[...target.querySelectorAll('button')].find((one) => one.textContent?.trim() === words);
 const toggle = () => target.querySelector<HTMLButtonElement>('[role="switch"]');
+const switches = () => [...target.querySelectorAll<HTMLButtonElement>('[role="switch"]')];
 
 function show(): void {
 	mounted = mount(AiSettings, { target });
@@ -67,6 +69,7 @@ beforeEach(() => {
 	programs = ['claude_code'];
 	looked = 0;
 	prefs.set('aiOffered', false);
+	prefs.set('chatInBackground', false);
 	chat.clear();
 	initRuntime({ apiHost: () => 'http://api.test', chat: access, aiKeys: keys });
 	seamSettledAgain();
@@ -78,6 +81,7 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	prefs.set('aiOffered', false);
+	prefs.set('chatInBackground', false);
 	chat.clear();
 	initRuntime({ apiHost: () => '', chat: undefined, aiKeys: undefined });
 	seamSettledAgain();
@@ -128,6 +132,23 @@ describe('offering an assistant', () => {
 		expect(keys.held_).toEqual([]);
 		expect(screen()).not.toContain('A key is kept here');
 		expect(chat.agents).toEqual(['claude_code']);
+	});
+
+	it('offers to keep answering while somebody is elsewhere, and only once it is offered at all', async () => {
+		show();
+		await settle();
+		expect(screen()).not.toContain('Keep answering while you are elsewhere');
+
+		toggle()?.click();
+		await settle();
+
+		expect(screen()).toContain('Keep answering while you are elsewhere');
+		expect(prefs.current.chatInBackground).toBe(false);
+
+		switches()[1]?.click();
+		await settle();
+
+		expect(prefs.current.chatInBackground).toBe(true);
 	});
 
 	it('says nothing here can answer where the switch is on and nothing does', async () => {
