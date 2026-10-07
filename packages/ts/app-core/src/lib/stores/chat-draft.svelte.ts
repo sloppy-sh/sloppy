@@ -192,9 +192,21 @@ class ChatDraftStore {
 	}
 
 	/** The draft the thread `id` works in: the one standing for it, or a new
-	 *  one holding the notes as the folder has them now. REJECTS in words for
-	 *  the person. */
+	 *  one holding the notes as the folder has them now — and **the one in front
+	 *  of somebody** from here on, which is what the review reads. A thread
+	 *  nobody is reading takes {@link ChatDraftStore.started} instead. REJECTS
+	 *  in words for the person. */
 	async start(id: Ulid): Promise<StandingDraft> {
+		const draft = await this.started(id);
+		if (this.#standing?.id !== draft.id) this.#letReadGo();
+		this.#standing = draft;
+		return draft;
+	}
+
+	/** The same draft, without making it the one in front of somebody — what a
+	 *  thread writing while its reader is elsewhere works in. REJECTS in words
+	 *  for the person. */
+	async started(id: Ulid): Promise<StandingDraft> {
 		const drafts = this.#access();
 		if (!drafts) throw new Error('There is no draft of the notes to write into.');
 		let starting = this.#starting.get(id);
@@ -203,8 +215,6 @@ class ChatDraftStore {
 			this.#starting.set(id, starting);
 		}
 		const draft = await starting;
-		if (this.#standing?.id !== draft.id) this.#letReadGo();
-		this.#standing = draft;
 		this.#all = [draft, ...this.#all.filter((one) => one.id !== draft.id)];
 		return draft;
 	}
@@ -218,19 +228,22 @@ class ChatDraftStore {
 	}
 
 	/**
-	 * A version kept on the draft, and what it holds counted again — what a
-	 * turn ending leaves behind. Nothing in a draft is on anybody's canvas, so
-	 * this is the whole of it.
+	 * A version kept on `draft` — the one in front of somebody where none is
+	 * named — and what that one holds counted again: a thread answering
+	 * elsewhere keeps its own version and leaves the count a person is reading
+	 * alone. What a turn ending leaves behind. Nothing in a draft is on
+	 * anybody's canvas, so this is the whole of it.
 	 */
-	async keepWhatTheTurnWrote(): Promise<void> {
-		const history = this.#history();
-		if (!history) return;
+	async keepWhatTheTurnWrote(draft?: StandingDraft): Promise<void> {
+		const drafts = this.#access();
+		const held = draft ?? this.#standing;
+		if (!drafts || !held) return;
 		try {
-			await history.commit(KEPT_ON_DRAFT);
+			await drafts.history(held).commit(KEPT_ON_DRAFT);
 		} catch (error) {
 			whatHappened.put('trouble', `the draft kept no version: ${troubleIn(error)}`);
 		}
-		await this.count();
+		if (this.#standing?.id === held.id) await this.count();
 	}
 
 	/** How much the draft holds, read again. */

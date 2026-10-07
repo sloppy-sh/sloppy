@@ -7,7 +7,7 @@ import { MemoryFiles } from '@sloppy/local';
 import type { ChatAgent, NodeView, OwnedRef } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type ChatAccess, initRuntime } from '../runtime.js';
+import { type ChatAccess, type ChatLive, initRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { canvasInk } from '../stores/canvas-ink.svelte.js';
 import { chat } from '../stores/chat.svelte.js';
@@ -77,25 +77,15 @@ class Stub implements ChatAccess {
 		return Promise.resolve([...this.agent]);
 	}
 
-	open(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	say(said: string): Promise<void> {
-		this.said.push(said);
-		return Promise.resolve();
-	}
-
-	settle(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	stop(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	close(): Promise<void> {
-		return Promise.resolve();
+	open(): Promise<ChatLive> {
+		return Promise.resolve({
+			say: (said: string) => {
+				this.said.push(said);
+				return Promise.resolve();
+			},
+			stop: () => Promise.resolve(),
+			close: () => Promise.resolve()
+		});
 	}
 }
 

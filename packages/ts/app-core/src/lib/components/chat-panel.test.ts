@@ -19,7 +19,7 @@ import type {
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NoteLanding } from '../pages/page-state.js';
-import { type ChatAccess, type ChatAsked, initRuntime } from '../runtime.js';
+import { type ChatAccess, type ChatAsked, type ChatLive, initRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { chat } from '../stores/chat.svelte.js';
 import { offers } from '../stores/offers.svelte.js';
@@ -83,33 +83,31 @@ class Stub implements ChatAccess {
 		asked: ChatAsked,
 		hear: (event: ChatEvent) => void,
 		serve: (call: ChatToolCall) => Promise<ChatToolAnswer>
-	): Promise<void> {
+	): Promise<ChatLive> {
 		this.asked.push(asked);
 		this.#hear = hear;
 		this.#serve = serve;
-		return Promise.resolve();
+		return Promise.resolve({
+			say: (said: string) => {
+				this.said.push(said);
+				return Promise.resolve();
+			},
+			stop: () => {
+				this.stops += 1;
+				this.tell({ event: 'ended', stopped: true });
+				return Promise.resolve();
+			},
+			close: () => {
+				this.closes += 1;
+				return Promise.resolve();
+			}
+		});
 	}
 
-	say(said: string): Promise<void> {
-		this.said.push(said);
-		return Promise.resolve();
-	}
-
-	/** Nothing calls this any more; it is here because the seam still declares
-	 *  it, and `answered` is what a test reads to prove nothing did. */
+	/** Nothing calls this any more; it is here because nothing but a test reads
+	 *  `answered`, which is what proves nothing did. */
 	settle(call: ChatCallId, allowed: boolean): Promise<void> {
 		this.answered.push({ call, allowed });
-		return Promise.resolve();
-	}
-
-	stop(): Promise<void> {
-		this.stops += 1;
-		this.tell({ event: 'ended', stopped: true });
-		return Promise.resolve();
-	}
-
-	close(): Promise<void> {
-		this.closes += 1;
 		return Promise.resolve();
 	}
 

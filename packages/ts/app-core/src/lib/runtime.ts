@@ -211,28 +211,63 @@ export interface ChatAsked {
 }
 
 /**
+ * One live conversation, as the shell hands it back. Everything said into it
+ * and every end to it goes through this handle, so a page holding two of them
+ * is holding two threads' conversations and can say nothing into the wrong one.
+ */
+export interface ChatLive {
+	/** Say something, which begins a turn. It resolves when the agent has been
+	 *  told, NOT when the turn ends — `ended` says that. Saying nothing REJECTS,
+	 *  and so does saying anything while a turn is underway, because the agent is
+	 *  answering the last thing it was told. */
+	say(said: string): Promise<void>;
+	/** End the turn underway, resolving once it has ended. The conversation
+	 *  stands, and the next {@link ChatLive.say} goes on with it. Nothing
+	 *  underway is not a failure. */
+	stop(): Promise<void>;
+	/** End the conversation, resolving once it has ended. What the agent was
+	 *  doing goes with it and a page is told `over`; there is nothing to go on
+	 *  with, so the next thing a page asks for is {@link ChatAccess.open}, and
+	 *  `say` after it rejects. One already over is not a failure. The draft is
+	 *  untouched: it stands until somebody merges it or discards it. */
+	close(): Promise<void>;
+	/**
+	 * Ask the agent how full its window is. The answer arrives at `hear` as a
+	 * `context` event rather than here, because an agent answers this on the
+	 * same channel it says everything else on. `'summary'` is the cheap form
+	 * and `'full'` the whole breakdown. Nothing underway is not a failure, and
+	 * neither is an agent that does not answer.
+	 *
+	 * Absent → this shell cannot ask, so the chart draws only what a turn
+	 * already said and nothing offers a refresh.
+	 */
+	context?(detail: 'summary' | 'full'): Promise<void>;
+}
+
+/**
  * Chatting with an agent on this device about the project in front of
  * somebody — docs/ARCHITECTURE.md § "Asking a tool to write the notes". A page
- * opens a session, says things into it, is told what the agent is doing, is
- * asked to do Sloppy's own acts when the agent calls one, and answers for the
- * person when one of those acts would write.
+ * opens a conversation for a thread, says things into it, is told what the
+ * agent is doing, is asked to do Sloppy's own acts when the agent calls one,
+ * and answers for the person when one of those acts would write.
  *
- * **One LIVE session at a time, and {@link ChatAccess.open} REPLACES.** A
- * person keeps as many threads as they like and reads one of them, so opening
- * a session ends whatever stood — there is no second conversation for a
- * session to go on into unseen. A THREAD is what opens one, and what it opens
- * is that thread's: its draft, its places, and the conversation picked up
- * where there is one. {@link ChatAccess.say} while a
- * turn is underway REJECTS, because the agent is answering the last thing it
- * was told. {@link ChatAccess.stop} ends the turn underway and the session
- * stands, so the next `say` goes on with it; {@link ChatAccess.close} ends the
- * session itself. **`over` is what says a session ended**, whichever of the two
- * ended it and whether or not anything went wrong, and `say` after one rejects.
+ * **One live conversation per THREAD, and {@link ChatAccess.open} replaces that
+ * thread's.** What is opened is the thread's: its draft, its places, and the
+ * conversation picked up where there is one. So opening one again for the same
+ * thread ends the one that stood there, and leaves every other thread's
+ * standing; **`over` is one conversation's end** — whichever way it ended and
+ * whether or not anything went wrong — and says nothing about any other.
+ *
+ * **How many stand at once is the STORE's rule, never this seam's.** A shell
+ * holds whatever it is asked to hold, and `stores/chat.svelte.ts` is the one
+ * place a chat that waits while somebody is reading another thread is told
+ * apart from one that goes on answering wherever they are.
  *
  * **The IMPLEMENTATION parses, in both directions, and no caller repeats it.**
- * The members below take and answer plain TypeScript, which holds nothing at
- * runtime, and a tool call is composed by a program reading somebody's
- * checked-out tree. So a shell parses every event against `ChatEventSchema`
+ * The members here and on {@link ChatLive} take and answer plain TypeScript,
+ * which holds nothing at runtime, and a tool call is composed by a program
+ * reading somebody's checked-out tree. So a shell parses every event against
+ * `ChatEventSchema`
  * before a page sees it, holds the arguments it carries to `argumentsFit`, and
  * parses what a page hands back (`ChatToolAnswerSchema`) and what a person
  * typed (`CHAT_ASKED_MAX`) before acting on any of it. A page spells no check
@@ -270,9 +305,11 @@ export interface ChatAccess {
 	 *  and the offer says so rather than failing when somebody takes it. */
 	agents(): Promise<ChatAgent[]>;
 	/**
-	 * Start a session, ending whatever stood. It resolves once the session is
-	 * ready to be said into; `started` reaches `hear` when the agent has said
-	 * what it is and what tools it has, which is after the first turn begins.
+	 * Start a conversation for `asked.thread`, ending the one that stood for
+	 * that thread and leaving every other thread's alone. It resolves with the
+	 * handle once the conversation is ready to be said into; `started` reaches
+	 * `hear` when the agent has said what it is and what tools it has, which is
+	 * after the first turn begins.
 	 *
 	 * **A device with no agent REJECTS**, with words for the person in its
 	 * message, which are the ones the surface shows.
@@ -281,40 +318,15 @@ export interface ChatAccess {
 	 * It is asked once per call, and what it resolves with is what the agent
 	 * reads; it REJECTS where the act could not be done, and the shell tells
 	 * the agent so in the words of the rejection rather than leaving it
-	 * waiting. **A shell with {@link ChatAccess.drafts} runs the session in the
-	 * draft**, so the folder a page serves a call against is the draft's and not
-	 * the one in front of somebody.
+	 * waiting. **A shell with {@link ChatAccess.drafts} runs the conversation in
+	 * the thread's draft**, so the folder a page serves a call against is that
+	 * draft's and not the one in front of somebody.
 	 */
 	open(
 		asked: ChatAsked,
 		hear: (event: ChatEvent) => void,
 		serve: (call: ChatToolCall) => Promise<ChatToolAnswer>
-	): Promise<void>;
-	/** Say something into the session, which begins a turn. It resolves when the
-	 *  agent has been told, NOT when the turn ends — `ended` says that. Saying
-	 *  nothing REJECTS. */
-	say(said: string): Promise<void>;
-	/** End the turn underway, resolving once it has ended. The session stands,
-	 *  and the next {@link ChatAccess.say} goes on with it. Nothing underway is
-	 *  not a failure. */
-	stop(): Promise<void>;
-	/** End the session, resolving once it has ended. What the agent was doing
-	 *  goes with it and a page is told `over`; there is nothing to go on with,
-	 *  so the next thing a page asks for is {@link ChatAccess.open}. No session
-	 *  is not a failure. The draft is untouched: it stands until somebody merges
-	 *  it or discards it. */
-	close(): Promise<void>;
-	/**
-	 * Ask the agent how full its window is. The answer arrives at `hear` as a
-	 * `context` event rather than here, because an agent answers this on the
-	 * same channel it says everything else on. `'summary'` is the cheap form
-	 * and `'full'` the whole breakdown. Nothing underway is not a failure, and
-	 * neither is an agent that does not answer.
-	 *
-	 * Absent → this shell cannot ask, so the chart draws only what a turn
-	 * already said and nothing offers a refresh.
-	 */
-	context?(detail: 'summary' | 'full'): Promise<void>;
+	): Promise<ChatLive>;
 	/** The draft a session works in — {@link DraftAccess} declares every act.
 	 *  Absent → this shell keeps no draft, so nothing about one is put in front
 	 *  of anybody. */

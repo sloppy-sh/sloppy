@@ -21,6 +21,7 @@ import { seamSettledAgain } from '../seam.svelte.js';
 import { chat } from '../stores/chat.svelte.js';
 import { chatDraft } from '../stores/chat-draft.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { prefs } from '../stores/prefs.svelte.js';
 import ChatPanel from './chat-panel.svelte';
 
 const ROOT = '/Users/me/garden';
@@ -77,12 +78,14 @@ const chatting: ChatAccess = {
 	agents: async () => ['claude_code'] as ChatAgent[],
 	open: async (_asked, heard) => {
 		hear = heard;
-	},
-	say: async () => {},
-	stop: async () => {},
-	close: async () => {
-		closes += 1;
-		hear = null;
+		return {
+			say: async () => {},
+			stop: async () => {},
+			close: async () => {
+				closes += 1;
+				hear = null;
+			}
+		};
 	},
 	drafts
 };
@@ -260,6 +263,7 @@ beforeEach(async () => {
 afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
+	prefs.set('chatInBackground', false);
 	chat.clear();
 	chatDraft.clear();
 	nodes.clear();
@@ -308,6 +312,26 @@ describe('which thread is in front of somebody', () => {
 		await settle();
 
 		expect(head()).toBe('About the parser');
+	});
+
+	it('says quietly which one is still answering out of sight', async () => {
+		prefs.set('chatInBackground', true);
+		const parser = await aThread('About the parser', '2026-10-01T09:00:00.000Z');
+		await aThread('About the vault', '2026-10-04T09:00:00.000Z');
+		await open();
+		await chat.say('What is in here?');
+		await settle();
+
+		await chat.openThread(parser);
+		await settle();
+		await switcher();
+
+		expect(head()).toBe('About the parser');
+		expect(rows().find((one) => one.includes('About the vault'))).toContain('answering');
+		expect(rows().find((one) => one.includes('About the parser'))).not.toContain('answering');
+		expect(
+			document.body.querySelector('[aria-label="About the vault is still answering"]')
+		).not.toBeNull();
 	});
 
 	it('refuses to swap one out from under an answer, in its own words', async () => {

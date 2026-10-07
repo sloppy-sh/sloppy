@@ -23,7 +23,7 @@ import {
 	type Ulid
 } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initRuntime, type ChatAccess, type ChatAsked } from '../runtime.js';
+import { initRuntime, type ChatAccess, type ChatAsked, type ChatLive } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { chat } from './chat.svelte.js';
 import { chatDraft } from './chat-draft.svelte.js';
@@ -92,18 +92,33 @@ const drafts = {
 	}
 };
 
-/** The agent, as the shell carries one: what it was asked for, and the two
- *  channels back into the page. */
+/** One conversation the shell is carrying: the two channels back into the page
+ *  for the thread it was opened for. */
+interface Carried {
+	hear: (event: ChatEvent) => void;
+	serve: (call: ChatToolCall) => Promise<ChatToolAnswer>;
+}
+
+/** The agent, as the shell carries one: what it was asked for, and one live
+ *  conversation per thread — how many stand at once is the store's own rule,
+ *  so this holds whatever it is handed. */
 class Stub implements ChatAccess {
 	asked: ChatAsked[] = [];
 	closed = 0;
+	/** Which thread each end was asked of, newest last. */
+	closedIn: Ulid[] = [];
+	stopped: Ulid[] = [];
 	detail: ('summary' | 'full')[] = [];
 	/** The session the agent answers with, which is the one it was asked for
 	 *  unless this says otherwise. */
 	answersAs: string | null = null;
 	said: string[] = [];
-	#hear: ((event: ChatEvent) => void) | null = null;
-	#serve: ((call: ChatToolCall) => Promise<ChatToolAnswer>) | null = null;
+	/** Which thread each thing said went into. */
+	saidIn: Ulid[] = [];
+	readonly standing = new Map<Ulid, Carried>();
+	/** The thread a test speaks into where it names none: the one most recently
+	 *  opened. */
+	reading: Ulid | null = null;
 
 	readonly drafts = drafts;
 
@@ -119,50 +134,57 @@ class Stub implements ChatAccess {
 		asked: ChatAsked,
 		hear: (event: ChatEvent) => void,
 		serve: (call: ChatToolCall) => Promise<ChatToolAnswer>
-	): Promise<void> {
+	): Promise<ChatLive> {
 		this.asked.push(asked);
-		this.#hear = hear;
-		this.#serve = serve;
-		return Promise.resolve();
-	}
-
-	say(said: string): Promise<void> {
-		this.said.push(said);
-		return Promise.resolve();
-	}
-
-	stop(): Promise<void> {
-		return Promise.resolve();
-	}
-
-	close(): Promise<void> {
-		this.closed += 1;
-		return Promise.resolve();
-	}
-
-	context(detail: 'summary' | 'full'): Promise<void> {
-		this.detail.push(detail);
-		return Promise.resolve();
-	}
-
-	/** The agent saying what it is, which is the first thing a turn hears. */
-	begins(): void {
-		const last = this.asked.at(-1);
-		this.#hear?.({
-			event: 'started',
-			session: this.answersAs ?? last?.thread.session ?? `s-${this.asked.length}`,
-			model: 'opus',
-			tools: ['write_note']
+		const of = asked.thread.id;
+		this.standing.set(of, { hear, serve });
+		this.reading = of;
+		return Promise.resolve({
+			say: (words: string) => {
+				this.said.push(words);
+				this.saidIn.push(of);
+				return Promise.resolve();
+			},
+			stop: () => {
+				this.stopped.push(of);
+				return Promise.resolve();
+			},
+			close: () => {
+				this.closed += 1;
+				this.closedIn.push(of);
+				this.standing.delete(of);
+				return Promise.resolve();
+			},
+			context: (detail: 'summary' | 'full') => {
+				this.detail.push(detail);
+				return Promise.resolve();
+			}
 		});
 	}
 
-	tell(event: ChatEvent): void {
-		this.#hear?.(event);
+	/** The agent saying what it is, which is the first thing a turn hears. */
+	begins(of: Ulid | null = this.reading): void {
+		const last = [...this.asked].reverse().find((one) => one.thread.id === of);
+		this.tell(
+			{
+				event: 'started',
+				session: this.answersAs ?? last?.thread.session ?? `s-${this.asked.length}`,
+				model: 'opus',
+				tools: ['write_note']
+			},
+			of
+		);
 	}
 
-	serve(call: ChatToolCall): Promise<ChatToolAnswer> {
-		if (!this.#serve) throw new Error('nothing is serving');
-		return this.#serve(call);
+	tell(event: ChatEvent, of: Ulid | null = this.reading): void {
+		if (of === null) return;
+		this.standing.get(of)?.hear(event);
+	}
+
+	serve(call: ChatToolCall, of: Ulid | null = this.reading): Promise<ChatToolAnswer> {
+		const held = of === null ? undefined : this.standing.get(of);
+		if (!held) throw new Error('nothing is serving');
+		return held.serve(call);
 	}
 }
 
@@ -427,6 +449,157 @@ describe('a chat this device keeps', () => {
 		expect(chat.trouble).toBe('The assistant is still answering. Stop it first.');
 		stub.begins();
 		await saying;
+	});
+});
+
+describe('a chat somebody leaves', () => {
+	it('waits for them, and the next thing they say picks the conversation up', async () => {
+		await aTurn('Why two passes?');
+		const id = chat.current?.id as Ulid;
+
+		await chat.startThread();
+
+		expect(stub.closedIn).toEqual([id]);
+
+		await chat.openThread(id);
+		expect(chat.running).toBe(false);
+		expect(chat.trouble).toBe(null);
+		expect(chat.turns.map((one) => one.from)).toEqual(['person', 'agent']);
+		const saying = chat.say('And the lexer?');
+		await settled();
+		stub.begins();
+		await saying;
+		expect(stub.asked.at(-1)?.thread.session).toBe('s-1');
+	});
+
+	it('goes with the folder in front of somebody changing', async () => {
+		await aTurn('Why two passes?');
+		const id = chat.current?.id as Ulid;
+
+		chat.clear();
+
+		expect(stub.closedIn).toEqual([id]);
+	});
+
+	/** Nothing is thrown away by a chat pausing: what the agent had written is
+	 *  on the thread, which is where somebody finds it again. */
+	it('keeps what the agent had written where its turn was cut off', async () => {
+		const saying = chat.say('Why two passes?');
+		await settled();
+		stub.begins();
+		await saying;
+		stub.tell({ event: 'block', at: 0, block: { kind: 'said', said: 'Because the lexer' } });
+		const id = chat.current?.id as Ulid;
+
+		chat.clear();
+		await settled();
+
+		const held = (await (await kept()).read(id))?.turns ?? [];
+		expect(JSON.stringify(held)).toContain('Because the lexer');
+	});
+});
+
+describe('a chat told to go on answering wherever the reader is', () => {
+	beforeEach(() => {
+		prefs.set('chatInBackground', true);
+	});
+
+	/** One thread still being answered, with somebody reading another. */
+	async function elsewhere(): Promise<{ answering: Ulid; read: Ulid }> {
+		const saying = chat.say('Why two passes?');
+		await settled();
+		stub.begins();
+		await saying;
+		const answering = chat.current?.id as Ulid;
+		await chat.startThread();
+		await aTurn('About the lexer');
+		return { answering, read: chat.current?.id as Ulid };
+	}
+
+	it('stands while somebody reads another thread, and is marked as answering', async () => {
+		const { answering, read } = await elsewhere();
+
+		expect(stub.closedIn).toEqual([]);
+		expect(chat.answeringAway(answering)).toBe(true);
+		expect(chat.answeringAway(read)).toBe(false);
+	});
+
+	it('writes its turns to its own thread, and none of them to the one being read', async () => {
+		const { answering } = await elsewhere();
+
+		stub.tell(
+			{ event: 'block', at: 0, block: { kind: 'said', said: 'Two passes, because' } },
+			answering
+		);
+		stub.tell({ event: 'ended', spent: { sent: 5, answered: 1 } }, answering);
+		await settled();
+
+		expect(JSON.stringify(chat.turns)).not.toContain('Two passes, because');
+		const held = (await (await kept()).read(answering))?.turns ?? [];
+		expect(JSON.stringify(held)).toContain('Two passes, because');
+		expect(chat.answeringAway(answering)).toBe(false);
+	});
+
+	it('lands what it writes in its own draft, and moves nothing of the one being read', async () => {
+		const { answering, read } = await elsewhere();
+
+		await stub.serve(
+			{
+				call: 'c9',
+				act: 'write_note',
+				arguments: { about: 'src/parse.ts', sections: [] }
+			} as ChatToolCall,
+			answering
+		);
+
+		expect(served.roots.at(-1)).toBe(`${COPIES}/${answering}`);
+		expect(chatDraft.standing?.id).toBe(read);
+	});
+
+	it('shows what arrived meanwhile when somebody comes back to it', async () => {
+		const { answering } = await elsewhere();
+		stub.tell(
+			{ event: 'block', at: 0, block: { kind: 'said', said: 'Still writing.' } },
+			answering
+		);
+		stub.tell({ event: 'context', usage: FULL }, answering);
+		await settled();
+
+		await chat.openThread(answering);
+
+		expect(chat.running).toBe(true);
+		expect(JSON.stringify(chat.turns)).toContain('Still writing.');
+		expect(chat.context?.total).toBe(30);
+	});
+
+	it('keeps what it says about the window off the thread being read', async () => {
+		const { answering } = await elsewhere();
+
+		stub.tell({ event: 'context', usage: FULL }, answering);
+		await settled();
+
+		expect(chat.context).toBe(null);
+	});
+
+	it('is not the one an end to the turn reaches', async () => {
+		const { answering, read } = await elsewhere();
+
+		await chat.say('And the emitter?');
+		await chat.stop();
+
+		expect(stub.stopped).toEqual([read]);
+		expect(chat.answeringAway(answering)).toBe(true);
+	});
+
+	it('is let go of all the same where its thread is deleted', async () => {
+		const { answering } = await elsewhere();
+		stub.tell({ event: 'ended' }, answering);
+		await settled();
+
+		expect(await chat.remove(answering, 'discard')).toBe(true);
+
+		expect(stub.closedIn).toEqual([answering]);
+		expect(discarded).toContain(answering);
 	});
 });
 

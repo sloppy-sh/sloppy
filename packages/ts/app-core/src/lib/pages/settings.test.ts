@@ -337,10 +337,11 @@ describe('the record of what happens', () => {
 			apiHost: () => 'http://api.test',
 			chat: {
 				agents: async () => [],
-				open: async () => {},
-				say: async () => {},
-				stop: async () => {},
-				close: async () => {}
+				open: async () => ({
+					say: async () => {},
+					stop: async () => {},
+					close: async () => {}
+				})
 			}
 		});
 		mounted = mount(Settings, { target });
