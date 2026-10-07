@@ -230,7 +230,7 @@
 		tabindex="-1"
 		aria-label={title}
 		inert={!open}
-		style="top: calc(var(--app-chrome-top, 0px) + env(safe-area-inset-top, 0px)); right: {place.from}px; z-index: {40 +
+		style="top: max(var(--app-chrome-top, 0px), env(safe-area-inset-top, 0px)); right: {place.from}px; z-index: {40 +
 			stack}; transform: translateX({open ? '0px' : `calc(100% + ${place.from}px)`});{stands
 			? ` width: ${stands}px`
 			: ''}"

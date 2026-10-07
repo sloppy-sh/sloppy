@@ -167,7 +167,7 @@
 
 <div class="clear-sysnav">
 	<div
-		class="mx-auto w-full max-w-2xl space-y-6 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-12 sm:px-8"
+		class="mx-auto w-full max-w-2xl space-y-6 px-5 pt-[max(1.5rem,calc(env(safe-area-inset-top,0px)-var(--app-chrome-top,0px)))] pb-12 sm:px-8"
 	>
 		{#if session.onDevice}
 			<h1 class="text-2xl font-semibold tracking-tight">You</h1>

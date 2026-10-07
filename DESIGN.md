@@ -1316,6 +1316,13 @@ nothing under it.
   so it carries only what the acts already name, and leaves every line the system spells
   (Quit, Undo, Minimize) to the system. It is a desktop's, and a phone grows nothing like
   it.
+- **The folders open stand in a strip across the top, and only where there are two or
+  more.** A tab is a folder somebody has open; on a desk the strip stands above the column,
+  on a phone above the card, and it is the same part in both. A tap puts that folder in
+  front, and everything beside the graph follows it — the column, the docks, the chat's
+  threads, the history. The strip is what publishes `--app-chrome-top` (§ "The four inset
+  vars"). One folder open shows no strip, which is the remove-empty-chrome rule below
+  applied again: that folder's name is already in the chrome.
 - **The crossing is a class, never a branch around the page.** A per-arrangement branch
   around the canvas would destroy and remount it on every crossing, taking the reader's pan
   and zoom with it. The pill publishes its own height as `--sysnav-inset-bottom` and is
@@ -1556,12 +1563,20 @@ Three vars live on `<html>`, and a fourth mirrors them at the top:
 - **`--sysnav-inset-bottom`** — the space the floating nav pill occupies, set BY the pill,
   so UNSET wherever the pill is hidden (the on-screen keyboard included). Use it only to
   clear the pill, never the OS bar.
-- **`--app-chrome-top`** — the height of the in-flow chrome the shells render above the
-  page, published BY that chrome, measured with a ResizeObserver. Every viewport-fit
-  surface subtracts it, e.g.
-  `h-[calc(100dvh-var(--app-chrome-top,0px)-env(safe-area-inset-top))]`. **Subtract it
+- **`--app-chrome-top`** — the FULL height of the chrome the shells render above the page,
+  the system inset it clears included: the chrome pads itself by `env(safe-area-inset-top)`
+  and publishes its own `offsetHeight`, measured with a ResizeObserver. Three formulas read
+  it and nothing re-derives them. A surface that fills what is left takes
+  `height: calc(100dvh - max(var(--app-chrome-top,0px), env(safe-area-inset-top,0px)))`,
+  which is what `viewport-fit` is. A surface fixed below the chrome takes
+  `top: var(--app-chrome-top,0px)`, and the padding it clears the inset with becomes
+  `max(<its own padding>, calc(env(safe-area-inset-top,0px) - var(--app-chrome-top,0px)))`,
+  since the chrome has already cleared as much of the inset as it is tall. A surface that
+  sat at `calc(var(--app-chrome-top,0px) + env(safe-area-inset-top,0px))` sits at
+  `max(var(--app-chrome-top,0px), env(safe-area-inset-top,0px))`. **Read it
   unconditionally** — the two shells gate chrome differently, so a route exempt on one is
-  often not exempt on the other, and the fallback is the no-chrome height to the pixel.
+  often not exempt on the other, and **with no chrome every formula is what it was before
+  there was any, to the pixel.**
 
 The bottom edge is two of those terms and is asked for as one, so **`--sysnav-clearance`
 names their sum** — the OS bar plus the pill standing on it. `clear-sysnav` is that sum as
@@ -1942,7 +1957,11 @@ The same store holds the view choices that are nobody's business but this device
 tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
 it (§ "The wallpaper"), which graph the reader is in and which they have stood up beside it
 (§ "Several graphs on one canvas"), whether it is read as an outline rather than drawn, and
-how much room each dock beside it was last given. None of them is an attribute on `<html>`, so
+how much room each dock beside it was last given. **Where a device opens several folders at
+once, which of them are open, which is in front, and how each was being read are this
+device's too** — the first two held by the shell that opens them, the last as `views` here,
+keyed by folder root, so a tab comes back as it was left (docs/ARCHITECTURE.md § "Several
+folders open at once"). None of them is an attribute on `<html>`, so
 none is a thing the boot script has to know: the canvas reads them once it is up, and a
 first paint with the right theme is all that flash-of-the-wrong anything is about. None of
 them reaches a note either — a peer pulling a subtree receives nothing of how it was read.

@@ -64,8 +64,9 @@
 <aside
 	bind:this={column}
 	aria-label="Sloppy"
+	style="top: var(--app-chrome-top, 0px)"
 	class={cn(
-		'fixed inset-y-0 start-0 z-40 flex flex-col gap-2 border-e bg-card/95 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+0.75rem)] backdrop-blur',
+		'fixed start-0 bottom-0 z-40 flex flex-col gap-2 border-e bg-card/95 pt-[max(0.75rem,calc(env(safe-area-inset-top,0px)-var(--app-chrome-top,0px)))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+0.75rem)] backdrop-blur',
 		collapsed ? 'w-(--desk-nav-rail) px-1.5' : 'w-(--desk-nav-width) px-2'
 	)}
 >

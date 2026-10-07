@@ -626,7 +626,7 @@
 /** A surface that fills what is left of the viewport, chrome subtracted
     UNCONDITIONALLY — the fallback is the no-chrome height to the pixel. */
 @utility viewport-fit {
-	height: calc(100dvh - var(--app-chrome-top, 0px) - env(safe-area-inset-top, 0px));
+	height: calc(100dvh - max(var(--app-chrome-top, 0px), env(safe-area-inset-top, 0px)));
 }
 
 /* ══ Scroll-edge fade ══════════════════════════════════════════════════════

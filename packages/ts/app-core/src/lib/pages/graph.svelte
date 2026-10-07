@@ -167,6 +167,7 @@
 	import { session } from '../stores/session.svelte.js';
 	import { refusal, serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
+	import { folderName } from '../stores/tabs.svelte.js';
 	import { openingWallpaper } from '../wallpaper.js';
 	import GraphTree from './graph-tree.svelte';
 	import HistorySurface from './history.svelte';
@@ -411,12 +412,6 @@
 		const alone = graphs.folders.filter((one) => one.graph?.ref === ref).length === 1;
 		if (!alone && folder.root !== graphs.openFolder) return undefined;
 		return graphs.all.find((one) => one.ref === ref);
-	}
-
-	/** What a person called the folder, for one this device cannot read a graph
-	 *  out of to be named by. */
-	function folderName(root: string): string {
-		return root.split(/[\\/]/).filter(Boolean).at(-1) ?? root;
 	}
 
 	/** Another folder is another graph, and what was read out of the last one is
@@ -2800,7 +2795,7 @@
 		     floor on the theme's own surface rather than on a band. -->
 			<div
 				bind:clientHeight={railHeight}
-				class="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-5 sm:px-6"
+				class="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-[max(0.75rem,calc(env(safe-area-inset-top,0px)-var(--app-chrome-top,0px)))] pb-5 sm:px-6"
 			>
 				<div
 					class="pointer-events-auto mx-auto w-full max-w-4xl space-y-2 rounded-2xl border bg-card p-3 shadow-lg"
