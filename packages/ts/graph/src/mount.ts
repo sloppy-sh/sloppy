@@ -661,6 +661,7 @@ export function mountGraph(
       bringing = null;
       framing = true;
       framed = false;
+      if (settled) frameAll();
     },
     viewport() {
       const view = scene?.viewport;

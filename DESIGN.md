@@ -1364,7 +1364,8 @@ nothing under it.
   answering while you are elsewhere**, off by default. On, a thread they leave goes on until
   it is done, and the switcher says which one that is — one quiet word, **answering**,
   beside its name, and what arrived is there when they come back to it. Turning it off
-  again leaves the ones already standing out of sight, keeping what they said. Leaving a
+  again reaches the ones already out of sight: each waits for its reader again, keeping what
+  it said, and one still answering finishes first. Leaving a
   thread mid-answer is refused while chats wait, because that is the only reading under
   which leaving throws the answer away — and leaving the folder is never refused: it pauses
   the answer the same way, with what had arrived kept on the thread.

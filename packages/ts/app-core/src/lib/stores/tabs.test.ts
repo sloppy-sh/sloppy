@@ -308,7 +308,9 @@ describe('taking a folder off', () => {
 		await tabs.close(GARDEN);
 
 		expect(graphs.openFolder).toBe(THESIS);
-		expect(log.indexOf(`served ${THESIS}`)).toBeLessThan(log.indexOf(`arrived ${THESIS}`));
+		const served = log.indexOf(`served ${THESIS}`);
+		expect(served).toBeGreaterThanOrEqual(0);
+		expect(served).toBeLessThan(log.indexOf(`arrived ${THESIS}`));
 	});
 
 	it('moves nobody where the folder taken off is not the one in front', async () => {
