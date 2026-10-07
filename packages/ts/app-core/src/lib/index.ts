@@ -10,6 +10,8 @@ export type {
 	ChatAsked,
 	DeploymentMode,
 	KnownFolder,
+	OpenTabs,
+	TabsAccess,
 	VaultAccess
 } from './runtime.js';
 export { appMenu } from './menu.js';
@@ -43,7 +45,7 @@ export {
 	THEME_LABELS,
 	THEMES
 } from './stores/prefs.svelte.js';
-export type { Accent, Prefs, Style, Theme } from './stores/prefs.svelte.js';
+export type { Accent, FolderView, Prefs, Style, Theme } from './stores/prefs.svelte.js';
 export {
 	OPENING_STRENGTH,
 	openingWallpaper,
@@ -57,3 +59,5 @@ export { graphs, MOST_ON_CANVAS } from './stores/graphs.svelte.js';
 export type { GraphsState } from './stores/graphs.svelte.js';
 export { tags } from './stores/tags.svelte.js';
 export type { TagsState } from './stores/tags.svelte.js';
+export { folderName, tabs } from './stores/tabs.svelte.js';
+export type { TabPage, TabRow } from './stores/tabs.svelte.js';

@@ -28,6 +28,32 @@ export type Style = 'default' | 'hardline';
 export type Font = 'system' | 'atkinson' | 'opendyslexic' | 'apple';
 export type Density = 'auto' | 'comfortable' | 'compact';
 
+/**
+ * How one folder was last being read, for the tab that comes back to it —
+ * docs/ARCHITECTURE.md § "Several folders open at once". `graph`,
+ * `alsoOnCanvas`, `tags` and `walking` are on the terms {@link Prefs} states
+ * for them; the rest is what the surface reading the folder was holding.
+ */
+export interface FolderView {
+	graph: OwnedRef | null;
+	alsoOnCanvas: OwnedRef[];
+	tags: Tag[];
+	walking: boolean;
+	/** The note open beside the graph. ABSENT is a folder left with none. */
+	note?: OwnedRef;
+	/** Every note open on the reading surface, in the order they were opened.
+	 *  ABSENT is a folder left with none. */
+	notes?: OwnedRef[];
+	/** The branches the reader folded on the canvas, and the ones they opened in
+	 *  the tree — two answers, because one surface draws every note and folds
+	 *  what is folded while the other draws none and opens what is opened. */
+	folded: OwnedRef[];
+	unfolded: OwnedRef[];
+	/** Where the canvas stood and how close, in world coordinates. ABSENT is a
+	 *  folder whose canvas frames itself when it opens. */
+	viewport?: { x: number; y: number; scale: number };
+}
+
 export interface Prefs {
 	theme: Theme;
 	accent: Accent;
@@ -49,6 +75,10 @@ export interface Prefs {
 	/** The picture behind that paper, per graph — DESIGN.md § "The wallpaper".
 	 *  A graph with no entry has none. */
 	wallpapers: Record<OwnedRef, WallpaperPrefs>;
+	/** How each folder was last being read, by its root, so a tab comes back as
+	 *  it was left — DESIGN.md § Persistence. A folder with no entry starts
+	 *  clean. */
+	views: Record<string, FolderView>;
 	/** Whether the graph is read as a walk through the notes rather than drawn on
 	 *  the canvas — DESIGN.md § Persistence. */
 	walking: boolean;
@@ -89,6 +119,9 @@ export interface Prefs {
 	 *  spelling. **An agent with no entry is one nobody has chosen for**, which
 	 *  is what it answers with on its own. */
 	chatModel: Partial<Record<ChatAgent, string>>;
+	/** Whether a chat goes on answering in a tab somebody has left. Off, it
+	 *  waits for them to come back. */
+	chatInBackground: boolean;
 	/** The Sloppy this device talks to, as an origin — docs/ARCHITECTURE.md
 	 *  § "Deployment modes". Null is the one the app came with, which is what
 	 *  the shell names. */
@@ -180,6 +213,7 @@ function defaults(): Prefs {
 		graph: null,
 		alsoOnCanvas: [],
 		wallpapers: {},
+		views: {},
 		walking: false,
 		recordsWhatHappens: false,
 		readingWidth: null,
@@ -193,6 +227,7 @@ function defaults(): Prefs {
 		aiOffered: false,
 		chatAgent: null,
 		chatModel: {},
+		chatInBackground: false,
 		origin: null
 	};
 }
@@ -272,6 +307,59 @@ function refsIn(value: unknown): OwnedRef[] {
 	return out;
 }
 
+/** How many folders' views are kept. Past a dozen the oldest of them is a
+ *  folder nobody has had open in weeks. */
+export const MOST_VIEWS = 12;
+
+function spotIn(value: unknown): { x: number; y: number; scale: number } | null {
+	if (typeof value !== 'object' || value === null) return null;
+	const { x, y, scale } = value as Record<string, unknown>;
+	if (typeof x !== 'number' || !Number.isFinite(x)) return null;
+	if (typeof y !== 'number' || !Number.isFinite(y)) return null;
+	if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return null;
+	return { x, y, scale };
+}
+
+function viewIn(value: unknown): FolderView | null {
+	if (typeof value !== 'object' || value === null) return null;
+	const held = value as Record<string, unknown>;
+	const view: FolderView = {
+		graph: refIn(held.graph),
+		alsoOnCanvas: refsIn(held.alsoOnCanvas),
+		tags: tagsIn(held.tags),
+		walking: held.walking === true,
+		folded: refsIn(held.folded),
+		unfolded: refsIn(held.unfolded)
+	};
+	const note = refIn(held.note);
+	if (note !== null) view.note = note;
+	if (Array.isArray(held.notes)) view.notes = refsIn(held.notes);
+	const spot = spotIn(held.viewport);
+	if (spot !== null) view.viewport = spot;
+	return view;
+}
+
+/** The {@link MOST_VIEWS} most recently written of them. A folder root is never
+ *  an index, so the insertion order object keys keep is the order they were
+ *  read in. */
+function trimViews(views: Record<string, FolderView>): Record<string, FolderView> {
+	const roots = Object.keys(views);
+	if (roots.length <= MOST_VIEWS) return views;
+	const out: Record<string, FolderView> = {};
+	for (const root of roots.slice(roots.length - MOST_VIEWS)) out[root] = views[root];
+	return out;
+}
+
+function viewsIn(value: unknown): Record<string, FolderView> {
+	if (typeof value !== 'object' || value === null) return {};
+	const out: Record<string, FolderView> = {};
+	for (const [root, entry] of Object.entries(value as Record<string, unknown>)) {
+		const view = viewIn(entry);
+		if (view !== null) out[root] = view;
+	}
+	return trimViews(out);
+}
+
 /**
  * What somebody typed, as the origin Sloppy can be reached at, or null where it
  * is nothing Sloppy could talk to. A bare host is read as `https://`, since that
@@ -324,6 +412,7 @@ class PrefsStore {
 			graph: refIn(saved.graph),
 			alsoOnCanvas: refsIn(saved.alsoOnCanvas),
 			wallpapers: sanitizeWallpapers(saved.wallpapers),
+			views: viewsIn(saved.views),
 			walking: saved.walking === true,
 			recordsWhatHappens: saved.recordsWhatHappens === true,
 			readingWidth: widthIn(saved.readingWidth),
@@ -339,6 +428,7 @@ class PrefsStore {
 				? (saved.chatAgent as ChatAgent)
 				: null,
 			chatModel: modelsIn(saved.chatModel),
+			chatInBackground: saved.chatInBackground === true,
 			origin: asOrigin(saved.origin)
 		};
 		this.apply();
@@ -356,14 +446,31 @@ class PrefsStore {
 		this.set('wallpapers', wallpapers);
 	}
 
+	/** How that folder was last being read, or null where nothing was kept for
+	 *  it — a folder nobody has opened, and one whose tab was closed. */
+	view(root: string): FolderView | null {
+		return this.#current.views[root] ?? null;
+	}
+
+	setView(root: string, next: FolderView | null): void {
+		const views = { ...this.#current.views };
+		// Written again goes to the end, so the folder read most recently is the
+		// last of them to be dropped.
+		delete views[root];
+		if (next !== null) views[root] = next;
+		this.set('views', trimViews(views));
+	}
+
 	set<K extends keyof Prefs>(key: K, value: Prefs[K]): void {
 		const next: Prefs = { ...this.#current, [key]: value };
-		// A graph, the canvas beside it and the pictures under them are refs the
-		// Sloppy being left minted; they mean nothing on the next one.
+		// A graph, the canvas beside it, the pictures under them and how each
+		// folder was being read are refs the Sloppy being left minted; they mean
+		// nothing on the next one.
 		if (key === 'origin' && value !== this.#current.origin) {
 			next.graph = null;
 			next.alsoOnCanvas = [];
 			next.wallpapers = {};
+			next.views = {};
 		}
 		this.#current = next;
 		this.#persist();

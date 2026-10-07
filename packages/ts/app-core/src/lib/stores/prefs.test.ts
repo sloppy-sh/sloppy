@@ -3,7 +3,27 @@ import { resolve } from 'node:path';
 import type { OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DID, ref } from './fake-api.test-support.js';
-import { THEMES, asOrigin, prefs, storedOrigin } from './prefs.svelte.js';
+import {
+	type FolderView,
+	MOST_VIEWS,
+	THEMES,
+	asOrigin,
+	prefs,
+	storedOrigin
+} from './prefs.svelte.js';
+
+const GARDEN = '/Users/me/Garden';
+const THESIS = '/Users/me/thesis';
+
+/** A folder read with nothing open and nothing folded. */
+const READING: FolderView = {
+	graph: null,
+	alsoOnCanvas: [],
+	tags: [],
+	walking: false,
+	folded: [],
+	unfolded: []
+};
 
 const UI_CSS = readFileSync(resolve(process.cwd(), '../ui/src/lib/app.css'), 'utf8').replace(
 	/\/\*[\s\S]*?\*\//g,
@@ -164,6 +184,7 @@ describe('the saved look', () => {
 				graph: 'not a ref',
 				alsoOnCanvas: ['neither is this'],
 				wallpapers: 'a picture',
+				views: 'how it was read',
 				walking: 'yes',
 				readingWidth: 'wide',
 				chatWidth: 'narrow',
@@ -182,6 +203,7 @@ describe('the saved look', () => {
 			graph: null,
 			alsoOnCanvas: [],
 			wallpapers: {},
+			views: {},
 			walking: false,
 			recordsWhatHappens: false,
 			readingWidth: null,
@@ -197,6 +219,7 @@ describe('the saved look', () => {
 			// A model this build does not name is still the person's to ask for;
 			// an agent this build does not know is not.
 			chatModel: { claude_code: 'a model from later' },
+			chatInBackground: false,
 			origin: null
 		});
 	});
@@ -248,6 +271,89 @@ describe('the saved look', () => {
 		);
 		prefs.init();
 		expect(prefs.current.tags).toEqual(['seed', 'biology']);
+	});
+
+	// docs/ARCHITECTURE.md § "Several folders open at once": a tab comes back to
+	// how its folder was being read, so what is kept for one folder says nothing
+	// about another.
+	it('keeps each folder how it was last being read', () => {
+		const garden = ref(20);
+		prefs.init();
+		prefs.setView(GARDEN, { ...READING, graph: garden, note: ref(21) });
+
+		expect(prefs.view(GARDEN)?.graph).toBe(garden);
+		expect(prefs.view(THESIS)).toBeNull();
+
+		prefs.init();
+		expect(prefs.view(GARDEN)?.note).toBe(ref(21));
+
+		prefs.setView(GARDEN, null);
+		expect(prefs.view(GARDEN)).toBeNull();
+		expect(prefs.current.views).toEqual({});
+	});
+
+	it('reads back what it can of a saved view and drops the rest', () => {
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({
+				views: {
+					[GARDEN]: {
+						graph: 'not a ref',
+						alsoOnCanvas: ['neither is this'],
+						tags: ['seed', 7],
+						walking: 'yes',
+						note: 'nor this',
+						folded: [ref(20)],
+						unfolded: 'none of them',
+						viewport: { x: 10, y: -4, scale: 0 }
+					},
+					[THESIS]: 'how it was read'
+				}
+			})
+		);
+		prefs.init();
+
+		expect(prefs.view(GARDEN)).toEqual({
+			graph: null,
+			alsoOnCanvas: [],
+			tags: ['seed'],
+			walking: false,
+			folded: [ref(20)],
+			unfolded: []
+		});
+		expect(prefs.view(THESIS)).toBeNull();
+	});
+
+	it('keeps a viewport only where every part of it is a place on the canvas', () => {
+		prefs.init();
+		prefs.setView(GARDEN, { ...READING, viewport: { x: 12, y: -30, scale: 1.5 } });
+		prefs.init();
+		expect(prefs.view(GARDEN)?.viewport).toEqual({ x: 12, y: -30, scale: 1.5 });
+	});
+
+	// A dozen is plenty, and the folder read most recently is the last to go —
+	// writing a view again is what puts it at the end of the queue.
+	it('keeps a dozen folders, the one read longest ago going first', () => {
+		prefs.init();
+		for (let at = 0; at <= MOST_VIEWS; at += 1) prefs.setView(`/folders/${at}`, READING);
+		prefs.setView('/folders/1', READING);
+		prefs.setView(`/folders/${MOST_VIEWS + 1}`, READING);
+
+		expect(Object.keys(prefs.current.views)).toHaveLength(MOST_VIEWS);
+		expect(prefs.view('/folders/0')).toBeNull();
+		expect(prefs.view('/folders/2')).toBeNull();
+		expect(prefs.view('/folders/1')).not.toBeNull();
+		expect(prefs.view(`/folders/${MOST_VIEWS + 1}`)).not.toBeNull();
+	});
+
+	// A chat answering in a tab somebody has left is a thing they asked for, so
+	// it waits until they do.
+	it('leaves a chat waiting in a tab somebody has left until it is asked not to', () => {
+		prefs.init();
+		expect(prefs.current.chatInBackground).toBe(false);
+		prefs.set('chatInBackground', true);
+		prefs.init();
+		expect(prefs.current.chatInBackground).toBe(true);
 	});
 
 	it('still opens when the browser is told to block site data', () => {
@@ -305,12 +411,14 @@ describe('where this device says its Sloppy is', () => {
 		prefs.set('graph', home);
 		prefs.set('alsoOnCanvas', [ref(20)]);
 		prefs.setWallpaper(home, { pictures: ['a'], strength: 0.3, every: 60, transition: 'fade' });
+		prefs.setView(GARDEN, READING);
 
 		prefs.set('origin', 'https://mine.example');
 
 		expect(prefs.current.graph).toBeNull();
 		expect(prefs.current.alsoOnCanvas).toEqual([]);
 		expect(prefs.current.wallpapers).toEqual({});
+		expect(prefs.current.views).toEqual({});
 		expect(prefs.current.origin).toBe('https://mine.example');
 	});
 

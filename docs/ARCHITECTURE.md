@@ -3043,6 +3043,34 @@ offered changes and its pictures — so an import preview can say whose graph it
 is called and how much of it is arriving while the file is still a file. One preview answers
 for a folder and one for a server, and both count the same way.
 
+## Several folders open at once
+
+**A tab is an open folder.** The native shell keeps the list of the ones open and which is
+in front — `vault.json` is `{ open, active }`, beside the known list in `vaults.json` — and
+offers it to app-core as `TabsAccess` (`held`, `close`, `changed`). A folder is OPENED as a
+tab through `VaultAccess` itself, so `openKnown`, `start`, `openProject` and `clone` each
+add one where it is not open and make it active. A shell that defines no `TabsAccess` opens
+one folder at a time and nothing about tabs is put in front of anybody, which is every
+browser tab.
+
+**`tabs` in `@sloppy/app-core` is the one switch path, and a switch is the folder switch
+this app has always done.** It has the page snapshot how the folder being left was being
+read into `prefs.views[root]`, calls `graphs.enterFolder(root)` — which re-serves the
+folder, serves the api again and reads the notes back — and then has the page bring the
+arriving folder back as it was left. Nothing else is multiplexed per tab: there is one
+graph in front of somebody, one column beside it, one set of docks, and `prefs.views` is
+the whole of what a tab remembers.
+
+**A chat pauses with its tab.** Leaving a tab ends the live session of the thread being
+read there; the thread keeps its conversation, and the next thing asked of it picks that up
+where it stopped. `prefs.chatInBackground`, off until somebody asks for it, lets every
+thread that has been asked something go on answering wherever the reader is — one program
+per answering thread. One rule in one function decides which: pausing holds at most one
+live session, the current thread's, and answering in the background lets a thread run until
+it is done. Each thread already works in its own draft (§ "Asking a tool to write the
+notes"), so a thread answering in a tab nobody is looking at never writes where the folder
+in front of somebody is written.
+
 ## A project's container
 
 **What it is for: one account of why this project is the way it is, kept by the person

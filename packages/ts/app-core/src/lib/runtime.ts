@@ -109,6 +109,35 @@ export interface VaultAccess {
 	openProject?(): Promise<string | undefined>;
 }
 
+/** The folders a device has open at once, as it holds them. */
+export interface OpenTabs {
+	/** In the order opened. */
+	open: readonly string[];
+	/** One of `open`, or undefined where none is open. */
+	active: string | undefined;
+}
+
+/**
+ * The folders this device has open at once and which is in front of
+ * somebody — docs/ARCHITECTURE.md § "Several folders open at once". A folder is
+ * OPENED as a tab through {@link VaultAccess} (`openKnown`, `start`,
+ * `openProject`, `clone`): the shell adds it where it is not open and makes it
+ * active.
+ *
+ * Absent from {@link AppRuntime} is a shell that opens one folder at a time,
+ * and nothing about tabs is put in front of anybody.
+ */
+export interface TabsAccess {
+	held(): OpenTabs;
+	/** Take a folder off. Where the active one closes, the shell serves the one
+	 *  after it, else the one before; {@link TabsAccess.changed} says which.
+	 *  Closing the only one REJECTS, with words for the person in its
+	 *  message. */
+	close(root: string): Promise<void>;
+	/** Told after every change, opens included. Returns the disposer. */
+	changed(hear: (tabs: OpenTabs) => void): () => void;
+}
+
 /**
  * A draft of the notes: a copy of the folder that a chat writes into, standing
  * apart from the one somebody has open until they merge it or discard it —
@@ -343,6 +372,11 @@ export interface AppRuntime {
 	 *  {@link createApi}. It is what the first-run surface asks for a folder
 	 *  with, so no page spells a platform's way of finding one. */
 	vault?: VaultAccess;
+	/** The folders open at once on this device — a shell that defines it also
+	 *  defines {@link AppRuntime.vault}. Absent → this shell opens one folder at
+	 *  a time, and nothing about tabs is put in front of anybody.
+	 *  {@link TabsAccess} declares every act. */
+	tabs?: TabsAccess;
 	/** The identities this device holds, and the three ways one arrives —
 	 *  a shell that defines it also defines {@link AppRuntime.vault}. Absent →
 	 *  this platform keeps no identity of its own, so nothing about holding,
@@ -522,6 +556,7 @@ export const runtime = {
 	createApi: (): SloppyApi | undefined => current.createApi?.(),
 	webOrigin: (): string | undefined => current.webOrigin?.(),
 	vault: (): VaultAccess | undefined => current.vault,
+	tabs: (): TabsAccess | undefined => current.tabs,
 	identities: (): IdentityAccess | undefined => current.identities,
 	history: (): History | undefined => current.history?.(),
 	project: async (): Promise<Files | undefined> => current.project?.(),
