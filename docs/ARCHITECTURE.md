@@ -3056,10 +3056,16 @@ browser tab.
 **`tabs` in `@sloppy/app-core` is the one switch path, and a switch is the folder switch
 this app has always done.** It has the page snapshot how the folder being left was being
 read into `prefs.views[root]`, calls `graphs.enterFolder(root)` — which re-serves the
-folder, serves the api again and reads the notes back — and then has the page bring the
-arriving folder back as it was left. Nothing else is multiplexed per tab: there is one
-graph in front of somebody, one column beside it, one set of docks, and `prefs.views` is
-the whole of what a tab remembers.
+folder, serves the api again and reads the notes back — gives up what was read out of the
+folder that was (`letGoOfTheFolderRead`), and then has the page bring the arriving folder
+back as it was left. **The giving up is the switch's own and the bringing back is the
+page's**, because the strip stands above every page: a switch made from the settings or a
+profile has no reading surface to ask, and must still leave nothing of the last folder
+standing. Nothing else is multiplexed per tab: there is one graph in front of somebody,
+one column beside it, one set of docks, and `prefs.views` is the whole of what a tab
+remembers. A folder opened rather than switched to also gets what this device gives a
+folder it has kept no versions in — a git user and a way of signing, where that folder has
+neither.
 
 **A chat pauses with its tab.** Leaving a tab ends the live session of the thread being
 read there; the thread keeps its conversation, and the next thing asked of it picks that up
@@ -3496,7 +3502,10 @@ snapshotted on a session's first request — so the store names the set again in
 above what the person says, whenever it differs from what the standing session was last
 told. `placesKey` and `withPlaces` in `@sloppy/app-core` are that pair. What the standing
 session has been told is settled on `started`: the set it was launched with for a session
-Sloppy opened, which read the brief, and nothing for one picked up, which did not.
+Sloppy opened, which read the brief, and nothing for one picked up, which did not. A
+reading act naming a place is answered against the set the session it came from was opened
+with, so a thread answering out of sight reads its own places and not whichever thread is
+in front of somebody.
 
 **Read and never written is the STORE's job as much as the routing's.** Opening a folder is
 normally how somebody says a graph is in it, so the ordinary store starts one where there is
@@ -3516,9 +3525,9 @@ are reached, and one withheld costs a read that would have worked.
 for both**: `placeNamed` is the one gate, and a name already taken is given the folder it
 sits in until it is distinct. Changing places under a standing session lets it go, because
 nothing can be added to a session that is already running; the next thing said opens another
-with them, and the person is told why. Changing them while a TURN is underway is refused in
-the same words switching threads is, because letting the session go there would throw away
-the answer being written.
+with them, and the person is told why. Changing them while a TURN is underway is refused,
+whatever the chat does when somebody leaves a thread, because letting the session go there
+would throw away the answer being written.
 
 **Every act LANDS, and the draft is what makes that safe.** A session works in a DRAFT: a
 second checkout of the repository keeping the notes, under the app's own data, on a branch
@@ -3704,14 +3713,30 @@ after the rest, so a read that refused a long note would refuse exactly the note
 reading. An agent handed a cut answer with nothing said reads it as the whole of them,
 which is why the count it left is in the answer itself.
 
-**One LIVE session at a time on a device, and opening one replaces what stood.** A person
-keeps many threads and reads one of them, so there is no second conversation for a session
-to go on into unseen; reading another thread ends the session that stood and the next thing
-said opens that thread's own. Saying something while a turn is underway is refused rather
-than queued — the agent is answering the last thing it was told — and switching to another
-thread is refused for the same reason. **The draft is not the session**: closing the chat ends the program and
-leaves the draft standing, which is what lets somebody walk away from a long pass and read
-it tomorrow.
+**One live session per THREAD, and opening one replaces that thread's.** `chat.rs` holds a
+session for each thread the page asked for one for, keyed by the thread's id, and every
+later act — a thing said, an answer to a call, an end — names the thread it belongs to. So
+a session is replaced only by the same thread's, an `over` is one thread's end, and nothing
+a thread hears reaches another. Saying something while that thread's turn is underway is
+refused rather than queued, because the agent is answering the last thing it was told.
+**The draft is not the session**: closing the chat ends the program and leaves the draft
+standing, which is what lets somebody walk away from a long pass and read it tomorrow.
+
+**How many stand at once is the STORE's rule, and a chat PAUSES with the thread somebody
+was reading.** Leaving a thread ends its session; what the agent had written by then is
+kept on the thread, and the next thing said there picks the conversation up where it was
+left, so the pause costs nothing but the program. `prefs.chatInBackground`, off, says the
+person wants instead that **every thread that was asked goes on until it is done wherever
+they are** — Rust then holds one program per answering thread, each writing into its own
+draft, so a thread answering out of sight can neither land in the thread in front of
+somebody nor collide with it. `#leave` in `stores/chat.svelte.ts` is the one place that
+rule is read, and `#live` there is one record per thread: the turns arriving, what the
+agent said about its window, what each act came to, and the draft that thread writes into.
+A thread answering out of sight is marked as such in the thread list and shows what arrived
+meanwhile when somebody comes back to it. **Leaving a thread mid-answer is refused only
+while the chat pauses**, because that is the only reading under which leaving would throw
+the answer away; ending a thread — putting it aside or deleting it — always ends its
+session, wherever its reader is.
 
 **Stopping ends the TURN and closing ends the SESSION, and the two are different acts on
 different channels.** A person who stops means the thing being done now: they keep the
@@ -3757,10 +3782,11 @@ native shell, which is what puts nothing in front of a reader in a tab.
 is what it is told; `ChatToolCall` is one act asked for, `ChatActDone` what it came to and `ChatToolAnswer`
 the half of that the agent is handed, `ChatCard` what a person is shown of it;
 `CHAT_TOOL_SPECS` is the acts themselves. `ChatAccess` in `@sloppy/app-core`'s runtime is
-the whole of what a page may ask for — the agents this device can reach, a session, a thing
-said into it, an answer for the person, an end to the turn underway and an end to the
-session. **A page never learns that a program is involved**: it says something and is told
-what happened.
+the whole of what a page may ask for — the agents this device can reach, and a conversation
+for a thread; `ChatLive` beside it is that conversation, and everything said into one goes
+through the handle it answered with: a thing said, an end to the turn underway, an end to
+the conversation, and how full the agent's window is. **A page never learns that a program
+is involved**: it says something and is told what happened.
 
 **Which agent does it is a value, never a branch.** `CHAT_AGENTS` is the set,
 `ChatAsked.agent` carries which one was asked for — absent is whichever this device has,

@@ -1,4 +1,4 @@
-import { whatHappened, type ChatAccess, type ChatAsked } from '@sloppy/app-core';
+import { whatHappened, type ChatAccess, type ChatAsked, type ChatLive } from '@sloppy/app-core';
 import type { AiKeysAccess } from '@sloppy/local';
 import {
 	CHAT_TOOLS,
@@ -52,6 +52,7 @@ function copy(id: string): StandingDraft {
 let here: string[];
 type Opened = {
 	agent: string;
+	thread: string;
 	root: string;
 	tools: { name: string }[];
 	brief: string;
@@ -63,11 +64,15 @@ type Opened = {
 let opens: Opened[];
 /** Every line written onto the agent's own input. */
 let lines: string[];
-let answers: { call: string; said: string; trouble: boolean }[];
+let answers: { thread: string; call: string; said: string; trouble: boolean }[];
 let closes: number;
-/** What the session is told over, which the shell takes and the tests speak
- *  into. */
+/** Which thread each line said, each answer and each end was asked of. */
+let saidIn: string[];
+let closedIn: string[];
+/** What each thread's session is told over, which the shell takes and the tests
+ *  speak into — one per session, because two of them stand at once. */
 let channel: Telling;
+let channels: Map<string, Telling>;
 
 /** The notes the drafts are of, and the copies standing, as `draft_standing`
  *  answers them. */
@@ -96,24 +101,32 @@ const call = async <T>(command: string, args?: Record<string, unknown>): Promise
 	switch (command) {
 		case 'chat_agents':
 			return here as T;
-		case 'chat_open':
-			opens.push(held.asked as Opened);
+		case 'chat_open': {
+			const asked = held.asked as Opened;
+			opens.push(asked);
 			channel = held.heard as Telling;
+			channels.set(asked.thread, channel);
 			return undefined as T;
+		}
 		case 'chat_say':
 			lines.push(held.line as string);
+			saidIn.push(held.thread as string);
 			return undefined as T;
 		case 'chat_answer':
 			answers.push({
+				thread: held.thread as string,
 				call: held.call as string,
 				said: held.said as string,
 				trouble: held.trouble as boolean
 			});
 			return undefined as T;
-		case 'chat_close':
+		case 'chat_close': {
+			const of = held.thread as string;
 			closes += 1;
-			queueMicrotask(() => tells({ from: 'over', stopped: true, trouble: null }));
+			closedIn.push(of);
+			queueMicrotask(() => tells({ from: 'over', stopped: true, trouble: null }, of));
 			return undefined as T;
+		}
 		case 'draft_standing':
 			return standing as T;
 		case 'draft_start': {
@@ -136,12 +149,13 @@ const call = async <T>(command: string, args?: Record<string, unknown>): Promise
 	throw new Error(`no such command: ${command}`);
 };
 
-function tells(told: Told): void {
-	channel.onmessage(told);
+function tells(told: Told, of?: string): void {
+	const held = of === undefined ? channel : channels.get(of);
+	held?.onmessage(told);
 }
 
-function says(line: string): void {
-	tells({ from: 'said', line });
+function says(line: string, of?: string): void {
+	tells({ from: 'said', line }, of);
 }
 
 /** What was written onto the agent's own input, read back. */
@@ -178,8 +192,8 @@ function waitingOn(): string {
 	return asked.request_id;
 }
 
-function calls(act: string, args: unknown, id = 'c1'): void {
-	tells({ from: 'called', call: id, act, arguments: args });
+function calls(act: string, args: unknown, id = 'c1', of?: string): void {
+	tells({ from: 'called', call: id, act, arguments: args }, of);
 }
 
 function drafts(): DraftAccess {
@@ -191,16 +205,16 @@ function drafts(): DraftAccess {
 }
 
 function chat(): ChatAccess {
-	return tauriChat(project, drafts(), call, () => channel);
+	return tauriChat(project, drafts(), call, () => ({ onmessage: () => {} }));
 }
 
-/** A session open and saying nothing yet, with everything it tells the page
- *  collected. */
-async function opened(): Promise<{ access: ChatAccess; heard: ChatEvent[] }> {
+/** A session open and saying nothing yet, with the handle it answered with and
+ *  everything it tells the page collected. */
+async function opened(): Promise<{ access: ChatAccess; live: ChatLive; heard: ChatEvent[] }> {
 	const heard: ChatEvent[] = [];
 	const access = chat();
-	await access.open(asking(), (event) => heard.push(event), serve);
-	return { access, heard };
+	const live = await access.open(asking(), (event) => heard.push(event), serve);
+	return { access, live, heard };
 }
 
 async function until(held: () => boolean): Promise<void> {
@@ -342,7 +356,10 @@ beforeEach(() => {
 	lines = [];
 	answers = [];
 	closes = 0;
+	saidIn = [];
+	closedIn = [];
 	channel = { onmessage: () => {} };
+	channels = new Map();
 	served = [];
 	serving = async () => ({ said: 'Written to The reader.' });
 	notes = NOTES;
@@ -419,7 +436,7 @@ describe('a session', () => {
 	});
 
 	it('starts the agent in the project itself where this shell keeps no draft', async () => {
-		const access = tauriChat(project, undefined, call, () => channel);
+		const access = tauriChat(project, undefined, call, () => ({ onmessage: () => {} }));
 
 		await access.open(asking(), () => {}, serve);
 
@@ -427,9 +444,9 @@ describe('a session', () => {
 	});
 
 	it("says what somebody typed onto the agent's own input", async () => {
-		const { access } = await opened();
+		const { live } = await opened();
 
-		await access.say('Say what the reader does');
+		await live.say('Say what the reader does');
 
 		expect(JSON.parse(lines[0])).toEqual({
 			type: 'user',
@@ -438,34 +455,34 @@ describe('a session', () => {
 	});
 
 	it('asks for something to be said rather than starting a turn on nothing', async () => {
-		const { access } = await opened();
+		const { live } = await opened();
 
-		await expect(access.say('   ')).rejects.toThrow('Say what you want written about.');
+		await expect(live.say('   ')).rejects.toThrow('Say what you want written about.');
 		expect(lines).toEqual([]);
 	});
 
 	it('refuses a second thing said while the turn is underway', async () => {
-		const { access } = await opened();
-		await access.say('first');
+		const { live } = await opened();
+		await live.say('first');
 
-		await expect(access.say('second')).rejects.toThrow('Wait for the answer');
+		await expect(live.say('second')).rejects.toThrow('Wait for the answer');
 		expect(lines).toHaveLength(1);
 	});
 
 	it('goes on with the session once the turn has ended', async () => {
-		const { access, heard } = await opened();
-		await access.say('first');
+		const { live, heard } = await opened();
+		await live.say('first');
 
 		says(RESULT);
-		await access.say('second');
+		await live.say('second');
 
 		expect(heard).toContainEqual({ event: 'ended' });
 		expect(spoken()).toHaveLength(2);
 	});
 
 	it('says what a turn spent where the agent says, and nothing where it does not', async () => {
-		const { access, heard } = await opened();
-		await access.say('first');
+		const { live, heard } = await opened();
+		await live.say('first');
 
 		says(
 			JSON.stringify({
@@ -487,14 +504,14 @@ describe('a session', () => {
 			spent: { sent: 1200, answered: 340, recalled: 900, kept: 0, thought: 40, cost: 0.0421 }
 		});
 
-		await access.say('second');
+		await live.say('second');
 		says(RESULT);
 		expect(heard.at(-1)).toEqual({ event: 'ended' });
 	});
 
 	it('takes the cost from the models where the total is not said', async () => {
-		const { access, heard } = await opened();
-		await access.say('first');
+		const { live, heard } = await opened();
+		await live.say('first');
 
 		says(
 			JSON.stringify({
@@ -510,9 +527,9 @@ describe('a session', () => {
 	});
 
 	it('says nothing about why where the session simply ended', async () => {
-		const { access, heard } = await opened();
+		const { live, heard } = await opened();
 
-		await access.close();
+		await live.close();
 
 		expect(closes).toBe(1);
 		expect(heard.at(-1)).toEqual({ event: 'over' });
@@ -527,17 +544,17 @@ describe('a session', () => {
 	});
 
 	it('says nothing more into a chat that is over', async () => {
-		const { access } = await opened();
-		await access.close();
+		const { live } = await opened();
+		await live.close();
 
-		await expect(access.say('again')).rejects.toThrow('That chat is over.');
+		await expect(live.say('again')).rejects.toThrow('That chat is over.');
 	});
 
 	it('ends the turn on the person stopping it, and keeps the session', async () => {
-		const { access, heard } = await opened();
-		await access.say('first');
+		const { live, heard } = await opened();
+		await live.say('first');
 
-		const stopping = access.stop();
+		const stopping = live.stop();
 		await until(() => lines.length === 2);
 		says(RESULT);
 		await stopping;
@@ -547,13 +564,13 @@ describe('a session', () => {
 			request: { subtype: 'interrupt' }
 		});
 		expect(heard).toContainEqual({ event: 'ended', stopped: true });
-		await access.say('second');
+		await live.say('second');
 	});
 
 	it('is not a failure to stop where no turn is underway', async () => {
-		const { access } = await opened();
+		const { live } = await opened();
 
-		await access.stop();
+		await live.stop();
 
 		expect(lines).toEqual([]);
 	});
@@ -565,6 +582,97 @@ describe('a session', () => {
 
 		expect(heard.at(-1)).toEqual({ event: 'over' });
 		expect(opens).toHaveLength(2);
+	});
+});
+
+/** How many stand at once is the page's rule, so this shell holds one per
+ *  thread and each act is keyed by the thread it belongs to. */
+describe('two threads with a conversation each', () => {
+	/** Both open, with what each of them tells the page collected. */
+	async function both(): Promise<{
+		one: { live: ChatLive; heard: ChatEvent[] };
+		other: { live: ChatLive; heard: ChatEvent[] };
+	}> {
+		const access = chat();
+		const heardOne: ChatEvent[] = [];
+		const heardOther: ChatEvent[] = [];
+		const live = await access.open(asking(), (event) => heardOne.push(event), serve);
+		const another = await access.open(
+			asking({ thread: { id: SECOND, places: [] } }),
+			(event) => heardOther.push(event),
+			serve
+		);
+		return {
+			one: { live, heard: heardOne },
+			other: { live: another, heard: heardOther }
+		};
+	}
+
+	it('stand at once, each saying into its own', async () => {
+		const { one, other } = await both();
+
+		await one.live.say('About the parser');
+		await other.live.say('About the lexer');
+
+		expect(one.heard).toEqual([]);
+		expect(other.heard).toEqual([]);
+		expect(saidIn).toEqual([THREAD, SECOND]);
+		expect(spoken()).toEqual([
+			{ role: 'user', content: [{ type: 'text', text: 'About the parser' }] },
+			{ role: 'user', content: [{ type: 'text', text: 'About the lexer' }] }
+		]);
+	});
+
+	it('hear only what the agent answering them said', async () => {
+		const { one, other } = await both();
+
+		says(assistant('m1', [{ type: 'text', text: 'Two passes.' }]), THREAD);
+
+		expect(one.heard).toEqual([
+			{ event: 'block', at: 0, block: { kind: 'said', said: 'Two passes.' } }
+		]);
+		expect(other.heard).toEqual([]);
+	});
+
+	it('answer a call of one of Sloppy’s own acts under the thread it came from', async () => {
+		await both();
+
+		calls('list_notes', {}, 'c1', SECOND);
+
+		await until(() => answers.length === 1);
+		expect(answers[0].thread).toBe(SECOND);
+	});
+
+	it('end one at a time, and the other stands', async () => {
+		const { one, other } = await both();
+
+		await one.live.close();
+
+		expect(closedIn).toEqual([THREAD]);
+		expect(one.heard.at(-1)).toEqual({ event: 'over' });
+		expect(other.heard).toEqual([]);
+		await other.live.say('still here');
+		expect(saidIn).toEqual([SECOND]);
+	});
+
+	it('are replaced one at a time where a thread is opened again', async () => {
+		const access = chat();
+		const heardOne: ChatEvent[] = [];
+		const heardOther: ChatEvent[] = [];
+		await access.open(asking(), (event) => heardOne.push(event), serve);
+		const other = await access.open(
+			asking({ thread: { id: SECOND, places: [] } }),
+			(event) => heardOther.push(event),
+			serve
+		);
+
+		await access.open(asking(), (event) => heardOne.push(event), serve);
+
+		expect(heardOne.at(-1)).toEqual({ event: 'over' });
+		expect(heardOther).toEqual([]);
+		expect(opens.map((held) => held.thread)).toEqual([THREAD, SECOND, THREAD]);
+		await other.say('still here');
+		expect(saidIn).toEqual([SECOND]);
 	});
 });
 
@@ -583,8 +691,8 @@ describe('what the agent says', () => {
 	});
 
 	it('grows a block at the place it already has as the writing arrives', async () => {
-		const { access, heard } = await opened();
-		await access.say('go');
+		const { live, heard } = await opened();
+		await live.say('go');
 
 		says(messageStart('m1'));
 		says(blockStart(0, { type: 'text', text: '' }));
@@ -603,8 +711,8 @@ describe('what the agent says', () => {
 	/** One message's blocks finish one at a time, each arriving on its own, so
 	 *  the second must not land on the first's place. */
 	it('keeps the blocks of one message in the places they were started at', async () => {
-		const { access, heard } = await opened();
-		await access.say('go');
+		const { live, heard } = await opened();
+		await live.say('go');
 
 		says(messageStart('m1'));
 		says(blockStart(0, { type: 'thinking', thinking: '' }));
@@ -621,8 +729,8 @@ describe('what the agent says', () => {
 	});
 
 	it("names the act behind a call of Sloppy's, and leaves the agent's own alone", async () => {
-		const { access, heard } = await opened();
-		await access.say('go');
+		const { live, heard } = await opened();
+		await live.say('go');
 
 		says(
 			assistant('m1', [
@@ -652,8 +760,8 @@ describe('what the agent says', () => {
 	});
 
 	it('draws what a call came to beside the call it answers', async () => {
-		const { access, heard } = await opened();
-		await access.say('go');
+		const { live, heard } = await opened();
+		await live.say('go');
 
 		says(assistant('m1', [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }]));
 		says(
@@ -674,8 +782,8 @@ describe('what the agent says', () => {
 
 	/** A dialect grows, and an agent that grew one must not end the chat. */
 	it('passes over an event it knows nothing about, and a line that is not JSON', async () => {
-		const { access, heard } = await opened();
-		await access.say('go');
+		const { live, heard } = await opened();
+		await live.say('go');
 
 		says(JSON.stringify({ type: 'system', subtype: 'hook_started', hook_name: 'SessionStart' }));
 		says(JSON.stringify({ type: 'system', subtype: 'hook_response', output: 'done' }));
@@ -691,8 +799,8 @@ describe('what the agent says', () => {
 	/** A block of a kind this build has no renderer for is carried untouched
 	 *  rather than refused, the way a note's own elements are. */
 	it('carries a block of a kind it has no renderer for', async () => {
-		const { access, heard } = await opened();
-		await access.say('go');
+		const { live, heard } = await opened();
+		await live.say('go');
 
 		says(assistant('m1', [{ type: 'redacted_thinking', data: 'opaque' }]));
 
@@ -715,7 +823,12 @@ describe("Sloppy's own acts", () => {
 
 		await until(() => answers.length === 1);
 		expect(served).toEqual([{ call: 'c1', act: 'list_notes', arguments: {} }]);
-		expect(answers[0]).toEqual({ call: 'c1', said: '{"notes":[]}', trouble: false });
+		expect(answers[0]).toEqual({
+			thread: THREAD,
+			call: 'c1',
+			said: '{"notes":[]}',
+			trouble: false
+		});
 		expect(heard).toEqual([]);
 	});
 
@@ -726,6 +839,7 @@ describe("Sloppy's own acts", () => {
 
 		await until(() => answers.length === 1);
 		expect(answers[0]).toEqual({
+			thread: THREAD,
 			call: 'c1',
 			said: 'That place is outside this project.',
 			trouble: true
@@ -758,7 +872,12 @@ describe("Sloppy's own acts", () => {
 		calls('list_notes', {});
 
 		await until(() => answers.length === 1);
-		expect(answers[0]).toEqual({ call: 'c1', said: 'Sloppy could not do that.', trouble: true });
+		expect(answers[0]).toEqual({
+			thread: THREAD,
+			call: 'c1',
+			said: 'Sloppy could not do that.',
+			trouble: true
+		});
 	});
 
 	it('tells the agent so where the answer itself is not one it could read', async () => {
@@ -782,7 +901,12 @@ describe('a write', () => {
 		expect(served).toEqual([
 			{ call: 'c1', act: 'write_note', arguments: { about: PARSER, ...WROTE } }
 		]);
-		expect(answers[0]).toEqual({ call: 'c1', said: 'Written to The reader.', trouble: false });
+		expect(answers[0]).toEqual({
+			thread: THREAD,
+			call: 'c1',
+			said: 'Written to The reader.',
+			trouble: false
+		});
 		expect(heard).toEqual([]);
 	});
 
@@ -844,15 +968,15 @@ describe('the draft a chat works in', () => {
 	});
 
 	it('stands through the turn being stopped and the session being closed', async () => {
-		const { access } = await opened();
+		const { access, live } = await opened();
 		const draft = standing[0];
-		await access.say('go');
+		await live.say('go');
 
-		const stopping = access.stop();
+		const stopping = live.stop();
 		await until(() => lines.length === 2);
 		says(RESULT);
 		await stopping;
-		await access.close();
+		await live.close();
 
 		expect(discarded).toEqual([]);
 		expect(await access.drafts?.standing()).toEqual([draft]);
@@ -1009,11 +1133,10 @@ describe('what the agent says is in its window', () => {
 	});
 
 	it('is asked for again once a turn has ended', async () => {
-		const access = chat();
-		await access.open(asking(), () => {}, serve);
+		const live = await chat().open(asking(), () => {}, serve);
 		says(INIT);
 		await until(() => askedAbout().length === 1);
-		await access.say('go');
+		await live.say('go');
 
 		says(RESULT);
 
@@ -1146,11 +1269,10 @@ describe('what the agent says is in its window', () => {
 	 *  waiting the rest of the timeout out before asking the other way. */
 	it('is asked for in words as soon as the agent says it cannot answer that way', async () => {
 		vi.useFakeTimers();
-		const access = chat();
-		await access.open(asking(), () => {}, serve);
+		const live = await chat().open(asking(), () => {}, serve);
 		says(INIT);
 		await vi.advanceTimersByTimeAsync(0);
-		await access.say('go');
+		await live.say('go');
 		says(noBreakdown(waitingOn()));
 		says(RESULT);
 		await vi.advanceTimersByTimeAsync(0);
@@ -1163,15 +1285,14 @@ describe('what the agent says is in its window', () => {
 
 	it('is asked in words from the start once the agent has answered no other way', async () => {
 		vi.useFakeTimers();
-		const access = chat();
-		await access.open(asking(), () => {}, serve);
+		const live = await chat().open(asking(), () => {}, serve);
 		says(INIT);
 		await vi.advanceTimersByTimeAsync(8_000);
 		says(RESULT);
 		await vi.advanceTimersByTimeAsync(0);
 		lines.length = 0;
 
-		await access.context?.('summary');
+		await live.context?.('summary');
 
 		expect(askedAbout()).toHaveLength(1);
 		expect(askedAbout()[0].type).toBe('user');
@@ -1179,14 +1300,18 @@ describe('what the agent says is in its window', () => {
 
 	/** It is what the chart offers a refresh on, so a shell that cannot ask is
 	 *  one that offers nothing. */
-	it('is something this shell can be asked for at any time', () => {
-		expect(chat().context).toBeDefined();
+	it('is something this shell can be asked for on any conversation it opens', async () => {
+		const { live } = await opened();
+
+		expect(live.context).toBeDefined();
 	});
 
-	it('is nothing to ask about where no chat is open', async () => {
-		const access = chat();
+	it('is nothing to ask about once the conversation is over', async () => {
+		const { live } = await opened();
+		await live.close();
+		lines.length = 0;
 
-		await expect(access.context?.('summary')).resolves.toBeUndefined();
+		await expect(live.context?.('summary')).resolves.toBeUndefined();
 		expect(lines).toEqual([]);
 	});
 

@@ -104,6 +104,23 @@
 	</div>
 
 	{#if on}
+		<div class="flex items-start gap-3">
+			<Switch
+				id="ai-elsewhere"
+				checked={prefs.current.chatInBackground}
+				onCheckedChange={(goes) => prefs.set('chatInBackground', goes)}
+			/>
+			<div class="min-w-0 flex-1 space-y-1">
+				<Label for="ai-elsewhere" class="text-sm font-normal">
+					Keep answering while you are elsewhere
+				</Label>
+				<p class="text-xs text-muted-foreground">
+					A chat you leave goes on until it is done, and what it wrote is there when you come back.
+					Off, it waits for you.
+				</p>
+			</div>
+		</div>
+
 		<ul class="space-y-3">
 			{#each CHAT_AGENTS as agent (agent)}
 				{@const name = chatAgentName(agent)}

@@ -8,6 +8,7 @@ export type {
 	AppRuntime,
 	ChatAccess,
 	ChatAsked,
+	ChatLive,
 	DeploymentMode,
 	KnownFolder,
 	OpenTabs,

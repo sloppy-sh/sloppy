@@ -130,7 +130,7 @@
 	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -151,7 +151,6 @@
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
-	import { gitSettings } from '../stores/git-settings.svelte.js';
 	import { graphs, projectOf } from '../stores/graphs.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
 	import { answersReach, identity } from '../stores/identity.svelte.js';
@@ -167,7 +166,8 @@
 	import { session } from '../stores/session.svelte.js';
 	import { refusal, serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
-	import { folderName } from '../stores/tabs.svelte.js';
+	// `tabs` is taken here by the strip of notes open on the reading surface.
+	import { folderName, tabs as openFolders } from '../stores/tabs.svelte.js';
 	import { openingWallpaper } from '../wallpaper.js';
 	import GraphTree from './graph-tree.svelte';
 	import HistorySurface from './history.svelte';
@@ -190,6 +190,10 @@
 	 *  than called straight through, because a note cited in the URL is asked for
 	 *  before the surface that answers exists. */
 	let bringingTo = $state<OwnedRef | null>(null);
+	/** Where the folder just arrived at was left looking, held until there is a
+	 *  canvas to put there. `at` absent frames the whole field, which is what a
+	 *  folder nobody has read here opens as. */
+	let comingBack = $state.raw<{ at?: GraphTransform } | null>(null);
 	/** Whether the graphs this person keeps are being looked through. */
 	let switching = $state(false);
 	let showingBin = $state(false);
@@ -414,19 +418,62 @@
 		return graphs.all.find((one) => one.ref === ref);
 	}
 
-	/** Another folder is another graph, and what was read out of the last one is
-	 *  not a copy of anything in this one. */
-	function letGoOfTheFolderThatWas(): void {
-		graphHistory.clear();
-		gitSettings.clear();
-		find.clear();
-		deleted.clear();
-		codeDrift.clear();
-		chat.clear();
+	// A tab switch is a folder switch, plus the memory of how each folder was
+	// being read — docs/ARCHITECTURE.md § "Several folders open at once".
+	$effect(() => openFolders.serves({ leaving, arrived }));
+
+	/** How `root` is being read, kept for the tab that comes back to it. A
+	 *  snapshot and nothing else: it may run and then nothing open. */
+	function leaving(root: string): void {
+		prefs.setView(root, {
+			graph: prefs.current.graph,
+			alsoOnCanvas: prefs.current.alsoOnCanvas,
+			tags: tags.selected,
+			walking,
+			note: page.state.note,
+			notes: page.state.notes ? [...page.state.notes] : undefined,
+			folded: [...folded],
+			unfolded: [...unfolded],
+			viewport: canvas?.viewport() ?? undefined
+		});
+	}
+
+	/** The folder in front of the reader is now `root`, brought back as it was
+	 *  left. What was read out of the last one is given up by the switch. */
+	function arrived(root: string): void {
 		chatting = false;
 		readProjectFiles();
 		closeUndrawn();
+		const view = prefs.view(root);
+		prefs.set('graph', view?.graph ?? null);
+		prefs.set('alsoOnCanvas', view?.alsoOnCanvas ?? []);
+		tags.select(view?.tags ?? []);
+		prefs.set('walking', view?.walking ?? false);
+		folded.clear();
+		for (const ref of view?.folded ?? []) folded.add(ref);
+		unfolded.clear();
+		for (const ref of view?.unfolded ?? []) unfolded.add(ref);
+		const note = view?.note;
+		aside = [];
+		behind = [];
+		ahead = [];
+		stayAt(note ? nodeHref(note) : '/', note ? { note, notes: view?.notes ?? [note] } : {});
+		comingBack = { at: view?.viewport };
 	}
+
+	// The canvas is handed the folder's notes later in this same flush, so where
+	// it looks is asked for behind them: a frame of the folder that was is not a
+	// frame of this one.
+	$effect(() => {
+		const back = comingBack;
+		const surface = canvas;
+		if (back === null || surface === undefined) return;
+		untrack(() => (comingBack = null));
+		void tick().then(() => {
+			if (back.at) surface.lookAt(back.at);
+			else surface.fit();
+		});
+	});
 
 	/** The project's own files, `undefined` where this graph is nobody's project
 	 *  and `null` before the shell has answered. */
@@ -3173,34 +3220,28 @@
 		: undefined}
 	onOpenFolder={graphs.keepsFolders
 		? (folder) =>
-				inTheirWords(async () => {
-					await graphs.enterFolder(folder);
-					letGoOfTheFolderThatWas();
-				}, 'That folder could not be opened.')
+				inTheirWords(() => openFolders.switchTo(folder), 'That folder could not be opened.')
 		: undefined}
 	onStart={graphs.keepsFolders
 		? () =>
-				inTheirWords(async () => {
-					if (!(await graphs.startFolder())) return;
-					letGoOfTheFolderThatWas();
-					await gitSettings.beginFolder();
-				}, 'That folder could not be opened.')
+				inTheirWords(
+					() => openFolders.openWith(() => graphs.startFolder()),
+					'That folder could not be opened.'
+				)
 		: undefined}
 	onOpenProject={graphs.keepsFolders && graphs.opensProjects
 		? () =>
-				inTheirWords(async () => {
-					if (!(await graphs.openProject())) return;
-					letGoOfTheFolderThatWas();
-					await gitSettings.beginFolder();
-				}, 'That project could not be opened.')
+				inTheirWords(
+					() => openFolders.openWith(() => graphs.openProject()),
+					'That project could not be opened.'
+				)
 		: undefined}
 	onClone={graphs.keepsFolders && graphs.bringsFolders
 		? (address) =>
-				inTheirWords(async () => {
-					if (!(await graphs.cloneFolder(address))) return;
-					letGoOfTheFolderThatWas();
-					await gitSettings.beginFolder();
-				}, 'That graph could not be brought here. Check the address and try again.')
+				inTheirWords(
+					() => openFolders.openWith(() => graphs.cloneFolder(address)),
+					'That graph could not be brought here. Check the address and try again.'
+				)
 		: undefined}
 	onForget={graphs.keepsFolders
 		? (folder) =>

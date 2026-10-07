@@ -1,4 +1,6 @@
 import 'fake-indexeddb/auto';
+import { DeviceGitDefaults, MemoryFiles, MemoryHistory } from '@sloppy/local';
+import type { Tag } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	initRuntime,
@@ -11,6 +13,7 @@ import { DID, ref, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-supp
 import { graphs } from './graphs.svelte.js';
 import { type FolderView, prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
+import { tags } from './tags.svelte.js';
 import { folderName, type TabPage, tabs } from './tabs.svelte.js';
 
 const GARDEN = '/Users/me/Garden';
@@ -220,6 +223,45 @@ describe('putting another folder in front', () => {
 		expect(log).toEqual([`leaving ${GARDEN}`]);
 	});
 
+	// The strip stands above every page, so a reader is not on the reading
+	// surface when they tap another folder.
+	it('gives up what was read out of the folder that was, page or no page', async () => {
+		const open = shell([GARDEN, THESIS], log);
+		serving(open.vault, open.access);
+		tabs.boot();
+		tags.select(['seed' as Tag]);
+
+		await tabs.switchTo(THESIS);
+
+		expect(tags.selected).toEqual([]);
+		expect(log).toEqual([`served ${THESIS}`]);
+	});
+
+	// Opening one is where this runs, not switching to one: a folder already
+	// open on this device has been given it.
+	it('gives a folder opened here what this device gives a new one', async () => {
+		const open = shell([GARDEN], log);
+		const files = new MemoryFiles({ root: GARDEN, store: new Map(), data: '/data' });
+		const history = new MemoryHistory(files);
+		const defaults = new DeviceGitDefaults(files);
+		await defaults.write({ user: { name: 'Me', email: 'me@sloppy.test' } });
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			vault: open.vault,
+			tabs: open.access,
+			history: () => history,
+			gitDefaults: defaults
+		});
+		tabs.boot();
+
+		await tabs.openWith(async () => {
+			await open.vault.openKnown?.(COMPANY);
+			return true;
+		});
+
+		expect(await history.gitUser()).toEqual({ name: 'Me', email: 'me@sloppy.test' });
+	});
+
 	it('runs one switch at a time', async () => {
 		const open = shell([GARDEN, THESIS, COMPANY], log);
 		serving(open.vault, open.access);
@@ -266,6 +308,20 @@ describe('taking a folder off', () => {
 		expect(prefs.view(THESIS)).toBeNull();
 		expect(tabs.active).toBe(GARDEN);
 		expect(log).toEqual([]);
+	});
+
+	// The shell takes a tab off for itself where its folder was forgotten or has
+	// gone, so what was kept of the reading cannot be the closer's to give up.
+	it('gives it up for a folder the shell takes off itself', async () => {
+		const open = shell([GARDEN, THESIS], log);
+		serving(open.vault, open.access);
+		tabs.boot();
+		prefs.setView(THESIS, READING);
+
+		await open.access.close(THESIS);
+
+		expect(tabs.open).toEqual([GARDEN]);
+		expect(prefs.view(THESIS)).toBeNull();
 	});
 
 	// The shell refuses it, so nothing of the folder's is given up either.

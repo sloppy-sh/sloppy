@@ -14,6 +14,7 @@
 //! will serve, and words; the words reach the agent on its own input rather
 //! than as an argument.
 
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::{BufReader, Write as _};
 use std::path::{Path, PathBuf};
@@ -135,10 +136,13 @@ pub enum Heard {
     },
 }
 
-/// The one session a device has underway, held so that ending it reaches the
-/// program, everything that program started, and the endpoint it was calling.
+/// The sessions this device has underway, one per thread, each held so that
+/// ending it reaches the program, everything that program started, and the
+/// endpoint it was calling. **How many stand at once is the page's rule** —
+/// `ChatAccess` in `@sloppy/app-core` — so this holds whatever it is handed and
+/// ends only what it is asked to.
 #[derive(Clone, Default)]
-pub struct Chat(Arc<Mutex<Option<Session>>>);
+pub struct Chat(Arc<Mutex<HashMap<String, Session>>>);
 
 struct Session {
     /// Which session this is. The thread carrying what a session says outlives
@@ -162,19 +166,20 @@ struct Ended {
 }
 
 impl Chat {
-    /// Hand over a started session, ending whatever stood.
-    fn holds(&self, session: Session) {
-        let standing = self.0.lock().unwrap().replace(session);
+    /// Hand over a started session for `thread`, ending the one that stood for
+    /// that thread and leaving every other thread's standing.
+    fn holds(&self, thread: String, session: Session) {
+        let standing = self.0.lock().unwrap().insert(thread, session);
         if let Some(child) = standing.and_then(|mut standing| standing.child.take()) {
             end_it(child);
         }
     }
 
     /// Say one line onto the agent's own input.
-    fn says(&self, line: &str) -> Result<(), ChatError> {
+    fn says(&self, thread: &str, line: &str) -> Result<(), ChatError> {
         let mut held = self.0.lock().unwrap();
         let saying = held
-            .as_mut()
+            .get_mut(thread)
             .and_then(|session| session.saying.as_mut())
             .ok_or_else(|| ChatError::new(NOTHING_OPEN))?;
         saying
@@ -184,18 +189,20 @@ impl Chat {
     }
 
     /// Hand the webview's answer to the call that is waiting on it.
-    fn answers(&self, answered: Answered) -> Result<(), ChatError> {
+    fn answers(&self, thread: &str, answered: Answered) -> Result<(), ChatError> {
         let held = self.0.lock().unwrap();
-        let session = held.as_ref().ok_or_else(|| ChatError::new(NOTHING_OPEN))?;
+        let session = held
+            .get(thread)
+            .ok_or_else(|| ChatError::new(NOTHING_OPEN))?;
         session.endpoint.answer(answered);
         Ok(())
     }
 
-    /// End the session, and with it whatever the agent was doing. No session
-    /// is not a failure.
-    pub fn close(&self) {
+    /// End this thread's session, and with it whatever the agent was doing. No
+    /// session is not a failure.
+    pub fn close(&self, thread: &str) {
         let mut held = self.0.lock().unwrap();
-        let Some(session) = held.as_mut() else {
+        let Some(session) = held.get_mut(thread) else {
             return;
         };
         session.stopped = true;
@@ -210,9 +217,9 @@ impl Chat {
     /// End the session marked `mark` without it counting as somebody having
     /// stopped it, so that an agent nobody can hear out is reaped rather than
     /// waited on.
-    fn cut(&self, mark: u64) {
+    fn cut(&self, thread: &str, mark: u64) {
         let mut held = self.0.lock().unwrap();
-        let Some(session) = held.as_mut().filter(|session| session.mark == mark) else {
+        let Some(session) = held.get_mut(thread).filter(|session| session.mark == mark) else {
             return;
         };
         session.saying.take();
@@ -224,15 +231,15 @@ impl Chat {
     /// Give the place back once the program is reaped, and say how it left off.
     /// A session another was opened over is already ended, and is reported the
     /// way a person ending one is: nothing went wrong.
-    fn ends(&self, mark: u64) -> Ended {
+    fn ends(&self, thread: &str, mark: u64) -> Ended {
         let mut held = self.0.lock().unwrap();
-        if held.as_ref().map(|session| session.mark) != Some(mark) {
+        if held.get(thread).map(|session| session.mark) != Some(mark) {
             return Ended {
                 stopped: true,
                 finished: false,
             };
         }
-        let mut session = held.take().expect("the session");
+        let mut session = held.remove(thread).expect("the session");
         drop(held);
         session.saying.take();
         Ended {
@@ -275,6 +282,10 @@ fn marked() -> u64 {
 
 /// What a session is opened with, beside where it runs.
 struct Opening<'a> {
+    /// Which of the person's threads this session is for, as `@sloppy/types`
+    /// spells a thread's id. It is what every later act is keyed by, and is
+    /// never said to the agent.
+    thread: &'a str,
     tools: &'a [Advertised],
     brief: &'a str,
     /// Absent is whatever the agent would answer with on its own.
@@ -320,19 +331,23 @@ fn open(
     let out = child.stdout.take();
     let trouble = drained(child.stderr.take(), LINE_MAX);
     let mark = marked();
-    chat.holds(Session {
-        mark,
-        child: Some(child),
-        saying: Some(saying),
-        endpoint,
-        stopped: false,
-    });
+    let of = with.thread.to_owned();
+    chat.holds(
+        of.clone(),
+        Session {
+            mark,
+            child: Some(child),
+            saying: Some(saying),
+            endpoint,
+            stopped: false,
+        },
+    );
     thread::spawn(move || {
         let heard_out = out.map(|out| hear(out, heard.as_ref())).unwrap_or(true);
         if !heard_out {
-            chat.cut(mark);
+            chat.cut(&of, mark);
         }
-        let ended = chat.ends(mark);
+        let ended = chat.ends(&of, mark);
         let said = trouble.and_then(|held| held.join().ok()).flatten();
         heard(Heard::Over {
             stopped: ended.stopped,
@@ -441,6 +456,10 @@ pub async fn chat_agents() -> Vec<&'static str> {
 #[serde(rename_all = "camelCase")]
 pub struct Asked {
     pub agent: String,
+    /// Which of the person's threads this session is for. One session stands
+    /// per thread, and this is what `chat_say`, `chat_answer` and `chat_close`
+    /// name.
+    pub thread: String,
     pub root: String,
     pub tools: Vec<Advertised>,
     pub brief: String,
@@ -455,7 +474,8 @@ pub struct Asked {
     pub places: Vec<String>,
 }
 
-/// Start a session, ending whatever stood. `tools` are the acts the webview
+/// Start a session for `thread`, ending the one that stood for it and leaving
+/// every other thread's standing. `tools` are the acts the webview
 /// will serve, as `advertisedChatTools` in `@sloppy/types` answered; `brief` is
 /// what the agent is told before it hears the person, which is `chatBrief` in
 /// `@sloppy/local` and without which it does not know it is in Sloppy at all;
@@ -471,6 +491,7 @@ pub async fn chat_open(
 ) -> Result<(), ChatError> {
     let Asked {
         agent,
+        thread,
         root,
         tools,
         brief,
@@ -492,6 +513,7 @@ pub async fn chat_open(
     tauri::async_runtime::spawn_blocking(move || {
         let program = found(held).ok_or_else(|| ChatError::new(NO_PROGRAM))?;
         let with = Opening {
+            thread: &thread,
             tools: &tools,
             brief: &brief,
             model: model.as_deref(),
@@ -505,37 +527,43 @@ pub async fn chat_open(
     .map_err(|_| ChatError::new(DIDNT_START))?
 }
 
-/// One line onto the agent's own input, with the newline this side's. What a
-/// line SAYS is the agent's own dialect, which `chat.ts` in this shell spells.
+/// One line onto this thread's agent's own input, with the newline this side's.
+/// What a line SAYS is the agent's own dialect, which `chat.ts` in this shell
+/// spells.
 #[tauri::command]
-pub fn chat_say(chat: State<'_, Chat>, line: String) -> Result<(), ChatError> {
-    chat.says(&line)
+pub fn chat_say(chat: State<'_, Chat>, thread: String, line: String) -> Result<(), ChatError> {
+    chat.says(&thread, &line)
 }
 
 /// What the webview did with a call, on its way back to the agent.
 #[tauri::command]
 pub fn chat_answer(
     chat: State<'_, Chat>,
+    thread: String,
     call: String,
     said: String,
     trouble: bool,
 ) -> Result<(), ChatError> {
-    chat.answers(Answered {
-        call,
-        said,
-        trouble,
-    })
+    chat.answers(
+        &thread,
+        Answered {
+            call,
+            said,
+            trouble,
+        },
+    )
 }
 
-/// End the session. It is over once `Heard::Over` reaches the page, which is
-/// what a caller waiting on the end waits for.
+/// End this thread's session, leaving every other thread's standing. It is over
+/// once `Heard::Over` reaches the page, which is what a caller waiting on the
+/// end waits for.
 ///
 /// **Not the end of a TURN.** A person who stops the turn underway keeps the
 /// session, and that end is said to the agent on its own input like everything
-/// else it is told — `ChatAccess` in `@sloppy/app-core` declares both acts.
+/// else it is told — `ChatLive` in `@sloppy/app-core` declares both acts.
 #[tauri::command]
-pub fn chat_close(chat: State<'_, Chat>) {
-    chat.close();
+pub fn chat_close(chat: State<'_, Chat>, thread: String) {
+    chat.close(&thread);
 }
 
 #[cfg(test)]
@@ -546,16 +574,30 @@ mod tests {
 
     use super::*;
 
-    /// A session opened with no acts, nothing said first, no model named, no
-    /// conversation to pick up and nowhere to read but where it runs.
+    /// The thread a session opened with [`nothing`] belongs to.
+    const THREAD: &str = "01JAPART000000000000000000";
+
+    /// A session opened for one thread with no acts, nothing said first, no
+    /// model named, no conversation to pick up and nowhere to read but where it
+    /// runs.
     fn nothing() -> Opening<'static> {
         Opening {
+            thread: THREAD,
             tools: &[],
             brief: "",
             model: None,
             session: None,
             resume: false,
             places: &[],
+        }
+    }
+
+    /// The same, for another of the person's threads.
+    #[cfg(unix)]
+    fn about(thread: &str) -> Opening<'_> {
+        Opening {
+            thread,
+            ..nothing()
         }
     }
 
@@ -590,10 +632,10 @@ mod tests {
     fn a_chat_that_is_over_is_said_so_rather_than_failing_quietly() {
         let chat = Chat::default();
 
-        chat.close();
+        chat.close(THREAD);
 
-        assert_eq!(chat.says("{}").unwrap_err().said(), NOTHING_OPEN);
-        assert!(chat.ends(marked()).stopped);
+        assert_eq!(chat.says(THREAD, "{}").unwrap_err().said(), NOTHING_OPEN);
+        assert!(chat.ends(THREAD, marked()).stopped);
     }
 
     /// A program standing in for the agent. What it is called and where it is
@@ -683,7 +725,7 @@ mod tests {
         open(&STUB, &program, &at, nothing(), thread.sink(), chat.clone()).expect("a session");
         waits("a line", || !thread.lines().is_empty());
 
-        chat.close();
+        chat.close(THREAD);
 
         waits("the end", || thread.overs().len() == 1);
         assert_eq!(thread.overs(), [(true, None)]);
@@ -701,8 +743,8 @@ mod tests {
         open(&STUB, &program, &at, nothing(), thread.sink(), chat.clone()).expect("a session");
         waits("a line", || !thread.lines().is_empty());
 
-        chat.close();
-        chat.close();
+        chat.close(THREAD);
+        chat.close(THREAD);
 
         waits("the end", || thread.overs().len() == 1);
         assert_eq!(thread.overs(), [(true, None)]);
@@ -726,9 +768,84 @@ mod tests {
 
         waits("the end", || thread.overs().len() == 1);
         assert_eq!(thread.overs(), [(true, None)]);
-        assert!(chat.says("{}").is_ok(), "the session standing was reaped");
-        chat.close();
+        assert!(
+            chat.says(THREAD, "{}").is_ok(),
+            "the session standing was reaped"
+        );
+        chat.close(THREAD);
         waits("the second end", || thread.overs().len() == 2);
+    }
+
+    /// A person keeps as many chats as they started, and this holds one session
+    /// per thread, so two of them run side by side and what each says reaches
+    /// only the thread it was opened for.
+    #[cfg(unix)]
+    #[test]
+    fn two_threads_each_stand_with_a_session_of_their_own() {
+        let at = scratch("two-threads");
+        let first = stub(&at, "first", "echo one; sleep 30");
+        let second = stub(&at, "second", "echo two; sleep 30");
+        let one = Thread::default();
+        let other = Thread::default();
+        let chat = Chat::default();
+
+        open(&STUB, &first, &at, about("t1"), one.sink(), chat.clone()).expect("one session");
+        open(&STUB, &second, &at, about("t2"), other.sink(), chat.clone()).expect("another");
+
+        waits("both lines", || {
+            one.lines() == ["one"] && other.lines() == ["two"]
+        });
+        assert!(chat.says("t1", "{}").is_ok());
+        assert!(chat.says("t2", "{}").is_ok());
+        assert_eq!(chat.says("t3", "{}").unwrap_err().said(), NOTHING_OPEN);
+        assert!(one.overs().is_empty());
+        assert!(other.overs().is_empty());
+
+        chat.close("t1");
+
+        waits("the first end", || one.overs().len() == 1);
+        assert_eq!(one.overs(), [(true, None)]);
+        assert!(other.overs().is_empty());
+        assert!(
+            chat.says("t2", "{}").is_ok(),
+            "the other thread's session went with it"
+        );
+        chat.close("t2");
+        waits("the second end", || other.overs().len() == 1);
+    }
+
+    /// Reading a thread again opens its own session over the one that stood
+    /// there, and the thread beside it is not touched by that.
+    #[cfg(unix)]
+    #[test]
+    fn a_thread_opened_again_replaces_its_own_session_and_no_other() {
+        let at = scratch("replaced-thread");
+        let first = stub(&at, "first", "echo one; sleep 30");
+        let again = stub(&at, "again", "echo three; sleep 30");
+        let second = stub(&at, "second", "echo two; sleep 30");
+        let one = Thread::default();
+        let other = Thread::default();
+        let chat = Chat::default();
+        open(&STUB, &first, &at, about("t1"), one.sink(), chat.clone()).expect("one session");
+        open(&STUB, &second, &at, about("t2"), other.sink(), chat.clone()).expect("another");
+        waits("both lines", || {
+            one.lines() == ["one"] && other.lines() == ["two"]
+        });
+
+        open(&STUB, &again, &at, about("t1"), one.sink(), chat.clone()).expect("the same thread");
+
+        waits("the end of the one replaced", || one.overs().len() == 1);
+        assert_eq!(one.overs(), [(true, None)]);
+        waits("what the new one says", || {
+            one.lines().contains(&"three".to_owned())
+        });
+        assert!(other.overs().is_empty());
+        assert!(chat.says("t2", "{}").is_ok());
+        chat.close("t1");
+        chat.close("t2");
+        waits("both ends", || {
+            one.overs().len() == 2 && other.overs().len() == 1
+        });
     }
 
     /// An agent reads a project by starting programs of its own, and a person
@@ -752,7 +869,7 @@ mod tests {
         open(&STUB, &program, &at, nothing(), thread.sink(), chat.clone()).expect("a session");
         waits("a line", || !thread.lines().is_empty());
 
-        chat.close();
+        chat.close(THREAD);
 
         waits("the end", || thread.overs().len() == 1);
         std::thread::sleep(Duration::from_secs(2));

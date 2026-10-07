@@ -86,6 +86,17 @@ export interface GraphHandle {
    */
   bringTo(ref: OwnedRef): void;
   fit(): void;
+  /** Where the field is looking, in {@link GraphTransform}'s coordinates;
+   *  `null` before the renderer is up, which is nowhere yet rather than the
+   *  origin. */
+  viewport(): GraphTransform | null;
+  /**
+   * Put the field at a pan and zoom it was read at before. Asked before or
+   * while the first framing runs it WINS over that frame — a reader coming
+   * back to a place is not coming back to a fresh fit — and asked after, it
+   * applies at once.
+   */
+  lookAt(at: GraphTransform): void;
   stats(): GraphStats | null;
   /** Start a fresh timing window, so `stats` describes one thing at a time. */
   resetStats(): void;
@@ -243,6 +254,21 @@ export function mountGraph(
     bringing = null;
   };
 
+  /** A place asked for before the renderer was up, which is where the field
+   *  looks first once it is. */
+  let looking: GraphTransform | null = null;
+
+  const look = (at: GraphTransform): void => {
+    takeViewport();
+    if (!scene) {
+      looking = at;
+      return;
+    }
+    scene.viewport.lookAt(at);
+    scene.invalidate();
+    tellTransform();
+  };
+
   const layout = new LayoutClient({
     createWorker: options.createLayoutWorker,
     onPositions: (event: LayoutEvent) => {
@@ -379,6 +405,11 @@ export function mountGraph(
       return;
     }
     scene = built;
+    if (looking !== null) {
+      const at = looking;
+      looking = null;
+      look(at);
+    }
     built.setGround(props.ground ?? "none");
     watchDensity();
     detachGestures = attachGestures(field, built.viewport, {
@@ -617,6 +648,13 @@ export function mountGraph(
     fit() {
       bringing = null;
       frameAll();
+    },
+    viewport() {
+      const view = scene?.viewport;
+      return view ? { x: view.x, y: view.y, scale: view.scale } : null;
+    },
+    lookAt(at) {
+      look(at);
     },
     resetStats() {
       scene?.resetStats();

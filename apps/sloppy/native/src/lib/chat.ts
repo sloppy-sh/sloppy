@@ -11,7 +11,8 @@ import {
 	troubleIn,
 	whatHappened,
 	type ChatAccess,
-	type ChatAsked
+	type ChatAsked,
+	type ChatLive
 } from '@sloppy/app-core';
 import {
 	advertisedChatTools,
@@ -115,6 +116,9 @@ interface Turn extends Settling {
 interface Opening {
 	agent: ChatAgent;
 	root: string;
+	/** Which of the person's threads this session is for, which is what every
+	 *  later act is keyed by. */
+	thread: string;
 	tools: AdvertisedTool[];
 	brief: string;
 	places: string[];
@@ -129,9 +133,9 @@ interface Asking {
 	waited: ReturnType<typeof setTimeout>;
 }
 
-/** One session, held so that what it is told reaches the page that opened it
- *  and nothing else — a session another was opened over is let go of here
- *  while its own program is still being reaped. */
+/** One thread's session, held so that what it is told reaches the page that
+ *  opened it and nothing else — a session another was opened over is let go of
+ *  here while its own program is still being reaped. */
 class Session {
 	readonly stream = new AgentStream();
 	readonly over = settling();
@@ -155,6 +159,7 @@ class Session {
 	reading = false;
 
 	constructor(
+		readonly thread: string,
 		readonly hear: (event: ChatEvent) => void,
 		readonly serve: Serving
 	) {}
@@ -205,7 +210,10 @@ class Session {
 }
 
 class TauriChat implements ChatAccess {
-	private held?: Session;
+	/** The session standing for each thread, by that thread's id. How many of
+	 *  them stand at once is the page's rule — `ChatAccess` in
+	 *  `@sloppy/app-core` — so this holds whatever it is asked to hold. */
+	private readonly held = new Map<string, Session>();
 
 	constructor(
 		private readonly here: () => Promise<string | undefined>,
@@ -223,18 +231,24 @@ class TauriChat implements ChatAccess {
 		return CHAT_AGENTS.filter((agent) => programs.includes(agent) || keyed.includes(agent));
 	}
 
-	async open(asked: ChatAsked, hear: (event: ChatEvent) => void, serve: Serving): Promise<void> {
+	async open(
+		asked: ChatAsked,
+		hear: (event: ChatEvent) => void,
+		serve: Serving
+	): Promise<ChatLive> {
 		const agent = await this.agentFor(asked.agent);
 		// A chat is about a project, so there being none is refused before a copy
 		// is taken — and the agent works in the copy, never in the folder itself.
 		const here = await this.project();
 		const root = (await this.drafts?.start(asked.thread.id))?.root ?? here;
-		this.replaces();
-		const session = new Session(hear, serve);
-		this.held = session;
+		const of = asked.thread.id;
+		this.replaces(of);
+		const session = new Session(of, hear, serve);
+		this.held.set(of, session);
 		await this.starts(session, {
 			agent,
 			root,
+			thread: of,
 			tools: advertisedChatTools(),
 			brief: chatBrief(asked.thread.places),
 			places: asked.thread.places.map((place) => place.root),
@@ -242,12 +256,18 @@ class TauriChat implements ChatAccess {
 			...(asked.model === undefined ? {} : { model: asked.model }),
 			...(asked.thread.session === undefined ? {} : { session: asked.thread.session })
 		}).catch((reason) => {
-			if (this.held === session) this.held = undefined;
+			if (this.held.get(of) === session) this.held.delete(of);
 			// Nothing started, so the page that asked is told by the rejection and
 			// never by an `over` for a session it never saw.
 			session.gone = true;
 			throw refuse(said(reason));
 		});
+		return {
+			say: (words) => this.says(of, words),
+			stop: () => this.stops(of),
+			close: () => this.closes(of),
+			context: (detail) => this.asks(of, detail)
+		};
 	}
 
 	/**
@@ -256,8 +276,8 @@ class TauriChat implements ChatAccess {
 	 * channel it says everything else on — and where it does not answer at all,
 	 * it is asked in words instead.
 	 */
-	async context(detail: 'summary' | 'full'): Promise<void> {
-		const session = this.held;
+	private async asks(of: string, detail: 'summary' | 'full'): Promise<void> {
+		const session = this.held.get(of);
 		if (!session || session.gone) return;
 		if (session.answersAsks === false) {
 			await this.asksInWords(session);
@@ -268,19 +288,22 @@ class TauriChat implements ChatAccess {
 		session.asking = {
 			id,
 			waited: setTimeout(() => {
-				if (this.held !== session || session.asking?.id !== id) return;
+				if (this.held.get(of) !== session || session.asking?.id !== id) return;
 				session.waitsNoLonger();
 				session.answersAsks = false;
 				void this.asksInWords(session);
 			}, ANSWERS_WITHIN)
 		};
-		await this.call<void>(SAY, { line: JSON.stringify(aboutTheWindow(id, detail)) }).catch(() => {
+		await this.call<void>(SAY, {
+			thread: of,
+			line: JSON.stringify(aboutTheWindow(id, detail))
+		}).catch(() => {
 			session.waitsNoLonger();
 		});
 	}
 
-	async say(asked: string): Promise<void> {
-		const session = this.standing();
+	private async says(of: string, asked: string): Promise<void> {
+		const session = this.standing(of);
 		if (session.turn) throw refuse(ANSWERING);
 		const asking = asked.trim();
 		if (asking === '') throw refuse(SAY_SOMETHING);
@@ -288,29 +311,31 @@ class TauriChat implements ChatAccess {
 		session.stream.turned();
 		const turn: Turn = { stopped: false, ...settling() };
 		session.turn = turn;
-		await this.call<void>(SAY, { line: JSON.stringify(aTurn(asking)) }).catch((reason) => {
-			if (session.turn === turn) session.turn = undefined;
-			turn.ends();
-			throw refuse(said(reason));
-		});
+		await this.call<void>(SAY, { thread: of, line: JSON.stringify(aTurn(asking)) }).catch(
+			(reason) => {
+				if (session.turn === turn) session.turn = undefined;
+				turn.ends();
+				throw refuse(said(reason));
+			}
+		);
 	}
 
-	async stop(): Promise<void> {
-		const session = this.held;
+	private async stops(of: string): Promise<void> {
+		const session = this.held.get(of);
 		const turn = session?.turn;
 		if (!session || !turn) return;
 		turn.stopped = true;
-		await this.call<void>(SAY, { line: JSON.stringify(anInterrupt()) }).catch(() => {
+		await this.call<void>(SAY, { thread: of, line: JSON.stringify(anInterrupt()) }).catch(() => {
 			session.ends();
 		});
 		await turn.done;
 	}
 
-	async close(): Promise<void> {
-		const session = this.held;
+	private async closes(of: string): Promise<void> {
+		const session = this.held.get(of);
 		if (!session) return;
-		this.held = undefined;
-		await this.call<void>(CLOSE).catch(() => session.letGo());
+		this.held.delete(of);
+		await this.call<void>(CLOSE, { thread: of }).catch(() => session.letGo());
 		await session.over.done;
 	}
 
@@ -322,11 +347,12 @@ class TauriChat implements ChatAccess {
 		await this.call<void>(OPEN, { asked: opening, heard: told });
 	}
 
-	/** Let go of the session that stood, so that a page waiting on its end is
-	 *  not left waiting on a program this one is about to replace. */
-	private replaces(): void {
-		const standing = this.held;
-		this.held = undefined;
+	/** Let go of the session that stood for this thread, so that a page waiting
+	 *  on its end is not left waiting on a program this one is about to replace.
+	 *  Every other thread's stands. */
+	private replaces(of: string): void {
+		const standing = this.held.get(of);
+		this.held.delete(of);
 		standing?.letGo();
 	}
 
@@ -346,7 +372,7 @@ class TauriChat implements ChatAccess {
 					if (session.reading && event.event === 'block') continue;
 					if (event.event === 'started') {
 						session.introduced = true;
-						void this.context('summary');
+						void this.asks(session.thread, 'summary');
 					}
 					session.tell(event);
 				}
@@ -357,7 +383,7 @@ class TauriChat implements ChatAccess {
 				if (session.reading) session.reading = false;
 				else if (session.turn) {
 					session.ends(heard.spent);
-					void this.context('summary');
+					void this.asks(session.thread, 'summary');
 				}
 				return;
 			}
@@ -383,7 +409,7 @@ class TauriChat implements ChatAccess {
 			opening === undefined ||
 			!opening.resume ||
 			session.introduced ||
-			this.held !== session ||
+			this.held.get(session.thread) !== session ||
 			session.gone
 		)
 			return false;
@@ -400,10 +426,19 @@ class TauriChat implements ChatAccess {
 	 *  any other way. Nothing is asked while the agent is answering somebody:
 	 *  the next turn to end asks again. */
 	private async asksInWords(session: Session): Promise<void> {
-		if (this.held !== session || session.gone || session.turn || session.reading) return;
+		if (
+			this.held.get(session.thread) !== session ||
+			session.gone ||
+			session.turn ||
+			session.reading
+		)
+			return;
 		session.reading = true;
 		session.stream.turned();
-		await this.call<void>(SAY, { line: JSON.stringify(aTurn(THE_WINDOW_IN_WORDS)) }).catch(() => {
+		await this.call<void>(SAY, {
+			thread: session.thread,
+			line: JSON.stringify(aTurn(THE_WINDOW_IN_WORDS))
+		}).catch(() => {
 			session.reading = false;
 		});
 	}
@@ -433,25 +468,26 @@ class TauriChat implements ChatAccess {
 				`${doingIn(one.act)} was refused before it ran: ${refused}`,
 				one.call
 			);
-			await this.answers(one.call, { said: refused, trouble: true });
+			await this.answers(session, one.call, { said: refused, trouble: true });
 			return;
 		}
 		try {
-			await this.answers(one.call, await session.serve(held.data));
+			await this.answers(session, one.call, await session.serve(held.data));
 		} catch {
 			// An act says what it could not do in its own answer, so nothing
 			// thrown past that has words the agent could act on.
-			await this.answers(one.call, { said: DIDNT_ANSWER, trouble: true });
+			await this.answers(session, one.call, { said: DIDNT_ANSWER, trouble: true });
 		}
 	}
 
 	/** What the act answered, held to its shape on the way out to the agent. */
-	private async answers(call: string, answer: ChatToolAnswer): Promise<void> {
+	private async answers(session: Session, call: string, answer: ChatToolAnswer): Promise<void> {
 		const held = ChatToolAnswerSchema.safeParse(answer);
 		const said = held.success
 			? held.data
 			: { said: held.error.issues[0]?.message ?? DIDNT_ANSWER, trouble: true };
 		await this.call<void>(ANSWER, {
+			thread: session.thread,
 			call,
 			said: said.said,
 			trouble: said.trouble ?? false
@@ -463,8 +499,8 @@ class TauriChat implements ChatAccess {
 		});
 	}
 
-	private standing(): Session {
-		const session = this.held;
+	private standing(of: string): Session {
+		const session = this.held.get(of);
 		if (!session || session.gone) throw refuse(NO_CHAT);
 		return session;
 	}

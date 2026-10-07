@@ -84,12 +84,14 @@ const chatting: ChatAccess = {
 	open: async (_asked, heard) => {
 		sessions.opened += 1;
 		hear = heard;
-	},
-	say: async () => {},
-	stop: async () => {},
-	close: async () => {
-		sessions.closed += 1;
-		hear = null;
+		return {
+			say: async () => {},
+			stop: async () => {},
+			close: async () => {
+				sessions.closed += 1;
+				hear = null;
+			}
+		};
 	},
 	drafts
 };

@@ -3386,10 +3386,11 @@ describe('a graph as a file', () => {
 describe('the chat about the code, beside an open note', () => {
 	const chatting: ChatAccess = {
 		agents: async () => ['claude_code'],
-		open: async () => {},
-		say: async () => {},
-		stop: async () => {},
-		close: async () => {}
+		open: async () => ({
+			say: async () => {},
+			stop: async () => {},
+			close: async () => {}
+		})
 	};
 
 	beforeEach(() => {

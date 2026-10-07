@@ -6,15 +6,17 @@
  * **A tab switch IS the folder switch this app has always done**, plus the
  * memory of how each folder was being read. So nothing here multiplexes a
  * surface: {@link TabsState.switchTo} tells the page to snapshot what it has,
- * asks the store to serve the other folder, and tells the page to come back to
- * what was kept for it. A shell whose seam holds no `TabsAccess` still
- * switches this way and shows no strip, because there is only ever one folder
- * to show.
+ * asks the store to serve the other folder, gives up what was read out of the
+ * folder that was, and tells the page to come back to what was kept for it. A
+ * shell whose seam holds no `TabsAccess` still switches this way and shows no
+ * strip, because there is only ever one folder to show.
  */
 
 import type { OpenTabs } from '../runtime.js';
 import { seam } from '../seam.svelte.js';
+import { gitSettings } from './git-settings.svelte.js';
 import { graphs } from './graphs.svelte.js';
+import { letGoOfTheFolderRead } from './let-go.js';
 import { prefs } from './prefs.svelte.js';
 
 /** The page in front of the folder, as a switch asks it to behave. */
@@ -22,8 +24,8 @@ export interface TabPage {
 	/** A SNAPSHOT of how `root` is being read, and nothing else — it may run and
 	 *  then nothing open. */
 	leaving(root: string): void;
-	/** The folder in front of somebody is now `root`: let go of what was read
-	 *  and bring `root` back as it was left. */
+	/** The folder in front of somebody is now `root`: bring it back as it was
+	 *  left. What was read out of the folder that was is already given up. */
 	arrived(root: string): void;
 }
 
@@ -92,20 +94,22 @@ class TabsState {
 			if (was === root) return;
 			if (was !== undefined) this.#page?.leaving(was);
 			await graphs.enterFolder(root);
-			this.#page?.arrived(root);
+			this.#arriveAt(root);
 		});
 	}
 
 	/** Open through whatever `open` does — the picker, a project, a clone — with
-	 *  the same leaving and arriving around it. `false` from `open` is somebody
-	 *  who chose nothing, and nothing more happens. */
+	 *  the same leaving and arriving around it, and with what this device gives
+	 *  a folder it has not kept versions in before. `false` from `open` is
+	 *  somebody who chose nothing, and nothing more happens. */
 	openWith(open: () => Promise<boolean>): Promise<boolean> {
 		return this.#inTurn(async () => {
 			const was = this.#inFront;
 			if (was !== undefined) this.#page?.leaving(was);
 			if (!(await open())) return false;
 			const now = this.#inFront;
-			if (now !== undefined) this.#page?.arrived(now);
+			if (now !== undefined) this.#arriveAt(now);
+			await gitSettings.beginFolder();
 			return true;
 		});
 	}
@@ -125,7 +129,7 @@ class TabsState {
 			await access.close(root);
 			if (!front) return;
 			const now = this.#active;
-			if (now !== undefined) this.#page?.arrived(now);
+			if (now !== undefined) this.#arriveAt(now);
 		});
 	}
 
@@ -149,13 +153,29 @@ class TabsState {
 		this.#active = undefined;
 	}
 
+	/** `root` is the folder in front of somebody now: what was read out of the
+	 *  last one given up, and the page — where one is reading a folder at all —
+	 *  asked to bring this one back as it was left. The strip stands over every
+	 *  page, so a switch made away from the reading surface still gives up what
+	 *  the folder that was had been read as. */
+	#arriveAt(root: string): void {
+		letGoOfTheFolderRead();
+		this.#page?.arrived(root);
+	}
+
 	/** The folder being left: the one the shell says is in front where it holds
 	 *  tabs, and the only folder open where it does not. */
 	get #inFront(): string | undefined {
 		return this.#active ?? graphs.openFolder;
 	}
 
+	/** The shell's list, and with it the end of what was kept for a folder no
+	 *  longer on it — the shell takes a tab off for itself where the folder was
+	 *  forgotten or has gone, and a folder's reading is not outlived by it. */
 	#take(tabs: OpenTabs): void {
+		for (const root of this.#open) {
+			if (!tabs.open.includes(root)) prefs.setView(root, null);
+		}
 		this.#open = [...tabs.open];
 		this.#active = tabs.active;
 	}
