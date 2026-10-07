@@ -1,9 +1,10 @@
+import { Refusal } from '@sloppy/ui';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rememberFolder } from '../browser-files.js';
 import { aGraphFolder, fakeFolder } from '../browser-files.test-support.js';
 import { graphHere } from '../graph-here.svelte.js';
-import { initRuntime } from '../runtime.js';
+import { initRuntime, updateRuntime, type OpenTabs } from '../runtime.js';
 import { deleted } from '../stores/deleted.svelte.js';
 import {
 	AT,
@@ -17,6 +18,7 @@ import {
 import { nodes } from '../stores/nodes.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { session } from '../stores/session.svelte.js';
+import { tabs } from '../stores/tabs.svelte.js';
 import Frame from './frame.test-support.svelte';
 import { nodeHref } from './routes.js';
 
@@ -116,6 +118,8 @@ afterEach(async () => {
 	await rememberFolder(null);
 	Reflect.deleteProperty(globalThis, 'showDirectoryPicker');
 	running('hosted');
+	tabs.clear();
+	updateRuntime({ tabs: undefined });
 });
 
 /** A folder this browser would hand over, as one somebody picks. */
@@ -131,6 +135,38 @@ function picksUp(held: Awaited<ReturnType<typeof aGraphFolder>>, named = 'garden
 function running(mode: 'hosted' | 'local'): void {
 	initRuntime({ apiHost: () => '', mode: () => mode });
 }
+
+/** A shell holding folders open, as `TabsAccess` hands them over. `refuses` is
+ *  a close it will not do, in the words it says so in. */
+function holding(open: string[], active: string, refuses?: string): void {
+	let listed = [...open];
+	let front: string | undefined = active;
+	let hear: ((tabs: OpenTabs) => void) | undefined;
+	const held = (): OpenTabs => ({ open: listed, active: front });
+	running('local');
+	updateRuntime({
+		tabs: {
+			held,
+			close: (root: string) => {
+				if (refuses !== undefined) return Promise.reject(new Refusal(refuses));
+				listed = listed.filter((one) => one !== root);
+				if (front === root) front = listed[0];
+				hear?.(held());
+				return Promise.resolve();
+			},
+			changed: (heard) => {
+				hear = heard;
+				return () => {
+					hear = undefined;
+				};
+			}
+		}
+	});
+}
+
+const strip = () => target.querySelector('[role="tablist"]');
+const closes = (name: string) =>
+	target.querySelector<HTMLButtonElement>(`[aria-label="Close ${name}"]`);
 
 describe('the frame around every page', () => {
 	it('shows the page to whoever is signed in', async () => {
@@ -355,5 +391,67 @@ describe('the frame around every page', () => {
 
 		expect(target.textContent).toContain('The graph');
 		expect(where.gone).toEqual([]);
+	});
+});
+
+// DESIGN.md § Layout: the folders open stand in a strip across the top, and
+// only where there are two or more.
+describe('the folders open above the page', () => {
+	const GARDEN = '/Users/me/garden';
+	const THESIS = '/Users/me/thesis';
+
+	beforeEach(() => {
+		api.on('GET /auth/me', () => VIEWER);
+	});
+
+	it('stand above the page rather than inside it', async () => {
+		holding([GARDEN, THESIS], THESIS);
+
+		await show();
+
+		expect(
+			[...(strip()?.querySelectorAll('[role="tab"]') ?? [])].map((one) => one.textContent)
+		).toEqual(['garden', 'thesis']);
+		expect(target.firstElementChild?.querySelector('[role="tablist"]')).toBe(strip());
+		expect(strip()?.closest('main')).toBeNull();
+		expect(target.textContent).toContain('The graph');
+	});
+
+	// That folder's name is already in the chrome, so a strip to tell it from
+	// nothing is chrome with nothing in it.
+	it('stand nowhere while one folder is open', async () => {
+		holding([GARDEN], GARDEN);
+
+		await show();
+
+		expect(strip()).toBeNull();
+		expect(target.textContent).toContain('The graph');
+	});
+
+	it('go once closing one leaves a single folder open', async () => {
+		holding([GARDEN, THESIS], THESIS);
+		await show();
+		expect(strip()).not.toBeNull();
+
+		closes('garden')?.click();
+		flushSync();
+		await settle();
+
+		expect(strip()).toBeNull();
+		expect(target.textContent).toContain('The graph');
+	});
+
+	it('say what the shell would not do, in the words it said it in', async () => {
+		holding([GARDEN, THESIS], THESIS, 'Keep at least one folder open.');
+		await show();
+
+		closes('garden')?.click();
+		flushSync();
+		await settle();
+
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain(
+			'Keep at least one folder open.'
+		);
+		expect(strip()).not.toBeNull();
 	});
 });

@@ -4,7 +4,7 @@
  * the ones a webview inside a native process can answer differently from a tab.
  */
 
-import { initRuntime, resetApi, session, type KnownFolder } from '@sloppy/app-core';
+import { initRuntime, resetApi, session, type KnownFolder, type OpenTabs } from '@sloppy/app-core';
 import {
 	containerOf,
 	DeviceCredentials,
@@ -18,6 +18,7 @@ import {
 	type Files,
 	type IdentityAccess
 } from '@sloppy/local';
+import { Refusal } from '@sloppy/ui';
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { tauriChat } from './chat';
@@ -31,8 +32,8 @@ import {
 	knownFolders,
 	LOCAL_MODE,
 	openedFolder,
-	rememberedVault,
-	rememberVault,
+	rememberedTabs,
+	rememberTabs,
 	graphIn
 } from './local-mode';
 import { picked, readsPicked } from './places';
@@ -75,6 +76,16 @@ let opened: string | undefined;
 let vaultRoot: string | undefined;
 
 let missing = false;
+
+/** The folders open at once and which of them is in front — what `TabsAccess`
+ *  hands out, and what is written down each time it changes. */
+let held: OpenTabs = { open: [], active: undefined };
+
+const hearTabs = new Set<(tabs: OpenTabs) => void>();
+
+function tabsChanged(): void {
+	for (const hear of [...hearTabs]) hear(held);
+}
 
 let served: LocalApi | undefined;
 
@@ -182,17 +193,39 @@ async function open(files: Files, folder: string): Promise<void> {
 	// launch instead: it moves with the app, and a path written down before it
 	// moved leads nowhere.
 	if (ASKS_WHERE) {
-		await rememberVault(files, folder);
+		held = {
+			open: held.open.includes(folder) ? held.open : [...held.open, folder],
+			active: folder
+		};
+		await rememberTabs(files, held);
 		await openedFolder(files, folder);
 	}
 	await serve(files, folder);
+	tabsChanged();
+}
+
+/** Take a folder's tab off, putting the one after it in front — else the one
+ *  before — where it was the folder being read. */
+async function closeTab(files: Files, root: string): Promise<void> {
+	const put = held.open.indexOf(root);
+	if (put < 0) return;
+	if (held.open.length < 2) throw new Refusal('Keep at least one folder open.');
+	const open = held.open.filter((one) => one !== root);
+	const front = held.active === root ? (open[put] ?? open[put - 1]) : held.active;
+	held = { open, active: front };
+	await rememberTabs(files, held);
+	if (front !== undefined && front !== opened) await serve(files, front);
+	tabsChanged();
 }
 
 /** Take a folder off this device's list and serve what is open from a client
  *  that has not read the list as it was. */
 async function forget(files: Files, folder: string): Promise<void> {
 	await forgetFolder(files, folder);
-	await repoint(files);
+	// The only folder open stays open: there is nothing to put in front of
+	// somebody instead.
+	if (held.open.includes(folder) && held.open.length > 1) await closeTab(files, folder);
+	else await repoint(files);
 }
 
 async function cloneFolder(
@@ -221,21 +254,35 @@ function stillHoldsIt(files: Files, folder: string): Promise<boolean> {
 }
 
 /**
- * The folder this device has a graph in, opened before any page reads `api`.
- * `undefined` is a device with none, which is what puts the first run in front
- * of somebody instead — and is what is left where a device that keeps its
- * graphs in one place cannot reach that place either.
+ * The folder this device had in front, opened before any page reads `api`, with
+ * the ones open beside it held again. `undefined` is a device with none, which
+ * is what puts the first run in front of somebody instead — and is what is left
+ * where a device that keeps its graphs in one place cannot reach that place
+ * either.
  */
 export async function openRememberedVault(): Promise<string | undefined> {
 	if (!device) return undefined;
 	await readsPicked();
 	if (!ASKS_WHERE) return openFolder(device).catch(() => undefined);
-	const remembered = await rememberedVault(device);
+	const remembered = await rememberedTabs(device);
 	if (!remembered) return undefined;
-	missing = !(await stillHoldsIt(device, remembered).catch(() => false));
-	if (missing) return undefined;
-	await serve(device, remembered);
-	return remembered;
+	const stands = await Promise.all(
+		remembered.open.map((root) => stillHoldsIt(device, root).catch(() => false))
+	);
+	const standing = remembered.open.filter((_, at) => stands[at]);
+	const front =
+		remembered.active !== undefined && standing.includes(remembered.active)
+			? remembered.active
+			: standing[0];
+	// Being offered a folder again is for somebody who has lost all of them; one
+	// of several that has gone is simply not opened.
+	missing = front === undefined;
+	if (front === undefined) return undefined;
+	held = { open: standing, active: front };
+	await rememberTabs(device, held);
+	await serve(device, front);
+	tabsChanged();
+	return front;
 }
 
 function identitiesHere(files: Files): IdentityAccess {
@@ -296,6 +343,22 @@ export function initNativeRuntime(): void {
 								}
 							: {})
 					},
+					// A device that keeps its graphs in one place has one folder by the
+					// nature of where they are, so there is nothing to tell apart there.
+					...(ASKS_WHERE
+						? {
+								tabs: {
+									held: () => held,
+									close: (root: string) => closeTab(device, root),
+									changed: (hear: (tabs: OpenTabs) => void) => {
+										hearTabs.add(hear);
+										return () => {
+											hearTabs.delete(hear);
+										};
+									}
+								}
+							}
+						: {}),
 					history: () => (vaultRoot ? tauriHistory(vaultRoot) : undefined),
 					project: () => projectHere(device),
 					chat: tauriChat(

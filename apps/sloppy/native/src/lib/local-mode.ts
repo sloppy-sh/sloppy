@@ -1,9 +1,10 @@
 /**
- * Whether this build opens a graph as a folder on the device, and which folder
- * it opened last — docs/ARCHITECTURE.md § "Local-only mode".
+ * Whether this build opens a graph as a folder on the device, and which folders
+ * it had open — docs/ARCHITECTURE.md § "Local-only mode" and § "Several folders
+ * open at once".
  */
 
-import type { KnownFolder } from '@sloppy/app-core';
+import type { KnownFolder, OpenTabs } from '@sloppy/app-core';
 import { containerOf, forgetVault, readVaults, vaultOpened, type Files } from '@sloppy/local';
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 
@@ -19,33 +20,59 @@ import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
  */
 export const LOCAL_MODE: boolean = import.meta.env.PUBLIC_ENABLE_LOCAL_MODE === 'true';
 
-/** Where the folder a graph was last opened from is written down, under
+/** Where the folders a graph was last opened from are written down, under
  *  `Files.dataPath`. */
 export const OPEN_VAULT_FILE = 'vault.json';
 
 const utf8 = new TextEncoder();
 const text = new TextDecoder();
 
-/** The folder this device last had a graph in. `undefined` is a device with
- *  none, which is the first run — and so is a record that can no longer be read
- *  or reached, because being asked for a folder again is a smaller loss than
- *  refusing to start. */
-export async function rememberedVault(files: Files): Promise<string | undefined> {
+/** The folders this device had open and which of them was in front.
+ *  `undefined` is a device with none, which is the first run — and so is a
+ *  record that can no longer be read or reached, because being asked for a
+ *  folder again is a smaller loss than refusing to start. */
+export async function rememberedTabs(files: Files): Promise<OpenTabs | undefined> {
 	try {
 		const own = files.at(await files.dataPath());
 		const held = await own.read(OPEN_VAULT_FILE);
 		if (!held) return undefined;
-		const said: unknown = JSON.parse(text.decode(held));
-		const folder = (said as { folder?: unknown } | null)?.folder;
-		return typeof folder === 'string' && folder ? folder : undefined;
+		return tabsIn(JSON.parse(text.decode(held)));
 	} catch {
 		return undefined;
 	}
 }
 
-export async function rememberVault(files: Files, folder: string): Promise<void> {
+export async function rememberTabs(files: Files, tabs: OpenTabs): Promise<void> {
 	const own = files.at(await files.dataPath());
-	await own.write(OPEN_VAULT_FILE, utf8.encode(`${JSON.stringify({ folder }, null, 2)}\n`));
+	const said = {
+		open: [...tabs.open],
+		...(tabs.active === undefined ? {} : { active: tabs.active })
+	};
+	await own.write(OPEN_VAULT_FILE, utf8.encode(`${JSON.stringify(said, null, 2)}\n`));
+}
+
+/** A record written down before this device held more than one folder open
+ *  names the one folder it had, under `folder`. */
+function tabsIn(said: unknown): OpenTabs | undefined {
+	const read = (said ?? {}) as { open?: unknown; active?: unknown; folder?: unknown };
+	const listed: unknown[] = Array.isArray(read.open) ? read.open : [read.folder];
+	const open = [
+		...new Set(listed.filter((one): one is string => typeof one === 'string' && one !== ''))
+	];
+	if (open.length === 0) return undefined;
+	const active =
+		typeof read.active === 'string' && open.includes(read.active) ? read.active : open[0];
+	return { open, active };
+}
+
+/** The folder in front, for `folders.ts`: a build that talks to a server opens
+ *  one at a time, and reaches the same record. */
+export async function rememberedVault(files: Files): Promise<string | undefined> {
+	return (await rememberedTabs(files))?.active;
+}
+
+export async function rememberVault(files: Files, folder: string): Promise<void> {
+	await rememberTabs(files, { open: [folder], active: folder });
 }
 
 /** Ask for a folder on the next launch rather than opening one again. Nothing

@@ -7,6 +7,8 @@ const {
 	forgetFolder,
 	knownFolders,
 	openedFolder,
+	rememberedTabs,
+	rememberTabs,
 	rememberedVault,
 	rememberVault
 } = await import('./local-mode.js');
@@ -34,37 +36,112 @@ function refusing(): Files {
 	return files;
 }
 
-describe('the folder this device had a graph in last', () => {
-	it('is the one that was opened', async () => {
+describe('the folders this device had open last', () => {
+	const GARDEN = '/Users/me/garden';
+	const THESIS = '/Users/me/thesis';
+
+	/** What is written down, as the record itself reads. */
+	async function record(files: MemoryFiles): Promise<unknown> {
+		const held = await files.at('/data').read(OPEN_VAULT_FILE);
+		return JSON.parse(new TextDecoder().decode(held as Uint8Array));
+	}
+
+	it('are the ones that were open, with the one that was in front', async () => {
 		const files = new MemoryFiles({ data: '/data' });
-		await rememberVault(files, '/Users/me/garden');
+		await rememberTabs(files, { open: [GARDEN, THESIS], active: THESIS });
 
-		expect(await rememberedVault(files)).toBe('/Users/me/garden');
+		expect(await rememberedTabs(files)).toEqual({ open: [GARDEN, THESIS], active: THESIS });
 	});
 
-	it('is nothing on a device that has never had one', async () => {
-		expect(await rememberedVault(new MemoryFiles({ data: '/data' }))).toBeUndefined();
+	it('keep the order they were opened in', async () => {
+		const files = new MemoryFiles({ data: '/data' });
+		await rememberTabs(files, { open: [THESIS, GARDEN], active: THESIS });
+
+		expect((await rememberedTabs(files))?.open).toEqual([THESIS, GARDEN]);
 	});
 
-	it('is nothing where the record can no longer be read as one', async () => {
+	// Every record written before this device held more than one folder open.
+	it('are the one folder a record written before them names', async () => {
+		const files = new MemoryFiles({ data: '/data' });
+		await files
+			.at('/data')
+			.write(OPEN_VAULT_FILE, new TextEncoder().encode(`{"folder":"${GARDEN}"}`));
+
+		expect(await rememberedTabs(files)).toEqual({ open: [GARDEN], active: GARDEN });
+	});
+
+	it('are nothing on a device that has never had one', async () => {
+		expect(await rememberedTabs(new MemoryFiles({ data: '/data' }))).toBeUndefined();
+	});
+
+	it('are nothing where the record can no longer be read as one', async () => {
 		const files = new MemoryFiles({ data: '/data' });
 		const own = files.at('/data');
-		for (const held of ['{ not json', '{}', '{"folder":""}', '{"folder":42}', 'null']) {
+		for (const held of [
+			'{ not json',
+			'{}',
+			'null',
+			'[]',
+			'42',
+			'{"folder":""}',
+			'{"folder":42}',
+			'{"open":[]}',
+			'{"open":"/Users/me/garden"}',
+			'{"open":[42,""],"active":42}'
+		]) {
 			await own.write(OPEN_VAULT_FILE, new TextEncoder().encode(held));
-			expect(await rememberedVault(files)).toBeUndefined();
+			expect(await rememberedTabs(files)).toBeUndefined();
 		}
 	});
 
-	it('is nothing where the device cannot answer for its own files', async () => {
-		expect(await rememberedVault(refusing())).toBeUndefined();
+	// Which one was in front is a smaller loss than being asked for a folder.
+	it('stand without the one that was in front, where the record names none of them', async () => {
+		const files = new MemoryFiles({ data: '/data' });
+		const own = files.at('/data');
+		for (const held of [
+			`{"open":["${GARDEN}","${THESIS}"]}`,
+			`{"open":["${GARDEN}"],"active":42}`
+		]) {
+			await own.write(OPEN_VAULT_FILE, new TextEncoder().encode(held));
+			expect((await rememberedTabs(files))?.active).toBe(GARDEN);
+		}
 	});
 
-	it('is written where nobody else keeps their files', async () => {
+	it('are nothing where the device cannot answer for its own files', async () => {
+		expect(await rememberedTabs(refusing())).toBeUndefined();
+	});
+
+	it('are written where nobody else keeps their files', async () => {
 		const files = new MemoryFiles({ data: '/data' });
-		await rememberVault(files, '/Users/me/garden');
+		await rememberTabs(files, { open: [GARDEN], active: GARDEN });
 
 		expect(await files.at('/data').exists(OPEN_VAULT_FILE)).toBe(true);
 		expect(await files.exists(OPEN_VAULT_FILE)).toBe(false);
+	});
+
+	it('say nothing about one in front where none is', async () => {
+		const files = new MemoryFiles({ data: '/data' });
+		await rememberTabs(files, { open: [], active: undefined });
+
+		expect(await record(files)).toEqual({ open: [] });
+		expect(await rememberedTabs(files)).toBeUndefined();
+	});
+
+	// A build that talks to a server opens one folder at a time and reaches the
+	// same record — `folders.ts`.
+	it('are the one folder a build that opens one at a time wrote', async () => {
+		const files = new MemoryFiles({ data: '/data' });
+		await rememberVault(files, GARDEN);
+
+		expect(await rememberedTabs(files)).toEqual({ open: [GARDEN], active: GARDEN });
+		expect(await rememberedVault(files)).toBe(GARDEN);
+	});
+
+	it('are read by that build as the one in front', async () => {
+		const files = new MemoryFiles({ data: '/data' });
+		await rememberTabs(files, { open: [GARDEN, THESIS], active: THESIS });
+
+		expect(await rememberedVault(files)).toBe(THESIS);
 	});
 });
 

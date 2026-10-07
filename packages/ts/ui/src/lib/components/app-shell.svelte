@@ -12,6 +12,7 @@
 
 	let {
 		children,
+		top,
 		items = [],
 		activeId,
 		action,
@@ -21,6 +22,9 @@
 		onDeskNavOpenChange
 	}: {
 		children: Snippet;
+		/** Chrome standing above the page in both arrangements, which owes its
+		 *  height as `--app-chrome-top` — DESIGN.md § "The four inset vars". */
+		top?: Snippet;
 		items?: NavItem[];
 		activeId?: string;
 		action?: NavAction;
@@ -40,6 +44,8 @@
 		showNav && desk.current && (items.length > 0 || deskNav.parts !== null)
 	);
 </script>
+
+{@render top?.()}
 
 <!-- The page renders HERE and only here. Chrome that varies by width flips by
      class; a per-chrome branch around this would destroy and remount the page

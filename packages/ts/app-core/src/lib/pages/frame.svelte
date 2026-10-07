@@ -5,7 +5,7 @@
 
 	// The chrome and the gate every page sits inside. Both shells mount it from
 	// their root layout, which is all a shell knows about any of this.
-	import { AppShell } from '@sloppy/ui';
+	import { AppShell, TabStrip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
@@ -15,6 +15,7 @@
 	import { keyboard } from '../keyboard.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
+	import { wordsFor } from '../stores/errors.js';
 	import { find } from '../stores/find.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
@@ -26,6 +27,7 @@
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
+	import { tabs } from '../stores/tabs.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
 	import {
 		activeRouteId,
@@ -142,6 +144,24 @@
 		if (session.signedIn && !people.me) void people.read().catch(() => {});
 	});
 
+	onMount(() => {
+		tabs.boot();
+		// The strip names a folder by the graph in it, which is on this list.
+		if (tabs.shows) void graphs.readFolders();
+	});
+
+	/** Words for a person about a folder that did not open, switch or close. */
+	let refused = $state<string | undefined>(undefined);
+
+	async function onTheStrip(act: () => Promise<unknown>): Promise<void> {
+		refused = undefined;
+		try {
+			await act();
+		} catch (error) {
+			refused = wordsFor(error) ?? 'That did not work.';
+		}
+	}
+
 	let wasSignedIn = false;
 
 	// A session that ends takes the graph with it however it ended, so nothing of
@@ -169,7 +189,18 @@
 	});
 </script>
 
+{#snippet strip()}
+	<TabStrip
+		tabs={tabs.rows}
+		{refused}
+		onSwitch={(root) => void onTheStrip(() => tabs.switchTo(root))}
+		onClose={(root) => void onTheStrip(() => tabs.close(root))}
+		onOpen={() => void onTheStrip(() => tabs.openWith(() => graphs.startFolder()))}
+	/>
+{/snippet}
+
 <AppShell
+	top={tabs.shows ? strip : undefined}
 	items={destinations}
 	{activeId}
 	showNav={navShows()}

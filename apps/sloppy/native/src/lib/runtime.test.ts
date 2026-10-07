@@ -1,4 +1,4 @@
-import type { AppRuntime, ChatAsked } from '@sloppy/app-core';
+import type { AppRuntime, ChatAsked, OpenTabs } from '@sloppy/app-core';
 import type { Credential } from '@sloppy/local';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -894,5 +894,227 @@ describe('the folders a chat may be given beside its own project', () => {
 		await again.openRememberedVault();
 
 		expect(registered.placeFiles?.('/Users/me/garden')).toBeDefined();
+	});
+});
+
+describe('the folders this device has open at once', () => {
+	const ADA = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
+	const GARDEN = '/Users/me/garden';
+	const THESIS = '/Users/me/thesis';
+	const COMPILER = '/Users/me/compiler';
+
+	/** A folder holding a graph of its own, opened by somebody naming it. */
+	async function opens(folder: string): Promise<void> {
+		held.set(
+			`${folder}/graph.json`,
+			btoa(
+				JSON.stringify({
+					format: 1,
+					graph: `01ARZ3NDEKTSV4RRFFQ69G5F${folder.length}`,
+					name: folder.split('/').at(-1),
+					owner: ADA
+				})
+			)
+		);
+		picks = folder;
+		await registered.vault?.open?.();
+	}
+
+	/** The garden and the thesis open, the thesis in front. */
+	async function bothOpen(): Promise<void> {
+		await opens(GARDEN);
+		await opens(THESIS);
+	}
+
+	/** Three open, the compiler in front and last among them. */
+	async function threeOpen(): Promise<void> {
+		await bothOpen();
+		await opens(COMPILER);
+	}
+
+	beforeEach(() => {
+		held.clear();
+		admits.clear();
+		picks = GARDEN;
+		picking = 'answers';
+		resetApi.mockClear();
+	});
+
+	it('are the ones opened, in that order, with the last of them in front', async () => {
+		await launch();
+
+		await bothOpen();
+
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN, THESIS], active: THESIS });
+		expect(servedFrom()).toBe(THESIS);
+	});
+
+	it('gain nothing from one already open, which comes to the front', async () => {
+		await launch();
+		await bothOpen();
+
+		await registered.vault?.openKnown?.(GARDEN);
+
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN, THESIS], active: GARDEN });
+		expect(servedFrom()).toBe(GARDEN);
+	});
+
+	it('gain the one somebody starts, which comes to the front', async () => {
+		await launch();
+		await bothOpen();
+		picks = COMPILER;
+
+		await registered.vault?.start?.();
+
+		expect(registered.tabs?.held()).toEqual({
+			open: [GARDEN, THESIS, COMPILER],
+			active: COMPILER
+		});
+	});
+
+	it('are the same ones the next time the app starts, with the same one in front', async () => {
+		await launch();
+		await bothOpen();
+
+		const again = await launch();
+
+		expect(await again.openRememberedVault()).toBe(THESIS);
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN, THESIS], active: THESIS });
+		expect(servedFrom()).toBe(THESIS);
+	});
+
+	it('leave behind one that is no longer where it was', async () => {
+		await launch();
+		await bothOpen();
+		held.delete(`${GARDEN}/graph.json`);
+
+		const again = await launch();
+
+		expect(await again.openRememberedVault()).toBe(THESIS);
+		expect(registered.tabs?.held()).toEqual({ open: [THESIS], active: THESIS });
+		expect(again.vaultIsMissing()).toBe(false);
+	});
+
+	it('put the one that is still there in front where the one that was is gone', async () => {
+		await launch();
+		await bothOpen();
+		held.delete(`${THESIS}/graph.json`);
+
+		const again = await launch();
+
+		expect(await again.openRememberedVault()).toBe(GARDEN);
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN], active: GARDEN });
+		expect(servedFrom()).toBe(GARDEN);
+	});
+
+	it('offer a folder rather than any of them where none is where it was', async () => {
+		await launch();
+		await bothOpen();
+		held.delete(`${GARDEN}/graph.json`);
+		held.delete(`${THESIS}/graph.json`);
+
+		const again = await launch();
+
+		expect(await again.openRememberedVault()).toBeUndefined();
+		expect(again.vaultIsMissing()).toBe(true);
+	});
+
+	it('serve the one after it where the folder being read is closed', async () => {
+		await launch();
+		await threeOpen();
+		await registered.vault?.openKnown?.(THESIS);
+
+		await registered.tabs?.close(THESIS);
+
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN, COMPILER], active: COMPILER });
+		expect(servedFrom()).toBe(COMPILER);
+	});
+
+	it('serve the one before it where the last of them is the one being read', async () => {
+		await launch();
+		await threeOpen();
+
+		await registered.tabs?.close(COMPILER);
+
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN, THESIS], active: THESIS });
+		expect(servedFrom()).toBe(THESIS);
+	});
+
+	it('leave the folder being read where another one is closed', async () => {
+		await launch();
+		await threeOpen();
+		resetApi.mockClear();
+
+		await registered.tabs?.close(GARDEN);
+
+		expect(registered.tabs?.held()).toEqual({ open: [THESIS, COMPILER], active: COMPILER });
+		expect(servedFrom()).toBe(COMPILER);
+		expect(resetApi).not.toHaveBeenCalled();
+	});
+
+	it('say to keep one open rather than closing the only one', async () => {
+		await launch();
+		await opens(GARDEN);
+
+		await expect(registered.tabs?.close(GARDEN)).rejects.toThrow('Keep at least one folder open.');
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN], active: GARDEN });
+		expect(servedFrom()).toBe(GARDEN);
+	});
+
+	it('are unchanged by closing one that is not open', async () => {
+		await launch();
+		await bothOpen();
+
+		await registered.tabs?.close('/Users/me/elsewhere');
+
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN, THESIS], active: THESIS });
+	});
+
+	it('lose the tab of a folder taken off this device’s list', async () => {
+		await launch();
+		await bothOpen();
+
+		await registered.vault?.forget?.(THESIS);
+
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN], active: GARDEN });
+		expect(servedFrom()).toBe(GARDEN);
+	});
+
+	// There is nothing to put in front of somebody instead.
+	it('keep the only one open standing where it is taken off that list', async () => {
+		await launch();
+		await opens(GARDEN);
+
+		await registered.vault?.forget?.(GARDEN);
+
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN], active: GARDEN });
+		expect(servedFrom()).toBe(GARDEN);
+	});
+
+	it('are told to whoever is listening on every change, opens included', async () => {
+		await launch();
+		const told: OpenTabs[] = [];
+		const stop = registered.tabs?.changed((tabs) =>
+			told.push({ open: [...tabs.open], active: tabs.active })
+		);
+
+		await bothOpen();
+		await registered.tabs?.close(GARDEN);
+
+		expect(told).toEqual([
+			{ open: [GARDEN], active: GARDEN },
+			{ open: [GARDEN, THESIS], active: THESIS },
+			{ open: [THESIS], active: THESIS }
+		]);
+
+		stop?.();
+		await opens(COMPILER);
+		expect(told).toHaveLength(3);
+	});
+
+	it('are nothing where a device keeps its graphs in one place', async () => {
+		await launch('ios');
+
+		expect(registered.tabs).toBeUndefined();
 	});
 });

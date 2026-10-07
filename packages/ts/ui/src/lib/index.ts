@@ -25,6 +25,11 @@ export { default as AppShell } from './components/app-shell.svelte';
 export { default as DeskNavParts } from './components/desk-nav-parts.svelte';
 export { DESK_FROM_PX } from './components/desk-nav.svelte.js';
 export { default as NavPill, type NavAction, type NavItem } from './components/nav-pill.svelte';
+export {
+	default as TabStrip,
+	type OpenTab,
+	type TabStripProps
+} from './components/tab-strip.svelte';
 
 export { default as PersonAvatar } from './components/identity/avatar.svelte';
 export { default as PersonChip } from './components/identity/person-chip.svelte';
