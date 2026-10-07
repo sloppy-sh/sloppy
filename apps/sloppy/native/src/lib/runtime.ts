@@ -218,14 +218,14 @@ async function closeTab(files: Files, root: string): Promise<void> {
 	tabsChanged();
 }
 
-/** Take a folder off this device's list and serve what is open from a client
- *  that has not read the list as it was. */
+/** Take a folder off this device's list, and its tab with it — unless it is the
+ *  one being read, which keeps its place in front of somebody rather than being
+ *  taken out from under the page holding it. Served again either way, from a
+ *  client that has not read the list as it was. */
 async function forget(files: Files, folder: string): Promise<void> {
 	await forgetFolder(files, folder);
-	// The only folder open stays open: there is nothing to put in front of
-	// somebody instead.
-	if (held.open.includes(folder) && held.open.length > 1) await closeTab(files, folder);
-	else await repoint(files);
+	if (held.active !== folder && held.open.includes(folder)) await closeTab(files, folder);
+	await repoint(files);
 }
 
 async function cloneFolder(

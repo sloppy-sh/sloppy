@@ -1074,13 +1074,25 @@ describe('the folders this device has open at once', () => {
 		await launch();
 		await bothOpen();
 
-		await registered.vault?.forget?.(THESIS);
+		await registered.vault?.forget?.(GARDEN);
 
-		expect(registered.tabs?.held()).toEqual({ open: [GARDEN], active: GARDEN });
-		expect(servedFrom()).toBe(GARDEN);
+		expect(registered.tabs?.held()).toEqual({ open: [THESIS], active: THESIS });
+		expect(servedFrom()).toBe(THESIS);
 	});
 
-	// There is nothing to put in front of somebody instead.
+	it('keep the folder being read in front where it is taken off that list', async () => {
+		await launch();
+		await bothOpen();
+		resetApi.mockClear();
+
+		await registered.vault?.forget?.(THESIS);
+
+		expect(registered.tabs?.held()).toEqual({ open: [GARDEN, THESIS], active: THESIS });
+		expect(servedFrom()).toBe(THESIS);
+		// From a client holding the list as it was.
+		expect(resetApi).toHaveBeenCalled();
+	});
+
 	it('keep the only one open standing where it is taken off that list', async () => {
 		await launch();
 		await opens(GARDEN);
