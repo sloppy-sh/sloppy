@@ -20,9 +20,9 @@ import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
 import type { LayoutCommand, LayoutEvent } from "./layout/protocol.js";
-import type { GraphMountOptions } from "./mount.js";
+import type { GraphHandle, GraphMountOptions } from "./mount.js";
 import type { Bounds } from "./viewport.js";
-import { Viewport } from "./viewport.js";
+import { MAX_SCALE, Viewport } from "./viewport.js";
 
 /**
  * What a mount hands the scene is checked here; how the scene draws it is a GPU
@@ -300,7 +300,12 @@ function ancestorsOf(ref: OwnedRef): OwnedRef[] {
   return up;
 }
 
-async function mount(overrides: Partial<GraphMountOptions> = {}) {
+/** `atOnce` runs on the handle before the renderer is up, which is the only
+ *  moment a host can reach it from. */
+async function mount(
+  overrides: Partial<GraphMountOptions> = {},
+  atOnce?: (handle: GraphHandle) => void,
+) {
   const host = element();
   const expanded: OwnedRef[] = [];
   const opened: OwnedRef[] = [];
@@ -324,6 +329,7 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
     ...overrides,
   };
   const handle = mountGraph(host as unknown as HTMLElement, props);
+  atOnce?.(handle);
   await vi.waitFor(() => expect(StandInScene.latest?.model).toBeTruthy());
   const scene = StandInScene.latest as StandInScene;
   const surface = host.children[0] as FakeElement;
@@ -1060,6 +1066,77 @@ describe("bringing the canvas to a note", () => {
     graph.answer();
 
     expect(graph.scene.centred).toEqual([]);
+  });
+});
+
+// Reading back where the field is looking and putting it there again is what
+// lets a host come back to a place — DESIGN.md § Persistence.
+describe("coming back to where the field was looking", () => {
+  const place = { x: -120, y: 64, scale: 1.5 };
+
+  it("says nowhere before the renderer is up, and where it looks once it is", async () => {
+    const early: (GraphTransform | null)[] = [];
+    const graph = await mount({}, (handle) => early.push(handle.viewport()));
+
+    expect(early).toEqual([null]);
+    expect(graph.handle.viewport()).toEqual({ x: 0, y: 0, scale: 1 });
+  });
+
+  it("puts the field where it is asked, and says so", async () => {
+    const seen: GraphTransform[] = [];
+    const graph = await mount({ onTransform: (at) => seen.push(at) });
+
+    graph.handle.lookAt(place);
+
+    expect(graph.handle.viewport()).toEqual(place);
+    expect(seen.at(-1)).toEqual(place);
+  });
+
+  it("holds the scale to the bounds a pinch is held to", async () => {
+    const graph = await mount();
+
+    graph.handle.lookAt({ x: 0, y: 0, scale: 900 });
+
+    expect(graph.handle.viewport()?.scale).toBe(MAX_SCALE);
+  });
+
+  // A reader coming back to a folder they left is coming back to a place, not
+  // to a fresh fit — so the place asked for before the canvas was up is where
+  // it opens, and the framing that would have run never does.
+  it("wins over the first framing when it is asked for before the canvas is up", async () => {
+    const graph = await mount({}, (handle) => handle.lookAt(place));
+
+    expect(graph.handle.viewport()).toEqual(place);
+    graph.answer(true);
+
+    expect(graph.scene.fits).toBe(0);
+    expect(graph.handle.viewport()).toEqual(place);
+  });
+
+  it("wins over a framing still on its way once the canvas is up", async () => {
+    const graph = await mount();
+
+    graph.handle.lookAt(place);
+    graph.answer(true);
+
+    expect(graph.scene.fits).toBe(0);
+    expect(graph.handle.viewport()).toEqual(place);
+  });
+
+  // Last ask wins, both ways round: a note asked for after the place is what
+  // the reader reached for most recently.
+  it("drops a note still waiting for the mark it was asked on", async () => {
+    const graph = await mount();
+    const mega = firstMegaNode(graph.model());
+    const child = childrenOf(mega)[0];
+
+    graph.handle.bringTo(child);
+    graph.handle.lookAt(place);
+    graph.handle.update({ ...graph.props, lod: { depth: 9, maxDrawn: 4000 } });
+    graph.answer();
+
+    expect(graph.scene.centred).toEqual([]);
+    expect(graph.handle.viewport()).toEqual(place);
   });
 });
 

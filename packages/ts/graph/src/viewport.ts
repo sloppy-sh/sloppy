@@ -39,6 +39,15 @@ export class Viewport {
     this.y += dy;
   }
 
+  /** Put the field at a pan and zoom read back off this one earlier. The scale
+   *  is held to the bounds a pinch is held to, so a stale number cannot take
+   *  the canvas somewhere a finger could not. */
+  lookAt(at: { x: number; y: number; scale: number }): void {
+    this.x = at.x;
+    this.y = at.y;
+    this.scale = clampScale(at.scale);
+  }
+
   /** Zoom about a screen point, which stays under the finger. */
   zoomAt(screenX: number, screenY: number, factor: number): void {
     const next = clampScale(this.scale * factor);

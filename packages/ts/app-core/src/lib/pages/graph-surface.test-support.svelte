@@ -6,14 +6,22 @@
 	// note, and one for opening the fold it stands for. What a tap MEANS is the
 	// real surface's contract, held by `@sloppy/graph`'s mount suite; this stands
 	// in for the pixels.
-	import { differenceMarks, type GraphHandle, type GraphSurfaceProps } from '@sloppy/graph';
+	import {
+		differenceMarks,
+		type GraphHandle,
+		type GraphSurfaceProps,
+		type GraphTransform
+	} from '@sloppy/graph';
 
 	let brought = $state<string[]>([]);
 	let fitted = $state(0);
+	let at = $state<GraphTransform | null>(null);
 
 	const canvas = {
 		bringTo: (ref: string) => (brought = [...brought, ref]),
-		fit: () => (fitted += 1)
+		fit: () => (fitted += 1),
+		viewport: () => at,
+		lookAt: (next: GraphTransform) => (at = next)
 	} as unknown as GraphHandle;
 
 	let {
@@ -46,6 +54,7 @@
 	data-wallpaper={wallpaper?.picture ?? ''}
 	data-brought={brought.join(' ')}
 	data-fitted={fitted}
+	data-looking={at ? `${at.x} ${at.y} ${at.scale}` : ''}
 	data-inking={onInkPointer ? 'yes' : undefined}
 >
 	{#each difference?.removed ?? [] as note (note.ref)}
