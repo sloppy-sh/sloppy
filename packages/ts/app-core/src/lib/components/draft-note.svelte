@@ -1,15 +1,15 @@
 <script lang="ts">
-	// One note of a draft, on the surface a note is always read on — DESIGN.md
-	// § "Reading a draft". It stands beside the chat rather than inside it, so a
-	// reader with room for two docks gets two.
+	// One note of a draft, read where the draft is being reviewed — DESIGN.md
+	// § "Reading a draft". It takes the review's place in the chat's own dock
+	// rather than opening a second one, so it is reached at every width.
 	import type { OwnedRef } from '@sloppy/types';
-	import { HeldStack, ReadingPanel, type ReferenceReader } from '@sloppy/ui';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import { HeldStack, type ReferenceReader } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { draftHeading, sectionsDrafted } from '../draft-said.js';
 	import { noteEmoji } from '../note-surface.js';
 	import { chatDraft, type DraftedNote, type DraftSide } from '../stores/chat-draft.svelte.js';
-	import { prefs } from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 
 	let {
@@ -69,20 +69,23 @@
 	});
 </script>
 
-<ReadingPanel
-	open={opened !== null}
-	onOpenChange={(up) => {
-		if (!up) opened = null;
-	}}
-	title={name}
-	width={prefs.current.readingWidth}
-	onWidthChange={(px) => prefs.set('readingWidth', px)}
->
-	{#if opened}
-		{@const side = opened.side}
-		{@const ref = opened.ref}
-		<div class="space-y-3 pt-1">
-			<h2 class="text-2xl leading-snug font-semibold tracking-tight">{name}</h2>
+{#if opened}
+	{@const side = opened.side}
+	{@const ref = opened.ref}
+	<div class="flex min-h-0 flex-1 flex-col gap-3 pt-2">
+		<div class="flex shrink-0 items-center gap-2">
+			<Button
+				variant="ghost"
+				class="size-9 shrink-0"
+				aria-label="Back to the draft"
+				onclick={() => (opened = null)}
+			>
+				<ChevronLeft class="size-4" />
+			</Button>
+			<h2 class="min-w-0 flex-1 truncate text-sm font-medium">{name}</h2>
+		</div>
+
+		<div class="min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto px-1">
 			<div class="flex flex-wrap gap-1">
 				{#each SIDES as one (one.side)}
 					<Button
@@ -95,35 +98,35 @@
 					</Button>
 				{/each}
 			</div>
-		</div>
 
-		{#if showing === undefined}
-			<Skeleton class="mt-4 h-24 w-full" />
-		{:else if !showing}
-			<p class="py-8 text-center text-muted-foreground">
-				{side === 'draft' ? BINNED : NOT_YOURS_YET}
-			</p>
-		{:else if showing.sections.length === 0}
-			<p class="py-8 text-center text-muted-foreground">{UNWRITTEN}</p>
-		{:else}
-			{@const shown = showing}
-			<div class="mt-4 space-y-4">
-				{#each shown.sections as section (section.ref)}
-					<div class="space-y-1">
-						{#if drafted.has(section.ref)}
-							<p class="text-xs text-muted-foreground">Written into by the chat</p>
-						{/if}
-						<HeldStack
-							note={shown.note}
-							author={shown.note.created_by}
-							blocks={[section]}
-							pictures={{ held: true, picture: (upload) => shown.picture(upload) }}
-							{references}
-							{emoji}
-						/>
-					</div>
-				{/each}
-			</div>
-		{/if}
-	{/if}
-</ReadingPanel>
+			{#if showing === undefined}
+				<Skeleton class="mt-4 h-24 w-full" />
+			{:else if !showing}
+				<p class="py-8 text-center text-muted-foreground">
+					{side === 'draft' ? BINNED : NOT_YOURS_YET}
+				</p>
+			{:else if showing.sections.length === 0}
+				<p class="py-8 text-center text-muted-foreground">{UNWRITTEN}</p>
+			{:else}
+				{@const shown = showing}
+				<div class="mt-4 space-y-4">
+					{#each shown.sections as section (section.ref)}
+						<div class="space-y-1">
+							{#if drafted.has(section.ref)}
+								<p class="text-xs text-muted-foreground">Written into by the chat</p>
+							{/if}
+							<HeldStack
+								note={shown.note}
+								author={shown.note.created_by}
+								blocks={[section]}
+								pictures={{ held: true, picture: (upload) => shown.picture(upload) }}
+								{references}
+								{emoji}
+							/>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</div>
+{/if}

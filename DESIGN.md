@@ -994,11 +994,7 @@ went to the bin. Each row is the note's title, the number where it has one, and 
 saying what happened — the same line the chat said as it happened, read again. Nothing is
 counted twice: a note written into and moved is one row saying both.
 
-**A row opens the note as the draft has it**, in the reading panel, where a note is always
-read. It is not an editor: this is somebody else's writing until they take it in, and an
-edit made here would be an edit to a copy that is about to stop existing. The note your
-folder holds is one tap away beside it, because the question a reader actually has is what
-is different.
+**A row opens the note as the draft has it, in the chat's own dock, in the review's place.** The list steps aside and the note stands where it was, with a way back at its head and the two copies a tap apart — in the draft, in your folder — so what the chat wrote is read against what you keep without leaving the surface you were reviewing on. It does not open a second dock beside the chat: a second dock needs room a laptop seldom has beside a docked chat, and what cannot dock falls to a dialog that is neither the note's surface nor the review's. One surface, at every width, is what makes a row worth tapping.
 
 **A conflict is the only thing that stops a merge, and it is the choice you already know.**
 Where your own copy of a note changed while the draft was running, you are handed the same

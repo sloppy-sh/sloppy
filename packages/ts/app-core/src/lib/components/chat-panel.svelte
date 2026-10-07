@@ -284,7 +284,9 @@
 	width={prefs.current.chatWidth}
 	onWidthChange={(px) => prefs.set('chatWidth', px)}
 >
-	{#if reviewing}
+	{#if reviewing && openedRow}
+		<DraftNote bind:opened={openedRow} />
+	{:else if reviewing}
 		<DraftReview
 			onBack={() => (reviewing = false)}
 			onDone={draftGone}
@@ -591,7 +593,3 @@
 		</div>
 	{/if}
 </SideDock>
-
-{#if reviewing}
-	<DraftNote bind:opened={openedRow} />
-{/if}

@@ -1084,7 +1084,9 @@ describe('how full the window is', () => {
 		expect(chartShown()?.textContent?.trim()).toBe('12000 of 200000');
 	});
 
-	it('goes with the conversation it was counted for', async () => {
+	// The picture is the thread's: a session ending (a merge ends one) leaves the
+	// last picture standing, and only another thread takes it down.
+	it('stands after the session it came from has ended, and goes with the thread', async () => {
 		await saying('What is in here?');
 		stub.tell({
 			event: 'context',
@@ -1095,7 +1097,9 @@ describe('how full the window is', () => {
 
 		stub.tell({ event: 'over' });
 		await settle();
+		expect(chartShown()).not.toBeNull();
 
+		await newThread();
 		expect(chartShown()).toBeNull();
 	});
 });

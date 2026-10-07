@@ -963,3 +963,40 @@ describe('a chat somebody takes away with them', () => {
 		expect(chat.copyAsMarkdown()).toBe('');
 	});
 });
+
+// The picture of what is in the assistant's context is the thread's, not the
+// session's: a merge ends the session, and the bar must not vanish with it.
+describe('what the assistant says is in its context', () => {
+	const usage = {
+		total: 4200,
+		limit: 200_000,
+		parts: [
+			{ name: 'Instructions', tokens: 3000, kind: 'used' as const },
+			{ name: 'Conversation', tokens: 1200, kind: 'used' as const }
+		],
+		at: '2026-10-07T00:00:00.000Z'
+	};
+
+	it('stands after the session it came from has ended', async () => {
+		await aTurn('What is in here?');
+		stub.tell({ event: 'context', usage });
+		expect(chat.context?.total).toBe(4200);
+
+		stub.tell({ event: 'ended' });
+		stub.tell({ event: 'over' });
+		await settled();
+
+		expect(chat.context?.total).toBe(4200);
+	});
+
+	it('goes with the thread, not before', async () => {
+		await aTurn('What is in here?');
+		stub.tell({ event: 'context', usage });
+		await settled();
+
+		chat.startThread();
+		await settled();
+
+		expect(chat.context).toBeNull();
+	});
+});

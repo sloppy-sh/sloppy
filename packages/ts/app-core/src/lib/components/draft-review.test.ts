@@ -504,7 +504,10 @@ describe('while the chat is still writing', () => {
 describe('where there is room for the chat and a note at once', () => {
 	// A dock nested inside another dock resolves its place against that dock and
 	// is clipped by it, so the row would open nothing anybody can see.
-	it('opens the row beside the chat rather than inside it', async () => {
+	// One surface at every width: a second dock needs room a laptop seldom has
+	// beside a docked chat, and what cannot dock falls to a dialog that is
+	// neither the note's surface nor the review's.
+	it("opens the row in the review's place, inside the chat's own dock", async () => {
 		stubViewport(1440);
 		await aTurn(async (drafted) => {
 			await drafted.updateBlock(seed, { content: words('The seed of it all') });
@@ -519,11 +522,25 @@ describe('where there is room for the chat and a note at once', () => {
 		await settle();
 
 		const chatDock = document.body.querySelector('aside[aria-label="The draft"]');
-		const noteDock = document.body.querySelector('aside[aria-label="1 \u00b7 Origins"]');
 		expect(chatDock).not.toBe(null);
-		expect(noteDock).not.toBe(null);
-		expect(chatDock?.contains(noteDock)).toBe(false);
-		expect(screen()).toContain('The seed of it all');
+		expect(chatDock?.textContent).toContain('The seed of it all');
+		expect(chatDock?.textContent).toContain('Written into by the chat');
+		expect(document.body.querySelector('aside[aria-label="1 \u00b7 Origins"]')).toBe(null);
+		expect(document.body.querySelector('[role="dialog"]')).toBe(null);
+
+		// The folder's own copy is a tap away on the same surface, without the
+		// chat's change, because what a reader actually asks is what is different.
+		[...(chatDock?.querySelectorAll('button') ?? [])]
+			.find((one) => one.textContent?.trim() === 'In your folder')
+			?.click();
+		await settle();
+		expect(chatDock?.textContent).toContain('The seed');
+		expect(chatDock?.textContent).not.toContain('The seed of it all');
+
+		chatDock?.querySelector<HTMLButtonElement>('[aria-label="Back to the draft"]')?.click();
+		await settle();
+		expect(chatDock?.textContent).not.toContain('The seed of it all');
+		expect(card('Origins')).not.toBe(null);
 	});
 });
 

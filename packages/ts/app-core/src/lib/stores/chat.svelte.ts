@@ -1006,6 +1006,7 @@ class ChatStore {
 		this.#places = [];
 		this.#carrying = null;
 		this.#spentSession = undefined;
+		this.#context = null;
 		this.#done.clear();
 		this.#kept.clear();
 		return unwritten;
@@ -1053,7 +1054,6 @@ class ChatStore {
 		this.#carryIfUnpicked = null;
 		this.#introduced?.();
 		this.#spentTurn = undefined;
-		this.#context = null;
 		this.#placesTold = null;
 		this.#trouble = null;
 		this.#says = null;
@@ -1154,7 +1154,6 @@ class ChatStore {
 				this.#asked = undefined;
 				this.#carryIfUnpicked = null;
 				this.#introduced?.();
-				this.#context = null;
 				this.#trouble = refusedModel ? MODEL_UNKNOWN : (event.said ?? null);
 				break;
 			}
