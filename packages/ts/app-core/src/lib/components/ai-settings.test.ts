@@ -151,6 +151,20 @@ describe('offering an assistant', () => {
 		expect(prefs.current.chatInBackground).toBe(true);
 	});
 
+	it('lets the assistant read the web until somebody says not', async () => {
+		prefs.set('aiOffered', true);
+		show();
+		await settle();
+
+		expect(screen()).toContain('Let it read the web');
+		expect(prefs.current.chatReachesWeb).toBe(true);
+
+		switches()[2]?.click();
+		await settle();
+
+		expect(prefs.current.chatReachesWeb).toBe(false);
+	});
+
 	// Asking for chats to wait reaches the ones already standing out of sight,
 	// not only the next thread somebody leaves.
 	it('leaves the threads standing out of sight when it is turned off again', async () => {

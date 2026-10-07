@@ -122,6 +122,9 @@ export interface Prefs {
 	/** Whether a chat goes on answering in a tab somebody has left. Off, it
 	 *  waits for them to come back. */
 	chatInBackground: boolean;
+	/** Whether the assistant may look things up on the web while it answers.
+	 *  On until somebody turns it off. */
+	chatReachesWeb: boolean;
 	/** The Sloppy this device talks to, as an origin — docs/ARCHITECTURE.md
 	 *  § "Deployment modes". Null is the one the app came with, which is what
 	 *  the shell names. */
@@ -228,6 +231,7 @@ function defaults(): Prefs {
 		chatAgent: null,
 		chatModel: {},
 		chatInBackground: false,
+		chatReachesWeb: true,
 		origin: null
 	};
 }
@@ -429,6 +433,7 @@ class PrefsStore {
 				: null,
 			chatModel: modelsIn(saved.chatModel),
 			chatInBackground: saved.chatInBackground === true,
+			chatReachesWeb: saved.chatReachesWeb !== false,
 			origin: asOrigin(saved.origin)
 		};
 		this.apply();

@@ -758,7 +758,8 @@ class ChatStore {
 							id: thread.id,
 							...(session === undefined ? {} : { session }),
 							places: [...live.places]
-						}
+						},
+						reachesWeb: prefs.current.chatReachesWeb
 					},
 					(event) => this.#heard(live, epoch, event),
 					(call) => this.#serve(live, call)

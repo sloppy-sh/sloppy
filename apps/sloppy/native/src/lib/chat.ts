@@ -123,6 +123,8 @@ interface Opening {
 	brief: string;
 	places: string[];
 	resume: boolean;
+	/** Whether the agent may read the web while it answers. */
+	web: boolean;
 	model?: string;
 	session?: string;
 }
@@ -253,6 +255,7 @@ class TauriChat implements ChatAccess {
 			brief: chatBrief(asked.thread.places),
 			places: asked.thread.places.map((place) => place.root),
 			resume: asked.thread.session !== undefined,
+			web: asked.reachesWeb ?? true,
 			...(asked.model === undefined ? {} : { model: asked.model }),
 			...(asked.thread.session === undefined ? {} : { session: asked.thread.session })
 		}).catch((reason) => {

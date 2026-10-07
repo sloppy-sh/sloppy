@@ -59,6 +59,7 @@ type Opened = {
 	brief: string;
 	places: string[];
 	resume: boolean;
+	web: boolean;
 	model?: string;
 	session?: string;
 };
@@ -1113,6 +1114,13 @@ describe('the conversation a chat is opened as', () => {
 
 	/** Everything said in it is still there, which is what makes reopening a
 	 *  chat different from starting one about the same thing. */
+	it('may read the web unless the person said not to', async () => {
+		await chat().open(asking(), () => {}, serve);
+		await chat().open(asking({ reachesWeb: false }), () => {}, serve);
+
+		expect(opens.map((one) => one.web)).toEqual([true, false]);
+	});
+
 	it('is the one left off where the chat has one', async () => {
 		await chat().open(
 			asking({ thread: { id: THREAD, session: 'the-conversation', places: [] } }),

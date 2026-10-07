@@ -3875,6 +3875,23 @@ reason and keyed by the same set — and what they picked is kept with the rest 
 have set about the chat. **Picking none is an ordinary answer**, and the one somebody who has
 never opened the control has: the agent answers with whatever it would on its own.
 
+**The agent reads the web unless the person says not.** `prefs.chatReachesWeb`, on by default
+and in Settings under working with an assistant, is handed to the shell on every open
+(`ChatAsked.reachesWeb`) and decides the tools of the agent's own the program is launched with
+(`tools_for` in `chat.rs`): the ones that read, plus the web where it is allowed, and never
+anything that writes a file or runs a program, because Sloppy's own acts arrive over the
+endpoint and a draft is written only through them. The list is fixed when a session opens, so
+a change reaches the next conversation rather than one underway.
+
+**The first note a chat writes in a project opens a branch, so the rule numbers everything
+after it.** A note the agent starts springs out of the note it names, else the note about the
+nearest folder above the place, else the one branch the project's notes already hang from —
+and where there is none of those, it opens a branch rather than standing as an independent
+note, because the Folgezettel rule numbers only what springs from a numbered note: a first
+note with no number would leave every note written beneath it unnumbered too. The
+`write_note` act says as much to the agent, and tells it to number an unnumbered note above
+with `number_note` first, so that what it writes beneath takes its number.
+
 **A person puts a file or a picture in front of the agent, and the agent reads it where they put
 it.** This needs no act and no second channel: the agent already reads the project, so what they
 attached is written inside it and the turn says what it was and where it went — `ChatAttachment`

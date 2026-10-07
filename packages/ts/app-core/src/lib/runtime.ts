@@ -208,6 +208,9 @@ export interface ChatAsked {
 	 * `started` event's `session` is what says which one answered.
 	 */
 	thread: Pick<ChatThread, 'id' | 'session' | 'places'>;
+	/** Whether the agent may read the web while it answers. **Absent is that
+	 *  it may.** Fixed for the session: a change reaches the next one opened. */
+	reachesWeb?: boolean;
 }
 
 /**

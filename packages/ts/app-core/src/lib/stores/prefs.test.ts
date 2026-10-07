@@ -220,6 +220,7 @@ describe('the saved look', () => {
 			// an agent this build does not know is not.
 			chatModel: { claude_code: 'a model from later' },
 			chatInBackground: false,
+			chatReachesWeb: true,
 			origin: null
 		});
 	});

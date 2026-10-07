@@ -463,10 +463,10 @@ describe('numbering a note', () => {
 	});
 
 	it('hands back what the graph refused, rather than numbering it anyway', async () => {
-		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
+		await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
 		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
-		await answer({ call: 'c2', act: 'number_note', arguments: { note: folder, address: '1' } });
 
+		// The folder's note opened the branch and is at 1 already.
 		const said = await serveChatCall(files, {
 			call: 'c3',
 			act: 'number_note',
@@ -475,7 +475,7 @@ describe('numbering a note', () => {
 
 		expect(said.trouble).toBe(true);
 		expect(said.said).not.toBe('');
-		expect((await containerApi(files).getNode(note))?.address).toBeUndefined();
+		expect((await containerApi(files).getNode(note))?.address).toBe('1a');
 	});
 
 	it('answers a numbering of a note that is not there with words the agent can act on', async () => {
@@ -776,13 +776,16 @@ describe('putting a note in the bin', () => {
 });
 
 describe('the number a note is written or carried at', () => {
-	it('leaves a written note with none where the write names none', async () => {
+	/** Nothing to spring from opens a branch, so the rule numbers it and what
+	 *  is written beneath it after — a first note with no number would leave
+	 *  every one after it bare. */
+	it('opens a branch with the first note, and numbers the ones written after it', async () => {
 		const folder = await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
 		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
 
 		const api = containerApi(files);
-		expect((await api.getNode(folder))?.address).toBeUndefined();
-		expect((await api.getNode(note))?.address).toBeUndefined();
+		expect((await api.getNode(folder))?.address).toBe('1');
+		expect((await api.getNode(note))?.address).toBe('1a');
 	});
 
 	it('numbers a note the write names one for', async () => {
@@ -799,9 +802,10 @@ describe('the number a note is written or carried at', () => {
 	it('hands back what the graph refused a number, and writes no note', async () => {
 		await wrote(writes('src', ['## Why\n\nEverything the compiler reads.']));
 
+		// 2a springs from 2, and the note above is at 1.
 		const said = await serveChatCall(
 			files,
-			writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser', address: '1a' })
+			writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser', address: '2a' })
 		);
 
 		expect(said.trouble).toBe(true);
@@ -964,7 +968,7 @@ describe('what a person reads of an act', () => {
 		});
 
 		expect(done.told).toContain('7 still leads here');
-		expect(rows(done.card)).toMatchObject({ Number: 'None', 'Also at': '7' });
+		expect(rows(done.card)).toMatchObject({ Number: 'None', 'Also at': '1, 7' });
 	});
 
 	it('holds the line to a line, whatever the notes are called', async () => {

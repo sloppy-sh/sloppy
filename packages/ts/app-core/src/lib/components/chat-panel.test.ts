@@ -910,7 +910,8 @@ describe('which model answers', () => {
 			{
 				agent: 'claude_code',
 				model: 'sonnet',
-				thread: { id: chat.current?.id, places: [] }
+				thread: { id: chat.current?.id, places: [] },
+				reachesWeb: true
 			}
 		]);
 	});

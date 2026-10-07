@@ -41,10 +41,10 @@ struct Agent {
     args: &'static [&'static str],
 }
 
-/// Headless, holding only the tools that read, and carrying a whole
-/// conversation on one pair of pipes. Sloppy's own acts arrive over the
-/// endpoint instead, and `--strict-mcp-config` is what keeps anything else a
-/// machine happens to have configured out of the session.
+/// Headless, carrying a whole conversation on one pair of pipes. Which tools
+/// it holds is `tools_for`; Sloppy's own acts arrive over the endpoint instead,
+/// and `--strict-mcp-config` is what keeps anything else a machine happens to
+/// have configured out of the session.
 const AGENTS: &[Agent] = &[Agent {
     id: "claude_code",
     program: "claude",
@@ -57,13 +57,29 @@ const AGENTS: &[Agent] = &[Agent {
         "--input-format",
         "stream-json",
         "--include-partial-messages",
-        "--allowedTools",
-        "Read,Grep,Glob",
-        "--disallowedTools",
-        "Bash,Edit,NotebookEdit,Task,WebFetch,WebSearch,Write",
         "--strict-mcp-config",
     ],
 }];
+
+/// The tools of the agent's own it may use and the ones it may not: the ones
+/// that read, the web only where the person allows it, and never anything that
+/// writes a file or runs a program.
+fn tools_for(web: bool) -> [(&'static str, String); 2] {
+    let reading = if web {
+        "Read,Grep,Glob,WebFetch,WebSearch"
+    } else {
+        "Read,Grep,Glob"
+    };
+    let barred = if web {
+        "Bash,Edit,NotebookEdit,Task,Write"
+    } else {
+        "Bash,Edit,NotebookEdit,Task,WebFetch,WebSearch,Write"
+    };
+    [
+        ("--allowedTools", reading.to_owned()),
+        ("--disallowedTools", barred.to_owned()),
+    ]
+}
 
 /// What one line the agent writes out may run to. A session has no total of its
 /// own — a chat runs as long as somebody keeps talking — so the bound is per
@@ -299,6 +315,8 @@ struct Opening<'a> {
     /// The folders the agent may read besides the one it runs in, each already
     /// held to what this app is allowed to reach.
     places: &'a [PathBuf],
+    /// Whether the agent may read the web while it answers.
+    web: bool,
 }
 
 /// Start the agent in `at`, pointed at an endpoint serving `with.tools`, and
@@ -375,6 +393,9 @@ fn start(
 ) -> Result<Child, ChatError> {
     let mut how = Command::new(program);
     how.args(args);
+    for (flag, tools) in tools_for(with.web) {
+        how.arg(flag).arg(tools);
+    }
     match with.session.filter(|_| with.resume) {
         Some(session) => how.arg("--resume").arg(session),
         None => how
@@ -472,6 +493,14 @@ pub struct Asked {
     /// them. Each is checked against what this app may reach before anything
     /// starts.
     pub places: Vec<String>,
+    /// Whether the agent may read the web while it answers. Absent is that it
+    /// may.
+    #[serde(default = "reaches_web")]
+    pub web: bool,
+}
+
+fn reaches_web() -> bool {
+    true
 }
 
 /// Start a session for `thread`, ending the one that stood for it and leaving
@@ -499,6 +528,7 @@ pub async fn chat_open(
         session,
         resume,
         places,
+        web,
     } = asked;
     let held = AGENTS
         .iter()
@@ -520,6 +550,7 @@ pub async fn chat_open(
             session: session.as_deref(),
             resume,
             places: &places,
+            web,
         };
         open(held, &program, &at, with, telling, chat)
     })
@@ -589,6 +620,7 @@ mod tests {
             session: None,
             resume: false,
             places: &[],
+            web: true,
         }
     }
 
@@ -947,6 +979,30 @@ mod tests {
         assert_eq!(named.len(), 36);
         assert_eq!(after(&lines, "--resume"), None);
         assert_eq!(every(&lines, "--add-dir"), Vec::<String>::new());
+    }
+
+    /// The web is the agent's to read unless the person said not, and nothing
+    /// that writes a file or runs a program is ever its own.
+    #[cfg(unix)]
+    #[test]
+    fn the_agent_reads_the_web_where_the_person_allows_it() {
+        for (web, reads, kept_out) in [(true, "WebFetch", "Bash"), (false, "Read", "WebFetch")] {
+            let at = scratch("web");
+            let program = echoing(&at);
+            let thread = Thread::default();
+            let with = Opening { web, ..nothing() };
+
+            open(&STUB, &program, &at, with, thread.sink(), Chat::default()).expect("a session");
+
+            waits("the end", || thread.overs().len() == 1);
+            let lines = thread.lines();
+            let allowed = after(&lines, "--allowedTools").expect("the tools it reads with");
+            let barred = after(&lines, "--disallowedTools").expect("the tools kept from it");
+            assert!(allowed.split(',').any(|one| one == reads), "{allowed}");
+            assert!(barred.split(',').any(|one| one == kept_out), "{barred}");
+            assert!(!barred.split(',').any(|one| one == reads), "{barred}");
+            assert!(barred.contains("Bash") && barred.contains("Write"));
+        }
     }
 
     /// Reopening a thread hands the agent the conversation it already holds,

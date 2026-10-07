@@ -1365,7 +1365,9 @@ nothing under it.
   who wants the other reading has it in Settings, under working with an assistant: **Keep
   answering while you are elsewhere**, off by default. On, a thread they leave goes on until
   it is done, and the switcher says which one that is — one quiet word, **answering**,
-  beside its name, and what arrived is there when they come back to it. Turning it off
+  beside its name, and what arrived is there when they come back to it. Beside that switch
+  stands **Let it read the web**, on by default: the assistant looks things up online while it
+  answers, from the next chat it opens, and off it works from the files alone. Turning it off
   again reaches the ones already out of sight: each waits for its reader again, keeping what
   it said, and one still answering finishes first. Leaving a
   thread mid-answer is refused while chats wait, because that is the only reading under

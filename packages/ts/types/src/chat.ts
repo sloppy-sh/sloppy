@@ -356,7 +356,7 @@ export const WriteNoteArgumentsSchema = z.object({
     "The note this one springs out of, where a note is being started. Leave it out and it springs out of the note about the nearest folder above the place. A note already there is written onto where it stands; move_note is what carries one somewhere else.",
   ),
   address: AddressSchema.optional().describe(
-    "The number to write on the note, like 1a1, which is what a person cites it by. It springs from the number of the note above it, or is a whole number where the note springs from nothing. Leave it out and a note being started takes the next number in the run it joins, and a note already there keeps the one it has.",
+    "The number to write on the note, like 1a1, which is what a person cites it by. It springs from the number of the note above it, or is a whole number where the note springs from nothing. Leave it out and a note being started takes the next number in the run it joins, and a note already there keeps the one it has. Where the note above carries none, number it first with number_note, so this one and the rest beneath it take theirs.",
   ),
 });
 export type WriteNoteArguments = z.infer<typeof WriteNoteArgumentsSchema>;

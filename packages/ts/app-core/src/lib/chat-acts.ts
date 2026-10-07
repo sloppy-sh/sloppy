@@ -287,7 +287,9 @@ async function startNote(
 	const { about, title } = asked;
 	const under = asked.under ?? noteOver(here, about) ?? branchOf(here);
 	const note = await api.createNode({
-		from: under === undefined ? { relation: 'free' } : { relation: 'under', note: under },
+		// Nothing to spring from opens a branch, so the rule numbers it and
+		// everything written beneath it after.
+		from: under === undefined ? { relation: 'branch' } : { relation: 'under', note: under },
 		title: title ?? about,
 		tags: [...tags],
 		...(asked.address === undefined ? {} : { address: asked.address })

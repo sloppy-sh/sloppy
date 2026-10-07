@@ -123,6 +123,20 @@
 				</p>
 			</div>
 		</div>
+		<div class="flex items-start gap-3">
+			<Switch
+				id="ai-web"
+				checked={prefs.current.chatReachesWeb}
+				onCheckedChange={(goes) => prefs.set('chatReachesWeb', goes)}
+			/>
+			<div class="min-w-0 flex-1 space-y-1">
+				<Label for="ai-web" class="text-sm font-normal">Let it read the web</Label>
+				<p class="text-xs text-muted-foreground">
+					It can look things up online while answering, from the next chat it opens. Off, it works
+					from your files alone.
+				</p>
+			</div>
+		</div>
 
 		<ul class="space-y-3">
 			{#each CHAT_AGENTS as agent (agent)}
