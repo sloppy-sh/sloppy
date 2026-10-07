@@ -471,7 +471,7 @@
 		untrack(() => (comingBack = null));
 		void tick().then(() => {
 			if (back.at) surface.lookAt(back.at);
-			else surface.fit();
+			else surface.frameWhenSettled();
 		});
 	});
 

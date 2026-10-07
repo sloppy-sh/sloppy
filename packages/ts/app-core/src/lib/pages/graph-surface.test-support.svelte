@@ -20,6 +20,7 @@
 	const canvas = {
 		bringTo: (ref: string) => (brought = [...brought, ref]),
 		fit: () => (fitted += 1),
+		frameWhenSettled: () => {},
 		viewport: () => at,
 		lookAt: (next: GraphTransform) => (at = next)
 	} as unknown as GraphHandle;
@@ -54,7 +55,6 @@
 	data-wallpaper={wallpaper?.picture ?? ''}
 	data-brought={brought.join(' ')}
 	data-fitted={fitted}
-	data-looking={at ? `${at.x} ${at.y} ${at.scale}` : ''}
 	data-inking={onInkPointer ? 'yes' : undefined}
 >
 	{#each difference?.removed ?? [] as note (note.ref)}

@@ -142,6 +142,9 @@ async function settle(): Promise<void> {
 }
 
 async function openGraph(): Promise<void> {
+	// A page listens on the window for as long as it is mounted, so a suite that
+	// opens the graph twice would be answered by both of them.
+	if (mounted) unmount(mounted, { outro: false });
 	mounted = mount(Graph, { target });
 	flushSync();
 	await settle();
@@ -389,13 +392,16 @@ describe('arriving at a folder nobody has read here', () => {
 		expect(canvas()).toEqual({ drawing: ['Compost'], lit: '', folded: '' });
 	});
 
+	// Framed the way a fresh mount is: on the layout that settles under the
+	// notes, rather than on the one they arrived with.
 	it('frames the field once the folder’s notes are drawn, and is put nowhere', async () => {
 		await serving(THESIS);
 		await openGraph();
 
 		await switchTo(GARDEN);
 
-		expect(field.fitted).toEqual([['Compost']]);
+		expect(field.framing).toEqual([['Compost']]);
+		expect(field.fitted).toEqual([]);
 		expect(field.looked).toEqual([]);
 	});
 });

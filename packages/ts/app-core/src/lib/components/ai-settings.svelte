@@ -108,7 +108,10 @@
 			<Switch
 				id="ai-elsewhere"
 				checked={prefs.current.chatInBackground}
-				onCheckedChange={(goes) => prefs.set('chatInBackground', goes)}
+				onCheckedChange={(goes) => {
+					prefs.set('chatInBackground', goes);
+					if (!goes) chat.leaveTheOthers();
+				}}
 			/>
 			<div class="min-w-0 flex-1 space-y-1">
 				<Label for="ai-elsewhere" class="text-sm font-normal">

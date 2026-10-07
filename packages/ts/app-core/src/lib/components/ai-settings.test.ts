@@ -1,7 +1,7 @@
 import type { AiKeysAccess, KeyHeldFor } from '@sloppy/local';
 import type { ChatAgent } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ChatAccess, initRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { chat } from '../stores/chat.svelte.js';
@@ -149,6 +149,29 @@ describe('offering an assistant', () => {
 		await settle();
 
 		expect(prefs.current.chatInBackground).toBe(true);
+	});
+
+	// Asking for chats to wait reaches the ones already standing out of sight,
+	// not only the next thread somebody leaves.
+	it('leaves the threads standing out of sight when it is turned off again', async () => {
+		const waits = vi.spyOn(chat, 'leaveTheOthers');
+		prefs.set('aiOffered', true);
+		prefs.set('chatInBackground', true);
+		show();
+		await settle();
+
+		switches()[1]?.click();
+		await settle();
+
+		expect(prefs.current.chatInBackground).toBe(false);
+		expect(waits).toHaveBeenCalledTimes(1);
+
+		switches()[1]?.click();
+		await settle();
+
+		expect(prefs.current.chatInBackground).toBe(true);
+		expect(waits).toHaveBeenCalledTimes(1);
+		waits.mockRestore();
 	});
 
 	it('says nothing here can answer where the switch is on and nothing does', async () => {

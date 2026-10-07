@@ -137,8 +137,9 @@ function running(mode: 'hosted' | 'local'): void {
 }
 
 /** A shell holding folders open, as `TabsAccess` hands them over. `refuses` is
- *  a close it will not do, in the words it says so in. */
-function holding(open: string[], active: string, refuses?: string): void {
+ *  a close it will not do, in the words it says so in — `null` is one it will
+ *  not do and has nothing to say about. */
+function holding(open: string[], active: string, refuses?: string | null): void {
 	let listed = [...open];
 	let front: string | undefined = active;
 	let hear: ((tabs: OpenTabs) => void) | undefined;
@@ -148,6 +149,7 @@ function holding(open: string[], active: string, refuses?: string): void {
 		tabs: {
 			held,
 			close: (root: string) => {
+				if (refuses === null) return Promise.reject(new Error('the tab stands'));
 				if (refuses !== undefined) return Promise.reject(new Refusal(refuses));
 				listed = listed.filter((one) => one !== root);
 				if (front === root) front = listed[0];
@@ -453,5 +455,41 @@ describe('the folders open above the page', () => {
 			'Keep at least one folder open.'
 		);
 		expect(strip()).not.toBeNull();
+	});
+
+	// A shell with nothing to say still leaves somebody knowing which act did
+	// not happen.
+	it('name the act themselves where the shell said nothing about it', async () => {
+		holding([GARDEN, THESIS], THESIS, null);
+		await show();
+
+		closes('garden')?.click();
+		flushSync();
+		await settle();
+
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain(
+			'That folder could not be closed.'
+		);
+	});
+
+	// Nobody dismisses a line about a folder they have moved on from, so it goes
+	// on its own.
+	it('take what they said away again after a few seconds', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		try {
+			holding([GARDEN, THESIS], THESIS, 'Keep at least one folder open.');
+			await show();
+			closes('garden')?.click();
+			flushSync();
+			await settle();
+			expect(target.querySelector('[role="alert"]')).not.toBeNull();
+
+			await vi.advanceTimersByTimeAsync(10_000);
+			flushSync();
+
+			expect(target.querySelector('[role="alert"]')).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

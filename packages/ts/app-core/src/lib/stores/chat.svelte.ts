@@ -4,11 +4,11 @@
  * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
  *
  * **One live conversation per thread, and how many stand at once is this
- * store's rule.** `#leave` below is the whole of it: a chat waits for
- * the person who left it unless they asked for chats to go on answering
- * wherever they are. A thread answering out of sight arrives in its own record
- * and writes into its own draft, so nothing of it lands in the thread somebody
- * is reading.
+ * store's rule.** `#leave` below is a chat waiting for the person who left it,
+ * unless they asked for chats to go on answering wherever they are; one that
+ * goes on stands until its turn is done and is let go of there. A thread
+ * answering out of sight arrives in its own record and writes into its own
+ * draft, so nothing of it lands in the thread somebody is reading.
  *
  * Every act LANDS: a thread works in a draft of the notes that is its own, so
  * nothing here waits on the person and nothing of theirs changes while it
@@ -914,6 +914,17 @@ class ChatStore {
 		live.draft = null;
 	}
 
+	/** Every thread standing out of sight waits for its reader again, which is
+	 *  what asking for chats to wait means for the ones already standing. One
+	 *  still answering finishes first and is let go of as its turn ends. */
+	leaveTheOthers(): void {
+		const reading = this.#current?.id;
+		for (const live of [...this.#live.values()]) {
+			if (live.thread.id === reading || live.running) continue;
+			this.#letGoOutOfSight(live);
+		}
+	}
+
 	/** Another graph has not had this one's conversations. */
 	forget(graph: OwnedRef): void {
 		if (this.#of !== null && this.#of !== graph) this.clear();
@@ -965,6 +976,13 @@ class ChatStore {
 	#leave(live: Live): void {
 		if (!prefs.current.chatInBackground) this.#letSessionGo(live);
 		if (!live.standing) this.#live.delete(live.thread.id);
+	}
+
+	/** A thread nobody is reading that has nothing left to answer: its
+	 *  conversation let go of, and its record with it. */
+	#letGoOutOfSight(live: Live): void {
+		this.#letSessionGo(live);
+		this.#live.delete(live.thread.id);
 	}
 
 	/** Whether the thread in front of somebody holds them there: it is being
@@ -1272,6 +1290,10 @@ class ChatStore {
 					...(live.spentSession === undefined ? {} : { spent: live.spentSession })
 				});
 				void chatDraft.keepWhatTheTurnWrote(live.draft ?? undefined);
+				// A thread answering out of sight was left to finish, and it has:
+				// what it said is on the thread, and the next thing said there
+				// picks the conversation up by its session.
+				if (live.thread.id !== this.#current?.id) this.#letGoOutOfSight(live);
 				break;
 			case 'over': {
 				if (event.said === undefined) whatHappened.put('turn', 'the chat is over');

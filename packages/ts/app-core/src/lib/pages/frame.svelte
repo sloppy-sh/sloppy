@@ -8,7 +8,7 @@
 	import { AppShell, TabStrip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import type { Snippet } from 'svelte';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '../api.js';
@@ -152,13 +152,26 @@
 
 	/** Words for a person about a folder that did not open, switch or close. */
 	let refused = $state<string | undefined>(undefined);
+	/** Long enough to read, and gone before it is read as being about the folder
+	 *  somebody has moved on to. */
+	const REFUSAL_STANDS_FOR_MS = 6000;
+	let clearing: ReturnType<typeof setTimeout> | undefined;
 
-	async function onTheStrip(act: () => Promise<unknown>): Promise<void> {
-		refused = undefined;
+	function sayOnTheStrip(words: string | undefined): void {
+		clearTimeout(clearing);
+		refused = words;
+		if (words === undefined) return;
+		clearing = setTimeout(() => (refused = undefined), REFUSAL_STANDS_FOR_MS);
+	}
+
+	onDestroy(() => clearTimeout(clearing));
+
+	async function onTheStrip(act: () => Promise<unknown>, otherwise: string): Promise<void> {
+		sayOnTheStrip(undefined);
 		try {
 			await act();
 		} catch (error) {
-			refused = wordsFor(error) ?? 'That did not work.';
+			sayOnTheStrip(wordsFor(error) ?? otherwise);
 		}
 	}
 
@@ -193,9 +206,14 @@
 	<TabStrip
 		tabs={tabs.rows}
 		{refused}
-		onSwitch={(root) => void onTheStrip(() => tabs.switchTo(root))}
-		onClose={(root) => void onTheStrip(() => tabs.close(root))}
-		onOpen={() => void onTheStrip(() => tabs.openWith(() => graphs.startFolder()))}
+		onSwitch={(root) =>
+			void onTheStrip(() => tabs.switchTo(root), 'That folder could not be opened.')}
+		onClose={(root) => void onTheStrip(() => tabs.close(root), 'That folder could not be closed.')}
+		onOpen={() =>
+			void onTheStrip(
+				() => tabs.openWith(() => graphs.startFolder()),
+				'That folder could not be opened.'
+			)}
 	/>
 {/snippet}
 

@@ -2,19 +2,21 @@
 	import type { GraphTransform } from '@sloppy/graph';
 
 	/** The canvas as a tab-switch suite drives it. `at` is where it is looking,
-	 *  which the page reads back off it; `looked` and `fitted` carry what was
-	 *  drawn at the moment of each ask, so a suite can tell an ask that waited
-	 *  for the folder's notes from one that did not. */
+	 *  which the page reads back off it; `looked`, `fitted` and `framing` carry
+	 *  what was drawn at the moment of each ask, so a suite can tell an ask that
+	 *  waited for the folder's notes from one that did not. */
 	export const field = {
 		at: null as GraphTransform | null,
 		looked: [] as { at: GraphTransform; drawing: string[] }[],
-		fitted: [] as string[][]
+		fitted: [] as string[][],
+		framing: [] as string[][]
 	};
 
 	export function forgetTheField(): void {
 		field.at = null;
 		field.looked = [];
 		field.fitted = [];
+		field.framing = [];
 	}
 </script>
 
@@ -46,6 +48,9 @@
 		bringTo: () => {},
 		fit: () => {
 			field.fitted = [...field.fitted, drawing()];
+		},
+		frameWhenSettled: () => {
+			field.framing = [...field.framing, drawing()];
 		},
 		viewport: () => field.at,
 		lookAt: (at) => {

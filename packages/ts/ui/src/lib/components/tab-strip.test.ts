@@ -103,7 +103,7 @@ describe('the strip of folders open', () => {
 	it('opens another folder from the one control for it', () => {
 		render();
 
-		named('Open a folder')?.click();
+		named('Choose a folder')?.click();
 		flushSync();
 
 		expect(opened).toBe(1);
@@ -117,6 +117,33 @@ describe('the strip of folders open', () => {
 		flushSync();
 
 		expect(document.activeElement).toBe(folders()[0]);
+		expect(switched).toEqual([]);
+	});
+
+	// One stop on the way in, and it is the folder the keyboard was last on:
+	// walking the strip has to leave somebody where they left off.
+	it('carries the one stop the keyboard has along with the focus', () => {
+		render();
+		expect(folders().map((one) => one.getAttribute('tabindex'))).toEqual(['-1', '0']);
+
+		folders()[1].focus();
+		folders()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+		flushSync();
+
+		expect(folders().map((one) => one.getAttribute('tabindex'))).toEqual(['0', '-1']);
+	});
+
+	// The close control is inside the folder it closes, so the keyboard closes
+	// one where it already stands rather than tabbing into each of them.
+	it('closes the folder the keyboard is on, and never stops at its own control', () => {
+		render();
+		expect(named('Close The garden')?.getAttribute('tabindex')).toBe('-1');
+
+		folders()[0].focus();
+		folders()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+		flushSync();
+
+		expect(closed).toEqual([GARDEN]);
 		expect(switched).toEqual([]);
 	});
 
@@ -145,11 +172,11 @@ describe('the strip of folders open', () => {
 	it('gives every folder and every control a target a finger can hit', () => {
 		render();
 
-		for (const one of [...folders(), named('Close The garden'), named('Open a folder')]) {
+		for (const one of [...folders(), named('Close The garden'), named('Choose a folder')]) {
 			expect(one?.className).toContain('min-h-control');
 		}
 		expect(named('Close The garden')?.className).toContain('min-w-control');
-		expect(named('Open a folder')?.className).toContain('min-w-control');
+		expect(named('Choose a folder')?.className).toContain('min-w-control');
 	});
 
 	it('says what did not happen in the words it was handed', () => {

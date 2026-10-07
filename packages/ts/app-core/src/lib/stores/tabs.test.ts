@@ -293,7 +293,22 @@ describe('taking a folder off', () => {
 
 		expect(prefs.view(GARDEN)).toBeNull();
 		expect(tabs.open).toEqual([THESIS]);
-		expect(log).toEqual([`leaving ${GARDEN}`, `arrived ${THESIS}`]);
+		expect(log).toEqual([`leaving ${GARDEN}`, `served ${THESIS}`, `arrived ${THESIS}`]);
+	});
+
+	// The shell puts the folder left in front, and the notes on screen are still
+	// the closed folder's until that folder is entered.
+	it('reads the folder left in front before the page comes back to it', async () => {
+		const open = shell([GARDEN, THESIS], log);
+		serving(open.vault, open.access);
+		await graphs.readOpenFolder();
+		tabs.boot();
+		stopServing = tabs.serves(watching(log));
+
+		await tabs.close(GARDEN);
+
+		expect(graphs.openFolder).toBe(THESIS);
+		expect(log.indexOf(`served ${THESIS}`)).toBeLessThan(log.indexOf(`arrived ${THESIS}`));
 	});
 
 	it('moves nobody where the folder taken off is not the one in front', async () => {

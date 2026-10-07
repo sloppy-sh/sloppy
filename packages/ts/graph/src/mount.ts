@@ -86,6 +86,14 @@ export interface GraphHandle {
    */
   bringTo(ref: OwnedRef): void;
   fit(): void;
+  /**
+   * Frame the whole field once the layout under it has settled, the way a fresh
+   * mount does — for a host handing over a different graph's worth of notes,
+   * where framing them as they arrive would frame a layout nothing has settled
+   * yet. A reader taking hold of the canvas, or a {@link GraphHandle.lookAt},
+   * ends it as it ends the first framing.
+   */
+  frameWhenSettled(): void;
   /** Where the field is looking, in {@link GraphTransform}'s coordinates;
    *  `null` before the renderer is up, which is nowhere yet rather than the
    *  origin. */
@@ -648,6 +656,11 @@ export function mountGraph(
     fit() {
       bringing = null;
       frameAll();
+    },
+    frameWhenSettled() {
+      bringing = null;
+      framing = true;
+      framed = false;
     },
     viewport() {
       const view = scene?.viewport;

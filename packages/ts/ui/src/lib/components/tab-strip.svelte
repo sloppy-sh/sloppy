@@ -11,7 +11,8 @@
 		tabs: readonly OpenTab[];
 		onSwitch: (root: string) => void;
 		onClose: (root: string) => void;
-		/** The `+`: somewhere else to open, which is the folder picker. */
+		/** The `+`: another folder chosen on this device, which starts a graph in
+		 *  one that holds none. */
 		onOpen: () => void;
 		/** Words for a person about an act that did not happen. Whoever put it
 		 *  there takes it away. */
@@ -28,14 +29,23 @@
 	import X from '@lucide/svelte/icons/x';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { cn } from '$lib/utils.js';
+	import { Button } from './ui/button/index.js';
 
 	let { tabs, onSwitch, onClose, onOpen, refused }: TabStripProps = $props();
 
 	let strip = $state<HTMLElement | null>(null);
 	let row = $state<HTMLElement | null>(null);
+	/** The folder the keyboard is on, which is the one it reaches again on the
+	 *  way back in. `null` is nobody there yet: that is the one in front. */
+	let walked = $state<number | null>(null);
 
-	const control =
-		'flex min-h-control items-center text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
+	const inFront = $derived(
+		Math.max(
+			0,
+			tabs.findIndex((one) => one.active)
+		)
+	);
+	const reaches = $derived(walked !== null && walked < tabs.length ? walked : inFront);
 
 	// Owes its whole height as `--app-chrome-top` — DESIGN.md § "The four inset
 	// vars", which counts the system inset this clears as part of that height.
@@ -57,13 +67,23 @@
 		};
 	});
 
-	/** Left and right walk the folders; Enter and Space put one in front, which
-	 *  the button does itself. */
+	/** Left and right walk the folders, carrying the keyboard's place with them;
+	 *  Delete takes the one it is on off, which is what keeps closing a folder
+	 *  off the pointer. Enter and Space put one in front, which the button does
+	 *  itself. */
 	function walk(event: KeyboardEvent, at: number): void {
+		if (event.key === 'Delete' || event.key === 'Backspace') {
+			const tab = tabs[at];
+			if (!tab) return;
+			event.preventDefault();
+			onClose(tab.root);
+			return;
+		}
 		const step = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
 		if (step === 0 || tabs.length === 0) return;
 		event.preventDefault();
 		const next = (at + step + tabs.length) % tabs.length;
+		walked = next;
 		row?.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
 	}
 </script>
@@ -89,42 +109,42 @@
 						: 'border-transparent text-foreground/60 hover:bg-muted/40 hover:text-foreground/80'
 				)}
 			>
-				<button
-					type="button"
+				<Button
+					variant="ghost"
 					role="tab"
 					aria-selected={tab.active}
-					tabindex={tab.active ? 0 : -1}
+					tabindex={at === reaches ? 0 : -1}
 					title={tab.root}
-					class={cn(control, 'max-w-48 min-w-0 rounded-sm')}
-					onclick={() => onSwitch(tab.root)}
+					class="min-h-control max-w-48 min-w-0 rounded-sm px-0 font-normal hover:bg-transparent hover:text-inherit"
+					onclick={() => {
+						walked = at;
+						onSwitch(tab.root);
+					}}
 					onkeydown={(event) => walk(event, at)}
 				>
 					<span class="truncate">{tab.name}</span>
-				</button>
-				<button
-					type="button"
+				</Button>
+				<Button
+					variant="ghost"
+					size="icon"
 					aria-label="Close {tab.name}"
-					class={cn(
-						control,
-						'min-w-control shrink-0 justify-center rounded-sm hover:bg-muted hover:text-foreground'
-					)}
+					tabindex={-1}
+					class="min-h-control min-w-control shrink-0 rounded-sm hover:bg-muted hover:text-foreground"
 					onclick={() => onClose(tab.root)}
 				>
 					<X class="size-4" />
-				</button>
+				</Button>
 			</div>
 		{/each}
-		<button
-			type="button"
-			aria-label="Open a folder"
-			class={cn(
-				control,
-				'min-w-control shrink-0 justify-center self-center rounded-md text-foreground/60 hover:bg-muted/70 hover:text-foreground'
-			)}
+		<Button
+			variant="ghost"
+			size="icon"
+			aria-label="Choose a folder"
+			class="min-h-control min-w-control shrink-0 self-center rounded-md text-foreground/60 hover:bg-muted/70 hover:text-foreground"
 			onclick={() => onOpen()}
 		>
 			<Plus class="size-4" />
-		</button>
+		</Button>
 	</div>
 	{#if refused}
 		<p role="alert" class="px-3 pb-1.5 text-xs text-destructive">{refused}</p>

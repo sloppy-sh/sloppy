@@ -601,6 +601,61 @@ describe('a chat told to go on answering wherever the reader is', () => {
 		expect(stub.closedIn).toEqual([answering]);
 		expect(discarded).toContain(answering);
 	});
+
+	/** Done is where it ends: a thread was left to finish, not left standing. */
+	it('goes once its turn is done, and the next thing said there picks it up', async () => {
+		const { answering, read } = await elsewhere();
+
+		stub.tell(
+			{ event: 'block', at: 0, block: { kind: 'said', said: 'Two passes, because' } },
+			answering
+		);
+		stub.tell({ event: 'ended' }, answering);
+		await settled();
+
+		expect(stub.closedIn).toEqual([answering]);
+		expect([...stub.standing.keys()]).toEqual([read]);
+		expect(chat.current?.id).toBe(read);
+		const held = (await (await kept()).read(answering))?.turns ?? [];
+		expect(JSON.stringify(held)).toContain('Two passes, because');
+
+		await chat.openThread(answering);
+		const saying = chat.say('And the lexer?');
+		await settled();
+		stub.begins();
+		await saying;
+
+		expect(stub.asked.at(-1)?.thread.session).toBe('s-1');
+	});
+
+	it('waits for its reader again once chats are asked to wait', async () => {
+		await aTurn('Why two passes?');
+		const first = chat.current?.id as Ulid;
+		await chat.startThread();
+		await aTurn('About the lexer');
+		expect(stub.closedIn).toEqual([]);
+
+		prefs.set('chatInBackground', false);
+		chat.leaveTheOthers();
+
+		expect(stub.closedIn).toEqual([first]);
+		expect(chat.current?.id).not.toBe(first);
+	});
+
+	it('is left to finish where it is still answering when they are asked to wait', async () => {
+		const { answering } = await elsewhere();
+
+		prefs.set('chatInBackground', false);
+		chat.leaveTheOthers();
+
+		expect(stub.closedIn).toEqual([]);
+		expect(chat.answeringAway(answering)).toBe(true);
+
+		stub.tell({ event: 'ended' }, answering);
+		await settled();
+
+		expect(stub.closedIn).toEqual([answering]);
+	});
 });
 
 describe('a chat put aside', () => {

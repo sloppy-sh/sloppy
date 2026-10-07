@@ -1123,6 +1123,22 @@ describe("coming back to where the field was looking", () => {
     expect(graph.handle.viewport()).toEqual(place);
   });
 
+  // A folder with no place to come back to is framed the way a fresh mount is:
+  // on the layout once it has settled, never on the one the notes arrived with.
+  it("frames the whole field again on the layout that settles under it", async () => {
+    const graph = await mount();
+    graph.handle.lookAt(place);
+
+    graph.handle.frameWhenSettled();
+
+    expect(graph.scene.fits).toBe(0);
+    expect(graph.handle.viewport()).toEqual(place);
+
+    graph.answer(true);
+
+    expect(graph.scene.fits).toBe(1);
+  });
+
   // Last ask wins, both ways round: a note asked for after the place is what
   // the reader reached for most recently.
   it("drops a note still waiting for the mark it was asked on", async () => {

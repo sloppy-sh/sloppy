@@ -1363,9 +1363,11 @@ nothing under it.
   who wants the other reading has it in Settings, under working with an assistant: **Keep
   answering while you are elsewhere**, off by default. On, a thread they leave goes on until
   it is done, and the switcher says which one that is — one quiet word, **answering**,
-  beside its name, and what arrived is there when they come back to it. Leaving a thread
-  mid-answer is refused only while the chat is waiting, because that is the only reading
-  under which leaving throws the answer away.
+  beside its name, and what arrived is there when they come back to it. Turning it off
+  again leaves the ones already standing out of sight, keeping what they said. Leaving a
+  thread mid-answer is refused while chats wait, because that is the only reading under
+  which leaving throws the answer away — and leaving the folder is never refused: it pauses
+  the answer the same way, with what had arrived kept on the thread.
   **Under the spend line, one bar says how much room is left.** It is a single horizontal
   stack across the dock: a segment per part the agent named, in the agent's own order, the
   free remainder left unfilled, what the agent keeps back for its answer drawn as what is

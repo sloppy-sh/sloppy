@@ -145,7 +145,7 @@ function writerFor(
 	owner?: ReturnType<typeof whoWrites>
 ): Promise<ReturnType<typeof whoWrites>> {
 	return readIdentities(files).then(
-		(held) => whoWrites(held, owner),
+		(identities) => whoWrites(identities, owner),
 		() => undefined
 	);
 }

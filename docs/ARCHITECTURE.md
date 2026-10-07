@@ -3725,18 +3725,21 @@ standing, which is what lets somebody walk away from a long pass and read it tom
 **How many stand at once is the STORE's rule, and a chat PAUSES with the thread somebody
 was reading.** Leaving a thread ends its session; what the agent had written by then is
 kept on the thread, and the next thing said there picks the conversation up where it was
-left, so the pause costs nothing but the program. `prefs.chatInBackground`, off, says the
+left, so the pause costs nothing but the program. `prefs.chatInBackground`, on, says the
 person wants instead that **every thread that was asked goes on until it is done wherever
 they are** — Rust then holds one program per answering thread, each writing into its own
 draft, so a thread answering out of sight can neither land in the thread in front of
-somebody nor collide with it. `#leave` in `stores/chat.svelte.ts` is the one place that
-rule is read, and `#live` there is one record per thread: the turns arriving, what the
-agent said about its window, what each act came to, and the draft that thread writes into.
-A thread answering out of sight is marked as such in the thread list and shows what arrived
-meanwhile when somebody comes back to it. **Leaving a thread mid-answer is refused only
-while the chat pauses**, because that is the only reading under which leaving would throw
-the answer away; ending a thread — putting it aside or deleting it — always ends its
-session, wherever its reader is.
+somebody nor collide with it. `#leave` in `stores/chat.svelte.ts` is where a thread being
+left reads that rule, and `#live` there is one record per thread: the turns arriving, what
+the agent said about its window, what each act came to, and the draft that thread writes
+into. A thread answering out of sight is marked as such in the thread list and shows what
+arrived meanwhile when somebody comes back to it; **done is where it ends** — its session
+goes as its turn ends, so "until it is done" is the whole of what it stands for, and asking
+for chats to wait again (`leaveTheOthers`) leaves the ones already standing. **Leaving a
+thread mid-answer is refused only while the chat pauses**, because that is the only reading
+under which leaving would throw the answer away; leaving the FOLDER is never refused and
+pauses the answer the same way, and ending a thread — putting it aside or deleting it —
+always ends its session, wherever its reader is.
 
 **Stopping ends the TURN and closing ends the SESSION, and the two are different acts on
 different channels.** A person who stops means the thing being done now: they keep the

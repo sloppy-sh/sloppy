@@ -129,7 +129,9 @@ class TabsState {
 			await access.close(root);
 			if (!front) return;
 			const now = this.#active;
-			if (now !== undefined) this.#arriveAt(now);
+			if (now === undefined) return;
+			await graphs.enterFolder(now);
+			this.#arriveAt(now);
 		});
 	}
 
