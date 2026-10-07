@@ -396,8 +396,8 @@ describe('the frame around every page', () => {
 	});
 });
 
-// DESIGN.md § Layout: the folders open stand in a strip across the top, and
-// only where there are two or more.
+// DESIGN.md § Layout: the folders open stand in a strip across the top,
+// wherever folders are tabs.
 describe('the folders open above the page', () => {
 	const GARDEN = '/Users/me/garden';
 	const THESIS = '/Users/me/thesis';
@@ -419,27 +419,33 @@ describe('the folders open above the page', () => {
 		expect(target.textContent).toContain('The graph');
 	});
 
-	// That folder's name is already in the chrome, so a strip to tell it from
-	// nothing is chrome with nothing in it.
-	it('stand nowhere while one folder is open', async () => {
+	// The strip is where the next folder is opened, so one folder stands in it
+	// too — and stays open, so it offers no close.
+	it('stand with one folder open, offering another and no close', async () => {
 		holding([GARDEN], GARDEN);
 
 		await show();
 
-		expect(strip()).toBeNull();
+		expect(strip()).not.toBeNull();
+		expect(
+			[...(strip()?.querySelectorAll('[role="tab"]') ?? [])].map((one) => one.textContent)
+		).toEqual(['garden']);
+		expect(closes('garden')).toBeNull();
+		expect(target.querySelector('[aria-label="Choose a folder"]')).not.toBeNull();
 		expect(target.textContent).toContain('The graph');
 	});
 
-	it('go once closing one leaves a single folder open', async () => {
+	it('keep standing once closing one leaves a single folder open', async () => {
 		holding([GARDEN, THESIS], THESIS);
 		await show();
-		expect(strip()).not.toBeNull();
+		expect(closes('garden')).not.toBeNull();
 
 		closes('garden')?.click();
 		flushSync();
 		await settle();
 
-		expect(strip()).toBeNull();
+		expect(strip()).not.toBeNull();
+		expect(closes('thesis')).toBeNull();
 		expect(target.textContent).toContain('The graph');
 	});
 

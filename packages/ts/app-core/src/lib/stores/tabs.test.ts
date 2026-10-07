@@ -120,11 +120,11 @@ afterEach(() => {
 });
 
 describe('the folders open at once', () => {
-	it('are a strip only once there are two of them to tell apart', () => {
+	it('are a strip from the first of them, since that is where the next is opened', () => {
 		const one = shell([GARDEN], log);
 		serving(one.vault, one.access);
 		tabs.boot();
-		expect(tabs.shows).toBe(false);
+		expect(tabs.shows).toBe(true);
 		expect(tabs.rows).toHaveLength(1);
 
 		tabs.clear();

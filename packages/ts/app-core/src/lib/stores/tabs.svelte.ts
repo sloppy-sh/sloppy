@@ -9,7 +9,7 @@
  * asks the store to serve the other folder, gives up what was read out of the
  * folder that was, and tells the page to come back to what was kept for it. A
  * shell whose seam holds no `TabsAccess` still switches this way and shows no
- * strip, because there is only ever one folder to show.
+ * strip, because it holds no tabs.
  */
 
 import type { OpenTabs } from '../runtime.js';
@@ -57,10 +57,10 @@ class TabsState {
 		return this.#active;
 	}
 
-	/** Two or more folders open is the only time there is anything to tell
-	 *  apart. */
+	/** Wherever this shell holds folders as tabs: the strip is where another
+	 *  folder is opened, so it stands from the first one. */
 	get shows(): boolean {
-		return this.#open.length > 1;
+		return this.#open.length > 0;
 	}
 
 	/** For a strip: root, what the folder is called, and whether it is the one

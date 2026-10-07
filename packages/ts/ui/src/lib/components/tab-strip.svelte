@@ -34,6 +34,8 @@
 	let { tabs, onSwitch, onClose, onOpen, refused }: TabStripProps = $props();
 
 	let strip = $state<HTMLElement | null>(null);
+	/** The only folder open stays open, so it offers no close. */
+	const closes = $derived(tabs.length > 1);
 	let row = $state<HTMLElement | null>(null);
 	/** The folder the keyboard is on, which is the one it reaches again on the
 	 *  way back in. `null` is nobody there yet: that is the one in front. */
@@ -74,7 +76,7 @@
 	function walk(event: KeyboardEvent, at: number): void {
 		if (event.key === 'Delete' || event.key === 'Backspace') {
 			const tab = tabs[at];
-			if (!tab) return;
+			if (!tab || !closes) return;
 			event.preventDefault();
 			onClose(tab.root);
 			return;
@@ -124,16 +126,18 @@
 				>
 					<span class="truncate">{tab.name}</span>
 				</Button>
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label="Close {tab.name}"
-					tabindex={-1}
-					class="min-h-control min-w-control shrink-0 rounded-sm hover:bg-muted hover:text-foreground"
-					onclick={() => onClose(tab.root)}
-				>
-					<X class="size-4" />
-				</Button>
+				{#if closes}
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Close {tab.name}"
+						tabindex={-1}
+						class="min-h-control min-w-control shrink-0 rounded-sm hover:bg-muted hover:text-foreground"
+						onclick={() => onClose(tab.root)}
+					>
+						<X class="size-4" />
+					</Button>
+				{/if}
 			</div>
 		{/each}
 		<Button

@@ -1316,13 +1316,15 @@ nothing under it.
   so it carries only what the acts already name, and leaves every line the system spells
   (Quit, Undo, Minimize) to the system. It is a desktop's, and a phone grows nothing like
   it.
-- **The folders open stand in a strip across the top, and only where there are two or
-  more.** A tab is a folder somebody has open; on a desk the strip stands above the column,
-  on a phone above the card, and it is the same part in both. A tap puts that folder in
-  front, and everything beside the graph follows it — the column, the docks, the chat's
-  threads, the history. The strip is what publishes `--app-chrome-top` (§ "The four inset
-  vars"). One folder open shows no strip, which is the remove-empty-chrome rule below
-  applied again: that folder's name is already in the chrome.
+- **The folders open stand in a strip across the top, wherever folders are tabs.** A tab
+  is a folder somebody has open; on a desk the strip stands above the column, on a phone
+  above the card, and it is the same part in both. A tap puts that folder in front, and
+  everything beside the graph follows it — the column, the docks, the chat's threads, the
+  history. The strip is what publishes `--app-chrome-top` (§ "The four inset vars"). It
+  stands from the first folder, because its `+` is where the next one is opened — chrome
+  with one tab is not empty chrome — and the only folder open offers no close, since it
+  stays open whatever is asked. A device that keeps its graphs in one place has no tabs and
+  no strip.
 - **The crossing is a class, never a branch around the page.** A per-arrangement branch
   around the canvas would destroy and remount it on every crossing, taking the reader's pan
   and zoom with it. The pill publishes its own height as `--sysnav-inset-bottom` and is

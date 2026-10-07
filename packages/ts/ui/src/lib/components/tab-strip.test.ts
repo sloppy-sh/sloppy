@@ -61,6 +61,18 @@ afterEach(() => {
 });
 
 describe('the strip of folders open', () => {
+	it('keeps the only folder open: no close, and Delete does nothing', () => {
+		render({ tabs: [{ root: GARDEN, name: 'The garden', active: true }] });
+
+		expect(folders().map((one) => one.textContent)).toEqual(['The garden']);
+		expect(named('Close The garden')).toBeNull();
+		expect(named('Choose a folder')).not.toBeNull();
+		folders()[0]?.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true })
+		);
+		expect(closed).toEqual([]);
+	});
+
 	it('stands one folder beside another, named as the graphs in them', () => {
 		render();
 
