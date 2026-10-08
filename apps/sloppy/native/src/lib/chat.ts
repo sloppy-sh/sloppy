@@ -32,6 +32,7 @@ import {
 	ulid
 } from '@sloppy/types';
 import { type AiKeysAccess, chatBrief } from '@sloppy/local';
+import { Refusal } from '@sloppy/ui';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { AgentStream } from './chat-stream';
 import type { DraftAccess } from './draft';
@@ -79,7 +80,7 @@ type Serving = (call: ChatToolCall) => Promise<ChatToolAnswer>;
 
 /** A rejection whose message is already the words a person reads. */
 function refuse(said: string): Error {
-	return new Error(said);
+	return new Refusal(said);
 }
 
 /** What `src-tauri` rejected with, which is already words for the person. */
@@ -97,6 +98,25 @@ function nothingToChatWith(): string {
 interface Settling {
 	done: Promise<void>;
 	ends: () => void;
+}
+
+/** Something waited on that may never come: ended, or failed with words. */
+interface Awaited {
+	done: Promise<void>;
+	ends: () => void;
+	fails: (said: string) => void;
+}
+
+function awaiting(): Awaited {
+	let ends!: () => void;
+	let fails!: (said: string) => void;
+	const done = new Promise<void>((resolve, reject) => {
+		ends = resolve;
+		fails = (said) => reject(refuse(said));
+	});
+	// Nothing may ever wait on it, and that is not an unhandled rejection.
+	done.catch(() => {});
+	return { done, ends, fails };
 }
 
 function settling(): Settling {
@@ -141,6 +161,13 @@ interface Asking {
 class Session {
 	readonly stream = new AgentStream();
 	readonly over = settling();
+	/** Settled once the agent has said what it is — which, for a conversation
+	 *  being picked up, is the moment it is known to have been picked up or to
+	 *  have been opened again as its own — and failed where the session ended
+	 *  before that. The first thing said into one being picked up waits on it,
+	 *  so the words reach the program that answers rather than one about to turn
+	 *  the conversation down. */
+	readonly ready = awaiting();
 	turn?: Turn;
 	gone = false;
 	/** What this one was opened with, for opening it again as a conversation of
@@ -189,6 +216,7 @@ class Session {
 	letGo(trouble?: string): void {
 		if (this.gone) return;
 		this.gone = true;
+		this.ready.fails(trouble ?? NO_CHAT);
 		this.waitsNoLonger();
 		this.ends();
 		this.tell({ event: 'over', ...(trouble === undefined ? {} : { said: trouble }) });
@@ -311,6 +339,11 @@ class TauriChat implements ChatAccess {
 		const asking = asked.trim();
 		if (asking === '') throw refuse(SAY_SOMETHING);
 		if (asking.length > CHAT_ASKED_MAX) throw refuse(TOO_MUCH);
+		if (session.opening?.resume && !session.introduced) {
+			await session.ready.done;
+			if (this.held.get(of) !== session) throw refuse(NO_CHAT);
+			if (session.turn) throw refuse(ANSWERING);
+		}
 		session.stream.turned();
 		const turn: Turn = { stopped: false, ...settling() };
 		session.turn = turn;
@@ -375,6 +408,7 @@ class TauriChat implements ChatAccess {
 					if (session.reading && event.event === 'block') continue;
 					if (event.event === 'started') {
 						session.introduced = true;
+						session.ready.ends();
 						void this.asks(session.thread, 'summary');
 					}
 					session.tell(event);

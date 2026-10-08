@@ -12,6 +12,7 @@ import {
 	type ContextUsage,
 	type StandingDraft
 } from '@sloppy/types';
+import { Refusal } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tauriChat, type Telling, type Told } from './chat';
 import { tauriDrafts, type DraftAccess } from './draft';
@@ -1168,6 +1169,62 @@ describe('the conversation a chat is opened as', () => {
 		expect(heard).toContainEqual(
 			expect.objectContaining({ event: 'started', session: 's1' }) as ChatEvent
 		);
+	});
+
+	/** Picking a conversation up takes the agent a moment, and it may turn the
+	 *  conversation down and stop: the first thing said waits until it has said
+	 *  which conversation answers. */
+	it('holds the first thing said until the agent says which conversation answered', async () => {
+		const access = chat();
+		const live = await access.open(
+			asking({ thread: { id: THREAD, session: 'the-conversation', places: [] } }),
+			() => {},
+			serve
+		);
+
+		const saying = live.say('go');
+		await new Promise((settle) => setTimeout(settle, 5));
+		expect(spoken()).toEqual([]);
+
+		says(INIT);
+		await saying;
+
+		expect(spoken()).toHaveLength(1);
+	});
+
+	it('says it into the conversation opened in its place, where the agent would not pick that one up', async () => {
+		const access = chat();
+		const live = await access.open(
+			asking({ thread: { id: THREAD, session: 'long-gone', places: [] } }),
+			() => {},
+			serve
+		);
+
+		const saying = live.say('go');
+		await new Promise((settle) => setTimeout(settle, 5));
+		tells({ from: 'over', stopped: false, trouble: null });
+		await until(() => opens.length === 2);
+		expect(spoken()).toEqual([]);
+
+		says(INIT);
+		await saying;
+
+		expect(spoken()).toHaveLength(1);
+	});
+
+	it('refuses the first thing said in words where the session ended before it answered', async () => {
+		const access = chat();
+		const live = await access.open(
+			asking({ thread: { id: THREAD, session: 'the-conversation', places: [] } }),
+			() => {},
+			serve
+		);
+
+		const saying = live.say('go');
+		await new Promise((settle) => setTimeout(settle, 5));
+		await live.close();
+
+		await expect(saying).rejects.toBeInstanceOf(Refusal);
 	});
 
 	it('is over for good where the agent said what it was and then stopped', async () => {

@@ -3,7 +3,15 @@
 
 import type { ChatThread, ChatTurn } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
-import { callDetails, threadAsMarkdown, threadRows, tookSaid, whenSaid } from './chat-said.js';
+import { CHAT_ASKED_MAX } from '@sloppy/types';
+import {
+	callDetails,
+	threadAsMarkdown,
+	threadRows,
+	tookSaid,
+	whenSaid,
+	withCarried
+} from './chat-said.js';
 
 const GRAPH = 'did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z';
 const NOTE = 'did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W0X';
@@ -167,5 +175,29 @@ describe('what one call cost', () => {
 		expect(tookSaid(12_400)).toBe('12 s');
 		expect(tookSaid(120_000)).toBe('2 min');
 		expect(tookSaid(125_000)).toBe('2 min 5 s');
+	});
+});
+
+describe('what is carried into a new conversation', () => {
+	it('fits beside what was said, keeping the end of what was carried', () => {
+		const said = 'And the lexer?';
+		const carried = 'x'.repeat(20_000) + ' the last thing';
+
+		const whole = withCarried(carried, said);
+
+		expect(whole.length).toBeLessThanOrEqual(CHAT_ASKED_MAX);
+		expect(whole.endsWith(said)).toBe(true);
+		expect(whole).toContain(' the last thing');
+		expect(whole).toContain('…');
+	});
+
+	it('carries nothing where what was said leaves no room for it', () => {
+		const said = 'y'.repeat(CHAT_ASKED_MAX - 100);
+
+		expect(withCarried('the earlier conversation', said)).toBe(said);
+	});
+
+	it('carries the whole of it where it fits', () => {
+		expect(withCarried('Person: hello', 'And?')).toContain('Person: hello');
 	});
 });

@@ -21,7 +21,8 @@ import {
 	type ChatToolName,
 	type ChatTurn,
 	type OwnedRef,
-	type ToolCallBlock
+	type ToolCallBlock,
+	CHAT_ASKED_MAX
 } from '@sloppy/types';
 
 /** Past this a line in the thread is something to scroll rather than read. */
@@ -332,8 +333,17 @@ export function carriedOver(turns: readonly ChatTurn[]): string {
  *  not be picked up, so the preamble claims neither. */
 export function withCarried(carried: string, said: string): string {
 	if (carried === '') return said;
-	return `Earlier in this conversation, before you were in it:\n\n${carried}\n\n---\n\n${said}`;
+	const room = CHAT_ASKED_MAX - said.length - CARRIED_FRAME.length;
+	if (room < CARRIED_LEAST) return said;
+	const kept = carried.length <= room ? carried : `…${carried.slice(-(room - 1))}`;
+	return `${CARRIED_OPENS}${kept}${CARRIED_CLOSES}${said}`;
 }
+
+const CARRIED_OPENS = 'Earlier in this conversation, before you were in it:\n\n';
+const CARRIED_CLOSES = '\n\n---\n\n';
+const CARRIED_FRAME = CARRIED_OPENS + CARRIED_CLOSES;
+/** Less room than this carries nothing worth the preamble. */
+const CARRIED_LEAST = 200;
 
 /** The places a thread reads, as one value that changes only where the set
  *  itself does, so a session is told them again only then. */
