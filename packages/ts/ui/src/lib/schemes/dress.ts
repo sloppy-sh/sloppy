@@ -1,7 +1,7 @@
 /**
  * A scheme's palette as the tokens that dress the app. DESIGN.md § Schemes is
- * the mapping's doc of record; the floors are the ones `token-contrast.test.ts`
- * already holds Sloppy's own themes to.
+ * the doc of record for the mapping, the floors and why each of them is where
+ * it is; `dress.test.ts` sweeps the whole collection against them.
  */
 
 import {
@@ -24,6 +24,14 @@ const SLOPPY_HUES = [25, 70, 115, 160, 205, 250, 295, 340];
 /** At or under this chroma a colour is a neutral in this design system
  *  (DESIGN.md § "Theme presets"), and a neutral has no hue to lend. */
 const NEUTRAL_CHROMA = 0.02;
+
+/** What a field's own boundary owes the page it stands on — a line nobody can
+ *  see is not a boundary. */
+const EDGE_FLOOR = 1.5;
+
+/** How far a surface stands from another to read as a surface of its own, in
+ *  OKLab distance. */
+const SURFACE_STEP = 0.04;
 
 /** The eight a scheme's slots are taken from. */
 const FACET_KEYS: readonly BaseKey[] = [
@@ -63,12 +71,9 @@ function leastGap(room: number): number | null {
 
 /**
  * These hues — in the order they run round the circle — with every neighbouring
- * pair at least `gap` apart. `gap` times their number must not exceed the
- * circle.
- *
- * The room comes out of the gaps that have it to spare, in proportion to what
- * they have, and the ring is then turned so the slots' displacements sum to
- * zero — which is the turn that moves them least.
+ * pair at least `gap` apart, the room taken from the gaps that have it to spare
+ * and the ring turned so the slots move as little as that allows. `gap` times
+ * their number must not exceed the circle.
  */
 function opened(hues: readonly number[], gap: number): number[] {
 	const gaps = hues.map((hue, at) => (hues[(at + 1) % hues.length] - hue + 360) % 360);
@@ -86,17 +91,10 @@ function opened(hues: readonly number[], gap: number): number[] {
 }
 
 /**
- * These hues as the eight slots at ONE lightness — shared because the canvas
- * spends lightness on depth alone (DESIGN.md § "The graph's colour language"),
- * so the slots may not spend it on each other. Hue is what is left to tell them
- * apart, so a pair the scheme drew closer than the chroma in hand can carry is
- * {@link opened} rather than discarded.
- *
- * The lightness is the one nearest `from` that holds every slot above
- * {@link MARK_FLOOR} on every surface and every pair {@link DEPTH_SEPARATION}
- * apart. Null where no lightness does. How much chroma a lightness leaves in
- * hand is read off the hues as they arrive, which is what the opening is sized
- * by; what the opened ring actually paints is then measured.
+ * These hues as the eight slots at ONE lightness: the one nearest `from` that
+ * holds every slot above {@link MARK_FLOOR} on every surface and every pair
+ * {@link DEPTH_SEPARATION} apart, with a pair the chroma in hand cannot tell
+ * apart {@link opened} rather than discarded. Null where no lightness does.
  */
 function heldApart(
 	hues: readonly number[],
@@ -119,15 +117,13 @@ function heldApart(
 }
 
 /**
- * `mark` at the nearest lightness that reads on every one of `surfaces`, its
- * hue kept — and `mark` itself where it already reads on all of them.
+ * `mark` at the nearest lightness that reads at {@link LABEL_FLOOR} on every one
+ * of `surfaces`, its hue kept — and `mark` itself where it already does. Total:
+ * where no lightness reads on all of them this is the closest the scheme comes,
+ * which is what {@link dress} turns a scheme down on.
  *
- * Scanned rather than walked toward one end of the ramp: a collection's ladder
- * of surfaces does not run the way Sloppy's own does, so two of them can
- * straddle the mark, and what reads on both is then a band between them rather
- * than everything past a threshold. Total, and where no lightness reads on all
- * of them this is the closest the scheme comes — which is what {@link dress}
- * turns a scheme down on.
+ * Scanned rather than walked toward one end of the ramp, because two of a
+ * collection's surfaces can straddle the mark.
  */
 function reads(mark: Oklch, surfaces: readonly Oklch[]): Oklch {
 	const worst = (one: Oklch): number =>
@@ -140,6 +136,37 @@ function reads(mark: Oklch, surfaces: readonly Oklch[]): Oklch {
 		if (worst(moved) > worst(best)) best = moved;
 	}
 	return best;
+}
+
+/** `field` at the nearest lightness carrying {@link EDGE_FLOOR} on `page`, its
+ *  hue kept, measured on the bytes it is painted as. Null where no lightness
+ *  does. */
+function bounds(field: Oklch, page: Oklch): Oklch | null {
+	const seen = (one: Oklch): boolean => contrastRatio(colourOf(hexOf(one)), page) >= EDGE_FLOOR;
+	if (seen(field)) return field;
+	for (const l of lightnessesNear(field.l)) {
+		const moved = intoGamut({ ...field, l });
+		if (seen(moved)) return moved;
+	}
+	return null;
+}
+
+/**
+ * The surface a highlighted row is drawn in: `quiet` stepped away from the page
+ * until it is {@link SURFACE_STEP} off both the panel it lands on and the quiet
+ * surface itself — a collection states one selection colour, and the muted
+ * surface already has it. Null where the ramp leaves no room for one.
+ */
+function highlight(paper: Oklch, raised: Oklch, quiet: Oklch): Oklch | null {
+	const away = quiet.l >= paper.l ? 1 : -1;
+	for (let step = 1; step <= LIGHTNESS_STEPS; step += 1) {
+		const l = quiet.l + (away * step) / LIGHTNESS_STEPS;
+		if (l < 0 || l > 1) break;
+		const found = intoGamut({ ...quiet, l });
+		if (distance(found, quiet) >= SURFACE_STEP && distance(found, raised) >= SURFACE_STEP)
+			return found;
+	}
+	return null;
 }
 
 /** The hues a scheme lends its slots: its own, in its own order round the
@@ -155,10 +182,9 @@ function facetsOf(scheme: Scheme, surfaces: readonly Oklch[]): Oklch[] | null {
 }
 
 /**
- * The tokens this scheme dresses the app in, or null where it cannot: its own
- * ink does not read on its own page, no one secondary line or alarm reads on
- * every surface it lands on, or its surfaces leave the eight slots nowhere to
- * stand. Null is a scheme the picker does not offer.
+ * The tokens this scheme dresses the app in, or null where it cannot carry what
+ * a person reads — DESIGN.md § Schemes names what a scheme is turned down on.
+ * Null is a scheme the picker does not offer.
  */
 export function dress(scheme: Scheme): SchemeDressing | null {
 	const at = (key: BaseKey): Oklch => colourOf(scheme.palette[key]);
@@ -171,9 +197,6 @@ export function dress(scheme: Scheme): SchemeDressing | null {
 	const facets = facetsOf(scheme, [paper, raised]);
 	if (facets === null) return null;
 
-	// A collection's base01 is a card anywhere on its ramp rather than a shade
-	// off its page, so the raised panel is as much a surface the secondary line
-	// lands on as the page is.
 	const surfaces = [paper, raised, quiet];
 	const reading = (mark: Oklch): Oklch | null => {
 		const found = reads(mark, surfaces);
@@ -182,6 +205,12 @@ export function dress(scheme: Scheme): SchemeDressing | null {
 	const line = reading(at('base04'));
 	const alarm = reading(at('base08'));
 	if (line === null || alarm === null) return null;
+
+	const spot = highlight(paper, raised, quiet);
+	const field = bounds(at('base03'), paper);
+	if (spot === null || field === null) return null;
+	const onSpot = reads(ink, [spot]);
+	if (contrastRatio(onSpot, spot) < LABEL_FLOOR) return null;
 
 	const onRaised = hexOf(reads(ink, [raised]));
 	const onQuiet = hexOf(reads(ink, [quiet]));
@@ -194,14 +223,12 @@ export function dress(scheme: Scheme): SchemeDressing | null {
 		'--popover-foreground': onRaised,
 		'--secondary': hexOf(quiet),
 		'--secondary-foreground': onQuiet,
-		'--accent': hexOf(quiet),
-		'--accent-foreground': onQuiet,
+		'--accent': hexOf(spot),
+		'--accent-foreground': hexOf(onSpot),
 		'--muted': hexOf(quiet),
 		'--muted-foreground': hexOf(line),
-		'--input': hexOf(at('base03')),
+		'--input': hexOf(field),
 		'--destructive': hexOf(alarm),
-		// The alarm reads at AA on the page, and the page is one of the two ends,
-		// so the end that reads best on it reads at AA too.
 		'--destructive-foreground': hexOf(
 			contrastRatio(paper, alarm) >= contrastRatio(ink, alarm) ? paper : ink
 		),
@@ -212,8 +239,18 @@ export function dress(scheme: Scheme): SchemeDressing | null {
 	return { slug: scheme.slug, variant: scheme.variant, tokens };
 }
 
+const held = new Map<string, SchemeDressing | null>();
+
+/** {@link dress}, answered once per slug for the life of the session: the picker
+ *  dresses the scheme a person is wearing when it mounts and the whole
+ *  collection when it opens, and the collection is five hundred schemes. */
+export function dressed(scheme: Scheme): SchemeDressing | null {
+	if (!held.has(scheme.slug)) held.set(scheme.slug, dress(scheme));
+	return held.get(scheme.slug) ?? null;
+}
+
 /** Whether the picker offers this scheme, which is whether {@link dress} can
  *  dress the app in it at all. */
 export function legible(scheme: Scheme): boolean {
-	return dress(scheme) !== null;
+	return dressed(scheme) !== null;
 }

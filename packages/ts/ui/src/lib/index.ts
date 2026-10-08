@@ -21,7 +21,7 @@ export type {
 	SchemeDressing,
 	SchemeTokens
 } from './schemes/scheme.js';
-export { dress, legible } from './schemes/dress.js';
+export { dress, dressed, legible } from './schemes/dress.js';
 export { schemeBySlug, schemes } from './schemes/index.js';
 
 export { overlay } from './components/overlay.svelte.js';

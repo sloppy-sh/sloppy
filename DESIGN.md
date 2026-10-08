@@ -212,6 +212,16 @@ scheme that is picked sets `data-theme="scheme"` and `data-scheme="<slug>"` on `
 with its tokens written inline as custom properties, and the `dark` class from the scheme's
 own variant.
 
+**Two of those surfaces are worked out rather than taken, because a collection carries fewer
+of them than the design system spends.** A field's boundary is `base03` lifted in lightness
+until it carries 1.5:1 on the page — a collection draws `base03` a shade off `base00` often
+enough, and a boundary nobody can see is not a boundary. And the highlight a menu row and a
+hovered control are drawn in is the muted surface stepped one shade further from the page,
+until it stands clear of both that surface and the panel it lands on: a collection states
+one selection colour, the muted surface already has it, and a highlight that cannot be told
+from either is a row that does not look picked. Every theme in `app.css` draws its own that
+way — a step deeper than muted on a light theme, a step lighter on a dark one.
+
 **The eight slots share one lightness, so hue is all that is left to tell them apart — and
 a pair a scheme drew too close together is opened rather than thrown away.** Lightness
 carries depth on the canvas, so the slots may not spend it on each other, and how far two
@@ -221,8 +231,10 @@ yellow — and dropping all eight over one close pair would hand the canvas the 
 under nearly every scheme. So every gap is raised to what the chroma in hand demands, the
 room comes out of the gaps that have it to spare in proportion to what they have, and the
 ring is turned back so the slots move as little as the opening allows. The order the scheme
-ran its hues in is kept; a scheme that crowds all eight into one narrow arc is opened until
-they are apart, which at the limit is an even wheel of its own hues.
+ran its hues in is kept; a scheme that crowds all eight into one narrow arc has each crowded
+pair opened to exactly the gap the chroma in hand demands and no further, so the arc widens
+while the gap the scheme left empty pays for it — an even wheel only where that demand is
+the whole circle divided eight ways.
 
 **Only a scheme with no eight hues to lend borrows Sloppy's own**: one whose eight carry no
 hue at all, and one whose eight its own surfaces leave nowhere to stand. That is a scheme

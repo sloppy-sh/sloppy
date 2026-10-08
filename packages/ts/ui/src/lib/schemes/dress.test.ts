@@ -9,7 +9,7 @@ import { contrastRatio, type Oklch, parseCssColor } from '@sloppy/graph';
 import { TAG_HUE_SLOTS } from '@sloppy/types';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { dress, legible } from './dress.js';
+import { dress, dressed as dressOnce, legible } from './dress.js';
 import { schemeBySlug, schemes } from './index.js';
 import { distance } from './oklch.js';
 import {
@@ -29,6 +29,11 @@ const TEXT_FLOOR = 4.5;
 
 /** The least two slots may look alike — DESIGN.md § Lightness. */
 const SLOT_SEPARATION = 0.03;
+
+/** What a field's own boundary owes the page, and how far one surface stands
+ *  from another to read as its own — DESIGN.md § Schemes. */
+const EDGE_FLOOR = 1.5;
+const SURFACE_STEP = 0.04;
 
 /** The slots a selected tag can borrow, which is what a dressing owes eight
  *  colours for. */
@@ -79,8 +84,10 @@ const DERIVED = new Set<string>([
 	'--card-foreground',
 	'--popover-foreground',
 	'--secondary-foreground',
+	'--accent',
 	'--accent-foreground',
 	'--muted-foreground',
+	'--input',
 	'--destructive',
 	...SLOTS.map((slot) => `--facet-${slot}`)
 ]);
@@ -255,6 +262,15 @@ describe('what the picker offers', () => {
 			expect(legible(scheme), scheme.slug).toBe(offered.has(scheme.slug));
 		}
 	});
+
+	// The picker dresses the scheme on the person when it mounts and the whole
+	// collection when it opens, on a phone, in a webview.
+	it('is dressed once per scheme and the answer kept', () => {
+		for (const scheme of collection.slice(0, 8)) {
+			expect(dressOnce(scheme), scheme.slug).toBe(dressOnce(scheme));
+			expect(dressOnce(scheme), scheme.slug).toEqual(dress(scheme));
+		}
+	});
 });
 
 describe('a dressing', () => {
@@ -356,6 +372,52 @@ describe('what a person reads a scheme by', () => {
 	});
 });
 
+describe('the surfaces under what a person reads', () => {
+	it("draws a field's boundary where it can be seen, in the scheme's own field colour", () => {
+		let lifted = 0;
+		for (const { scheme, dressing } of dressed) {
+			const field = painted(dressing, '--input');
+			const page = painted(dressing, '--background');
+			expect(
+				contrastRatio(field, page),
+				`${dressing.slug} input on the page`
+			).toBeGreaterThanOrEqual(EDGE_FLOOR);
+			const own = colour(scheme.palette.base03);
+			if (contrastRatio(own, page) >= EDGE_FLOOR) {
+				expect(dressing.tokens['--input'], dressing.slug).toBe(scheme.palette.base03);
+				continue;
+			}
+			lifted += 1;
+			expect(field.c, `${dressing.slug} input chroma`).toBeLessThanOrEqual(own.c + 0.005);
+			expect(field.l, `${dressing.slug} input lightness`).not.toBe(own.l);
+		}
+		// The count is what a sweep of passing floors cannot show: a boundary
+		// lifted on every scheme would be the scheme's edge nowhere.
+		expect(lifted).toBe(10);
+	});
+
+	it('gives a highlighted row a surface of its own, off every surface beside it', () => {
+		for (const { dressing } of dressed) {
+			const spot = painted(dressing, '--accent');
+			for (const beside of ['--muted', '--secondary', '--card', '--popover']) {
+				expect(dressing.tokens['--accent'], `${dressing.slug} accent is ${beside}`).not.toBe(
+					dressing.tokens[beside as `--${string}`]
+				);
+				expect(
+					distance(spot, painted(dressing, beside)),
+					`${dressing.slug} accent beside ${beside}`
+				).toBeGreaterThanOrEqual(SURFACE_STEP);
+			}
+			// Further from the page than the muted surface, the way every theme in
+			// app.css draws its own highlight.
+			const page = painted(dressing, '--background').l;
+			expect(Math.abs(spot.l - page), `${dressing.slug} accent depth`).toBeGreaterThan(
+				Math.abs(painted(dressing, '--muted').l - page)
+			);
+		}
+	});
+});
+
 describe('the eight hues a tag borrows', () => {
 	it('is declared on one chroma and eight hues in app.css', () => {
 		expect([...DECLARED.keys()].sort((a, b) => a - b)).toEqual(SLOTS);
@@ -432,8 +494,8 @@ describe('the eight hues a tag borrows', () => {
 			else reach.beyond += 1;
 		}
 		expect(reach).toEqual({ itsOwn: 86, under5: 76, under30: 312, beyond: 18 });
-		// A scheme that crowds its eight into one arc has them opened until they
-		// are apart, which at the limit is an even wheel of its own hues.
+		// A crowded pair is opened to the gap its chroma demands and no further, so
+		// no slot is carried round the circle to get there.
 		expect(worst).toBeLessThan(150);
 	});
 
