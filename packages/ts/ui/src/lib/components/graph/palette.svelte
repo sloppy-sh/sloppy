@@ -130,7 +130,8 @@
 		return `palette-row-${at}`;
 	}
 
-	const nothing = $derived(settled && !looking && found.length === 0 && rows.length === 0);
+	/** A row that does nothing is not an answer to what was typed. */
+	const nothing = $derived(settled && !looking && found.length === 0 && stops.length === 0);
 	const showing = $derived(
 		found.length === 1 ? 'Showing 1 note.' : `Showing ${found.length} notes.`
 	);
@@ -263,7 +264,9 @@
 				<Skeleton class="h-4 w-2/3" />
 				<Skeleton class="h-4 w-1/2" />
 			</div>
-		{:else if nothing}
+		{/if}
+
+		{#if nothing}
 			<p class="px-2 text-sm text-muted-foreground" role="status">{noMatch}</p>
 		{/if}
 	</div>

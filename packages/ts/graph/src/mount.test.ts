@@ -190,6 +190,10 @@ class StandInScene {
     this.resizes += 1;
   }
   resetStats(): void {}
+  sweeps = 0;
+  sweep(): void {
+    this.sweeps += 1;
+  }
   destroy(): void {}
 }
 
@@ -1175,6 +1179,17 @@ describe("coming back to where the field was looking", () => {
 
     expect(graph.scene.centred).toEqual([]);
     expect(graph.handle.viewport()).toEqual(place);
+  });
+});
+
+// DESIGN.md § Eggs: the surface asks, and the canvas is what answers.
+describe("the hue sweep an egg asks for", () => {
+  it("reaches the canvas, and asks nothing of one that is not up", async () => {
+    const graph = await mount({}, (handle) => handle.sweep());
+
+    expect(graph.scene.sweeps).toBe(0);
+    graph.handle.sweep();
+    expect(graph.scene.sweeps).toBe(1);
   });
 });
 

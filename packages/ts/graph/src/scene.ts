@@ -306,13 +306,14 @@ export interface FrameStats {
   labels: number;
 }
 
-/** How long a hue sweep takes to cross the field — DESIGN.md § Eggs. */
-const SWEEP_MS = 1500;
+/** How long a hue sweep takes to cross what is on screen — DESIGN.md § Eggs. */
+export const SWEEP_MS = 1500;
 /** How long one mark holds the hue the sweep lit it in. */
-const SWEEP_HOLD_MS = 300;
+export const SWEEP_HOLD_MS = 300;
 
-/** A hue sweep crossing the field: when it began, and the band of x it crosses,
- *  measured once so a settling layout cannot move a mark's hue under it. */
+/** A hue sweep crossing the marks on screen: when it began, and the band of x
+ *  it crosses, measured once so a settling layout cannot move a mark's hue
+ *  under it. */
 interface Sweep {
   since: number;
   left: number;
@@ -732,19 +733,42 @@ export class GraphScene {
    * was drawn in. One at a time — asked again while one runs, nothing happens —
    * and nothing is left behind, so the canvas ends as it began.
    *
+   * The bands are laid over the marks ON SCREEN, so the sweep reads as a sweep
+   * at any zoom; a canvas looking at none of them takes the whole field.
+   *
    * Decoration, so a reader who has asked for less motion gets none of it.
    */
   sweep(): void {
     if (this.sweeping !== null || this.marks.length === 0) return;
     if (this.options.reduced?.matches) return;
+    const view = visibleBounds(this.viewport, this.width, this.height);
+    const band =
+      this.xSpan(
+        (x, y) =>
+          x >= view.minX && x <= view.maxX && y >= view.minY && y <= view.maxY,
+      ) ?? this.xSpan(() => true);
+    if (band === null) return;
+    this.sweeping = {
+      since: performance.now(),
+      left: band.left,
+      span: band.right - band.left,
+    };
+  }
+
+  /** The leftmost and rightmost x among the marks `take` holds, or `null` for
+   *  none at all. */
+  private xSpan(
+    take: (x: number, y: number) => boolean,
+  ): { left: number; right: number } | null {
     let left = Number.POSITIVE_INFINITY;
     let right = Number.NEGATIVE_INFINITY;
     for (const mark of this.marks) {
       const x = this.positions[mark.index * 2];
+      if (!take(x, this.positions[mark.index * 2 + 1])) continue;
       if (x < left) left = x;
       if (x > right) right = x;
     }
-    this.sweeping = { since: performance.now(), left, span: right - left };
+    return left > right ? null : { left, right };
   }
 
   private advanceSweep(): void {
@@ -759,9 +783,15 @@ export class GraphScene {
       // went carries neither.
       const carrier = mark.fill ?? mark.ring;
       if (carrier === null) continue;
+      // A mark off the side the band was measured over lights with the end it
+      // is past, rather than outside the run.
       const across =
         sweep.span > 0
-          ? (this.positions[mark.index * 2] - sweep.left) / sweep.span
+          ? clamp(
+              (this.positions[mark.index * 2] - sweep.left) / sweep.span,
+              0,
+              1,
+            )
           : 0;
       const lights = across * (SWEEP_MS - SWEEP_HOLD_MS);
       const lit = !done && since >= lights && since < lights + SWEEP_HOLD_MS;
@@ -2433,7 +2463,7 @@ function lookKey(weight: RingWeight, style: RingStyle): string {
   return `${weight}:${style}`;
 }
 
-/** The facet band a point `across` the field — 0 at its left edge, 1 at its
+/** The facet band a point `across` the swept run — 0 at its left edge, 1 at its
  *  right — stands in: the eight hues laid over it in order. */
 function bandAt(across: number): (typeof TAG_HUE_SLOTS)[number] {
   const at = clamp(

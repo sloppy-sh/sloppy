@@ -226,6 +226,27 @@ describe('the find sheet', () => {
 		expect(screen()).not.toContain('Nothing on the canvas matches that.');
 	});
 
+	// DESIGN.md § Eggs: the row takes nothing away, and the answer to what was
+	// typed is one of the things it cannot take.
+	it('still says that nothing matched behind a row that does nothing', async () => {
+		await open({ query: 'teapot', found: [], settled: true });
+
+		expect(screen()).toContain('418 · short and stout');
+		expect(screen()).toContain('Nothing on the canvas matches that.');
+		expect(document.querySelectorAll('[role="option"]')).toHaveLength(0);
+	});
+
+	it('reads the arrows past a row that does nothing', async () => {
+		await open({ query: 'teapot', found: [found({ title: 'A teapot' })], settled: true });
+
+		field().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+		flushSync();
+
+		expect(field().getAttribute('aria-activedescendant')).toBe('palette-row-1');
+		field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		expect(opened).toEqual([ORIGINS]);
+	});
+
 	it('says how many the list is showing, for a reader who cannot see it', async () => {
 		await open({ query: 'mush', found: [found(), found({ ref: CELLS, address: '2' })] });
 

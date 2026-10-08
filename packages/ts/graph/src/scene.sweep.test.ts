@@ -24,7 +24,7 @@ vi.mock("pixi.js", async () => {
   return fakePixi();
 });
 
-const { GraphScene } = await import("./scene.js");
+const { GraphScene, SWEEP_MS, SWEEP_HOLD_MS } = await import("./scene.js");
 
 const OWNER = "did:syr:someone" as DidSyr;
 const STRANGER = "did:syr:somebodyelse" as DidSyr;
@@ -48,13 +48,14 @@ const palette = buildPalette({
 
 const FACETS = TAG_HUE_SLOTS.map((slot) => palette.tag(slot));
 
-/** What `sweep()` is held to, read off the module so the test and the scene
- *  cannot disagree about the span. */
-const SWEEP_MS = 1500;
-const SWEEP_HOLD_MS = 300;
-
 /** One mark per facet band, so each band has exactly one mark to light. */
 const MARKS = 8;
+
+/** Far enough apart to read apart, and close enough that the whole row stands
+ *  inside the screen the fake renderer reports. */
+const STEP = 40;
+/** Clear of the top edge, so every mark is one the viewport is looking at. */
+const ROW_Y = 300;
 
 function drawn(at: number, owner = OWNER): DrawnNode {
   const address = `1${"abcdefgh"[at]}`;
@@ -97,8 +98,8 @@ async function canvas(
   scene.setModel(model, false);
   const places = new Float32Array(model.order.length * 2);
   model.order.forEach((_ref, at) => {
-    places[at * 2] = at * 100;
-    places[at * 2 + 1] = 0;
+    places[at * 2] = at * STEP;
+    places[at * 2 + 1] = ROW_Y;
   });
   scene.setPositions(places);
   app.tick();
@@ -228,6 +229,48 @@ describe("the hue sweep", () => {
     scene.sweep();
     expect(at(0, app)[0]).toBe(FACETS[0]);
     expect(at(SWEEP_MS, app)).toEqual(before);
+    scene.destroy();
+  });
+
+  /** The facet each mark was ever seen in over one whole sweep. */
+  function facetsOver(
+    scene: Awaited<ReturnType<typeof canvas>>["scene"],
+    app: FakeApplication,
+  ) {
+    const before = tints(app);
+    scene.sweep();
+    const seen = new Array<number | undefined>(before.length).fill(undefined);
+    for (let ms = 0; ms < SWEEP_MS; ms += 20) {
+      at(ms, app).forEach((tint, mark) => {
+        if (tint !== before[mark]) seen[mark] = tint;
+      });
+    }
+    return seen;
+  }
+
+  // Zoomed in, a span measured over every mark's x puts the marks on screen
+  // inside one band, and the egg reads as a single flash.
+  it("lays the bands over the marks on screen rather than the whole field", async () => {
+    const { scene, app } = await canvas();
+    // The leftmost four marks, which is what 390 screen pixels at this zoom
+    // reach; the row itself stays in view.
+    scene.viewport.lookAt({ x: 0, y: -ROW_Y, scale: 3 });
+
+    const seen = facetsOver(scene, app);
+    const onScreen = seen.slice(0, 4);
+    expect(new Set(onScreen).size).toBe(onScreen.length);
+    expect(onScreen[0]).toBe(FACETS[0]);
+    expect(onScreen.at(-1)).toBe(FACETS.at(-1));
+    // A mark off the end of the run lights with the end it is past.
+    expect(seen.slice(4)).toEqual(new Array(MARKS - 4).fill(FACETS.at(-1)));
+    scene.destroy();
+  });
+
+  it("takes the whole field where the canvas is looking at none of it", async () => {
+    const { scene, app } = await canvas();
+    scene.viewport.lookAt({ x: -100_000, y: -100_000, scale: 1 });
+
+    expect(facetsOver(scene, app)).toEqual(FACETS);
     scene.destroy();
   });
 
