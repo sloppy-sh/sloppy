@@ -189,6 +189,12 @@ describe('the saved look', () => {
 			[{ theme: 'contrast', accent: 'sea', style: 'default', font: 'system' }, null],
 			[{ style: 'bevel', effect: 'crt' }, null],
 			[{ scheme: GRUVBOX.slug }, GRUVBOX],
+			// A dressing reaching for a token another axis owns: neither painter
+			// gives it up, so both leave the same thing on <html>.
+			[
+				{ scheme: GRUVBOX.slug },
+				{ ...GRUVBOX, tokens: { ...GRUVBOX.tokens, '--border': '#504945', '--ring': '#83a598' } }
+			],
 			// A dressing cached for another scheme is not this one's paint, so
 			// neither of them dresses the app: the theme does.
 			[{ scheme: SOLARIZED.slug }, GRUVBOX]
@@ -454,6 +460,28 @@ describe('the scheme dressing the app', () => {
 		expect(painted()).toEqual({});
 		expect(root.getAttribute('data-theme')).toBe('paper');
 		expect(prefs.isDark).toBe(false);
+	});
+
+	// DESIGN.md § Schemes: the accent is the person's across every scheme, and a
+	// style draws its own edge on one, so a dressing offering either is not it.
+	it('paints nothing another axis owns', () => {
+		prefs.init();
+		prefs.setScheme({
+			slug: 'gruvbox-dark-hard',
+			variant: 'dark',
+			tokens: {
+				'--background': '#1d2021',
+				'--border': '#504945',
+				'--ring': '#83a598',
+				'--primary': '#83a598'
+			}
+		});
+
+		expect(painted()).toEqual({ '--background': '#1d2021' });
+		// And the copy the shells' boot scripts paint the first paint from.
+		expect(JSON.parse(localStorage.getItem('sloppy_scheme') ?? 'null').tokens).toEqual({
+			'--background': '#1d2021'
+		});
 	});
 
 	// Two dressings do not carry the same tokens, so what one painted has to come

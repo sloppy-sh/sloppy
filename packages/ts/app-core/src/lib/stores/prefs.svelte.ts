@@ -11,7 +11,7 @@
  */
 
 import { GRAPH_GROUNDS, type GraphGround } from '@sloppy/graph';
-import type { SchemeDressing } from '@sloppy/ui';
+import { UNDRESSED_TOKENS, type SchemeDressing } from '@sloppy/ui';
 import {
 	CHAT_AGENTS,
 	CHAT_MODEL_MAX,
@@ -293,6 +293,10 @@ function paintsWith(token: string, paint: unknown): paint is string {
 	);
 }
 
+function anotherAxisOwns(token: string): boolean {
+	return (UNDRESSED_TOKENS as readonly string[]).includes(token);
+}
+
 function dressingIn(value: unknown): SchemeDressing | null {
 	if (typeof value !== 'object' || value === null) return null;
 	const held = value as Record<string, unknown>;
@@ -301,7 +305,10 @@ function dressingIn(value: unknown): SchemeDressing | null {
 	if (typeof held.tokens !== 'object' || held.tokens === null) return null;
 	const tokens: Record<string, string> = {};
 	for (const [token, paint] of Object.entries(held.tokens as Record<string, unknown>)) {
-		if (paintsWith(token, paint)) tokens[token] = paint;
+		// Inline paint beats every rule, so what another axis owns is dropped here
+		// rather than trusted. The cache the shells' boot scripts read is written
+		// from this, so the one gate covers all three painters.
+		if (paintsWith(token, paint) && !anotherAxisOwns(token)) tokens[token] = paint;
 	}
 	return { slug, variant: held.variant === 'dark' ? 'dark' : 'light', tokens };
 }
@@ -624,8 +631,9 @@ class PrefsStore {
 				this.#painted.push(token);
 			}
 		}
-		// A scheme IS the theme while it dresses the app, and app.css keys the one
-		// thing it can still say about the ground off that value.
+		// A scheme IS the theme while it dresses the app, and app.css keys what it
+		// still says about one — the ground, the edge, the accent's family — off
+		// that value and the `dark` class below.
 		root.setAttribute('data-theme', dressing === null ? p.theme : 'scheme');
 		root.setAttribute('data-accent', p.accent);
 		// Absent IS the default style: app.css only ever keys off the opt-in value.

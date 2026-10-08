@@ -23,13 +23,15 @@
 			var dark = theme === 'graphite' || theme === 'dark';
 			// A scheme dresses the app in place of a theme, from the copy of its
 			// tokens the prefs store cached — DESIGN.md § Schemes. The bound on a
-			// token and its paint is the store's; the two have to agree.
+			// token and its paint is the store's, `elsewhere` is the tokens another
+			// axis owns, and the two painters have to agree about both.
 			var dressing = null;
 			try {
 				dressing = JSON.parse(localStorage.getItem('sloppy_scheme') || 'null');
 			} catch (e) {
 				// Blocked site data again, and the theme below still paints.
 			}
+			var elsewhere = ['--border', '--primary', '--primary-foreground', '--primary-mark', '--ring'];
 			if (dressing && dressing.tokens && saved.scheme && dressing.slug === saved.scheme) {
 				theme = 'scheme';
 				dark = dressing.variant === 'dark';
@@ -40,7 +42,8 @@
 						/^--[a-z0-9-]{1,40}$/.test(token) &&
 						typeof paint === 'string' &&
 						/^[^;{}]{1,96}$/.test(paint) &&
-						!/url\(/i.test(paint)
+						!/url\(/i.test(paint) &&
+						elsewhere.indexOf(token) < 0
 					)
 						root.style.setProperty(token, paint);
 				}

@@ -20,12 +20,15 @@ const CSS = readFileSync(new URL('./app.css', import.meta.url), 'utf8').replace(
 
 const THEMES = ['paper', 'graphite', 'light', 'dark', 'contrast'] as const;
 const DARK_THEMES = new Set(['graphite', 'dark']);
+/** The theme value a scheme carries. Its palette is painted inline from the
+ *  dressing, so it is swept for what `app.css` still owes it. */
+const SCHEME = 'scheme';
 const ACCENTS = ['indigo', 'moss', 'rust', 'sea', 'iris', 'ochre', 'slate'] as const;
 const FACET_SLOTS = [
 	...new Set([...CSS.matchAll(/--facet-(\d+)\s*:/g)].map((slot) => Number(slot[1])))
 ].sort((a, b) => a - b);
 
-type Theme = (typeof THEMES)[number];
+type Theme = (typeof THEMES)[number] | typeof SCHEME;
 type Accent = (typeof ACCENTS)[number];
 
 interface Rule {
@@ -63,14 +66,19 @@ const ATTRIBUTE = /\[data-(theme|accent|style)='([^']+)'\]/g;
 
 /**
  * Whether one selector applies to a plain `<html>` carrying exactly this theme
- * and accent. A selector using `:not()` is skipped rather than modelled — each
- * one in `app.css` shares its declaration body with a positive twin that is
- * matched here, so nothing goes unmeasured.
+ * and accent, on a ground running this way. A selector using `:not()` is
+ * skipped rather than modelled — each one in `app.css` shares its declaration
+ * body with a positive twin that is matched here, so nothing goes unmeasured.
+ * `:not(.dark)` is the exception: the light family's scheme twin is the only
+ * form that case has, so it is read rather than skipped.
  */
-function matches(selector: string, theme: Theme, accent: Accent): boolean {
-	if (!selector.includes(':root') || selector.includes(':not(')) return false;
-	if (selector.includes('.dark') && !DARK_THEMES.has(theme)) return false;
-	for (const [, axis, value] of selector.matchAll(ATTRIBUTE)) {
+function matches(selector: string, theme: Theme, accent: Accent, dark: boolean): boolean {
+	if (!selector.includes(':root')) return false;
+	if (selector.includes(':not(.dark)') && dark) return false;
+	const positive = selector.replaceAll(':not(.dark)', '');
+	if (positive.includes(':not(')) return false;
+	if (positive.includes('.dark') && !dark) return false;
+	for (const [, axis, value] of positive.matchAll(ATTRIBUTE)) {
 		if (axis === 'theme' && value !== theme) return false;
 		if (axis === 'accent' && value !== accent) return false;
 		// Only the default style is swept: `data-style` may not touch a palette
@@ -87,9 +95,9 @@ function weight(selector: string): number {
 
 const ALL_RULES = rules();
 
-function tokens(theme: Theme, accent: Accent): Map<string, string> {
+function tokens(theme: Theme, accent: Accent, dark = DARK_THEMES.has(theme)): Map<string, string> {
 	const applicable = ALL_RULES.flatMap((rule) => {
-		const weights = rule.selectors.filter((s) => matches(s, theme, accent)).map(weight);
+		const weights = rule.selectors.filter((s) => matches(s, theme, accent, dark)).map(weight);
 		return weights.length
 			? [{ weight: Math.max(...weights), order: rule.order, declarations: rule.declarations }]
 			: [];
@@ -222,6 +230,31 @@ describe('token contrast', () => {
 			expect(
 				contrastRatio(color(resolved, '--primary'), color(resolved, '--primary-foreground'))
 			).toBeGreaterThanOrEqual(4.5);
+		});
+	});
+
+	// A scheme paints its own surfaces and leaves the accent to the person, so
+	// what `app.css` still owes it is the family of the ground it stands on —
+	// the dark lift, or the light family's one correction. Measured against the
+	// theme of that ground rather than against a floor: the surfaces a scheme
+	// draws are the collection's, and the suite cannot see them.
+	describe('a scheme stands in the accent family of its own ground', () => {
+		const FAMILY = ['--primary', '--primary-foreground', '--primary-mark', '--ring'] as const;
+
+		it.each(ACCENTS)('%s on a dark scheme reads as it does on Graphite', (accent) => {
+			const scheme = tokens(SCHEME, accent, true);
+			const graphite = tokens('graphite', accent);
+			for (const token of FAMILY) {
+				expect(color(scheme, token)).toEqual(color(graphite, token));
+			}
+		});
+
+		it.each(ACCENTS)('%s on a light scheme reads as it does on Paper', (accent) => {
+			const scheme = tokens(SCHEME, accent, false);
+			const paper = tokens('paper', accent);
+			for (const token of FAMILY) {
+				expect(color(scheme, token)).toEqual(color(paper, token));
+			}
 		});
 	});
 });

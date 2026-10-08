@@ -13,7 +13,7 @@ export type {
 	WithoutChildrenOrChild
 } from './utils.js';
 
-export { DRESSED_TOKENS } from './schemes/scheme.js';
+export { DRESSED_TOKENS, UNDRESSED_TOKENS } from './schemes/scheme.js';
 export type { DressedToken, SchemeDressing, SchemeTokens } from './schemes/scheme.js';
 
 export { overlay } from './components/overlay.svelte.js';

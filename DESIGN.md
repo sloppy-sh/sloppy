@@ -202,18 +202,29 @@ broken:
 
 A **scheme** is a theme somebody picks out of a collection rather than one we wrote: the
 Tinted Theming base16/base24 schemes, vendored whole. `base00` becomes the surface and
-`base05` the ink; `base01`–`base04` become cards, muted surfaces, borders and muted ink;
+`base05` the ink; `base01`–`base04` become cards, muted surfaces, fields and muted ink;
 `base08`–`base0F` become the eight facet hues — each facet's **lightness moved in OKLCH
 until it clears the canvas's 3:1 floor and the slot distance on that scheme's own
-surface**, hue kept, never used raw. A scheme that is picked sets `data-theme="scheme"`
-and `data-scheme="<slug>"` on `<html>` with its tokens written inline as custom
-properties, and the `dark` class from the scheme's own variant.
+surface**, hue kept, never used raw. `base08` is what a destructive act is drawn in too,
+with whichever of the scheme's own two ends reads on it. A scheme that is picked sets
+`data-theme="scheme"` and `data-scheme="<slug>"` on `<html>` with its tokens written
+inline as custom properties, and the `dark` class from the scheme's own variant.
 
 **A scheme is the theme axis and nothing else.** Accent, style, font and density stay the
-person's, so a scheme does not set `--primary`; asking for a theme in the Theme pills
-stands the scheme down. The tokens are cached beside the saved look so the shells' boot
-scripts paint them before the first paint, and `data-scheme` is what the canvas watches —
-two schemes differ in it alone.
+person's — and because a dressing paints inline, which beats every rule in the design
+system, the tokens another axis owns are exactly the ones a dressing may not carry:
+`--primary`, `--primary-foreground`, `--primary-mark` and `--ring` are the accent's, and
+`--border` is what a style derives an edge from. A scheme's own edge reaches `--border`
+through a rule rather than inline, which is what leaves a style drawing its own edge on
+every scheme in the collection.
+
+**What the accent axis owes a scheme is the family of the ground it stands on.** A scheme
+whose variant is dark takes the dark family's lifted accent, exactly as Graphite does, and
+a light one takes the light family's Ochre correction — so the one attribute cannot say
+it, and this is the one place the `dark` class is read instead. Asking for a theme in the
+Theme pills stands the scheme down. The tokens are cached beside the saved look so the
+shells' boot scripts paint them before the first paint, and `data-scheme` is what the
+canvas watches — two schemes differ in it alone.
 
 ## The graph's colour language
 

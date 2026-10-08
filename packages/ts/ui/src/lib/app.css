@@ -9,9 +9,9 @@
      data-density  → how close it is drawn    (compact); absent is comfortable
      data-effect   → what the screen is like  (crt); a texture over the page, absent is plain
 
-   `data-theme="scheme"` is the one value with no block of its own: a scheme's
-   tokens are painted inline on <html> from the prefs store's cached dressing,
-   and `data-scheme` carries which one — DESIGN.md § Schemes.
+   `data-theme="scheme"` is the one value whose palette is not written here: a
+   scheme's tokens are painted inline on <html> from the prefs store's cached
+   dressing, and `data-scheme` carries which one — DESIGN.md § Schemes.
 
    Bare :root carries the Paper + Indigo defaults, so first paint is right
    before the prefs store has set an attribute. */
@@ -241,41 +241,54 @@
    families carry both. One attribute then decides the whole palette, so a shell
    that sets the theme and forgets the class gets dark surfaces with a dark
    accent rather than dark surfaces with a light one. The class stays what
-   Tailwind's `dark:` variants read. */
+   Tailwind's `dark:` variants read.
+
+   A scheme is the one case keyed on the class, because the attribute cannot
+   carry it: the collection runs both ways under the one `scheme` value, and the
+   dressing that sets the attribute sets the class from its own variant in the
+   same write. */
 :root[data-theme='graphite'][data-accent='indigo'],
 :root[data-theme='dark'][data-accent='indigo'],
+.dark:root[data-theme='scheme'][data-accent='indigo'],
 :root[data-theme='graphite']:not([data-accent]),
-:root[data-theme='dark']:not([data-accent]) {
+:root[data-theme='dark']:not([data-accent]),
+.dark:root[data-theme='scheme']:not([data-accent]) {
 	--primary: oklch(0.62 0.14 265);
 	--primary-foreground: oklch(0.16 0.01 80);
 }
 :root[data-theme='graphite'][data-accent='moss'],
-:root[data-theme='dark'][data-accent='moss'] {
+:root[data-theme='dark'][data-accent='moss'],
+.dark:root[data-theme='scheme'][data-accent='moss'] {
 	--primary: oklch(0.65 0.09 145);
 	--primary-foreground: oklch(0.16 0.01 80);
 }
 :root[data-theme='graphite'][data-accent='rust'],
-:root[data-theme='dark'][data-accent='rust'] {
+:root[data-theme='dark'][data-accent='rust'],
+.dark:root[data-theme='scheme'][data-accent='rust'] {
 	--primary: oklch(0.66 0.13 45);
 	--primary-foreground: oklch(0.16 0.01 80);
 }
 :root[data-theme='graphite'][data-accent='sea'],
-:root[data-theme='dark'][data-accent='sea'] {
+:root[data-theme='dark'][data-accent='sea'],
+.dark:root[data-theme='scheme'][data-accent='sea'] {
 	--primary: oklch(0.68 0.1 210);
 	--primary-foreground: oklch(0.16 0.01 80);
 }
 :root[data-theme='graphite'][data-accent='iris'],
-:root[data-theme='dark'][data-accent='iris'] {
+:root[data-theme='dark'][data-accent='iris'],
+.dark:root[data-theme='scheme'][data-accent='iris'] {
 	--primary: oklch(0.65 0.13 300);
 	--primary-foreground: oklch(0.16 0.01 80);
 }
 :root[data-theme='graphite'][data-accent='ochre'],
-:root[data-theme='dark'][data-accent='ochre'] {
+:root[data-theme='dark'][data-accent='ochre'],
+.dark:root[data-theme='scheme'][data-accent='ochre'] {
 	--primary: oklch(0.76 0.12 80);
 	--primary-foreground: oklch(0.16 0.01 80);
 }
 :root[data-theme='graphite'][data-accent='slate'],
-:root[data-theme='dark'][data-accent='slate'] {
+:root[data-theme='dark'][data-accent='slate'],
+.dark:root[data-theme='scheme'][data-accent='slate'] {
 	--primary: oklch(0.6 0.02 265);
 	--primary-foreground: oklch(0.16 0.01 80);
 }
@@ -293,6 +306,7 @@
 :root[data-theme='paper'][data-accent='ochre'],
 :root[data-theme='light'][data-accent='ochre'],
 :root[data-theme='contrast'][data-accent='ochre'],
+:root[data-theme='scheme']:not(.dark)[data-accent='ochre'],
 :root:not([data-theme])[data-accent='ochre'] {
 	--primary-mark: oklch(0.63 0.12 80);
 }
@@ -318,6 +332,9 @@
 		--control: 2.75rem;
 	}
 }
+
+/* The scheme axis, which the style axis below has to beat for --border. */
+@import './schemes.css';
 
 /* ══ Style axis: Hardline ══════════════════════════════════════════════════
    DESIGN.md § "Style presets" is the contract. The `.dark:root` twin is not
@@ -427,13 +444,12 @@
 	--tw-shadow: 8px 8px 0 0 var(--tw-shadow-color, var(--border));
 }
 
-/* The rest of the style axis, the effect axis and the schemes. Imported HERE
-   rather than at the top: all three key off :root, and a style block that
-   landed before the [data-theme] blocks would lose --border to the dark
-   families on specificity alone. */
+/* The rest of the style axis and the effect axis. Imported HERE rather than at
+   the top: both key off :root, and a style block that landed before the
+   [data-theme] blocks would lose --border to the dark families on specificity
+   alone. */
 @import './styles.css';
 @import './effects.css';
-@import './schemes.css';
 
 /* ══ Font axis ═════════════════════════════════════════════════════════════
    DESIGN.md § Typography is the contract: the chosen family takes the address
