@@ -210,6 +210,23 @@ with whichever of the scheme's own two ends reads on it. A scheme that is picked
 `data-theme="scheme"` and `data-scheme="<slug>"` on `<html>` with its tokens written
 inline as custom properties, and the `dark` class from the scheme's own variant.
 
+**The eight slots share one lightness, and where a scheme has no eight hues to lend it
+borrows Sloppy's own.** Lightness carries depth on the canvas, so the slots may not spend
+it on telling each other apart — what tells them apart is hue, and a scheme whose eight
+have collapsed into one is one question asked eight times. Such a scheme keeps its own
+sixteen colours in the picker and lends the canvas Sloppy's hues at the lightness its own
+surfaces allow.
+
+**Every ink is the scheme's own, lifted only where the scheme's own surface would swallow
+it.** A collection's ladder of surfaces runs further from its page than Sloppy's does, and
+its muted ink is a comment colour rather than a line in a setting — so an ink that falls
+under AA on the surface it lands on is moved in lightness alone until it reads, keeping
+the scheme's cast. **And a scheme that cannot carry what a person reads is not offered at
+all**: one whose ink does not read on its own page, one where no one secondary line reads
+on both its page and its muted panel, one whose surfaces leave the eight slots nowhere to
+stand. Most of the collection comes through; `dress.test.ts` sweeps all of it and holds
+the count, because a mapping that shut half the collection out would pass every floor.
+
 **A scheme is the theme axis and nothing else.** Accent, style, font and density stay the
 person's — and because a dressing paints inline, which beats every rule in the design
 system, the tokens another axis owns are exactly the ones a dressing may not carry:

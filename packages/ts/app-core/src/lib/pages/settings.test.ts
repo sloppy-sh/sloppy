@@ -66,6 +66,16 @@ beforeEach(() => {
 		writable: true,
 		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
 	});
+	// The schemes stand in a capped list, and a faded scroller measures itself.
+	Object.defineProperty(globalThis, 'ResizeObserver', {
+		configurable: true,
+		writable: true,
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+	});
 	localStorage.clear();
 	prefs.init();
 	people.hold(null);

@@ -70,3 +70,43 @@ export interface SchemeDressing {
 	variant: 'light' | 'dark';
 	tokens: SchemeTokens;
 }
+
+/** `base00`–`base0F`, the sixteen every scheme in the collection carries. */
+export const BASE_KEYS = [
+	'base00',
+	'base01',
+	'base02',
+	'base03',
+	'base04',
+	'base05',
+	'base06',
+	'base07',
+	'base08',
+	'base09',
+	'base0A',
+	'base0B',
+	'base0C',
+	'base0D',
+	'base0E',
+	'base0F'
+] as const;
+
+export type BaseKey = (typeof BASE_KEYS)[number];
+
+/** One scheme as the collection states it. `scripts/vendor-schemes.mjs` writes
+ *  them into `schemes/schemes.json`, which is the only copy. */
+export interface Scheme {
+	/** A `base24` scheme carries eight colours past the sixteen; the dressing
+	 *  reads none of them. */
+	readonly system: 'base16' | 'base24';
+	/** What prefs keep and `data-scheme` carries. Unique in the collection. */
+	readonly slug: string;
+	readonly name: string;
+	/** As the collection credits them, and empty where it credits nobody. */
+	readonly author: string;
+	/** Which way the scheme's own ground runs — the collection's declaration,
+	 *  rather than something read back off its surface. */
+	readonly variant: 'light' | 'dark';
+	/** Six-digit hex, `#rrggbb`, checked where the collection is vendored. */
+	readonly palette: Readonly<Record<BaseKey, string>> & Readonly<Record<string, string>>;
+}
