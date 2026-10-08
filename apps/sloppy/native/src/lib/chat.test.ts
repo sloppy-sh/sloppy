@@ -1171,48 +1171,32 @@ describe('the conversation a chat is opened as', () => {
 		);
 	});
 
-	/** Picking a conversation up takes the agent a moment, and it may turn the
-	 *  conversation down and stop: the first thing said waits until it has said
-	 *  which conversation answers. */
-	it('holds the first thing said until the agent says which conversation answered', async () => {
-		const access = chat();
-		const live = await access.open(
-			asking({ thread: { id: THREAD, session: 'the-conversation', places: [] } }),
-			() => {},
-			serve
-		);
-
-		const saying = live.say('go');
-		await new Promise((settle) => setTimeout(settle, 5));
-		expect(spoken()).toEqual([]);
-
-		says(INIT);
-		await saying;
-
-		expect(spoken()).toHaveLength(1);
-	});
-
-	it('says it into the conversation opened in its place, where the agent would not pick that one up', async () => {
+	/** The agent says what it is only once it has been said something, so the
+	 *  first thing said goes out at once — and where the program turns the
+	 *  conversation down and stops, it is said again into the one opened in
+	 *  its place, with the turn still standing. */
+	it('says the first thing again into the conversation opened in its place', async () => {
+		const heard: ChatEvent[] = [];
 		const access = chat();
 		const live = await access.open(
 			asking({ thread: { id: THREAD, session: 'long-gone', places: [] } }),
-			() => {},
+			(event) => heard.push(event),
 			serve
 		);
 
-		const saying = live.say('go');
-		await new Promise((settle) => setTimeout(settle, 5));
-		tells({ from: 'over', stopped: false, trouble: null });
-		await until(() => opens.length === 2);
-		expect(spoken()).toEqual([]);
-
-		says(INIT);
-		await saying;
-
+		await live.say('go');
 		expect(spoken()).toHaveLength(1);
+		tells({ from: 'over', stopped: false, trouble: null });
+		await until(() => opens.length === 2 && spoken().length === 2);
+
+		expect(spoken()[1]).toEqual(spoken()[0]);
+		expect(heard.some((event) => event.event === 'ended' || event.event === 'over')).toBe(false);
+		says(INIT);
+		says(RESULT);
+		expect(heard.map((event) => event.event)).toEqual(['started', 'ended']);
 	});
 
-	it('refuses the first thing said in words where the session ended before it answered', async () => {
+	it('is told the first thing once where the agent picked the conversation up', async () => {
 		const access = chat();
 		const live = await access.open(
 			asking({ thread: { id: THREAD, session: 'the-conversation', places: [] } }),
@@ -1220,11 +1204,20 @@ describe('the conversation a chat is opened as', () => {
 			serve
 		);
 
-		const saying = live.say('go');
-		await new Promise((settle) => setTimeout(settle, 5));
+		await live.say('go');
+		says(INIT);
+		says(RESULT);
+		await live.say('and then');
+
+		expect(spoken()).toHaveLength(2);
+	});
+
+	it('refuses in words once the session is over', async () => {
+		const access = chat();
+		const live = await access.open(asking(), () => {}, serve);
 		await live.close();
 
-		await expect(saying).rejects.toBeInstanceOf(Refusal);
+		await expect(live.say('again')).rejects.toBeInstanceOf(Refusal);
 	});
 
 	it('is over for good where the agent said what it was and then stopped', async () => {

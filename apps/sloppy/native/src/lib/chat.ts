@@ -100,25 +100,6 @@ interface Settling {
 	ends: () => void;
 }
 
-/** Something waited on that may never come: ended, or failed with words. */
-interface Awaited {
-	done: Promise<void>;
-	ends: () => void;
-	fails: (said: string) => void;
-}
-
-function awaiting(): Awaited {
-	let ends!: () => void;
-	let fails!: (said: string) => void;
-	const done = new Promise<void>((resolve, reject) => {
-		ends = resolve;
-		fails = (said) => reject(refuse(said));
-	});
-	// Nothing may ever wait on it, and that is not an unhandled rejection.
-	done.catch(() => {});
-	return { done, ends, fails };
-}
-
 function settling(): Settling {
 	let ends!: () => void;
 	const done = new Promise<void>((resolve) => (ends = resolve));
@@ -161,13 +142,11 @@ interface Asking {
 class Session {
 	readonly stream = new AgentStream();
 	readonly over = settling();
-	/** Settled once the agent has said what it is — which, for a conversation
-	 *  being picked up, is the moment it is known to have been picked up or to
-	 *  have been opened again as its own — and failed where the session ended
-	 *  before that. The first thing said into one being picked up waits on it,
-	 *  so the words reach the program that answers rather than one about to turn
-	 *  the conversation down. */
-	readonly ready = awaiting();
+	/** The first line said into a session the agent has not yet introduced,
+	 *  kept to be said again where the program turns the conversation it was
+	 *  given down and another takes its place. The agent says what it is only
+	 *  once it has been said something, so nothing can wait for that first. */
+	firstSaid?: string;
 	turn?: Turn;
 	gone = false;
 	/** What this one was opened with, for opening it again as a conversation of
@@ -216,7 +195,6 @@ class Session {
 	letGo(trouble?: string): void {
 		if (this.gone) return;
 		this.gone = true;
-		this.ready.fails(trouble ?? NO_CHAT);
 		this.waitsNoLonger();
 		this.ends();
 		this.tell({ event: 'over', ...(trouble === undefined ? {} : { said: trouble }) });
@@ -339,21 +317,21 @@ class TauriChat implements ChatAccess {
 		const asking = asked.trim();
 		if (asking === '') throw refuse(SAY_SOMETHING);
 		if (asking.length > CHAT_ASKED_MAX) throw refuse(TOO_MUCH);
-		if (session.opening?.resume && !session.introduced) {
-			await session.ready.done;
-			if (this.held.get(of) !== session) throw refuse(NO_CHAT);
-			if (session.turn) throw refuse(ANSWERING);
-		}
 		session.stream.turned();
 		const turn: Turn = { stopped: false, ...settling() };
 		session.turn = turn;
-		await this.call<void>(SAY, { thread: of, line: JSON.stringify(aTurn(asking)) }).catch(
-			(reason) => {
-				if (session.turn === turn) session.turn = undefined;
-				turn.ends();
-				throw refuse(said(reason));
-			}
-		);
+		const line = JSON.stringify(aTurn(asking));
+		if (!session.introduced) session.firstSaid = line;
+		await this.call<void>(SAY, { thread: of, line }).catch((reason) => {
+			// A program turning the conversation down is already on its way out
+			// when the first line reaches it: the end that follows either opens
+			// another in its place, which is said this line again, or ends the
+			// turn with why.
+			if (session.firstSaid === line && session.opening?.resume && !session.gone) return;
+			if (session.turn === turn) session.turn = undefined;
+			turn.ends();
+			throw refuse(said(reason));
+		});
 	}
 
 	private async stops(of: string): Promise<void> {
@@ -408,7 +386,7 @@ class TauriChat implements ChatAccess {
 					if (session.reading && event.event === 'block') continue;
 					if (event.event === 'started') {
 						session.introduced = true;
-						session.ready.ends();
+						session.firstSaid = undefined;
 						void this.asks(session.thread, 'summary');
 					}
 					session.tell(event);
@@ -453,9 +431,15 @@ class TauriChat implements ChatAccess {
 		session.startsOver();
 		const again: Opening = { ...opening, resume: false };
 		delete again.session;
-		void this.starts(session, again).catch((reason) => {
-			session.letGo(said(reason));
-		});
+		void this.starts(session, again)
+			.then(() => {
+				const line = session.firstSaid;
+				if (line === undefined || session.gone) return;
+				return this.call<void>(SAY, { thread: session.thread, line });
+			})
+			.catch((reason) => {
+				session.letGo(said(reason));
+			});
 		return true;
 	}
 
