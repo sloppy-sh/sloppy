@@ -1,0 +1,9 @@
+/* Schemes — DESIGN.md § Schemes. A scheme's tokens are painted on <html> as
+   inline custom properties from the cached dressing, so the only thing a
+   stylesheet can say about one is which way its ground runs. */
+:root[data-theme='scheme'] {
+	color-scheme: light;
+}
+.dark:root[data-theme='scheme'] {
+	color-scheme: dark;
+}

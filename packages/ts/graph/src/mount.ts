@@ -572,7 +572,7 @@ export function mountGraph(
   });
   themes.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-accent", "class"],
+    attributeFilter: ["data-theme", "data-scheme", "data-accent", "class"],
   });
 
   // A mark wearing several pictures shows whichever one the clock says, read

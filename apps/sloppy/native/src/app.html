@@ -21,10 +21,35 @@
 			}
 			var theme = saved.theme || (osDark ? 'graphite' : 'paper');
 			var dark = theme === 'graphite' || theme === 'dark';
+			// A scheme dresses the app in place of a theme, from the copy of its
+			// tokens the prefs store cached — DESIGN.md § Schemes. The bound on a
+			// token and its paint is the store's; the two have to agree.
+			var dressing = null;
+			try {
+				dressing = JSON.parse(localStorage.getItem('sloppy_scheme') || 'null');
+			} catch (e) {
+				// Blocked site data again, and the theme below still paints.
+			}
+			if (dressing && dressing.tokens && saved.scheme && dressing.slug === saved.scheme) {
+				theme = 'scheme';
+				dark = dressing.variant === 'dark';
+				root.setAttribute('data-scheme', dressing.slug);
+				for (var token in dressing.tokens) {
+					var paint = dressing.tokens[token];
+					if (
+						/^--[a-z0-9-]{1,40}$/.test(token) &&
+						typeof paint === 'string' &&
+						/^[^;{}]{1,96}$/.test(paint) &&
+						!/url\(/i.test(paint)
+					)
+						root.style.setProperty(token, paint);
+				}
+			}
 			root.setAttribute('data-theme', theme);
 			root.setAttribute('data-accent', saved.accent || 'indigo');
 			if (saved.style && saved.style !== 'default') root.setAttribute('data-style', saved.style);
 			if (saved.font && saved.font !== 'system') root.setAttribute('data-app-font', saved.font);
+			if (saved.effect && saved.effect !== 'none') root.setAttribute('data-effect', saved.effect);
 			// `auto` is what this device is: closer where a mouse is the only pointer.
 			var density = saved.density || 'auto';
 			var forAMouse =
@@ -44,7 +69,9 @@
 			};
 			addEventListener('DOMContentLoaded', paintThemeColor);
 			addEventListener('load', paintThemeColor);
-			new MutationObserver(paintThemeColor).observe(root, { attributeFilter: ['data-theme'] });
+			new MutationObserver(paintThemeColor).observe(root, {
+				attributeFilter: ['data-theme', 'data-scheme']
+			});
 		</script>
 		%sveltekit.head%
 	</head>

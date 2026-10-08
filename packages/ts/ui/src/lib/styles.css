@@ -1,0 +1,3 @@
+/* The styles beside Default and Hardline — DESIGN.md § Style presets. Imported
+   by app.css after the Hardline block, because a style block has to land after
+   every [data-theme] block to win --border from the dark families. */

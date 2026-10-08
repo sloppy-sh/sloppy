@@ -254,7 +254,12 @@ beforeAll(() => {
   vi.stubGlobal(
     "MutationObserver",
     class {
-      observe(): void {}
+      observe(
+        _target: unknown,
+        options?: { attributeFilter?: string[] },
+      ): void {
+        axesWatched.push(...(options?.attributeFilter ?? []));
+      }
       disconnect(): void {}
     },
   );
@@ -273,8 +278,12 @@ beforeAll(() => {
 /** Boxes something has asked to hear the size of, so a test can move one. */
 const watched: { target: FakeElement; said: () => void }[] = [];
 
+/** The attributes a mount has asked to hear about. */
+const axesWatched: string[] = [];
+
 beforeEach(() => {
   watched.length = 0;
+  axesWatched.length = 0;
 });
 
 afterAll(() => vi.unstubAllGlobals());
@@ -523,6 +532,19 @@ const childrenOf = (ref: OwnedRef): OwnedRef[] =>
   corpus.nodes.filter((node) => node.parent === ref).map((node) => node.ref);
 
 describe("mountGraph", () => {
+  // The canvas reads its colours off the computed tokens, so every attribute
+  // that can change one has to be an attribute it hears about — a scheme leaves
+  // `data-theme` alone, and two schemes differ only in `data-scheme`.
+  it("hears about every axis that can repaint it", async () => {
+    await mount();
+    expect(axesWatched).toEqual([
+      "data-theme",
+      "data-scheme",
+      "data-accent",
+      "class",
+    ]);
+  });
+
   // The headline interaction of the whole-graph view, where every mega-node on
   // screen is one the budget folded rather than one the host collapsed.
   it("opens a mega-node the budget folded on the tap that asks for it", async () => {

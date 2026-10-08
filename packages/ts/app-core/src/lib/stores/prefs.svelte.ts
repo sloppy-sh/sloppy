@@ -1,16 +1,17 @@
 /**
  * The look of the app and the tags it opens on — DESIGN.md § Persistence — and
  * which Sloppy this device talks to — docs/ARCHITECTURE.md § "Deployment
- * modes". One writer for `sloppy_prefs`, and the only code that sets the four
- * axis attributes on `<html>` after first paint.
+ * modes". One writer for `sloppy_prefs` and for `sloppy_scheme`, and the only
+ * code that sets the axis attributes on `<html>` after first paint.
  *
- * The shells' `app.html` boot scripts read the SAME key to theme the first
- * paint, so the key, the field names, the first-visit defaults and the dark
- * roster below are all shared with them. Changing any of the four means
- * changing both boot scripts in the same commit.
+ * The shells' `app.html` boot scripts read the SAME two keys to paint the first
+ * paint, so the keys, the field names, the first-visit defaults, the dark roster
+ * and the bound a dressing's tokens are held to are all shared with them.
+ * Changing any of those means changing both boot scripts in the same commit.
  */
 
 import { GRAPH_GROUNDS, type GraphGround } from '@sloppy/graph';
+import type { SchemeDressing } from '@sloppy/ui';
 import {
 	CHAT_AGENTS,
 	CHAT_MODEL_MAX,
@@ -24,9 +25,10 @@ import { sanitizeWallpapers, type WallpaperPrefs } from '../wallpaper.js';
 
 export type Theme = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
 export type Accent = 'indigo' | 'moss' | 'rust' | 'sea' | 'iris' | 'ochre' | 'slate';
-export type Style = 'default' | 'hardline';
+export type Style = 'default' | 'hardline' | 'bevel' | 'terminal' | 'pixel';
 export type Font = 'system' | 'atkinson' | 'opendyslexic' | 'apple';
 export type Density = 'auto' | 'comfortable' | 'compact';
+export type Effect = 'none' | 'crt';
 
 /**
  * How one folder was last being read, for the tab that comes back to it —
@@ -56,8 +58,14 @@ export interface FolderView {
 
 export interface Prefs {
 	theme: Theme;
+	/** A scheme dressing the app in place of the theme, by its slug in the
+	 *  collection. Null is the theme. */
+	scheme: string | null;
 	accent: Accent;
 	style: Style;
+	/** What the screen itself is drawn like over everything else — DESIGN.md
+	 *  § Theme. */
+	effect: Effect;
 	/** The face the whole app is read in — DESIGN.md § Typography. */
 	font: Font;
 	/** The tags the graph is lit by, in SELECTION order — that order hands out
@@ -135,6 +143,9 @@ export interface Prefs {
 }
 
 const KEY = 'sloppy_prefs';
+/** The dressing both boot scripts and this store paint from — one cached copy,
+ *  so the first paint and every later one agree. */
+const SCHEME_KEY = 'sloppy_scheme';
 const DARK_THEMES: readonly Theme[] = ['graphite', 'dark'];
 
 export const THEME_LABELS: Record<Theme, string> = {
@@ -155,7 +166,14 @@ export const ACCENT_LABELS: Record<Accent, string> = {
 };
 export const STYLE_LABELS: Record<Style, string> = {
 	default: 'Default',
-	hardline: 'Hardline'
+	hardline: 'Hardline',
+	bevel: 'Bevel',
+	terminal: 'Terminal',
+	pixel: 'Pixel'
+};
+export const EFFECT_LABELS: Record<Effect, string> = {
+	none: 'Plain',
+	crt: 'CRT'
 };
 export const FONT_LABELS: Record<Font, string> = {
 	system: 'Default',
@@ -174,6 +192,7 @@ export const ACCENTS = Object.keys(ACCENT_LABELS) as Accent[];
 export const STYLES = Object.keys(STYLE_LABELS) as Style[];
 export const FONTS = Object.keys(FONT_LABELS) as Font[];
 export const DENSITIES = Object.keys(DENSITY_LABELS) as Density[];
+export const EFFECTS = Object.keys(EFFECT_LABELS) as Effect[];
 
 /** How long between versions kept while writing, in minutes. */
 export const AUTOSAVE_MINUTES = [2, 5, 15, 30] as const;
@@ -211,8 +230,10 @@ function systemPrefersDark(): boolean {
 function defaults(): Prefs {
 	return {
 		theme: systemPrefersDark() ? 'graphite' : 'paper',
+		scheme: null,
 		accent: 'indigo',
 		style: 'default',
+		effect: 'none',
 		font: 'system',
 		tags: [],
 		ground: 'dots',
@@ -251,6 +272,46 @@ function stored(): Partial<Prefs> {
 		return parsed && typeof parsed === 'object' ? (parsed as Partial<Prefs>) : {};
 	} catch {
 		return {};
+	}
+}
+
+/** A scheme's slug in the collection, or null where it is nothing a slug could
+ *  be. The collection is not here to check against, so only the shape is. */
+function slugIn(value: unknown): string | null {
+	return typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value) ? value : null;
+}
+
+/** One token of a dressing, held to the same bound in both boot scripts. A name
+ *  that is not a custom property would set a real CSS property on `<html>`, and
+ *  a dressing is paint: `url(…)` in one would reach off the device. */
+function paintsWith(token: string, paint: unknown): paint is string {
+	return (
+		/^--[a-z0-9-]{1,40}$/.test(token) &&
+		typeof paint === 'string' &&
+		/^[^;{}]{1,96}$/.test(paint) &&
+		!/url\(/i.test(paint)
+	);
+}
+
+function dressingIn(value: unknown): SchemeDressing | null {
+	if (typeof value !== 'object' || value === null) return null;
+	const held = value as Record<string, unknown>;
+	const slug = slugIn(held.slug);
+	if (slug === null) return null;
+	if (typeof held.tokens !== 'object' || held.tokens === null) return null;
+	const tokens: Record<string, string> = {};
+	for (const [token, paint] of Object.entries(held.tokens as Record<string, unknown>)) {
+		if (paintsWith(token, paint)) tokens[token] = paint;
+	}
+	return { slug, variant: held.variant === 'dark' ? 'dark' : 'light', tokens };
+}
+
+function storedDressing(): SchemeDressing | null {
+	try {
+		const raw = localStorage.getItem(SCHEME_KEY);
+		return raw ? dressingIn(JSON.parse(raw) as unknown) : null;
+	} catch {
+		return null;
 	}
 }
 
@@ -396,12 +457,25 @@ export function storedOrigin(): string | null {
 
 class PrefsStore {
 	#current = $state<Prefs>(defaults());
+	/** The scheme dressing the app, where its tokens are cached and they are the
+	 *  ones {@link Prefs.scheme} names. Null is the theme. */
+	#dressing = $state<SchemeDressing | null>(null);
+	/** The tokens {@link PrefsStore.apply} last painted, so dressing the app
+	 *  again — or going back to a theme — takes exactly those off again. The
+	 *  inset vars also written inline on `<html>` are not ours to clear. */
+	#painted: string[] = [];
 
 	get current(): Prefs {
 		return this.#current;
 	}
 
+	/** The scheme dressing the app, or null where a theme is. */
+	get dressing(): SchemeDressing | null {
+		return this.#dressing;
+	}
+
 	get isDark(): boolean {
+		if (this.#dressing !== null) return this.#dressing.variant === 'dark';
 		return DARK_THEMES.includes(this.#current.theme);
 	}
 
@@ -410,10 +484,17 @@ class PrefsStore {
 	init(): void {
 		const base = defaults();
 		const saved = stored();
+		const scheme = slugIn(saved.scheme);
+		const cached = storedDressing();
+		// A slug with no tokens beside it is still the scheme somebody chose: what
+		// resolves one is the collection, and it can dress the app again later.
+		this.#dressing = cached !== null && cached.slug === scheme ? cached : null;
 		this.#current = {
 			theme: oneOf(saved.theme, THEMES, base.theme),
+			scheme,
 			accent: oneOf(saved.accent, ACCENTS, base.accent),
 			style: oneOf(saved.style, STYLES, base.style),
+			effect: oneOf(saved.effect, EFFECTS, base.effect),
 			font: oneOf(saved.font, FONTS, base.font),
 			tags: tagsIn(saved.tags),
 			ground: oneOf(saved.ground, GRAPH_GROUNDS, base.ground),
@@ -471,8 +552,39 @@ class PrefsStore {
 		this.set('views', trimViews(views));
 	}
 
+	/**
+	 * Dress the app in a scheme, or hand it back to the theme with null. The
+	 * dressing is cached under its own key for the shells' boot scripts, which
+	 * paint the first paint from it before this store has run.
+	 *
+	 * It takes the whole dressing rather than a slug and tokens: which way a
+	 * scheme's ground runs is the collection's own answer, and reading it back
+	 * out of the paint would be a second, weaker one.
+	 */
+	setScheme(dressing: SchemeDressing | null): void {
+		this.#dress(dressing === null ? null : dressingIn(dressing));
+		this.set('scheme', this.#dressing?.slug ?? null);
+	}
+
+	#dress(dressing: SchemeDressing | null): void {
+		this.#dressing = dressing;
+		try {
+			if (dressing === null) localStorage.removeItem(SCHEME_KEY);
+			else localStorage.setItem(SCHEME_KEY, JSON.stringify(dressing));
+		} catch {
+			// Memory already holds it; only the first paint of the next visit is
+			// lost, and this store dresses the app again as soon as it runs.
+		}
+	}
+
 	set<K extends keyof Prefs>(key: K, value: Prefs[K]): void {
 		const next: Prefs = { ...this.#current, [key]: value };
+		// A theme asked for in the Theme pills IS the theme, so whatever was
+		// dressing the app in place of one stands down.
+		if (key === 'theme' && this.#dressing !== null) {
+			next.scheme = null;
+			this.#dress(null);
+		}
 		// A graph, the canvas beside it, the pictures under them and how each
 		// folder was being read are refs the Sloppy being left minted; they mean
 		// nothing on the next one.
@@ -500,7 +612,21 @@ class PrefsStore {
 		if (typeof document === 'undefined') return;
 		const root = document.documentElement;
 		const p = this.#current;
-		root.setAttribute('data-theme', p.theme);
+		const dressing = this.#dressing;
+		for (const token of this.#painted) root.style.removeProperty(token);
+		this.#painted = [];
+		if (dressing === null) {
+			root.removeAttribute('data-scheme');
+		} else {
+			root.setAttribute('data-scheme', dressing.slug);
+			for (const [token, paint] of Object.entries(dressing.tokens)) {
+				root.style.setProperty(token, paint);
+				this.#painted.push(token);
+			}
+		}
+		// A scheme IS the theme while it dresses the app, and app.css keys the one
+		// thing it can still say about the ground off that value.
+		root.setAttribute('data-theme', dressing === null ? p.theme : 'scheme');
 		root.setAttribute('data-accent', p.accent);
 		// Absent IS the default style: app.css only ever keys off the opt-in value.
 		if (p.style === 'default') root.removeAttribute('data-style');
@@ -510,6 +636,8 @@ class PrefsStore {
 		// Absent IS comfortable, the same bargain the style and font axes make.
 		if (densityNow(p.density) === 'compact') root.setAttribute('data-density', 'compact');
 		else root.removeAttribute('data-density');
+		if (p.effect === 'none') root.removeAttribute('data-effect');
+		else root.setAttribute('data-effect', p.effect);
 		root.classList.toggle('dark', this.isDark);
 	}
 

@@ -15,7 +15,15 @@ import { initRuntime, runtime } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { identity } from '../stores/identity.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
-import { prefs } from '../stores/prefs.svelte.js';
+import {
+	ACCENTS,
+	DENSITIES,
+	EFFECTS,
+	FONTS,
+	prefs,
+	STYLES,
+	THEMES
+} from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { whatHappened } from '../stores/what-happened.svelte.js';
@@ -215,13 +223,16 @@ describe('a copy of everything somebody keeps', () => {
 });
 
 describe('settings', () => {
-	it('keeps the five axes of the look together', () => {
+	it('keeps the axes of the look together', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
-		for (const legend of ['Theme', 'Accent', 'Style', 'Font', 'How close it is drawn']) {
+		for (const legend of ['Theme', 'Accent', 'Style', 'Font', 'How close it is drawn', 'Screen']) {
 			expect(target.textContent).toContain(legend);
 		}
-		expect(target.querySelectorAll('input[type="radio"]').length).toBe(21);
+		const axes = [THEMES, ACCENTS, STYLES, FONTS, DENSITIES, EFFECTS];
+		expect(target.querySelectorAll('input[type="radio"]').length).toBe(
+			axes.reduce((all, axis) => all + axis.length, 0)
+		);
 	});
 
 	// The face is the one look choice somebody may not be able to read the page

@@ -41,13 +41,15 @@ export { session } from './stores/session.svelte.js';
 export {
 	ACCENT_LABELS,
 	ACCENTS,
+	EFFECT_LABELS,
+	EFFECTS,
 	prefs,
 	STYLE_LABELS,
 	STYLES,
 	THEME_LABELS,
 	THEMES
 } from './stores/prefs.svelte.js';
-export type { Accent, FolderView, Prefs, Style, Theme } from './stores/prefs.svelte.js';
+export type { Accent, Effect, FolderView, Prefs, Style, Theme } from './stores/prefs.svelte.js';
 export {
 	OPENING_STRENGTH,
 	openingWallpaper,

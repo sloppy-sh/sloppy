@@ -1,12 +1,17 @@
 /* Sloppy's design system. Consumers import it as `@sloppy/ui/styles`.
    DESIGN.md is the spec; this file is its implementation and adds no rule of
-   its own. Five orthogonal axes on <html>:
+   its own. Six orthogonal axes on <html>:
 
-     data-theme    → neutral/surface tokens   (paper | graphite | light | dark | contrast)
+     data-theme    → neutral/surface tokens   (paper | graphite | light | dark | contrast | scheme)
      data-accent   → --primary and its family (indigo | moss | rust | sea | iris | ochre | slate)
-     data-style    → how surfaces are DRAWN   (default | hardline); structural, never colour
+     data-style    → how surfaces are DRAWN   (hardline | bevel | terminal | pixel); structural, never colour
      data-app-font → both faces               (atkinson | opendyslexic | apple); absent is Inter
      data-density  → how close it is drawn    (compact); absent is comfortable
+     data-effect   → what the screen is like  (crt); a texture over the page, absent is plain
+
+   `data-theme="scheme"` is the one value with no block of its own: a scheme's
+   tokens are painted inline on <html> from the prefs store's cached dressing,
+   and `data-scheme` carries which one — DESIGN.md § Schemes.
 
    Bare :root carries the Paper + Indigo defaults, so first paint is right
    before the prefs store has set an attribute. */
@@ -421,6 +426,14 @@
 :root[data-style='hardline'] .shadow-2xl {
 	--tw-shadow: 8px 8px 0 0 var(--tw-shadow-color, var(--border));
 }
+
+/* The rest of the style axis, the effect axis and the schemes. Imported HERE
+   rather than at the top: all three key off :root, and a style block that
+   landed before the [data-theme] blocks would lose --border to the dark
+   families on specificity alone. */
+@import './styles.css';
+@import './effects.css';
+@import './schemes.css';
 
 /* ══ Font axis ═════════════════════════════════════════════════════════════
    DESIGN.md § Typography is the contract: the chosen family takes the address

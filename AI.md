@@ -406,12 +406,14 @@ UI change. In short:
 
 - **shadcn-svelte is the component vocabulary.** Use it wherever a component fits; don't
   hand-roll what shadcn covers. Components live in `@sloppy/ui`; the design system
-  (Tailwind v4 tokens, the three theme axes, the graph's colour language) is
+  (Tailwind v4 tokens, the axes below, the graph's colour language) is
   `@sloppy/ui`'s `app.css`, imported by the apps via `@sloppy/ui/styles`.
-- **Four orthogonal axes on `<html>`:** `data-theme` (surfaces), `data-accent`
-  (`--primary`), `data-style` (how surfaces are drawn — edges and elevation, never
-  colour), `data-app-font` (the face, for legibility, never colour). A style that names a
-  colour is a bug; see DESIGN.md.
+- **Six orthogonal axes on `<html>`:** `data-theme` (surfaces, or `scheme` with a
+  collection's tokens painted inline), `data-accent` (`--primary`), `data-style` (how
+  surfaces are drawn — edges and elevation, never colour), `data-app-font` (the face, for
+  legibility, never colour), `data-density` (how close it is drawn) and `data-effect` (what
+  the screen is like over it — a texture, never a colour or a shape). A style or an effect
+  that names a colour is a bug; see DESIGN.md.
 - **Mobile and tablet first.** Every surface is designed at phone width and then given
   room; at the dock width the same parts stand beside the graph instead of over it. An
   affordance only one of those arrangements has is a bug report against the phone layout.

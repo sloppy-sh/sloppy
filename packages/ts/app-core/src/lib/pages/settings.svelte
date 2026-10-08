@@ -13,6 +13,7 @@
 	import HistorySettings from '../components/history-settings.svelte';
 	import IdentitySettings from '../components/identity-settings.svelte';
 	import OpenHere from '../components/open-here.svelte';
+	import SchemePicker from '../components/scheme-picker.svelte';
 	import AiSettings from '../components/ai-settings.svelte';
 	import WhatHappened from '../components/what-happened.svelte';
 	import { graphHere } from '../graph-here.svelte.js';
@@ -30,6 +31,8 @@
 		asOrigin,
 		DENSITIES,
 		DENSITY_LABELS,
+		EFFECT_LABELS,
+		EFFECTS,
 		FONT_LABELS,
 		FONTS,
 		prefs,
@@ -198,6 +201,8 @@
 			</div>
 		</fieldset>
 
+		<SchemePicker />
+
 		<fieldset class="space-y-3">
 			<legend class="text-sm font-medium">Accent</legend>
 			<div class="flex flex-wrap gap-2">
@@ -259,6 +264,21 @@
 			<p class="text-sm text-muted-foreground">
 				Anything you tap stays big enough to tap, whatever you choose here.
 			</p>
+		</fieldset>
+
+		<fieldset class="space-y-3">
+			<legend class="text-sm font-medium">Screen</legend>
+			<div class="flex flex-wrap gap-2">
+				{#each EFFECTS as effect (effect)}
+					<ChoicePill
+						group="effect"
+						value={effect}
+						label={EFFECT_LABELS[effect]}
+						checked={prefs.current.effect === effect}
+						onpick={() => prefs.set('effect', effect)}
+					/>
+				{/each}
+			</div>
 		</fieldset>
 
 		{#if graphHere.open}

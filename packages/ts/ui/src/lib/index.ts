@@ -13,6 +13,9 @@ export type {
 	WithoutChildrenOrChild
 } from './utils.js';
 
+export { DRESSED_TOKENS } from './schemes/scheme.js';
+export type { DressedToken, SchemeDressing, SchemeTokens } from './schemes/scheme.js';
+
 export { overlay } from './components/overlay.svelte.js';
 export { default as ResponsiveModal } from './components/responsive-modal.svelte';
 export { default as SideDock } from './components/side-dock.svelte';

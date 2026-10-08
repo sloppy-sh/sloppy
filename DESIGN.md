@@ -45,15 +45,17 @@ light of a notebook page. First visit honours the OS colour-scheme: **light OS �
 **dark OS → Graphite** (pencil-grey, not black). After first visit the saved preference
 always wins. Themes are a client-side choice; no account required.
 
-### Token architecture (three independent axes)
+### Token architecture (the axes on `<html>`)
 
 shadcn tokens drive everything (`--background --foreground --card --popover --muted
---secondary --accent --border --input --ring --primary --destructive` …). Three
-orthogonal axes on `<html>` so people mix freely:
+--secondary --accent --border --input --ring --primary --destructive` …). Four orthogonal
+axes carry the look, and the font (§ Typography) and density (§ Layout) axes stand beside
+them — six in all, mixed freely:
 
 1. **Theme preset** → neutral/surface tokens.
    `data-theme="paper|graphite|light|dark|contrast"`. Dark-family themes (graphite, dark)
-   also carry the `dark` class so Tailwind `dark:` variants work.
+   also carry the `dark` class so Tailwind `dark:` variants work. `data-theme="scheme"` is
+   the one value with no block of its own — see "Schemes" below.
 2. **Accent preset** → `--primary`, `--primary-foreground`, `--ring`, plus the derived
    `--primary-mark`. `data-accent="indigo|moss|rust|sea|iris|ochre|slate"`. Every accent
    composes with every theme. **Do not assume a pairing clears a contrast floor because
@@ -61,14 +63,18 @@ orthogonal axes on `<html>` so people mix freely:
    `--primary-mark` and a fill (a button, a chip) with `--primary`, and see "Contrast is
    measured, not assumed" below.
 3. **Style preset** → how surfaces are DRAWN: edges and elevation, never colour.
-   `data-style="default|hardline"`, absent when default (same convention as
-   `data-app-font`).
+   `data-style="default|hardline|bevel|terminal|pixel"`, absent when default (same
+   convention as `data-app-font`).
+4. **Effect** → how the screen is drawn over: a texture, never a colour or a shape.
+   `data-effect="crt"`, absent when plain — see "The effect axis" below.
 
 CSS lives in `packages/ts/ui/src/lib/app.css` as `:root[data-theme="x"] { … }`,
 `:root[data-accent="y"] { --primary: … }` and `:root[data-style="z"] { … }` blocks, plus
-the Tailwind v4 `@theme inline` mapping. The app root layout sets the attributes from the
-prefs store before content renders (inline head script) so there is no flash of the wrong
-theme.
+the Tailwind v4 `@theme inline` mapping. The rest of the style axis, the effect axis and
+the schemes are `styles.css`, `effects.css` and `schemes.css` beside it, imported from it
+after the Hardline block so a style block still lands after every `[data-theme]` one. The
+app root layout sets the attributes from the prefs store before content renders (inline
+head script) so there is no flash of the wrong theme.
 
 A correction that applies to a set of themes is written as the pairings it corrects, never
 as a `:not()` exclusion: `token-contrast.test.ts` reads the stylesheet and skips `:not()`,
@@ -141,10 +147,20 @@ which lands near-black on a light theme and near-white on a dark one, and stays
 translucent edge picks up whatever it is composited over. Anything in a style block that
 names a literal colour is a bug.
 
-| Preset      | Edge                      | Elevation             | Radius     |
-| ----------- | ------------------------- | --------------------- | ---------- |
-| **Default** | 1px hairline              | soft blurred shadow   | `0.625rem` |
-| Hardline    | 2px ink, 2/4/4/2 on boxes | hard offset, blurless | `0.375rem` |
+| Preset      | Edge                              | Elevation                 | Radius     |
+| ----------- | --------------------------------- | ------------------------- | ---------- |
+| **Default** | 1px hairline                      | soft blurred shadow       | `0.625rem` |
+| Hardline    | 2px ink, 2/4/4/2 on boxes         | hard offset, blurless     | `0.375rem` |
+| Bevel       | two-tone inset/outset, 2px        | the edge IS the lift      | `0`        |
+| Terminal    | 1px hairline rules only           | none                      | `0`        |
+| Pixel       | stepped 2px, corners read as dots | hard 3px offset, blurless | `0`        |
+
+Bevel is System 7 and Windows 98: the two tones are mixed from the theme's own foreground
+and background, and a pressed control inverts them, so the lift is drawn by the edge
+rather than by a shadow. Terminal is rules and nothing else, with a caret-like focus ring;
+it pairs with a monospace face, and the person chooses that on the font axis — **a style
+never names a font any more than it names a colour.** Pixel builds its edge out of
+box-shadows so the corners step, which is also where its offset comes from.
 
 Four things a style must get right, and each is a place a style ships looking half-done:
 
@@ -166,6 +182,38 @@ Four things a style must get right, and each is a place a style ships looking ha
 **The canvas is exempt from `data-style`.** Node and edge geometry is drawn by pixi from
 numeric colours, and a hard offset shadow on ten thousand marks is both unreadable and
 unaffordable. The style changes the chrome around the graph and nothing inside it.
+
+### The effect axis (`data-effect`) — what the screen is like
+
+`data-effect="crt"` draws the page as though it were on a tube: scanlines and a soft
+vignette over everything, a faint phosphor glow on text. Absent is plain, the same
+convention the style and font axes keep. Three rules, and each is a way an effect ships
+broken:
+
+- **An effect is a texture, never a colour and never a shape.** It mixes from
+  `--foreground` toward transparent, exactly as a style derives `--border`, so it composes
+  with every theme and with every scheme. A literal colour in an effect block is a bug.
+- **Nothing a pointer can land on.** The overlay is `pointer-events: none` on a
+  pseudo-element; an effect that eats a tap has eaten the product.
+- **No animation under `prefers-reduced-motion`.** A flicker is the one part of a tube
+  nobody can opt out of by looking away, so it is the first part to go.
+
+### Schemes — a theme as data
+
+A **scheme** is a theme somebody picks out of a collection rather than one we wrote: the
+Tinted Theming base16/base24 schemes, vendored whole. `base00` becomes the surface and
+`base05` the ink; `base01`–`base04` become cards, muted surfaces, borders and muted ink;
+`base08`–`base0F` become the eight facet hues — each facet's **lightness moved in OKLCH
+until it clears the canvas's 3:1 floor and the slot distance on that scheme's own
+surface**, hue kept, never used raw. A scheme that is picked sets `data-theme="scheme"`
+and `data-scheme="<slug>"` on `<html>` with its tokens written inline as custom
+properties, and the `dark` class from the scheme's own variant.
+
+**A scheme is the theme axis and nothing else.** Accent, style, font and density stay the
+person's, so a scheme does not set `--primary`; asking for a theme in the Theme pills
+stands the scheme down. The tokens are cached beside the saved look so the shells' boot
+scripts paint them before the first paint, and `data-scheme` is what the canvas watches —
+two schemes differ in it alone.
 
 ## The graph's colour language
 
@@ -1982,9 +2030,11 @@ states. Empty states invite; they don't apologize. Icons: lucide, one weight.
 ## Persistence
 
 A single client-side prefs store (`localStorage`, key `sloppy_prefs`) holds
-`{ theme, accent, style, font }`, applied to `<html>` data-attributes as early as
-possible (inline head script) to avoid a flash of the wrong theme. No account required;
-choices carry over if someone signs in.
+`{ theme, scheme, accent, style, effect, font }`, applied to `<html>` data-attributes as
+early as possible (inline head script) to avoid a flash of the wrong theme. A scheme's
+tokens are the one part of the look too big for that object: they are cached under
+`sloppy_scheme` and painted inline on `<html>` by the same script (§ Schemes). No account
+required; choices carry over if someone signs in.
 
 The same store holds the view choices that are nobody's business but this device's — the
 tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
@@ -2016,3 +2066,15 @@ so two surfaces cannot write over each other. Three rules hold it:
   key here is scoped to the identity that wrote it.
 - **None of it reaches a note or a peer.** It is this device's, like the ground and the
   theme, and nobody else can tell it exists.
+
+## Eggs
+
+Sloppy is allowed to be fun, and three lines bound it:
+
+- **Nothing a person needs is behind one.** An egg is never the way to reach a feature, a
+  setting or a piece of their writing.
+- **An egg never nags.** It is not announced, not counted, not a streak, and it leaves the
+  app exactly as it found it.
+- **An egg names no colour the hue rule does not already lend.** It borrows the facets and
+  the depth ramp like everything else on the canvas, so it cannot make the graph say
+  something the reader did not ask it.
