@@ -74,19 +74,27 @@ function painted(dressing: SchemeDressing, token: string): Oklch {
 }
 
 /** The tokens the mapping works out rather than taking from the scheme: the
- *  eight slots, and an ink lifted to read on its own surface. */
+ *  eight slots, and a mark lifted to read on its own surface. */
 const DERIVED = new Set<string>([
 	'--card-foreground',
 	'--popover-foreground',
 	'--secondary-foreground',
 	'--accent-foreground',
 	'--muted-foreground',
+	'--destructive',
 	...SLOTS.map((slot) => `--facet-${slot}`)
 ]);
 
-/** Each ink and a surface it lands on. The secondary line lands on three of
- *  them, because an unselected pill draws it on a card and the page draws it on
- *  itself. */
+/** At or under this chroma a colour is a neutral in this design system
+ *  (DESIGN.md § "Theme presets"), and a neutral has no hue to lend. */
+const NEUTRAL_CHROMA = 0.02;
+
+/** The eight a scheme's slots are taken from. */
+const FACET_KEYS = BASE_KEYS.slice(8);
+
+/** Each ink and a surface it lands on. The secondary line and the alarm land on
+ *  three of them, because an unselected pill draws them on a card and the page
+ *  draws them on itself. */
 const INKS = [
 	['--foreground', '--background'],
 	['--card-foreground', '--card'],
@@ -96,8 +104,59 @@ const INKS = [
 	['--muted-foreground', '--muted'],
 	['--muted-foreground', '--background'],
 	['--muted-foreground', '--card'],
-	['--muted-foreground', '--popover']
+	['--muted-foreground', '--popover'],
+	['--destructive', '--background'],
+	['--destructive', '--card'],
+	['--destructive', '--muted'],
+	['--destructive-foreground', '--destructive']
 ] as const;
+
+/** The inks that are the scheme's own ink lifted onto a surface, which is every
+ *  ink but the secondary line and the alarm — each drawn from its own colour. */
+const FROM_INK = new Set<string>([
+	'--foreground',
+	'--card-foreground',
+	'--popover-foreground',
+	'--secondary-foreground',
+	'--accent-foreground'
+]);
+
+/** The eight a scheme drew, in the order the slots take them. */
+function ownHues(scheme: Scheme): Oklch[] {
+	return FACET_KEYS.map((key) => colour(scheme.palette[key])).sort((a, b) => a.h - b.h);
+}
+
+function paintedHues(dressing: SchemeDressing): number[] {
+	return SLOTS.map((slot) => painted(dressing, `--facet-${slot}`).h);
+}
+
+/** Whether these eight hues are the ones `app.css` declares. */
+function sloppys(hues: readonly number[]): boolean {
+	return hues.every((hue, at) => Math.abs(hue - declaredAt(SLOTS[at]).h) < 1.5);
+}
+
+/** Whether the canvas is wearing Sloppy's eight rather than the scheme's. A
+ *  scheme whose own eight happen to BE that wheel is wearing its own. */
+function borrows(scheme: Scheme, dressing: SchemeDressing): boolean {
+	return sloppys(paintedHues(dressing)) && !sloppys(ownHues(scheme).map((one) => one.h));
+}
+
+/** How far the opening stood a slot from the hue the scheme drew it at, in
+ *  degrees. The eight keep the scheme's own order round the circle, so the
+ *  pairing is the one rotation of them that fits best. */
+function openedBy(scheme: Scheme, dressing: SchemeDressing): number {
+	const own = ownHues(scheme).map((one) => one.h);
+	const hues = paintedHues(dressing);
+	const away = (one: number, other: number): number => {
+		const gap = Math.abs(one - other) % 360;
+		return Math.min(gap, 360 - gap);
+	};
+	return Math.min(
+		...own.map((_, turn) =>
+			Math.max(...hues.map((hue, at) => away(hue, own[(at + turn) % own.length])))
+		)
+	);
+}
 
 const collection = await schemes();
 
@@ -169,7 +228,7 @@ describe('what the picker offers', () => {
 	});
 
 	it('leaves out only what cannot carry what a person reads', () => {
-		const why = { ink: 0, line: 0, marks: 0 };
+		const why = { ink: 0, line: 0, rest: 0 };
 		for (const scheme of skipped) {
 			const paper = colour(scheme.palette.base00);
 			if (contrastRatio(colour(scheme.palette.base05), paper) < TEXT_FLOOR) {
@@ -181,13 +240,13 @@ describe('what the picker offers', () => {
 				// the secondary line, read on all three of its surfaces.
 				why.line += 1;
 			} else {
-				// Nothing in the collection reaches here: a scheme whose surfaces
-				// leave the eight slots nowhere to stand has nowhere for the
-				// secondary line either, so the line accounts for it first.
-				why.marks += 1;
+				// Nothing in the collection reaches here: a scheme with nowhere to
+				// stand its eight slots, or its alarm, has nowhere for the secondary
+				// line either, so the line accounts for it first.
+				why.rest += 1;
 			}
 		}
-		expect(why).toEqual({ ink: 44, line: 27, marks: 0 });
+		expect(why).toEqual({ ink: 44, line: 27, rest: 0 });
 	});
 
 	it('is what legible() answers for, scheme by scheme', () => {
@@ -262,7 +321,7 @@ describe('what a person reads a scheme by', () => {
 		for (const { scheme, dressing } of dressed) {
 			expect(dressing.tokens['--foreground']).toBe(scheme.palette.base05);
 			const ink = painted(dressing, '--foreground');
-			for (const [token, surface] of INKS.filter(([one]) => one !== '--muted-foreground')) {
+			for (const [token, surface] of INKS.filter(([one]) => FROM_INK.has(one))) {
 				const on = painted(dressing, surface);
 				if (contrastRatio(ink, on) >= TEXT_FLOOR) {
 					expect(dressing.tokens[token], `${dressing.slug} ${token}`).toBe(
@@ -278,10 +337,15 @@ describe('what a person reads a scheme by', () => {
 		}
 	});
 
-	it("draws a destructive act in the scheme's own alarm, read by whichever end carries it", () => {
+	it("draws a destructive act in the scheme's own alarm, lifted like every other ink", () => {
 		for (const { scheme, dressing } of dressed) {
-			expect(dressing.tokens['--destructive']).toBe(scheme.palette.base08);
+			const own = colour(scheme.palette.base08);
 			const alarm = painted(dressing, '--destructive');
+			const surfaces = ['--background', '--card', '--muted'].map((on) => painted(dressing, on));
+			if (surfaces.every((on) => contrastRatio(own, on) >= TEXT_FLOOR)) {
+				expect(dressing.tokens['--destructive'], dressing.slug).toBe(scheme.palette.base08);
+			}
+			expect(alarm.c, `${dressing.slug} alarm chroma`).toBeLessThanOrEqual(own.c + 0.005);
 			const ends = [painted(dressing, '--background'), painted(dressing, '--foreground')];
 			const on = painted(dressing, '--destructive-foreground');
 			expect(ends, dressing.slug).toContainEqual(on);
@@ -342,51 +406,68 @@ describe('the eight hues a tag borrows', () => {
 		}
 	});
 
-	it('runs in hue order, slot by slot', () => {
+	it('runs in hue order, slot by slot, once round the circle', () => {
 		for (const { dressing } of dressed) {
-			const hues = SLOTS.map((slot) => painted(dressing, `--facet-${slot}`).h);
-			expect(hues, dressing.slug).toEqual([...hues].sort((a, b) => a - b));
+			const hues = paintedHues(dressing);
+			// Counted round the circle rather than along a sorted list: a ring whose
+			// first slot lands a fraction below zero paints a hue near 360.
+			const backwards = hues.filter((hue, at) => hue > hues[(at + 1) % hues.length]);
+			expect(backwards, dressing.slug).toHaveLength(1);
 		}
 	});
 
-	// A scheme with one hue in its eight asks one question eight times. It keeps
-	// its own sixteen in the picker and borrows Sloppy's hues for the canvas.
-	it("is Sloppy's own where a scheme has no eight to lend", () => {
-		const dressing = dress(oneHue);
-		if (dressing === null) throw new Error('a scheme with one hue is still a scheme');
-		for (const slot of SLOTS) {
-			const facet = painted(dressing, `--facet-${slot}`);
-			const declared = declaredAt(slot);
-			expect(Math.abs(facet.h - declared.h), `slot ${slot} hue`).toBeLessThan(1.5);
-			expect(facet.c, `slot ${slot} chroma`).toBeLessThanOrEqual(declared.c + 1e-3);
+	// The count is the other thing a sweep of passing floors cannot show: a
+	// mapping that answered every scheme with the same eight hues would clear
+	// every assertion above it.
+	it('is the hues the scheme drew, opened where it drew two of them too close', () => {
+		const reach = { itsOwn: 0, under5: 0, under30: 0, beyond: 0 };
+		let worst = 0;
+		for (const { scheme, dressing } of dressed) {
+			if (borrows(scheme, dressing)) continue;
+			const moved = openedBy(scheme, dressing);
+			worst = Math.max(worst, moved);
+			if (moved < 1) reach.itsOwn += 1;
+			else if (moved < 5) reach.under5 += 1;
+			else if (moved < 30) reach.under30 += 1;
+			else reach.beyond += 1;
 		}
+		expect(reach).toEqual({ itsOwn: 86, under5: 76, under30: 312, beyond: 18 });
+		// A scheme that crowds its eight into one arc has them opened until they
+		// are apart, which at the limit is an even wheel of its own hues.
+		expect(worst).toBeLessThan(150);
+	});
+
+	// A scheme that asked one question eight times keeps its own sixteen colours
+	// in the picker and borrows Sloppy's hues for the canvas.
+	it("is Sloppy's own only where a scheme has one hue in its eight, or none", () => {
+		const borrowing = dressed.filter(({ scheme, dressing }) => borrows(scheme, dressing));
+		expect(borrowing.map(({ scheme }) => scheme.slug)).toEqual([
+			'base16-berlin',
+			'base24-berlin',
+			'base16-grayscale-dark',
+			'base16-grayscale-light',
+			'base16-greenscreen',
+			'base16-london',
+			'base24-london',
+			'base16-sequoia-monochrome-light'
+		]);
+		const why = { noHue: 0, oneHue: 0 };
+		for (const { scheme, dressing } of borrowing) {
+			for (const slot of SLOTS) {
+				const facet = painted(dressing, `--facet-${slot}`);
+				expect(facet.c, `${scheme.slug} slot ${slot} chroma`).toBeLessThanOrEqual(
+					declaredAt(slot).c + 0.005
+				);
+			}
+			const own = ownHues(scheme);
+			if (own.every((one) => one.c <= NEUTRAL_CHROMA)) {
+				why.noHue += 1;
+				continue;
+			}
+			const hues = own.map((one) => one.h);
+			expect(Math.max(...hues) - Math.min(...hues), scheme.slug).toBeLessThan(6);
+			why.oneHue += 1;
+		}
+		expect(why).toEqual({ noHue: 6, oneHue: 2 });
 	});
 });
-
-/** A scheme whose eight are one colour, which no collection ships and every
- *  mapping has to answer for. */
-const oneHue: Scheme = {
-	system: 'base16',
-	slug: 'base16-one-hue',
-	name: 'One hue',
-	author: '',
-	variant: 'dark',
-	palette: {
-		base00: '#101010',
-		base01: '#1a1a1a',
-		base02: '#242424',
-		base03: '#3a3a3a',
-		base04: '#6a6a6a',
-		base05: '#e8e8e8',
-		base06: '#f0f0f0',
-		base07: '#ffffff',
-		base08: '#8a6d3b',
-		base09: '#8a6d3b',
-		base0A: '#8a6d3b',
-		base0B: '#8a6d3b',
-		base0C: '#8a6d3b',
-		base0D: '#8a6d3b',
-		base0E: '#8a6d3b',
-		base0F: '#8a6d3b'
-	}
-};
