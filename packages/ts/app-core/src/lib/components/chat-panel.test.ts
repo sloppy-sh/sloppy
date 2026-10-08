@@ -1102,3 +1102,28 @@ describe('how full the window is', () => {
 		expect(chartShown()).toBeNull();
 	});
 });
+
+describe('the draft on the canvas', () => {
+	/** The page answers by putting state up and the address bar with it, and
+	 *  reads its own state to do so. None of that is the panel's to react to:
+	 *  seen 2026-10-08 as replaceState called past the browser's limit. */
+	it('tells the page once, whatever the page reads and writes in answer', async () => {
+		const told: unknown[] = [];
+		mounted = mount(ChatPanel, {
+			target,
+			props: {
+				open: true,
+				onOpen: () => {},
+				onShowDraft: (shown) => {
+					told.push(shown);
+					// Reads reactive state and writes it, the way the page does.
+					prefs.set('walking', !prefs.current.walking);
+				}
+			}
+		});
+		flushSync();
+		await settle();
+
+		expect(told).toHaveLength(1);
+	});
+});

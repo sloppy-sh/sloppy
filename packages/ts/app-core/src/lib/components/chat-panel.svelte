@@ -23,7 +23,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { Textarea } from '@sloppy/ui/textarea';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { readCall, spentSaid } from '../chat-said.js';
 	import {
 		DISCARD_COSTS,
@@ -189,9 +189,12 @@
 
 	// The canvas draws the two states for exactly as long as the review is the
 	// thing in front of somebody — DESIGN.md § "Reading a draft".
+	// What the page does with it is its own: whatever it reads while it puts
+	// the two states up must not become a reason to put them up again.
 	$effect(() => {
 		const held = open && reviewing ? chatDraft.read : null;
-		onShowDraft?.(held && !held.nothing ? draftOnTheCanvas(held) : null);
+		const shown = held && !held.nothing ? draftOnTheCanvas(held) : null;
+		untrack(() => onShowDraft?.(shown));
 	});
 
 	onDestroy(() => onShowDraft?.(null));
