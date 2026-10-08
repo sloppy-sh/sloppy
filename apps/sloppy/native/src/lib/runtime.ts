@@ -18,6 +18,7 @@ import {
 	type Files,
 	type IdentityAccess
 } from '@sloppy/local';
+import { ulid } from '@sloppy/types';
 import { Refusal } from '@sloppy/ui';
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -178,6 +179,18 @@ async function askPlace(files: Files): Promise<KnownFolder | undefined> {
 	return { root, graph: await graphIn(files, root), reachable: true };
 }
 
+/** The folder somebody keeps a graph in is this app's own: one under its data,
+ *  named by nothing a person would read, and listed like the ones they chose.
+ *  The graph in it is started the first time it is read. */
+async function startHere(files: Files): Promise<string> {
+	const own = await files.dataPath();
+	const inside = `graphs/${ulid()}`;
+	await files.at(own).mkdir(inside);
+	const root = `${own}/${inside}`;
+	await open(files, root);
+	return root;
+}
+
 async function openProject(files: Files): Promise<string | undefined> {
 	const root = await files.pickFolder('project');
 	if (!root) return undefined;
@@ -332,6 +345,7 @@ export function initNativeRuntime(): void {
 									openKnown: (root: string) => open(device, root),
 									forget: (root: string) => forget(device, root),
 									start: () => openFolder(device),
+									startHere: () => startHere(device),
 									openProject: () => openProject(device),
 									// Absent where this shell has no way to bring a folder over.
 									...(device.clone

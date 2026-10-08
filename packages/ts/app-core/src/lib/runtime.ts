@@ -98,6 +98,11 @@ export interface VaultAccess {
 	 *  a folder that holds a graph, or starting one that will.
 	 *  `undefined` is somebody who named none. */
 	start?(): Promise<string | undefined>;
+	/** Start a graph in a place of this app's own, for somebody with no folder
+	 *  to choose: it is kept with the rest of what this device keeps and listed
+	 *  like any other. Resolves with the folder now open. Absent is a shell
+	 *  that keeps graphs only where a person puts them. */
+	startHere?(): Promise<string | undefined>;
 	/** A copy of a graph kept somewhere else, brought onto this device.
 	 *  `undefined` is somebody who chose not to say where to put it. */
 	clone?(url: string, credential?: Credential): Promise<string | undefined>;

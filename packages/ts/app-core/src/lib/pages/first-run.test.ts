@@ -698,3 +698,37 @@ describe('the folders this device already knows', () => {
 		expect(target.textContent).not.toContain('Pick an empty one');
 	});
 });
+
+describe('a graph kept by Sloppy itself', () => {
+	it('is offered where the shell has a place of its own, and opened by it', async () => {
+		let started = 0;
+		shell({
+			startHere: async () => {
+				started += 1;
+				return '/data/graphs/01J';
+			}
+		});
+		show();
+
+		const offer = [...target.querySelectorAll('button')].find(
+			(one) => one.textContent?.trim() === 'Start a graph here'
+		);
+		expect(offer).toBeDefined();
+		offer?.click();
+		await settle();
+
+		expect(started).toBe(1);
+		expect(opened).toEqual(['/data/graphs/01J']);
+	});
+
+	it('is not offered where the shell keeps graphs only where a person puts them', () => {
+		shell({});
+		show();
+
+		expect(
+			[...target.querySelectorAll('button')].some(
+				(one) => one.textContent?.trim() === 'Start a graph here'
+			)
+		).toBe(false);
+	});
+});

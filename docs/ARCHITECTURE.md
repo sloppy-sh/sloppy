@@ -3047,7 +3047,9 @@ for a folder and one for a server, and both count the same way.
 
 **A tab is an open folder.** The native shell keeps the list of the ones open and which is
 in front — `vault.json` is `{ open, active }`, beside the known list in `vaults.json` — and
-offers it to app-core as `TabsAccess` (`held`, `close`, `changed`). A folder is OPENED as a
+offers it to app-core as `TabsAccess` (`held`, `close`, `changed`). `VaultAccess.startHere`
+is the one way to open a folder nobody chose: a graph of the app's own under its data
+(`graphs/<ulid>`), served and listed like any other. A folder is OPENED as a
 tab through `VaultAccess` itself, so `openKnown`, `start`, `openProject` and `clone` each
 add one where it is not open and make it active. A shell that defines no `TabsAccess` opens
 one folder at a time and nothing about tabs is put in front of anybody, which is every

@@ -263,6 +263,21 @@ class GraphsStore {
 		return true;
 	}
 
+	/** Whether a graph can be started with no folder to choose. */
+	get startsHere(): boolean {
+		return seam().vault()?.startHere !== undefined;
+	}
+
+	/** Begin a graph in a place of this app's own. False is a shell with no
+	 *  such place. */
+	async startHere(): Promise<boolean> {
+		const vault = runtime.vault();
+		if (!vault?.startHere) return false;
+		if ((await vault.startHere()) === undefined) return false;
+		await this.folderChanged();
+		return true;
+	}
+
 	/** Begin a graph in a folder somebody names. False is somebody who named
 	 *  none, which is not a failure. */
 	async startFolder(): Promise<boolean> {

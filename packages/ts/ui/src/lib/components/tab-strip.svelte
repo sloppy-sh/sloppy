@@ -11,8 +11,7 @@
 		tabs: readonly OpenTab[];
 		onSwitch: (root: string) => void;
 		onClose: (root: string) => void;
-		/** The `+`: another folder chosen on this device, which starts a graph in
-		 *  one that holds none. */
+		/** The `+`: the choices of what to open next. */
 		onOpen: () => void;
 		/** Words for a person about an act that did not happen. Whoever put it
 		 *  there takes it away. */
@@ -143,7 +142,7 @@
 		<Button
 			variant="ghost"
 			size="icon"
-			aria-label="Choose a folder"
+			aria-label="Open another"
 			class="min-h-control min-w-control shrink-0 self-center rounded-md text-foreground/60 hover:bg-muted/70 hover:text-foreground"
 			onclick={() => onOpen()}
 		>

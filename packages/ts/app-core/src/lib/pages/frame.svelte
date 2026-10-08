@@ -5,7 +5,7 @@
 
 	// The chrome and the gate every page sits inside. Both shells mount it from
 	// their root layout, which is all a shell knows about any of this.
-	import { AppShell, TabStrip } from '@sloppy/ui';
+	import { AppShell, ResponsiveModal, TabStrip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import type { Snippet } from 'svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -28,6 +28,7 @@
 	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tabs } from '../stores/tabs.svelte.js';
+	import OpenAnother from '../components/open-another.svelte';
 	import { tags } from '../stores/tags.svelte.js';
 	import {
 		activeRouteId,
@@ -166,6 +167,9 @@
 
 	onDestroy(() => clearTimeout(clearing));
 
+	/** The choices behind the strip's +. */
+	let openingAnother = $state(false);
+
 	async function onTheStrip(act: () => Promise<unknown>, otherwise: string): Promise<void> {
 		sayOnTheStrip(undefined);
 		try {
@@ -209,13 +213,17 @@
 		onSwitch={(root) =>
 			void onTheStrip(() => tabs.switchTo(root), 'That folder could not be opened.')}
 		onClose={(root) => void onTheStrip(() => tabs.close(root), 'That folder could not be closed.')}
-		onOpen={() =>
-			void onTheStrip(
-				() => tabs.openWith(() => graphs.startFolder()),
-				'That folder could not be opened.'
-			)}
+		onOpen={() => (openingAnother = true)}
 	/>
 {/snippet}
+
+<ResponsiveModal
+	bind:open={openingAnother}
+	title="Open another"
+	description="A graph of its own, a project's notes, or a folder you choose."
+>
+	<OpenAnother onDone={() => (openingAnother = false)} />
+</ResponsiveModal>
 
 <AppShell
 	top={tabs.shows ? strip : undefined}

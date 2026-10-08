@@ -1327,7 +1327,9 @@ nothing under it.
   above the card, and it is the same part in both. A tap puts that folder in front, and
   everything beside the graph follows it — the column, the docks, the chat's threads, the
   history. The strip is what publishes `--app-chrome-top` (§ "The four inset vars"). It
-  stands from the first folder, because its `+` is where the next one is opened — chrome
+  stands from the first folder, because its `+` is where the next one is opened: the
+  choices of a graph of its own kept by Sloppy on this device, a project, a folder of theirs,
+  and where they have been writing, in the one modal, the same choices the first run makes — chrome
   with one tab is not empty chrome — and the only folder open offers no close, since it
   stays open whatever is asked. A device that keeps its graphs in one place has no tabs and
   no strip.

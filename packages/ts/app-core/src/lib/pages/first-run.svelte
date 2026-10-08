@@ -19,13 +19,14 @@
 	const vault = runtime.vault();
 	const identities = runtime.identities();
 	const openProject = vault?.openProject?.bind(vault);
+	const startHere = vault?.startHere?.bind(vault);
 	const knownFolders = vault?.known?.bind(vault);
 	const openKnown = vault?.openKnown?.bind(vault);
 	const forgetFolder = vault?.forget?.bind(vault);
 
 	/** Which folder somebody is being asked for, so the one they pressed is the
 	 *  button that says it is working. Null is nobody being asked anything. */
-	let opening = $state<'folder' | 'project' | 'known' | null>(null);
+	let opening = $state<'folder' | 'project' | 'here' | 'known' | null>(null);
 	/** The row being opened, where it is one of the folders on the list. */
 	let openingFolder = $state<string | null>(null);
 	let problem = $state<string | null>(null);
@@ -102,9 +103,10 @@
 		return true;
 	}
 
-	async function begin(where: 'folder' | 'project' = 'folder') {
+	async function begin(where: 'folder' | 'project' | 'here' = 'folder') {
 		if (!vault) return;
-		const ask = where === 'project' ? openProject : vault.open.bind(vault);
+		const ask =
+			where === 'project' ? openProject : where === 'here' ? startHere : vault.open.bind(vault);
 		if (!ask) return;
 		opening = where;
 		problem = null;
@@ -218,6 +220,28 @@
 					Start writing
 				{/if}
 			</Button>
+
+			{#if startHere}
+				<div class="space-y-2 pt-1">
+					<p class="text-xs text-muted-foreground">
+						Or a graph of its own, kept by Sloppy on this device, with no folder to choose.
+					</p>
+					<Button
+						type="button"
+						variant="outline"
+						disabled={opening !== null}
+						aria-busy={opening === 'here'}
+						class="h-control w-full"
+						onclick={() => void begin('here')}
+					>
+						{#if opening === 'here'}
+							One moment…
+						{:else}
+							Start a graph here
+						{/if}
+					</Button>
+				</div>
+			{/if}
 
 			{#if openProject}
 				<div class="space-y-2 pt-1">

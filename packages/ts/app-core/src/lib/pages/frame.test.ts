@@ -431,7 +431,7 @@ describe('the folders open above the page', () => {
 			[...(strip()?.querySelectorAll('[role="tab"]') ?? [])].map((one) => one.textContent)
 		).toEqual(['garden']);
 		expect(closes('garden')).toBeNull();
-		expect(target.querySelector('[aria-label="Choose a folder"]')).not.toBeNull();
+		expect(target.querySelector('[aria-label="Open another"]')).not.toBeNull();
 		expect(target.textContent).toContain('The graph');
 	});
 
@@ -447,6 +447,18 @@ describe('the folders open above the page', () => {
 		expect(strip()).not.toBeNull();
 		expect(closes('thesis')).toBeNull();
 		expect(target.textContent).toContain('The graph');
+	});
+
+	it('open the choices of what to open next from the +', async () => {
+		holding([GARDEN], GARDEN);
+		await show();
+
+		target.querySelector<HTMLButtonElement>('[aria-label="Open another"]')?.click();
+		await settle();
+
+		const shown = document.body.textContent?.replace(/\s+/g, ' ') ?? '';
+		expect(shown).toContain('Open another');
+		expect(shown).toContain("A graph of its own, a project's notes, or a folder you choose.");
 	});
 
 	it('say what the shell would not do, in the words it said it in', async () => {

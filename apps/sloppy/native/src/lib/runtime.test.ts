@@ -122,6 +122,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 					.filter((path) => path.startsWith(under))
 					.map((path) => path.slice(under.length));
 			}
+			case 'files_mkdir':
+				return undefined;
 			default:
 				return null;
 		}
@@ -573,6 +575,20 @@ describe('the folders this device keeps its graphs in', () => {
 		expect(gone.root).toBe(GARDEN);
 		expect(gone.reachable).toBe(false);
 		expect(gone.graph).toBeUndefined();
+	});
+
+	it('gain one started in a place of this app’s own, opened and kept like the rest', async () => {
+		knowsBoth();
+		const shell = await launch();
+		await shell.openRememberedVault();
+
+		const root = await registered.vault?.startHere?.();
+
+		expect(root).toMatch(/^\/data\/graphs\/[0-9A-Z]{26}$/);
+		expect(servedFrom()).toBe(root);
+		const tabs = JSON.parse(atob(held.get('/data/vault.json') ?? ''));
+		expect(tabs.open).toContain(root);
+		expect(tabs.active).toBe(root);
 	});
 
 	it('are opened by naming one, which is the graph in front of somebody then', async () => {

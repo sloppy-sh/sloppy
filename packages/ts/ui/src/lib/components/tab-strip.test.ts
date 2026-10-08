@@ -66,7 +66,7 @@ describe('the strip of folders open', () => {
 
 		expect(folders().map((one) => one.textContent)).toEqual(['The garden']);
 		expect(named('Close The garden')).toBeNull();
-		expect(named('Choose a folder')).not.toBeNull();
+		expect(named('Open another')).not.toBeNull();
 		folders()[0]?.dispatchEvent(
 			new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true })
 		);
@@ -115,7 +115,7 @@ describe('the strip of folders open', () => {
 	it('opens another folder from the one control for it', () => {
 		render();
 
-		named('Choose a folder')?.click();
+		named('Open another')?.click();
 		flushSync();
 
 		expect(opened).toBe(1);
@@ -184,11 +184,11 @@ describe('the strip of folders open', () => {
 	it('gives every folder and every control a target a finger can hit', () => {
 		render();
 
-		for (const one of [...folders(), named('Close The garden'), named('Choose a folder')]) {
+		for (const one of [...folders(), named('Close The garden'), named('Open another')]) {
 			expect(one?.className).toContain('min-h-control');
 		}
 		expect(named('Close The garden')?.className).toContain('min-w-control');
-		expect(named('Choose a folder')?.className).toContain('min-w-control');
+		expect(named('Open another')?.className).toContain('min-w-control');
 	});
 
 	it('says what did not happen in the words it was handed', () => {

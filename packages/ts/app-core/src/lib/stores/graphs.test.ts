@@ -701,6 +701,27 @@ describe('the folders this device keeps its graphs in', () => {
 		expect(graphs.folders.map((one) => one.root)).toEqual([GARDEN_FOLDER, THESIS_FOLDER]);
 	});
 
+	it('gain the one started in a place of the app’s own, with no folder to choose', async () => {
+		let startedHere = 0;
+		const vault = keeping();
+		serving({
+			...vault,
+			startHere: async () => {
+				startedHere += 1;
+				await vault.openKnown?.(THESIS_FOLDER);
+				return THESIS_FOLDER;
+			}
+		});
+		await graphs.load();
+		await graphs.readOpenFolder();
+		expect(graphs.startsHere).toBe(true);
+
+		expect(await graphs.startHere()).toBe(true);
+
+		expect(startedHere).toBe(1);
+		expect(graphs.current).toBe(COMPANY.ref);
+	});
+
 	it('gain the one somebody starts, which is then the graph in front of them', async () => {
 		const vault = keeping();
 		serving(vault);
