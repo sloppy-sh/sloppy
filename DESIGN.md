@@ -155,12 +155,16 @@ names a literal colour is a bug.
 | Terminal    | 1px hairline rules only           | none                      | `0`        |
 | Pixel       | stepped 2px, corners read as dots | hard 3px offset, blurless | `0`        |
 
-Bevel is System 7 and Windows 98: the two tones are mixed from the theme's own foreground
-and background, and a pressed control inverts them, so the lift is drawn by the edge
-rather than by a shadow. Terminal is rules and nothing else, with a caret-like focus ring;
-it pairs with a monospace face, and the person chooses that on the font axis — **a style
-never names a font any more than it names a colour.** Pixel builds its edge out of
-box-shadows so the corners step, which is also where its offset comes from.
+Bevel is System 7 and Windows 98: the near edges — top and left — are drawn faint and the
+far ones at the border's full weight, both tones mixed from the theme's own foreground and
+background, and a control held down swaps them. It is drawn as an edge INSIDE the box
+rather than as a shadow cast behind it, which is what makes the edge the lift. Terminal is
+rules and nothing else, with a caret-like focus ring and a block of ink where something is
+selected or under the arrow keys; it pairs with a monospace face, and the person chooses
+that on the font axis — **a style never names a font any more than it names a colour.**
+Pixel builds its edge out of box-shadows so the corners step, which is also where its
+offset comes from; a single side has no corner to step, so the per-side families stay the
+hairline they were.
 
 Four things a style must get right, and each is a place a style ships looking half-done:
 
@@ -170,7 +174,12 @@ Four things a style must get right, and each is a place a style ships looking ha
 - **Controls that reserve a transparent edge get the ink.** shadcn's idiom for "this
   control only sometimes shows a border" is `border border-transparent`, coloured by a
   variant. Under a loud style those read as _missed_ unless the style reaches them by
-  `data-slot` + `data-variant`. Ghost and link variants stay bare everywhere.
+  `data-slot` + `data-variant`. Ghost and link variants stay bare everywhere. But **the
+  same idiom is how this product says which chip is selected and which tab is active**, so
+  a style that filled every transparent edge, or reassigned `border-color` across the
+  board, would be answering a question the data was answering. Reach the control, not the
+  utility — and where a filled control has no edge at all, draw one through the shadow it
+  already carries rather than taking one an author left for a state.
 - **A visual style never eats a focus indicator or an error state.** Unlayered override
   rules outrank `focus-visible:border-ring` and `aria-invalid:border-destructive`, so
   every such rule ends in `:not(:focus-visible):not([aria-invalid='true'])`. This is an

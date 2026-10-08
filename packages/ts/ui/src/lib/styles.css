@@ -1,3 +1,212 @@
 /* The styles beside Default and Hardline — DESIGN.md § Style presets. Imported
    by app.css after the Hardline block, because a style block has to land after
    every [data-theme] block to win --border from the dark families. */
+
+/* ══ Square corners ════════════════════════════════════════════════════════
+   All three styles below take `--radius: 0px`, which squares every radius
+   app.css derives from it. The sizes Tailwind keeps a constant for do not
+   follow, so they are named here; `rounded-full` is a pill rather than a
+   radius and is left round.
+
+   The unit on that zero is load-bearing: a bare `0` is a number rather than a
+   length, which makes `calc(var(--radius) - 4px)` invalid and takes every
+   derived radius down with it. */
+:root:is([data-style='bevel'], [data-style='terminal'], [data-style='pixel'])
+	:is(.rounded, .rounded-xs, .rounded-xl, .rounded-2xl, .rounded-t-2xl) {
+	border-radius: 0;
+}
+
+/* ══ Style axis: Bevel ═════════════════════════════════════════════════════
+   An old dialog's lift, drawn INSIDE the box: the near edges faint, the far
+   ones at the border's full weight, the two swapped while a control is held
+   down. Both tones are the theme's own two ends mixed, so the pair reads the
+   same on every theme and every scheme.
+
+   It is drawn in box-shadow rather than in border-color because this product
+   draws state in border-color — which chip is selected, which field is wrong,
+   which version you are standing on — and a style that reassigned it would be
+   answering a question the data was answering. */
+:root[data-style='bevel'],
+.dark:root[data-style='bevel'] {
+	--radius: 0px;
+	--border: color-mix(in oklab, var(--foreground) 76%, var(--background));
+	--bevel-near: color-mix(in oklab, var(--foreground) 16%, var(--background));
+}
+
+/* `--input` is deliberately not redefined: in shadcn the token does double duty
+   as a border colour AND a fill, so overriding it turns an off switch into a
+   solid ink pill. The `:not()` pair is an affordance guard, not tidiness —
+   these rules are unlayered and would otherwise outrank
+   `focus-visible:border-ring` and `aria-invalid:border-destructive`. */
+:root[data-style='bevel'] .border-input:not(:focus-visible):not([aria-invalid='true']) {
+	border-color: var(--border);
+}
+
+/* Nothing is cast: the bevel below is the whole of the lift. */
+:root[data-style='bevel']
+	:is(.shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl) {
+	--tw-shadow: 0 0 transparent;
+}
+
+/* Every box that owns an edge or carried a shadow. The five `--tw-*` terms are
+   Tailwind's own box-shadow composition, restated because this rule sets the
+   property outright: without them a ring on the same element would go with it.
+   An edge left transparent is one a state is waiting to fill, so it is left to
+   fill it. */
+:root[data-style='bevel']
+	:is(
+		.border,
+		.shadow-2xs,
+		.shadow-xs,
+		.shadow-sm,
+		.shadow-md,
+		.shadow-lg,
+		.shadow-xl,
+		.shadow-2xl
+	):not(.border-transparent) {
+	--bevel: inset 2px 2px 0 0 var(--bevel-near), inset -2px -2px 0 0 var(--border);
+	box-shadow:
+		var(--tw-inset-shadow, 0 0 transparent), var(--tw-inset-ring-shadow, 0 0 transparent),
+		var(--tw-ring-offset-shadow, 0 0 transparent), var(--tw-ring-shadow, 0 0 transparent),
+		var(--tw-shadow, 0 0 transparent), var(--bevel);
+}
+
+/* Held down, the two tones swap. `:active` matches the ancestors of what is
+   being pressed as well, so this is held to the control itself — otherwise a
+   card inverts under a button inside it. */
+:root[data-style='bevel'] :is(button, a, [role='button'], [role='tab'], [role='menuitem']):active {
+	--bevel: inset 2px 2px 0 0 var(--border), inset -2px -2px 0 0 var(--bevel-near);
+}
+
+/* The dotted inset an old dialog drew round what held the keyboard. All three
+   styles leave the writing surface out: it carries a caret of its own, and a
+   hard ring round the whole of it is not a focus indicator anybody asked for. */
+:root[data-style='bevel'] :focus-visible:not([contenteditable='true']) {
+	outline: 1px dotted var(--ring);
+	outline-offset: -3px;
+}
+/* One indicator rather than two — but never where the field is also wrong: the
+   error says itself in that ring, and a style does not eat it. */
+:root[data-style='bevel'] :focus-visible:not([aria-invalid='true']) {
+	--tw-ring-color: transparent;
+}
+
+/* ══ Style axis: Terminal ══════════════════════════════════════════════════
+   Rules and nothing else: one hairline weight throughout, no elevation at all,
+   and a block of ink where something is selected or under the arrow keys. The
+   face is not this axis's to choose — DESIGN.md § Typography — so somebody who
+   wants a monospace one picks it beside this. */
+:root[data-style='terminal'],
+.dark:root[data-style='terminal'] {
+	--radius: 0px;
+	--border: color-mix(in oklab, var(--foreground) 60%, var(--background));
+	--terminal-block: color-mix(in oklab, var(--foreground) 88%, var(--background));
+}
+
+:root[data-style='terminal'] .border-input:not(:focus-visible):not([aria-invalid='true']) {
+	border-color: var(--border);
+}
+
+/* Nothing is lifted: a box is told from the page by its rule. */
+:root[data-style='terminal']
+	:is(.shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl) {
+	--tw-shadow: 0 0 transparent;
+}
+
+:root[data-style='terminal'] ::selection {
+	background-color: var(--terminal-block);
+	color: var(--background);
+}
+
+/* The row the pointer or the arrow keys are on, inverted the same way. A
+   destructive row is left out: it says what it is in its own colour, and the
+   icon inside any other one is taken off the muted ramp it would vanish on. */
+:root[data-style='terminal'] [data-highlighted]:not([data-variant='destructive']) {
+	background-color: var(--terminal-block);
+	color: var(--background);
+}
+:root[data-style='terminal'] [data-highlighted]:not([data-variant='destructive']) svg {
+	color: inherit;
+}
+
+:root[data-style='terminal'] :focus-visible:not([contenteditable='true']) {
+	outline: 2px solid var(--ring);
+	outline-offset: 0;
+}
+:root[data-style='terminal'] :focus-visible:not([aria-invalid='true']) {
+	--tw-ring-color: transparent;
+}
+
+/* ══ Style axis: Pixel ═════════════════════════════════════════════════════
+   Four bars stepped outside the edge the box already has, which leaves the
+   corners empty so they read as pixels. Outside rather than instead of: the
+   edge underneath is where this product says which pill is picked and which
+   box is in error. A single side has no corner to step, so the per-side
+   families stay the hairline they were, and so do a pill and an edge left
+   transparent for a state to fill.
+
+   The five `--tw-*` terms are Tailwind's own box-shadow composition, restated
+   because this rule sets the property outright: without them a ring and the
+   displacement below would both be lost. */
+:root[data-style='pixel'],
+.dark:root[data-style='pixel'] {
+	--radius: 0px;
+	--border: color-mix(in oklab, var(--foreground) 84%, var(--background));
+}
+
+:root[data-style='pixel'] .border-input:not(:focus-visible):not([aria-invalid='true']) {
+	border-color: var(--border);
+}
+
+:root[data-style='pixel']
+	:is(
+		.border,
+		.shadow-2xs,
+		.shadow-xs,
+		.shadow-sm,
+		.shadow-md,
+		.shadow-lg,
+		.shadow-xl,
+		.shadow-2xl
+	):not(.border-transparent):not(.rounded-full):not(
+		:is(.border-0, .border-x-0, .border-y-0, .border-t-0, .border-r-0, .border-b-0, .border-l-0)
+	) {
+	box-shadow:
+		var(--tw-inset-shadow, 0 0 transparent),
+		var(--tw-inset-ring-shadow, 0 0 transparent),
+		var(--tw-ring-offset-shadow, 0 0 transparent),
+		var(--tw-ring-shadow, 0 0 transparent),
+		var(--tw-shadow, 0 0 transparent),
+		-2px 0 0 0 var(--border),
+		2px 0 0 0 var(--border),
+		0 -2px 0 0 var(--border),
+		0 2px 0 0 var(--border);
+}
+
+/* Elevation becomes displacement: no blur, no spread, the box offset from its
+   own shadow. The `--tw-shadow-color` fallback keeps `shadow-<color>`
+   recolouring. */
+:root[data-style='pixel'] .shadow-2xs {
+	--tw-shadow: 2px 2px 0 0 var(--tw-shadow-color, var(--border));
+}
+:root[data-style='pixel'] :is(.shadow-xs, .shadow-sm, .shadow-md) {
+	--tw-shadow: 3px 3px 0 0 var(--tw-shadow-color, var(--border));
+}
+:root[data-style='pixel'] .shadow-lg {
+	--tw-shadow: 5px 5px 0 0 var(--tw-shadow-color, var(--border));
+}
+:root[data-style='pixel'] .shadow-xl {
+	--tw-shadow: 6px 6px 0 0 var(--tw-shadow-color, var(--border));
+}
+:root[data-style='pixel'] .shadow-2xl {
+	--tw-shadow: 8px 8px 0 0 var(--tw-shadow-color, var(--border));
+}
+
+/* Two squares a step apart: the frame on the box, then the ring outside it. */
+:root[data-style='pixel'] :focus-visible:not([contenteditable='true']) {
+	outline: 2px solid var(--ring);
+	outline-offset: 3px;
+}
+:root[data-style='pixel'] :focus-visible:not([aria-invalid='true']) {
+	--tw-ring-color: transparent;
+}
