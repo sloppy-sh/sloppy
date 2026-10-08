@@ -89,11 +89,6 @@ const PICKED_UP = 'The assistant is going on from a summary of this thread.';
 const PLACES_MOVED =
 	'The next thing you say starts the assistant again, so it can read what you changed.';
 
-/** How long a session has to say which conversation answered before the words
- *  that opened it go out anyway. A program that has started and not introduced
- *  itself is not one to hold somebody's turn behind. */
-const INTRODUCES_WITHIN = 10_000;
-
 /** Words for the AGENT, which reads a rejection rather than being left
  *  waiting on it. */
 const NO_PROJECT = 'There is no project open here, so there are no notes to work on.';
@@ -230,13 +225,14 @@ class Live {
 	/** The places the standing conversation has been told it may read, as
 	 *  {@link placesKey}; `null` is one that has not been told. */
 	placesTold: string | null = null;
-	/** The conversation this thread asked to be picked up, and what to hand over
-	 *  where it was not — `started` is what says which happened. The words that
-	 *  OPENED it wait on that, because a conversation that was not picked up
-	 *  goes over with them rather than after them. */
+	/** The conversation this thread asked to be picked up; `started` says
+	 *  whether it was. Undefined is a conversation of the agent's own, whose
+	 *  brief told it everything a picked-up one has to be told in words. */
 	asked: ChatSessionId | undefined = undefined;
-	carryIfUnpicked: string | null = null;
-	introduced: (() => void) | null = null;
+	/** Whether `started` has said which conversation answers. The first one
+	 *  decides; a later one is the same conversation begun again after making
+	 *  room. */
+	introduced = false;
 	/** The agent and model the last conversation died under, for the person to
 	 *  be offered another. */
 	failed = $state.raw<{ agent: ChatAgent; model?: string } | null>(null);
@@ -745,9 +741,10 @@ class ChatStore {
 				thread.session !== undefined && thread.agent === agent ? thread.session : undefined;
 			live.asked = session;
 			live.placesTold = this.#placesOpenedWith(live, session);
-			live.carryIfUnpicked = session === undefined ? null : carriedOver(before);
 			if (session === undefined && before.length > 0) live.carrying ??= carriedOver(before);
-			const introduced = session === undefined ? null : this.#introduces(live);
+			// The shell says this only into a conversation opened in place of one
+			// the agent would not pick up; a conversation picked up has it already.
+			const carried = session !== undefined && before.length > 0 ? carriedOver(before) : undefined;
 			let handle: ChatLive;
 			try {
 				handle = await access.open(
@@ -759,14 +756,14 @@ class ChatStore {
 							...(session === undefined ? {} : { session }),
 							places: [...live.places]
 						},
-						reachesWeb: prefs.current.chatReachesWeb
+						reachesWeb: prefs.current.chatReachesWeb,
+						...(carried === undefined ? {} : { carried })
 					},
 					(event) => this.#heard(live, epoch, event),
 					(call) => this.#serve(live, call)
 				);
 			} catch (error) {
 				whatHappened.put('trouble', `the chat would not start: ${troubleIn(error)}`);
-				live.introduced?.();
 				if (epoch !== live.epoch) return;
 				live.trouble = wordsFor(error) ?? UNSTARTED;
 				live.running = false;
@@ -785,10 +782,6 @@ class ChatStore {
 				...(agent === undefined ? {} : { agent }),
 				...(model === undefined ? {} : { model })
 			});
-			if (introduced !== null) {
-				await introduced;
-				if (epoch !== live.epoch) return;
-			}
 		}
 		const carried = live.carrying ?? '';
 		live.carrying = null;
@@ -1169,27 +1162,6 @@ class ChatStore {
 		return unwritten;
 	}
 
-	/** Settled where the agent says which session answered, and where it says
-	 *  nothing for {@link INTRODUCES_WITHIN}: nothing said is nothing known, so
-	 *  the conversation is handed over rather than risked on a session that may
-	 *  not have been picked up, and the person is told nothing either way. */
-	#introduces(live: Live): Promise<void> {
-		return new Promise((settle) => {
-			const waited = setTimeout(() => {
-				live.introduced = null;
-				const carry = live.carryIfUnpicked;
-				live.carryIfUnpicked = null;
-				if (carry !== null && carry !== '') live.carrying = carry;
-				settle();
-			}, INTRODUCES_WITHIN);
-			live.introduced = () => {
-				clearTimeout(waited);
-				live.introduced = null;
-				settle();
-			};
-		});
-	}
-
 	#letSessionGo(live: Live): void {
 		if (live.standing) {
 			void live.handle?.close().catch(() => {});
@@ -1209,8 +1181,7 @@ class ChatStore {
 		live.openedAs = undefined;
 		live.answered = false;
 		live.asked = undefined;
-		live.carryIfUnpicked = null;
-		live.introduced?.();
+		live.introduced = false;
 		live.spentTurn = undefined;
 		live.placesTold = null;
 		live.trouble = null;
@@ -1254,17 +1225,18 @@ class ChatStore {
 					'turn',
 					`the chat opened with ${named ?? 'whatever the agent answers with'}, and the agent has ${event.tools.length} tools`
 				);
-				// A compaction arrives as another `started` for the same session,
-				// so only the first of them decides whether it was picked up.
-				const carry = live.carryIfUnpicked;
-				live.carryIfUnpicked = null;
-				if (carry !== null && live.asked !== event.session) {
-					whatHappened.put('turn', 'the conversation was not picked up where it was left');
-					live.says = PICKED_UP;
-					if (carry !== '') live.carrying = carry;
+				if (!live.introduced) {
+					live.introduced = true;
+					if (live.asked !== undefined && live.asked !== event.session) {
+						whatHappened.put('turn', 'the conversation was not picked up where it was left');
+						live.says = PICKED_UP;
+						live.asked = undefined;
+					}
+				} else {
+					// Begun again after making room: what it was told in words went
+					// with the rest, and the brief is still its own.
+					live.placesTold = this.#placesOpenedWith(live, live.asked);
 				}
-				live.introduced?.();
-				live.placesTold = this.#placesOpenedWith(live, live.asked);
 				void this.#keepFor(live, { session: event.session });
 				break;
 			}
@@ -1318,8 +1290,7 @@ class ChatStore {
 				live.openedAs = undefined;
 				live.answered = false;
 				live.asked = undefined;
-				live.carryIfUnpicked = null;
-				live.introduced?.();
+				live.introduced = false;
 				live.trouble = refusedModel ? MODEL_UNKNOWN : (event.said ?? null);
 				break;
 			}

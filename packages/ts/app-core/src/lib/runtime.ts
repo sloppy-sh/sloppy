@@ -216,6 +216,11 @@ export interface ChatAsked {
 	/** Whether the agent may read the web while it answers. **Absent is that
 	 *  it may.** Fixed for the session: a change reaches the next one opened. */
 	reachesWeb?: boolean;
+	/** What the conversation was so far, in words, for an agent that cannot pick
+	 *  the one asked for up: the shell says it before the first thing said,
+	 *  into the conversation it opens in that one's place, and nowhere else.
+	 *  **Absent is nothing to hand over.** */
+	carried?: string;
 }
 
 /**

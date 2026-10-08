@@ -32,6 +32,7 @@ import {
 	ulid
 } from '@sloppy/types';
 import { type AiKeysAccess, chatBrief } from '@sloppy/local';
+import { withCarried } from '@sloppy/app-core';
 import { Refusal } from '@sloppy/ui';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { AgentStream } from './chat-stream';
@@ -142,11 +143,14 @@ interface Asking {
 class Session {
 	readonly stream = new AgentStream();
 	readonly over = settling();
-	/** The first line said into a session the agent has not yet introduced,
+	/** The first thing said into a session the agent has not yet introduced,
 	 *  kept to be said again where the program turns the conversation it was
-	 *  given down and another takes its place. The agent says what it is only
-	 *  once it has been said something, so nothing can wait for that first. */
-	firstSaid?: string;
+	 *  given down and another takes its place — with what the conversation
+	 *  was before it, where the page handed that over. The agent says what it
+	 *  is only once it has been said something, so nothing can wait for that
+	 *  first. */
+	firstAsked?: string;
+	carried?: string;
 	turn?: Turn;
 	gone = false;
 	/** What this one was opened with, for opening it again as a conversation of
@@ -252,6 +256,7 @@ class TauriChat implements ChatAccess {
 		const of = asked.thread.id;
 		this.replaces(of);
 		const session = new Session(of, hear, serve);
+		if (asked.carried !== undefined) session.carried = asked.carried;
 		this.held.set(of, session);
 		await this.starts(session, {
 			agent,
@@ -320,18 +325,19 @@ class TauriChat implements ChatAccess {
 		session.stream.turned();
 		const turn: Turn = { stopped: false, ...settling() };
 		session.turn = turn;
-		const line = JSON.stringify(aTurn(asking));
-		if (!session.introduced) session.firstSaid = line;
-		await this.call<void>(SAY, { thread: of, line }).catch((reason) => {
-			// A program turning the conversation down is already on its way out
-			// when the first line reaches it: the end that follows either opens
-			// another in its place, which is said this line again, or ends the
-			// turn with why.
-			if (session.firstSaid === line && session.opening?.resume && !session.gone) return;
-			if (session.turn === turn) session.turn = undefined;
-			turn.ends();
-			throw refuse(said(reason));
-		});
+		if (!session.introduced) session.firstAsked = asking;
+		await this.call<void>(SAY, { thread: of, line: JSON.stringify(aTurn(asking)) }).catch(
+			(reason) => {
+				// A program turning the conversation down is already on its way out
+				// when the first line reaches it: the end that follows either opens
+				// another in its place, which is said this again, or ends the turn
+				// with why.
+				if (session.firstAsked === asking && session.opening?.resume && !session.gone) return;
+				if (session.turn === turn) session.turn = undefined;
+				turn.ends();
+				throw refuse(said(reason));
+			}
+		);
 	}
 
 	private async stops(of: string): Promise<void> {
@@ -386,7 +392,7 @@ class TauriChat implements ChatAccess {
 					if (session.reading && event.event === 'block') continue;
 					if (event.event === 'started') {
 						session.introduced = true;
-						session.firstSaid = undefined;
+						session.firstAsked = undefined;
 						void this.asks(session.thread, 'summary');
 					}
 					session.tell(event);
@@ -433,8 +439,9 @@ class TauriChat implements ChatAccess {
 		delete again.session;
 		void this.starts(session, again)
 			.then(() => {
-				const line = session.firstSaid;
-				if (line === undefined || session.gone) return;
+				const asked = session.firstAsked;
+				if (asked === undefined || session.gone) return;
+				const line = JSON.stringify(aTurn(withCarried(session.carried ?? '', asked)));
 				return this.call<void>(SAY, { thread: session.thread, line });
 			})
 			.catch((reason) => {

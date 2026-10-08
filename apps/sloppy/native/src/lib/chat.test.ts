@@ -1175,21 +1175,28 @@ describe('the conversation a chat is opened as', () => {
 	 *  first thing said goes out at once — and where the program turns the
 	 *  conversation down and stops, it is said again into the one opened in
 	 *  its place, with the turn still standing. */
-	it('says the first thing again into the conversation opened in its place', async () => {
+	it('says the first thing again into the conversation opened in its place, with what came before it', async () => {
 		const heard: ChatEvent[] = [];
 		const access = chat();
 		const live = await access.open(
-			asking({ thread: { id: THREAD, session: 'long-gone', places: [] } }),
+			asking({
+				thread: { id: THREAD, session: 'long-gone', places: [] },
+				carried: 'Person: the earlier words'
+			}),
 			(event) => heard.push(event),
 			serve
 		);
 
 		await live.say('go');
 		expect(spoken()).toHaveLength(1);
+		expect(JSON.stringify(spoken()[0])).not.toContain('earlier words');
 		tells({ from: 'over', stopped: false, trouble: null });
 		await until(() => opens.length === 2 && spoken().length === 2);
 
-		expect(spoken()[1]).toEqual(spoken()[0]);
+		const again = JSON.stringify(spoken()[1]);
+		expect(again).toContain('Earlier in this conversation');
+		expect(again).toContain('the earlier words');
+		expect(again).toContain('go');
 		expect(heard.some((event) => event.event === 'ended' || event.event === 'over')).toBe(false);
 		says(INIT);
 		says(RESULT);

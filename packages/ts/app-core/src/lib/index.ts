@@ -16,6 +16,7 @@ export type {
 	VaultAccess
 } from './runtime.js';
 export { appMenu } from './menu.js';
+export { withCarried } from './chat-said.js';
 export type { MenuGroup, MenuLine } from './menu.js';
 export { acts } from './stores/acts.svelte.js';
 export type { Act, ActWhere } from './stores/acts.svelte.js';

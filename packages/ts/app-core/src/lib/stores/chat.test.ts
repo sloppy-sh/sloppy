@@ -1079,47 +1079,48 @@ describe('picking a chat up where it was left', () => {
 		expect(stub.said.at(-1)).toBe('And the lexer?');
 	});
 
-	it('says so, and hands over what was said with the words that opened it, where the agent answered as another', async () => {
+	/** The agent says which conversation answers only once it has been said
+	 *  something, so the words go out at once, and what the conversation was is
+	 *  handed to the shell to say only where the agent would not pick it up. */
+	it('says the words at once, with the earlier conversation handed to the shell for the case it is not picked up', async () => {
+		await aTurn('Why two passes?');
+		const id = chat.current?.id as Ulid;
+		chat.startThread();
+		await chat.openThread(id);
+
+		const saying = chat.say('And the lexer?');
+		await settled();
+
+		expect(stub.said.at(-1)).toBe('And the lexer?');
+		expect(stub.asked.at(-1)?.thread.session).toBe('s-1');
+		expect(stub.asked.at(-1)?.carried).toContain('Why two passes?');
+		stub.begins();
+		await saying;
+		expect(chat.says).toBe(null);
+	});
+
+	it('says so where the agent answered as another conversation', async () => {
 		await aTurn('Why two passes?');
 		const id = chat.current?.id as Ulid;
 		chat.startThread();
 		await chat.openThread(id);
 		stub.answersAs = 'another-session';
 
-		const before = stub.said.length;
 		const saying = chat.say('And the lexer?');
 		await settled();
-		// Which conversation answered is what says whether this one has to be
-		// handed over, so nothing has gone to the agent until it is said.
-		expect(stub.said).toHaveLength(before);
 		stub.begins();
 		await saying;
 
 		expect(chat.says).toBe('The assistant is going on from a summary of this thread.');
 		expect(chat.current?.session).toBe('another-session');
-		expect(stub.said.at(-1)).toContain('Why two passes?');
-		expect(stub.said.at(-1)).toContain('And the lexer?');
 	});
 
-	it('hands over what was said where the agent never says which session answered', async () => {
-		await aTurn('Why two passes?');
-		const id = chat.current?.id as Ulid;
-		chat.startThread();
-		await chat.openThread(id);
-
-		vi.useFakeTimers();
-		try {
-			const saying = chat.say('And the lexer?');
-			await vi.advanceTimersByTimeAsync(20_000);
-			await saying;
-		} finally {
-			vi.useRealTimers();
-		}
-
-		expect(stub.said.at(-1)).toContain('Why two passes?');
-		expect(stub.said.at(-1)).toContain('And the lexer?');
-		// Which conversation answered is unknown, so nothing is claimed about it.
-		expect(chat.says).toBe(null);
+	it('hands nothing over into a conversation that has nothing before it', async () => {
+		const saying = chat.say('Why two passes?');
+		await settled();
+		expect(stub.asked.at(-1)?.carried).toBeUndefined();
+		stub.begins();
+		await saying;
 	});
 
 	it('hands over what was said where the agent under the chat was changed', async () => {
