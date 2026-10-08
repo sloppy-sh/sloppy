@@ -1,7 +1,7 @@
 /* The effect axis — DESIGN.md § "The effect axis". A texture over the page: no
    colour of its own, no shape, and nothing a pointer can land on. */
 
-/* Over every dock and every sheet — the app's own chrome stops at 50 — because a
+/* Over every dock and every sheet — a dock filling the page stacks to 61, `side-dock.svelte` — because a
    screen is in front of what is on it.
 
    No blend mode: the texture is mixed from the theme's own ink, so compositing

@@ -8,9 +8,16 @@ import type { Scheme } from './scheme.js';
 
 let loaded: Promise<readonly Scheme[]> | undefined;
 
-/** Every scheme in the collection, by name. Loaded once per session. */
+/** Every scheme in the collection, by name. Loaded once per session; a read
+ *  that failed is not held, so the next ask reads again. */
 export function schemes(): Promise<readonly Scheme[]> {
-	loaded ??= import('./schemes.json').then((held) => held.default as unknown as readonly Scheme[]);
+	loaded ??= import('./schemes.json').then(
+		(held) => held.default as unknown as readonly Scheme[],
+		(why: unknown) => {
+			loaded = undefined;
+			throw why;
+		}
+	);
 	return loaded;
 }
 

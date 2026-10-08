@@ -13,16 +13,10 @@ export type {
 	WithoutChildrenOrChild
 } from './utils.js';
 
-export { BASE_KEYS, DRESSED_TOKENS, UNDRESSED_TOKENS } from './schemes/scheme.js';
-export type {
-	BaseKey,
-	DressedToken,
-	Scheme,
-	SchemeDressing,
-	SchemeTokens
-} from './schemes/scheme.js';
-export { dress, dressed, legible } from './schemes/dress.js';
-export { schemeBySlug, schemes } from './schemes/index.js';
+export { BASE_KEYS, UNDRESSED_TOKENS } from './schemes/scheme.js';
+export type { BaseKey, Scheme, SchemeDressing, SchemeTokens } from './schemes/scheme.js';
+export { dressed } from './schemes/dress.js';
+export { schemes } from './schemes/index.js';
 
 export { overlay } from './components/overlay.svelte.js';
 export { default as ResponsiveModal } from './components/responsive-modal.svelte';

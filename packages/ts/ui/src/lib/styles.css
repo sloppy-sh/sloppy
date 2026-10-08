@@ -13,13 +13,7 @@
 	border-radius: 0;
 }
 
-/* ══ Style axis: Bevel ═════════════════════════════════════════════════════
-   An old dialog's lift, drawn INSIDE the box: the light is top-left on every
-   theme, so the near edges stand a step lighter than the page and the far ones
-   a step darker, and a control held down or standing on swaps the two. Both
-   tones are the page's own lightness moved, so the pair reads the same on every
-   theme and every scheme.
-
+/* ══ Style axis: Bevel — DESIGN.md § Style presets ═════════════════════════
    It is drawn in box-shadow rather than in border-color because this product
    draws state in border-color — which chip is selected, which field is wrong,
    which version you are standing on — and a style that reassigned it would be
@@ -123,15 +117,16 @@
 }
 
 /* ══ Style axis: Terminal ══════════════════════════════════════════════════
-   Rules and nothing else: one hairline weight throughout, no elevation at all,
-   and a block of ink where something is selected or under the arrow keys. The
-   face is not this axis's to choose — DESIGN.md § Typography — so somebody who
-   wants a monospace one picks it beside this. */
+   The face is not this axis's to choose — DESIGN.md § Typography — so somebody
+   who wants a monospace one picks it beside this. */
 :root[data-style='terminal'],
 .dark:root[data-style='terminal'] {
 	--radius: 0px;
 	--border: color-mix(in oklab, var(--foreground) 60%, var(--background));
-	--terminal-block: color-mix(in oklab, var(--foreground) 88%, var(--background));
+	/* The ink itself, not a mix of it: a scheme's two ends are held only 4.5:1
+	   apart, so the page's words on anything short of the ink would fall under
+	   it on a scheme. */
+	--terminal-block: var(--foreground);
 }
 
 :root[data-style='terminal'] .border-input:not(:focus-visible):not([aria-invalid='true']) {
@@ -152,15 +147,15 @@
 
 /* The row the pointer or the arrow keys are on, inverted the same way — a menu
    says which one that is in `data-highlighted`, a listbox in `aria-selected`.
-   The muted ramp is mixed against the page, so on this block it has to be
-   turned over: an icon and a secondary line stay a step back from the row's own
-   words without going illegible. A destructive row is left out — it says what
-   it is in its own colour. */
+   The muted ramp is mixed against the page, so on this block it is one tone
+   with the row's own words: between a scheme's two ends there is no step that
+   still reads. A destructive row is left out — it says what it is in its own
+   colour. */
 :root[data-style='terminal']
 	:is([data-highlighted], [role='option'][aria-selected='true']):not([data-variant='destructive']) {
 	background-color: var(--terminal-block);
 	color: var(--background);
-	--muted-foreground: color-mix(in oklab, var(--background) 70%, var(--foreground));
+	--muted-foreground: var(--background);
 }
 
 :root[data-style='terminal'] :focus-visible:not([contenteditable='true']) {
@@ -171,9 +166,8 @@
 	--tw-ring-color: transparent;
 }
 
-/* ══ Style axis: Pixel ═════════════════════════════════════════════════════
-   Four bars stepped outside the edge the box already has, which leaves the
-   corners empty so they read as pixels. Outside rather than instead of: the
+/* ══ Style axis: Pixel — DESIGN.md § Style presets ═════════════════════════
+   Stepped outside the edge the box already has rather than instead of it: the
    edge underneath is where this product says which pill is picked and which
    box is in error. The guards are Bevel's, for the same reasons. */
 :root[data-style='pixel'],

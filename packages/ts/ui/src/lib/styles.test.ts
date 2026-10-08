@@ -9,6 +9,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { contrastRatio, mixOklab, type Oklch, parseCssColor } from '@sloppy/graph';
+import { dressed } from './schemes/dress.js';
+import { schemes } from './schemes/index.js';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Primitives from './components/primitives-harness.test.svelte';
@@ -103,8 +105,11 @@ function endOf(theme: string, token: string): Oklch {
 
 const MIX = /^color-mix\(in oklab,\s*var\((--[\w-]+)\)\s*([\d.]+)%,\s*var\((--[\w-]+)\)\)$/;
 
-/** A `color-mix(in oklab, …)` of two tokens, resolved on one theme. */
+/** A `color-mix(in oklab, …)` of two tokens, or one token, resolved on one
+ *  theme. */
 function mixedOn(theme: string, value: string): Oklch {
+	const plain = /^var\((--[\w-]+)\)$/.exec(value.trim());
+	if (plain !== null) return endOf(theme, plain[1]);
 	const parts = MIX.exec(value.trim());
 	if (parts === null) throw new Error(`this test cannot resolve \`${value}\``);
 	return mixOklab(endOf(theme, parts[1]), endOf(theme, parts[3]), 1 - Number(parts[2]) / 100);
@@ -414,6 +419,29 @@ describe('the block Terminal inverts a row with', () => {
 		);
 		expect(contrastRatio(dim, ground)).toBeGreaterThanOrEqual(AA_FLOOR);
 		expect(contrastRatio(endOf(theme, '--background'), ground)).toBeGreaterThanOrEqual(AA_FLOOR);
+	});
+
+	// A scheme's two ends are held only 4.5:1 apart, so the block is the ink
+	// itself and the row is one tone: the words and the secondary line on it
+	// are the page on the ink, which every offered scheme clears by the gate it
+	// was offered on. Swept over the collection, not assumed from the themes.
+	it('keeps the words on that row legible on every scheme the picker offers', async () => {
+		const block = valueOf(declaring('terminal', '--terminal-block'), '--terminal-block');
+		const dim = valueOf(declaring('terminal', '--muted-foreground'), '--muted-foreground');
+		expect(block).toBe('var(--foreground)');
+		expect(dim).toBe('var(--background)');
+
+		let offered = 0;
+		for (const scheme of await schemes()) {
+			const dressing = dressed(scheme);
+			if (dressing === null) continue;
+			offered += 1;
+			const ink = parseCssColor(dressing.tokens['--foreground']);
+			const page = parseCssColor(dressing.tokens['--background']);
+			if (ink === null || page === null) throw new Error(`${scheme.slug} dresses no page or ink`);
+			expect(contrastRatio(page, ink), scheme.slug).toBeGreaterThanOrEqual(AA_FLOOR);
+		}
+		expect(offered).toBeGreaterThan(400);
 	});
 });
 

@@ -28,7 +28,9 @@ function declarations(after: string, selector: string): Map<string, string> {
 
 const OVERLAY = ":root[data-effect='crt'] body::after";
 /** The highest the app's own chrome stacks, which the screen is in front of. */
-const CHROME_CEILING = 50;
+/** The highest the app's own chrome stacks: a dock filling the page,
+ *  `side-dock.svelte` (`60 + stack`, the chat dock at stack 1). */
+const CHROME_CEILING = 61;
 
 describe('the screen a page is drawn on', () => {
 	it('is plain where nothing says otherwise, and says it in one place', () => {
@@ -61,5 +63,24 @@ describe('the screen a page is drawn on', () => {
 		expect(overlay.get('animation')).toBeDefined();
 		const quiet = declarations('@media (prefers-reduced-motion: reduce)', OVERLAY);
 		expect(quiet.get('animation')).toBe('none');
+	});
+});
+
+// DESIGN.md § "The effect axis": held to no floor, bounded instead — these are
+// the bounds the doc promises, read off the rules.
+describe('how much of the ink the screen takes', () => {
+	const SHEET = readFileSync(new URL('./effects.css', import.meta.url), 'utf8');
+	const shares = (text: string): number[] =>
+		[...text.matchAll(/var\(--foreground\)\s+(\d+(?:\.\d+)?)%/g)].map((one) => Number(one[1]));
+
+	it('never more than a fifth anywhere, and never more than 14% in the overlay', () => {
+		const everywhere = shares(SHEET);
+		expect(everywhere.length).toBeGreaterThan(0);
+		for (const share of everywhere) expect(share).toBeLessThanOrEqual(20);
+
+		const at = SHEET.indexOf('body::after');
+		expect(at).toBeGreaterThan(-1);
+		const overlay = SHEET.slice(at, SHEET.indexOf('}', at));
+		for (const share of shares(overlay)) expect(share).toBeLessThanOrEqual(14);
 	});
 });

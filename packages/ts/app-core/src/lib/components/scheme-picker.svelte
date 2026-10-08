@@ -84,7 +84,7 @@
 	/** The collection, or null where it could not be read. */
 	async function read(): Promise<readonly Scheme[] | null> {
 		const collection = await schemes().catch(() => null);
-		if (collection === null) unread = true;
+		unread = collection === null;
 		return collection;
 	}
 

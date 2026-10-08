@@ -222,6 +222,12 @@ broken:
   pseudo-element; an effect that eats a tap has eaten the product.
 - **No animation under `prefers-reduced-motion`.** A flicker is the one part of a tube
   nobody can opt out of by looking away, so it is the first part to go.
+- **An effect is held to no contrast floor, and is bounded instead.** It is a texture
+  somebody turned on over a page that is already measured, so the floor stays the page's;
+  what the sheet promises is how little it may take — never more than 14% of the ink
+  anywhere in the overlay and never more than 20% in the glow, which `effects.test.ts`
+  reads off the rules — so the most it costs a pairing at 4.5:1 is a few tenths. That is
+  the one place this design system takes a texture over a floor, and it is opt-in.
 
 ### Schemes — a theme as data
 
