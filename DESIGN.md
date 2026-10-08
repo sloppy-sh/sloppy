@@ -222,6 +222,12 @@ one selection colour, the muted surface already has it, and a highlight that can
 from either is a row that does not look picked. Every theme in `app.css` draws its own that
 way — a step deeper than muted on a light theme, a step lighter on a dark one.
 
+**The picker stands closed.** Dressing five hundred schemes is colour maths a phone would
+stall on, so the section is one row saying what is on, its sixteen colours beside the name;
+opening it reads the collection and draws the sixty that match what has been typed, the rest
+behind the search and the one being worn always among them. The rows are one group — arrows
+move through them, Space picks — rather than five hundred tab stops.
+
 **The eight slots share one lightness, so hue is all that is left to tell them apart — and
 a pair a scheme drew too close together is opened rather than thrown away.** Lightness
 carries depth on the canvas, so the slots may not spend it on each other, and how far two

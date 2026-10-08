@@ -38,6 +38,7 @@
 		prefs,
 		STYLE_LABELS,
 		STYLES,
+		type Theme,
 		THEME_LABELS,
 		THEMES
 	} from '../stores/prefs.svelte.js';
@@ -148,6 +149,14 @@
 			: 'Sloppy is back where it came from. Sign in to carry on.';
 	}
 
+	/** A theme asked for here IS the theme, so the scheme stands down first:
+	 *  `prefs.set` stands down one it holds the paint for, and a look saved as a
+	 *  slug alone has none. */
+	function wearTheme(theme: Theme): void {
+		prefs.setScheme(null);
+		prefs.set('theme', theme);
+	}
+
 	function pointHere(event: SubmitEvent) {
 		event.preventDefault();
 		const typed = typedOrigin.trim();
@@ -194,8 +203,8 @@
 						group="theme"
 						value={theme}
 						label={THEME_LABELS[theme]}
-						checked={prefs.current.theme === theme}
-						onpick={() => prefs.set('theme', theme)}
+						checked={prefs.current.scheme === null && prefs.current.theme === theme}
+						onpick={() => wearTheme(theme)}
 					/>
 				{/each}
 			</div>

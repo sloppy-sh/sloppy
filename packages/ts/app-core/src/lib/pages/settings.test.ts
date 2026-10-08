@@ -245,6 +245,32 @@ describe('settings', () => {
 		);
 	});
 
+	// A scheme IS the theme while it dresses the app, so none of the pills is the
+	// answer — and asking for the theme already saved still hands the app back.
+	it('stands a scheme down from the Theme pills, the saved theme included', async () => {
+		prefs.set('theme', 'paper');
+		prefs.setScheme({
+			slug: 'base16-nord',
+			variant: 'dark',
+			tokens: { '--background': '#2e3440', '--foreground': '#d8dee9' }
+		});
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		const pills = [...target.querySelectorAll<HTMLInputElement>('input[name="theme"]')];
+		expect(pills.filter((one) => one.checked)).toHaveLength(0);
+
+		pills.find((one) => one.value === 'paper')?.click();
+		flushSync();
+
+		expect(prefs.current.scheme).toBeNull();
+		expect(prefs.dressing).toBeNull();
+		expect(document.documentElement.getAttribute('data-theme')).toBe('paper');
+		expect(document.documentElement.style.getPropertyValue('--background')).toBe('');
+		expect(pills.filter((one) => one.checked).map((one) => one.value)).toEqual(['paper']);
+	});
+
 	// The face is the one look choice somebody may not be able to read the page
 	// without, so it is offered with nobody signed in, like the three beside it.
 	it('reads the whole app in the face somebody picks, before they sign in', () => {
