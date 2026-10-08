@@ -1357,7 +1357,12 @@ nothing under it.
   an agent about the project, which is the dock plus the thread and the composer — with, under
   the composer, one quiet line saying who is answering and what the conversation has spent,
   the cost only where the agent says one. Anything else that wants to stand beside the graph
-  is a third use of the same dock, never a second copy of it.
+  is a third use of the same dock, never a second copy of it. **A docked note fills the page
+  on a tap** — the control sits in the note's own head beside what can be done with it —
+  and comes back beside the graph on the next, or on Escape; the graph, the column and the
+  chat stay where they were under it, so nothing is laid out again on the way back. A sheet
+  already fills the page and offers nothing. Whether the note was last read that way is this
+  device's, like the room it takes (§ Persistence).
   **The chat's head is the name of the thread you are in, and the way to every other.** A
   person keeps as many threads about a project as they started, so the head reads like the row
   where a graph is named: the thread's own name, the way to the rest of them and to a new one,

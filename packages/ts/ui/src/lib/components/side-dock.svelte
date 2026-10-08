@@ -55,6 +55,8 @@
 		scrolls = true,
 		width = null,
 		onWidthChange,
+		full = $bindable(false),
+		onFullChange,
 		children
 	}: {
 		open?: boolean;
@@ -81,6 +83,11 @@
 		width?: number | null;
 		/** A width the reader settled on, to keep for their next one. */
 		onWidthChange?: (width: number) => void;
+		/** Whether a docked panel fills the page instead — over the graph, the
+		 *  docks beside it and nothing else — for reading one thing with the rest
+		 *  out of the way. Means nothing to a sheet, which already does. */
+		full?: boolean;
+		onFullChange?: (full: boolean) => void;
 		children: Snippet;
 	} = $props();
 
@@ -108,6 +115,14 @@
 	$effect(() => {
 		onDocked?.(asDock);
 	});
+
+	/** Filling the page is a docked panel's; a sheet already does. */
+	const fills = $derived(asDock && full);
+
+	function setFull(to: boolean): void {
+		full = to;
+		onFullChange?.(to);
+	}
 
 	let panel = $state<HTMLElement | null>(null);
 	/** What the dock measures, for the widths that are the stylesheet's. */
@@ -230,15 +245,18 @@
 		tabindex="-1"
 		aria-label={title}
 		inert={!open}
-		style="top: max(var(--app-chrome-top, 0px), env(safe-area-inset-top, 0px)); right: {place.from}px; z-index: {40 +
-			stack}; transform: translateX({open ? '0px' : `calc(100% + ${place.from}px)`});{stands
-			? ` width: ${stands}px`
-			: ''}"
+		style={fills
+			? `top: max(var(--app-chrome-top, 0px), env(safe-area-inset-top, 0px)); left: var(--app-chrome-inset-start, 0px); right: 0; z-index: ${60 + stack}; transform: translateX(${open ? '0px' : '100%'});`
+			: `top: max(var(--app-chrome-top, 0px), env(safe-area-inset-top, 0px)); right: ${place.from}px; z-index: ${40 + stack}; transform: translateX(${open ? '0px' : `calc(100% + ${place.from}px)`});${stands ? ` width: ${stands}px` : ''}`}
+		data-fills={fills ? '' : undefined}
 		onkeydown={(e) => {
-			if (e.key === 'Escape') handle(false);
+			if (e.key !== 'Escape') return;
+			if (fills) setFull(false);
+			else handle(false);
 		}}
 		class={cn(
-			'fixed bottom-0 flex w-[clamp(22rem,38vw,34rem)] flex-col border-l border-border bg-background shadow-lg transition-[transform,opacity] duration-200 ease-out outline-none motion-reduce:transition-none',
+			'fixed bottom-0 flex flex-col border-l border-border bg-background shadow-lg transition-[transform,opacity] duration-200 ease-out outline-none motion-reduce:transition-none',
+			fills ? 'w-auto' : 'w-[clamp(22rem,38vw,34rem)]',
 			open ? 'opacity-100' : 'pointer-events-none opacity-0'
 		)}
 	>
@@ -261,6 +279,7 @@
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div
+			hidden={fills}
 			role="separator"
 			tabindex="0"
 			aria-orientation="vertical"

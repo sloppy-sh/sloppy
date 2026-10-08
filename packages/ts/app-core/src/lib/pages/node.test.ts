@@ -3019,3 +3019,48 @@ describe('handing a note to somebody', () => {
 		expect(copied).toEqual([`${globalThis.location.origin}${nodeHref(SECOND)}`]);
 	});
 });
+
+// DESIGN.md § Layout: a docked note fills the page on a tap, from a control in
+// its own head; a surface that cannot fill the page offers none.
+describe('reading it full-page', () => {
+	it('offers to fill the page from the head, and to come back', async () => {
+		stubViewport(1400);
+		const fulls: boolean[] = [];
+		mounted = mount(NoteOnSurface, {
+			target,
+			props: { opened: FIRST, fresh: false, full: false, onfull: (to) => fulls.push(to) }
+		});
+		flushSync();
+		await settle();
+
+		const fill = document.body.querySelector<HTMLButtonElement>(
+			'button[aria-label="Fill the page"]'
+		);
+		expect(fill).not.toBeNull();
+		fill?.click();
+		expect(fulls).toEqual([true]);
+
+		unmount(mounted as ReturnType<typeof mount>, { outro: false });
+		mounted = mount(NoteOnSurface, {
+			target,
+			props: { opened: FIRST, fresh: false, full: true, onfull: (to) => fulls.push(to) }
+		});
+		flushSync();
+		await settle();
+		const back = document.body.querySelector<HTMLButtonElement>(
+			'button[aria-label="Back beside the graph"]'
+		);
+		expect(back?.getAttribute('aria-pressed')).toBe('true');
+		back?.click();
+		expect(fulls).toEqual([true, false]);
+	});
+
+	it('offers nothing where the surface cannot fill the page', async () => {
+		stubViewport(1400);
+		mounted = mount(NoteOnSurface, { target, props: { opened: FIRST, fresh: false } });
+		flushSync();
+		await settle();
+
+		expect(document.body.querySelector('button[aria-label="Fill the page"]')).toBeNull();
+	});
+});

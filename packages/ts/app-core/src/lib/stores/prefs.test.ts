@@ -207,6 +207,7 @@ describe('the saved look', () => {
 			walking: false,
 			recordsWhatHappens: false,
 			readingWidth: null,
+			readingFull: false,
 			chatWidth: null,
 			deskNavOpen: true,
 			tagOrder: 'count',

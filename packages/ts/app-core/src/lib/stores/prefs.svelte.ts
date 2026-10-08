@@ -93,6 +93,9 @@ export interface Prefs {
 	/** How much room the reader has taken for the chat docked beside the graph,
 	 *  in px, on the same terms as {@link Prefs.readingWidth}. */
 	chatWidth: number | null;
+	/** Whether a docked note fills the page — the focused reading — rather than
+	 *  standing beside the graph. Kept, like the room it takes. */
+	readingFull: boolean;
 	/** How close everything is drawn — DESIGN.md § Layout. `auto` is what this
 	 *  device is: closer where a mouse is the only pointer. */
 	density: Density;
@@ -221,6 +224,7 @@ function defaults(): Prefs {
 		recordsWhatHappens: false,
 		readingWidth: null,
 		chatWidth: null,
+		readingFull: false,
 		deskNavOpen: true,
 		tagOrder: 'count',
 		columnGroups: { history: false, tags: true },
@@ -421,6 +425,7 @@ class PrefsStore {
 			recordsWhatHappens: saved.recordsWhatHappens === true,
 			readingWidth: widthIn(saved.readingWidth),
 			chatWidth: widthIn(saved.chatWidth),
+			readingFull: saved.readingFull === true,
 			deskNavOpen: saved.deskNavOpen !== false,
 			tagOrder: saved.tagOrder === 'name' ? 'name' : 'count',
 			columnGroups: groupsIn(saved.columnGroups),

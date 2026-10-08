@@ -11,6 +11,8 @@
 	import Copy from '@lucide/svelte/icons/copy';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import Maximize2 from '@lucide/svelte/icons/maximize-2';
+	import Minimize2 from '@lucide/svelte/icons/minimize-2';
 	import Files from '@lucide/svelte/icons/files';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Hash from '@lucide/svelte/icons/hash';
@@ -142,7 +144,9 @@
 		onLinkOnGraph,
 		onDeleted,
 		onBack = null,
-		onClose
+		onClose,
+		full = null,
+		onFullChange
 	}: {
 		ref: OwnedRef;
 		/** The note just written, whose title is still to be given, if it is this one. */
@@ -192,6 +196,10 @@
 		 *  trail, where the one way out is the graph. */
 		onBack?: (() => void) | null;
 		onClose: () => void;
+		/** Whether the panel this is read in fills the page. Null is a surface
+		 *  that cannot — a sheet, a page of its own — and offers nothing. */
+		full?: boolean | null;
+		onFullChange?: (full: boolean) => void;
 	} = $props();
 
 	const node = $derived(nodes.get(ref));
@@ -2338,6 +2346,18 @@
 
 			{#if node}
 				<div class="ml-auto flex min-w-0 items-center gap-2">
+					{#if full !== null}
+						<Button
+							variant="ghost"
+							size="icon"
+							class="size-control shrink-0 text-muted-foreground"
+							aria-label={full ? 'Back beside the graph' : 'Fill the page'}
+							aria-pressed={full}
+							onclick={() => onFullChange?.(!full)}
+						>
+							{#if full}<Minimize2 class="size-4" />{:else}<Maximize2 class="size-4" />{/if}
+						</Button>
+					{/if}
 					<Button
 						bind:ref={actsFrom}
 						variant="ghost"

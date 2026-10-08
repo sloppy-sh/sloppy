@@ -14,7 +14,9 @@
 		writingAnother = false,
 		onback = null,
 		onclose,
-		onlink
+		onlink,
+		full = null,
+		onfull
 	}: {
 		opened: OwnedRef;
 		fresh?: boolean;
@@ -24,6 +26,9 @@
 		onback?: (() => void) | null;
 		onclose?: () => void;
 		onlink?: () => void;
+		/** As the page reports it: whether the panel fills the page, or cannot. */
+		full?: boolean | null;
+		onfull?: (to: boolean) => void;
 	} = $props();
 
 	interface Typed {
@@ -98,6 +103,8 @@
 				typed = null;
 			}}
 			onLinkOnGraph={() => onlink?.()}
+			{full}
+			onFullChange={(to) => onfull?.(to)}
 			onBack={onback}
 			onDeleted={(_gone, above) => {
 				if (!above) {

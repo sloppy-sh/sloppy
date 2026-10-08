@@ -155,3 +155,70 @@ describe('a note and the chat docked at once', () => {
 		expect(Number(owed().replace('px', ''))).toBeLessThanOrEqual(1000 - 448);
 	});
 });
+
+describe('a dock filling the page', () => {
+	it('spans the page over the other docks, keeps its place in the stack, and comes back', () => {
+		dock('Chat', { outer: 1 });
+		const note = dock('Note', { width: 420 });
+		const owedBefore = owed();
+		expect((dockNamed('Note') as HTMLElement).dataset.fills).toBeUndefined();
+
+		// Asked to fill the page.
+		takeDown(note);
+		const filling = mount(SideDock, {
+			target,
+			props: {
+				open: true,
+				title: 'Note',
+				wall: 'How much room Note takes',
+				children: body,
+				width: 420,
+				full: true
+			}
+		});
+		up.push(filling);
+		flushSync();
+
+		const full = dockNamed('Note') as HTMLElement;
+		expect(full.dataset.fills).toBe('');
+		expect(full.style.right).toBe('0px');
+		expect(full.style.left).toContain('--app-chrome-inset-start');
+		expect(full.style.width).toBe('');
+		expect(Number(full.style.zIndex)).toBeGreaterThan(
+			Number((dockNamed('Chat') as HTMLElement).style.zIndex)
+		);
+		expect(wallNamed('Note')?.hidden).toBe(true);
+		// What the page is owed is unchanged: the room it took beside the graph.
+		expect(owed()).toBe(owedBefore);
+	});
+
+	it('comes back beside the graph on Escape, and closes on the next', () => {
+		let fulls: boolean[] = [];
+		let opens: boolean[] = [];
+		const one = mount(SideDock, {
+			target,
+			props: {
+				open: true,
+				title: 'Note',
+				wall: 'How much room Note takes',
+				children: body,
+				full: true,
+				onFullChange: (to: boolean) => fulls.push(to),
+				onOpenChange: (to: boolean) => opens.push(to)
+			}
+		});
+		up.push(one);
+		flushSync();
+
+		const aside = dockNamed('Note') as HTMLElement;
+		aside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		flushSync();
+		expect(fulls).toEqual([false]);
+		expect(opens).toEqual([]);
+		expect(aside.dataset.fills).toBeUndefined();
+
+		aside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		flushSync();
+		expect(opens).toEqual([false]);
+	});
+});

@@ -477,6 +477,9 @@
 
 	/** The project's own files, `undefined` where this graph is nobody's project
 	 *  and `null` before the shell has answered. */
+	/** Whether the note stands as a dock, which is the only place it can fill the page from. */
+	let readingDocked = $state(false);
+
 	let projectFiles = $state.raw<Awaited<ReturnType<typeof runtime.project>> | null>(null);
 	let chatting = $state(false);
 
@@ -3439,6 +3442,9 @@
 	says={tooMany}
 	width={prefs.current.readingWidth}
 	onWidthChange={(px) => prefs.set('readingWidth', px)}
+	full={prefs.current.readingFull}
+	onFullChange={(fills) => prefs.set('readingFull', fills)}
+	onDocked={(docked) => (readingDocked = docked)}
 	onActivate={activate}
 	onCloseTab={closeTab}
 >
@@ -3484,6 +3490,8 @@
 			onDeleted={(of, above) => closeGone([of], above)}
 			onBack={wayBack === null ? null : walkBack}
 			onClose={hide}
+			full={readingDocked ? prefs.current.readingFull : null}
+			onFullChange={(fills) => prefs.set('readingFull', fills)}
 		/>
 	{/if}
 </ReadingPanel>

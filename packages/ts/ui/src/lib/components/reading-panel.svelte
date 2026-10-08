@@ -34,6 +34,9 @@
 		says = null,
 		width = null,
 		onWidthChange,
+		full = $bindable(false),
+		onFullChange,
+		onDocked,
 		onActivate,
 		onCloseTab,
 		children
@@ -54,6 +57,11 @@
 		width?: number | null;
 		/** A width the reader settled on, to keep for their next note. */
 		onWidthChange?: (width: number) => void;
+		/** Whether a docked panel fills the page — `SideDock` says what that is. */
+		full?: boolean;
+		onFullChange?: (full: boolean) => void;
+		/** Whether this is standing as a dock or as a sheet, the dock's own answer. */
+		onDocked?: (docked: boolean) => void;
 		/** The one {@link children} is showing, of {@link tabs}. */
 		active?: OwnedRef | null;
 		onActivate?: (ref: OwnedRef) => void;
@@ -153,6 +161,9 @@
 	{title}
 	{width}
 	{onWidthChange}
+	bind:full
+	{onFullChange}
+	{onDocked}
 	wall="How much room the note takes"
 >
 	<div style="--reading-column: {DOCK_COLUMN}px;{headed ? ` --reading-head: ${headHeight}px` : ''}">
