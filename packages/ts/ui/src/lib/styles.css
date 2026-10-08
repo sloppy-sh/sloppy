@@ -118,15 +118,15 @@
 	color: var(--background);
 }
 
-/* The row the pointer or the arrow keys are on, inverted the same way. A
-   destructive row is left out: it says what it is in its own colour, and the
-   icon inside any other one is taken off the muted ramp it would vanish on. */
+/* The row the pointer or the arrow keys are on, inverted the same way. The
+   muted ramp is mixed against the page, so on this block it has to be turned
+   over: an icon and a secondary line stay a step back from the row's own words
+   without going illegible. A destructive row is left out — it says what it is
+   in its own colour. */
 :root[data-style='terminal'] [data-highlighted]:not([data-variant='destructive']) {
 	background-color: var(--terminal-block);
 	color: var(--background);
-}
-:root[data-style='terminal'] [data-highlighted]:not([data-variant='destructive']) svg {
-	color: inherit;
+	--muted-foreground: color-mix(in oklab, var(--background) 70%, var(--foreground));
 }
 
 :root[data-style='terminal'] :focus-visible:not([contenteditable='true']) {

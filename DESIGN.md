@@ -166,7 +166,7 @@ Pixel builds its edge out of box-shadows so the corners step, which is also wher
 offset comes from; a single side has no corner to step, so the per-side families stay the
 hairline they were.
 
-Four things a style must get right, and each is a place a style ships looking half-done:
+Five things a style must get right, and each is a place a style ships looking half-done:
 
 - **A style block sits AFTER every `[data-theme]` block and carries a `.dark:root[…]`
   twin.** Dark families declare `--border` at `.dark:root[data-theme='x']` (specificity
@@ -187,6 +187,12 @@ Four things a style must get right, and each is a place a style ships looking ha
 - **A control sized in fractional pixels needs its geometry given back.** A 2px edge on a
   track hand-sized around a 1px one spills the thumb out of its own track; give the track
   exactly the pixels the second border takes, or the travel arithmetic stops landing flush.
+- **A surface a style inverts takes every ramp mixed against the old one with it.** Setting
+  `color` on a row turns its own words over and leaves `--muted-foreground` where it was —
+  mixed against the page, which is now the ink under them, so a shortcut, an icon and a
+  secondary line land near-invisible. Re-mix the ramp from the row's own two ends on the
+  same rule, rather than rescuing one child at a time: the muted tone is the vocabulary's,
+  so a style that only rescues the surface it was looking at has fixed one screen.
 
 **The canvas is exempt from `data-style`.** Node and edge geometry is drawn by pixi from
 numeric colours, and a hard offset shadow on ten thousand marks is both unreadable and

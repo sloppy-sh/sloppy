@@ -75,7 +75,7 @@ describe('how a surface is drawn', () => {
 		expect(block(style).length).toBeGreaterThan(0);
 	});
 
-	// The first of DESIGN.md's four: the dark families declare --border at 0,3,0,
+	// The first of DESIGN.md's five: the dark families declare --border at 0,3,0,
 	// so the plain `:root[data-style]` form at 0,2,0 loses to them outright.
 	it.each(STYLES)('stands a dark twin beside %s wherever it takes --border', (style) => {
 		const taking = block(style).filter((rule) => declares(rule, '--border'));
@@ -129,7 +129,7 @@ describe('what a style may not do', () => {
 		expect(CSS).not.toMatch(/\]\s*\*/);
 	});
 
-	// The third of the four: an unlayered rule outranks
+	// The third of the five: an unlayered rule outranks
 	// `focus-visible:border-ring` and `aria-invalid:border-destructive`.
 	it('eats neither a focus indicator nor an error state', () => {
 		const edges = RULES.filter((rule) => declares(rule, 'border-color'));
@@ -145,7 +145,22 @@ describe('what a style may not do', () => {
 		}
 	});
 
-	// The second of the four: `border border-transparent` is also how this
+	// The fifth of the five: an inverted row paints its block under words that
+	// were mixed against the page, and the muted ramp is one of those.
+	// `::selection` is exempt — it colours the selected range itself, every
+	// muted span inside it included.
+	it('turns the muted ramp over wherever it inverts a row', () => {
+		const inverting = RULES.filter(
+			(rule) =>
+				valueOf(rule, 'color') === 'var(--background)' && !rule.selector.includes('::selection')
+		);
+		expect(inverting.length).toBeGreaterThan(0);
+		for (const rule of inverting) {
+			expect(declares(rule, '--muted-foreground'), rule.selector).toBe(true);
+		}
+	});
+
+	// The second of the five: `border border-transparent` is also how this
 	// product says which chip is selected and which tab is active.
 	it('leaves an edge an author left for a state to fill', () => {
 		const drawing = RULES.filter((rule) => declares(rule, 'box-shadow'));
@@ -155,7 +170,7 @@ describe('what a style may not do', () => {
 		}
 	});
 
-	// The fourth of the four: none of the three widens an edge, so the condition
+	// The fourth of the five: none of the three widens an edge, so the condition
 	// that spills a thumb out of a track hand-sized around 1px never arises.
 	it('leaves every control the geometry it was drawn at', () => {
 		expect(CSS).not.toMatch(/border-[a-z-]*width/);
