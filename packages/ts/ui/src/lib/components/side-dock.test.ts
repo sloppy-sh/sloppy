@@ -193,8 +193,8 @@ describe('a dock filling the page', () => {
 	});
 
 	it('comes back beside the graph on Escape, and closes on the next', () => {
-		let fulls: boolean[] = [];
-		let opens: boolean[] = [];
+		const fulls: boolean[] = [];
+		const opens: boolean[] = [];
 		const one = mount(SideDock, {
 			target,
 			props: {
