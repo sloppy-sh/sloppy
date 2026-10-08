@@ -228,12 +228,65 @@ broken:
 A **scheme** is a theme somebody picks out of a collection rather than one we wrote: the
 Tinted Theming base16/base24 schemes, vendored whole. `base00` becomes the surface and
 `base05` the ink; `base01`–`base04` become cards, muted surfaces, fields and muted ink;
-`base08`–`base0F` become the eight facet hues — each facet's **lightness moved in OKLCH
-until it clears the canvas's 3:1 floor and the slot distance on that scheme's own
-surface**, hue kept, never used raw. `base08` is what a destructive act is drawn in too,
-with whichever of the scheme's own two ends reads on it. A scheme that is picked sets
-`data-theme="scheme"` and `data-scheme="<slug>"` on `<html>` with its tokens written
-inline as custom properties, and the `dark` class from the scheme's own variant.
+`base08`–`base0F` become the eight facet hues — the eight sharing one **lightness moved in
+OKLCH until every slot clears the canvas's 3:1 floor and the slot distance on that scheme's
+own surfaces**, never used raw. `base08` is what a destructive act is drawn in too, lifted
+the way every other ink is; what is drawn ON it is whichever of the scheme's own two ends
+reads best there, and that end reads at AA because the alarm itself does on the page. A
+scheme that is picked sets `data-theme="scheme"` and `data-scheme="<slug>"` on `<html>`
+with its tokens written inline as custom properties, and the `dark` class from the scheme's
+own variant.
+
+**Two of those surfaces are worked out rather than taken, because a collection carries fewer
+of them than the design system spends.** A field's boundary is `base03` lifted in lightness
+until it carries 1.5:1 on the page — a collection draws `base03` a shade off `base00` often
+enough, and a boundary nobody can see is not a boundary. And the highlight a menu row and a
+hovered control are drawn in is the muted surface stepped one shade further from the page,
+until it stands clear of both that surface and the panel it lands on: a collection states
+one selection colour, the muted surface already has it, and a highlight that cannot be told
+from either is a row that does not look picked. Every theme in `app.css` draws its own that
+way — a step deeper than muted on a light theme, a step lighter on a dark one.
+
+**The picker stands closed.** Dressing five hundred schemes is colour maths a phone would
+stall on, so the section is one row saying what is on, its sixteen colours beside the name;
+opening it reads the collection and draws the sixty that match what has been typed, the rest
+behind the search and the one being worn always among them. The rows are one group — arrows
+move through them, Space picks — rather than five hundred tab stops.
+
+**The eight slots share one lightness, so hue is all that is left to tell them apart — and
+a pair a scheme drew too close together is opened rather than thrown away.** Lightness
+carries depth on the canvas, so the slots may not spend it on each other, and how far two
+hues must stand apart to be told apart depends on the chroma their shared lightness leaves
+in hand. A collection draws two of its eight close together often — two reds, orange beside
+yellow — and dropping all eight over one close pair would hand the canvas the same hues
+under nearly every scheme. So every gap is raised to what the chroma in hand demands, the
+room comes out of the gaps that have it to spare in proportion to what they have, and the
+ring is turned back so the slots move as little as the opening allows. The order the scheme
+ran its hues in is kept; a scheme that crowds all eight into one narrow arc has each crowded
+pair opened to exactly the gap the chroma in hand demands and no further, so the arc widens
+while the gap the scheme left empty pays for it — an even wheel only where that demand is
+the whole circle divided eight ways.
+
+**Only a scheme with no eight hues to lend borrows Sloppy's own**: one whose eight carry no
+hue at all, and one whose eight its own surfaces leave nowhere to stand. That is a scheme
+asking one question eight times, and eight of the five hundred the picker offers are one —
+`dress.test.ts` names those eight and holds how far the opening reaches for the rest,
+because a mapping that answered every scheme with one wheel would pass every floor under
+it. Such a scheme keeps its own sixteen colours in the picker and lends the canvas Sloppy's
+hues at the lightness its own surfaces allow.
+
+**Every ink is the scheme's own, lifted only where the scheme's own surface would swallow
+it.** A collection's ladder of surfaces runs further from its page than Sloppy's does, and
+its muted ink is a comment colour rather than a line in a setting — so an ink that falls
+under AA on any surface it lands on is moved in lightness alone until it reads on all of
+them, keeping the scheme's cast. The secondary line lands on three: the page, the raised
+panel and the muted one, because `base01` is a card anywhere on the collection's ramp
+rather than a shade off its page, and the alarm lands on the same three. **And a scheme
+that cannot carry what a person reads is not offered at all**: one whose ink does not read
+on its own page, one where no one secondary line or alarm reads on every surface it lands
+on, one whose surfaces leave the eight slots nowhere to stand. Most of the collection comes
+through; `dress.test.ts` sweeps all of it and holds the count, because a mapping that shut
+half the collection out would pass every floor.
 
 **A scheme is the theme axis and nothing else.** Accent, style, font and density stay the
 person's — and because a dressing paints inline, which beats every rule in the design

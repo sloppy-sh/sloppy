@@ -66,6 +66,16 @@ beforeEach(() => {
 		writable: true,
 		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
 	});
+	// The schemes stand in a capped list, and a faded scroller measures itself.
+	Object.defineProperty(globalThis, 'ResizeObserver', {
+		configurable: true,
+		writable: true,
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+	});
 	localStorage.clear();
 	prefs.init();
 	people.hold(null);
@@ -233,6 +243,32 @@ describe('settings', () => {
 		expect(target.querySelectorAll('input[type="radio"]').length).toBe(
 			axes.reduce((all, axis) => all + axis.length, 0)
 		);
+	});
+
+	// A scheme IS the theme while it dresses the app, so none of the pills is the
+	// answer — and asking for the theme already saved still hands the app back.
+	it('stands a scheme down from the Theme pills, the saved theme included', async () => {
+		prefs.set('theme', 'paper');
+		prefs.setScheme({
+			slug: 'base16-nord',
+			variant: 'dark',
+			tokens: { '--background': '#2e3440', '--foreground': '#d8dee9' }
+		});
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		const pills = [...target.querySelectorAll<HTMLInputElement>('input[name="theme"]')];
+		expect(pills.filter((one) => one.checked)).toHaveLength(0);
+
+		pills.find((one) => one.value === 'paper')?.click();
+		flushSync();
+
+		expect(prefs.current.scheme).toBeNull();
+		expect(prefs.dressing).toBeNull();
+		expect(document.documentElement.getAttribute('data-theme')).toBe('paper');
+		expect(document.documentElement.style.getPropertyValue('--background')).toBe('');
+		expect(pills.filter((one) => one.checked).map((one) => one.value)).toEqual(['paper']);
 	});
 
 	// The face is the one look choice somebody may not be able to read the page
