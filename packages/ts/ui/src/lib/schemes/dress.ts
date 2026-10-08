@@ -125,9 +125,9 @@ function spread(hues: readonly number[]): boolean {
 
 /**
  * The tokens this scheme dresses the app in, or null where it cannot: its own
- * ink does not read on its own page, no one secondary line reads on both its
- * page and its muted panel, or its surfaces leave the eight slots nowhere to
- * stand. Null is a scheme the picker does not offer.
+ * ink does not read on its own page, no one secondary line reads on every
+ * surface it lands on, or its surfaces leave the eight slots nowhere to stand.
+ * Null is a scheme the picker does not offer.
  */
 export function dress(scheme: Scheme): SchemeDressing | null {
 	const at = (key: BaseKey): Oklch => colourOf(scheme.palette[key]);
@@ -140,13 +140,12 @@ export function dress(scheme: Scheme): SchemeDressing | null {
 	const facets = facetsOf(scheme, [paper, raised]);
 	if (facets === null) return null;
 
-	// A secondary line is read on the page and on the muted panel both, which is
-	// the pair a theme's muted ink is held to, and a collection's muted ink is a
-	// comment colour rather than a line in a setting. A scheme with nowhere to
-	// put that line is not one to dress the app in.
-	const line = reads(at('base04'), [paper, quiet]);
-	if (contrastRatio(line, paper) < LABEL_FLOOR) return null;
-	if (contrastRatio(line, quiet) < LABEL_FLOOR) return null;
+	// A collection's base01 is a card anywhere on its ramp rather than a shade
+	// off its page, so the raised panel is as much a surface the secondary line
+	// lands on as the page is.
+	const surfaces = [paper, raised, quiet];
+	const line = reads(at('base04'), surfaces);
+	if (surfaces.some((on) => contrastRatio(line, on) < LABEL_FLOOR)) return null;
 
 	const alarm = at('base08');
 	const onRaised = hexOf(reads(ink, [raised]));

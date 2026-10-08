@@ -220,12 +220,15 @@ surfaces allow.
 **Every ink is the scheme's own, lifted only where the scheme's own surface would swallow
 it.** A collection's ladder of surfaces runs further from its page than Sloppy's does, and
 its muted ink is a comment colour rather than a line in a setting — so an ink that falls
-under AA on the surface it lands on is moved in lightness alone until it reads, keeping
-the scheme's cast. **And a scheme that cannot carry what a person reads is not offered at
-all**: one whose ink does not read on its own page, one where no one secondary line reads
-on both its page and its muted panel, one whose surfaces leave the eight slots nowhere to
-stand. Most of the collection comes through; `dress.test.ts` sweeps all of it and holds
-the count, because a mapping that shut half the collection out would pass every floor.
+under AA on any surface it lands on is moved in lightness alone until it reads on all of
+them, keeping the scheme's cast. The secondary line lands on three: the page, the raised
+panel and the muted one, because `base01` is a card anywhere on the collection's ramp
+rather than a shade off its page. **And a scheme that cannot carry what a person reads is
+not offered at all**: one whose ink does not read on its own page, one where no one
+secondary line reads on every surface it lands on, one whose surfaces leave the eight
+slots nowhere to stand. Most of the collection comes through; `dress.test.ts` sweeps all
+of it and holds the count, because a mapping that shut half the collection out would pass
+every floor.
 
 **A scheme is the theme axis and nothing else.** Accent, style, font and density stay the
 person's — and because a dressing paints inline, which beats every rule in the design

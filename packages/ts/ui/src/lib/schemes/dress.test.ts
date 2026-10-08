@@ -84,14 +84,19 @@ const DERIVED = new Set<string>([
 	...SLOTS.map((slot) => `--facet-${slot}`)
 ]);
 
-/** Each ink and the surface it lands on. */
+/** Each ink and a surface it lands on. The secondary line lands on three of
+ *  them, because an unselected pill draws it on a card and the page draws it on
+ *  itself. */
 const INKS = [
 	['--foreground', '--background'],
 	['--card-foreground', '--card'],
 	['--popover-foreground', '--popover'],
 	['--secondary-foreground', '--secondary'],
 	['--accent-foreground', '--accent'],
-	['--muted-foreground', '--muted']
+	['--muted-foreground', '--muted'],
+	['--muted-foreground', '--background'],
+	['--muted-foreground', '--card'],
+	['--muted-foreground', '--popover']
 ] as const;
 
 const collection = await schemes();
@@ -140,15 +145,17 @@ describe('the collection', () => {
 });
 
 /**
- * The most contrast one colour can carry against BOTH these surfaces at once.
- * A lift runs to an end of the ramp, so two surfaces on the same side of a mark
- * are answered there; two that straddle it are answered at the crossing
- * between them, where the colour is as far from each as it can be from both.
+ * The most contrast one colour can carry against EVERY one of these surfaces at
+ * once. A lift runs to an end of the ramp, so surfaces all on one side of a mark
+ * are answered there; ones that straddle it are answered at a crossing between
+ * two NEIGHBOURS, where the colour is as far from each as it can be from both
+ * and every further surface is further still.
  */
-function bestOnBoth(a: Oklch, b: Oklch): number {
+function bestOnAll(...surfaces: readonly Oklch[]): number {
 	const luminance = (one: Oklch): number => 1.05 / contrastRatio(one, { l: 1, c: 0, h: 0 }) - 0.05;
-	const [lo, hi] = [luminance(a), luminance(b)].sort((x, y) => x - y);
-	return Math.max((lo + 0.05) / 0.05, 1.05 / (hi + 0.05), Math.sqrt((hi + 0.05) / (lo + 0.05)));
+	const ramp = surfaces.map(luminance).sort((x, y) => x - y);
+	const crossings = ramp.slice(1).map((on, at) => Math.sqrt((on + 0.05) / (ramp[at] + 0.05)));
+	return Math.max((ramp[0] + 0.05) / 0.05, 1.05 / (ramp[ramp.length - 1] + 0.05), ...crossings);
 }
 
 describe('what the picker offers', () => {
@@ -167,19 +174,20 @@ describe('what the picker offers', () => {
 			const paper = colour(scheme.palette.base00);
 			if (contrastRatio(colour(scheme.palette.base05), paper) < TEXT_FLOOR) {
 				why.ink += 1;
-			} else if (bestOnBoth(paper, colour(scheme.palette.base02)) < TEXT_FLOOR) {
+			} else if (
+				bestOnAll(paper, colour(scheme.palette.base01), colour(scheme.palette.base02)) < TEXT_FLOOR
+			) {
 				// Its own ink reads on its own page; what it has nowhere to put is
-				// the secondary line, read on the page and on the muted panel both.
+				// the secondary line, read on all three of its surfaces.
 				why.line += 1;
 			} else {
-				// Its page is black and its card mid grey, so no one lightness
-				// clears the floor a mark owes on both and the eight slots have
-				// nowhere to stand.
-				expect(scheme.slug).toBe('base24-vibrant-ink');
+				// Nothing in the collection reaches here: a scheme whose surfaces
+				// leave the eight slots nowhere to stand has nowhere for the
+				// secondary line either, so the line accounts for it first.
 				why.marks += 1;
 			}
 		}
-		expect(why).toEqual({ ink: 44, line: 26, marks: 1 });
+		expect(why).toEqual({ ink: 44, line: 27, marks: 0 });
 	});
 
 	it('is what legible() answers for, scheme by scheme', () => {
@@ -247,12 +255,6 @@ describe('what a person reads a scheme by', () => {
 					`${dressing.slug} ${token} on ${surface}`
 				).toBeGreaterThanOrEqual(TEXT_FLOOR);
 			}
-			// Secondary text is read on the page as well as on its own surface —
-			// the pair `token-contrast.test.ts` holds a theme's muted ink to.
-			expect(
-				contrastRatio(painted(dressing, '--muted-foreground'), painted(dressing, '--background')),
-				`${dressing.slug} muted ink on the page`
-			).toBeGreaterThanOrEqual(TEXT_FLOOR);
 		}
 	});
 
