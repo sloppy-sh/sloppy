@@ -54,3 +54,27 @@ describe('the rows for what was typed', () => {
 		expect(within.map((row) => row.key)).toEqual(['act:history']);
 	});
 });
+
+// DESIGN.md § Eggs: nothing a person needs is behind one, so this row is words
+// and nothing else.
+describe('the teapot', () => {
+	it('answers the word, whatever case and spacing it arrives in', () => {
+		for (const typed of ['teapot', 'TeaPot', '  teapot  ']) {
+			const rows = rowsFor(typed, ACTS, [], null);
+			expect(rows[0]).toEqual({ kind: 'line', key: 'line:teapot', text: '418 · short and stout' });
+		}
+	});
+
+	it('stands above whatever else the word reached, and takes nothing away', () => {
+		const notes = [note(A, '1a', 'A teapot')];
+		expect(rowsFor('teapot', ACTS, notes, null).map((row) => row.key)).toEqual([
+			'line:teapot',
+			'note:' + A
+		]);
+	});
+
+	it('is not reached by a word that merely contains it', () => {
+		expect(rowsFor('teapots', ACTS, [], null)).toEqual([]);
+		expect(rowsFor('a teapot', ACTS, [], null)).toEqual([]);
+	});
+});

@@ -150,6 +150,7 @@
 	import { codeDrift } from '../stores/code-drift.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
+	import { eggs } from '../stores/eggs.svelte.js';
 	import { find } from '../stores/find.svelte.js';
 	import { graphs, projectOf } from '../stores/graphs.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
@@ -2269,6 +2270,13 @@
 			numberingWrite = false;
 		}
 	}
+
+	let swept = eggs.sweeps;
+	$effect(() => {
+		if (eggs.sweeps === swept) return;
+		swept = eggs.sweeps;
+		canvas?.sweep();
+	});
 </script>
 
 <svelte:head><title>Sloppy</title></svelte:head>

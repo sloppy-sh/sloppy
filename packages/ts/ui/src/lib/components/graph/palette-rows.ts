@@ -19,7 +19,12 @@ export interface PaletteAct {
 
 export type PaletteRow =
 	| { kind: 'act'; key: string; act: PaletteAct }
-	| { kind: 'note'; key: string; note: FoundNote };
+	| { kind: 'note'; key: string; note: FoundNote }
+	/** A row that is only words: nothing to run and nothing to open. */
+	| { kind: 'line'; key: string; text: string };
+
+/** DESIGN.md § Eggs, which is what bounds this. */
+const TEAPOT: PaletteRow = { kind: 'line', key: 'line:teapot', text: '418 · short and stout' };
 
 function words(said: string): string[] {
 	return said.toLowerCase().split(/\s+/).filter(Boolean);
@@ -56,6 +61,7 @@ export function rowsFor(
 		(act) => !begun.includes(act) && act.label.toLowerCase().includes(lowered)
 	);
 	return [
+		...(lowered === 'teapot' ? [TEAPOT] : []),
 		...first.map((note) => ({ kind: 'note' as const, key: `note:${note.ref}`, note })),
 		...begun.map((act) => ({ kind: 'act' as const, key: `act:${act.id}`, act })),
 		...rest.map((note) => ({ kind: 'note' as const, key: `note:${note.ref}`, note })),

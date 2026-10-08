@@ -105,6 +105,13 @@ export interface GraphHandle {
    * applies at once.
    */
   lookAt(at: GraphTransform): void;
+  /**
+   * Run a hue sweep over the marks that are up, left to right, and leave the
+   * canvas as it was — DESIGN.md § Eggs. Nothing is stored, nothing is reported,
+   * and a sweep asked for while one runs, or before the canvas is up, does
+   * nothing.
+   */
+  sweep(): void;
   stats(): GraphStats | null;
   /** Start a fresh timing window, so `stats` describes one thing at a time. */
   resetStats(): void;
@@ -669,6 +676,9 @@ export function mountGraph(
     },
     lookAt(at) {
       look(at);
+    },
+    sweep() {
+      scene?.sweep();
     },
     resetStats() {
       scene?.resetStats();

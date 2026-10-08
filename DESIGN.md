@@ -2089,3 +2089,11 @@ Sloppy is allowed to be fun, and three lines bound it:
 - **An egg names no colour the hue rule does not already lend.** It borrows the facets and
   the depth ramp like everything else on the canvas, so it cannot make the graph say
   something the reader did not ask it.
+
+There are two of them. The Konami code — up up down down left right left right B A, typed
+anywhere but into a field or into somebody's writing — runs the eight facet hues across the
+canvas once, left to right, each mark holding the hue of the band it stands in for a moment
+before going back to what it was drawn in, and since that is decoration § Motion applies: a
+reader who has asked for less motion gets none of it. And `teapot` in the palette answers
+with one row, `418 · short and stout`, which does nothing — the arrows read past it, nothing
+opens, and no other row is taken away to make room for it.

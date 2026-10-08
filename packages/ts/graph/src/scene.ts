@@ -14,6 +14,7 @@ import {
   RING_STYLES,
   type RingStyle,
   type RingWeight,
+  TAG_HUE_SLOTS,
 } from "@sloppy/types";
 import type {
   Application,
@@ -305,6 +306,19 @@ export interface FrameStats {
   labels: number;
 }
 
+/** How long a hue sweep takes to cross the field — DESIGN.md § Eggs. */
+const SWEEP_MS = 1500;
+/** How long one mark holds the hue the sweep lit it in. */
+const SWEEP_HOLD_MS = 300;
+
+/** A hue sweep crossing the field: when it began, and the band of x it crosses,
+ *  measured once so a settling layout cannot move a mark's hue under it. */
+interface Sweep {
+  since: number;
+  left: number;
+  span: number;
+}
+
 /** One picture giving way to the next on a mark: the one going, the sprite still
  *  drawing it, and when the change began. */
 interface Turn {
@@ -395,6 +409,8 @@ export class GraphScene {
   private linePairs: number[] = [];
   private differenceLines: DifferenceLines = { arrived: [], gone: [] };
   private comparing = false;
+  /** The hue sweep running, and `null` while none is. */
+  private sweeping: Sweep | null = null;
   private readonly labelSlots = new Map<string, number>();
   /** Which slot each line's words are written in, keyed by {@link edgeLookKey}. */
   private readonly edgeLabelSlots = new Map<string, number>();
@@ -710,6 +726,53 @@ export class GraphScene {
     this.positionsDirty = true;
   }
 
+  /**
+   * Run a hue sweep over the marks already up: each takes the facet of the band
+   * it stands in as the sweep reaches its x, holds it, and goes back to what it
+   * was drawn in. One at a time — asked again while one runs, nothing happens —
+   * and nothing is left behind, so the canvas ends as it began.
+   *
+   * Decoration, so a reader who has asked for less motion gets none of it.
+   */
+  sweep(): void {
+    if (this.sweeping !== null || this.marks.length === 0) return;
+    if (this.options.reduced?.matches) return;
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    for (const mark of this.marks) {
+      const x = this.positions[mark.index * 2];
+      if (x < left) left = x;
+      if (x > right) right = x;
+    }
+    this.sweeping = { since: performance.now(), left, span: right - left };
+  }
+
+  private advanceSweep(): void {
+    const sweep = this.sweeping;
+    if (sweep === null) return;
+    const since = performance.now() - sweep.since;
+    const done = since >= SWEEP_MS;
+    if (done) this.sweeping = null;
+
+    for (const mark of this.marks) {
+      // A pulled mark is drawn hollow, so its colour is on its edge; a mark that
+      // went carries neither.
+      const carrier = mark.fill ?? mark.ring;
+      if (carrier === null) continue;
+      const across =
+        sweep.span > 0
+          ? (this.positions[mark.index * 2] - sweep.left) / sweep.span
+          : 0;
+      const lights = across * (SWEEP_MS - SWEEP_HOLD_MS);
+      const lit = !done && since >= lights && since < lights + SWEEP_HOLD_MS;
+      carrier.tint = lit
+        ? this.options.palette.tag(bandAt(across))
+        : mark.attributes.fill;
+    }
+    this.fills.update();
+    this.rings.update();
+  }
+
   private readComparing(): void {
     this.comparing = this.marks.some(
       (mark) => mark.attributes.difference !== undefined,
@@ -994,6 +1057,7 @@ export class GraphScene {
     const recut = this.cutSheet();
     if (this.positionsDirty) this.syncMarks();
     if (turning) this.advanceTurns();
+    if (this.sweeping !== null) this.advanceSweep();
     if (this.positionsDirty || scaleMoved || rebuilt || recut) {
       this.drawShapes();
     }
@@ -2367,6 +2431,17 @@ export function looksDrawn(radius: number, looking: boolean): boolean {
 
 function lookKey(weight: RingWeight, style: RingStyle): string {
   return `${weight}:${style}`;
+}
+
+/** The facet band a point `across` the field — 0 at its left edge, 1 at its
+ *  right — stands in: the eight hues laid over it in order. */
+function bandAt(across: number): (typeof TAG_HUE_SLOTS)[number] {
+  const at = clamp(
+    Math.floor(across * TAG_HUE_SLOTS.length),
+    0,
+    TAG_HUE_SLOTS.length - 1,
+  );
+  return TAG_HUE_SLOTS[at];
 }
 
 /** A picture cut to the disc it is drawn on, decoded at `at` — the size the mark

@@ -100,20 +100,22 @@
 
 	function take(row: PaletteRow): void {
 		if (row.kind === 'note') onopen(row.note.ref);
-		else onrun?.(row.act.id);
+		else if (row.kind === 'act') onrun?.(row.act.id);
 	}
+
+	/** The rows the arrows stop on, as indices into `rows`: one that does nothing
+	 *  is read past rather than landed on. */
+	const stops = $derived(rows.flatMap((row, at) => (row.kind === 'line' ? [] : [at])));
 
 	function onKeys(event: KeyboardEvent): void {
 		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-			if (rows.length === 0) return;
+			if (stops.length === 0) return;
 			event.preventDefault();
 			const step = event.key === 'ArrowDown' ? 1 : -1;
-			active =
-				active === null
-					? step === 1
-						? 0
-						: rows.length - 1
-					: (active + step + rows.length) % rows.length;
+			const was = active === null ? -1 : stops.indexOf(active);
+			const to =
+				was < 0 ? (step === 1 ? 0 : stops.length - 1) : (was + step + stops.length) % stops.length;
+			active = stops[to];
 			document.getElementById(rowId(active))?.scrollIntoView({ block: 'nearest' });
 			return;
 		}
@@ -121,7 +123,7 @@
 		event.preventDefault();
 		if (active !== null && rows[active]) take(rows[active]);
 		else if (exact) onopen(exact);
-		else if (words.trim() !== '' && rows.length === 1) take(rows[0]);
+		else if (words.trim() !== '' && stops.length === 1) take(rows[stops[0]]);
 	}
 
 	function rowId(at: number): string {
@@ -204,52 +206,56 @@
 							{heading}
 						</li>
 					{/if}
-					<li
-						id={rowId(at)}
-						role="option"
-						aria-selected={active === at}
-						class="rounded-md {active === at ? 'bg-muted' : ''}"
-					>
-						{#if row.kind === 'note'}
-							{@const note = row.note}
-							<button
-								type="button"
-								tabindex="-1"
-								class="flex min-h-control w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-								onclick={() => onopen(note.ref)}
-							>
-								<span class="flex w-full min-w-0 items-baseline gap-2 text-sm">
-									{#if note.address}<span class="shrink-0 address text-xs">{note.address}</span
-										>{/if}
-									<span class="min-w-0 flex-1 truncate">{nameOf(note)}</span>
-								</span>
-								{#if note.wasAt}
-									<span class="text-xs text-muted-foreground"
-										>Was at <span class="address">{note.wasAt}</span></span
-									>
-								{/if}
-								{#if note.snippet}
-									<span class="line-clamp-2 text-xs text-muted-foreground">{note.snippet}</span>
-								{/if}
-								{#if beneath(note)}
-									<span class="text-xs text-muted-foreground">{beneath(note)}</span>
-								{/if}
-							</button>
-						{:else}
-							{@const act = row.act}
-							<button
-								type="button"
-								tabindex="-1"
-								class="flex min-h-control w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-								onclick={() => onrun?.(act.id)}
-							>
-								<span class="min-w-0 flex-1 truncate">{act.label}</span>
-								{#if act.says}
-									<kbd class="shrink-0 font-sans text-xs text-muted-foreground">{act.says}</kbd>
-								{/if}
-							</button>
-						{/if}
-					</li>
+					{#if row.kind === 'line'}
+						<li role="presentation" class="px-2 py-2 text-sm text-muted-foreground">{row.text}</li>
+					{:else}
+						<li
+							id={rowId(at)}
+							role="option"
+							aria-selected={active === at}
+							class="rounded-md {active === at ? 'bg-muted' : ''}"
+						>
+							{#if row.kind === 'note'}
+								{@const note = row.note}
+								<button
+									type="button"
+									tabindex="-1"
+									class="flex min-h-control w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+									onclick={() => onopen(note.ref)}
+								>
+									<span class="flex w-full min-w-0 items-baseline gap-2 text-sm">
+										{#if note.address}<span class="shrink-0 address text-xs">{note.address}</span
+											>{/if}
+										<span class="min-w-0 flex-1 truncate">{nameOf(note)}</span>
+									</span>
+									{#if note.wasAt}
+										<span class="text-xs text-muted-foreground"
+											>Was at <span class="address">{note.wasAt}</span></span
+										>
+									{/if}
+									{#if note.snippet}
+										<span class="line-clamp-2 text-xs text-muted-foreground">{note.snippet}</span>
+									{/if}
+									{#if beneath(note)}
+										<span class="text-xs text-muted-foreground">{beneath(note)}</span>
+									{/if}
+								</button>
+							{:else}
+								{@const act = row.act}
+								<button
+									type="button"
+									tabindex="-1"
+									class="flex min-h-control w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+									onclick={() => onrun?.(act.id)}
+								>
+									<span class="min-w-0 flex-1 truncate">{act.label}</span>
+									{#if act.says}
+										<kbd class="shrink-0 font-sans text-xs text-muted-foreground">{act.says}</kbd>
+									{/if}
+								</button>
+							{/if}
+						</li>
+					{/if}
 				{/each}
 			</ul>
 		{:else if looking}

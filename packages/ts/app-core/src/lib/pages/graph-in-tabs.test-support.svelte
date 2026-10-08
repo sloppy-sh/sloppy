@@ -57,6 +57,7 @@
 			field.at = at;
 			field.looked = [...field.looked, { at, drawing: drawing() }];
 		},
+		sweep: () => {},
 		stats: () => null,
 		resetStats: () => {}
 	};

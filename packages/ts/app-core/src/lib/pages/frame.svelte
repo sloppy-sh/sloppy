@@ -13,8 +13,10 @@
 	import { page } from '$app/state';
 	import { api } from '../api.js';
 	import { keyboard } from '../keyboard.svelte.js';
+	import { watchForKonami } from '../konami.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
+	import { eggs } from '../stores/eggs.svelte.js';
 	import { wordsFor } from '../stores/errors.js';
 	import { find } from '../stores/find.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
@@ -104,6 +106,8 @@
 	}
 
 	onMount(() => prefs.watchThePointer());
+
+	onMount(() => watchForKonami(() => eggs.sweep()));
 
 	onMount(async () => {
 		prefs.init();

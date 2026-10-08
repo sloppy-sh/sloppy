@@ -1,3 +1,47 @@
-/* The effect axis: what the screen itself is drawn like over everything else —
-   DESIGN.md § Theme. A texture over the page, never a colour and never a shape,
-   and nothing a pointer can land on. */
+/* The effect axis — DESIGN.md § "The effect axis". A texture over the page: no
+   colour of its own, no shape, and nothing a pointer can land on. */
+
+/* Over every dock and every sheet — the app's own chrome stops at 50 — because a
+   screen is in front of what is on it.
+
+   No blend mode: the texture is mixed from the theme's own ink, so compositing
+   it straight darkens a light theme and lightens a dark one — the one thing
+   that reads on every theme and every scheme. */
+:root[data-effect='crt'] body::after {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	pointer-events: none;
+	background:
+		repeating-linear-gradient(
+			to bottom,
+			color-mix(in oklab, var(--foreground) 9%, transparent) 0 1px,
+			transparent 1px 3px
+		),
+		radial-gradient(
+			ellipse 100% 100% at center,
+			transparent 55%,
+			color-mix(in oklab, var(--foreground) 14%, transparent) 100%
+		);
+	animation: sloppy-crt-flicker 0.12s steps(2, jump-none) infinite alternate;
+}
+
+:root[data-effect='crt'] body {
+	text-shadow: 0 0 1px color-mix(in oklab, var(--foreground) 20%, transparent);
+}
+
+@keyframes sloppy-crt-flicker {
+	from {
+		opacity: 0.96;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root[data-effect='crt'] body::after {
+		animation: none;
+	}
+}
