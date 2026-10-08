@@ -105,6 +105,9 @@ export interface GraphPalette {
    *  {@link edgeAlphaWhileSelecting}: a zoom clamps the three widths together,
    *  and the order is what is left to tell the solid lines apart. */
   connectionAlphaWhileSelecting: number;
+  /** Every line reaching the note being read, whatever its kind and whatever
+   *  question is up — over everything else. DESIGN.md § Edges. */
+  readingAlpha: number;
 }
 
 const TOKENS = [
@@ -339,5 +342,6 @@ export function buildPalette(
     connection: inkRgb,
     connectionAlpha: 0.34,
     connectionAlphaWhileSelecting: 0.12,
+    readingAlpha: 0.9,
   };
 }

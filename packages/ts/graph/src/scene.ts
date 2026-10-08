@@ -183,6 +183,8 @@ const LIFT_BANDS = 16;
 const EDGE_WIDTH = 1.2;
 const CONNECTION_WEIGHT = 1.4;
 const RUN_WEIGHT = 1.8;
+/** What a line reaching the note being read gains on its own weight. */
+const READING_WEIGHT = 1.6;
 const CONNECTION_DASH = 9;
 /** The most segments one dashed edge may cost. Reached only by an edge long
  *  enough that the dashes stretch to meet it. */
@@ -1638,8 +1640,99 @@ export class GraphScene {
       this.connections.stroke(this.lineInk("link", 0, receding));
     }
 
-    this.drawLooks(receding);
+    const reading = this.readingIndex();
+    this.drawLooks(receding, reading);
+    if (reading !== undefined) this.drawReadingLines(reading);
     this.lastEdgeScale = this.viewport.scale;
+  }
+
+  /** The mark of the note being read, where one is and is drawn. */
+  private readingIndex(): number | undefined {
+    const active = this.reading?.active;
+    return active ? this.indexOf(active) : undefined;
+  }
+
+  /** A line's ink where it reaches the note being read: its own weight a step
+   *  up and the full ink, whatever is receding — DESIGN.md § Edges. */
+  private readingInk(kind: EdgeKind, step: number): LineInk {
+    const { palette } = this.options;
+    const [color, weight] =
+      kind === "run"
+        ? [palette.run, RUN_WEIGHT]
+        : kind === "genealogy"
+          ? [palette.depth(step + 1), 1]
+          : [palette.connection, CONNECTION_WEIGHT];
+    return {
+      color,
+      alpha: palette.readingAlpha,
+      width: this.lineWidth * weight * READING_WEIGHT,
+      captionAlpha: 1,
+    };
+  }
+
+  /**
+   * The lines reaching the note being read, struck again over the rest — the
+   * ones a look is set on are already struck that way by `drawLooks`.
+   */
+  private drawReadingLines(at: number): void {
+    const looked = new Set(
+      this.lookedLines.map((line) => `${line.from}:${line.to}`),
+    );
+    const touches = (a: number, b: number): boolean =>
+      (a === at || b === at) && !looked.has(`${a}:${b}`);
+    const segment = (into: Graphics, a: number, b: number): void => {
+      into.moveTo(this.positions[a * 2], this.positions[a * 2 + 1]);
+      into.lineTo(this.positions[b * 2], this.positions[b * 2 + 1]);
+    };
+
+    this.edgesByDepth.forEach((pairs, step) => {
+      let any = false;
+      for (let i = 0; i < pairs.length; i += 2) {
+        if (!touches(pairs[i], pairs[i + 1])) continue;
+        segment(this.edges, pairs[i], pairs[i + 1]);
+        any = true;
+      }
+      if (any) this.edges.stroke(this.readingInk("genealogy", step));
+    });
+
+    let runs = false;
+    for (let i = 0; i < this.runPairs.length; i += 2) {
+      if (!touches(this.runPairs[i], this.runPairs[i + 1])) continue;
+      segment(this.runs, this.runPairs[i], this.runPairs[i + 1]);
+      runs = true;
+    }
+    if (runs) this.runs.stroke(this.readingInk("run", 0));
+
+    let references = false;
+    for (let i = 0; i < this.referencePairs.length; i += 2) {
+      if (!touches(this.referencePairs[i], this.referencePairs[i + 1]))
+        continue;
+      segment(
+        this.connections,
+        this.referencePairs[i],
+        this.referencePairs[i + 1],
+      );
+      references = true;
+    }
+    if (references) this.connections.stroke(this.readingInk("reference", 0));
+
+    const dash = CONNECTION_DASH / this.viewport.scale;
+    let links = false;
+    for (let i = 0; i < this.linkPairs.length; i += 2) {
+      const a = this.linkPairs[i];
+      const b = this.linkPairs[i + 1];
+      if (!touches(a, b)) continue;
+      dashLine(
+        this.connections,
+        this.positions[a * 2],
+        this.positions[a * 2 + 1],
+        this.positions[b * 2],
+        this.positions[b * 2 + 1],
+        dash,
+      );
+      links = true;
+    }
+    if (links) this.connections.stroke(this.readingInk("link", 0));
   }
 
   /** The layer each kind of line is drawn on, so a look stays on the line it is
@@ -1654,10 +1747,13 @@ export class GraphScene {
    * look names or the one the line already has, and an arrowhead at whichever
    * end it names — DESIGN.md § Edges, "A look a person set".
    */
-  private drawLooks(receding: boolean): void {
+  private drawLooks(receding: boolean, reading?: number): void {
     for (const line of this.lookedLines) {
       const into = this.layerFor(line.kind);
-      const ink = this.lineInk(line.kind, line.step, receding);
+      const ink =
+        line.from === reading || line.to === reading
+          ? this.readingInk(line.kind, line.step)
+          : this.lineInk(line.kind, line.step, receding);
       const from = this.positionOf(line.from);
       const to = this.positionOf(line.to);
       const span = Math.hypot(to.x - from.x, to.y - from.y);

@@ -654,6 +654,12 @@ Seven rulings hold that table together, and one condition sits under all of them
   a run, and that is the whole of what "an address connects it" means: the label is read to
   decide whether a note is alongside others, never to decide where it sits.
 
+- **Every line reaching the note being read is struck whole, over the rest.** Opening a
+  note lifts its mark (§ "The mark"); the same act strikes each line that reaches it —
+  genealogy, run, reference, link — in near-full ink and a step heavier than its kind,
+  whatever question is up, because the note in front of somebody is the one whose
+  connections they are reading. Nothing else dims for it: this is not a question of the
+  graph, so the field stays as it was, and the lines keep their breaks and their looks.
 - **The three solid kinds are three steps of one ladder, and they move on both channels at
   once.** Genealogy is the depth ramp at the thinnest line and the faintest ink; a reference
   is ink a step heavier and a step darker; the run is heaviest and darkest. Both channels

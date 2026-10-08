@@ -201,3 +201,45 @@ describe("the ladder the solid lines climb", () => {
     asked.scene.destroy();
   });
 });
+
+describe("the note being read", () => {
+  const root = note("1");
+  const read = note("1a", { parent: ref("1"), origin: ref("1") });
+  const beside = note("1b", { parent: ref("1"), origin: ref("1") });
+  const other = note("2", { links: [ref("1a")] });
+
+  it("has every line reaching it struck again, whole and heavier", async () => {
+    const { scene, passes } = await canvasOn([root, read, beside, other]);
+    const genealogyBefore = passes.genealogy.lines.length;
+    const runsBefore = passes.runs.lines.length;
+    const dashesBefore = passes.connections.lines.length;
+    const plain = passes.genealogy.lines[0];
+
+    scene.setReading({ open: new Set([read.ref]), active: read.ref });
+    (FakeApplication.latest as FakeApplication).tick();
+
+    // One more genealogy line (1 to 1a), one more run line (1a beside 1b),
+    // and the link's dashes again.
+    expect(passes.genealogy.lines).toHaveLength(genealogyBefore + 1);
+    expect(passes.runs.lines).toHaveLength(runsBefore + 1);
+    expect(passes.connections.lines.length).toBe(dashesBefore * 2);
+    for (const pass of [passes.genealogy, passes.runs, passes.connections]) {
+      const struck = pass.lines.at(-1) as StrokedLine;
+      expect(struck.alpha).toBe(palette.readingAlpha);
+      expect(struck.width).toBeGreaterThan(pass.lines[0].width);
+    }
+    expect(plain.alpha).toBe(palette.edgeAlpha);
+    scene.destroy();
+  });
+
+  it("strikes nothing again while no note is being read", async () => {
+    const { scene, passes } = await canvasOn([root, read, beside]);
+    const before = passes.genealogy.lines.length;
+
+    scene.setReading({ open: new Set([read.ref]), active: null });
+    (FakeApplication.latest as FakeApplication).tick();
+
+    expect(passes.genealogy.lines).toHaveLength(before);
+    scene.destroy();
+  });
+});
