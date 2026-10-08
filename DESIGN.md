@@ -147,24 +147,34 @@ which lands near-black on a light theme and near-white on a dark one, and stays
 translucent edge picks up whatever it is composited over. Anything in a style block that
 names a literal colour is a bug.
 
-| Preset      | Edge                              | Elevation                 | Radius     |
-| ----------- | --------------------------------- | ------------------------- | ---------- |
-| **Default** | 1px hairline                      | soft blurred shadow       | `0.625rem` |
-| Hardline    | 2px ink, 2/4/4/2 on boxes         | hard offset, blurless     | `0.375rem` |
-| Bevel       | two-tone inset/outset, 2px        | the edge IS the lift      | `0`        |
-| Terminal    | 1px hairline rules only           | none                      | `0`        |
-| Pixel       | stepped 2px, corners read as dots | hard 3px offset, blurless | `0`        |
+| Preset      | Edge                              | Elevation                   | Radius     |
+| ----------- | --------------------------------- | --------------------------- | ---------- |
+| **Default** | 1px hairline                      | soft blurred shadow         | `0.625rem` |
+| Hardline    | 2px ink, 2/4/4/2 on boxes         | hard offset, blurless       | `0.375rem` |
+| Bevel       | two-tone inset, 2px               | the edge IS the lift        | `0`        |
+| Terminal    | 1px hairline rules only           | none                        | `0`        |
+| Pixel       | stepped 2px, corners read as dots | hard 2–8px offset, blurless | `0`        |
 
-Bevel is System 7 and Windows 98: the near edges — top and left — are drawn faint and the
-far ones at the border's full weight, both tones mixed from the theme's own foreground and
-background, and a control held down swaps them. It is drawn as an edge INSIDE the box
-rather than as a shadow cast behind it, which is what makes the edge the lift. Terminal is
-rules and nothing else, with a caret-like focus ring and a block of ink where something is
-selected or under the arrow keys; it pairs with a monospace face, and the person chooses
-that on the font axis — **a style never names a font any more than it names a colour.**
-Pixel builds its edge out of box-shadows so the corners step, which is also where its
-offset comes from; a single side has no corner to step, so the per-side families stay the
-hairline they were.
+Bevel is System 7 and Windows 98, and **the light is top-left on every theme**: the near
+edges — top and left — stand a step lighter than the page and the far ones a step darker,
+both tones derived from the page's own lightness rather than mixed toward one end of it, so
+a box reads raised on a dark theme exactly as it does on a light one. A control held down,
+pressed or standing on swaps the two, which is the whole of how it says so. It is drawn as
+an edge INSIDE the box rather than as a shadow cast behind it, which is what makes the edge
+the lift. Terminal is rules and nothing else, with a caret-like focus ring and a block of
+ink where something is selected or under the arrow keys — a menu says which row that is in
+`data-highlighted`, a listbox in `aria-selected`, and both get the block; it pairs with a
+monospace face, and the person chooses that on the font axis — **a style never names a font
+any more than it names a colour.** Pixel builds its edge out of box-shadows so the corners
+step, which is also where its offset comes from; a single side has no corner to step, so
+the per-side families stay the hairline they were.
+
+Both of those two write `box-shadow` outright, and two things come with that. Tailwind
+composes the property out of five `--tw-*` variables, so a value that does not carry all
+five drops the ring on the same element. And neither draws a box an author shaped
+otherwise — a pill, a box that cancelled a side, an edge left transparent for a state to
+fill — so the guard group that says so is one group, written the same way in both, with
+`:where()` keeping it out of the specificity that a pressed control has to outrank.
 
 Five things a style must get right, and each is a place a style ships looking half-done:
 
@@ -2107,8 +2117,10 @@ Sloppy is allowed to be fun, and three lines bound it:
 
 There are two of them. The Konami code — up up down down left right left right B A, typed
 anywhere but into a field or into somebody's writing — runs the eight facet hues across the
-canvas once, left to right, each mark holding the hue of the band it stands in for a moment
-before going back to what it was drawn in, and since that is decoration § Motion applies: a
-reader who has asked for less motion gets none of it. And `teapot` in the palette answers
-with one row, `418 · short and stout`, which does nothing — the arrows read past it, nothing
-opens, and no other row is taken away to make room for it.
+canvas once, left to right, each mark the sheet draws holding the hue of the band it stands
+in for a moment — one wearing a picture keeps its picture — before going back to what it
+was drawn in. The bands are laid over what is on screen rather than over the whole field,
+so it reads as a sweep however far in the reader is standing; and since it is decoration
+§ Motion applies: a reader who has asked for less motion gets none of it. And `teapot` in
+the palette answers with one row, `418 · short and stout`, which does nothing — the arrows
+read past it, nothing opens, and no other row is taken away to make room for it.

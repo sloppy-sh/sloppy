@@ -6,14 +6,20 @@
  * rendered tree cannot be asked whether a colour was named.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { contrastRatio, mixOklab, type Oklch, parseCssColor } from '@sloppy/graph';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Primitives from './components/primitives-harness.test.svelte';
 import { stubMediaQuery, stubResizeObserver } from './components/dom.test-support.js';
 
 const STYLES = ['bevel', 'terminal', 'pixel'] as const;
+/** The themes app.css paints — the grounds every style is read on. */
+const THEMES = ['paper', 'graphite', 'light', 'dark', 'contrast'] as const;
+/** What text owes on the surface it is drawn on — WCAG 1.4.3, the floor
+ *  token-contrast.test.ts holds the muted ramp to on the page. */
+const AA_FLOOR = 4.5;
 
 /* `import.meta.url` is an http URL under the jsdom environment the mounting
    half of this file needs, so the sheets are found by the test's own path. */
@@ -28,10 +34,17 @@ const APP = stylesheet('app.css');
 
 type Rule = { selector: string; body: string };
 
-const RULES: Rule[] = [...CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
-	selector: match[1].trim(),
-	body: match[2]
-}));
+/** Innermost blocks only, which is what makes `@layer` and `@media` fall out
+ *  for free: a body containing a brace cannot match. */
+function rules(css: string): Rule[] {
+	return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
+		selector: match[1].trim(),
+		body: match[2]
+	}));
+}
+
+const RULES = rules(CSS);
+const APP_RULES = rules(APP);
 
 /** The rules of the one style, from its first selector to the next style's. */
 function block(style: string): Rule[] {
@@ -55,10 +68,18 @@ function valueOf(rule: Rule, property: string): string {
 	return found ? found[1].trim() : '';
 }
 
-/** Every `color-mix(…)` in the sheet, balanced parens and all. */
-function mixes(css: string): string[] {
+/** The one rule in a style's block that declares `property`. */
+function declaring(style: string, property: string): Rule {
+	const found = block(style).filter((rule) => declares(rule, property));
+	expect(found, `${style} declares ${property} in ${found.length} rules`).toHaveLength(1);
+	return found[0];
+}
+
+/** Every `name(…)` in the sheet, balanced parens and all. */
+function calls(css: string, name: string): string[] {
 	const out: string[] = [];
-	for (let at = css.indexOf('color-mix('); at >= 0; at = css.indexOf('color-mix(', at + 1)) {
+	const head = `${name}(`;
+	for (let at = css.indexOf(head); at >= 0; at = css.indexOf(head, at + 1)) {
 		let depth = 0;
 		let end = css.indexOf('(', at);
 		for (; end < css.length; end++) {
@@ -68,6 +89,87 @@ function mixes(css: string): string[] {
 		out.push(css.slice(css.indexOf('(', at) + 1, end));
 	}
 	return out;
+}
+
+/** One of a theme's own two ends, read out of app.css. */
+function endOf(theme: string, token: string): Oklch {
+	const rule = APP_RULES.find(
+		(one) => one.selector.includes(`[data-theme='${theme}']`) && declares(one, token)
+	);
+	const parsed = rule ? parseCssColor(valueOf(rule, token)) : null;
+	if (parsed === null) throw new Error(`app.css gives ${theme} no ${token}`);
+	return parsed;
+}
+
+const MIX = /^color-mix\(in oklab,\s*var\((--[\w-]+)\)\s*([\d.]+)%,\s*var\((--[\w-]+)\)\)$/;
+
+/** A `color-mix(in oklab, …)` of two tokens, resolved on one theme. */
+function mixedOn(theme: string, value: string): Oklch {
+	const parts = MIX.exec(value.trim());
+	if (parts === null) throw new Error(`this test cannot resolve \`${value}\``);
+	return mixOklab(endOf(theme, parts[1]), endOf(theme, parts[3]), 1 - Number(parts[2]) / 100);
+}
+
+const RELATIVE =
+	/^oklch\(from var\((--[\w-]+)\)\s+(min|max)\(([\d.]+),\s*l\s*([+-])\s*([\d.]+)\)\s+c\s+h\)$/;
+
+/** The lightness a relative `oklch(from var(--x) …)` lands at on one theme —
+ *  the bounded `l ± n` form, which is the only one this sheet writes. */
+function lightnessOn(theme: string, value: string): number {
+	const parts = RELATIVE.exec(value.trim());
+	if (parts === null) throw new Error(`this test cannot resolve \`${value}\``);
+	const moved = endOf(theme, parts[1]).l + (parts[4] === '+' ? 1 : -1) * Number(parts[5]);
+	const bound = Number(parts[3]);
+	return parts[2] === 'min' ? Math.min(bound, moved) : Math.max(bound, moved);
+}
+
+/** The `:not(:where(…))` group a selector guards itself with, tokens only. */
+function guardOf(selector: string): string {
+	const found = /:not\(\s*:where\(([^)]*)\)\s*\)/.exec(selector);
+	expect(found, `${selector} guards nothing`).not.toBeNull();
+	return (found?.[1] ?? '')
+		.split(',')
+		.map((one) => one.trim())
+		.filter(Boolean)
+		.sort()
+		.join(' ');
+}
+
+const SKIP = new Set(['node_modules', 'dist', '.svelte-kit', 'build', 'target', '.git']);
+
+/** Every `.svelte` file the product is drawn from, found from this file rather
+ *  than from whichever directory a runner started in. */
+function surfaces(): string[] {
+	let root = HERE;
+	while (!existsSync(join(root, 'pnpm-workspace.yaml'))) {
+		const up = dirname(root);
+		if (up === root) throw new Error('no workspace root above this test');
+		root = up;
+	}
+	const found: string[] = [];
+	const walk = (at: string): void => {
+		for (const entry of readdirSync(at, { withFileTypes: true })) {
+			if (entry.isDirectory()) {
+				if (!SKIP.has(entry.name)) walk(join(at, entry.name));
+			} else if (entry.name.endsWith('.svelte')) found.push(join(at, entry.name));
+		}
+	};
+	for (const where of ['packages', 'apps']) walk(join(root, where));
+	return found;
+}
+
+/** Every class token in those files that puts a box-shadow on a box — the
+ *  variant-prefixed forms included, because the prefix is part of the class
+ *  name a stylesheet has to match. */
+function shadowUtilities(): string[] {
+	const found = new Set<string>();
+	for (const file of surfaces()) {
+		const tokens = readFileSync(file, 'utf8').matchAll(
+			/[\w:[\]=.&>*-]*\bshadow-(?:2xs|xs|sm|md|lg|xl|2xl)\b/g
+		);
+		for (const [token] of tokens) found.add(token);
+	}
+	return [...found].sort();
 }
 
 describe('how a surface is drawn', () => {
@@ -85,8 +187,8 @@ describe('how a surface is drawn', () => {
 		}
 	});
 
-	// A bare `0` is a number, not a length: it makes app.css's
-	// `calc(var(--radius) - 4px)` invalid and takes every derived radius with it.
+	// app.css and the editor's own rules read `--radius` inside `calc()`, where a
+	// bare `0` is a number rather than a length.
 	it.each(STYLES)('squares %s with a zero that is a length', (style) => {
 		const taking = block(style).filter((rule) => declares(rule, '--radius'));
 		expect(taking.length).toBe(1);
@@ -104,12 +206,17 @@ describe('how a surface is drawn', () => {
 describe('what a style may not do', () => {
 	it('names no colour anywhere', () => {
 		expect(CSS).not.toMatch(/#[0-9a-fA-F]{3}/);
-		expect(CSS).not.toMatch(/\b(?:rgba?|hsla?|oklch|oklab|lch|lab|color)\(/);
+		expect(CSS).not.toMatch(/\b(?:rgba?|hsla?|oklab|lch|lab|color)\(/);
 		expect(CSS).not.toMatch(/\b(?:black|white|red|green|blue|gray|grey|yellow|orange)\b/);
+		// `oklch(from var(--x) …)` is relative colour syntax: a derivation of the
+		// token it names, which is the one form of it a style may write.
+		for (const call of calls(CSS, 'oklch')) {
+			expect(call.trim()).toMatch(/^from var\(--(?:background|foreground)\)/);
+		}
 	});
 
 	it('mixes its edge from the theme itself, so it composes with every scheme', () => {
-		const mixed = mixes(CSS);
+		const mixed = calls(CSS, 'color-mix');
 		expect(mixed.length).toBeGreaterThan(0);
 		for (const mix of mixed) {
 			const rest = mix
@@ -161,13 +268,62 @@ describe('what a style may not do', () => {
 	});
 
 	// The second of the five: `border border-transparent` is also how this
-	// product says which chip is selected and which tab is active.
-	it('leaves an edge an author left for a state to fill', () => {
+	// product says which chip is selected and which tab is active. The two
+	// styles that draw an edge in box-shadow guard one list of shapes, and this
+	// is what stops the two copies of it from drifting apart.
+	it('leaves every box an author shaped otherwise alone, and both alike', () => {
 		const drawing = RULES.filter((rule) => declares(rule, 'box-shadow'));
-		expect(drawing.length).toBeGreaterThan(0);
-		for (const rule of drawing) {
-			expect(rule.selector).toContain(':not(.border-transparent)');
+		expect(drawing.length).toBe(2);
+		const groups = new Set(drawing.map((rule) => guardOf(rule.selector)));
+		expect(groups.size).toBe(1);
+		for (const shape of [
+			'.border-transparent',
+			'.rounded-full',
+			'.border-0',
+			'.border-x-0',
+			'.border-y-0',
+			'.border-t-0',
+			'.border-r-0',
+			'.border-b-0',
+			'.border-l-0'
+		]) {
+			expect([...groups][0]).toContain(shape);
 		}
+	});
+
+	// Every size in Tailwind's scale, every variant-prefixed form of one, and
+	// every file the product is drawn from: a style that misses one ships a soft
+	// blurred shadow in the middle of a hard-edged page.
+	it('reaches every shadow utility the product uses', () => {
+		const utilities = shadowUtilities();
+		expect(utilities.length, 'no shadow utility found at all').toBeGreaterThan(0);
+		for (const style of STYLES) {
+			const reached = block(style)
+				.filter((rule) => declares(rule, '--tw-shadow') || declares(rule, 'box-shadow'))
+				.map((rule) => rule.selector.replaceAll('\\', ''))
+				.join('\n');
+			for (const utility of utilities) {
+				expect(reached, `${style} leaves ${utility} as Tailwind drew it`).toContain(`.${utility}`);
+			}
+		}
+	});
+
+	// Each of the three takes off the ring shadcn ships as its focus indicator,
+	// so each owes one of its own in its place.
+	it.each(STYLES)('draws %s a focus indicator of its own', (style) => {
+		const indicators = block(style).filter(
+			(rule) => rule.selector.includes(':focus-visible') && declares(rule, 'outline')
+		);
+		expect(indicators.length).toBeGreaterThan(0);
+		for (const rule of indicators) {
+			const outline = valueOf(rule, 'outline');
+			expect(outline).toMatch(/^[1-9]\d*px /);
+			expect(outline).toContain('var(--ring)');
+		}
+	});
+
+	it('takes no outline away anywhere', () => {
+		expect(CSS).not.toMatch(/outline\s*:\s*(?:none|0)\b/);
 	});
 
 	// The fourth of the five: none of the three widens an edge, so the condition
@@ -197,6 +353,67 @@ describe('what a style may not do', () => {
 		expect(APP.indexOf("@import './styles.css'")).toBeGreaterThan(
 			APP.indexOf(":root[data-style='hardline']")
 		);
+	});
+});
+
+// DESIGN.md § "Style presets": the light is top-left on every theme, which is
+// what makes a raised box read as raised on a dark theme too.
+describe('the light Bevel draws by', () => {
+	// A light theme's page is already near the top of the lightness scale and a
+	// dark one's near the bottom, so the pair is read on one of each.
+	it.each(['paper', 'dark'])('stands the near tone above %s and the far below it', (theme) => {
+		const tones = declaring('bevel', '--bevel-near');
+		const page = endOf(theme, '--background').l;
+		expect(lightnessOn(theme, valueOf(tones, '--bevel-near'))).toBeGreaterThan(page);
+		expect(lightnessOn(theme, valueOf(tones, '--bevel-far'))).toBeLessThan(page);
+	});
+
+	it('puts the near tone on the top and left edges, and the far on the other two', () => {
+		const raised = valueOf(declaring('bevel', '--bevel-up'), '--bevel-up');
+		expect(raised).toMatch(/^inset 2px 2px \S+ \S+ var\(--bevel-near\)/);
+		expect(raised).toContain('inset -2px -2px 0 0 var(--bevel-far)');
+	});
+
+	it('swaps the two under a control held down, pressed or standing on', () => {
+		const pressed = valueOf(declaring('bevel', '--bevel-down'), '--bevel-down');
+		expect(pressed).toMatch(/^inset 2px 2px \S+ \S+ var\(--bevel-far\)/);
+		expect(pressed).toContain('inset -2px -2px 0 0 var(--bevel-near)');
+
+		const drawn = block('bevel').filter((rule) => valueOf(rule, '--bevel') !== '');
+		expect(drawn.map((rule) => valueOf(rule, '--bevel'))).toEqual([
+			'var(--bevel-up)',
+			'var(--bevel-down)'
+		]);
+		for (const held of [':active', "[aria-pressed='true']", "[data-state='checked']"]) {
+			expect(drawn[1].selector).toContain(held);
+		}
+	});
+});
+
+describe('the block Terminal inverts a row with', () => {
+	it('reaches the row a menu highlights and the row a listbox selects', () => {
+		const row = declaring('terminal', '--muted-foreground');
+		expect(row.selector).toContain('[data-highlighted]');
+		expect(row.selector).toContain("[aria-selected='true']");
+		expect(valueOf(row, 'color')).toBe('var(--background)');
+	});
+
+	// DESIGN.md § "Contrast is measured, not assumed": the words on the block are
+	// measured against the block, and the first of these is why the ramp is
+	// re-mixed at all rather than left as the page mixed it.
+	it.each(THEMES)('keeps the secondary ink on that row legible on %s', (theme) => {
+		const ground = mixedOn(
+			theme,
+			valueOf(declaring('terminal', '--terminal-block'), '--terminal-block')
+		);
+		expect(contrastRatio(endOf(theme, '--muted-foreground'), ground)).toBeLessThan(AA_FLOOR);
+
+		const dim = mixedOn(
+			theme,
+			valueOf(declaring('terminal', '--muted-foreground'), '--muted-foreground')
+		);
+		expect(contrastRatio(dim, ground)).toBeGreaterThanOrEqual(AA_FLOOR);
+		expect(contrastRatio(endOf(theme, '--background'), ground)).toBeGreaterThanOrEqual(AA_FLOOR);
 	});
 });
 
