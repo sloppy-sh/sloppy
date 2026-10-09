@@ -32,6 +32,7 @@ import { aGraphFolder } from '../browser-files.test-support.js';
 import { graphHere } from '../graph-here.svelte.js';
 import Settings from './settings.svelte';
 import SettingsInChrome from './settings-in-chrome.test-support.svelte';
+import { standIn } from './settings.test-support.js';
 
 const STORED: ProfileView = {
 	did: DID,
@@ -135,6 +136,7 @@ describe('a copy of everything somebody keeps', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Your writing');
 
 		expect(target.textContent).toContain('every graph, every note');
 		button('Download a copy').click();
@@ -158,6 +160,7 @@ describe('a copy of everything somebody keeps', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Your writing');
 
 		button('Download a copy').click();
 		await settle();
@@ -171,6 +174,7 @@ describe('a copy of everything somebody keeps', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Your writing');
 
 		expect(button('Download a copy').disabled).toBe(true);
 		expect(target.textContent).toContain("isn't available here yet");
@@ -184,6 +188,7 @@ describe('a copy of everything somebody keeps', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Your writing');
 
 		button('Download a copy').click();
 		await settle();
@@ -197,6 +202,7 @@ describe('a copy of everything somebody keeps', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Your writing');
 
 		expect(target.textContent?.replace(/\s+/g, ' ')).toContain(
 			"writing still waiting on this device isn't in it yet"
@@ -217,6 +223,7 @@ describe('a copy of everything somebody keeps', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your writing is');
 
 		expect(target.textContent).toContain('Save a copy');
 		expect(target.textContent).not.toContain('Download a copy');
@@ -300,6 +307,7 @@ describe('settings', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('You');
 		expect(target.textContent).toContain('Ada Lovelace');
 		expect(target.textContent).toContain('@ada');
 		expect(target.querySelector('a[href="/profile"]')).not.toBeNull();
@@ -310,6 +318,7 @@ describe('settings', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('You');
 		button('Sign out').click();
 		await settle();
 		expect(people.me).toBeNull();
@@ -354,6 +363,7 @@ describe('settings', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('You');
 		button('Sign out').click();
 		await settle();
 
@@ -418,6 +428,7 @@ describe('the record of what happens', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('When something goes wrong');
 
 		expect(target.textContent).toContain('When something goes wrong');
 		expect(whatHappened.on).toBe(false);
@@ -475,6 +486,7 @@ describe('where your Sloppy is', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your Sloppy is');
 
 		expect(target.textContent).toContain('Where your Sloppy is');
 		expect(target.querySelector('#sloppy-origin')).not.toBeNull();
@@ -484,6 +496,7 @@ describe('where your Sloppy is', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your Sloppy is');
 
 		typeAddress('mine.example');
 		await settle();
@@ -503,6 +516,7 @@ describe('where your Sloppy is', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your Sloppy is');
 
 		typeAddress('https://mine.example');
 		await settle();
@@ -517,6 +531,7 @@ describe('where your Sloppy is', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your Sloppy is');
 
 		typeAddress('over there somewhere');
 		await settle();
@@ -530,6 +545,7 @@ describe('where your Sloppy is', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your Sloppy is');
 
 		typeAddress('');
 		await settle();
@@ -546,6 +562,7 @@ describe('where your Sloppy is', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your Sloppy is');
 
 		typeAddress('mine.example');
 		await settle();
@@ -563,6 +580,7 @@ describe('where your Sloppy is', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your Sloppy is');
 
 		typeAddress('mine.example');
 		await settle();
@@ -576,6 +594,7 @@ describe('where your Sloppy is', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your Sloppy is');
 
 		expect(target.querySelector<HTMLInputElement>('#sloppy-origin')?.value).toBe(
 			'https://mine.example'
@@ -589,8 +608,8 @@ describe('where your Sloppy is', () => {
 	});
 });
 
-// DESIGN.md § Layout: the page's own sections stand in the column beside it,
-// and across its head where there is no column.
+// DESIGN.md § Layout: the page is a section at a time, and the contents choose
+// which — down the column beside it, across its head where there is none.
 describe('the sections of a long page', () => {
 	/** A window wide enough for the column to stand. */
 	function onADesk(): void {
@@ -609,7 +628,7 @@ describe('the sections of a long page', () => {
 	const entries = (nav: Element) =>
 		[...nav.querySelectorAll('button')].map((one) => one.textContent?.trim());
 
-	it('stand in the column, and name sections the page itself names', async () => {
+	it('stand in the column, and name only what this page holds', async () => {
 		onADesk();
 		mounted = mount(SettingsInChrome, { target });
 		flushSync();
@@ -623,34 +642,52 @@ describe('the sections of a long page', () => {
 		// Nothing here reaches an assistant, so the page holds no such section
 		// and the contents name none.
 		expect(named).not.toContain('An assistant');
-
-		const headings = [...target.querySelectorAll('h2')].map((one) => one.textContent?.trim());
-		for (const name of named) expect(headings).toContain(name);
 	});
 
-	it('take the reader to the one they ask for, and the keyboard with them', async () => {
+	it('show one of them at a time, and the one chosen is the one on the page', async () => {
 		onADesk();
-		const went: string[] = [];
-		Object.defineProperty(Element.prototype, 'scrollIntoView', {
-			configurable: true,
-			writable: true,
-			value(this: HTMLElement) {
-				went.push(this.id);
-			}
-		});
 		mounted = mount(SettingsInChrome, { target });
 		flushSync();
 		await settle();
 
-		const [nav] = contents();
-		const asked = [...nav.querySelectorAll('button')].find(
-			(one) => one.textContent?.trim() === 'When something goes wrong'
-		);
-		asked?.click();
-		flushSync();
+		// The first stands until somebody chooses another.
+		expect(target.textContent).toContain('Theme');
+		expect(target.textContent).not.toContain('Sloppy can keep a record');
 
-		expect(went).toEqual(['what-went-wrong']);
+		standIn('When something goes wrong');
+
+		expect(target.textContent).toContain('Sloppy can keep a record');
+		expect(target.textContent).not.toContain('Theme');
+	});
+
+	it('take the keyboard into the section they chose', async () => {
+		onADesk();
+		mounted = mount(SettingsInChrome, { target });
+		flushSync();
+		await settle();
+
+		standIn('When something goes wrong');
+		await settle();
+
 		expect(document.activeElement?.id).toBe('what-went-wrong');
+	});
+
+	it('mark the one standing, in the column and across the head alike', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		const [nav] = contents();
+		expect(entries(nav)).toContain('Appearance');
+		const marked = () =>
+			[...nav.querySelectorAll('button[aria-current="page"]')].map((one) =>
+				one.textContent?.trim()
+			);
+		expect(marked()).toEqual(['Appearance']);
+
+		standIn('When something goes wrong');
+
+		expect(marked()).toEqual(['When something goes wrong']);
 	});
 
 	it('stand across the head of the page where there is no column', async () => {

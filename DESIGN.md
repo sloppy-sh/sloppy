@@ -1445,14 +1445,15 @@ nothing under it.
   sheet alike (§ "The history as a picture"), and the rest of the page is untouched: the row
   that writes, the canvas and the docks are exactly what they are on a line, because that is
   what working on a version means.
-- **A page long enough to get lost in puts its own sections in the column.** The column is the
-  page's to fill (§ "What a page puts in the sidebar"), so a page that is a run of titled
-  sections — Settings is the one today — lists them there, marks the one in front of the
-  reader, and takes them to the one they ask for, keyboard and all. It is the same list in
-  both arrangements, the way the tag rail is: down the column beside the page, and across its
-  head where there is no column, scrolling sideways with the page rather than pinned over it.
-  A section nothing shows is in neither list, and nothing is behind the list that is not on
-  the page — it is the page's own headings, in the page's own order.
+- **A page long enough to get lost in is read a section at a time.** The column is the page's
+  to fill (§ "What a page puts in the sidebar"), so a page that is a run of titled sections —
+  Settings is the one today — puts them in it and shows the one chosen, marked: the page is
+  never longer than the section somebody asked for, and what they did not ask for is not in
+  the way of it. It is the same list in both arrangements, the way the tag rail is: down the
+  column beside the page, and across its head where there is no column. Choosing one takes
+  the keyboard into it, so the next tab is inside what they asked for. A section nothing
+  shows is in neither list, so the contents and the page cannot disagree — and which one
+  stands is not kept: a page opens at its first section, every time.
 - **One field reaches both a note and an act, in both arrangements.** The same keystroke that
   finds a note by its number, its title or a word in it does something by its name, and with
   nothing typed it lists everything this page can do with the keystroke beside each — so the

@@ -63,6 +63,7 @@ vi.mock('@sloppy/ui', async (original) => ({
 const Graph = (await import('./graph.svelte')).default;
 const NoteOnSurface = (await import('./note-in-panel.test-support.svelte')).default;
 const Settings = (await import('./settings.svelte')).default;
+const { sectionsOffered, standIn } = await import('./settings.test-support.js');
 const Profile = (await import('./profile.svelte')).default;
 
 const FIRST = ref(1);
@@ -500,10 +501,11 @@ describe('Settings, on a device holding its own graph', () => {
 		flushSync();
 		await settle();
 
+		standIn('Where your writing is');
+
 		expect(screen()).toContain('Your graph is a folder on this device');
-		expect(has('Point Sloppy here')).toBe(false);
-		expect(has('Sign out')).toBe(false);
-		expect(screen()).not.toContain('Your graph opens once you sign in');
+		expect(sectionsOffered()).not.toContain('Where your Sloppy is');
+		expect(sectionsOffered()).not.toContain('You');
 		expect(api.countOf('GET /profile/me')).toBe(0);
 	});
 
@@ -514,6 +516,7 @@ describe('Settings, on a device holding its own graph', () => {
 		flushSync();
 		await settle();
 
+		standIn('History');
 		expect(has('Open the history')).toBe(true);
 
 		unmount(mounted as ReturnType<typeof mount>, { outro: false });
@@ -523,7 +526,7 @@ describe('Settings, on a device holding its own graph', () => {
 		flushSync();
 		await settle();
 
-		expect(has('Open the history')).toBe(false);
+		expect(sectionsOffered()).not.toContain('History');
 	});
 
 	it('names the folder the graph is in, and offers another', async () => {
@@ -534,6 +537,7 @@ describe('Settings, on a device holding its own graph', () => {
 		flushSync();
 		await settle();
 
+		standIn('Where your writing is');
 		expect(screen()).toContain('/Users/me/garden');
 
 		control('Open another folder').click();
@@ -555,6 +559,7 @@ describe('Settings, on a device holding its own graph', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Where your writing is');
 
 		control('Open another folder').click();
 		await settle();
@@ -571,6 +576,8 @@ describe('Settings, on a device holding its own graph', () => {
 		flushSync();
 		await settle();
 
+		standIn('Where your writing is');
+
 		expect(screen()).toContain('Your graph is a folder on this device');
 		expect(screen()).not.toContain('/var/mobile');
 		expect(has('Open another folder')).toBe(false);
@@ -581,6 +588,8 @@ describe('Settings, on a device holding its own graph', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+
+		standIn('Your writing');
 
 		expect(control('Download a copy').disabled).toBe(false);
 	});
@@ -593,7 +602,7 @@ describe('Settings, on a device holding its own graph', () => {
 		flushSync();
 		await settle();
 
-		expect(has('Download a copy')).toBe(false);
+		expect(sectionsOffered()).not.toContain('Your writing');
 		expect(screen()).not.toContain('Open Sloppy in a browser');
 	});
 
@@ -604,7 +613,10 @@ describe('Settings, on a device holding its own graph', () => {
 		flushSync();
 		await settle();
 
+		standIn('Where your Sloppy is');
 		expect(has('Point Sloppy here')).toBe(true);
+
+		standIn('You');
 		expect(has('Sign out')).toBe(true);
 	});
 });

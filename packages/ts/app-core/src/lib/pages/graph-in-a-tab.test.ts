@@ -11,6 +11,7 @@ import { graphHere } from '../graph-here.svelte.js';
 import { type FakeApi, useFakeApi, VIEWER } from '../stores/fake-api.test-support.js';
 import { session } from '../stores/session.svelte.js';
 import { at, pushed, replaced, startAt } from './page.test-support.svelte.js';
+import { sectionsOffered, standIn } from './settings.test-support.js';
 
 vi.mock('$app/state', () => ({
 	page: {
@@ -133,22 +134,24 @@ describe('Settings, with a graph on this device open in this tab', () => {
 		mounted = mount(Settings, { target });
 		await settle();
 
-		expect(screen()).toContain('A graph kept on this device');
-		expect(screen()).toContain('Where your Sloppy is');
+		expect(sectionsOffered()).toContain('A graph kept on this device');
+		expect(sectionsOffered()).toContain('Where your Sloppy is');
+		standIn('You');
 		expect(screen()).toContain('Your identity lives at');
 
 		await graphHere.openFolder();
 		await settle();
 
+		standIn('Where your writing is');
 		expect(screen()).toContain('garden is open');
-		expect(screen()).not.toContain('Where your Sloppy is');
-		expect(screen()).not.toContain('Your identity lives at');
+		expect(sectionsOffered()).not.toContain('Where your Sloppy is');
+		expect(sectionsOffered()).not.toContain('You');
 
 		await graphHere.close();
 		await settle();
 
-		expect(screen()).toContain('A graph kept on this device');
-		expect(screen()).toContain('Where your Sloppy is');
+		expect(sectionsOffered()).toContain('A graph kept on this device');
+		standIn('You');
 		expect(screen()).toContain('Your identity lives at');
 		expect(screen()).not.toContain('garden is open');
 	});
