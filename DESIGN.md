@@ -343,7 +343,11 @@ same JSON pasted in. A file that is not a look is turned down in one line saying
 do, never in a parser's words.
 
 **A look's own CSS is part of the look**, and bounded: at most 64 KiB, applied through one
-`<style>` element the app owns and nothing else writes. **`@import` is refused, and so is
+`<style>` element the app owns and nothing else writes. **That element stands last in
+`<head>`**, which is the whole of why a rule of the author's own beats the same rule in
+`app.css` instead of losing to it: the app's stylesheet and a page's are appended to the
+head as they load, so the boot script writes the rules before any of them is there and the
+prefs store holds them behind every one that arrives. **`@import` is refused, and so is
 anything naming a host**: a `url()` target that is not a `data:` URI, and a string that
 names one — which is how `image-set()` and `src()` load a picture without writing `url(`
 at all. The rules are read the way a CSS parser reads them, escapes resolved, a comment

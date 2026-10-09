@@ -515,6 +515,9 @@ class PrefsStore {
 	 *  — or going back to one of Sloppy's own — takes exactly those off again.
 	 *  The inset vars also written inline on `<html>` are not ours to clear. */
 	#painted: string[] = [];
+	/** Watching `<head>` for the stylesheets that arrive in it, while the look
+	 *  has rules of its own standing there. */
+	#watchingHead: MutationObserver | null = null;
 
 	get current(): Prefs {
 		return this.#current;
@@ -703,14 +706,28 @@ class PrefsStore {
 		const held = document.getElementById(LOOK_RULES);
 		if (css === '' || cssIsSafe(css) !== null) {
 			held?.remove();
+			this.#watchingHead?.disconnect();
+			this.#watchingHead = null;
 			return;
 		}
 		const sheet = held ?? document.createElement('style');
-		if (held === null) {
-			sheet.id = LOOK_RULES;
-			document.head.appendChild(sheet);
-		}
+		sheet.id = LOOK_RULES;
 		if (sheet.textContent !== css) sheet.textContent = css;
+		this.#rulesLast(sheet);
+		if (this.#watchingHead !== null || typeof MutationObserver === 'undefined') return;
+		this.#watchingHead = new MutationObserver(() =>
+			this.#rulesLast(document.getElementById(LOOK_RULES))
+		);
+		this.#watchingHead.observe(document.head, { childList: true });
+	}
+
+	/** The rules go last in `<head>` and are held there: the app's own stylesheet
+	 *  and a page's are appended to it as they load — after the boot script wrote
+	 *  these rules — and a tie with either of them is decided by nothing but
+	 *  which came last. */
+	#rulesLast(sheet: HTMLElement | null): void {
+		if (sheet !== null && document.head.lastElementChild !== sheet)
+			document.head.appendChild(sheet);
 	}
 
 	/** A mouse plugged into a tablet, or taken out again, changes what this

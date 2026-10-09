@@ -642,6 +642,34 @@ describe("the look's own rules", () => {
 		expect(rules()).toBeNull();
 	});
 
+	// DESIGN.md § "A look is a file": the rules stand last in `<head>`, so the
+	// author's own `:root { --radius: 0 }` beats `app.css`'s instead of losing to
+	// it. A cold load writes them before any stylesheet is in the head at all.
+	it('stand behind the stylesheet a cold load brings in after them', () => {
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({ look: 'paper', css: ':root { --radius: 0 }' })
+		);
+		bootScript('web')();
+		const appCss = document.head.appendChild(document.createElement('style'));
+		prefs.init();
+		expect(document.querySelectorAll('#sloppy-look')).toHaveLength(1);
+		expect(rules()).toBe(':root { --radius: 0 }');
+		expect(document.head.lastElementChild).toBe(document.getElementById('sloppy-look'));
+		appCss.remove();
+		for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.remove();
+	});
+
+	it('are put back behind a stylesheet that arrives while the app is open', async () => {
+		prefs.init();
+		prefs.set('css', ':root { --radius: 0 }');
+		const pageCss = document.head.appendChild(document.createElement('style'));
+		await vi.waitFor(() =>
+			expect(document.head.lastElementChild).toBe(document.getElementById('sloppy-look'))
+		);
+		pageCss.remove();
+	});
+
 	it('are carried to the next visit', () => {
 		prefs.init();
 		prefs.set('css', 'h2 { margin: 0 }');
