@@ -383,6 +383,21 @@ describe("the accent a scheme's own chrome is drawn in", () => {
 	 *  floor against. */
 	const PAGES = ['--background', '--card', '--popover', '--secondary', '--muted', '--accent'];
 
+	// `text-primary` draws the accent as small text: the active item in the desk
+	// sidebar and in the phone bar, a link, a pressed control in the toolbar. All
+	// of them stand on the page or on a panel.
+	it('reads as small text on the page and on the panel', () => {
+		for (const { dressing } of dressed) {
+			const fill = painted(dressing, '--primary');
+			for (const page of ['--background', '--card', '--popover']) {
+				expect(
+					contrastRatio(fill, painted(dressing, page)),
+					`${dressing.slug} primary on ${page}`
+				).toBeGreaterThanOrEqual(TEXT_FLOOR);
+			}
+		}
+	});
+
 	it("is the scheme's own accent, moved in lightness alone", () => {
 		for (const { scheme, dressing } of dressed) {
 			const own = colour(scheme.palette.base0D);
@@ -441,13 +456,13 @@ describe("the accent a scheme's own chrome is drawn in", () => {
 	// The count is what a sweep of passing floors cannot show: an accent lifted
 	// on every scheme would be nobody's own accent, and one lifted on none would
 	// mean the floors were never reached for.
-	it("is base0D itself wherever the scheme's own two ends already read on it", () => {
+	it('is base0D itself wherever the scheme drew it clear of both floors', () => {
 		const reach = { itsOwn: 0, lifted: 0 };
 		for (const { scheme, dressing } of dressed) {
 			if (dressing.tokens['--primary'] === scheme.palette.base0D) reach.itsOwn += 1;
 			else reach.lifted += 1;
 		}
-		expect(reach).toEqual({ itsOwn: 340, lifted: 160 });
+		expect(reach).toEqual({ itsOwn: 247, lifted: 253 });
 	});
 });
 

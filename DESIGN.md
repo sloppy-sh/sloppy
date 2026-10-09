@@ -292,14 +292,19 @@ through; `dress.test.ts` sweeps all of it and holds the count, because a mapping
 half the collection out would pass every floor.
 
 **The accent is the scheme's own, because a look is the whole palette.** `--primary` is
-`base0D`, moved in lightness alone — its hue kept — until whichever of the scheme's own two
-ends reads on it at AA; that end is `--primary-foreground`, so the words on a fill are the
-scheme's page or the scheme's ink and never a colour from somewhere else. `--primary-mark`
-is that same accent at the nearest lightness clearing 3:1 on **every** surface the dressing
-paints, because a mark carries its meaning with no words on it, and `--ring` is that mark,
-because a focus ring is one. Most of the collection needs no lift at all and none of it is
-turned down for the accent: the colour may run the whole ramp at one hue, so there is always
-somewhere for it to stand. `dress.test.ts` holds all of it.
+`base0D`, moved in lightness alone — its hue kept — until it reads at AA on the scheme's own
+page and panel AND whichever of the scheme's own two ends reads on it at AA; that end is
+`--primary-foreground`, so the words on a fill are the scheme's page or the scheme's ink and
+never a colour from somewhere else. **The accent owes the page a text floor because it is
+drawn as text there** as often as it is a fill with words on it — the active item in the
+desk sidebar and in the phone bar, a link, a pressed control in the editor's toolbar are all
+`text-primary` — and a fill moved away from the page leaves that page as the end which reads
+on it. `--primary-mark` is that same accent at the nearest lightness clearing 3:1 on
+**every** surface the dressing paints, which the fill need not reach on the muted surface or
+the highlight, and `--ring` is that mark, because a focus ring is one. Roughly half the
+collection keeps the lightness its own accent was drawn at, and none of it is turned down
+for the accent: the colour may run the whole ramp at one hue, so there is always somewhere
+for it to stand. `dress.test.ts` holds all of it.
 
 **A dressing carries every colour but one, and leaves that one to the stylesheet.** Paint
 written inline beats every rule in the design system, so a token another axis owns is one a
@@ -988,13 +993,16 @@ None of Sloppy's own five needs a mark correction today: `--primary-mark` is eac
 whatever correction a look does need. A look carried as data brings its own surfaces and its
 own accent, neither of which this suite can see, so `dress.test.ts` is its file of record
 instead, and it sweeps the whole collection: every
-colour the scheme lends, the accent it lends with them, and the mark held to 3:1 on every
-surface that same scheme paints. There is no pairing left to measure, because nothing of
-one palette lands on a surface from another.
+colour the scheme lends, the accent it lends with them, the fill held at 4.5:1 on that
+scheme's own page and panel because `text-primary` draws the accent as small text, and the
+mark held to 3:1 on every surface that same scheme paints. No pairing is left to measure
+there, because nothing of one palette lands on a surface from another.
 
 **A floor this file does not name is a floor nothing measures.** Small TEXT in a look's
-accent owes 4.5:1 and no member of the mark family reaches it — the mark floor is for
-graphical objects and large text.
+accent owes 4.5:1, which the mark floor is not — that one is for graphical objects and large
+text. A carried look's fill is held there, on the page and the panel (`dress.test.ts`); on
+Sloppy's own five the figure is a target, because this file holds their accent to the mark
+floor alone.
 
 A figure quoted anywhere in this repo without a test behind it is a target, and should say
 so.

@@ -3,7 +3,7 @@
 // surface that offers all of them in one list, and what picking one leaves on
 // `<html>`.
 
-import { schemes } from '@sloppy/ui';
+import { dressed, schemes } from '@sloppy/ui';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { flushSync, mount, unmount } from 'svelte';
@@ -26,6 +26,9 @@ vi.mock('@sloppy/ui', async (original) => {
 const NORD = { slug: 'base16-nord', name: 'Nord', author: 'arcticicestudio' };
 /** One the picker leaves out: its own ink does not read on its own page. */
 const CUPCAKE = 'Cupcake';
+/** The four a dressing carried none of until a look became the whole palette,
+ *  which is what an upgrading device has cached. */
+const ACCENT_FAMILY = ['--primary', '--primary-foreground', '--primary-mark', '--ring'] as const;
 /** How many of the collection's rows stand at once, which `look-picker.svelte`
  *  caps. */
 const MOST = 60;
@@ -420,6 +423,34 @@ describe('picking one', () => {
 		expect(prefs.dressing?.slug).toBe(NORD.slug);
 		expect(document.documentElement.getAttribute('data-look')).toBe(NORD.slug);
 		expect(disclosure().getAttribute('aria-label')).toBe(`Look: ${NORD.name}`);
+	});
+
+	// Paint cached by a build whose dressing stopped short of the accent: it is
+	// kept across a boot, so a look that is already on would wear the accent of
+	// the stylesheet for good unless mounting the picker writes the whole palette.
+	it('paints the accent over a copy cached without one', async () => {
+		const nord = (await schemes()).find((one) => one.slug === NORD.slug);
+		const full = nord === undefined ? null : dressed(nord);
+		if (full === null) throw new Error(`The collection cannot dress ${NORD.name}`);
+		const tokens: Record<string, string> = { ...full.tokens };
+		for (const token of ACCENT_FAMILY) delete tokens[token];
+		localStorage.setItem('sloppy_prefs', JSON.stringify({ scheme: NORD.slug }));
+		localStorage.setItem(
+			'sloppy_scheme',
+			JSON.stringify({ slug: NORD.slug, variant: full.variant, tokens })
+		);
+		prefs.init();
+		expect(prefs.current.look).toBe(NORD.slug);
+		expect(document.documentElement.style.getPropertyValue('--primary')).toBe('');
+
+		show();
+		await settle();
+
+		const root = document.documentElement;
+		for (const token of ACCENT_FAMILY) {
+			expect(root.style.getPropertyValue(token), token).toBe(full.tokens[token]);
+		}
+		expect(localStorage.getItem('sloppy_scheme')).toBeNull();
 	});
 
 	it('stands down a saved look this collection has nothing for', async () => {

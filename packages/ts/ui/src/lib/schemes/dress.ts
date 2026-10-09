@@ -160,13 +160,20 @@ function bounds(field: Oklch, page: Oklch): Oklch | null {
 /**
  * The scheme's own accent as a fill with words on it: `base0D`, and whichever of
  * the scheme's two `ends` reads on it at {@link LABEL_FLOOR} — the fill moved in
- * lightness alone, its hue kept, where neither end reads on the colour the
- * scheme drew. Null where no lightness gives either end the floor.
+ * lightness alone, its hue kept, until that end reads on it AND the fill itself
+ * reads at the same floor on every one of `pages`, because the accent is small
+ * text on a page as often as it is a fill with words on it. Null where no
+ * lightness does both.
  */
-function fills(accent: Oklch, ends: readonly Oklch[]): { fill: Oklch; on: Oklch } | null {
+function fills(
+	accent: Oklch,
+	ends: readonly Oklch[],
+	pages: readonly Oklch[]
+): { fill: Oklch; on: Oklch } | null {
 	const bestOn = (fill: Oklch): Oklch =>
 		ends.reduce((kept, end) => (asPainted(end, fill) > asPainted(kept, fill) ? end : kept));
 	const pair = (fill: Oklch): { fill: Oklch; on: Oklch } | null => {
+		if (pages.some((on) => asPainted(fill, on) < LABEL_FLOOR)) return null;
 		const on = bestOn(fill);
 		return asPainted(on, fill) >= LABEL_FLOOR ? { fill, on } : null;
 	};
@@ -254,7 +261,7 @@ export function dress(scheme: Scheme): SchemeDressing | null {
 	const onSpot = reads(ink, [spot]);
 	if (contrastRatio(onSpot, spot) < LABEL_FLOOR) return null;
 
-	const accent = fills(at('base0D'), [paper, ink]);
+	const accent = fills(at('base0D'), [paper, ink], [paper, raised]);
 	if (accent === null) return null;
 	const mark = marks(accent.fill, [paper, raised, quiet, spot]);
 	if (mark === null) return null;

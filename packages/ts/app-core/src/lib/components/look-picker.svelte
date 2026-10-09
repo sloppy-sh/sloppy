@@ -127,7 +127,10 @@
 			return;
 		}
 		held = { scheme, dressing };
-		if (prefs.dressing === null) prefs.setLook(dressing, slug);
+		// Written over whatever paint was already in hand, not only where there was
+		// none: a copy an earlier build cached carries fewer of the palette's
+		// tokens, and the ones it misses would be left to the stylesheet.
+		prefs.setLook(dressing, slug);
 	}
 
 	function toggle(): void {
