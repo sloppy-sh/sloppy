@@ -363,7 +363,10 @@ Sloppy already answers to**: worn under one of its own five, a look somebody cal
 would take that look's night ground and its night cards under a light palette, and worn
 under a slug of the collection's, the next copy of it would name that scheme as what it is
 built on. A copy of such a look carries its palette and names nothing under it, since the
-id it is worn under is not a look anybody else has.
+id it is worn under is not a look anybody else has. **And because that id is minted past
+every look this Sloppy answers to, nothing that resolves ids may stand it down**: the
+collection having nothing for it is the point of it, not a look that has gone, so prefs
+keep which look is theirs and the picker leaves that one standing.
 
 **`preferences` carries how somebody keeps Sloppy, never what one machine alone means**:
 the graph in front of them, the canvas beside it, the pictures under those and the Sloppy

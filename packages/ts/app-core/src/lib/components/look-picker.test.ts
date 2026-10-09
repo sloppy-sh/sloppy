@@ -487,6 +487,32 @@ describe('picking one', () => {
 		expect(prefs.current.look).toBe('graphite');
 	});
 
+	// A look somebody opened from a file of their own is worn under an id minted
+	// past every look this Sloppy answers to, so the collection has nothing for it
+	// by design — and standing it down would take it off them.
+	it("leaves a look of somebody's own standing", async () => {
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({ look: 'midnight-ink', ownLook: 'midnight-ink' })
+		);
+		localStorage.setItem(
+			'sloppy_look',
+			JSON.stringify({
+				slug: 'midnight-ink',
+				variant: 'dark',
+				tokens: { '--background': '#101010' }
+			})
+		);
+		prefs.init();
+
+		show();
+		await settle();
+
+		expect(prefs.current.look).toBe('midnight-ink');
+		expect(document.documentElement.getAttribute('data-look')).toBe('midnight-ink');
+		expect(document.documentElement.style.getPropertyValue('--background')).toBe('#101010');
+	});
+
 	it('keeps a saved look where the collection could not be read', async () => {
 		broken = true;
 		localStorage.setItem('sloppy_prefs', JSON.stringify({ look: NORD.slug }));

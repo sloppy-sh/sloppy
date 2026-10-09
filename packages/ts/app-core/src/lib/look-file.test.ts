@@ -97,7 +97,7 @@ describe('the look this device wears', () => {
 
 	it('states nothing twice: what the look says is not in the settings beside it', async () => {
 		const moving = await lookNow(true);
-		for (const key of ['look', 'style', 'density', 'effect', 'fonts', 'css'])
+		for (const key of ['look', 'ownLook', 'style', 'density', 'effect', 'fonts', 'css'])
 			expect(moving.preferences).not.toHaveProperty(key);
 	});
 });
@@ -263,6 +263,21 @@ describe('wearing one', () => {
 		const file = await lookNow(false);
 		expect(await wearLook(file)).toBeNull();
 		expect(prefs.current.look).toBe(id);
+	});
+
+	// Which look is one of somebody's own is a thing no collection can answer, so
+	// wearing one says so and wearing any other takes it back.
+	it('says which look is theirs, and stops saying it when another goes on', async () => {
+		expect(
+			await wearLook({ name: 'Midnight Ink', palette: { '--background': 'oklch(.97 0 0)' } })
+		).toBeNull();
+		expect(prefs.current.ownLook).toBe(prefs.current.look);
+
+		await wearTheCollection(NORD);
+		expect(prefs.current.ownLook).toBeNull();
+
+		expect(await wearLook({ name: 'Paper', based_on: 'paper' })).toBeNull();
+		expect(prefs.current.ownLook).toBeNull();
 	});
 
 	it('turns down rules that would reach the web, and leaves the ones standing', async () => {

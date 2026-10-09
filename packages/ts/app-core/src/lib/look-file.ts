@@ -30,7 +30,15 @@ const SPOKEN: ReadonlySet<string> = new Set(['custom', 'too_big', 'too_small', '
 
 /** What the look states itself, so `preferences` carries no second copy of any
  *  of it. */
-const OF_THE_LOOK: readonly string[] = ['look', 'style', 'density', 'effect', 'fonts', 'css'];
+const OF_THE_LOOK: readonly string[] = [
+	'look',
+	'ownLook',
+	'style',
+	'density',
+	'effect',
+	'fonts',
+	'css'
+];
 
 /** What is this device's rather than this person's: the graph in front of them,
  *  the canvas beside it, the pictures under those and the Sloppy that minted
@@ -204,7 +212,7 @@ function wear(
 	} else if (palette !== null && own !== null) {
 		// A look that stands on its own stands on the app's own colours, which
 		// are a light ground — DESIGN.md § "A look is a file".
-		prefs.setLook({ slug: own, variant: 'light', tokens: palette }, own);
+		prefs.setLook({ slug: own, variant: 'light', tokens: palette }, own, true);
 	}
 	if (look.style !== undefined) prefs.set('style', look.style);
 	if (look.density !== undefined) prefs.set('density', look.density);

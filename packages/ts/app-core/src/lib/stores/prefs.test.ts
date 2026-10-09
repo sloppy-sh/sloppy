@@ -353,6 +353,7 @@ describe('the saved look', () => {
 				theme: 'neon',
 				style: 'sketch',
 				effect: 'glow',
+				ownLook: 'Not An Id',
 				fonts: { ui: 'a face; position: fixed', heading: 7 },
 				css: 'x'.repeat(65_537),
 				tags: 'seed',
@@ -371,6 +372,7 @@ describe('the saved look', () => {
 		prefs.init();
 		expect(prefs.current).toEqual({
 			look: 'paper',
+			ownLook: null,
 			style: 'default',
 			effect: 'none',
 			fonts: { ui: 'system', heading: 'system', mono: 'system' },

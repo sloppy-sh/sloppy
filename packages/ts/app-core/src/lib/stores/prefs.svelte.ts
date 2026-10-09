@@ -77,6 +77,12 @@ export interface Prefs {
 	/** The whole palette the app wears: a {@link BuiltInLook}, or a look carried
 	 *  as data by its id — DESIGN.md § "The look". */
 	look: string;
+	/** {@link Prefs.look} where it is a look of somebody's own, from a file that
+	 *  named nothing under itself, and null where the look on is one of Sloppy's
+	 *  own or the collection's. Nothing else can tell the two apart: such an id
+	 *  is minted past every look this Sloppy answers to, so a surface that
+	 *  resolves ids would otherwise read it as a look that has gone. */
+	ownLook: string | null;
 	style: Style;
 	/** What the screen itself is drawn like over everything else — DESIGN.md
 	 *  § "The look". */
@@ -329,6 +335,7 @@ function firstLook(): BuiltInLook {
 function defaults(): Prefs {
 	return {
 		look: firstLook(),
+		ownLook: null,
 		style: 'default',
 		effect: 'none',
 		fonts: { ui: 'system', heading: 'system', mono: 'system' },
@@ -631,6 +638,7 @@ class PrefsStore {
 		this.#dressing = cached !== null && cached.slug === look ? cached : null;
 		this.#current = {
 			look,
+			ownLook: lookIn(saved.ownLook),
 			style: oneOf(saved.style, STYLES, base.style),
 			effect: oneOf(saved.effect, EFFECTS, base.effect),
 			fonts: facesIn(saved.fonts, saved.font),
@@ -701,9 +709,14 @@ class PrefsStore {
 	 * It takes the whole dressing rather than the tokens alone: which way a
 	 * look's ground runs is the collection's own answer, and reading it back out
 	 * of the paint would be a second, weaker one.
+	 *
+	 * `ofTheirOwn` is a look from a file that named nothing under itself, which
+	 * is the one kind no collection answers for — {@link Prefs.ownLook}.
 	 */
-	setLook(dressing: SchemeDressing | null, slug: string): void {
+	setLook(dressing: SchemeDressing | null, slug: string, ofTheirOwn = false): void {
 		this.#dress(dressing === null ? null : dressingIn(dressing));
+		const own = ofTheirOwn ? slug : null;
+		if (own !== this.#current.ownLook) this.set('ownLook', own);
 		this.set('look', slug);
 	}
 

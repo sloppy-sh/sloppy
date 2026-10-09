@@ -114,7 +114,9 @@
 
 	/** The look carried as data that is on, resolved to its name and its paint —
 	 *  and a saved one this collection cannot dress stood down to one of Sloppy's
-	 *  own, on the ground it was already standing on. */
+	 *  own, on the ground it was already standing on. A look of somebody's own is
+	 *  named by no collection and is theirs to take off in Your own look, so it
+	 *  stands. */
 	async function sayWhatIsOn(): Promise<void> {
 		const slug = prefs.current.look;
 		if (BUILT_IN_LOOKS.some((one) => one === slug)) return;
@@ -123,7 +125,7 @@
 		const scheme = collection.find((one) => one.slug === slug);
 		const dressing = scheme === undefined ? null : dressed(scheme);
 		if (scheme === undefined || dressing === null) {
-			prefs.setLook(null, prefs.isDark ? 'graphite' : 'paper');
+			if (prefs.current.ownLook !== slug) prefs.setLook(null, prefs.isDark ? 'graphite' : 'paper');
 			return;
 		}
 		held = { scheme, dressing };
