@@ -9,7 +9,9 @@ import { dressed, type Scheme, type SchemeDressing, schemes } from '@sloppy/ui';
 import {
 	BUILT_IN_LOOKS,
 	type BuiltInLook,
+	FACE_ROLES,
 	LOOK_LABELS,
+	namesAFace,
 	type Prefs,
 	prefs
 } from './stores/prefs.svelte.js';
@@ -212,12 +214,14 @@ function wear(
 	if (look.preferences !== undefined) moveIn(look.preferences);
 }
 
-/** The three faces with the ones the look names laid over them. */
+/** The three faces with the ones the look names laid over them. A name no role
+ *  can be set in is left out rather than kept, since kept it would stand in
+ *  Faces as the face a role is set in while the role read in another. */
 function faces(named: NonNullable<Look['fonts']>): Prefs['fonts'] {
 	const held = { ...prefs.current.fonts };
-	for (const role of ['ui', 'heading', 'mono'] as const) {
+	for (const role of FACE_ROLES) {
 		const face = named[role];
-		if (face !== undefined) held[role] = face;
+		if (face !== undefined && namesAFace(face)) held[role] = face;
 	}
 	return held;
 }

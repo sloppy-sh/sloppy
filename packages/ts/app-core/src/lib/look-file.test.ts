@@ -215,6 +215,15 @@ describe('wearing one', () => {
 		});
 	});
 
+	it('leaves a role alone where the look names no face it can be set in', async () => {
+		prefs.set('fonts', { ui: 'Inter', heading: 'Inter', mono: 'JetBrains Mono' });
+		expect(
+			await wearLook({ name: 'Mine', fonts: { ui: 'url(http://elsewhere/a.woff2)' } })
+		).toBeNull();
+		expect(prefs.current.fonts.ui).toBe('Inter');
+		expect(document.documentElement.style.getPropertyValue('--font-sans')).toContain('Inter');
+	});
+
 	it.each(BUILT_IN_LOOKS)(
 		"wears one named for Sloppy's own %s under an id of its own, not that look's",
 		async (built) => {
