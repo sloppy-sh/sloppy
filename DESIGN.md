@@ -12,7 +12,7 @@ fits; we don't hand-roll what shadcn already does well.
 > carries the axes, the looks and the style presets, the graph's hue slots, the
 > scroll chrome and the four inset formulas; `token-contrast.test.ts` beside it measures the
 > floors below rather than asserting them. Everything else named here — the components,
-> `ResponsiveModal`, the font axis, the prefs store, the graph's own colour conversion — is
+> `ResponsiveModal`, the faces, the prefs store, the graph's own colour conversion — is
 > still a specification for a later milestone, not a description of the tree. See the
 > [README](README.md) for what is actually in the tree.
 
@@ -1453,16 +1453,26 @@ nothing under it.
 - **Headings take the app's own face until a look names another.** A notebook does not
   change typeface to make a heading feel important, so a display face is somebody's
   deliberate choice for their own Sloppy and never the product's taste.
-- **Address face** (`--font-address`): JetBrains Mono with a `ui-monospace` fallback,
-  tabular figures, always. An address is scanned and compared character by character, and
-  `1a1` against `1al` must never be a question the reader has to resolve. Every address in
-  the product renders in this face, at every size.
+- **Code and the address face**: JetBrains Mono with a `ui-monospace` fallback, tabular
+  figures, always. An address is scanned and compared character by character, and `1a1`
+  against `1al` must never be a question the reader has to resolve. Every address in the
+  product renders in this face, at every size, and `--font-address` follows the code face
+  rather than being a fourth role nobody chose.
 - Fixed rem scale, ratio ~1.2. Hierarchy by scale and weight (≥1.2 between steps).
-- **The face axis** (`data-app-font`) swaps the app's own face, for the faces Sloppy ships:
-  `atkinson` and `opendyslexic` for accessibility, `apple` for SF Pro. It swaps the address
-  face too, and drops the tabular-figure guarantee where the chosen family cannot provide
-  it. **Legibility outranks alignment** — a reader who needs OpenDyslexic to read at all
-  does not get an exception carved out of it for our nicest column.
+- **The three roles are three tokens, not an attribute**: `--font-sans`, `--font-heading`
+  and `--font-mono`, written over `:root` by the prefs store and painted by both shells
+  before the first paint. A block per face could not carry a family a look asks for by
+  name, and a role is inherited from the root anyway — `body` takes the first, every
+  heading the second, and `code`, `pre`, `kbd` and the `address` utility the third.
+- **The faces Sloppy ships** are `inter`, `atkinson` and `opendyslexic`, which it holds
+  itself, and `apple` for the device's own — SF Pro on Apple hardware, with its monospace
+  companion where the role is drawn to one width. `system` is the role's own stack. A face
+  is chosen per role, so somebody who needs OpenDyslexic to read sets it for all three;
+  nothing else moves a role they did not ask about.
+- **A face that cannot hold its figures to one width drops the guarantee, never the
+  family.** **Legibility outranks alignment** — a reader who needs OpenDyslexic to read an
+  address at all does not get an exception carved out of it for our nicest column. A family
+  Sloppy does not ship keeps the guarantee, because nothing here knows what it holds.
 
 ## Layout
 

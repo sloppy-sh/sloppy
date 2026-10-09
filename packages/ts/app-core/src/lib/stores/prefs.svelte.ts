@@ -41,7 +41,11 @@ export type { Density, Effect, Style } from '@sloppy/types';
 /** The looks Sloppy ships. Every other look is a palette carried as data, so
  *  {@link Prefs.look} is a plain string — DESIGN.md § "The look". */
 export type BuiltInLook = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
-export type Font = 'system' | 'atkinson' | 'opendyslexic' | 'apple';
+/** The faces this build offers. `system` is the role's own, and every other
+ *  face a look can ask for is a family by name — DESIGN.md § Typography. */
+export type Face = 'system' | 'inter' | 'atkinson' | 'opendyslexic' | 'apple';
+/** The three things a face is chosen for. */
+export type FaceRole = keyof Prefs['fonts'];
 
 /**
  * How one folder was last being read, for the tab that comes back to it —
@@ -167,9 +171,6 @@ const WAS_LOOK_KEY = 'sloppy_scheme';
 /** The one element the look's own rules are written into. */
 const LOOK_RULES = 'sloppy-look';
 const DARK_LOOKS: readonly string[] = ['graphite', 'dark'];
-/** The faces `app.css` carries a stack for, which `data-app-font` names. Every
- *  other face is a family somebody asked for by name. */
-const FACE_STACKS: readonly string[] = ['atkinson', 'opendyslexic', 'apple'];
 
 export const LOOK_LABELS: Record<BuiltInLook, string> = {
 	paper: 'Paper',
@@ -189,8 +190,9 @@ export const EFFECT_LABELS: Record<Effect, string> = {
 	none: 'Plain',
 	crt: 'CRT'
 };
-export const FONT_LABELS: Record<Font, string> = {
+export const FACE_LABELS: Record<Face, string> = {
 	system: 'Default',
+	inter: 'Inter',
 	atkinson: 'Atkinson Hyperlegible',
 	opendyslexic: 'OpenDyslexic',
 	apple: "Your device's face"
@@ -202,7 +204,88 @@ export const DENSITY_LABELS: Record<Density, string> = {
 };
 
 export const BUILT_IN_LOOKS = Object.keys(LOOK_LABELS) as BuiltInLook[];
-export const FONTS = Object.keys(FONT_LABELS) as Font[];
+export const FACES = Object.keys(FACE_LABELS) as Face[];
+
+/**
+ * What a face this build offers asks for: the families it names where a role is
+ * drawn proportionally and where it is drawn to one width, and whether it can
+ * hold its figures to one column. `system` is absent because the role keeps the
+ * stack `app.css` gives it.
+ */
+const FACE_FAMILIES: Record<
+	Exclude<Face, 'system'>,
+	{ proportional: string; monospaced: string; oneWidthFigures: boolean }
+> = {
+	inter: { proportional: "'Inter'", monospaced: "'Inter'", oneWidthFigures: true },
+	atkinson: {
+		proportional: "'Atkinson Hyperlegible'",
+		monospaced: "'Atkinson Hyperlegible'",
+		oneWidthFigures: false
+	},
+	opendyslexic: {
+		proportional: "'OpenDyslexic'",
+		monospaced: "'OpenDyslexic'",
+		oneWidthFigures: false
+	},
+	apple: {
+		proportional: '-apple-system, BlinkMacSystemFont, system-ui',
+		monospaced: 'ui-monospace, SFMono-Regular, Menlo',
+		oneWidthFigures: true
+	}
+};
+
+/** The token each role is read from, and the stack a face is laid over there. */
+const FACE_TOKENS: Record<FaceRole, { token: string; under: string }> = {
+	ui: { token: '--font-sans', under: 'var(--font-proportional)' },
+	heading: { token: '--font-heading', under: 'var(--font-proportional)' },
+	mono: { token: '--font-mono', under: 'var(--font-monospaced)' }
+};
+
+/** The three, in the order they are offered. */
+export const FACE_ROLES = Object.keys(FACE_TOKENS) as FaceRole[];
+
+/** A name is written into a declaration of its own, so anything that could end
+ *  that declaration, or reach off the device from inside it, is not one. */
+const NOT_A_FACE = /[;{}]|url\(|\p{Cc}/iu;
+
+/** Whether a family somebody typed is the name of a face at all. The field asks
+ *  before the name is kept, so a refusal is a line somebody can act on rather
+ *  than a face that silently did not take. */
+export function namesAFace(family: string): boolean {
+	const named = family.trim();
+	return named !== '' && named.length <= FACE_NAME_MAX && !NOT_A_FACE.test(named);
+}
+
+function shippedFace(face: string): (typeof FACE_FAMILIES)[Exclude<Face, 'system'>] | null {
+	return Object.hasOwn(FACE_FAMILIES, face) ? FACE_FAMILIES[face as Exclude<Face, 'system'>] : null;
+}
+
+/** A family as the person typed it, as a CSS string — a family name is not an
+ *  identifier, and a quote or a backslash inside one ends the string if it is
+ *  not escaped. */
+function quoted(family: string): string {
+	return `"${family.replace(/[\\"]/g, '\\$&')}"`;
+}
+
+/**
+ * What a role's face comes to, or null where the role keeps the stack `app.css`
+ * gives it. A face is a name rather than a rule: the family is used if the
+ * machine has it, and the role's own stack stands behind it so a look asking
+ * for a face this build does not ship still reads — DESIGN.md § Typography.
+ */
+function faceStack(role: FaceRole, face: string): string | null {
+	// Asked again here rather than on the way in alone: this is the one place a
+	// name reaches a declaration, and a look applied to the standing prefs has
+	// not been through `init()`.
+	if (face === 'system' || !namesAFace(face)) return null;
+	const shipped = shippedFace(face);
+	const asked = shipped
+		? role === 'mono'
+			? shipped.monospaced
+			: shipped.proportional
+		: quoted(face);
+	return `${asked}, ${FACE_TOKENS[role].under}`;
+}
 
 /** How long between versions kept while writing, in minutes. */
 export const AUTOSAVE_MINUTES = [2, 5, 15, 30] as const;
@@ -300,10 +383,7 @@ function lookIn(value: unknown): string | null {
 /** One face, as a name rather than as a rule — a family this build does not
  *  ship is still the person's to ask for, so only the bound is held. */
 function faceIn(value: unknown, fallback: string): string {
-	if (typeof value !== 'string') return fallback;
-	const named = value.trim();
-	if (named === '' || named.length > FACE_NAME_MAX || /[;{}]/.test(named)) return fallback;
-	return named;
+	return typeof value === 'string' && namesAFace(value) ? value.trim() : fallback;
 }
 
 /** The three, with `was` the one face an earlier build kept. */
@@ -692,9 +772,21 @@ class PrefsStore {
 		else root.removeAttribute('data-density');
 		if (p.effect === 'none') root.removeAttribute('data-effect');
 		else root.setAttribute('data-effect', p.effect);
-		// The app's own face, where it is one `app.css` carries a stack for.
-		if (FACE_STACKS.includes(p.fonts.ui)) root.setAttribute('data-app-font', p.fonts.ui);
-		else root.removeAttribute('data-app-font');
+		// The three faces, written over the tokens `app.css` declares them at:
+		// a family a look asks for by name is not a value a stylesheet can hold
+		// a block for — DESIGN.md § Typography.
+		for (const role of FACE_ROLES) {
+			const stack = faceStack(role, p.fonts[role]);
+			if (stack === null) root.style.removeProperty(FACE_TOKENS[role].token);
+			else root.style.setProperty(FACE_TOKENS[role].token, stack);
+		}
+		// Legibility outranks alignment: a face that cannot hold its figures to
+		// one width takes the addresses anyway, without their column.
+		const keepsTheColumn = shippedFace(p.fonts.mono)?.oneWidthFigures ?? true;
+		for (const token of ['--font-address-figures', '--font-address-features']) {
+			if (keepsTheColumn) root.style.removeProperty(token);
+			else root.style.setProperty(token, 'normal');
+		}
 		root.classList.toggle('dark', this.isDark);
 		this.#writeRules(p.css);
 	}

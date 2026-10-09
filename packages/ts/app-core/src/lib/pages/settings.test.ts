@@ -15,7 +15,7 @@ import { initRuntime, runtime } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { identity } from '../stores/identity.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
-import { DENSITIES, EFFECTS, FONTS, prefs, STYLES } from '../stores/prefs.svelte.js';
+import { DENSITIES, EFFECTS, FACE_ROLES, FACES, prefs, STYLES } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { whatHappened } from '../stores/what-happened.svelte.js';
@@ -237,12 +237,14 @@ describe('settings', () => {
 	it('keeps the axes of the look together', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
-		for (const legend of ['Style', 'Font', 'How close it is drawn', 'Screen']) {
+		for (const legend of ['Style', 'Faces', 'How close it is drawn', 'Screen']) {
 			expect(target.textContent).toContain(legend);
 		}
-		const axes = [STYLES, FONTS, DENSITIES, EFFECTS];
+		// Each role is offered every face this build has, and one more choice for
+		// a family nobody here ships.
+		const axes = [STYLES, DENSITIES, EFFECTS];
 		expect(target.querySelectorAll('input[type="radio"]').length).toBe(
-			axes.reduce((all, axis) => all + axis.length, 0)
+			axes.reduce((all, axis) => all + axis.length, 0) + FACE_ROLES.length * (FACES.length + 1)
 		);
 	});
 
@@ -265,13 +267,8 @@ describe('settings', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 
-		const face = [...target.querySelectorAll<HTMLInputElement>('input[name="font"]')];
-		expect(face.map((option) => option.value)).toEqual([
-			'system',
-			'atkinson',
-			'opendyslexic',
-			'apple'
-		]);
+		const face = [...target.querySelectorAll<HTMLInputElement>('input[name="face-ui"]')];
+		expect(face.map((option) => option.value)).toEqual([...FACES, '…']);
 		expect(target.textContent).toContain('OpenDyslexic');
 
 		const dyslexic = face.find((option) => option.value === 'opendyslexic');
@@ -279,7 +276,9 @@ describe('settings', () => {
 		flushSync();
 
 		expect(prefs.current.fonts.ui).toBe('opendyslexic');
-		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
+		expect(document.documentElement.style.getPropertyValue('--font-sans')).toContain(
+			'OpenDyslexic'
+		);
 	});
 
 	it('shows who is signed in, on the way to their page', async () => {

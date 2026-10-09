@@ -80,7 +80,6 @@ function stamped(): Record<string, unknown> {
 		style: root.getAttribute('data-style'),
 		density: root.getAttribute('data-density'),
 		effect: root.getAttribute('data-effect'),
-		face: root.getAttribute('data-app-font'),
 		dark: String(root.classList.contains('dark')),
 		painted: painted(),
 		rules: rules()
@@ -89,7 +88,7 @@ function stamped(): Record<string, unknown> {
 
 function unstamp(): void {
 	const root = document.documentElement;
-	for (const axis of ['data-look', 'data-style', 'data-density', 'data-effect', 'data-app-font'])
+	for (const axis of ['data-look', 'data-style', 'data-density', 'data-effect'])
 		root.removeAttribute(axis);
 	for (const token of Object.keys(painted())) root.style.removeProperty(token);
 	root.classList.remove('dark');
@@ -198,16 +197,50 @@ describe('the saved look', () => {
 	});
 
 	// Somebody who needs a face to read the page at all has to be reading the
-	// page in it — DESIGN.md § Typography.
-	it('reads the app in the face somebody kept, and in its own where they named one', () => {
+	// page in it, and a look asking for a family this build does not ship still
+	// has to read — DESIGN.md § Typography.
+	it('reads each of the three in the face somebody kept, over the stack it had', () => {
 		prefs.init();
-		expect(document.documentElement.hasAttribute('data-app-font')).toBe(false);
-		prefs.set('fonts', { ui: 'opendyslexic', heading: 'system', mono: 'system' });
-		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
+		expect(painted()).toEqual({});
+		prefs.set('fonts', { ui: 'opendyslexic', heading: 'Iosevka Etoile', mono: 'apple' });
+		expect(painted()).toEqual({
+			'--font-sans': "'OpenDyslexic', var(--font-proportional)",
+			'--font-heading': '"Iosevka Etoile", var(--font-proportional)',
+			'--font-mono': 'ui-monospace, SFMono-Regular, Menlo, var(--font-monospaced)'
+		});
 		prefs.init();
-		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
-		prefs.set('fonts', { ui: 'Iosevka Etoile', heading: 'system', mono: 'system' });
-		expect(document.documentElement.hasAttribute('data-app-font')).toBe(false);
+		expect(painted()['--font-sans']).toBe("'OpenDyslexic', var(--font-proportional)");
+		prefs.set('fonts', { ui: 'system', heading: 'system', mono: 'system' });
+		expect(painted()).toEqual({});
+	});
+
+	// Legibility outranks alignment: a reader who needs OpenDyslexic to read an
+	// address at all does not get an exception carved out of it for our nicest
+	// column — DESIGN.md § Typography.
+	it('keeps an address in one column until the face for it cannot', () => {
+		prefs.init();
+		prefs.set('fonts', { ui: 'system', heading: 'system', mono: 'opendyslexic' });
+		expect(painted()['--font-address-figures']).toBe('normal');
+		expect(painted()['--font-address-features']).toBe('normal');
+		// A family nobody here ships is the person's to ask for, and nothing here
+		// knows whether it holds a column — so the guarantee stands.
+		prefs.set('fonts', { ui: 'system', heading: 'system', mono: 'Iosevka Etoile' });
+		expect(painted()['--font-address-figures']).toBeUndefined();
+	});
+
+	// A face is a name, and a name is written into a declaration of its own.
+	it('refuses a face that is not a name at all', () => {
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({ fonts: { ui: 'x; position: fixed', heading: 'url(http://a.example/f)' } })
+		);
+		prefs.init();
+		expect(prefs.current.fonts).toEqual({ ui: 'system', heading: 'system', mono: 'system' });
+		expect(painted()).toEqual({});
+		// A look laid over what is standing does not come through `init()`, and
+		// the one place a name reaches a declaration is the same place either way.
+		prefs.set('fonts', { ui: 'x; position: fixed', heading: 'system', mono: 'system' });
+		expect(painted()).toEqual({});
 	});
 
 	it('leaves data-effect absent for a plain screen, because absent IS plain', () => {
@@ -261,10 +294,17 @@ describe('the saved look', () => {
 			],
 			[{ look: 'paper', css: 'h2 { background: url("data:image/gif;base64,R0lGOD") }' }, null],
 			[{ look: 'paper', css: 'x'.repeat(65537) }, null],
-			// The face the app is read in, as this build keeps it and as an earlier
-			// one did.
+			// The three faces, as this build keeps them and as an earlier one kept
+			// the one it had: a face offered here, a family nobody here ships, and
+			// one that gives an address its column up.
 			[{ look: 'paper', fonts: { ui: 'atkinson' } }, null],
 			[{ look: 'paper', fonts: { ui: 'Iosevka Etoile' } }, null],
+			[{ look: 'paper', fonts: { ui: 'inter', heading: 'Iosevka "Et"', mono: 'apple' } }, null],
+			[{ look: 'paper', fonts: { mono: 'opendyslexic' } }, null],
+			[
+				{ look: 'paper', fonts: { ui: 'a face; position: fixed', mono: 'url(http://a.example)' } },
+				null
+			],
 			[{ look: 'paper', font: 'opendyslexic' }, null]
 		];
 		for (const [saved, dressing, key = 'sloppy_look'] of cases) {
