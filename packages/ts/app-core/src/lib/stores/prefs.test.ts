@@ -80,6 +80,7 @@ function stamped(): Record<string, unknown> {
 		style: root.getAttribute('data-style'),
 		density: root.getAttribute('data-density'),
 		effect: root.getAttribute('data-effect'),
+		face: root.getAttribute('data-app-font'),
 		dark: String(root.classList.contains('dark')),
 		painted: painted(),
 		rules: rules()
@@ -88,7 +89,7 @@ function stamped(): Record<string, unknown> {
 
 function unstamp(): void {
 	const root = document.documentElement;
-	for (const axis of ['data-look', 'data-style', 'data-density', 'data-effect'])
+	for (const axis of ['data-look', 'data-style', 'data-density', 'data-effect', 'data-app-font'])
 		root.removeAttribute(axis);
 	for (const token of Object.keys(painted())) root.style.removeProperty(token);
 	root.classList.remove('dark');
@@ -196,6 +197,19 @@ describe('the saved look', () => {
 		});
 	});
 
+	// Somebody who needs a face to read the page at all has to be reading the
+	// page in it — DESIGN.md § Typography.
+	it('reads the app in the face somebody kept, and in its own where they named one', () => {
+		prefs.init();
+		expect(document.documentElement.hasAttribute('data-app-font')).toBe(false);
+		prefs.set('fonts', { ui: 'opendyslexic', heading: 'system', mono: 'system' });
+		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
+		prefs.init();
+		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
+		prefs.set('fonts', { ui: 'Iosevka Etoile', heading: 'system', mono: 'system' });
+		expect(document.documentElement.hasAttribute('data-app-font')).toBe(false);
+	});
+
 	it('leaves data-effect absent for a plain screen, because absent IS plain', () => {
 		prefs.init();
 		expect(document.documentElement.hasAttribute('data-effect')).toBe(false);
@@ -227,10 +241,31 @@ describe('the saved look', () => {
 			// uses it and `app.css` answers for the look instead.
 			[{ look: SOLARIZED.slug }, GRUVBOX],
 			[{ look: 'paper', css: '.sloppy-prose h2 { letter-spacing: 0.02em }' }, null],
-			// Rules that would reach the network are written by neither of them.
+			// Rules that would reach the network are written by neither of them,
+			// however the look spells it.
 			[{ look: 'paper', css: "@import 'https://elsewhere.example/x.css';" }, null],
 			[{ look: 'paper', css: 'h2 { background: url(https://elsewhere.example/p.png) }' }, null],
-			[{ look: 'paper', css: 'x'.repeat(65537) }, null]
+			[
+				{
+					look: 'paper',
+					css: 'h2 { content: "/*"; background: url(https://elsewhere.example/p.png); content: "*/" }'
+				},
+				null
+			],
+			[
+				{
+					look: 'paper',
+					css: 'h2 { background: image-set("https://elsewhere.example/p.png" 1x) }'
+				},
+				null
+			],
+			[{ look: 'paper', css: 'h2 { background: url("data:image/gif;base64,R0lGOD") }' }, null],
+			[{ look: 'paper', css: 'x'.repeat(65537) }, null],
+			// The face the app is read in, as this build keeps it and as an earlier
+			// one did.
+			[{ look: 'paper', fonts: { ui: 'atkinson' } }, null],
+			[{ look: 'paper', fonts: { ui: 'Iosevka Etoile' } }, null],
+			[{ look: 'paper', font: 'opendyslexic' }, null]
 		];
 		for (const [saved, dressing, key = 'sloppy_look'] of cases) {
 			localStorage.setItem('sloppy_prefs', JSON.stringify(saved));

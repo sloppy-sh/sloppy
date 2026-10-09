@@ -69,6 +69,13 @@
 			root.setAttribute('data-look', look);
 			if (saved.style && saved.style !== 'default') root.setAttribute('data-style', saved.style);
 			if (saved.effect && saved.effect !== 'none') root.setAttribute('data-effect', saved.effect);
+			// The app's own face, where it is one app.css carries a stack for. The
+			// store reads the same two places, and a face an earlier build kept is
+			// still the one the app is read in.
+			var faces = ['atkinson', 'opendyslexic', 'apple'];
+			var face = saved.fonts && typeof saved.fonts.ui === 'string' ? saved.fonts.ui : saved.font;
+			if (typeof face === 'string' && faces.indexOf(face.trim()) >= 0)
+				root.setAttribute('data-app-font', face.trim());
 			// `auto` is what this device is: closer where a mouse is the only pointer.
 			var density = saved.density || 'auto';
 			var forAMouse =
@@ -78,21 +85,37 @@
 			root.classList.toggle('dark', dark);
 
 			// The look's own rules, under the gate `cssIsSafe` in @sloppy/types holds
-			// them to: comments and CSS's own escapes resolved, then nothing left
-			// that would reach the network. The bound is the prefs store's again.
+			// them to, token for token: an escape, a comment and a string read in the
+			// order a CSS parser meets them, then nothing left naming anywhere but the
+			// look itself. The bound is the prefs store's again.
 			var css = typeof saved.css === 'string' && saved.css.length <= 65536 ? saved.css : '';
-			var plain = css
-				.replace(/\/\*[\s\S]*?\*\//g, '')
-				.replace(/\\([0-9a-fA-F]{1,6})[ \t\n]?/g, function (whole, hex) {
-					var at = parseInt(hex, 16);
-					return at > 0x10ffff ? '' : String.fromCodePoint(at);
-				})
-				.replace(/\\([\s\S])/g, '$1');
-			var reaches = /@\s*import/i.test(plain);
+			var spelledOut = function (text) {
+				return text
+					.replace(/\\([0-9a-fA-F]{1,6})[ \t\n]?/g, function (whole, hex) {
+						var at = parseInt(hex, 16);
+						return at > 0x10ffff ? '' : String.fromCodePoint(at);
+					})
+					.replace(/\\([\s\S])/g, '$1');
+			};
+			var away = false;
+			var plain = spelledOut(
+				css.replace(
+					/\\[\s\S]|\/\*[\s\S]*?(?:\*\/|$)|"(?:\\[\s\S]|[^"\\\n])*"?|'(?:\\[\s\S]|[^'\\\n])*'?/g,
+					function (token) {
+						if (token.charAt(0) === '\\') return token;
+						if (token.charAt(0) === '/') return ' ';
+						var quote = token.charAt(0);
+						var closed = token.length > 1 && token.charAt(token.length - 1) === quote;
+						var text = spelledOut(closed ? token.slice(1, -1) : token.slice(1));
+						if (!/^\s*data:/i.test(text) && text.indexOf('//') >= 0) away = true;
+						return /^\s*data:/i.test(text) ? ' data: ' : ' x ';
+					}
+				)
+			);
+			var reaches = away || /@\s*import/i.test(plain);
 			var loads = plain.match(/url\(([^)]*)\)?/gi) || [];
 			for (var at = 0; at < loads.length; at++) {
-				var target = loads[at].slice(4).trim().replace(/^["']/, '').trim();
-				if (!/^data:/i.test(target)) reaches = true;
+				if (!/^\s*data:/i.test(loads[at].slice(4))) reaches = true;
 			}
 			if (css && !reaches) {
 				var rules = document.createElement('style');

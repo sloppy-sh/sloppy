@@ -40,9 +40,15 @@ const NO_WEB = "A look cannot load anything from the web.";
 const NO_IMPORT = `${NO_WEB} Take out the @import.`;
 const NO_PICTURE = `${NO_WEB} Take out the picture it loads from the web.`;
 
-const COMMENT = /\/\*[\s\S]*?\*\//g;
+/** An escape, a comment, then a string — in the order a CSS parser meets them,
+ *  so a `/*` inside a string is text and a quote inside a comment is a comment.
+ *  One pass in that order is what stops either from swallowing the other's
+ *  delimiter and carrying a live declaration out between them. */
+const TOKEN =
+  /\\[\s\S]|\/\*[\s\S]*?(?:\*\/|$)|"(?:\\[\s\S]|[^"\\\n])*"?|'(?:\\[\s\S]|[^'\\\n])*'?/g;
 const IMPORTS = /@\s*import/i;
 const URL_CALL = /url\(([^)]*)\)?/gi;
+const DATA_URI = /^\s*data:/i;
 const NUMERIC_ESCAPE = /\\([0-9a-fA-F]{1,6})[ \t\n]?/g;
 const ESCAPE = /\\([\s\S])/g;
 const LAST_CODE_POINT = 0x10ffff;
@@ -58,13 +64,45 @@ function spelledOut(css: string): string {
     .replace(ESCAPE, "$1");
 }
 
-/** Whether any `url()` here loads from somewhere other than the look itself.
- *  The quotes and the space either side of a target are the author's to write
- *  or leave out, so the target is read rather than matched in place. */
-function loadsFromAway(css: string): boolean {
-  for (const call of css.matchAll(URL_CALL)) {
-    const target = call[1].trim().replace(/^["']/, "").trim();
-    if (!/^data:/i.test(target)) return true;
+/** What a string holds, quotes off and escapes resolved. An unterminated one
+ *  ends where a CSS parser gives up on it, at the newline. */
+function held(token: string): string {
+  const quote = token[0];
+  const closed = token.length > 1 && token.endsWith(quote);
+  return spelledOut(token.slice(1, closed ? -1 : undefined));
+}
+
+/** Whether a target names somewhere other than the look itself. A look carries
+ *  its own pictures as `data:` URIs, and everything a stylesheet can fetch from
+ *  elsewhere names a host — which takes a `//`. */
+function pointsAway(target: string): boolean {
+  return !DATA_URI.test(target) && target.includes("//");
+}
+
+/**
+ * The rules with every comment taken out and every string stood down to where
+ * it points — `data:` or nowhere — so a `url()` around one is still read, and
+ * whether any string named somewhere off the device. A function that takes a
+ * bare string for a URL (`image-set`, `src`) reaches the network through the
+ * string rather than through a `url()`, which is why the strings are read at
+ * all rather than only erased.
+ */
+function read(css: string): { plain: string; away: boolean } {
+  let away = false;
+  const plain = css.replace(TOKEN, (token) => {
+    if (token.startsWith("\\")) return token;
+    if (token.startsWith("/*")) return " ";
+    const text = held(token);
+    if (pointsAway(text)) away = true;
+    return DATA_URI.test(text) ? " data: " : " x ";
+  });
+  return { plain: spelledOut(plain), away };
+}
+
+/** Whether any `url()` here loads from somewhere other than the look itself. */
+function loadsFromAway(plain: string): boolean {
+  for (const call of plain.matchAll(URL_CALL)) {
+    if (!DATA_URI.test(call[1])) return true;
   }
   return false;
 }
@@ -76,9 +114,9 @@ function loadsFromAway(css: string): boolean {
  * DESIGN.md § "A look is a file" carries the rule and what it is for.
  */
 export function cssIsSafe(css: string): string | null {
-  const plain = spelledOut(css.replace(COMMENT, ""));
+  const { plain, away } = read(css);
   if (IMPORTS.test(plain)) return NO_IMPORT;
-  if (loadsFromAway(plain)) return NO_PICTURE;
+  if (away || loadsFromAway(plain)) return NO_PICTURE;
   return null;
 }
 
@@ -92,7 +130,13 @@ const PaletteTokenSchema = z
 const PaintSchema = z
   .string()
   .regex(/^[^;{}]{1,96}$/, "A look's colours have to be colours.")
-  .refine((paint) => !/url\(/i.test(paint), NO_PICTURE);
+  .check((ctx) => {
+    const reaching = /url\(/i.test(ctx.value)
+      ? NO_PICTURE
+      : cssIsSafe(ctx.value);
+    if (reaching === null) return;
+    ctx.issues.push({ code: "custom", input: ctx.value, message: reaching });
+  });
 
 const FaceSchema = z
   .string()

@@ -69,6 +69,11 @@ describe("a look somebody was sent", () => {
     expect(
       refusal({ palette: { "--background": "url(https://a.example/p.png)" } }),
     ).toContain("cannot load anything from the web");
+    expect(
+      refusal({
+        palette: { "--background": 'image-set("https://a.example/p.png")' },
+      }),
+    ).toContain("cannot load anything from the web");
   });
 
   it("takes the axes the app itself offers, and nothing else", () => {
@@ -136,6 +141,8 @@ describe("a look that would reach the network", () => {
     expect(
       cssIsSafe("/* url(https://a.example/p.png) */ h2 { margin: 0 }"),
     ).toBeNull();
+    // A string is read as a string, which is why the word in one is just a word.
+    expect(cssIsSafe('h2::after { content: "@import" }')).toBeNull();
   });
 
   it("may still draw a picture it carries itself", () => {
@@ -178,6 +185,46 @@ describe("a look that would reach the network", () => {
         "A look cannot load anything from the web. Take out the picture it loads from the web.",
       );
     }
+  });
+
+  // The delimiters are in strings, where CSS does not read them as delimiters:
+  // a gate that cut from the first `/*` to the last `*/` would cut the live
+  // declaration between them and let the browser fetch what it left behind.
+  it("is turned down for what it holds between string-borne delimiters", () => {
+    expect(
+      cssIsSafe(
+        'h2 { content: "/*"; background: url(https://a.example/p.png); content: "*/" }',
+      ),
+    ).toBe(
+      "A look cannot load anything from the web. Take out the picture it loads from the web.",
+    );
+    expect(
+      cssIsSafe(
+        'h2 { content: "/*" } @import "https://a.example/x.css"; h2 { content: "*/" }',
+      ),
+    ).toBe("A look cannot load anything from the web. Take out the @import.");
+  });
+
+  // `image-set()` and `src()` take a bare string for a URL, so a gate searching
+  // for `url(` alone would miss every picture they load.
+  it("is turned down for a picture a function loads by name", () => {
+    for (const rules of [
+      'a { background: image-set("https://a.example/p.png" 1x) }',
+      'a { background: -webkit-image-set("//a.example/p.png" 1x) }',
+      '@font-face { src: local("X"), url("https://a.example/f.woff2") }',
+      '@font-face { src: src("https://a.example/f.woff2") }',
+      'a { background: image-set("https:\\2f\\2f a.example/p.png" 1x) }',
+    ]) {
+      expect(cssIsSafe(rules), rules).toBe(
+        "A look cannot load anything from the web. Take out the picture it loads from the web.",
+      );
+    }
+  });
+
+  it("may still have one of those draw a picture it carries itself", () => {
+    expect(
+      cssIsSafe('a { background: image-set("data:image/gif;base64,R0" 1x) }'),
+    ).toBeNull();
   });
 
   // The gate is on the look as well as on the place the rules are applied, so

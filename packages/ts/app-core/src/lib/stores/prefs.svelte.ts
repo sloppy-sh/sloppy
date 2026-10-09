@@ -167,6 +167,9 @@ const WAS_LOOK_KEY = 'sloppy_scheme';
 /** The one element the look's own rules are written into. */
 const LOOK_RULES = 'sloppy-look';
 const DARK_LOOKS: readonly string[] = ['graphite', 'dark'];
+/** The faces `app.css` carries a stack for, which `data-app-font` names. Every
+ *  other face is a family somebody asked for by name. */
+const FACE_STACKS: readonly string[] = ['atkinson', 'opendyslexic', 'apple'];
 
 export const LOOK_LABELS: Record<BuiltInLook, string> = {
 	paper: 'Paper',
@@ -686,6 +689,9 @@ class PrefsStore {
 		else root.removeAttribute('data-density');
 		if (p.effect === 'none') root.removeAttribute('data-effect');
 		else root.setAttribute('data-effect', p.effect);
+		// The app's own face, where it is one `app.css` carries a stack for.
+		if (FACE_STACKS.includes(p.fonts.ui)) root.setAttribute('data-app-font', p.fonts.ui);
+		else root.removeAttribute('data-app-font');
 		root.classList.toggle('dark', this.isDark);
 		this.#writeRules(p.css);
 	}

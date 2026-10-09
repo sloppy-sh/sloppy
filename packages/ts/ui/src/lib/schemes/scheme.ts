@@ -45,10 +45,11 @@ export const DRESSED_TOKENS = [
  *
  * - `--border` is what the style axis derives an edge from. A carried look's
  *   own edge reaches it through `schemes.css`, in a rule a style can beat.
- * - TODO(the look/palette track): the accent family moves out of this list and
+ * - the accent family is Sloppy's own, in the family of the ground the carried
+ *   look stands on: `app.css` answers for it and `token-contrast.test.ts` holds
+ *   the pairing. TODO(the look/palette track): it moves out of this list and
  *   into the mapping, where the scheme's own `base0D` answers for it —
- *   DESIGN.md § "A look carried as data". Nothing here produces one yet, so
- *   paint arriving with one came from outside the collection.
+ *   DESIGN.md § "A look carried as data".
  */
 export const UNDRESSED_TOKENS = [
 	'--border',

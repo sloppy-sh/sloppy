@@ -5,8 +5,9 @@
  * facet slots — reading the tokens out of `app.css` rather than from a second
  * table: a table beside the stylesheet is a copy that drifts, and a palette
  * whose slots have converged passes every contrast check while having quietly
- * stopped being a language. A look carried as data is swept by `dress.test.ts`
- * instead, against the collection it comes out of.
+ * stopped being a language. A look carried as data brings its own surfaces,
+ * which this file cannot see: `dress.test.ts` sweeps those against the
+ * collection, and the accent family `app.css` answers for is held here.
  */
 
 import { readFileSync } from 'node:fs';
@@ -21,11 +22,14 @@ const CSS = readFileSync(new URL('./app.css', import.meta.url), 'utf8').replace(
 
 const LOOKS = ['paper', 'graphite', 'light', 'dark', 'contrast'] as const;
 const DARK_LOOKS = new Set<string>(['graphite', 'dark']);
+/** A look carried as data: `data-look` holds its id and no block here names it,
+ *  so what the stylesheet still owes it is measured under its own id. */
+const CARRIED = 'a-look-carried-as-data';
 const FACET_SLOTS = [
 	...new Set([...CSS.matchAll(/--facet-(\d+)\s*:/g)].map((slot) => Number(slot[1])))
 ].sort((a, b) => a - b);
 
-type Look = (typeof LOOKS)[number];
+type Look = (typeof LOOKS)[number] | typeof CARRIED;
 
 interface Rule {
 	selectors: string[];
@@ -61,15 +65,15 @@ function rules(): Rule[] {
 const ATTRIBUTE = /\[data-(look|style)='([^']+)'\]/g;
 
 /**
- * Whether one selector applies to a plain `<html>` carrying exactly this look.
- * A selector using `:not()` is skipped rather than modelled — each one in
- * `app.css` shares its declaration body with a positive twin that is matched
- * here, so nothing goes unmeasured.
+ * Whether one selector applies to a plain `<html>` carrying exactly this look,
+ * on a ground running this way. A selector using `:not()` is skipped rather
+ * than modelled — each one in `app.css` shares its declaration body with a
+ * positive twin that is matched here, so nothing goes unmeasured.
  */
-function matches(selector: string, look: Look): boolean {
+function matches(selector: string, look: Look, dark: boolean): boolean {
 	if (!selector.includes(':root')) return false;
 	if (selector.includes(':not(')) return false;
-	if (selector.includes('.dark') && !DARK_LOOKS.has(look)) return false;
+	if (selector.includes('.dark') && !dark) return false;
 	for (const [, axis, value] of selector.matchAll(ATTRIBUTE)) {
 		if (axis === 'look' && value !== look) return false;
 		// Only the default style is swept: `data-style` may not touch a palette
@@ -86,9 +90,9 @@ function weight(selector: string): number {
 
 const ALL_RULES = rules();
 
-function tokens(look: Look): Map<string, string> {
+function tokens(look: Look, dark = DARK_LOOKS.has(look)): Map<string, string> {
 	const applicable = ALL_RULES.flatMap((rule) => {
-		const weights = rule.selectors.filter((s) => matches(s, look)).map(weight);
+		const weights = rule.selectors.filter((s) => matches(s, look, dark)).map(weight);
 		return weights.length
 			? [{ weight: Math.max(...weights), order: rule.order, declarations: rule.declarations }]
 			: [];
@@ -222,6 +226,26 @@ describe('token contrast', () => {
 			expect(
 				contrastRatio(color(resolved, '--primary'), color(resolved, '--primary-foreground'))
 			).toBeGreaterThanOrEqual(4.5);
+		});
+	});
+
+	// A look carried as data paints its own surfaces, which the suite cannot
+	// see, and takes the accent family from `app.css` — so what is measured here
+	// is the pairing: the family of the ground it stands on, which is the one
+	// Sloppy's own look on that ground was measured with above.
+	describe('a look carried as data stands in the accent family of its own ground', () => {
+		const FAMILY = ['--primary', '--primary-foreground', '--primary-mark', '--ring'] as const;
+
+		it('on a dark ground reads as it does on Graphite', () => {
+			const carried = tokens(CARRIED, true);
+			const graphite = tokens('graphite');
+			for (const token of FAMILY) expect(color(carried, token)).toEqual(color(graphite, token));
+		});
+
+		it('on a light ground reads as it does on Paper', () => {
+			const carried = tokens(CARRIED, false);
+			const paper = tokens('paper');
+			for (const token of FAMILY) expect(color(carried, token)).toEqual(color(paper, token));
 		});
 	});
 });

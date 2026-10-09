@@ -1,5 +1,5 @@
 /**
- * The file of record for DESIGN.md § Typography's font axis: what each value
+ * The file of record for DESIGN.md § Typography's face axis: what each value
  * puts in front of a reader, and that nothing it names is fetched from anywhere
  * but the app itself.
  */

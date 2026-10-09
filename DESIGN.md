@@ -161,7 +161,7 @@ an edge INSIDE the box rather than as a shadow cast behind it, which is what mak
 the lift. Terminal is rules and nothing else, with a caret-like focus ring and a block of
 ink where something is selected or under the arrow keys — a menu says which row that is in
 `data-highlighted`, a listbox in `aria-selected`, and both get the block; it pairs with a
-monospace face, and the person chooses that on the font axis — **a style never names a font
+monospace face, and the person chooses that on the face axis — **a style never names a font
 any more than it names a colour.** Pixel builds its edge out of box-shadows so the corners
 step, which is also where its offset comes from; a single side has no corner to step, so
 the per-side families stay the hairline they were.
@@ -290,17 +290,18 @@ on, one whose surfaces leave the eight slots nowhere to stand. Most of the colle
 through; `dress.test.ts` sweeps all of it and holds the count, because a mapping that shut
 half the collection out would pass every floor.
 
-**A scheme carries its own accent, because a look is the whole palette.** `--primary` is
-the scheme's `base0D`, `--primary-foreground` whichever of its two ends reads on that fill
-at 4.5:1, and `--primary-mark` the same hue moved in lightness until it clears 3:1 on the
-scheme's own page, with `--ring` reading from the mark. Nothing about the colour of a
-carried look comes from anywhere else.
-
-**`--border` is the one colour it leaves alone.** Paint written inline beats every rule in
-the design system, and the style axis derives its own edge from `--border` — so a scheme's
-edge reaches that token through a rule instead, which is what leaves a style drawing its own
-edge on every scheme in the collection. The style, the faces, the density and the screen
-stay the person's.
+**A dressing carries the surfaces, the ink and the eight hues, and leaves two colours to
+the stylesheet.** Paint written inline beats every rule in the design system, so a token
+another axis owns is one a dressing may not carry (`UNDRESSED_TOKENS`), and there are two
+of those. `--border` is what the style axis derives an edge from, so a scheme's edge
+reaches that token through a rule instead, which is what leaves a style drawing its own
+edge on every scheme in the collection. And the **accent family** — `--primary`,
+`--primary-foreground`, `--primary-mark`, `--ring` — is Sloppy's own indigo, in the family
+of the ground the carried look stands on: the light three's on a light ground, the dark
+pair's on a dark one. That pairing is **the one place the `dark` class decides a colour
+rather than `data-look`**, because the collection runs both ways under ids the stylesheet
+does not know, and `token-contrast.test.ts` holds it. The style, the faces, the density and
+the screen stay the person's.
 
 Asking for one of Sloppy's own five stands a carried look down. Its tokens are cached
 beside the saved look so the shells' boot scripts paint them before the first paint, and
@@ -342,12 +343,16 @@ same JSON pasted in. A file that is not a look is turned down in one line saying
 do, never in a parser's words.
 
 **A look's own CSS is part of the look**, and bounded: at most 64 KiB, applied through one
-`<style>` element the app owns and nothing else writes. **`@import`, and any `url()` whose
-target is not a `data:` URI, are refused** — on the file and again where the rules are
-applied, with comments and CSS's own escape sequences resolved before either check so
-neither can be smuggled past it. The reason is the reason a look is a file at all: one
-somebody was sent must not be able to phone home or say who opened it. `cssIsSafe` is that
-gate and `look.test.ts` is the file of record.
+`<style>` element the app owns and nothing else writes. **`@import` is refused, and so is
+anything naming a host**: a `url()` target that is not a `data:` URI, and a string that
+names one — which is how `image-set()` and `src()` load a picture without writing `url(`
+at all. The rules are read the way a CSS parser reads them, escapes resolved, a comment
+inside a string left as text and a quote inside a comment left as a comment, because a gate
+that cut from the first `/*` to the last `*/` would cut the live declaration between them
+and let through what it left behind. The check runs on the file and again where the rules
+are applied. The reason is the reason a look is a file at all: one somebody was sent must
+not be able to phone home or say who opened it. `cssIsSafe` is that gate and `look.test.ts`
+is the file of record.
 
 **A face is a name, not a rule.** Each of the three is one of the faces this build ships or
 a family the author typed — used if the machine has it, and falling back to that role's own
@@ -968,8 +973,14 @@ the 3:1 mark floor and the 0.03 separation floor — on `--background`, `--card`
 
 No look needs a mark correction today: `--primary-mark` is each look's own `--primary`
 handed back untouched, and `--ring` reads from the mark so a focus ring inherits whatever
-correction a look does need. A look carried as data is measured where it is dressed instead
-— `dress.test.ts` sweeps the collection — because the suite cannot see its surfaces.
+correction a look does need. A look carried as data brings surfaces this suite cannot see,
+so it is measured in two places and neither is the whole: `dress.test.ts` holds every
+colour the collection lends it against the floors, and `token-contrast.test.ts` holds the
+accent family it is lent to the look whose ground it shares. **What that leaves unmeasured
+is the pairing itself** — a collection's page can sit further from Sloppy's own than the
+lifted indigo was drawn for, and a mark on such a page can stand under the 3:1 floor. It is
+named here rather than claimed, and a dressing carrying the collection's own accent is
+what would close it.
 
 **A floor this file does not name is a floor nothing measures.** Small TEXT in a look's
 accent owes 4.5:1 and no member of the mark family reaches it — the mark floor is for
@@ -1430,19 +1441,24 @@ nothing under it.
 
 ## Typography
 
-- **UI and content face**: Inter with a system fallback (`Inter, system-ui, -apple-system,
-"Segoe UI", sans-serif`). One family for chrome, node titles and block text. There is no
-  display face — a notebook does not change typeface to make a heading feel important.
+- **Three roles, and a look names each of them**: the app's own face, the face headings are
+  set in, and the one code, addresses and the mono bits take (§ "A look is a file"). Each is
+  a name rather than a rule — a face Sloppy ships or a family the look asks for.
+- **The app's own face**: Inter with a system fallback (`Inter, system-ui, -apple-system,
+"Segoe UI", sans-serif`). One family for chrome, node titles and block text.
+- **Headings take the app's own face until a look names another.** A notebook does not
+  change typeface to make a heading feel important, so a display face is somebody's
+  deliberate choice for their own Sloppy and never the product's taste.
 - **Address face** (`--font-address`): JetBrains Mono with a `ui-monospace` fallback,
   tabular figures, always. An address is scanned and compared character by character, and
   `1a1` against `1al` must never be a question the reader has to resolve. Every address in
   the product renders in this face, at every size.
 - Fixed rem scale, ratio ~1.2. Hierarchy by scale and weight (≥1.2 between steps).
-- **The font axis** (`data-app-font`) swaps the UI face: `atkinson` and `opendyslexic` for
-  accessibility, `apple` for SF Pro. It swaps the address face too, and drops the
-  tabular-figure guarantee where the chosen family cannot provide it. **Legibility
-  outranks alignment** — a reader who needs OpenDyslexic to read at all does not get an
-  exception carved out of it for our nicest column.
+- **The face axis** (`data-app-font`) swaps the app's own face, for the faces Sloppy ships:
+  `atkinson` and `opendyslexic` for accessibility, `apple` for SF Pro. It swaps the address
+  face too, and drops the tabular-figure guarantee where the chosen family cannot provide
+  it. **Legibility outranks alignment** — a reader who needs OpenDyslexic to read at all
+  does not get an exception carved out of it for our nicest column.
 
 ## Layout
 

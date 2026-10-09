@@ -279,6 +279,7 @@ describe('settings', () => {
 		flushSync();
 
 		expect(prefs.current.fonts.ui).toBe('opendyslexic');
+		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
 	});
 
 	it('shows who is signed in, on the way to their page', async () => {
