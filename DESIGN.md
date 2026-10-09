@@ -342,6 +342,18 @@ _Copy_, _Save a look…_ (the look alone, for sending), _Save my settings…_ (t
 same JSON pasted in. A file that is not a look is turned down in one line saying what to
 do, never in a parser's words.
 
+**A look with no `based_on` is worn under an id made from its name, on the app's own light
+ground** — so one meant for a dark ground names the look it is laid over, which is what
+`based_on` is for, and a palette laid over one of Sloppy's five or over a scheme takes that
+look's ground rather than deciding its own. A copy of such a look carries its palette and
+names nothing under it, since the id it is worn under is not a look anybody else has.
+
+**`preferences` carries how somebody keeps Sloppy, never what one machine alone means**:
+the graph in front of them, the canvas beside it, the pictures under those and the Sloppy
+that minted any of them stay where they are, so a file moved between machines cannot point
+somebody at a graph that is not there. What a present one holds is held to exactly what the
+store holds a saved setting to, and a key this build does not keep is left where it is.
+
 **A look's own CSS is part of the look**, and bounded: at most 64 KiB, applied through one
 `<style>` element the app owns and nothing else writes. **That element stands last in
 `<head>`**, which is the whole of why a rule of the author's own beats the same rule in
