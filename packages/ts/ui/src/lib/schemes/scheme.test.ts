@@ -1,8 +1,8 @@
 /**
- * The file of record for the dressing contract — DESIGN.md § Schemes. A
- * dressing is read against `app.css` rather than against a second list: the
- * tokens a theme block declares are what a scheme has to answer for, and a
- * theme that grows one has to decide where a scheme gets it.
+ * The file of record for the dressing contract — DESIGN.md § "The look". A
+ * look carried as data is read against `app.css` rather than against a second
+ * list: the tokens a look block declares are what it has to answer for, and a
+ * look block that grows one has to decide where a carried look gets it.
  */
 
 import { readFileSync } from 'node:fs';
@@ -18,10 +18,10 @@ function stylesheet(name: string): string {
 
 const CSS = stylesheet('app.css');
 
-/** The Paper block carries bare `:root`, so what it declares is every theme
- *  token a scheme falls back to when a dressing is silent. */
+/** The Paper block carries bare `:root`, so what it declares is every token a
+ *  look carried as data falls back to when its paint is silent. */
 function paperTokens(): string[] {
-	const block = /:root,\s*:root\[data-theme='paper'\]\s*\{([^}]*)\}/.exec(CSS);
+	const block = /:root,\s*:root\[data-look='paper'\]\s*\{([^}]*)\}/.exec(CSS);
 	if (!block) throw new Error('the Paper block is not where this test reads it');
 	return [...block[1].matchAll(/(--[\w-]+)\s*:/g)].map((declaration) => declaration[1]);
 }
@@ -31,7 +31,7 @@ describe('the dressing contract', () => {
 		expect(paperTokens()).toContain('--background');
 	});
 
-	it('answers for every token a theme block declares', () => {
+	it('answers for every token a look block declares', () => {
 		const answered = new Set<string>([...DRESSED_TOKENS, ...UNDRESSED_TOKENS]);
 		for (const token of paperTokens()) expect([...answered]).toContain(token);
 	});
@@ -42,11 +42,11 @@ describe('the dressing contract', () => {
 		}
 	});
 
-	// A dressing may not paint this one, so the rule handing a scheme its edge has
-	// to be there — and ahead of the style axis, which has to beat it.
+	// A dressing may not paint this one, so the rule handing a carried look its
+	// edge has to be there — and ahead of the style axis, which has to beat it.
 	it('is answered for --border by a rule a style can beat', () => {
 		expect(stylesheet('schemes.css')).toMatch(
-			/:root\[data-theme='scheme'\]\s*\{[^}]*--border:\s*var\(--input\)/
+			/:root\[data-look\]\s*\{[^}]*--border:\s*var\(--input\)/
 		);
 		expect(CSS.indexOf("@import './schemes.css'")).toBeLessThan(
 			CSS.indexOf(":root[data-style='hardline']")

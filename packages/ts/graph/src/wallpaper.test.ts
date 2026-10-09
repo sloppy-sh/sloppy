@@ -27,7 +27,7 @@ import {
   SLOTS_KEPT,
 } from "./palette.js";
 
-/** The ends `app.css` ships, in the theme order DESIGN.md § Theme lists. */
+/** The ends `app.css` ships, in the order DESIGN.md § "What a look names" lists. */
 const shipped: { name: string; ink: string; paper: string; facetL: number }[] =
   [
     {

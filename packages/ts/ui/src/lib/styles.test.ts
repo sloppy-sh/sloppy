@@ -18,7 +18,7 @@ import { stubMediaQuery, stubResizeObserver } from './components/dom.test-suppor
 
 const STYLES = ['bevel', 'terminal', 'pixel'] as const;
 /** The themes app.css paints — the grounds every style is read on. */
-const THEMES = ['paper', 'graphite', 'light', 'dark', 'contrast'] as const;
+const LOOKS = ['paper', 'graphite', 'light', 'dark', 'contrast'] as const;
 /** What text owes on the surface it is drawn on — WCAG 1.4.3, the floor
  *  token-contrast.test.ts holds the muted ramp to on the page. */
 const AA_FLOOR = 4.5;
@@ -93,26 +93,26 @@ function calls(css: string, name: string): string[] {
 	return out;
 }
 
-/** One of a theme's own two ends, read out of app.css. */
-function endOf(theme: string, token: string): Oklch {
+/** One of a look's own two ends, read out of app.css. */
+function endOf(look: string, token: string): Oklch {
 	const rule = APP_RULES.find(
-		(one) => one.selector.includes(`[data-theme='${theme}']`) && declares(one, token)
+		(one) => one.selector.includes(`[data-look='${look}']`) && declares(one, token)
 	);
 	const parsed = rule ? parseCssColor(valueOf(rule, token)) : null;
-	if (parsed === null) throw new Error(`app.css gives ${theme} no ${token}`);
+	if (parsed === null) throw new Error(`app.css gives ${look} no ${token}`);
 	return parsed;
 }
 
 const MIX = /^color-mix\(in oklab,\s*var\((--[\w-]+)\)\s*([\d.]+)%,\s*var\((--[\w-]+)\)\)$/;
 
 /** A `color-mix(in oklab, …)` of two tokens, or one token, resolved on one
- *  theme. */
-function mixedOn(theme: string, value: string): Oklch {
+ *  look. */
+function mixedOn(look: string, value: string): Oklch {
 	const plain = /^var\((--[\w-]+)\)$/.exec(value.trim());
-	if (plain !== null) return endOf(theme, plain[1]);
+	if (plain !== null) return endOf(look, plain[1]);
 	const parts = MIX.exec(value.trim());
 	if (parts === null) throw new Error(`this test cannot resolve \`${value}\``);
-	return mixOklab(endOf(theme, parts[1]), endOf(theme, parts[3]), 1 - Number(parts[2]) / 100);
+	return mixOklab(endOf(look, parts[1]), endOf(look, parts[3]), 1 - Number(parts[2]) / 100);
 }
 
 const RELATIVE =
@@ -406,25 +406,25 @@ describe('the block Terminal inverts a row with', () => {
 	// DESIGN.md § "Contrast is measured, not assumed": the words on the block are
 	// measured against the block, and the first of these is why the ramp is
 	// re-mixed at all rather than left as the page mixed it.
-	it.each(THEMES)('keeps the secondary ink on that row legible on %s', (theme) => {
+	it.each(LOOKS)('keeps the secondary ink on that row legible on %s', (look) => {
 		const ground = mixedOn(
-			theme,
+			look,
 			valueOf(declaring('terminal', '--terminal-block'), '--terminal-block')
 		);
-		expect(contrastRatio(endOf(theme, '--muted-foreground'), ground)).toBeLessThan(AA_FLOOR);
+		expect(contrastRatio(endOf(look, '--muted-foreground'), ground)).toBeLessThan(AA_FLOOR);
 
 		const dim = mixedOn(
-			theme,
+			look,
 			valueOf(declaring('terminal', '--muted-foreground'), '--muted-foreground')
 		);
 		expect(contrastRatio(dim, ground)).toBeGreaterThanOrEqual(AA_FLOOR);
-		expect(contrastRatio(endOf(theme, '--background'), ground)).toBeGreaterThanOrEqual(AA_FLOOR);
+		expect(contrastRatio(endOf(look, '--background'), ground)).toBeGreaterThanOrEqual(AA_FLOOR);
 	});
 
 	// A scheme's two ends are held only 4.5:1 apart, so the block is the ink
 	// itself and the row is one tone: the words and the secondary line on it
 	// are the page on the ink, which every offered scheme clears by the gate it
-	// was offered on. Swept over the collection, not assumed from the themes.
+	// was offered on. Swept over the collection, not assumed from the looks.
 	it('keeps the words on that row legible on every scheme the picker offers', async () => {
 		const block = valueOf(declaring('terminal', '--terminal-block'), '--terminal-block');
 		const dim = valueOf(declaring('terminal', '--muted-foreground'), '--muted-foreground');

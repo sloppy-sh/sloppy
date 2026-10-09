@@ -1,11 +1,12 @@
 /**
  * The file of record for DESIGN.md § "Contrast is measured, not assumed".
  *
- * It sweeps every theme × accent and every theme × facet-slot pairing, reading
- * the tokens out of `app.css` itself rather than from a second table — a table
- * beside the stylesheet is a copy that drifts, and a palette whose slots have
- * converged passes every contrast check while having quietly stopped being a
- * language.
+ * It sweeps every look Sloppy writes itself — its surfaces, its accent and its
+ * facet slots — reading the tokens out of `app.css` rather than from a second
+ * table: a table beside the stylesheet is a copy that drifts, and a palette
+ * whose slots have converged passes every contrast check while having quietly
+ * stopped being a language. A look carried as data is swept by `dress.test.ts`
+ * instead, against the collection it comes out of.
  */
 
 import { readFileSync } from 'node:fs';
@@ -18,18 +19,13 @@ const CSS = readFileSync(new URL('./app.css', import.meta.url), 'utf8').replace(
 	''
 );
 
-const THEMES = ['paper', 'graphite', 'light', 'dark', 'contrast'] as const;
-const DARK_THEMES = new Set(['graphite', 'dark']);
-/** The theme value a scheme carries. Its palette is painted inline from the
- *  dressing, so it is swept for what `app.css` still owes it. */
-const SCHEME = 'scheme';
-const ACCENTS = ['indigo', 'moss', 'rust', 'sea', 'iris', 'ochre', 'slate'] as const;
+const LOOKS = ['paper', 'graphite', 'light', 'dark', 'contrast'] as const;
+const DARK_LOOKS = new Set<string>(['graphite', 'dark']);
 const FACET_SLOTS = [
 	...new Set([...CSS.matchAll(/--facet-(\d+)\s*:/g)].map((slot) => Number(slot[1])))
 ].sort((a, b) => a - b);
 
-type Theme = (typeof THEMES)[number] | typeof SCHEME;
-type Accent = (typeof ACCENTS)[number];
+type Look = (typeof LOOKS)[number];
 
 interface Rule {
 	selectors: string[];
@@ -62,25 +58,20 @@ function rules(): Rule[] {
 	return out;
 }
 
-const ATTRIBUTE = /\[data-(theme|accent|style)='([^']+)'\]/g;
+const ATTRIBUTE = /\[data-(look|style)='([^']+)'\]/g;
 
 /**
- * Whether one selector applies to a plain `<html>` carrying exactly this theme
- * and accent, on a ground running this way. A selector using `:not()` is
- * skipped rather than modelled — each one in `app.css` shares its declaration
- * body with a positive twin that is matched here, so nothing goes unmeasured.
- * `:not(.dark)` is the exception: the light family's scheme twin is the only
- * form that case has, so it is read rather than skipped.
+ * Whether one selector applies to a plain `<html>` carrying exactly this look.
+ * A selector using `:not()` is skipped rather than modelled — each one in
+ * `app.css` shares its declaration body with a positive twin that is matched
+ * here, so nothing goes unmeasured.
  */
-function matches(selector: string, theme: Theme, accent: Accent, dark: boolean): boolean {
+function matches(selector: string, look: Look): boolean {
 	if (!selector.includes(':root')) return false;
-	if (selector.includes(':not(.dark)') && dark) return false;
-	const positive = selector.replaceAll(':not(.dark)', '');
-	if (positive.includes(':not(')) return false;
-	if (positive.includes('.dark') && !dark) return false;
-	for (const [, axis, value] of positive.matchAll(ATTRIBUTE)) {
-		if (axis === 'theme' && value !== theme) return false;
-		if (axis === 'accent' && value !== accent) return false;
+	if (selector.includes(':not(')) return false;
+	if (selector.includes('.dark') && !DARK_LOOKS.has(look)) return false;
+	for (const [, axis, value] of selector.matchAll(ATTRIBUTE)) {
+		if (axis === 'look' && value !== look) return false;
 		// Only the default style is swept: `data-style` may not touch a palette
 		// token, so a style block has nothing here to measure.
 		if (axis === 'style') return false;
@@ -95,9 +86,9 @@ function weight(selector: string): number {
 
 const ALL_RULES = rules();
 
-function tokens(theme: Theme, accent: Accent, dark = DARK_THEMES.has(theme)): Map<string, string> {
+function tokens(look: Look): Map<string, string> {
 	const applicable = ALL_RULES.flatMap((rule) => {
-		const weights = rule.selectors.filter((s) => matches(s, theme, accent, dark)).map(weight);
+		const weights = rule.selectors.filter((s) => matches(s, look)).map(weight);
 		return weights.length
 			? [{ weight: Math.max(...weights), order: rule.order, declarations: rule.declarations }]
 			: [];
@@ -124,7 +115,7 @@ function color(resolved: Map<string, string>, name: string): Oklch {
 }
 
 /** A mark is drawn on all three surfaces, and a card is the one that costs a
- *  lightened mark its contrast on a dark theme. */
+ *  lightened mark its contrast on a dark look. */
 const SURFACES = ['--background', '--card', '--popover'] as const;
 
 function onSurfaces(resolved: Map<string, string>, name: string): number {
@@ -138,23 +129,24 @@ const NON_TEXT_FLOOR = 3;
 describe('token contrast', () => {
 	it('reads the tokens out of app.css', () => {
 		expect(ALL_RULES.length).toBeGreaterThan(8);
-		expect(color(tokens('paper', 'indigo'), '--background').l).toBeCloseTo(0.972, 3);
+		expect(color(tokens('paper'), '--background').l).toBeCloseTo(0.972, 3);
 	});
 
 	it('paints exactly the slots a selected tag can borrow', () => {
 		expect(FACET_SLOTS).toEqual([...TAG_HUE_SLOTS]);
 	});
 
-	it.each(THEMES)('%s: ink on paper is legible body text', (theme) => {
-		const resolved = tokens(theme, 'indigo');
+	it.each(LOOKS)('%s: ink on paper is legible body text', (look) => {
+		const resolved = tokens(look);
 		expect(
 			contrastRatio(color(resolved, '--foreground'), color(resolved, '--background'))
 		).toBeGreaterThanOrEqual(7);
 	});
 
-	// DESIGN.md § "Theme presets": muted is 0.035 L off the surface toward the ink.
-	it.each(THEMES)('%s: muted is one step off the surface, toward the ink', (theme) => {
-		const resolved = tokens(theme, 'indigo');
+	// DESIGN.md § "What a look names": muted is 0.035 L off the surface toward
+	// the ink.
+	it.each(LOOKS)('%s: muted is one step off the surface, toward the ink', (look) => {
+		const resolved = tokens(look);
 		const surface = color(resolved, '--background').l;
 		const toward = color(resolved, '--foreground').l > surface ? 0.035 : -0.035;
 		expect(color(resolved, '--muted').l).toBeCloseTo(surface + toward, 3);
@@ -163,20 +155,20 @@ describe('token contrast', () => {
 	// `input.svelte` draws a text field as `border-input bg-background`, so the
 	// boundary is the whole of what identifies the control. Naming the floor it
 	// stands under makes raising it a decision taken here — flip this row then.
-	it.each(THEMES)('%s: the control boundary stands under the floor', (theme) => {
-		expect(onSurfaces(tokens(theme, 'indigo'), '--input')).toBeLessThan(NON_TEXT_FLOOR);
+	it.each(LOOKS)('%s: the control boundary stands under the floor', (look) => {
+		expect(onSurfaces(tokens(look), '--input')).toBeLessThan(NON_TEXT_FLOOR);
 	});
 
-	it.each(THEMES)('%s: secondary text clears AA on the page and on muted', (theme) => {
-		const resolved = tokens(theme, 'indigo');
+	it.each(LOOKS)('%s: secondary text clears AA on the page and on muted', (look) => {
+		const resolved = tokens(look);
 		const dim = color(resolved, '--muted-foreground');
 		expect(contrastRatio(dim, color(resolved, '--background'))).toBeGreaterThanOrEqual(4.5);
 		expect(contrastRatio(dim, color(resolved, '--muted'))).toBeGreaterThanOrEqual(4.5);
 	});
 
 	// DESIGN.md § Hue: a node fill carrying meaning alone is a graphical object.
-	describe.each(THEMES)('%s facets', (theme) => {
-		const resolved = tokens(theme, 'indigo');
+	describe.each(LOOKS)('%s facets', (look) => {
+		const resolved = tokens(look);
 
 		it.each(FACET_SLOTS)('slot %i clears 3:1 on every surface', (slot) => {
 			expect(onSurfaces(resolved, `--facet-${slot}`)).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
@@ -202,8 +194,8 @@ describe('token contrast', () => {
 	// floor everywhere. Flip this row the day the palette lets it be filled.
 	it('keeps a slot off muted, which is why the context bar fills the page', () => {
 		const worst = Math.min(
-			...THEMES.flatMap((theme) => {
-				const resolved = tokens(theme, 'indigo');
+			...LOOKS.flatMap((look) => {
+				const resolved = tokens(look);
 				return FACET_SLOTS.map((slot) =>
 					contrastRatio(color(resolved, `--facet-${slot}`), color(resolved, '--muted'))
 				);
@@ -213,48 +205,23 @@ describe('token contrast', () => {
 		expect(worst).toBeCloseTo(2.89, 2);
 	});
 
-	describe.each(THEMES)('%s accents', (theme) => {
-		it.each(ACCENTS)('%s draws a mark that clears 3:1 on every surface', (accent) => {
-			expect(onSurfaces(tokens(theme, accent), '--primary-mark')).toBeGreaterThanOrEqual(
-				NON_TEXT_FLOOR
-			);
+	// DESIGN.md § "The look": the accent is the look's, so every look answers for
+	// its own mark, its own ring and the words on its own fill.
+	describe.each(LOOKS)('%s accent', (look) => {
+		it('draws a mark that clears 3:1 on every surface', () => {
+			expect(onSurfaces(tokens(look), '--primary-mark')).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
 		});
 
 		// The focus ring is the only thing saying where a keyboard reader stands.
-		it.each(ACCENTS)('%s draws a focus ring that clears 3:1 on every surface', (accent) => {
-			expect(onSurfaces(tokens(theme, accent), '--ring')).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
+		it('draws a focus ring that clears 3:1 on every surface', () => {
+			expect(onSurfaces(tokens(look), '--ring')).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
 		});
 
-		it.each(ACCENTS)('%s carries readable text on its own fill', (accent) => {
-			const resolved = tokens(theme, accent);
+		it('carries readable text on its own fill', () => {
+			const resolved = tokens(look);
 			expect(
 				contrastRatio(color(resolved, '--primary'), color(resolved, '--primary-foreground'))
 			).toBeGreaterThanOrEqual(4.5);
-		});
-	});
-
-	// A scheme paints its own surfaces and leaves the accent to the person, so
-	// what `app.css` still owes it is the family of the ground it stands on —
-	// the dark lift, or the light family's one correction. Measured against the
-	// theme of that ground rather than against a floor: the surfaces a scheme
-	// draws are the collection's, and the suite cannot see them.
-	describe('a scheme stands in the accent family of its own ground', () => {
-		const FAMILY = ['--primary', '--primary-foreground', '--primary-mark', '--ring'] as const;
-
-		it.each(ACCENTS)('%s on a dark scheme reads as it does on Graphite', (accent) => {
-			const scheme = tokens(SCHEME, accent, true);
-			const graphite = tokens('graphite', accent);
-			for (const token of FAMILY) {
-				expect(color(scheme, token)).toEqual(color(graphite, token));
-			}
-		});
-
-		it.each(ACCENTS)('%s on a light scheme reads as it does on Paper', (accent) => {
-			const scheme = tokens(SCHEME, accent, false);
-			const paper = tokens('paper', accent);
-			for (const token of FAMILY) {
-				expect(color(scheme, token)).toEqual(color(paper, token));
-			}
 		});
 	});
 });

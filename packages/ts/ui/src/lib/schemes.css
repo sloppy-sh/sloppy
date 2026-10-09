@@ -1,16 +1,18 @@
-/* Schemes — DESIGN.md § Schemes. A scheme's palette is painted on <html> as
-   inline custom properties from the cached dressing, so what a stylesheet says
-   about one is what a dressing deliberately leaves alone: which way its ground
-   runs, and its edge.
+/* Looks carried as data — DESIGN.md § "The look". Such a look's palette is
+   painted on <html> as inline custom properties from the cached copy, so what
+   a stylesheet says about one is what the paint deliberately leaves alone:
+   which way its ground runs, and its edge.
 
    The edge is a rule rather than paint because an inline property beats every
    rule, and the style axis derives its own edge from --border — so app.css
-   imports this before the style axis, which still wins the token. Every theme
-   draws a field's boundary in its border colour, so a scheme does too. */
-:root[data-theme='scheme'] {
+   imports this before the looks it writes itself, each of which beats this by
+   source order, and before the style axis, which beats all of them. Every look
+   draws a field's boundary in its border colour, so one carried as data does
+   too. */
+:root[data-look] {
 	color-scheme: light;
 	--border: var(--input);
 }
-.dark:root[data-theme='scheme'] {
+.dark:root[data-look] {
 	color-scheme: dark;
 }

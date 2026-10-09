@@ -15,15 +15,7 @@ import { initRuntime, runtime } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { identity } from '../stores/identity.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
-import {
-	ACCENTS,
-	DENSITIES,
-	EFFECTS,
-	FONTS,
-	prefs,
-	STYLES,
-	THEMES
-} from '../stores/prefs.svelte.js';
+import { DENSITIES, EFFECTS, FONTS, prefs, STYLES } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { whatHappened } from '../stores/what-happened.svelte.js';
@@ -68,7 +60,8 @@ beforeEach(() => {
 		writable: true,
 		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
 	});
-	// The schemes stand in a capped list, and a faded scroller measures itself.
+	// The contents stand in a scroller that fades at its edges, and one measures
+	// itself.
 	Object.defineProperty(globalThis, 'ResizeObserver', {
 		configurable: true,
 		writable: true,
@@ -244,39 +237,25 @@ describe('settings', () => {
 	it('keeps the axes of the look together', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
-		for (const legend of ['Theme', 'Accent', 'Style', 'Font', 'How close it is drawn', 'Screen']) {
+		for (const legend of ['Style', 'Font', 'How close it is drawn', 'Screen']) {
 			expect(target.textContent).toContain(legend);
 		}
-		const axes = [THEMES, ACCENTS, STYLES, FONTS, DENSITIES, EFFECTS];
+		const axes = [STYLES, FONTS, DENSITIES, EFFECTS];
 		expect(target.querySelectorAll('input[type="radio"]').length).toBe(
 			axes.reduce((all, axis) => all + axis.length, 0)
 		);
 	});
 
-	// A scheme IS the theme while it dresses the app, so none of the pills is the
-	// answer — and asking for the theme already saved still hands the app back.
-	it('stands a scheme down from the Theme pills, the saved theme included', async () => {
-		prefs.set('theme', 'paper');
-		prefs.setScheme({
-			slug: 'base16-nord',
-			variant: 'dark',
-			tokens: { '--background': '#2e3440', '--foreground': '#d8dee9' }
-		});
+	// A look is a file somebody can send, so the page has a section for one
+	// whether or not anybody is signed in.
+	it('offers a look of your own beside the axes', async () => {
+		session.clear();
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
+		standIn('Your own look');
 
-		const pills = [...target.querySelectorAll<HTMLInputElement>('input[name="theme"]')];
-		expect(pills.filter((one) => one.checked)).toHaveLength(0);
-
-		pills.find((one) => one.value === 'paper')?.click();
-		flushSync();
-
-		expect(prefs.current.scheme).toBeNull();
-		expect(prefs.dressing).toBeNull();
-		expect(document.documentElement.getAttribute('data-theme')).toBe('paper');
-		expect(document.documentElement.style.getPropertyValue('--background')).toBe('');
-		expect(pills.filter((one) => one.checked).map((one) => one.value)).toEqual(['paper']);
+		expect(target.textContent).toContain('Your own look');
 	});
 
 	// The face is the one look choice somebody may not be able to read the page
@@ -299,8 +278,7 @@ describe('settings', () => {
 		dyslexic?.click();
 		flushSync();
 
-		expect(prefs.current.font).toBe('opendyslexic');
-		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
+		expect(prefs.current.fonts.ui).toBe('opendyslexic');
 	});
 
 	it('shows who is signed in, on the way to their page', async () => {
@@ -651,13 +629,13 @@ describe('the sections of a long page', () => {
 		await settle();
 
 		// The first stands until somebody chooses another.
-		expect(target.textContent).toContain('Theme');
+		expect(target.textContent).toContain('How close it is drawn');
 		expect(target.textContent).not.toContain('Sloppy can keep a record');
 
 		standIn('When something goes wrong');
 
 		expect(target.textContent).toContain('Sloppy can keep a record');
-		expect(target.textContent).not.toContain('Theme');
+		expect(target.textContent).not.toContain('How close it is drawn');
 	});
 
 	it('take the keyboard into the section they chose', async () => {

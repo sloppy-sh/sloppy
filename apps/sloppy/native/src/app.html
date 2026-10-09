@@ -10,7 +10,7 @@
 			content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
 		/>
 		<script>
-			// The saved look, applied before the first paint — DESIGN.md § Theme.
+			// The saved look, applied before the first paint — DESIGN.md § "The look".
 			var root = document.documentElement;
 			var osDark = matchMedia('(prefers-color-scheme: dark)').matches;
 			var saved = {};
@@ -19,39 +19,52 @@
 			} catch (e) {
 				// A browser told to block site data throws on the accessor itself.
 			}
-			var theme = saved.theme || (osDark ? 'graphite' : 'paper');
-			var dark = theme === 'graphite' || theme === 'dark';
-			// A scheme dresses the app in place of a theme, from the copy of its
-			// tokens the prefs store cached — DESIGN.md § Schemes. The bound on a
-			// token and its paint is the store's, `elsewhere` is the tokens another
-			// axis owns, and the two painters have to agree about both.
-			var dressing = null;
+			// A look is one of Sloppy's own or one carried as data, by its id — and
+			// the scheme or theme an earlier build kept is the look of that name.
+			// The bound on an id is the prefs store's.
+			var anId = function (value) {
+				return typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value);
+			};
+			var own = ['paper', 'graphite', 'light', 'dark', 'contrast'];
+			var look = anId(saved.look)
+				? saved.look
+				: anId(saved.scheme)
+					? saved.scheme
+					: own.indexOf(saved.theme) >= 0
+						? saved.theme
+						: osDark
+							? 'graphite'
+							: 'paper';
+			var dark = look === 'graphite' || look === 'dark';
+			// A look carried as data paints inline, from the copy of its tokens the
+			// prefs store cached. The bound on a token and its paint is the store's,
+			// `elsewhere` is the tokens another axis owns, and the two painters have
+			// to agree about both.
+			var paint = null;
 			try {
-				dressing = JSON.parse(localStorage.getItem('sloppy_scheme') || 'null');
+				paint = JSON.parse(
+					localStorage.getItem('sloppy_look') || localStorage.getItem('sloppy_scheme') || 'null'
+				);
 			} catch (e) {
-				// Blocked site data again, and the theme below still paints.
+				// Blocked site data again, and the look below still paints.
 			}
 			var elsewhere = ['--border', '--primary', '--primary-foreground', '--primary-mark', '--ring'];
-			if (dressing && dressing.tokens && saved.scheme && dressing.slug === saved.scheme) {
-				theme = 'scheme';
-				dark = dressing.variant === 'dark';
-				root.setAttribute('data-scheme', dressing.slug);
-				for (var token in dressing.tokens) {
-					var paint = dressing.tokens[token];
+			if (paint && paint.tokens && paint.slug === look) {
+				dark = paint.variant === 'dark';
+				for (var token in paint.tokens) {
+					var colour = paint.tokens[token];
 					if (
 						/^--[a-z0-9-]{1,40}$/.test(token) &&
-						typeof paint === 'string' &&
-						/^[^;{}]{1,96}$/.test(paint) &&
-						!/url\(/i.test(paint) &&
+						typeof colour === 'string' &&
+						/^[^;{}]{1,96}$/.test(colour) &&
+						!/url\(/i.test(colour) &&
 						elsewhere.indexOf(token) < 0
 					)
-						root.style.setProperty(token, paint);
+						root.style.setProperty(token, colour);
 				}
 			}
-			root.setAttribute('data-theme', theme);
-			root.setAttribute('data-accent', saved.accent || 'indigo');
+			root.setAttribute('data-look', look);
 			if (saved.style && saved.style !== 'default') root.setAttribute('data-style', saved.style);
-			if (saved.font && saved.font !== 'system') root.setAttribute('data-app-font', saved.font);
 			if (saved.effect && saved.effect !== 'none') root.setAttribute('data-effect', saved.effect);
 			// `auto` is what this device is: closer where a mouse is the only pointer.
 			var density = saved.density || 'auto';
@@ -61,8 +74,32 @@
 				root.setAttribute('data-density', 'compact');
 			root.classList.toggle('dark', dark);
 
+			// The look's own rules, under the gate `cssIsSafe` in @sloppy/types holds
+			// them to: comments and CSS's own escapes resolved, then nothing left
+			// that would reach the network. The bound is the prefs store's again.
+			var css = typeof saved.css === 'string' && saved.css.length <= 65536 ? saved.css : '';
+			var plain = css
+				.replace(/\/\*[\s\S]*?\*\//g, '')
+				.replace(/\\([0-9a-fA-F]{1,6})[ \t\n]?/g, function (whole, hex) {
+					var at = parseInt(hex, 16);
+					return at > 0x10ffff ? '' : String.fromCodePoint(at);
+				})
+				.replace(/\\([\s\S])/g, '$1');
+			var reaches = /@\s*import/i.test(plain);
+			var loads = plain.match(/url\(([^)]*)\)?/gi) || [];
+			for (var at = 0; at < loads.length; at++) {
+				var target = loads[at].slice(4).trim().replace(/^["']/, '').trim();
+				if (!/^data:/i.test(target)) reaches = true;
+			}
+			if (css && !reaches) {
+				var rules = document.createElement('style');
+				rules.id = 'sloppy-look';
+				rules.textContent = css;
+				document.head.appendChild(rules);
+			}
+
 			// The webview's own chrome, taking the ground from app.css rather than
-			// from a second copy of the palette here, and following a change of theme.
+			// from a second copy of the palette here, and following a change of look.
 			var themeColor = document.createElement('meta');
 			themeColor.name = 'theme-color';
 			document.head.appendChild(themeColor);
@@ -73,7 +110,7 @@
 			addEventListener('DOMContentLoaded', paintThemeColor);
 			addEventListener('load', paintThemeColor);
 			new MutationObserver(paintThemeColor).observe(root, {
-				attributeFilter: ['data-theme', 'data-scheme']
+				attributeFilter: ['data-look']
 			});
 		</script>
 		%sveltekit.head%

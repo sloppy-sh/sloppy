@@ -1,6 +1,7 @@
 /**
- * A scheme is a theme carried as data rather than as a block in `app.css` —
- * DESIGN.md § Schemes. What a scheme resolves to is a DRESSING: the tokens to
+ * A scheme is a look carried as data rather than as a block in `app.css` —
+ * DESIGN.md § "A look carried as data". What one resolves to is a DRESSING: the
+ * tokens to
  * paint on `<html>`, and which way its ground runs.
  */
 
@@ -40,12 +41,14 @@ export const DRESSED_TOKENS = [
 /**
  * The tokens a dressing may NOT carry, however much else of the palette it
  * carries. A dressing paints inline on `<html>`, which beats every rule in
- * `app.css`, so a scheme naming one of these takes an axis off the person:
+ * `app.css`, so one of these would take the token off the rule that owns it:
  *
- * - The accent family is the person's across every scheme, the focus ring with
- *   it, and `--primary-mark` carries a correction a scheme cannot know about.
- * - `--border` is what the style axis derives an edge from. A scheme's own edge
- *   reaches it through `schemes.css`, in a rule a style can still beat.
+ * - `--border` is what the style axis derives an edge from. A carried look's
+ *   own edge reaches it through `schemes.css`, in a rule a style can beat.
+ * - TODO(the look/palette track): the accent family moves out of this list and
+ *   into the mapping, where the scheme's own `base0D` answers for it —
+ *   DESIGN.md § "A look carried as data". Nothing here produces one yet, so
+ *   paint arriving with one came from outside the collection.
  */
 export const UNDRESSED_TOKENS = [
 	'--border',
@@ -99,7 +102,7 @@ export interface Scheme {
 	/** A `base24` scheme carries eight colours past the sixteen; the dressing
 	 *  reads none of them. */
 	readonly system: 'base16' | 'base24';
-	/** What prefs keep and `data-scheme` carries. Unique in the collection. */
+	/** What prefs keep and `data-look` carries. Unique in the collection. */
 	readonly slug: string;
 	readonly name: string;
 	/** As the collection credits them, and empty where it credits nobody. */

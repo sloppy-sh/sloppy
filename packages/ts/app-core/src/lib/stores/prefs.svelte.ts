@@ -1,13 +1,15 @@
 /**
  * The look of the app and the tags it opens on — DESIGN.md § Persistence — and
  * which Sloppy this device talks to — docs/ARCHITECTURE.md § "Deployment
- * modes". One writer for `sloppy_prefs` and for `sloppy_scheme`, and the only
- * code that sets the axis attributes on `<html>` after first paint.
+ * modes". One writer for `sloppy_prefs` and for `sloppy_look`, and the only
+ * code that sets the axis attributes on `<html>`, or writes the look's own
+ * rules, after first paint.
  *
  * The shells' `app.html` boot scripts read the SAME two keys to paint the first
  * paint, so the keys, the field names, the first-visit defaults, the dark roster
- * and the bound a dressing's tokens are held to are all shared with them.
- * Changing any of those means changing both boot scripts in the same commit.
+ * and the bounds a dressing's tokens and a look's own rules are held to are all
+ * shared with them. Changing any of those means changing both boot scripts in
+ * the same commit.
  */
 
 import { GRAPH_GROUNDS, type GraphGround } from '@sloppy/graph';
@@ -16,19 +18,30 @@ import {
 	CHAT_AGENTS,
 	CHAT_MODEL_MAX,
 	type ChatAgent,
+	cssIsSafe,
+	DENSITIES,
+	type Density,
+	EFFECTS,
+	type Effect,
+	FACE_NAME_MAX,
+	LOOK_CSS_MAX,
+	LOOK_ID,
 	type OwnedRef,
 	OwnedRefSchema,
+	STYLES,
+	type Style,
 	type Tag,
 	TagSchema
 } from '@sloppy/types';
 import { sanitizeWallpapers, type WallpaperPrefs } from '../wallpaper.js';
 
-export type Theme = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
-export type Accent = 'indigo' | 'moss' | 'rust' | 'sea' | 'iris' | 'ochre' | 'slate';
-export type Style = 'default' | 'hardline' | 'bevel' | 'terminal' | 'pixel';
+export { DENSITIES, EFFECTS, STYLES } from '@sloppy/types';
+export type { Density, Effect, Style } from '@sloppy/types';
+
+/** The looks Sloppy ships. Every other look is a palette carried as data, so
+ *  {@link Prefs.look} is a plain string — DESIGN.md § "The look". */
+export type BuiltInLook = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
 export type Font = 'system' | 'atkinson' | 'opendyslexic' | 'apple';
-export type Density = 'auto' | 'comfortable' | 'compact';
-export type Effect = 'none' | 'crt';
 
 /**
  * How one folder was last being read, for the tab that comes back to it —
@@ -57,17 +70,19 @@ export interface FolderView {
 }
 
 export interface Prefs {
-	theme: Theme;
-	/** A scheme dressing the app in place of the theme, by its slug in the
-	 *  collection. Null is the theme. */
-	scheme: string | null;
-	accent: Accent;
+	/** The whole palette the app wears: a {@link BuiltInLook}, or a look carried
+	 *  as data by its id — DESIGN.md § "The look". */
+	look: string;
 	style: Style;
 	/** What the screen itself is drawn like over everything else — DESIGN.md
-	 *  § Theme. */
+	 *  § "The look". */
 	effect: Effect;
-	/** The face the whole app is read in — DESIGN.md § Typography. */
-	font: Font;
+	/** The faces the app, its headings and its code are set in — DESIGN.md
+	 *  § Typography. Each is one this build offers or a family somebody named. */
+	fonts: { ui: string; heading: string; mono: string };
+	/** Rules of the person's own, part of the look and applied over everything
+	 *  else — DESIGN.md § "A look is a file". Empty is a look with none. */
+	css: string;
 	/** The tags the graph is lit by, in SELECTION order — that order hands out
 	 *  the hues, so sorting it would repaint the reader's question. Empty is the
 	 *  monochrome graph DESIGN.md § Hue calls for when nothing has been asked. */
@@ -143,26 +158,22 @@ export interface Prefs {
 }
 
 const KEY = 'sloppy_prefs';
-/** The dressing both boot scripts and this store paint from — one cached copy,
- *  so the first paint and every later one agree. */
-const SCHEME_KEY = 'sloppy_scheme';
-const DARK_THEMES: readonly Theme[] = ['graphite', 'dark'];
+/** The look's paint, where it is carried as data — one cached copy, so the
+ *  first paint and every later one agree. */
+const LOOK_KEY = 'sloppy_look';
+/** Where an earlier build cached the same thing. Read so a look chosen then
+ *  paints the first paint of this one too. */
+const WAS_LOOK_KEY = 'sloppy_scheme';
+/** The one element the look's own rules are written into. */
+const LOOK_RULES = 'sloppy-look';
+const DARK_LOOKS: readonly string[] = ['graphite', 'dark'];
 
-export const THEME_LABELS: Record<Theme, string> = {
+export const LOOK_LABELS: Record<BuiltInLook, string> = {
 	paper: 'Paper',
 	graphite: 'Graphite',
 	light: 'Light',
 	dark: 'Dark',
 	contrast: 'High contrast'
-};
-export const ACCENT_LABELS: Record<Accent, string> = {
-	indigo: 'Indigo',
-	moss: 'Moss',
-	rust: 'Rust',
-	sea: 'Sea',
-	iris: 'Iris',
-	ochre: 'Ochre',
-	slate: 'Slate'
 };
 export const STYLE_LABELS: Record<Style, string> = {
 	default: 'Default',
@@ -187,12 +198,8 @@ export const DENSITY_LABELS: Record<Density, string> = {
 	compact: 'Compact'
 };
 
-export const THEMES = Object.keys(THEME_LABELS) as Theme[];
-export const ACCENTS = Object.keys(ACCENT_LABELS) as Accent[];
-export const STYLES = Object.keys(STYLE_LABELS) as Style[];
+export const BUILT_IN_LOOKS = Object.keys(LOOK_LABELS) as BuiltInLook[];
 export const FONTS = Object.keys(FONT_LABELS) as Font[];
-export const DENSITIES = Object.keys(DENSITY_LABELS) as Density[];
-export const EFFECTS = Object.keys(EFFECT_LABELS) as Effect[];
 
 /** How long between versions kept while writing, in minutes. */
 export const AUTOSAVE_MINUTES = [2, 5, 15, 30] as const;
@@ -201,7 +208,7 @@ export const AUTOSAVE_MINUTES = [2, 5, 15, 30] as const;
  * Whether this device is one where everything can be drawn closer: a mouse and
  * nothing else. A screen somebody might reach for is drawn for a finger,
  * whatever else is plugged in. **These two queries are the whole of what a
- * webview can honestly read about it** — DESIGN.md § Theme.
+ * webview can honestly read about it** — DESIGN.md § Layout.
  */
 function drawnForAMouse(): boolean {
 	try {
@@ -225,16 +232,20 @@ function systemPrefersDark(): boolean {
 	}
 }
 
-/** The OS decides the FIRST visit only; after that the saved value always wins
- *  (DESIGN.md § Theme). */
+/** What the app opens on before anybody has chosen. The OS decides the FIRST
+ *  visit only; after that the saved look always wins — DESIGN.md § "The
+ *  look". */
+function firstLook(): BuiltInLook {
+	return systemPrefersDark() ? 'graphite' : 'paper';
+}
+
 function defaults(): Prefs {
 	return {
-		theme: systemPrefersDark() ? 'graphite' : 'paper',
-		scheme: null,
-		accent: 'indigo',
+		look: firstLook(),
 		style: 'default',
 		effect: 'none',
-		font: 'system',
+		fonts: { ui: 'system', heading: 'system', mono: 'system' },
+		css: '',
 		tags: [],
 		ground: 'dots',
 		graph: null,
@@ -264,21 +275,51 @@ function defaults(): Prefs {
 /** A browser told to block site data throws on the ACCESSOR, so
  *  `typeof localStorage` is not a guard — it throws too. `runtime.ts` guards
  *  the session token the same way. */
-function stored(): Partial<Prefs> {
+function stored(): Partial<Prefs> & Record<string, unknown> {
 	try {
 		const raw = localStorage.getItem(KEY);
 		if (!raw) return {};
 		const parsed: unknown = JSON.parse(raw);
-		return parsed && typeof parsed === 'object' ? (parsed as Partial<Prefs>) : {};
+		return parsed && typeof parsed === 'object'
+			? (parsed as Partial<Prefs> & Record<string, unknown>)
+			: {};
 	} catch {
 		return {};
 	}
 }
 
-/** A scheme's slug in the collection, or null where it is nothing a slug could
- *  be. The collection is not here to check against, so only the shape is. */
-function slugIn(value: unknown): string | null {
-	return typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value) ? value : null;
+/** A look's id, or null where it is nothing an id could be. What resolves one
+ *  is the collection, which is not here to check against. */
+function lookIn(value: unknown): string | null {
+	return typeof value === 'string' && LOOK_ID.test(value) ? value : null;
+}
+
+/** One face, as a name rather than as a rule — a family this build does not
+ *  ship is still the person's to ask for, so only the bound is held. */
+function faceIn(value: unknown, fallback: string): string {
+	if (typeof value !== 'string') return fallback;
+	const named = value.trim();
+	if (named === '' || named.length > FACE_NAME_MAX || /[;{}]/.test(named)) return fallback;
+	return named;
+}
+
+/** The three, with `was` the one face an earlier build kept. */
+function facesIn(value: unknown, was: unknown): Prefs['fonts'] {
+	const held = (typeof value === 'object' && value !== null ? value : {}) as Record<
+		string,
+		unknown
+	>;
+	return {
+		ui: faceIn(held.ui, faceIn(was, 'system')),
+		heading: faceIn(held.heading, 'system'),
+		mono: faceIn(held.mono, 'system')
+	};
+}
+
+/** The look's own rules, bounded. Whether they reach the network is answered
+ *  where they are applied, so somebody can still see and fix what they hold. */
+function rulesIn(value: unknown): string {
+	return typeof value === 'string' && value.length <= LOOK_CSS_MAX ? value : '';
 }
 
 /** One token of a dressing, held to the same bound in both boot scripts. A name
@@ -300,7 +341,7 @@ function anotherAxisOwns(token: string): boolean {
 function dressingIn(value: unknown): SchemeDressing | null {
 	if (typeof value !== 'object' || value === null) return null;
 	const held = value as Record<string, unknown>;
-	const slug = slugIn(held.slug);
+	const slug = lookIn(held.slug);
 	if (slug === null) return null;
 	if (typeof held.tokens !== 'object' || held.tokens === null) return null;
 	const tokens: Record<string, string> = {};
@@ -315,7 +356,7 @@ function dressingIn(value: unknown): SchemeDressing | null {
 
 function storedDressing(): SchemeDressing | null {
 	try {
-		const raw = localStorage.getItem(SCHEME_KEY);
+		const raw = localStorage.getItem(LOOK_KEY) ?? localStorage.getItem(WAS_LOOK_KEY);
 		return raw ? dressingIn(JSON.parse(raw) as unknown) : null;
 	} catch {
 		return null;
@@ -464,26 +505,27 @@ export function storedOrigin(): string | null {
 
 class PrefsStore {
 	#current = $state<Prefs>(defaults());
-	/** The scheme dressing the app, where its tokens are cached and they are the
-	 *  ones {@link Prefs.scheme} names. Null is the theme. */
+	/** The paint of the look the app is wearing, where it is carried as data and
+	 *  cached. Null is a look `app.css` carries itself. */
 	#dressing = $state<SchemeDressing | null>(null);
-	/** The tokens {@link PrefsStore.apply} last painted, so dressing the app
-	 *  again — or going back to a theme — takes exactly those off again. The
-	 *  inset vars also written inline on `<html>` are not ours to clear. */
+	/** The tokens {@link PrefsStore.apply} last painted, so painting another look
+	 *  — or going back to one of Sloppy's own — takes exactly those off again.
+	 *  The inset vars also written inline on `<html>` are not ours to clear. */
 	#painted: string[] = [];
 
 	get current(): Prefs {
 		return this.#current;
 	}
 
-	/** The scheme dressing the app, or null where a theme is. */
+	/** The paint of the look the app is wearing, or null where `app.css` carries
+	 *  it. */
 	get dressing(): SchemeDressing | null {
 		return this.#dressing;
 	}
 
 	get isDark(): boolean {
 		if (this.#dressing !== null) return this.#dressing.variant === 'dark';
-		return DARK_THEMES.includes(this.#current.theme);
+		return DARK_LOOKS.includes(this.#current.look);
 	}
 
 	/** Call once from the shell's root layout. Re-reads storage, so a shell may
@@ -491,18 +533,21 @@ class PrefsStore {
 	init(): void {
 		const base = defaults();
 		const saved = stored();
-		const scheme = slugIn(saved.scheme);
+		// The scheme an earlier build was dressed in, and the theme it wore
+		// otherwise, are each the look of that name; the accent it kept is the one
+		// that look now carries.
+		const look =
+			lookIn(saved.look) ?? lookIn(saved.scheme) ?? oneOf(saved.theme, BUILT_IN_LOOKS, firstLook());
 		const cached = storedDressing();
-		// A slug with no tokens beside it is still the scheme somebody chose: what
-		// resolves one is the collection, and it can dress the app again later.
-		this.#dressing = cached !== null && cached.slug === scheme ? cached : null;
+		// An id with no tokens beside it is still the look somebody chose: what
+		// resolves one is the collection, and it can paint the app again later.
+		this.#dressing = cached !== null && cached.slug === look ? cached : null;
 		this.#current = {
-			theme: oneOf(saved.theme, THEMES, base.theme),
-			scheme,
-			accent: oneOf(saved.accent, ACCENTS, base.accent),
+			look,
 			style: oneOf(saved.style, STYLES, base.style),
 			effect: oneOf(saved.effect, EFFECTS, base.effect),
-			font: oneOf(saved.font, FONTS, base.font),
+			fonts: facesIn(saved.fonts, saved.font),
+			css: rulesIn(saved.css),
 			tags: tagsIn(saved.tags),
 			ground: oneOf(saved.ground, GRAPH_GROUNDS, base.ground),
 			graph: refIn(saved.graph),
@@ -560,36 +605,38 @@ class PrefsStore {
 	}
 
 	/**
-	 * Dress the app in a scheme, or hand it back to the theme with null. The
-	 * dressing is cached under its own key for the shells' boot scripts, which
-	 * paint the first paint from it before this store has run.
+	 * Wear a look: `slug` is the look, and `dressing` its paint where it is
+	 * carried as data rather than by `app.css` — null for one of Sloppy's own,
+	 * and for an id whose paint is not in hand. The paint is cached under its own
+	 * key for the shells' boot scripts, which paint the first paint from it
+	 * before this store has run.
 	 *
-	 * It takes the whole dressing rather than a slug and tokens: which way a
-	 * scheme's ground runs is the collection's own answer, and reading it back
-	 * out of the paint would be a second, weaker one.
+	 * It takes the whole dressing rather than the tokens alone: which way a
+	 * look's ground runs is the collection's own answer, and reading it back out
+	 * of the paint would be a second, weaker one.
 	 */
-	setScheme(dressing: SchemeDressing | null): void {
+	setLook(dressing: SchemeDressing | null, slug: string): void {
 		this.#dress(dressing === null ? null : dressingIn(dressing));
-		this.set('scheme', this.#dressing?.slug ?? null);
+		this.set('look', slug);
 	}
 
 	#dress(dressing: SchemeDressing | null): void {
 		this.#dressing = dressing;
 		try {
-			if (dressing === null) localStorage.removeItem(SCHEME_KEY);
-			else localStorage.setItem(SCHEME_KEY, JSON.stringify(dressing));
+			if (dressing === null) localStorage.removeItem(LOOK_KEY);
+			else localStorage.setItem(LOOK_KEY, JSON.stringify(dressing));
+			localStorage.removeItem(WAS_LOOK_KEY);
 		} catch {
 			// Memory already holds it; only the first paint of the next visit is
-			// lost, and this store dresses the app again as soon as it runs.
+			// lost, and this store paints the app again as soon as it runs.
 		}
 	}
 
 	set<K extends keyof Prefs>(key: K, value: Prefs[K]): void {
 		const next: Prefs = { ...this.#current, [key]: value };
-		// A theme asked for in the Theme pills IS the theme, so whatever was
-		// dressing the app in place of one stands down.
-		if (key === 'theme' && this.#dressing !== null) {
-			next.scheme = null;
+		// Paint in hand belongs to one look, so asking for another stands it down
+		// — which is what makes `setLook` the only way to wear a painted one.
+		if (key === 'look' && this.#dressing !== null && value !== this.#dressing.slug) {
 			this.#dress(null);
 		}
 		// A graph, the canvas beside it, the pictures under them and how each
@@ -622,31 +669,42 @@ class PrefsStore {
 		const dressing = this.#dressing;
 		for (const token of this.#painted) root.style.removeProperty(token);
 		this.#painted = [];
-		if (dressing === null) {
-			root.removeAttribute('data-scheme');
-		} else {
-			root.setAttribute('data-scheme', dressing.slug);
+		if (dressing !== null) {
 			for (const [token, paint] of Object.entries(dressing.tokens)) {
 				root.style.setProperty(token, paint);
 				this.#painted.push(token);
 			}
 		}
-		// A scheme IS the theme while it dresses the app, and app.css keys what it
-		// still says about one — the ground, the edge, the accent's family — off
-		// that value and the `dark` class below.
-		root.setAttribute('data-theme', dressing === null ? p.theme : 'scheme');
-		root.setAttribute('data-accent', p.accent);
+		// The one attribute that decides colour, and the one the canvas and the
+		// browser's own chrome watch — DESIGN.md § "The look".
+		root.setAttribute('data-look', p.look);
 		// Absent IS the default style: app.css only ever keys off the opt-in value.
 		if (p.style === 'default') root.removeAttribute('data-style');
 		else root.setAttribute('data-style', p.style);
-		if (p.font === 'system') root.removeAttribute('data-app-font');
-		else root.setAttribute('data-app-font', p.font);
-		// Absent IS comfortable, the same bargain the style and font axes make.
+		// Absent IS comfortable, the same bargain the style axis makes.
 		if (densityNow(p.density) === 'compact') root.setAttribute('data-density', 'compact');
 		else root.removeAttribute('data-density');
 		if (p.effect === 'none') root.removeAttribute('data-effect');
 		else root.setAttribute('data-effect', p.effect);
 		root.classList.toggle('dark', this.isDark);
+		this.#writeRules(p.css);
+	}
+
+	/** The look's own rules, in the one element they are ever written into. A
+	 *  look that would reach the network is left unwritten rather than refused
+	 *  outright: what it holds stays in front of whoever can fix it. */
+	#writeRules(css: string): void {
+		const held = document.getElementById(LOOK_RULES);
+		if (css === '' || cssIsSafe(css) !== null) {
+			held?.remove();
+			return;
+		}
+		const sheet = held ?? document.createElement('style');
+		if (held === null) {
+			sheet.id = LOOK_RULES;
+			document.head.appendChild(sheet);
+		}
+		if (sheet.textContent !== css) sheet.textContent = css;
 	}
 
 	/** A mouse plugged into a tablet, or taken out again, changes what this

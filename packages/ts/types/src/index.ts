@@ -11,6 +11,7 @@ export * from "./ink.js";
 export * from "./diagram.js";
 export * from "./picture.js";
 export * from "./appearance.js";
+export * from "./look.js";
 export * from "./edge.js";
 export * from "./identity.js";
 export * from "./vouch.js";

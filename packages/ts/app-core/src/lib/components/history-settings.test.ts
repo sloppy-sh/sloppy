@@ -813,7 +813,7 @@ describe('another folder opening', () => {
 		await settle();
 		type('history-token-origin', 'a-token');
 
-		prefs.set('theme', prefs.current.theme === 'paper' ? 'graphite' : 'paper');
+		prefs.set('look', prefs.current.look === 'paper' ? 'graphite' : 'paper');
 		await settle();
 
 		expect(target.querySelector<HTMLInputElement>('#history-by-name')?.value).toBe('Ada Lovelace');

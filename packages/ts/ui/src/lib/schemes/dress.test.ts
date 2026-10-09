@@ -1,5 +1,6 @@
 /**
- * The file of record for the mapping DESIGN.md § Schemes states, swept over the
+ * The file of record for the mapping DESIGN.md § "A look carried as data" states,
+ * swept over the
  * whole vendored collection rather than over schemes chosen by hand: a dressing
  * is paint nobody at Sloppy picked, so either every scheme in the collection
  * holds the floors a theme is held to, or it is left out of the picker.
@@ -31,7 +32,7 @@ const TEXT_FLOOR = 4.5;
 const SLOT_SEPARATION = 0.03;
 
 /** What a field's own boundary owes the page, and how far one surface stands
- *  from another to read as its own — DESIGN.md § Schemes. */
+ *  from another to read as its own — DESIGN.md § "A look carried as data". */
 const EDGE_FLOOR = 1.5;
 const SURFACE_STEP = 0.04;
 

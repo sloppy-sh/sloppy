@@ -1,20 +1,19 @@
 /* Sloppy's design system. Consumers import it as `@sloppy/ui/styles`.
    DESIGN.md is the spec; this file is its implementation and adds no rule of
-   its own. Six orthogonal axes on <html>:
+   its own. Five orthogonal axes on <html>:
 
-     data-theme    → neutral/surface tokens   (paper | graphite | light | dark | contrast | scheme)
-     data-accent   → --primary and its family (indigo | moss | rust | sea | iris | ochre | slate)
+     data-look     → every colour there is    (paper | graphite | light | dark | contrast, or a look carried as data)
      data-style    → how surfaces are DRAWN   (hardline | bevel | terminal | pixel); structural, never colour
      data-app-font → both faces               (atkinson | opendyslexic | apple); absent is Inter
      data-density  → how close it is drawn    (compact); absent is comfortable
      data-effect   → what the screen is like  (crt); a texture over the page, absent is plain
 
-   `data-theme="scheme"` is the one value whose palette is not written here: a
-   scheme's tokens are painted inline on <html> from the prefs store's cached
-   dressing, and `data-scheme` carries which one — DESIGN.md § Schemes.
+   A look is the whole palette, the accent included. One carried as data has no
+   block here: its tokens are painted inline on <html> from the prefs store's
+   cached copy, and `data-look` carries its id — DESIGN.md § "The look".
 
-   Bare :root carries the Paper + Indigo defaults, so first paint is right
-   before the prefs store has set an attribute. */
+   Bare :root carries Paper, so first paint is right before the prefs store has
+   set an attribute. */
 @import 'tailwindcss';
 /* The enter/exit utilities shadcn-svelte components animate with. */
 @import 'tw-animate-css';
@@ -27,7 +26,7 @@
    utility classes survive tree-shaking in the consuming app's Tailwind build. */
 @source '../dist';
 
-/* Dark-family themes carry the `dark` class on <html> so `dark:` variants work. */
+/* Dark-family looks carry the `dark` class on <html> so `dark:` variants work. */
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -52,14 +51,18 @@
 	--font-address: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
 	/* The two ends the graph's depth ramp mixes between; @sloppy/graph reads them
-	   on theme change and converts. DESIGN.md § "Lightness — depth". */
+	   on a change of look and converts. DESIGN.md § "Lightness — depth". */
 	--graph-ink: var(--foreground);
 	--graph-paper: var(--background);
 }
 
-/* ══ Theme: Paper (light default) — a notebook page, faintly warm ══════════ */
+/* The looks carried as data, which every look written below overrides in turn
+   and the style axis below them has to beat for --border. */
+@import './schemes.css';
+
+/* ══ Look: Paper (light default) — a notebook page, faintly warm ═══════════ */
 :root,
-:root[data-theme='paper'] {
+:root[data-look='paper'] {
 	color-scheme: light;
 	--background: oklch(0.972 0.006 85);
 	--foreground: oklch(0.26 0.015 70);
@@ -77,11 +80,13 @@
 	--destructive-foreground: oklch(0.99 0.004 85);
 	--border: oklch(0.895 0.008 85);
 	--input: oklch(0.895 0.008 85);
+	--primary: oklch(0.52 0.14 265);
+	--primary-foreground: oklch(0.99 0.004 85);
 }
 
-/* ══ Theme: Graphite (dark default) — pencil on slate ══════════════════════ */
-:root[data-theme='graphite'],
-.dark:root[data-theme='graphite'] {
+/* ══ Look: Graphite (dark default) — pencil on slate ══════════════════════ */
+:root[data-look='graphite'],
+.dark:root[data-look='graphite'] {
 	color-scheme: dark;
 	--background: oklch(0.215 0.008 260);
 	--foreground: oklch(0.905 0.006 250);
@@ -99,10 +104,12 @@
 	--destructive-foreground: oklch(0.16 0.01 80);
 	--border: oklch(0.31 0.009 260);
 	--input: oklch(0.31 0.009 260);
+	--primary: oklch(0.62 0.14 265);
+	--primary-foreground: oklch(0.16 0.01 80);
 }
 
-/* ══ Theme: Light — clean and neutral ══════════════════════════════════════ */
-:root[data-theme='light'] {
+/* ══ Look: Light — clean and neutral ══════════════════════════════════════ */
+:root[data-look='light'] {
 	color-scheme: light;
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.145 0 0);
@@ -120,11 +127,13 @@
 	--destructive-foreground: oklch(0.99 0.004 85);
 	--border: oklch(0.918 0 0);
 	--input: oklch(0.918 0 0);
+	--primary: oklch(0.52 0.14 265);
+	--primary-foreground: oklch(0.99 0.004 85);
 }
 
-/* ══ Theme: Dark — neutral night ═══════════════════════════════════════════ */
-:root[data-theme='dark'],
-.dark:root[data-theme='dark'] {
+/* ══ Look: Dark — neutral night ═══════════════════════════════════════════ */
+:root[data-look='dark'],
+.dark:root[data-look='dark'] {
 	color-scheme: dark;
 	--background: oklch(0.145 0 0);
 	--foreground: oklch(0.985 0 0);
@@ -142,12 +151,14 @@
 	--destructive-foreground: oklch(0.16 0.01 80);
 	--border: oklch(0.3 0 0);
 	--input: oklch(0.3 0 0);
+	--primary: oklch(0.62 0.14 265);
+	--primary-foreground: oklch(0.16 0.01 80);
 }
 
-/* ══ Theme: High contrast — the accessibility theme ════════════════════════
+/* ══ Look: High contrast — the accessibility look ═════════════════════════
    It keeps its promise everywhere, including on the edges and the scrollbar:
-   a faint tint is coziness this theme explicitly trades away. */
-:root[data-theme='contrast'] {
+   a faint tint is coziness this look explicitly trades away. */
+:root[data-look='contrast'] {
 	color-scheme: light;
 	--background: oklch(0.99 0 0);
 	--foreground: oklch(0.13 0 0);
@@ -165,6 +176,8 @@
 	--destructive-foreground: oklch(0.99 0.004 85);
 	--border: oklch(0.72 0 0);
 	--input: oklch(0.72 0 0);
+	--primary: oklch(0.52 0.14 265);
+	--primary-foreground: oklch(0.99 0.004 85);
 }
 
 /* ══ The graph's hue slots ═════════════════════════════════════════════════
@@ -172,9 +185,9 @@
    DESIGN.md § "Hue — the tags you selected, and only those" is the contract;
    the floors both families are held to are in `token-contrast.test.ts`. */
 :root,
-:root[data-theme='paper'],
-:root[data-theme='light'],
-:root[data-theme='contrast'] {
+:root[data-look='paper'],
+:root[data-look='light'],
+:root[data-look='contrast'] {
 	--facet-1: oklch(0.61 0.13 25);
 	--facet-2: oklch(0.61 0.13 70);
 	--facet-3: oklch(0.61 0.13 115);
@@ -185,10 +198,10 @@
 	--facet-8: oklch(0.61 0.13 340);
 }
 
-:root[data-theme='graphite'],
-.dark:root[data-theme='graphite'],
-:root[data-theme='dark'],
-.dark:root[data-theme='dark'] {
+:root[data-look='graphite'],
+.dark:root[data-look='graphite'],
+:root[data-look='dark'],
+.dark:root[data-look='dark'] {
 	--facet-1: oklch(0.54 0.13 25);
 	--facet-2: oklch(0.54 0.13 70);
 	--facet-3: oklch(0.54 0.13 115);
@@ -199,116 +212,13 @@
 	--facet-8: oklch(0.54 0.13 340);
 }
 
-/* ══ Accents ══════════════════════════════════════════════════════════════
-   DESIGN.md § "Accent presets" is the contract. `--primary` is tuned as a FILL
-   with `--primary-foreground` on top; `--primary-mark` is the same colour asked
-   to carry meaning alone — an icon, a rule, a chart stroke drawn straight on a
-   surface — which is a different floor, so draw those with the mark. */
-:root,
-:root[data-accent='indigo'] {
-	--primary: oklch(0.52 0.14 265);
-	--primary-foreground: oklch(0.99 0.004 85);
-}
-:root[data-accent='moss'] {
-	--primary: oklch(0.55 0.09 145);
-	--primary-foreground: oklch(0.99 0.004 85);
-}
-:root[data-accent='rust'] {
-	--primary: oklch(0.56 0.13 45);
-	--primary-foreground: oklch(0.99 0.004 85);
-}
-:root[data-accent='sea'] {
-	--primary: oklch(0.58 0.1 210);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-:root[data-accent='iris'] {
-	--primary: oklch(0.55 0.13 300);
-	--primary-foreground: oklch(0.99 0.004 85);
-}
-:root[data-accent='ochre'] {
-	--primary: oklch(0.66 0.12 80);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-:root[data-accent='slate'] {
-	--primary: oklch(0.5 0.02 265);
-	--primary-foreground: oklch(0.99 0.004 85);
-}
-
-/* On the dark families every accent is lifted 0.10 L and takes ink rather than
-   paper on top, which is what keeps a fill legible against a dark ground.
-
-   Keyed on `data-theme` and NOT on the `dark` class, even though the dark
-   families carry both. One attribute then decides the whole palette, so a shell
-   that sets the theme and forgets the class gets dark surfaces with a dark
-   accent rather than dark surfaces with a light one. The class stays what
-   Tailwind's `dark:` variants read.
-
-   A scheme is the one case keyed on the class, because the attribute cannot
-   carry it: the collection runs both ways under the one `scheme` value, and the
-   dressing that sets the attribute sets the class from its own variant in the
-   same write. */
-:root[data-theme='graphite'][data-accent='indigo'],
-:root[data-theme='dark'][data-accent='indigo'],
-.dark:root[data-theme='scheme'][data-accent='indigo'],
-:root[data-theme='graphite']:not([data-accent]),
-:root[data-theme='dark']:not([data-accent]),
-.dark:root[data-theme='scheme']:not([data-accent]) {
-	--primary: oklch(0.62 0.14 265);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-:root[data-theme='graphite'][data-accent='moss'],
-:root[data-theme='dark'][data-accent='moss'],
-.dark:root[data-theme='scheme'][data-accent='moss'] {
-	--primary: oklch(0.65 0.09 145);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-:root[data-theme='graphite'][data-accent='rust'],
-:root[data-theme='dark'][data-accent='rust'],
-.dark:root[data-theme='scheme'][data-accent='rust'] {
-	--primary: oklch(0.66 0.13 45);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-:root[data-theme='graphite'][data-accent='sea'],
-:root[data-theme='dark'][data-accent='sea'],
-.dark:root[data-theme='scheme'][data-accent='sea'] {
-	--primary: oklch(0.68 0.1 210);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-:root[data-theme='graphite'][data-accent='iris'],
-:root[data-theme='dark'][data-accent='iris'],
-.dark:root[data-theme='scheme'][data-accent='iris'] {
-	--primary: oklch(0.65 0.13 300);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-:root[data-theme='graphite'][data-accent='ochre'],
-:root[data-theme='dark'][data-accent='ochre'],
-.dark:root[data-theme='scheme'][data-accent='ochre'] {
-	--primary: oklch(0.76 0.12 80);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-:root[data-theme='graphite'][data-accent='slate'],
-:root[data-theme='dark'][data-accent='slate'],
-.dark:root[data-theme='scheme'][data-accent='slate'] {
-	--primary: oklch(0.6 0.02 265);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-
-/* The mark is the accent itself wherever the accent already clears its floor.
-   A focus ring is one of those marks, so it reads from the mark family and
-   inherits every correction the mark is given. */
+/* The mark is the look's own primary wherever that already clears its floor,
+   and a look whose primary does not declares its own. A focus ring is one of
+   those marks, so it reads from the mark family and inherits every correction
+   the mark is given — DESIGN.md § "Contrast is measured, not assumed". */
 :root {
 	--primary-mark: var(--primary);
 	--ring: var(--primary-mark);
-}
-
-/* The one that does not: Ochre on the light family, moved in lightness alone.
-   DESIGN.md § "Contrast is measured, not assumed" carries the ruling. */
-:root[data-theme='paper'][data-accent='ochre'],
-:root[data-theme='light'][data-accent='ochre'],
-:root[data-theme='contrast'][data-accent='ochre'],
-:root[data-theme='scheme']:not(.dark)[data-accent='ochre'],
-:root:not([data-theme])[data-accent='ochre'] {
-	--primary-mark: oklch(0.63 0.12 80);
 }
 
 /* ══ Density axis: Compact ═════════════════════════════════════════════════
@@ -333,14 +243,11 @@
 	}
 }
 
-/* The scheme axis, which the style axis below has to beat for --border. */
-@import './schemes.css';
-
 /* ══ Style axis: Hardline ══════════════════════════════════════════════════
    DESIGN.md § "Style presets" is the contract. The `.dark:root` twin is not
    redundant: the dark families declare --border at 0,3,0 specificity, so the
    plain `:root[data-style]` form at 0,2,0 would lose to them outright — which
-   is also why this block sits after every [data-theme] block. */
+   is also why this block sits after every [data-look] block. */
 :root[data-style='hardline'],
 .dark:root[data-style='hardline'] {
 	--radius: 0.375rem;
@@ -446,7 +353,7 @@
 
 /* The rest of the style axis and the effect axis. Imported HERE rather than at
    the top: both key off :root, and a style block that landed before the
-   [data-theme] blocks would lose --border to the dark families on specificity
+   [data-look] blocks would lose --border to the dark families on specificity
    alone. */
 @import './styles.css';
 @import './effects.css';
@@ -538,7 +445,7 @@
 		--scrollbar-thumb-hover: color-mix(in oklab, var(--foreground) 32%, transparent);
 		scrollbar-color: var(--scrollbar-thumb) transparent;
 	}
-	:root[data-theme='contrast'] {
+	:root[data-look='contrast'] {
 		--scrollbar-thumb: color-mix(in oklab, var(--foreground) 55%, transparent);
 		--scrollbar-thumb-hover: color-mix(in oklab, var(--foreground) 75%, transparent);
 	}

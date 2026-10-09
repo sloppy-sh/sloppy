@@ -5,9 +5,9 @@ import type { SchemeDressing, SchemeTokens } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DID, ref } from './fake-api.test-support.js';
 import {
+	BUILT_IN_LOOKS,
 	type FolderView,
 	MOST_VIEWS,
-	THEMES,
 	asOrigin,
 	prefs,
 	storedOrigin
@@ -16,8 +16,9 @@ import {
 const GARDEN = '/Users/me/Garden';
 const THESIS = '/Users/me/thesis';
 
-/** A scheme as it arrives resolved: a slug, which way its ground runs, and the
- *  paint. The collection it comes out of is not this file's business. */
+/** A look carried as data, as it arrives resolved: its id, which way its ground
+ *  runs, and the paint. The collection it comes out of is not this file's
+ *  business. */
 const GRUVBOX: SchemeDressing = {
 	slug: 'gruvbox-dark-hard',
 	variant: 'dark',
@@ -45,13 +46,13 @@ const UI_CSS = readFileSync(resolve(process.cwd(), '../ui/src/lib/app.css'), 'ut
 	''
 );
 
-function stylesheetCallsDark(theme: string): boolean {
+function stylesheetCallsDark(look: string): boolean {
 	for (const [, selector, declarations] of UI_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-		const claims = selector.split(',').some((s) => s.trim().endsWith(`[data-theme='${theme}']`));
+		const claims = selector.split(',').some((s) => s.trim().endsWith(`[data-look='${look}']`));
 		if (claims && declarations.includes('--background:'))
 			return /color-scheme:\s*dark\s*;/.test(declarations);
 	}
-	throw new Error(`no ground declared for ${theme}`);
+	throw new Error(`no ground declared for ${look}`);
 }
 
 /** The tokens painted inline on `<html>`, which is the whole of what a scheme
@@ -66,34 +67,32 @@ function painted(): Record<string, string> {
 	return out;
 }
 
-/** The look the boot script or the store has left on `<html>`. */
+/** The look's own rules as they stand on the page, or null where none do. */
+function rules(): string | null {
+	return document.getElementById('sloppy-look')?.textContent ?? null;
+}
+
+/** The look the boot script or the store has left on the page. */
 function stamped(): Record<string, unknown> {
 	const root = document.documentElement;
 	return {
-		theme: root.getAttribute('data-theme'),
-		scheme: root.getAttribute('data-scheme'),
-		accent: root.getAttribute('data-accent'),
+		look: root.getAttribute('data-look'),
 		style: root.getAttribute('data-style'),
-		font: root.getAttribute('data-app-font'),
+		density: root.getAttribute('data-density'),
 		effect: root.getAttribute('data-effect'),
 		dark: String(root.classList.contains('dark')),
-		painted: painted()
+		painted: painted(),
+		rules: rules()
 	};
 }
 
 function unstamp(): void {
 	const root = document.documentElement;
-	for (const axis of [
-		'data-theme',
-		'data-scheme',
-		'data-accent',
-		'data-style',
-		'data-app-font',
-		'data-effect'
-	])
+	for (const axis of ['data-look', 'data-style', 'data-density', 'data-effect'])
 		root.removeAttribute(axis);
 	for (const token of Object.keys(painted())) root.style.removeProperty(token);
 	root.classList.remove('dark');
+	document.getElementById('sloppy-look')?.remove();
 }
 
 function bootScript(shell: string): () => void {
@@ -128,29 +127,52 @@ afterEach(() => {
 describe('the saved look', () => {
 	it('opens a first visit on Paper under a light OS', () => {
 		prefs.init();
-		expect(prefs.current.theme).toBe('paper');
-		expect(document.documentElement.getAttribute('data-theme')).toBe('paper');
+		expect(prefs.current.look).toBe('paper');
+		expect(document.documentElement.getAttribute('data-look')).toBe('paper');
 	});
 
 	it('opens a first visit on Graphite under a dark OS', () => {
 		osPrefersDark(true);
 		prefs.init();
-		expect(prefs.current.theme).toBe('graphite');
+		expect(prefs.current.look).toBe('graphite');
 		expect(document.documentElement.classList.contains('dark')).toBe(true);
 	});
 
 	it('lets the saved choice win over the OS on every later visit', () => {
-		localStorage.setItem('sloppy_prefs', JSON.stringify({ theme: 'paper' }));
+		localStorage.setItem('sloppy_prefs', JSON.stringify({ look: 'paper' }));
 		osPrefersDark(true);
 		prefs.init();
-		expect(prefs.current.theme).toBe('paper');
+		expect(prefs.current.look).toBe('paper');
 	});
 
 	it('carries a choice to the next visit', () => {
 		prefs.init();
-		prefs.set('accent', 'moss');
+		prefs.set('style', 'hardline');
 		prefs.init();
-		expect(prefs.current.accent).toBe('moss');
+		expect(prefs.current.style).toBe('hardline');
+	});
+
+	// The theme, the scheme and the face an earlier build kept are the look and
+	// the face of those names; the accent it kept is the one that look carries.
+	it('carries a look chosen on an earlier build over to the look it names', () => {
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({ theme: 'dark', accent: 'moss', font: 'opendyslexic' })
+		);
+		prefs.init();
+		expect(prefs.current.look).toBe('dark');
+		expect(prefs.current.fonts).toEqual({
+			ui: 'opendyslexic',
+			heading: 'system',
+			mono: 'system'
+		});
+		expect('accent' in prefs.current).toBe(false);
+
+		localStorage.setItem('sloppy_prefs', JSON.stringify({ theme: 'dark', scheme: GRUVBOX.slug }));
+		localStorage.setItem('sloppy_scheme', JSON.stringify(GRUVBOX));
+		prefs.init();
+		expect(prefs.current.look).toBe(GRUVBOX.slug);
+		expect(painted()).toEqual(GRUVBOX.tokens);
 	});
 
 	it('leaves data-style absent for the default style, because absent IS default', () => {
@@ -162,13 +184,16 @@ describe('the saved look', () => {
 		expect(document.documentElement.hasAttribute('data-style')).toBe(false);
 	});
 
-	it('leaves data-app-font absent for the default face, because absent IS default', () => {
+	it('keeps a face for each of the three, and carries all three over', () => {
 		prefs.init();
-		expect(document.documentElement.hasAttribute('data-app-font')).toBe(false);
-		prefs.set('font', 'opendyslexic');
-		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
-		prefs.set('font', 'system');
-		expect(document.documentElement.hasAttribute('data-app-font')).toBe(false);
+		expect(prefs.current.fonts).toEqual({ ui: 'system', heading: 'system', mono: 'system' });
+		prefs.set('fonts', { ui: 'opendyslexic', heading: 'Iosevka Etoile', mono: 'system' });
+		prefs.init();
+		expect(prefs.current.fonts).toEqual({
+			ui: 'opendyslexic',
+			heading: 'Iosevka Etoile',
+			mono: 'system'
+		});
 	});
 
 	it('leaves data-effect absent for a plain screen, because absent IS plain', () => {
@@ -183,53 +208,62 @@ describe('the saved look', () => {
 	// Both shells paint the first paint from the same saved object, so what they
 	// stamp is held against the store rather than against a copy of the rules.
 	it.each(['web', 'native'])('paints the %s shell the way the store would', (shell) => {
-		const cases: [Record<string, unknown>, SchemeDressing | null][] = [
+		const cases: [Record<string, unknown>, SchemeDressing | null, string?][] = [
 			[{}, null],
-			[{ theme: 'dark', accent: 'moss', style: 'hardline', font: 'opendyslexic' }, null],
-			[{ theme: 'contrast', accent: 'sea', style: 'default', font: 'system' }, null],
+			[{ look: 'dark', style: 'hardline' }, null],
+			[{ look: 'contrast', style: 'default', density: 'compact' }, null],
 			[{ style: 'bevel', effect: 'crt' }, null],
-			[{ scheme: GRUVBOX.slug }, GRUVBOX],
-			// A dressing reaching for a token another axis owns: neither painter
-			// gives it up, so both leave the same thing on <html>.
+			// What an earlier build saved, which both painters read the same way.
+			[{ theme: 'dark', accent: 'moss', font: 'opendyslexic' }, null],
+			[{ theme: 'paper', scheme: GRUVBOX.slug }, GRUVBOX, 'sloppy_scheme'],
+			[{ look: GRUVBOX.slug }, GRUVBOX],
+			// Paint reaching for a token another axis owns: neither painter gives
+			// it up, so both leave the same thing on the page.
 			[
-				{ scheme: GRUVBOX.slug },
+				{ look: GRUVBOX.slug },
 				{ ...GRUVBOX, tokens: { ...GRUVBOX.tokens, '--border': '#504945', '--ring': '#83a598' } }
 			],
-			// A dressing cached for another scheme is not this one's paint, so
-			// neither of them dresses the app: the theme does.
-			[{ scheme: SOLARIZED.slug }, GRUVBOX]
+			// Paint cached for another look is not this one's, so neither painter
+			// uses it and `app.css` answers for the look instead.
+			[{ look: SOLARIZED.slug }, GRUVBOX],
+			[{ look: 'paper', css: '.sloppy-prose h2 { letter-spacing: 0.02em }' }, null],
+			// Rules that would reach the network are written by neither of them.
+			[{ look: 'paper', css: "@import 'https://elsewhere.example/x.css';" }, null],
+			[{ look: 'paper', css: 'h2 { background: url(https://elsewhere.example/p.png) }' }, null],
+			[{ look: 'paper', css: 'x'.repeat(65537) }, null]
 		];
-		for (const [saved, dressing] of cases) {
+		for (const [saved, dressing, key = 'sloppy_look'] of cases) {
 			localStorage.setItem('sloppy_prefs', JSON.stringify(saved));
-			if (dressing === null) localStorage.removeItem('sloppy_scheme');
-			else localStorage.setItem('sloppy_scheme', JSON.stringify(dressing));
+			localStorage.removeItem('sloppy_look');
+			localStorage.removeItem('sloppy_scheme');
+			if (dressing !== null) localStorage.setItem(key, JSON.stringify(dressing));
 			prefs.init();
 			const byTheStore = stamped();
 			unstamp();
 			bootScript(shell)();
-			expect(stamped()).toEqual(byTheStore);
+			expect(stamped(), JSON.stringify(saved)).toEqual(byTheStore);
 		}
 	});
 
-	it('agrees with the boot script about which themes are dark', () => {
-		for (const [theme, dark] of [
+	it('agrees with the boot script about which looks are dark', () => {
+		for (const [look, dark] of [
 			['paper', false],
 			['graphite', true],
 			['light', false],
 			['dark', true],
 			['contrast', false]
 		] as const) {
-			prefs.set('theme', theme);
+			prefs.set('look', look);
 			expect(prefs.isDark).toBe(dark);
 			expect(document.documentElement.classList.contains('dark')).toBe(dark);
 		}
 	});
 
 	// app.css declares `color-scheme`; `isDark` draws the `dark` class. One fact.
-	it('calls a theme dark the way the stylesheet does', () => {
-		for (const theme of THEMES) {
-			prefs.set('theme', theme);
-			expect(prefs.isDark).toBe(stylesheetCallsDark(theme));
+	it('calls a look dark the way the stylesheet does', () => {
+		for (const look of BUILT_IN_LOOKS) {
+			prefs.set('look', look);
+			expect(prefs.isDark).toBe(stylesheetCallsDark(look));
 		}
 	});
 
@@ -237,12 +271,12 @@ describe('the saved look', () => {
 		localStorage.setItem(
 			'sloppy_prefs',
 			JSON.stringify({
+				look: 'Not An Id!',
 				theme: 'neon',
-				scheme: 'Not A Slug!',
-				accent: 42,
 				style: 'sketch',
 				effect: 'glow',
-				font: 'comic',
+				fonts: { ui: 'a face; position: fixed', heading: 7 },
+				css: 'x'.repeat(65_537),
 				tags: 'seed',
 				ground: 'graph paper',
 				graph: 'not a ref',
@@ -258,12 +292,11 @@ describe('the saved look', () => {
 		);
 		prefs.init();
 		expect(prefs.current).toEqual({
-			theme: 'paper',
-			scheme: null,
-			accent: 'indigo',
+			look: 'paper',
 			style: 'default',
 			effect: 'none',
-			font: 'system',
+			fonts: { ui: 'system', heading: 'system', mono: 'system' },
+			css: '',
 			tags: [],
 			ground: 'dots',
 			graph: null,
@@ -432,125 +465,168 @@ describe('the saved look', () => {
 		vi.spyOn(Storage.prototype, 'setItem').mockImplementation(blocked);
 		expect(() => {
 			prefs.init();
-			prefs.set('accent', 'sea');
+			prefs.set('style', 'hardline');
 		}).not.toThrow();
-		expect(prefs.current.accent).toBe('sea');
+		expect(prefs.current.style).toBe('hardline');
 		vi.restoreAllMocks();
 	});
 });
 
-describe('the scheme dressing the app', () => {
-	it('dresses the app in one, and hands it back to the theme', () => {
+describe('a look carried as data', () => {
+	it('paints the app, and hands it back to a look app.css carries', () => {
 		const root = document.documentElement;
 		prefs.init();
-		prefs.setScheme(GRUVBOX);
+		prefs.setLook(GRUVBOX, GRUVBOX.slug);
 
-		expect(prefs.current.scheme).toBe(GRUVBOX.slug);
-		expect(root.getAttribute('data-theme')).toBe('scheme');
-		expect(root.getAttribute('data-scheme')).toBe(GRUVBOX.slug);
+		expect(prefs.current.look).toBe(GRUVBOX.slug);
+		expect(root.getAttribute('data-look')).toBe(GRUVBOX.slug);
 		expect(painted()).toEqual(GRUVBOX.tokens);
-		// Which way the ground runs is the scheme's own answer, not the theme's.
+		// Which way the ground runs is the look's own answer.
 		expect(prefs.isDark).toBe(true);
 		expect(root.classList.contains('dark')).toBe(true);
 
-		prefs.setScheme(null);
+		prefs.setLook(null, 'paper');
 
-		expect(prefs.current.scheme).toBeNull();
-		expect(root.hasAttribute('data-scheme')).toBe(false);
+		expect(prefs.current.look).toBe('paper');
 		expect(painted()).toEqual({});
-		expect(root.getAttribute('data-theme')).toBe('paper');
+		expect(root.getAttribute('data-look')).toBe('paper');
 		expect(prefs.isDark).toBe(false);
 	});
 
-	// DESIGN.md § Schemes: the accent is the person's across every scheme, and a
-	// style draws its own edge on one, so a dressing offering either is not it.
+	// DESIGN.md § "The look": a style draws its own edge on every look, so paint
+	// offering the token it derives that from is not the look's to give.
 	it('paints nothing another axis owns', () => {
 		prefs.init();
-		prefs.setScheme({
-			slug: 'gruvbox-dark-hard',
-			variant: 'dark',
-			tokens: {
-				'--background': '#1d2021',
-				'--border': '#504945',
-				'--ring': '#83a598',
-				'--primary': '#83a598'
-			}
-		});
+		prefs.setLook(
+			{
+				slug: 'gruvbox-dark-hard',
+				variant: 'dark',
+				tokens: { '--background': '#1d2021', '--border': '#504945' }
+			},
+			'gruvbox-dark-hard'
+		);
 
 		expect(painted()).toEqual({ '--background': '#1d2021' });
 		// And the copy the shells' boot scripts paint the first paint from.
-		expect(JSON.parse(localStorage.getItem('sloppy_scheme') ?? 'null').tokens).toEqual({
+		expect(JSON.parse(localStorage.getItem('sloppy_look') ?? 'null').tokens).toEqual({
 			'--background': '#1d2021'
 		});
 	});
 
-	// Two dressings do not carry the same tokens, so what one painted has to come
+	// Two looks do not carry the same tokens, so what one painted has to come
 	// off before the next one goes on.
 	it('takes the last one off before painting another', () => {
 		prefs.init();
-		prefs.setScheme(GRUVBOX);
-		prefs.setScheme(SOLARIZED);
+		prefs.setLook(GRUVBOX, GRUVBOX.slug);
+		prefs.setLook(SOLARIZED, SOLARIZED.slug);
 		expect(painted()).toEqual(SOLARIZED.tokens);
 	});
 
-	// The inset vars live inline on <html> too, and they are not a scheme's to
+	// The inset vars live inline on <html> too, and they are not a look's to
 	// clear — DESIGN.md § "The four inset vars".
-	it('leaves an inline property that is not a scheme alone', () => {
+	it('leaves an inline property that is not a look alone', () => {
 		prefs.init();
 		document.documentElement.style.setProperty('--safe-area-inset-bottom', '48px');
-		prefs.setScheme(GRUVBOX);
-		prefs.setScheme(null);
+		prefs.setLook(GRUVBOX, GRUVBOX.slug);
+		prefs.setLook(null, 'paper');
 		expect(document.documentElement.style.getPropertyValue('--safe-area-inset-bottom')).toBe(
 			'48px'
 		);
 		document.documentElement.style.removeProperty('--safe-area-inset-bottom');
 	});
 
-	it('stands a scheme down when a theme is asked for', () => {
+	// Paint in hand belongs to one look, so it stands down wherever another is
+	// asked for — including from a surface that knows nothing about paint.
+	it('stands down when another look is asked for', () => {
 		prefs.init();
-		prefs.setScheme(GRUVBOX);
-		prefs.set('theme', 'light');
+		prefs.setLook(GRUVBOX, GRUVBOX.slug);
+		prefs.set('look', 'light');
 
-		expect(prefs.current.scheme).toBeNull();
-		expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+		expect(prefs.current.look).toBe('light');
+		expect(prefs.dressing).toBeNull();
+		expect(document.documentElement.getAttribute('data-look')).toBe('light');
 		expect(painted()).toEqual({});
-		expect(localStorage.getItem('sloppy_scheme')).toBeNull();
+		expect(localStorage.getItem('sloppy_look')).toBeNull();
 	});
 
-	it('carries a dressing to the next visit', () => {
+	it('carries the paint to the next visit', () => {
 		prefs.init();
-		prefs.setScheme(GRUVBOX);
+		prefs.setLook(GRUVBOX, GRUVBOX.slug);
 		prefs.init();
-		expect(prefs.current.scheme).toBe(GRUVBOX.slug);
+		expect(prefs.current.look).toBe(GRUVBOX.slug);
 		expect(painted()).toEqual(GRUVBOX.tokens);
 	});
 
-	// The slug is the choice; the paint is a copy of what the collection says.
+	// The id is the choice; the paint is a copy of what the collection says.
 	// Losing the copy is not losing the choice — the collection resolves it again.
-	it('keeps the scheme somebody chose when the paint is not cached', () => {
-		localStorage.setItem('sloppy_prefs', JSON.stringify({ scheme: GRUVBOX.slug }));
+	it('keeps the look somebody chose when the paint is not cached', () => {
+		localStorage.setItem('sloppy_prefs', JSON.stringify({ look: GRUVBOX.slug }));
 		prefs.init();
-		expect(prefs.current.scheme).toBe(GRUVBOX.slug);
+		expect(prefs.current.look).toBe(GRUVBOX.slug);
 		expect(prefs.dressing).toBeNull();
-		expect(document.documentElement.getAttribute('data-theme')).toBe('paper');
+		expect(document.documentElement.getAttribute('data-look')).toBe(GRUVBOX.slug);
 		expect(painted()).toEqual({});
 	});
 
 	it('paints custom properties, and paints nothing that is not paint', () => {
 		prefs.init();
-		prefs.setScheme({
-			slug: 'tampered',
-			variant: 'light',
-			tokens: {
-				'--background': '#fdf6e3',
-				background: 'red',
-				'--leak': 'url(https://elsewhere.example/pixel.png)',
-				'--escapes': 'red; position: fixed',
-				'--long': 'x'.repeat(200)
-			} as unknown as SchemeTokens
-		});
+		prefs.setLook(
+			{
+				slug: 'tampered',
+				variant: 'light',
+				tokens: {
+					'--background': '#fdf6e3',
+					background: 'red',
+					'--leak': 'url(https://elsewhere.example/pixel.png)',
+					'--escapes': 'red; position: fixed',
+					'--long': 'x'.repeat(200)
+				} as unknown as SchemeTokens
+			},
+			'tampered'
+		);
 		expect(painted()).toEqual({ '--background': '#fdf6e3' });
 		expect(document.documentElement.style.getPropertyValue('background')).toBe('');
+	});
+});
+
+// DESIGN.md § "A look is a file": the rules are part of the look, and they are
+// written into one element nothing else touches.
+describe("the look's own rules", () => {
+	it('stand in one element, are rewritten in place, and come off again', () => {
+		prefs.init();
+		expect(rules()).toBeNull();
+
+		prefs.set('css', '.sloppy-prose h2 { letter-spacing: 0.02em }');
+		expect(rules()).toBe('.sloppy-prose h2 { letter-spacing: 0.02em }');
+
+		prefs.set('css', 'h2 { margin: 0 }');
+		expect(document.querySelectorAll('#sloppy-look')).toHaveLength(1);
+		expect(rules()).toBe('h2 { margin: 0 }');
+
+		prefs.set('css', '');
+		expect(rules()).toBeNull();
+	});
+
+	it('are carried to the next visit', () => {
+		prefs.init();
+		prefs.set('css', 'h2 { margin: 0 }');
+		prefs.init();
+		expect(prefs.current.css).toBe('h2 { margin: 0 }');
+		expect(rules()).toBe('h2 { margin: 0 }');
+	});
+
+	// A look arrives from somebody else, so rules that would fetch anything are
+	// kept in front of whoever can take them out rather than written to the page.
+	it('go unwritten where they would reach the network, and are still shown', () => {
+		prefs.init();
+		for (const css of [
+			"@import 'https://elsewhere.example/x.css';",
+			'h2 { background: url(https://elsewhere.example/pixel.png) }'
+		]) {
+			prefs.set('css', css);
+			expect(prefs.current.css).toBe(css);
+			expect(rules()).toBeNull();
+		}
 	});
 });
 

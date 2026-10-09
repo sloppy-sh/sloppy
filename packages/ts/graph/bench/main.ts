@@ -591,10 +591,10 @@ Object.assign(window, {
     handle.update(props());
   },
   __dark: (on: boolean) => {
-    // `data-theme` and not a name of this file's own: the renderer re-reads its
+    // `data-look` and not a name of this file's own: the renderer re-reads its
     // tokens off that attribute, so anything else swaps the page and not the
     // canvas.
-    document.documentElement.setAttribute("data-theme", on ? "dark" : "light");
+    document.documentElement.setAttribute("data-look", on ? "dark" : "light");
   },
   __tags: (count: number) => {
     selection = corpus.tags.slice(0, count);

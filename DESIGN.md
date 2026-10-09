@@ -9,7 +9,7 @@ Read alongside [`PRODUCT.md`](PRODUCT.md). Components are shadcn-svelte wherever
 fits; we don't hand-roll what shadcn already does well.
 
 > **Status.** The token layer is built and the rest is not. `packages/ts/ui/src/lib/app.css`
-> carries the three axes, the theme, accent and style presets, the graph's hue slots, the
+> carries the axes, the looks and the style presets, the graph's hue slots, the
 > scroll chrome and the four inset formulas; `token-contrast.test.ts` beside it measures the
 > floors below rather than asserting them. Everything else named here — the components,
 > `ResponsiveModal`, the font axis, the prefs store, the graph's own colour conversion — is
@@ -38,59 +38,63 @@ expectation, a consequence they can choose against — one short line, never a l
 a sentence's job is to justify a question, cut the sentence; if the question needs
 justifying, question its placement instead.
 
-## Theme
+## The look
 
-Default new-user theme is **Paper** — a near-white with the faintest warm cast, the
-light of a notebook page. First visit honours the OS colour-scheme: **light OS → Paper**,
-**dark OS → Graphite** (pencil-grey, not black). After first visit the saved preference
-always wins. Themes are a client-side choice; no account required.
+Default new-user look is **Paper** — a near-white with the faintest warm cast, the light of
+a notebook page. First visit honours the OS colour-scheme: **light OS → Paper**, **dark OS
+→ Graphite** (pencil-grey, not black). After first visit the saved preference always wins.
+A look is a client-side choice; no account required.
 
-### Token architecture (the axes on `<html>`)
+### The axes on `<html>`
 
 shadcn tokens drive everything (`--background --foreground --card --popover --muted
---secondary --accent --border --input --ring --primary --destructive` …). Four orthogonal
-axes carry the look, and the font (§ Typography) and density (§ Layout) axes stand beside
-them — six in all, mixed freely:
+--secondary --accent --border --input --ring --primary --destructive` …). **One axis
+decides colour; the other four decide none of it.** Five in all, mixed freely:
 
-1. **Theme preset** → neutral/surface tokens.
-   `data-theme="paper|graphite|light|dark|contrast"`. Dark-family themes (graphite, dark)
-   also carry the `dark` class so Tailwind `dark:` variants work. `data-theme="scheme"` is
-   the one value with no block of its own — see "Schemes" below.
-2. **Accent preset** → `--primary`, `--primary-foreground`, `--ring`, plus the derived
-   `--primary-mark`. `data-accent="indigo|moss|rust|sea|iris|ochre|slate"`. Every accent
-   composes with every theme. **Do not assume a pairing clears a contrast floor because
-   the tokens exist** — draw a mark (an icon, a rule, a chart stroke) with
-   `--primary-mark` and a fill (a button, a chip) with `--primary`, and see "Contrast is
-   measured, not assumed" below.
-3. **Style preset** → how surfaces are DRAWN: edges and elevation, never colour.
-   `data-style="default|hardline|bevel|terminal|pixel"`, absent when default (same
-   convention as `data-app-font`).
-4. **Effect** → how the screen is drawn over: a texture, never a colour or a shape.
+1. **Look** → every colour there is: the surfaces, the ink, the accent, the eight facet
+   hues. `data-look="paper|graphite|light|dark|contrast"` for the five Sloppy writes
+   itself, or a look's own id for one carried as data (below). Dark looks also carry the
+   `dark` class so Tailwind `dark:` variants work.
+2. **Style preset** → how surfaces are DRAWN: edges and elevation, never colour.
+   `data-style="default|hardline|bevel|terminal|pixel"`, absent when default.
+3. **Faces** → what the app, its headings and its code are set in (§ Typography).
+4. **Density** → how close everything is drawn (§ Layout). `data-density="compact"`,
+   absent when comfortable.
+5. **Effect** → how the screen is drawn over: a texture, never a colour or a shape.
    `data-effect="crt"`, absent when plain — see "The effect axis" below.
 
-CSS lives in `packages/ts/ui/src/lib/app.css` as `:root[data-theme="x"] { … }`,
-`:root[data-accent="y"] { --primary: … }` and `:root[data-style="z"] { … }` blocks, plus
-the Tailwind v4 `@theme inline` mapping. The rest of the style axis, the effect axis and
-the schemes are `styles.css`, `effects.css` and `schemes.css` beside it, imported from it
-after the Hardline block so a style block still lands after every `[data-theme]` one. The
-app root layout sets the attributes from the prefs store before content renders (inline
-head script) so there is no flash of the wrong theme.
+**There is no accent axis, and that is the point.** An accent picked apart from the
+surfaces it lands on is a pairing somebody has to measure — seven accents across five
+themes and five hundred schemes, each pairing its own possible correction — and what it
+bought was one hue of chrome. A look names its own `--primary`, `--primary-foreground` and
+`--primary-mark` instead, so a palette is one thing to hold, to measure, and to send
+somebody. Anybody who had picked an accent keeps their theme as the look of that name and
+takes that look's own accent; nothing else of theirs changes.
 
-A correction that applies to a set of themes is written as the pairings it corrects, never
-as a `:not()` exclusion: `token-contrast.test.ts` reads the stylesheet and skips `:not()`,
-so an exclusion-only rule would go unmeasured. Where a `:not()` twin is needed anyway — the
+CSS lives in `packages/ts/ui/src/lib/app.css` as `:root[data-look="x"] { … }` and
+`:root[data-style="y"] { … }` blocks, plus the Tailwind v4 `@theme inline` mapping. The
+looks carried as data, the rest of the style axis and the effect axis are `schemes.css`,
+`styles.css` and `effects.css` beside it — the first imported BEFORE the look blocks, each
+of which overrides it in turn, the other two after the Hardline block so a style block
+still lands after every `[data-look]` one. The app root layout sets the attributes from the
+prefs store before content renders (inline head script) so there is no flash of the wrong
+look.
+
+A correction that applies to a set of looks is written as the looks it corrects, never as a
+`:not()` exclusion: `token-contrast.test.ts` reads the stylesheet and skips `:not()`, so an
+exclusion-only rule would go unmeasured. Where a `:not()` twin is needed anyway — the
 bare-root case, which carries no attribute to match on — it shares one declaration body
 with its positive siblings, so the two cannot disagree.
 
-**Adding a dark theme will mean touching every hardcoded dark roster, not just the CSS:**
-the `DARK_THEMES` set in the prefs store, the dark set in any component harness, and the
-inline `const dark = …` check in **both** shells' `app.html` boot scripts. Miss that last
-one and the theme paints its dark surfaces with light-mode `dark:` variants for one frame
-on every cold load.
+**Adding a dark look will mean touching every hardcoded dark roster, not just the CSS:**
+the `DARK_LOOKS` set in the prefs store, the dark set in any component harness, and the
+inline `var dark = …` check in **both** shells' `app.html` boot scripts. Miss that last one
+and the look paints its dark surfaces with light-mode `dark:` variants for one frame on
+every cold load.
 
-### Theme presets (neutral/surface tokens)
+### What a look names
 
-| Preset                    | Surface                  | Ink (fg)                 | Feel            |
+| Look                      | Surface                  | Ink (fg)                 | Feel            |
 | ------------------------- | ------------------------ | ------------------------ | --------------- |
 | **Paper** (light default) | `oklch(0.972 0.006 85)`  | `oklch(0.26 0.015 70)`   | notebook page   |
 | **Graphite** (dark)       | `oklch(0.215 0.008 260)` | `oklch(0.905 0.006 250)` | pencil on slate |
@@ -98,35 +102,28 @@ on every cold load.
 | Dark                      | `oklch(0.145 0 0)`       | `oklch(0.985 0 0)`       | neutral night   |
 | High contrast             | `oklch(0.99 0 0)`        | `oklch(0.13 0 0)`        | accessibility   |
 
-Paper is warm and Graphite is cool on purpose: paper is a warm object and pencil is a
-cool mark, and the pairing keeps the two defaults from reading as one theme at two
-brightnesses.
+Paper is warm and Graphite is cool on purpose: paper is a warm object and pencil is a cool
+mark, and the pairing keeps the two defaults from reading as one look at two brightnesses.
 
 card/popover sit ~+0.015 L above surface; border/input are the surface hue at low chroma;
-muted is 0.035 L off the surface **toward the ink** — down on a light theme, up on a dark
+muted is 0.035 L off the surface **toward the ink** — down on a light look, up on a dark
 one, because a well dug below Graphite's page is where a skeleton disappears;
-`token-contrast.test.ts` holds that step on every theme. Keep chroma
-≤0.02 on neutrals — the surfaces are a ground for
-the graph's colour, and a tinted ground shifts every hue drawn on it. Radius is moderate
-(`--radius: 0.625rem`): unfussy, not soft.
+`token-contrast.test.ts` holds that step on every look. Keep chroma ≤0.02 on neutrals — the
+surfaces are a ground for the graph's colour, and a tinted ground shifts every hue drawn on
+it. Radius is moderate (`--radius: 0.625rem`): unfussy, not soft.
 
-### Accent presets (`--primary`)
+**The accent is Indigo in all five** — the blue-black of fountain-pen ink. The light three
+take `oklch(0.52 0.14 265)` with paper on top; the two dark ones take the same hue lifted
+to `oklch(0.62 0.14 265)` with ink on top, which is what keeps a fill legible against a
+dark ground. `--primary` is tuned as a FILL with `--primary-foreground` on top;
+`--primary-mark` is the same colour asked to carry meaning alone — an icon, a rule, a chart
+stroke drawn straight on a surface — which is a different floor, so draw those with the
+mark. **Do not assume a look's accent clears a floor because the tokens exist**; see
+"Contrast is measured, not assumed" below.
 
-Default accent is **Indigo** — the blue-black of fountain-pen ink.
-
-| Accent               | `--primary` (light)    | note                |
-| -------------------- | ---------------------- | ------------------- |
-| **Indigo** (default) | `oklch(0.52 0.14 265)` | fountain-pen ink    |
-| Moss                 | `oklch(0.55 0.09 145)` | quiet green         |
-| Rust                 | `oklch(0.56 0.13 45)`  | earthy              |
-| Sea                  | `oklch(0.58 0.10 210)` | cool, clear         |
-| Iris                 | `oklch(0.55 0.13 300)` | violet              |
-| Ochre                | `oklch(0.66 0.12 80)`  | warm, dry           |
-| Slate                | `oklch(0.50 0.02 265)` | neutral / no-colour |
-
-The accent is chrome only. **It never colours a node, an edge, or a tag** — those come
-from the graph's own language below, and an accent that leaked into the canvas would make
-a user's theme choice change what the data appears to say.
+The accent is chrome only. **It never colours a node, an edge, or a tag** — those come from
+the graph's own language below, and an accent that leaked into the canvas would make a
+user's choice of look change what the data appears to say.
 
 ### Style presets (`data-style`) — the structural axis
 
@@ -178,8 +175,8 @@ fill — so the guard group that says so is one group, written the same way in b
 
 Five things a style must get right, and each is a place a style ships looking half-done:
 
-- **A style block sits AFTER every `[data-theme]` block and carries a `.dark:root[…]`
-  twin.** Dark families declare `--border` at `.dark:root[data-theme='x']` (specificity
+- **A style block sits AFTER every `[data-look]` block and carries a `.dark:root[…]`
+  twin.** Dark looks declare `--border` at `.dark:root[data-look='x']` (specificity
   0,3,0), so the plain `:root[data-style]` form (0,2,0) loses to them on specificity alone.
 - **Controls that reserve a transparent edge get the ink.** shadcn's idiom for "this
   control only sometimes shows a border" is `border border-transparent`, coloured by a
@@ -229,9 +226,9 @@ broken:
   reads off the rules — so the most it costs a pairing at 4.5:1 is a few tenths. That is
   the one place this design system takes a texture over a floor, and it is opt-in.
 
-### Schemes — a theme as data
+### A look carried as data
 
-A **scheme** is a theme somebody picks out of a collection rather than one we wrote: the
+A **scheme** is a look somebody picks out of a collection rather than one we wrote: the
 Tinted Theming base16/base24 schemes, vendored whole. `base00` becomes the surface and
 `base05` the ink; `base01`–`base04` become cards, muted surfaces, fields and muted ink;
 `base08`–`base0F` become the eight facet hues — the eight sharing one **lightness moved in
@@ -239,9 +236,8 @@ OKLCH until every slot clears the canvas's 3:1 floor and the slot distance on th
 own surfaces**, never used raw. `base08` is what a destructive act is drawn in too, lifted
 the way every other ink is; what is drawn ON it is whichever of the scheme's own two ends
 reads best there, and that end reads at AA because the alarm itself does on the page. A
-scheme that is picked sets `data-theme="scheme"` and `data-scheme="<slug>"` on `<html>`
-with its tokens written inline as custom properties, and the `dark` class from the scheme's
-own variant.
+scheme that is picked sets `data-look="<slug>"` on `<html>` with its tokens written inline
+as custom properties, and the `dark` class from the scheme's own variant.
 
 **Two of those surfaces are worked out rather than taken, because a collection carries fewer
 of them than the design system spends.** A field's boundary is `base03` lifted in lightness
@@ -294,21 +290,69 @@ on, one whose surfaces leave the eight slots nowhere to stand. Most of the colle
 through; `dress.test.ts` sweeps all of it and holds the count, because a mapping that shut
 half the collection out would pass every floor.
 
-**A scheme is the theme axis and nothing else.** Accent, style, font and density stay the
-person's — and because a dressing paints inline, which beats every rule in the design
-system, the tokens another axis owns are exactly the ones a dressing may not carry:
-`--primary`, `--primary-foreground`, `--primary-mark` and `--ring` are the accent's, and
-`--border` is what a style derives an edge from. A scheme's own edge reaches `--border`
-through a rule rather than inline, which is what leaves a style drawing its own edge on
-every scheme in the collection.
+**A scheme carries its own accent, because a look is the whole palette.** `--primary` is
+the scheme's `base0D`, `--primary-foreground` whichever of its two ends reads on that fill
+at 4.5:1, and `--primary-mark` the same hue moved in lightness until it clears 3:1 on the
+scheme's own page, with `--ring` reading from the mark. Nothing about the colour of a
+carried look comes from anywhere else.
 
-**What the accent axis owes a scheme is the family of the ground it stands on.** A scheme
-whose variant is dark takes the dark family's lifted accent, exactly as Graphite does, and
-a light one takes the light family's Ochre correction — so the one attribute cannot say
-it, and this is the one place the `dark` class is read instead. Asking for a theme in the
-Theme pills stands the scheme down. The tokens are cached beside the saved look so the
-shells' boot scripts paint them before the first paint, and `data-scheme` is what the
-canvas watches — two schemes differ in it alone.
+**`--border` is the one colour it leaves alone.** Paint written inline beats every rule in
+the design system, and the style axis derives its own edge from `--border` — so a scheme's
+edge reaches that token through a rule instead, which is what leaves a style drawing its own
+edge on every scheme in the collection. The style, the faces, the density and the screen
+stay the person's.
+
+Asking for one of Sloppy's own five stands a carried look down. Its tokens are cached
+beside the saved look so the shells' boot scripts paint them before the first paint, and
+`data-look` — the one attribute — is what the canvas watches: two carried looks differ in
+it alone.
+
+### A look is a file
+
+A look is a small JSON file, and that is the whole point: somebody who likes how your
+Sloppy reads can have it by being sent one.
+
+```jsonc
+{
+  "name": "Midnight Ink",
+  // one of Sloppy's five or a scheme's slug; absent is a look that stands alone
+  "based_on": "catppuccin-mocha",
+  // laid over whatever `based_on` gives
+  "palette": { "--background": "oklch(.17 .02 265)" },
+  "style": "hardline",
+  "density": "compact",
+  "effect": "crt",
+  "fonts": {
+    "ui": "Inter",
+    "heading": "Iosevka Etoile",
+    "mono": "JetBrains Mono",
+  },
+  "css": ".sloppy-prose h2 { letter-spacing: .02em }",
+  // absent in a look meant for sharing
+  "preferences": {},
+}
+```
+
+`LookSchema` in `@sloppy/types` is the shape. **What a file holds is what is applied, and
+what it leaves out is left alone** — one carrying a palette and nothing else changes the
+colours and leaves the faces, the density and the screen as they were. Settings offers
+_Copy_, _Save a look…_ (the look alone, for sending), _Save my settings…_ (the look plus
+`preferences`, for moving to another machine), _Open a look…_, and a box that takes the
+same JSON pasted in. A file that is not a look is turned down in one line saying what to
+do, never in a parser's words.
+
+**A look's own CSS is part of the look**, and bounded: at most 64 KiB, applied through one
+`<style>` element the app owns and nothing else writes. **`@import`, and any `url()` whose
+target is not a `data:` URI, are refused** — on the file and again where the rules are
+applied, with comments and CSS's own escape sequences resolved before either check so
+neither can be smuggled past it. The reason is the reason a look is a file at all: one
+somebody was sent must not be able to phone home or say who opened it. `cssIsSafe` is that
+gate and `look.test.ts` is the file of record.
+
+**A face is a name, not a rule.** Each of the three is one of the faces this build ships or
+a family the author typed — used if the machine has it, and falling back to that role's own
+stack if not, which is how a look asks for a face Sloppy does not carry without reaching
+anywhere for it.
 
 ## The graph's colour language
 
@@ -467,8 +511,8 @@ no colour swatch in any of them, and it belongs to the surface that asked for th
 `@sloppy/graph` builds no chrome.
 
 All of it survives the four axes because it is drawn from `--graph-ink` and spends no hue,
-exactly as the lift is (§ "The mark"): it inverts with the theme, it survives greyscale and
-full zoom-out, and no theme, accent, style or face has to know it exists.
+exactly as the lift is (§ "The mark"): it inverts with the look, it survives greyscale and
+full zoom-out, and no look, style or face has to know it exists.
 
 ### The mark — five meanings on one small disc
 
@@ -914,21 +958,22 @@ wins only on the channels it names. Three channels, and nothing else moves:
 ### Contrast is measured, not assumed
 
 Ratios in this document are targets until a test holds them. `token-contrast.test.ts` in
-`@sloppy/ui` is the file of record, and it runs: it sweeps every theme × accent and every
-theme × facet-slot pairing, measures on the **quantised** colour (both sides converted to
+`@sloppy/ui` is the file of record, and it runs: it sweeps every look Sloppy writes itself
+— its surfaces, its accent and its facet slots — measures on the **quantised** colour
+(both sides converted to
 sRGB and rounded to 8 bits per channel, which is what a screen actually paints), and holds
 the 3:1 mark floor and the 0.03 separation floor — on `--background`, `--card` and
 `--popover` alike, because most marks are not drawn on the page. It reads the tokens out of
 `app.css` itself; a table of them beside the stylesheet would be a copy that drifts.
 
-One accent needs a correction today, and only one: Ochre on the light family reads 2.90:1
-as a solid mark on Paper, so `--primary-mark` moves it in lightness alone, and `--ring`
-reads from `--primary-mark` so the focus ring inherits the same correction. Every other
-pairing is handed back its own colour untouched.
+No look needs a mark correction today: `--primary-mark` is each look's own `--primary`
+handed back untouched, and `--ring` reads from the mark so a focus ring inherits whatever
+correction a look does need. A look carried as data is measured where it is dressed instead
+— `dress.test.ts` sweeps the collection — because the suite cannot see its surfaces.
 
-**A floor this file does not name is a floor nothing measures.** Small accent TEXT owes
-4.5:1 and no member of the mark family reaches it — the mark floor is for graphical objects
-and large text.
+**A floor this file does not name is a floor nothing measures.** Small TEXT in a look's
+accent owes 4.5:1 and no member of the mark family reaches it — the mark floor is for
+graphical objects and large text.
 
 A figure quoted anywhere in this repo without a test behind it is a target, and should say
 so.
@@ -2134,11 +2179,12 @@ states. Empty states invite; they don't apologize. Icons: lucide, one weight.
 ## Persistence
 
 A single client-side prefs store (`localStorage`, key `sloppy_prefs`) holds
-`{ theme, scheme, accent, style, effect, font }`, applied to `<html>` data-attributes as
-early as possible (inline head script) to avoid a flash of the wrong theme. A scheme's
-tokens are the one part of the look too big for that object: they are cached under
-`sloppy_scheme` and painted inline on `<html>` by the same script (§ Schemes). No account
-required; choices carry over if someone signs in.
+`{ look, style, effect, fonts, css }`, applied to `<html>` data-attributes — and, for the
+look's own rules, to one `<style>` element — as early as possible (inline head script) to
+avoid a flash of the wrong look. The paint of a look carried as data is the one part too
+big for that object: it is cached under `sloppy_look` and painted inline on `<html>` by the
+same script (§ "A look carried as data"). No account required; choices carry over if
+someone signs in.
 
 The same store holds the view choices that are nobody's business but this device's — the
 tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind

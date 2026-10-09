@@ -6,6 +6,7 @@
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Download from '@lucide/svelte/icons/download';
+	import FileJson from '@lucide/svelte/icons/file-json';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import Globe from '@lucide/svelte/icons/globe';
 	import HistoryIcon from '@lucide/svelte/icons/history';
@@ -20,8 +21,9 @@
 	import { api } from '../api.js';
 	import HistorySettings from '../components/history-settings.svelte';
 	import IdentitySettings from '../components/identity-settings.svelte';
+	import LookFile from '../components/look-file.svelte';
+	import LookPicker from '../components/look-picker.svelte';
 	import OpenHere from '../components/open-here.svelte';
-	import SchemePicker from '../components/scheme-picker.svelte';
 	import AiSettings from '../components/ai-settings.svelte';
 	import WhatHappened from '../components/what-happened.svelte';
 	import { graphHere } from '../graph-here.svelte.js';
@@ -34,8 +36,6 @@
 	import { letGoOfWhatWasRead } from '../stores/let-go.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
-		ACCENT_LABELS,
-		ACCENTS,
 		asOrigin,
 		DENSITIES,
 		DENSITY_LABELS,
@@ -45,10 +45,7 @@
 		FONTS,
 		prefs,
 		STYLE_LABELS,
-		STYLES,
-		type Theme,
-		THEME_LABELS,
-		THEMES
+		STYLES
 	} from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import HistorySurface from './history.svelte';
@@ -94,6 +91,7 @@
 	 *  neither. */
 	const sections = $derived([
 		{ id: 'appearance', name: 'Appearance', icon: Palette },
+		{ id: 'your-look', name: 'Your own look', icon: FileJson },
 		...(graphHere.open
 			? [{ id: 'your-folder', name: 'Where your writing is', icon: FolderOpen }]
 			: session.onDevice
@@ -201,14 +199,6 @@
 			: 'Sloppy is back where it came from. Sign in to carry on.';
 	}
 
-	/** A theme asked for here IS the theme, so the scheme stands down first:
-	 *  `prefs.set` stands down one it holds the paint for, and a look saved as a
-	 *  slug alone has none. */
-	function wearTheme(theme: Theme): void {
-		prefs.setScheme(null);
-		prefs.set('theme', theme);
-	}
-
 	function pointHere(event: SubmitEvent) {
 		event.preventDefault();
 		const typed = typedOrigin.trim();
@@ -273,37 +263,7 @@
 			<section id="appearance" tabindex="-1" class="space-y-3">
 				<h2 class="text-sm font-medium">Appearance</h2>
 				<div class="space-y-10">
-					<fieldset class="space-y-3">
-						<legend class="text-sm font-medium">Theme</legend>
-						<div class="flex flex-wrap gap-2">
-							{#each THEMES as theme (theme)}
-								<ChoicePill
-									group="theme"
-									value={theme}
-									label={THEME_LABELS[theme]}
-									checked={prefs.current.scheme === null && prefs.current.theme === theme}
-									onpick={() => wearTheme(theme)}
-								/>
-							{/each}
-						</div>
-					</fieldset>
-
-					<SchemePicker />
-
-					<fieldset class="space-y-3">
-						<legend class="text-sm font-medium">Accent</legend>
-						<div class="flex flex-wrap gap-2">
-							{#each ACCENTS as accent (accent)}
-								<ChoicePill
-									group="accent"
-									value={accent}
-									label={ACCENT_LABELS[accent]}
-									checked={prefs.current.accent === accent}
-									onpick={() => prefs.set('accent', accent)}
-								/>
-							{/each}
-						</div>
-					</fieldset>
+					<LookPicker />
 
 					<fieldset class="space-y-3">
 						<legend class="text-sm font-medium">Style</legend>
@@ -328,8 +288,8 @@
 									group="font"
 									value={font}
 									label={FONT_LABELS[font]}
-									checked={prefs.current.font === font}
-									onpick={() => prefs.set('font', font)}
+									checked={prefs.current.fonts.ui === font}
+									onpick={() => prefs.set('fonts', { ...prefs.current.fonts, ui: font })}
 								/>
 							{/each}
 						</div>
@@ -368,6 +328,13 @@
 						</div>
 					</fieldset>
 				</div>
+			</section>
+		{/if}
+
+		{#if standing === 'your-look'}
+			<section id="your-look" tabindex="-1" class="space-y-3">
+				<h2 class="text-sm font-medium">Your own look</h2>
+				<LookFile />
 			</section>
 		{/if}
 

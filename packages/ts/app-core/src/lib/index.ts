@@ -39,17 +39,15 @@ export { serverMessage } from './stores/errors.js';
 export { doingIn, troubleIn, whatHappened } from './stores/what-happened.svelte.js';
 export { session } from './stores/session.svelte.js';
 export {
-	ACCENT_LABELS,
-	ACCENTS,
+	BUILT_IN_LOOKS,
 	EFFECT_LABELS,
 	EFFECTS,
+	LOOK_LABELS,
 	prefs,
 	STYLE_LABELS,
-	STYLES,
-	THEME_LABELS,
-	THEMES
+	STYLES
 } from './stores/prefs.svelte.js';
-export type { Accent, Effect, FolderView, Prefs, Style, Theme } from './stores/prefs.svelte.js';
+export type { BuiltInLook, Effect, FolderView, Prefs, Style } from './stores/prefs.svelte.js';
 export {
 	OPENING_STRENGTH,
 	openingWallpaper,

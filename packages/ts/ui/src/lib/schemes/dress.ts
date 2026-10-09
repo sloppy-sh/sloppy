@@ -1,5 +1,6 @@
 /**
- * A scheme's palette as the tokens that dress the app. DESIGN.md § Schemes is
+ * A scheme's palette as the tokens that dress the app. DESIGN.md § "A look
+ * carried as data" is
  * the doc of record for the mapping, the floors and why each of them is where
  * it is; `dress.test.ts` sweeps the whole collection against them.
  */
@@ -183,7 +184,8 @@ function facetsOf(scheme: Scheme, surfaces: readonly Oklch[]): Oklch[] | null {
 
 /**
  * The tokens this scheme dresses the app in, or null where it cannot carry what
- * a person reads — DESIGN.md § Schemes names what a scheme is turned down on.
+ * a person reads — DESIGN.md § "A look carried as data" names what a scheme is
+ * turned down on.
  * Null is a scheme the picker does not offer.
  */
 export function dress(scheme: Scheme): SchemeDressing | null {

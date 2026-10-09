@@ -156,8 +156,8 @@ Target WCAG 2.2 AA as a floor.
   note carrying two selected tags draws in one of them, so which sets a note is in is
   always readable in words as well — the graph stays answerable to a person who cannot
   separate two hues, and to one who can but is looking at a note in three sets at once.
-- Full keyboard operability, semantic landmarks, and AA contrast on every theme × accent
-  pairing we ship. Hues drawn as marks — a node fill, an edge, a tag chip — owe the 3:1
+- Full keyboard operability, semantic landmarks, and AA contrast on every look we ship.
+  Hues drawn as marks — a node fill, an edge, a tag chip — owe the 3:1
   non-text floor and are measured against it, not eyeballed.
 - **Ink degrades, it never gates.** Pointer-event features that only exist on newer
   WebKit (coalesced and predicted events) are feature-detected; a device without them

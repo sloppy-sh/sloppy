@@ -408,12 +408,14 @@ UI change. In short:
   hand-roll what shadcn covers. Components live in `@sloppy/ui`; the design system
   (Tailwind v4 tokens, the axes below, the graph's colour language) is
   `@sloppy/ui`'s `app.css`, imported by the apps via `@sloppy/ui/styles`.
-- **Six orthogonal axes on `<html>`:** `data-theme` (surfaces, or `scheme` with a
-  collection's tokens painted inline), `data-accent` (`--primary`), `data-style` (how
-  surfaces are drawn — edges and elevation, never colour), `data-app-font` (the face, for
-  legibility, never colour), `data-density` (how close it is drawn) and `data-effect` (what
-  the screen is like over it — a texture, never a colour or a shape). A style or an effect
-  that names a colour is a bug; see DESIGN.md.
+- **One colour axis and four that decide no colour:** `data-look` is every colour there
+  is — the surfaces, the ink, the accent, the graph's hue slots — and carries either one of
+  Sloppy's own five or the id of a look carried as data, whose palette is painted inline.
+  Beside it stand the faces (for legibility, never colour), `data-style` (how surfaces are
+  drawn — edges and elevation, never colour), `data-density` (how close it is drawn) and
+  `data-effect` (what the screen is like over it — a texture, never a colour or a shape).
+  There is no accent axis: a look names its own. A style or an effect that names a colour
+  is a bug, and so is a second axis that names one; see DESIGN.md § "The look".
 - **Mobile and tablet first.** Every surface is designed at phone width and then given
   room; at the dock width the same parts stand beside the graph instead of over it. An
   affordance only one of those arrangements has is a bug report against the phone layout.

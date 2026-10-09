@@ -252,11 +252,11 @@ export const InkNode = Node.create({
 
 			const resize = new ResizeObserver(() => redraw());
 			resize.observe(canvas);
-			// The mark is the theme's foreground, so a theme switch is a repaint.
-			const theme = new MutationObserver(() => redraw());
-			theme.observe(document.documentElement, {
+			// The mark is the look's foreground, so a change of look is a repaint.
+			const look = new MutationObserver(() => redraw());
+			look.observe(document.documentElement, {
 				attributes: true,
-				attributeFilter: ['data-theme', 'class', 'style']
+				attributeFilter: ['data-look', 'class', 'style']
 			});
 
 			redraw();
@@ -273,7 +273,7 @@ export const InkNode = Node.create({
 				deselectNode: () => dom.classList.remove('is-selected'),
 				destroy: () => {
 					resize.disconnect();
-					theme.disconnect();
+					look.disconnect();
 				},
 				stopEvent: () => true,
 				ignoreMutation: () => true

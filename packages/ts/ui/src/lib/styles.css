@@ -1,6 +1,6 @@
 /* The styles beside Default and Hardline — DESIGN.md § Style presets. Imported
    by app.css after the Hardline block, because a style block has to land after
-   every [data-theme] block to win --border from the dark families. */
+   every [data-look] block to win --border from the dark families. */
 
 /* ══ Square corners ════════════════════════════════════════════════════════
    All three styles below take `--radius: 0px` — a length rather than a bare `0`,

@@ -1892,8 +1892,8 @@ describe('a note read and arranged under its row in the walk', () => {
 describe('a note row on the narrowest phone', () => {
 	const PHONE = 360;
 	const REM = 16;
-	/** One character of a row's small text, allowed for at the widest face
-	 *  `data-app-font` puts behind the address. */
+	/** One character of a row's small text, allowed for at the widest face the
+	 *  font axis puts behind the address. */
 	const CHAR = 9;
 
 	/** A run as deep as the outline sets a row in, published and tagged all the

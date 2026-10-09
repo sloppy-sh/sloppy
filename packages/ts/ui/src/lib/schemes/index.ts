@@ -1,5 +1,6 @@
 /**
- * The vendored Tinted Theming collection — DESIGN.md § Schemes. It is a third
+ * The vendored Tinted Theming collection — DESIGN.md § "A look carried as data".
+ * It is a third
  * of a megabyte and only the picker reads it, so it arrives on demand and
  * nothing imports it directly.
  */

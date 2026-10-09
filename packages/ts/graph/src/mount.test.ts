@@ -536,17 +536,12 @@ const childrenOf = (ref: OwnedRef): OwnedRef[] =>
   corpus.nodes.filter((node) => node.parent === ref).map((node) => node.ref);
 
 describe("mountGraph", () => {
-  // The canvas reads its colours off the computed tokens, so every attribute
-  // that can change one has to be an attribute it hears about — a scheme leaves
-  // `data-theme` alone, and two schemes differ only in `data-scheme`.
+  // The canvas reads its colours off the computed tokens, and one attribute
+  // decides every colour there is — DESIGN.md § "The look". The `dark` class
+  // follows it, and a style may still move what a token resolves to.
   it("hears about every axis that can repaint it", async () => {
     await mount();
-    expect(axesWatched).toEqual([
-      "data-theme",
-      "data-scheme",
-      "data-accent",
-      "class",
-    ]);
+    expect(axesWatched).toEqual(["data-look", "class"]);
   });
 
   // The headline interaction of the whole-graph view, where every mega-node on
