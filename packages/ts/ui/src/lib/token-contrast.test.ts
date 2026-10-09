@@ -5,9 +5,10 @@
  * facet slots — reading the tokens out of `app.css` rather than from a second
  * table: a table beside the stylesheet is a copy that drifts, and a palette
  * whose slots have converged passes every contrast check while having quietly
- * stopped being a language. A look carried as data brings its own surfaces,
- * which this file cannot see: `dress.test.ts` sweeps those against the
- * collection, and the accent family `app.css` answers for is held here.
+ * stopped being a language. A look carried as data brings its own surfaces and
+ * its own accent, which this file cannot see: `dress.test.ts` sweeps those
+ * against the collection, and what `app.css` owes one with no paint in hand is
+ * held here.
  */
 
 import { readFileSync } from 'node:fs';
@@ -229,11 +230,11 @@ describe('token contrast', () => {
 		});
 	});
 
-	// A look carried as data paints its own surfaces, which the suite cannot
-	// see, and takes the accent family from `app.css` — so what is measured here
-	// is the pairing: the family of the ground it stands on, which is the one
-	// Sloppy's own look on that ground was measured with above.
-	describe('a look carried as data stands in the accent family of its own ground', () => {
+	// A look carried as data brings its own accent with its own surfaces
+	// (`dress.test.ts`), so what `app.css` still owes one is the ground to stand
+	// on until its paint is in hand: the family of Sloppy's own look on the same
+	// ground, measured with that look above.
+	describe('a look with no paint in hand falls back to the accent of its own ground', () => {
 		const FAMILY = ['--primary', '--primary-foreground', '--primary-mark', '--ring'] as const;
 
 		it('on a dark ground reads as it does on Graphite', () => {

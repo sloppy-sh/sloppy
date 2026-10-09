@@ -49,6 +49,12 @@ const FACET_KEYS: readonly BaseKey[] = [
 /** How finely the slots' shared lightness is looked for. */
 const LIGHTNESS_STEPS = 100;
 
+/** How two colours read once painted. A dressing paints hex, so a floor cleared
+ *  in OKLCH alone can be lost to rounding on the way to the screen. */
+function asPainted(one: Oklch, on: Oklch): number {
+	return contrastRatio(colourOf(hexOf(one)), colourOf(hexOf(on)));
+}
+
 /** Every lightness a search here looks at, nearest `from` first. */
 function lightnessesNear(from: number): number[] {
 	return Array.from({ length: LIGHTNESS_STEPS + 1 }, (_, step) => step / LIGHTNESS_STEPS).sort(
@@ -140,14 +146,48 @@ function reads(mark: Oklch, surfaces: readonly Oklch[]): Oklch {
 }
 
 /** `field` at the nearest lightness carrying {@link EDGE_FLOOR} on `page`, its
- *  hue kept, measured on the bytes it is painted as. Null where no lightness
- *  does. */
+ *  hue kept. Null where no lightness does. */
 function bounds(field: Oklch, page: Oklch): Oklch | null {
-	const seen = (one: Oklch): boolean => contrastRatio(colourOf(hexOf(one)), page) >= EDGE_FLOOR;
+	const seen = (one: Oklch): boolean => asPainted(one, page) >= EDGE_FLOOR;
 	if (seen(field)) return field;
 	for (const l of lightnessesNear(field.l)) {
 		const moved = intoGamut({ ...field, l });
 		if (seen(moved)) return moved;
+	}
+	return null;
+}
+
+/**
+ * The scheme's own accent as a fill with words on it: `base0D`, and whichever of
+ * the scheme's two `ends` reads on it at {@link LABEL_FLOOR} — the fill moved in
+ * lightness alone, its hue kept, where neither end reads on the colour the
+ * scheme drew. Null where no lightness gives either end the floor.
+ */
+function fills(accent: Oklch, ends: readonly Oklch[]): { fill: Oklch; on: Oklch } | null {
+	const bestOn = (fill: Oklch): Oklch =>
+		ends.reduce((kept, end) => (asPainted(end, fill) > asPainted(kept, fill) ? end : kept));
+	const pair = (fill: Oklch): { fill: Oklch; on: Oklch } | null => {
+		const on = bestOn(fill);
+		return asPainted(on, fill) >= LABEL_FLOOR ? { fill, on } : null;
+	};
+	const own = pair(accent);
+	if (own !== null) return own;
+	for (const l of lightnessesNear(accent.l)) {
+		const moved = pair(intoGamut({ ...accent, l }));
+		if (moved !== null) return moved;
+	}
+	return null;
+}
+
+/** `fill` at the nearest lightness carrying {@link MARK_FLOOR} on every one of
+ *  `surfaces`, its hue kept — the accent asked to carry meaning with no words on
+ *  it. Null where no lightness does. */
+function marks(fill: Oklch, surfaces: readonly Oklch[]): Oklch | null {
+	const clears = (one: Oklch): boolean => surfaces.every((on) => asPainted(one, on) >= MARK_FLOOR);
+	if (clears(fill)) return fill;
+	for (const l of lightnessesNear(fill.l)) {
+		const moved = intoGamut({ ...fill, l });
+		if (clears(moved)) return moved;
 	}
 	return null;
 }
@@ -214,6 +254,11 @@ export function dress(scheme: Scheme): SchemeDressing | null {
 	const onSpot = reads(ink, [spot]);
 	if (contrastRatio(onSpot, spot) < LABEL_FLOOR) return null;
 
+	const accent = fills(at('base0D'), [paper, ink]);
+	if (accent === null) return null;
+	const mark = marks(accent.fill, [paper, raised, quiet, spot]);
+	if (mark === null) return null;
+
 	const onRaised = hexOf(reads(ink, [raised]));
 	const onQuiet = hexOf(reads(ink, [quiet]));
 	const tokens: Record<`--${string}`, string> = {
@@ -234,6 +279,10 @@ export function dress(scheme: Scheme): SchemeDressing | null {
 		'--destructive-foreground': hexOf(
 			contrastRatio(paper, alarm) >= contrastRatio(ink, alarm) ? paper : ink
 		),
+		'--primary': hexOf(accent.fill),
+		'--primary-foreground': hexOf(accent.on),
+		'--primary-mark': hexOf(mark),
+		'--ring': hexOf(mark),
 		'--graph-paper': hexOf(paper),
 		'--graph-ink': hexOf(ink)
 	};

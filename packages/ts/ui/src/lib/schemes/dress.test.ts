@@ -90,6 +90,9 @@ const DERIVED = new Set<string>([
 	'--muted-foreground',
 	'--input',
 	'--destructive',
+	'--primary',
+	'--primary-mark',
+	'--ring',
 	...SLOTS.map((slot) => `--facet-${slot}`)
 ]);
 
@@ -116,7 +119,8 @@ const INKS = [
 	['--destructive', '--background'],
 	['--destructive', '--card'],
 	['--destructive', '--muted'],
-	['--destructive-foreground', '--destructive']
+	['--destructive-foreground', '--destructive'],
+	['--primary-foreground', '--primary']
 ] as const;
 
 /** The inks that are the scheme's own ink lifted onto a surface, which is every
@@ -250,7 +254,8 @@ describe('what the picker offers', () => {
 			} else {
 				// Nothing in the collection reaches here: a scheme with nowhere to
 				// stand its eight slots, or its alarm, has nowhere for the secondary
-				// line either, so the line accounts for it first.
+				// line either, so the line accounts for it first — and the accent,
+				// which may move freely along one hue, turns none of them down.
 				why.rest += 1;
 			}
 		}
@@ -370,6 +375,79 @@ describe('what a person reads a scheme by', () => {
 				Math.max(...ends.map((end) => contrastRatio(end, alarm)))
 			);
 		}
+	});
+});
+
+describe("the accent a scheme's own chrome is drawn in", () => {
+	/** Every surface a dressing paints, which is what a mark on one owes a
+	 *  floor against. */
+	const PAGES = ['--background', '--card', '--popover', '--secondary', '--muted', '--accent'];
+
+	it("is the scheme's own accent, moved in lightness alone", () => {
+		for (const { scheme, dressing } of dressed) {
+			const own = colour(scheme.palette.base0D);
+			const fill = painted(dressing, '--primary');
+			const mark = painted(dressing, '--primary-mark');
+			expect(fill.c, `${dressing.slug} primary chroma`).toBeLessThanOrEqual(own.c + 0.005);
+			expect(mark.c, `${dressing.slug} mark chroma`).toBeLessThanOrEqual(fill.c + 0.005);
+			// A neutral has no hue to keep, and a hue read back off eight bits
+			// drifts further the less chroma is carrying it.
+			if (own.c <= NEUTRAL_CHROMA) continue;
+			expect(Math.abs(fill.h - own.h), `${dressing.slug} primary hue`).toBeLessThan(1.5);
+			expect(Math.abs(mark.h - own.h), `${dressing.slug} mark hue`).toBeLessThan(1.5);
+		}
+	});
+
+	it("carries one of the scheme's own two ends on the fill", () => {
+		for (const { scheme, dressing } of dressed) {
+			expect(
+				[scheme.palette.base00, scheme.palette.base05],
+				`${dressing.slug} primary-foreground`
+			).toContain(dressing.tokens['--primary-foreground']);
+		}
+	});
+
+	it('carries whichever of the two reads better there', () => {
+		for (const { scheme, dressing } of dressed) {
+			const fill = painted(dressing, '--primary');
+			const on = painted(dressing, '--primary-foreground');
+			const ends = [scheme.palette.base00, scheme.palette.base05].map(colour);
+			expect(contrastRatio(on, fill), dressing.slug).toBe(
+				Math.max(...ends.map((end) => contrastRatio(end, fill)))
+			);
+		}
+	});
+
+	// A mark is the accent asked to carry meaning with no words on it — an icon,
+	// a rule, a focus ring — which is a different floor from the fill's.
+	it('draws a mark clearing 3:1 on every surface the scheme paints', () => {
+		for (const { dressing } of dressed) {
+			const mark = painted(dressing, '--primary-mark');
+			for (const page of PAGES) {
+				expect(
+					contrastRatio(mark, painted(dressing, page)),
+					`${dressing.slug} mark on ${page}`
+				).toBeGreaterThanOrEqual(MARK_FLOOR);
+			}
+		}
+	});
+
+	it('draws the focus ring in that same mark', () => {
+		for (const { dressing } of dressed) {
+			expect(dressing.tokens['--ring'], dressing.slug).toBe(dressing.tokens['--primary-mark']);
+		}
+	});
+
+	// The count is what a sweep of passing floors cannot show: an accent lifted
+	// on every scheme would be nobody's own accent, and one lifted on none would
+	// mean the floors were never reached for.
+	it("is base0D itself wherever the scheme's own two ends already read on it", () => {
+		const reach = { itsOwn: 0, lifted: 0 };
+		for (const { scheme, dressing } of dressed) {
+			if (dressing.tokens['--primary'] === scheme.palette.base0D) reach.itsOwn += 1;
+			else reach.lifted += 1;
+		}
+		expect(reach).toEqual({ itsOwn: 340, lifted: 160 });
 	});
 });
 

@@ -235,9 +235,10 @@ Tinted Theming base16/base24 schemes, vendored whole. `base00` becomes the surfa
 OKLCH until every slot clears the canvas's 3:1 floor and the slot distance on that scheme's
 own surfaces**, never used raw. `base08` is what a destructive act is drawn in too, lifted
 the way every other ink is; what is drawn ON it is whichever of the scheme's own two ends
-reads best there, and that end reads at AA because the alarm itself does on the page. A
-scheme that is picked sets `data-look="<slug>"` on `<html>` with its tokens written inline
-as custom properties, and the `dark` class from the scheme's own variant.
+reads best there, and that end reads at AA because the alarm itself does on the page.
+`base0D` does the same double duty for the accent, which the paragraph on the accent below
+states. A scheme that is picked sets `data-look="<slug>"` on `<html>` with its tokens
+written inline as custom properties, and the `dark` class from the scheme's own variant.
 
 **Two of those surfaces are worked out rather than taken, because a collection carries fewer
 of them than the design system spends.** A field's boundary is `base03` lifted in lightness
@@ -290,18 +291,25 @@ on, one whose surfaces leave the eight slots nowhere to stand. Most of the colle
 through; `dress.test.ts` sweeps all of it and holds the count, because a mapping that shut
 half the collection out would pass every floor.
 
-**A dressing carries the surfaces, the ink and the eight hues, and leaves two colours to
-the stylesheet.** Paint written inline beats every rule in the design system, so a token
-another axis owns is one a dressing may not carry (`UNDRESSED_TOKENS`), and there are two
-of those. `--border` is what the style axis derives an edge from, so a scheme's edge
-reaches that token through a rule instead, which is what leaves a style drawing its own
-edge on every scheme in the collection. And the **accent family** — `--primary`,
-`--primary-foreground`, `--primary-mark`, `--ring` — is Sloppy's own indigo, in the family
-of the ground the carried look stands on: the light three's on a light ground, the dark
-pair's on a dark one. That pairing is **the one place the `dark` class decides a colour
-rather than `data-look`**, because the collection runs both ways under ids the stylesheet
-does not know, and `token-contrast.test.ts` holds it. The style, the faces, the density and
-the screen stay the person's.
+**The accent is the scheme's own, because a look is the whole palette.** `--primary` is
+`base0D`, moved in lightness alone — its hue kept — until whichever of the scheme's own two
+ends reads on it at AA; that end is `--primary-foreground`, so the words on a fill are the
+scheme's page or the scheme's ink and never a colour from somewhere else. `--primary-mark`
+is that same accent at the nearest lightness clearing 3:1 on **every** surface the dressing
+paints, because a mark carries its meaning with no words on it, and `--ring` is that mark,
+because a focus ring is one. Most of the collection needs no lift at all and none of it is
+turned down for the accent: the colour may run the whole ramp at one hue, so there is always
+somewhere for it to stand. `dress.test.ts` holds all of it.
+
+**A dressing carries every colour but one, and leaves that one to the stylesheet.** Paint
+written inline beats every rule in the design system, so a token another axis owns is one a
+dressing may not carry (`UNDRESSED_TOKENS`), and there is exactly one of those: `--border`
+is what the style axis derives an edge from, so a scheme's edge reaches that token through a
+rule instead, which is what leaves a style drawing its own edge on every look in the
+collection. The style, the faces, the density and the screen stay the person's. And because
+a look id can be saved without its paint — a device that kept the id alone, or a collection
+that no longer carries it — the stylesheet keeps an accent for `[data-look]` as the ground
+to stand on until the collection resolves one, or for good where it never does.
 
 Asking for one of Sloppy's own five stands a carried look down. Its tokens are cached
 beside the saved look so the shells' boot scripts paint them before the first paint, and
@@ -975,16 +983,14 @@ the 3:1 mark floor and the 0.03 separation floor — on `--background`, `--card`
 `--popover` alike, because most marks are not drawn on the page. It reads the tokens out of
 `app.css` itself; a table of them beside the stylesheet would be a copy that drifts.
 
-No look needs a mark correction today: `--primary-mark` is each look's own `--primary`
-handed back untouched, and `--ring` reads from the mark so a focus ring inherits whatever
-correction a look does need. A look carried as data brings surfaces this suite cannot see,
-so it is measured in two places and neither is the whole: `dress.test.ts` holds every
-colour the collection lends it against the floors, and `token-contrast.test.ts` holds the
-accent family it is lent to the look whose ground it shares. **What that leaves unmeasured
-is the pairing itself** — a collection's page can sit further from Sloppy's own than the
-lifted indigo was drawn for, and a mark on such a page can stand under the 3:1 floor. It is
-named here rather than claimed, and a dressing carrying the collection's own accent is
-what would close it.
+None of Sloppy's own five needs a mark correction today: `--primary-mark` is each one's own
+`--primary` handed back untouched, and `--ring` reads from the mark so a focus ring inherits
+whatever correction a look does need. A look carried as data brings its own surfaces and its
+own accent, neither of which this suite can see, so `dress.test.ts` is its file of record
+instead, and it sweeps the whole collection: every
+colour the scheme lends, the accent it lends with them, and the mark held to 3:1 on every
+surface that same scheme paints. There is no pairing left to measure, because nothing of
+one palette lands on a surface from another.
 
 **A floor this file does not name is a floor nothing measures.** Small TEXT in a look's
 accent owes 4.5:1 and no member of the mark family reaches it — the mark floor is for

@@ -26,6 +26,10 @@ export const DRESSED_TOKENS = [
 	'--accent-foreground',
 	'--destructive',
 	'--destructive-foreground',
+	'--primary',
+	'--primary-foreground',
+	'--primary-mark',
+	'--ring',
 	'--graph-ink',
 	'--graph-paper',
 	'--facet-1',
@@ -39,25 +43,13 @@ export const DRESSED_TOKENS = [
 ] as const;
 
 /**
- * The tokens a dressing may NOT carry, however much else of the palette it
+ * The token a dressing may NOT carry, however much else of the palette it
  * carries. A dressing paints inline on `<html>`, which beats every rule in
- * `app.css`, so one of these would take the token off the rule that owns it:
- *
- * - `--border` is what the style axis derives an edge from. A carried look's
- *   own edge reaches it through `schemes.css`, in a rule a style can beat.
- * - the accent family is Sloppy's own, in the family of the ground the carried
- *   look stands on: `app.css` answers for it and `token-contrast.test.ts` holds
- *   the pairing. TODO(the look/palette track): it moves out of this list and
- *   into the mapping, where the scheme's own `base0D` answers for it —
- *   DESIGN.md § "A look carried as data".
+ * `app.css`, so this one would take the token off the axis that owns it:
+ * `--border` is what the style axis derives an edge from, and a carried look's
+ * own edge reaches it through `schemes.css`, in a rule a style can beat.
  */
-export const UNDRESSED_TOKENS = [
-	'--border',
-	'--primary',
-	'--primary-foreground',
-	'--primary-mark',
-	'--ring'
-] as const;
+export const UNDRESSED_TOKENS = ['--border'] as const;
 
 export type DressedToken = (typeof DRESSED_TOKENS)[number];
 
