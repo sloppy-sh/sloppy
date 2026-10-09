@@ -1893,7 +1893,7 @@ describe('a note row on the narrowest phone', () => {
 	const PHONE = 360;
 	const REM = 16;
 	/** One character of a row's small text, allowed for at the widest face the
-	 *  font axis puts behind the address. */
+	 *  address can be read in. */
 	const CHAR = 9;
 
 	/** A run as deep as the outline sets a row in, published and tagged all the

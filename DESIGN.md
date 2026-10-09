@@ -12,7 +12,7 @@ fits; we don't hand-roll what shadcn already does well.
 > carries the axes, the looks and the style presets, the graph's hue slots, the
 > scroll chrome and the four inset formulas; `token-contrast.test.ts` beside it measures the
 > floors below rather than asserting them. Everything else named here — the components,
-> `ResponsiveModal`, the font axis, the prefs store, the graph's own colour conversion — is
+> `ResponsiveModal`, the faces, the prefs store, the graph's own colour conversion — is
 > still a specification for a later milestone, not a description of the tree. See the
 > [README](README.md) for what is actually in the tree.
 
@@ -354,6 +354,22 @@ _Copy_, _Save a look…_ (the look alone, for sending), _Save my settings…_ (t
 `preferences`, for moving to another machine), _Open a look…_, and a box that takes the
 same JSON pasted in. A file that is not a look is turned down in one line saying what to
 do, never in a parser's words.
+
+**A look with no `based_on` is worn under an id made from its name, on the app's own light
+ground** — so one meant for a dark ground names the look it is laid over, which is what
+`based_on` is for, and a palette laid over one of Sloppy's five or over a scheme takes that
+look's ground rather than deciding its own. **That id is counted past every look this
+Sloppy already answers to**: worn under one of its own five, a look somebody called _Dark_
+would take that look's night ground and its night cards under a light palette, and worn
+under a slug of the collection's, the next copy of it would name that scheme as what it is
+built on. A copy of such a look carries its palette and names nothing under it, since the
+id it is worn under is not a look anybody else has.
+
+**`preferences` carries how somebody keeps Sloppy, never what one machine alone means**:
+the graph in front of them, the canvas beside it, the pictures under those and the Sloppy
+that minted any of them stay where they are, so a file moved between machines cannot point
+somebody at a graph that is not there. What a present one holds is held to exactly what the
+store holds a saved setting to, and a key this build does not keep is left where it is.
 
 **A look's own CSS is part of the look**, and bounded: at most 64 KiB, applied through one
 `<style>` element the app owns and nothing else writes. **That element stands last in
@@ -1463,20 +1479,34 @@ nothing under it.
   set in, and the one code, addresses and the mono bits take (§ "A look is a file"). Each is
   a name rather than a rule — a face Sloppy ships or a family the look asks for.
 - **The app's own face**: Inter with a system fallback (`Inter, system-ui, -apple-system,
-"Segoe UI", sans-serif`). One family for chrome, node titles and block text.
-- **Headings take the app's own face until a look names another.** A notebook does not
-  change typeface to make a heading feel important, so a display face is somebody's
-  deliberate choice for their own Sloppy and never the product's taste.
-- **Address face** (`--font-address`): JetBrains Mono with a `ui-monospace` fallback,
-  tabular figures, always. An address is scanned and compared character by character, and
-  `1a1` against `1al` must never be a question the reader has to resolve. Every address in
-  the product renders in this face, at every size.
+"Segoe UI", sans-serif`). What chrome, node titles and block text are set in.
+- **Headings take the app's own face until a look names another**, so `--font-heading`
+  falls back to `--font-sans` rather than to a stack of its own. A notebook does not change
+  typeface to make a heading feel important, so a display face is somebody's deliberate
+  choice for their own Sloppy and never the product's taste — and one face chosen for the
+  app is one face read everywhere a reader who needs it looks.
+- **Code and the address face**: JetBrains Mono with a `ui-monospace` fallback, tabular
+  figures, always. An address is scanned and compared character by character, and `1a1`
+  against `1al` must never be a question the reader has to resolve. Every address in the
+  product renders in this face, at every size, and `--font-address` follows the code face
+  rather than being a fourth role nobody chose.
 - Fixed rem scale, ratio ~1.2. Hierarchy by scale and weight (≥1.2 between steps).
-- **The face axis** (`data-app-font`) swaps the app's own face, for the faces Sloppy ships:
-  `atkinson` and `opendyslexic` for accessibility, `apple` for SF Pro. It swaps the address
-  face too, and drops the tabular-figure guarantee where the chosen family cannot provide
-  it. **Legibility outranks alignment** — a reader who needs OpenDyslexic to read at all
-  does not get an exception carved out of it for our nicest column.
+- **The three roles are three tokens, not an attribute**: `--font-sans`, `--font-heading`
+  and `--font-mono`, written over `:root` by the prefs store and painted by both shells
+  before the first paint. A block per face could not carry a family a look asks for by
+  name, and a role is inherited from the root anyway — `body` takes the first, every
+  heading the second, and `code`, `pre`, `kbd` and the `address` utility the third.
+- **The faces Sloppy ships** are `inter`, `atkinson` and `opendyslexic`, which it holds
+  itself, and `apple` for the device's own — SF Pro on Apple hardware, with its monospace
+  companion where the role is drawn to one width. `system` is the role's own stack. A face
+  is chosen per role, and a role that derives from another follows it: somebody who needs
+  OpenDyslexic to read sets the app's face and the headings come with it, while the face for
+  code is theirs to set or to leave. A family the device does not have falls back to the
+  stack the role already had, the derived ones included.
+- **A face that cannot hold its figures to one width drops the guarantee, never the
+  family.** **Legibility outranks alignment** — a reader who needs OpenDyslexic to read an
+  address at all does not get an exception carved out of it for our nicest column. A family
+  Sloppy does not ship keeps the guarantee, because nothing here knows what it holds.
 
 ## Layout
 

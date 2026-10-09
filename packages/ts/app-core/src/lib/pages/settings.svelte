@@ -19,6 +19,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
 	import { api } from '../api.js';
+	import FaceSettings from '../components/face-settings.svelte';
 	import HistorySettings from '../components/history-settings.svelte';
 	import IdentitySettings from '../components/identity-settings.svelte';
 	import LookFile from '../components/look-file.svelte';
@@ -41,8 +42,6 @@
 		DENSITY_LABELS,
 		EFFECT_LABELS,
 		EFFECTS,
-		FONT_LABELS,
-		FONTS,
 		prefs,
 		STYLE_LABELS,
 		STYLES
@@ -281,18 +280,8 @@
 					</fieldset>
 
 					<fieldset class="space-y-3">
-						<legend class="text-sm font-medium">Font</legend>
-						<div class="flex flex-wrap gap-2">
-							{#each FONTS as font (font)}
-								<ChoicePill
-									group="font"
-									value={font}
-									label={FONT_LABELS[font]}
-									checked={prefs.current.fonts.ui === font}
-									onpick={() => prefs.set('fonts', { ...prefs.current.fonts, ui: font })}
-								/>
-							{/each}
-						</div>
+						<legend class="text-sm font-medium">Faces</legend>
+						<FaceSettings />
 					</fieldset>
 
 					<fieldset class="space-y-3">

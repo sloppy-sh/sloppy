@@ -69,13 +69,58 @@
 			root.setAttribute('data-look', look);
 			if (saved.style && saved.style !== 'default') root.setAttribute('data-style', saved.style);
 			if (saved.effect && saved.effect !== 'none') root.setAttribute('data-effect', saved.effect);
-			// The app's own face, where it is one app.css carries a stack for. The
-			// store reads the same two places, and a face an earlier build kept is
-			// still the one the app is read in.
-			var faces = ['atkinson', 'opendyslexic', 'apple'];
-			var face = saved.fonts && typeof saved.fonts.ui === 'string' ? saved.fonts.ui : saved.font;
-			if (typeof face === 'string' && faces.indexOf(face.trim()) >= 0)
-				root.setAttribute('data-app-font', face.trim());
+			// The three faces, over the tokens app.css declares them at. The store
+			// writes the same three from the same table of what a face this build
+			// offers asks for, and a face an earlier build kept is still the one the
+			// app is read in. A family nothing here ships is used if this machine has
+			// it, with the role's own stack behind it.
+			var shipped = {
+				inter: ["'Inter'", "'Inter'", true],
+				atkinson: ["'Atkinson Hyperlegible'", "'Atkinson Hyperlegible'", false],
+				opendyslexic: ["'OpenDyslexic'", "'OpenDyslexic'", false],
+				apple: [
+					'-apple-system, BlinkMacSystemFont, system-ui',
+					'ui-monospace, SFMono-Regular, Menlo',
+					true
+				]
+			};
+			var itsOwn = function (face) {
+				return Object.prototype.hasOwnProperty.call(shipped, face) ? shipped[face] : null;
+			};
+			// A name is written into a declaration of its own, so anything that could
+			// end that declaration, or reach off the device from inside it, is not
+			// one. The bound is the prefs store's.
+			var aFace = function (value, was) {
+				var named = typeof value === 'string' ? value.trim() : '';
+				if (named === '' || named.length > 80 || /[;{}]|url\(|\p{Cc}/iu.test(named))
+					return was === undefined ? 'system' : aFace(was, undefined);
+				return named;
+			};
+			var kept = saved.fonts && typeof saved.fonts === 'object' ? saved.fonts : {};
+			var roles = [
+				['ui', '--font-sans', 'var(--font-proportional)', 0],
+				['heading', '--font-heading', 'var(--font-sans)', 0],
+				['mono', '--font-mono', 'var(--font-monospaced)', 1]
+			];
+			var monoFace = 'system';
+			for (var role = 0; role < roles.length; role++) {
+				var face = aFace(kept[roles[role][0]], roles[role][0] === 'ui' ? saved.font : undefined);
+				if (roles[role][0] === 'mono') monoFace = face;
+				if (face === 'system') continue;
+				var asked = itsOwn(face);
+				root.style.setProperty(
+					roles[role][1],
+					(asked ? asked[roles[role][3]] : '"' + face.replace(/[\\"]/g, '\\$&') + '"') +
+						', ' +
+						roles[role][2]
+				);
+			}
+			// Legibility outranks alignment: a face that cannot hold its figures to
+			// one width takes the addresses anyway, without their column.
+			if (itsOwn(monoFace) && !itsOwn(monoFace)[2]) {
+				root.style.setProperty('--font-address-figures', 'normal');
+				root.style.setProperty('--font-address-features', 'normal');
+			}
 			// `auto` is what this device is: closer where a mouse is the only pointer.
 			var density = saved.density || 'auto';
 			var forAMouse =

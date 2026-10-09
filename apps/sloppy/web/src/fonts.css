@@ -80,7 +80,7 @@
 		U+A720-A7FF;
 }
 
-/* The font axis's two accessibility faces. Static rather than variable:
+/* The two accessibility faces Sloppy ships. Static rather than variable:
    neither family ships a variable file, so 400 and 700 are the weights there
    are. */
 
