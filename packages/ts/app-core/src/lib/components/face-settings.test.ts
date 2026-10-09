@@ -26,15 +26,34 @@ function pick(role: string, value: string): void {
 	flushSync();
 }
 
-function type(family: string): void {
-	const input = target.querySelector<HTMLInputElement>('input:not([type="radio"])');
-	if (!input) throw new Error('No field for a family of their own');
+function field(role: string): HTMLInputElement | null {
+	const row = choices(role)[0]?.closest('fieldset');
+	return row?.querySelector<HTMLInputElement>('input:not([type="radio"])') ?? null;
+}
+
+function fill(role: string, family: string): void {
+	const input = field(role);
+	if (!input) throw new Error(`No field for a family of their own under ${role}`);
 	input.value = family;
 	input.dispatchEvent(new Event('input', { bubbles: true }));
 	flushSync();
-	target
-		.querySelector('form')
+}
+
+function type(role: string, family: string): void {
+	fill(role, family);
+	field(role)
+		?.closest('form')
 		?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+	flushSync();
+}
+
+function nevermind(role: string): void {
+	const row = choices(role)[0]?.closest('fieldset');
+	const out = [...(row?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+		(one) => one.textContent?.trim() === 'Never mind'
+	);
+	if (!out) throw new Error(`No way back out of the field under ${role}`);
+	out.click();
 	flushSync();
 }
 
@@ -80,7 +99,7 @@ describe('the faces somebody sets', () => {
 	it('keeps a family somebody names, and shows it where they named it', () => {
 		show();
 		pick('mono', '…');
-		type('Iosevka Etoile');
+		type('mono', 'Iosevka Etoile');
 
 		expect(prefs.current.fonts.mono).toBe('Iosevka Etoile');
 		expect(document.documentElement.style.getPropertyValue('--font-mono')).toContain(
@@ -92,11 +111,46 @@ describe('the faces somebody sets', () => {
 		expect(standing?.value).toBe('…');
 	});
 
+	// A name somebody typed is theirs to correct: a pill that is already on
+	// cannot be chosen again, so the field it was typed in stays open.
+	it('corrects a family somebody mistyped, where they typed it', () => {
+		show();
+		pick('mono', '…');
+		type('mono', 'Iosevkaa Etoile');
+		expect(field('mono')?.value).toBe('Iosevkaa Etoile');
+
+		type('mono', 'Iosevka Etoile');
+
+		expect(prefs.current.fonts.mono).toBe('Iosevka Etoile');
+		expect(document.documentElement.style.getPropertyValue('--font-mono')).toContain(
+			'Iosevka Etoile'
+		);
+		expect(target.textContent).not.toContain('Iosevkaa Etoile');
+	});
+
+	it('comes back out of the field to the face that is kept', () => {
+		show();
+		pick('ui', 'inter');
+		pick('ui', '…');
+		nevermind('ui');
+
+		expect(field('ui')).toBeNull();
+		expect(choices('ui').find((one) => one.checked)?.value).toBe('inter');
+
+		pick('heading', '…');
+		type('heading', 'Iosevka Etoile');
+		fill('heading', 'Iosevkaa');
+		nevermind('heading');
+
+		expect(field('heading')?.value).toBe('Iosevka Etoile');
+		expect(prefs.current.fonts.heading).toBe('Iosevka Etoile');
+	});
+
 	it('says what a name that is not one needs, and changes nothing', () => {
 		show();
 		pick('ui', 'inter');
 		pick('ui', '…');
-		type('Inter; position: fixed');
+		type('ui', 'Inter; position: fixed');
 
 		expect(prefs.current.fonts.ui).toBe('inter');
 		expect(target.querySelector('[role="alert"]')?.textContent).toContain('not the name of a face');
@@ -106,7 +160,7 @@ describe('the faces somebody sets', () => {
 	it('comes back to a face this build ships from a family of somebody’s own', () => {
 		show();
 		pick('ui', '…');
-		type('Iosevka Etoile');
+		type('ui', 'Iosevka Etoile');
 		pick('ui', 'system');
 
 		expect(prefs.current.fonts.ui).toBe('system');

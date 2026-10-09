@@ -55,7 +55,7 @@
 	--font-proportional: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 	--font-monospaced: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 	--font-sans: var(--font-proportional);
-	--font-heading: var(--font-proportional);
+	--font-heading: var(--font-sans);
 	--font-mono: var(--font-monospaced);
 	--font-address: var(--font-mono);
 
@@ -481,9 +481,8 @@
 		   a phone. Scroll regions manage their own overflow. */
 		overflow-x: hidden;
 	}
-	/* The other two roles, inherited the same way: every heading in the app and
-	   in a note, and everything drawn to one width. An address reaches the same
-	   face as the second through the `address` utility below. */
+	/* The other two roles, inherited the same way; an address reaches
+	   `--font-mono` through the `address` utility below. */
 	h1,
 	h2,
 	h3,

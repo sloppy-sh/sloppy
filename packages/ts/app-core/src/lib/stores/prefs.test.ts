@@ -205,11 +205,14 @@ describe('the saved look', () => {
 		prefs.set('fonts', { ui: 'opendyslexic', heading: 'Iosevka Etoile', mono: 'apple' });
 		expect(painted()).toEqual({
 			'--font-sans': "'OpenDyslexic', var(--font-proportional)",
-			'--font-heading': '"Iosevka Etoile", var(--font-proportional)',
+			'--font-heading': '"Iosevka Etoile", var(--font-sans)',
 			'--font-mono': 'ui-monospace, SFMono-Regular, Menlo, var(--font-monospaced)'
 		});
 		prefs.init();
 		expect(painted()['--font-sans']).toBe("'OpenDyslexic', var(--font-proportional)");
+		// A heading falls back to the app's own face, not to the stack that face
+		// was chosen over: one face set for the app is read on the headings too.
+		expect(painted()['--font-heading']).toContain('var(--font-sans)');
 		prefs.set('fonts', { ui: 'system', heading: 'system', mono: 'system' });
 		expect(painted()).toEqual({});
 	});

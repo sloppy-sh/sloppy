@@ -234,10 +234,11 @@ const FACE_FAMILIES: Record<
 	}
 };
 
-/** The token each role is read from, and the stack a face is laid over there. */
+/** The token each role is read from, and the stack a face is laid over there —
+ *  which for a heading is the app's own face, the one that role already had. */
 const FACE_TOKENS: Record<FaceRole, { token: string; under: string }> = {
 	ui: { token: '--font-sans', under: 'var(--font-proportional)' },
-	heading: { token: '--font-heading', under: 'var(--font-proportional)' },
+	heading: { token: '--font-heading', under: 'var(--font-sans)' },
 	mono: { token: '--font-mono', under: 'var(--font-monospaced)' }
 };
 

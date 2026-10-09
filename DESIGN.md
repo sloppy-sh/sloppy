@@ -1449,10 +1449,12 @@ nothing under it.
   set in, and the one code, addresses and the mono bits take (§ "A look is a file"). Each is
   a name rather than a rule — a face Sloppy ships or a family the look asks for.
 - **The app's own face**: Inter with a system fallback (`Inter, system-ui, -apple-system,
-"Segoe UI", sans-serif`). One family for chrome, node titles and block text.
-- **Headings take the app's own face until a look names another.** A notebook does not
-  change typeface to make a heading feel important, so a display face is somebody's
-  deliberate choice for their own Sloppy and never the product's taste.
+"Segoe UI", sans-serif`). What chrome, node titles and block text are set in.
+- **Headings take the app's own face until a look names another**, so `--font-heading`
+  falls back to `--font-sans` rather than to a stack of its own. A notebook does not change
+  typeface to make a heading feel important, so a display face is somebody's deliberate
+  choice for their own Sloppy and never the product's taste — and one face chosen for the
+  app is one face read everywhere a reader who needs it looks.
 - **Code and the address face**: JetBrains Mono with a `ui-monospace` fallback, tabular
   figures, always. An address is scanned and compared character by character, and `1a1`
   against `1al` must never be a question the reader has to resolve. Every address in the
@@ -1467,8 +1469,10 @@ nothing under it.
 - **The faces Sloppy ships** are `inter`, `atkinson` and `opendyslexic`, which it holds
   itself, and `apple` for the device's own — SF Pro on Apple hardware, with its monospace
   companion where the role is drawn to one width. `system` is the role's own stack. A face
-  is chosen per role, so somebody who needs OpenDyslexic to read sets it for all three;
-  nothing else moves a role they did not ask about.
+  is chosen per role, and a role that derives from another follows it: somebody who needs
+  OpenDyslexic to read sets the app's face and the headings come with it, while the face for
+  code is theirs to set or to leave. A family the device does not have falls back to the
+  stack the role already had, the derived ones included.
 - **A face that cannot hold its figures to one width drops the guarantee, never the
   family.** **Legibility outranks alignment** — a reader who needs OpenDyslexic to read an
   address at all does not get an exception carved out of it for our nicest column. A family

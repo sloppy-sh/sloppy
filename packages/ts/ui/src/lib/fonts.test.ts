@@ -72,9 +72,10 @@ describe('the three faces', () => {
 			expect(stack, `:root leaves ${role} without a family`).toMatch(/^['\-a-zA-Z]/);
 			expect(stack, `${role} ends nowhere`).toMatch(/(sans-serif|monospace|serif)$/);
 		}
-		// Two stacks, three roles: a heading is the app's own face until a look
-		// names another — DESIGN.md § Typography.
-		expect(spelledOut('--font-heading')).toBe(spelledOut('--font-sans'));
+		// Two stacks, three roles: a heading reaches the app's own face through the
+		// token rather than standing on a copy of its stack, so a face chosen for
+		// the app carries the headings with it — DESIGN.md § Typography.
+		expect(BARE.get('--font-heading')).toBe('var(--font-sans)');
 		expect(spelledOut('--font-mono')).not.toBe(spelledOut('--font-sans'));
 	});
 

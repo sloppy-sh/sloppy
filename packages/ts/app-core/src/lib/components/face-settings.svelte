@@ -24,8 +24,10 @@
 	const THEIR_OWN = '…';
 
 	let naming = $state<FaceRole | null>(null);
-	let typed = $state('');
-	let problem = $state<string | null>(null);
+	/** What is in a role's field, where that is not the family already kept
+	 *  there, and what was wrong with the last name submitted to it. */
+	let typed = $state<Partial<Record<FaceRole, string>>>({});
+	let problem = $state<Partial<Record<FaceRole, string>>>({});
 
 	/** The family a role is set in where it is one nothing here offers, which is
 	 *  what the row shows and the field opens on. */
@@ -34,32 +36,49 @@
 		return (FACES as string[]).includes(face) ? null : face;
 	}
 
+	/** Whether the field is open. A role standing on a family of its own keeps it
+	 *  open, because a typed name is corrected and cleared there rather than
+	 *  behind a choice that is already made. */
+	function asking(role: FaceRole): boolean {
+		return naming === role || family(role) !== null;
+	}
+
 	/** The one of a row's choices that is on. */
 	function picked(role: FaceRole): string {
-		if (naming === role || family(role) !== null) return THEIR_OWN;
-		return prefs.current.fonts[role];
+		return asking(role) ? THEIR_OWN : prefs.current.fonts[role];
+	}
+
+	function inTheField(role: FaceRole): string {
+		return typed[role] ?? family(role) ?? '';
 	}
 
 	function wear(role: FaceRole, face: string): void {
 		naming = null;
-		problem = null;
+		delete typed[role];
+		delete problem[role];
 		prefs.set('fonts', { ...prefs.current.fonts, [role]: face });
 	}
 
 	function nameOne(role: FaceRole): void {
 		naming = role;
-		problem = null;
-		typed = family(role) ?? '';
+		delete problem[role];
 	}
 
 	function useTyped(role: FaceRole): void {
-		if (!namesAFace(typed)) {
-			problem = 'That is not the name of a face. Type the family name on its own.';
+		const asked = inTheField(role).trim();
+		if (!namesAFace(asked)) {
+			problem[role] = 'That is not the name of a face. Type the family name on its own.';
 			return;
 		}
-		const asked = typed.trim();
-		typed = '';
 		wear(role, asked);
+	}
+
+	/** Back to the face that is kept: the family, where the role stands on one,
+	 *  and otherwise out of the field and on to the face it had. */
+	function letItBe(role: FaceRole): void {
+		delete typed[role];
+		delete problem[role];
+		if (naming === role) naming = null;
 	}
 </script>
 
@@ -86,7 +105,7 @@
 					onpick={() => nameOne(role)}
 				/>
 			</div>
-			{#if naming === role}
+			{#if asking(role)}
 				<form
 					class="flex flex-col gap-2 sm:flex-row"
 					onsubmit={(event) => {
@@ -95,7 +114,7 @@
 					}}
 				>
 					<Input
-						bind:value={typed}
+						bind:value={() => inTheField(role), (asked) => (typed[role] = asked)}
 						maxlength={FACE_NAME_MAX}
 						autocapitalize="words"
 						autocomplete="off"
@@ -112,18 +131,14 @@
 							type="button"
 							variant="ghost"
 							class="h-control flex-1 sm:flex-none"
-							onclick={() => {
-								naming = null;
-								problem = null;
-								typed = '';
-							}}
+							onclick={() => letItBe(role)}
 						>
 							Never mind
 						</Button>
 					</div>
 				</form>
-				{#if problem}
-					<p class="text-sm text-destructive" role="alert">{problem}</p>
+				{#if problem[role]}
+					<p class="text-sm text-destructive" role="alert">{problem[role]}</p>
 				{/if}
 			{/if}
 		</fieldset>
