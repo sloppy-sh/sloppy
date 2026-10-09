@@ -38,7 +38,7 @@ export const LOOK_CSS_MAX = 64 * 1024;
 
 const NO_WEB = "A look cannot load anything from the web.";
 const NO_IMPORT = `${NO_WEB} Take out the @import.`;
-const NO_PICTURE = `${NO_WEB} Take out the picture it loads from the web.`;
+const NO_PICTURE = `${NO_WEB} Take out the web address.`;
 
 /** An escape, a comment, then a string — in the order a CSS parser meets them,
  *  so a `/*` inside a string is text and a quote inside a comment is a comment.
@@ -72,11 +72,22 @@ function held(token: string): string {
   return spelledOut(token.slice(1, closed ? -1 : undefined));
 }
 
-/** Whether a target names somewhere other than the look itself. A look carries
- *  its own pictures as `data:` URIs, and everything a stylesheet can fetch from
- *  elsewhere names a host — which takes a `//`. */
+/**
+ * Whether a target names somewhere other than the page itself. Read the other
+ * way round from the leaks it is for: anything carrying a SCHEME is somewhere
+ * else unless it is `data:`, and so is anything beginning `//`, whatever the
+ * scheme would have been. What is left — `#a-shape`, `./a.png`, a bare word —
+ * names this page or what it was served from, which is not away.
+ *
+ * A scheme without its slashes still resolves to a host (`https:example.com`
+ * is `https://example.com`), which is why this reads the scheme rather than
+ * the slashes.
+ */
 function pointsAway(target: string): boolean {
-  return !DATA_URI.test(target) && target.includes("//");
+  const said = target.trim();
+  if (said.startsWith("//")) return true;
+  const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(said);
+  return scheme !== null && !DATA_URI.test(said);
 }
 
 /**
@@ -99,10 +110,10 @@ function read(css: string): { plain: string; away: boolean } {
   return { plain: spelledOut(plain), away };
 }
 
-/** Whether any `url()` here loads from somewhere other than the look itself. */
+/** Whether any `url()` here loads from somewhere other than the page itself. */
 function loadsFromAway(plain: string): boolean {
   for (const call of plain.matchAll(URL_CALL)) {
-    if (!DATA_URI.test(call[1])) return true;
+    if (pointsAway(call[1])) return true;
   }
   return false;
 }
@@ -116,6 +127,9 @@ function loadsFromAway(plain: string): boolean {
 export function cssIsSafe(css: string): string | null {
   const { plain, away } = read(css);
   if (IMPORTS.test(plain)) return NO_IMPORT;
+  // A string naming somewhere else is refused whether or not THIS rule would
+  // have fetched it: `image-set` and `src` take an address without a `url()`
+  // around it, and nothing else in a look has reason to carry one.
   if (away || loadsFromAway(plain)) return NO_PICTURE;
   return null;
 }

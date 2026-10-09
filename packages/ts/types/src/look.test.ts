@@ -182,7 +182,7 @@ describe("a look that would reach the network", () => {
       "@font-face { src: url(https://a.example/f.woff2) }",
     ]) {
       expect(cssIsSafe(rules), rules).toBe(
-        "A look cannot load anything from the web. Take out the picture it loads from the web.",
+        "A look cannot load anything from the web. Take out the web address.",
       );
     }
   });
@@ -196,7 +196,7 @@ describe("a look that would reach the network", () => {
         'h2 { content: "/*"; background: url(https://a.example/p.png); content: "*/" }',
       ),
     ).toBe(
-      "A look cannot load anything from the web. Take out the picture it loads from the web.",
+      "A look cannot load anything from the web. Take out the web address.",
     );
     expect(
       cssIsSafe(
@@ -216,7 +216,7 @@ describe("a look that would reach the network", () => {
       'a { background: image-set("https:\\2f\\2f a.example/p.png" 1x) }',
     ]) {
       expect(cssIsSafe(rules), rules).toBe(
-        "A look cannot load anything from the web. Take out the picture it loads from the web.",
+        "A look cannot load anything from the web. Take out the web address.",
       );
     }
   });
@@ -229,6 +229,31 @@ describe("a look that would reach the network", () => {
 
   // The gate is on the look as well as on the place the rules are applied, so
   // a look carrying either never lands anywhere.
+  // A special scheme resolves to a host with or without its slashes, so the
+  // gate reads the scheme rather than the slashes.
+  it("is turned down for an address whose scheme carries no slashes", () => {
+    for (const rules of [
+      "body { background-image: url(https:example.com/paper.png) }",
+      '@font-face { src: "https:example.com/a.woff2" }',
+      '.a { background-image: image-set("HTTPS:example.com/a.png" 1x) }',
+    ]) {
+      expect(cssIsSafe(rules)).not.toBeNull();
+    }
+  });
+
+  // What is left after the schemes and the slashes names this page or what
+  // served it, which is not the web.
+  it("lets a look point at itself, at the page, and at what served it", () => {
+    for (const rules of [
+      ".a { clip-path: url(#a-shape) }",
+      ".a { background-image: url(./paper.png) }",
+      ".a { background-image: url(paper.png) }",
+      '.a { filter: url("#blur") }',
+    ]) {
+      expect(cssIsSafe(rules)).toBeNull();
+    }
+  });
+
   it("is refused as a file for the same two, in the line a person reads", () => {
     expect(refusal({ css: "@import 'https://a.example/x.css';" })).toBe(
       "A look cannot load anything from the web. Take out the @import.",
@@ -236,7 +261,7 @@ describe("a look that would reach the network", () => {
     expect(
       refusal({ css: "h2 { background: url(https://a.example/p.png) }" }),
     ).toBe(
-      "A look cannot load anything from the web. Take out the picture it loads from the web.",
+      "A look cannot load anything from the web. Take out the web address.",
     );
   });
 });
