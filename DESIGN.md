@@ -345,8 +345,12 @@ do, never in a parser's words.
 **A look with no `based_on` is worn under an id made from its name, on the app's own light
 ground** — so one meant for a dark ground names the look it is laid over, which is what
 `based_on` is for, and a palette laid over one of Sloppy's five or over a scheme takes that
-look's ground rather than deciding its own. A copy of such a look carries its palette and
-names nothing under it, since the id it is worn under is not a look anybody else has.
+look's ground rather than deciding its own. **That id is counted past every look this
+Sloppy already answers to**: worn under one of its own five, a look somebody called _Dark_
+would take that look's night ground and its night cards under a light palette, and worn
+under a slug of the collection's, the next copy of it would name that scheme as what it is
+built on. A copy of such a look carries its palette and names nothing under it, since the
+id it is worn under is not a look anybody else has.
 
 **`preferences` carries how somebody keeps Sloppy, never what one machine alone means**:
 the graph in front of them, the canvas beside it, the pictures under those and the Sloppy

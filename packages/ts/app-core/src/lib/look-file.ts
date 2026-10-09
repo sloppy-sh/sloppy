@@ -58,16 +58,48 @@ async function schemeAt(slug: string): Promise<Scheme | null> {
 	return (await schemes()).find((one) => one.slug === slug) ?? null;
 }
 
-/** A look's id from its name — the id a look that stands on its own is worn
- *  under, and the name of the file it is saved as. */
+/** What `LOOK_ID` in `@sloppy/types` bounds a look id to. */
+const ID_MAX = 64;
+
+/** A look's id from its name — the name of the file it is saved as, and where
+ *  it is free, the id a look that stands on its own is worn under. */
 export function lookId(name: string): string {
 	const said = name
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+/, '')
-		.slice(0, 64)
+		.slice(0, ID_MAX)
 		.replace(/-+$/, '');
 	return said === '' ? 'a-look' : said;
+}
+
+function countedId(said: string, n: number): string {
+	const tail = `-${n}`;
+	return `${said.slice(0, ID_MAX - tail.length).replace(/-+$/, '')}${tail}`;
+}
+
+/** Every id this Sloppy already answers to with a look of its own: its five,
+ *  and the collection's slugs where the collection can be read. */
+async function spokenFor(): Promise<ReadonlySet<string>> {
+	const taken = new Set<string>(BUILT_IN_LOOKS);
+	try {
+		for (const one of await schemes()) taken.add(one.slug);
+	} catch {
+		// Sloppy's own five are the ids a palette lands visibly wrong on, and they
+		// are in hand whether or not the collection arrived.
+	}
+	return taken;
+}
+
+/** The id a look that stands on its own is worn under: the one its name makes,
+ *  counted past any look this Sloppy already answers to — DESIGN.md § "A look
+ *  is a file" says what landing on one of those would do to it. */
+async function ownId(name: string): Promise<string> {
+	const said = lookId(name);
+	const taken = await spokenFor();
+	let id = said;
+	for (let n = 2; taken.has(id); n++) id = countedId(said, n);
+	return id;
 }
 
 /** What the look this device wears is called, and the look to lay it over again
@@ -131,17 +163,28 @@ export async function wearLook(look: Look): Promise<string | null> {
 		const reaching = cssIsSafe(look.css);
 		if (reaching !== null) return reaching;
 	}
+	const palette = paintOf(look);
 	const under = look.based_on === undefined ? null : await laidOver(look.based_on);
 	if (typeof under === 'string') return under;
-	wear(look, under);
+	const own = look.based_on === undefined && palette !== null ? await ownId(look.name) : null;
+	wear(look, palette, under, own);
 	return null;
+}
+
+/** The paint the look lays over whatever is underneath, or null where it names
+ *  none. */
+function paintOf(look: Look): NonNullable<Look['palette']> | null {
+	return look.palette !== undefined && Object.keys(look.palette).length > 0 ? look.palette : null;
 }
 
 /** Everything the look states, with nothing awaited between: a file lands as
  *  one change rather than as a run of them. */
-function wear(look: Look, under: SchemeDressing | null): void {
-	const palette =
-		look.palette !== undefined && Object.keys(look.palette).length > 0 ? look.palette : null;
+function wear(
+	look: Look,
+	palette: NonNullable<Look['palette']> | null,
+	under: SchemeDressing | null,
+	own: string | null
+): void {
 	if (look.based_on !== undefined) {
 		prefs.setLook(under, look.based_on);
 		if (palette !== null) {
@@ -156,11 +199,10 @@ function wear(look: Look, under: SchemeDressing | null): void {
 				look.based_on
 			);
 		}
-	} else if (palette !== null) {
+	} else if (palette !== null && own !== null) {
 		// A look that stands on its own stands on the app's own colours, which
 		// are a light ground — DESIGN.md § "A look is a file".
-		const id = lookId(look.name);
-		prefs.setLook({ slug: id, variant: 'light', tokens: palette }, id);
+		prefs.setLook({ slug: own, variant: 'light', tokens: palette }, own);
 	}
 	if (look.style !== undefined) prefs.set('style', look.style);
 	if (look.density !== undefined) prefs.set('density', look.density);

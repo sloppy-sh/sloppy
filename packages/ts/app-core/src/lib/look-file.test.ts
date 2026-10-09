@@ -2,11 +2,11 @@
 // sent does, and what a file has to hold to be a look — DESIGN.md § "A look is
 // a file".
 
-import { LOOK_CSS_MAX } from '@sloppy/types';
+import { LOOK_CSS_MAX, LOOK_ID } from '@sloppy/types';
 import { dressed, schemes } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { lookId, lookNow, readLook, wearLook } from './look-file.js';
-import { prefs } from './stores/prefs.svelte.js';
+import { BUILT_IN_LOOKS, prefs } from './stores/prefs.svelte.js';
 
 /** A scheme the collection carries, which it runs dark. */
 const NORD = 'base16-nord';
@@ -215,6 +215,47 @@ describe('wearing one', () => {
 		});
 	});
 
+	it.each(BUILT_IN_LOOKS)(
+		"wears one named for Sloppy's own %s under an id of its own, not that look's",
+		async (built) => {
+			expect(lookId(built)).toBe(built);
+			expect(
+				await wearLook({ name: built, palette: { '--background': 'oklch(.97 0 0)' } })
+			).toBeNull();
+			expect(prefs.current.look).not.toBe(built);
+			expect(prefs.current.look).toMatch(LOOK_ID);
+			expect(document.documentElement.getAttribute('data-look')).toBe(prefs.current.look);
+			expect(prefs.dressing?.tokens['--background']).toBe('oklch(.97 0 0)');
+			// The ground under it is the app's own light one, which is what the look
+			// said by naming nothing under itself.
+			expect(prefs.isDark).toBe(false);
+			expect(document.documentElement.classList.contains('dark')).toBe(false);
+			expect((await lookNow(false)).based_on).toBeUndefined();
+		}
+	);
+
+	it('wears one named for a scheme in the collection under an id of its own too', async () => {
+		expect(lookId('Base16 Nord')).toBe(NORD);
+		expect(
+			await wearLook({ name: 'Base16 Nord', palette: { '--background': 'oklch(.97 0 0)' } })
+		).toBeNull();
+		expect(prefs.current.look).not.toBe(NORD);
+		expect(prefs.current.look).toMatch(LOOK_ID);
+		// A copy of it still stands on its own, rather than naming that scheme as
+		// what it is built on.
+		expect((await lookNow(false)).based_on).toBeUndefined();
+	});
+
+	it('wears one under the same id again, worn straight back', async () => {
+		expect(
+			await wearLook({ name: 'Dark', palette: { '--background': 'oklch(.97 0 0)' } })
+		).toBeNull();
+		const id = prefs.current.look;
+		const file = await lookNow(false);
+		expect(await wearLook(file)).toBeNull();
+		expect(prefs.current.look).toBe(id);
+	});
+
 	it('turns down rules that would reach the web, and leaves the ones standing', async () => {
 		prefs.set('css', '.a { color: red }');
 		const why = await wearLook({ name: 'Phoning home', css: '@import url(https://x.test/a.css)' });
@@ -267,5 +308,10 @@ describe("a look's id", () => {
 
 	it('is something rather than nothing where the name is all punctuation', () => {
 		expect(lookId('✦✦✦')).toBe('a-look');
+	});
+
+	it('is an id a look can be worn under, however long the name', () => {
+		expect(lookId('Midnight '.repeat(40))).toMatch(LOOK_ID);
+		expect(lookId('x'.repeat(200))).toMatch(LOOK_ID);
 	});
 });
