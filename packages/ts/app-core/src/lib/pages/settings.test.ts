@@ -31,6 +31,7 @@ import { people } from '../stores/people.svelte.js';
 import { aGraphFolder } from '../browser-files.test-support.js';
 import { graphHere } from '../graph-here.svelte.js';
 import Settings from './settings.svelte';
+import SettingsInChrome from './settings-in-chrome.test-support.svelte';
 
 const STORED: ProfileView = {
 	did: DID,
@@ -585,5 +586,80 @@ describe('where your Sloppy is', () => {
 		expect(prefs.current.origin).toBeNull();
 		expect(runtime.apiHost()).toBe('http://api.test');
 		expect(target.textContent).toContain('Sloppy is back where it came from');
+	});
+});
+
+// DESIGN.md § Layout: the page's own sections stand in the column beside it,
+// and across its head where there is no column.
+describe('the sections of a long page', () => {
+	/** A window wide enough for the column to stand. */
+	function onADesk(): void {
+		Object.defineProperty(globalThis, 'matchMedia', {
+			configurable: true,
+			writable: true,
+			value: (query: string) => ({
+				matches: query.includes('min-width'),
+				addEventListener: () => {},
+				removeEventListener: () => {}
+			})
+		});
+	}
+
+	const contents = () => document.body.querySelectorAll('nav[aria-label="On this page"]');
+	const entries = (nav: Element) =>
+		[...nav.querySelectorAll('button')].map((one) => one.textContent?.trim());
+
+	it('stand in the column, and name sections the page itself names', async () => {
+		onADesk();
+		mounted = mount(SettingsInChrome, { target });
+		flushSync();
+		await settle();
+
+		const [nav] = contents();
+		expect(nav).toBeDefined();
+		const named = entries(nav);
+		expect(named).toContain('Appearance');
+		expect(named).toContain('When something goes wrong');
+		// Nothing here reaches an assistant, so the page holds no such section
+		// and the contents name none.
+		expect(named).not.toContain('An assistant');
+
+		const headings = [...target.querySelectorAll('h2')].map((one) => one.textContent?.trim());
+		for (const name of named) expect(headings).toContain(name);
+	});
+
+	it('take the reader to the one they ask for, and the keyboard with them', async () => {
+		onADesk();
+		const went: string[] = [];
+		Object.defineProperty(Element.prototype, 'scrollIntoView', {
+			configurable: true,
+			writable: true,
+			value(this: HTMLElement) {
+				went.push(this.id);
+			}
+		});
+		mounted = mount(SettingsInChrome, { target });
+		flushSync();
+		await settle();
+
+		const [nav] = contents();
+		const asked = [...nav.querySelectorAll('button')].find(
+			(one) => one.textContent?.trim() === 'When something goes wrong'
+		);
+		asked?.click();
+		flushSync();
+
+		expect(went).toEqual(['what-went-wrong']);
+		expect(document.activeElement?.id).toBe('what-went-wrong');
+	});
+
+	it('stand across the head of the page where there is no column', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		const found = contents();
+		expect(found).toHaveLength(1);
+		expect(entries(found[0])).toContain('Appearance');
 	});
 });

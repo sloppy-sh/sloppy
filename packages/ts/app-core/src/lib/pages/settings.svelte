@@ -5,7 +5,15 @@
 
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import { ChoicePill, PersonChip } from '@sloppy/ui';
+	import Download from '@lucide/svelte/icons/download';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import Globe from '@lucide/svelte/icons/globe';
+	import HistoryIcon from '@lucide/svelte/icons/history';
+	import LifeBuoy from '@lucide/svelte/icons/life-buoy';
+	import Palette from '@lucide/svelte/icons/palette';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import UserRound from '@lucide/svelte/icons/user-round';
+	import { ChoicePill, DESK_FROM_PX, DeskNavParts, PersonChip, scrollFade } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
@@ -45,6 +53,8 @@
 	import { session } from '../stores/session.svelte.js';
 	import HistorySurface from './history.svelte';
 	import { navShows } from './routes.js';
+	import { goToSection, SectionsRead } from './settings-sections.svelte.js';
+	import { MediaQuery } from 'svelte/reactivity';
 
 	const vault = runtime.vault();
 
@@ -78,6 +88,38 @@
 	/** With nobody signed in there is no nav pill under the page, and sign-in is
 	 *  the only surface this one is reached from. */
 	const wayOut = $derived(session.ready && !navShows());
+
+	/** What this page holds, in the order it holds it — the contents beside it
+	 *  on a desk and across its head on a phone. A section nothing shows is in
+	 *  neither. */
+	const sections = $derived([
+		{ id: 'appearance', name: 'Appearance', icon: Palette },
+		...(graphHere.open
+			? [{ id: 'your-folder', name: 'Where your writing is', icon: FolderOpen }]
+			: session.onDevice
+				? [
+						{ id: 'your-folder', name: 'Where your writing is', icon: FolderOpen },
+						...(runtime.identities()
+							? [{ id: 'who-you-are', name: 'Who you write as', icon: UserRound }]
+							: []),
+						...(graphHistory.keeps ? [{ id: 'history', name: 'History', icon: HistoryIcon }] : [])
+					]
+				: [
+						{ id: 'your-sloppy', name: 'Where your Sloppy is', icon: Globe },
+						...(graphHere.offered
+							? [{ id: 'graph-here', name: 'A graph kept on this device', icon: FolderOpen }]
+							: [])
+					]),
+		...(offersCopy ? [{ id: 'your-writing', name: 'Your writing', icon: Download }] : []),
+		...(chat.reaches ? [{ id: 'an-assistant', name: 'An assistant', icon: Sparkles }] : []),
+		{ id: 'what-went-wrong', name: 'When something goes wrong', icon: LifeBuoy },
+		...(session.onDevice ? [] : [{ id: 'you', name: 'You', icon: UserRound }])
+	]);
+
+	const read = new SectionsRead();
+	$effect(() => read.follow(sections.map((section) => section.id)));
+
+	const desk = new MediaQuery(`(min-width: ${DESK_FROM_PX}px)`);
 
 	$effect(() => {
 		if (session.signedIn && !session.onDevice && !people.me) void people.read().catch(() => {});
@@ -195,107 +237,142 @@
 			<h1 class="text-3xl font-semibold tracking-tight">Settings</h1>
 		</div>
 
-		<fieldset class="space-y-3">
-			<legend class="text-sm font-medium">Theme</legend>
-			<div class="flex flex-wrap gap-2">
-				{#each THEMES as theme (theme)}
-					<ChoicePill
-						group="theme"
-						value={theme}
-						label={THEME_LABELS[theme]}
-						checked={prefs.current.scheme === null && prefs.current.theme === theme}
-						onpick={() => wearTheme(theme)}
-					/>
+		{#if !desk.current}
+			<nav
+				aria-label="On this page"
+				class="-mx-5 flex gap-2 overflow-x-auto scroll-fade-x px-5 [scrollbar-width:none] sm:-mx-8 sm:px-8"
+				{@attach scrollFade('x')}
+			>
+				{#each sections as section (section.id)}
+					<button
+						type="button"
+						onclick={() => goToSection(section.id)}
+						class="flex min-h-control shrink-0 items-center rounded-full border border-input px-3 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					>
+						{section.name}
+					</button>
 				{/each}
-			</div>
-		</fieldset>
+			</nav>
+		{/if}
 
-		<SchemePicker />
+		<section
+			id="appearance"
+			tabindex="-1"
+			class="space-y-3 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+		>
+			<h2 class="text-sm font-medium">Appearance</h2>
+			<div class="space-y-10">
+				<fieldset class="space-y-3">
+					<legend class="text-sm font-medium">Theme</legend>
+					<div class="flex flex-wrap gap-2">
+						{#each THEMES as theme (theme)}
+							<ChoicePill
+								group="theme"
+								value={theme}
+								label={THEME_LABELS[theme]}
+								checked={prefs.current.scheme === null && prefs.current.theme === theme}
+								onpick={() => wearTheme(theme)}
+							/>
+						{/each}
+					</div>
+				</fieldset>
 
-		<fieldset class="space-y-3">
-			<legend class="text-sm font-medium">Accent</legend>
-			<div class="flex flex-wrap gap-2">
-				{#each ACCENTS as accent (accent)}
-					<ChoicePill
-						group="accent"
-						value={accent}
-						label={ACCENT_LABELS[accent]}
-						checked={prefs.current.accent === accent}
-						onpick={() => prefs.set('accent', accent)}
-					/>
-				{/each}
-			</div>
-		</fieldset>
+				<SchemePicker />
 
-		<fieldset class="space-y-3">
-			<legend class="text-sm font-medium">Style</legend>
-			<div class="flex flex-wrap gap-2">
-				{#each STYLES as style (style)}
-					<ChoicePill
-						group="style"
-						value={style}
-						label={STYLE_LABELS[style]}
-						checked={prefs.current.style === style}
-						onpick={() => prefs.set('style', style)}
-					/>
-				{/each}
-			</div>
-		</fieldset>
+				<fieldset class="space-y-3">
+					<legend class="text-sm font-medium">Accent</legend>
+					<div class="flex flex-wrap gap-2">
+						{#each ACCENTS as accent (accent)}
+							<ChoicePill
+								group="accent"
+								value={accent}
+								label={ACCENT_LABELS[accent]}
+								checked={prefs.current.accent === accent}
+								onpick={() => prefs.set('accent', accent)}
+							/>
+						{/each}
+					</div>
+				</fieldset>
 
-		<fieldset class="space-y-3">
-			<legend class="text-sm font-medium">Font</legend>
-			<div class="flex flex-wrap gap-2">
-				{#each FONTS as font (font)}
-					<ChoicePill
-						group="font"
-						value={font}
-						label={FONT_LABELS[font]}
-						checked={prefs.current.font === font}
-						onpick={() => prefs.set('font', font)}
-					/>
-				{/each}
-			</div>
-		</fieldset>
+				<fieldset class="space-y-3">
+					<legend class="text-sm font-medium">Style</legend>
+					<div class="flex flex-wrap gap-2">
+						{#each STYLES as style (style)}
+							<ChoicePill
+								group="style"
+								value={style}
+								label={STYLE_LABELS[style]}
+								checked={prefs.current.style === style}
+								onpick={() => prefs.set('style', style)}
+							/>
+						{/each}
+					</div>
+				</fieldset>
 
-		<fieldset class="space-y-3">
-			<legend class="text-sm font-medium">How close it is drawn</legend>
-			<div class="flex flex-wrap gap-2">
-				{#each DENSITIES as density (density)}
-					<ChoicePill
-						group="density"
-						value={density}
-						label={DENSITY_LABELS[density]}
-						checked={prefs.current.density === density}
-						onpick={() => prefs.set('density', density)}
-					/>
-				{/each}
-			</div>
-			<p class="text-sm text-muted-foreground">
-				Anything you tap stays big enough to tap, whatever you choose here.
-			</p>
-		</fieldset>
+				<fieldset class="space-y-3">
+					<legend class="text-sm font-medium">Font</legend>
+					<div class="flex flex-wrap gap-2">
+						{#each FONTS as font (font)}
+							<ChoicePill
+								group="font"
+								value={font}
+								label={FONT_LABELS[font]}
+								checked={prefs.current.font === font}
+								onpick={() => prefs.set('font', font)}
+							/>
+						{/each}
+					</div>
+				</fieldset>
 
-		<fieldset class="space-y-3">
-			<legend class="text-sm font-medium">Screen</legend>
-			<div class="flex flex-wrap gap-2">
-				{#each EFFECTS as effect (effect)}
-					<ChoicePill
-						group="effect"
-						value={effect}
-						label={EFFECT_LABELS[effect]}
-						checked={prefs.current.effect === effect}
-						onpick={() => prefs.set('effect', effect)}
-					/>
-				{/each}
+				<fieldset class="space-y-3">
+					<legend class="text-sm font-medium">How close it is drawn</legend>
+					<div class="flex flex-wrap gap-2">
+						{#each DENSITIES as density (density)}
+							<ChoicePill
+								group="density"
+								value={density}
+								label={DENSITY_LABELS[density]}
+								checked={prefs.current.density === density}
+								onpick={() => prefs.set('density', density)}
+							/>
+						{/each}
+					</div>
+					<p class="text-sm text-muted-foreground">
+						Anything you tap stays big enough to tap, whatever you choose here.
+					</p>
+				</fieldset>
+
+				<fieldset class="space-y-3">
+					<legend class="text-sm font-medium">Screen</legend>
+					<div class="flex flex-wrap gap-2">
+						{#each EFFECTS as effect (effect)}
+							<ChoicePill
+								group="effect"
+								value={effect}
+								label={EFFECT_LABELS[effect]}
+								checked={prefs.current.effect === effect}
+								onpick={() => prefs.set('effect', effect)}
+							/>
+						{/each}
+					</div>
+				</fieldset>
 			</div>
-		</fieldset>
+		</section>
 
 		{#if graphHere.open}
-			<div class="space-y-3 border-t border-border pt-8">
+			<section
+				id="your-folder"
+				tabindex="-1"
+				class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+			>
 				<OpenHere />
-			</div>
+			</section>
 		{:else if session.onDevice}
-			<div class="space-y-3 border-t border-border pt-8">
+			<section
+				id="your-folder"
+				tabindex="-1"
+				class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+			>
 				<h2 class="text-sm font-medium">Where your writing is</h2>
 				<p class="text-sm text-muted-foreground">
 					Your graph is a folder on this device, and everything you write stays in it. Publishing a
@@ -323,17 +400,25 @@
 						<p class="text-sm text-destructive" role="alert">{folderProblem}</p>
 					{/if}
 				{/if}
-			</div>
+			</section>
 
 			{#if runtime.identities()}
-				<div class="space-y-3 border-t border-border pt-8">
+				<section
+					id="who-you-are"
+					tabindex="-1"
+					class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+				>
 					<h2 class="text-sm font-medium">Who you write as</h2>
 					<IdentitySettings />
-				</div>
+				</section>
 			{/if}
 
 			{#if graphHistory.keeps}
-				<div class="space-y-3 border-t border-border pt-8">
+				<section
+					id="history"
+					tabindex="-1"
+					class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+				>
 					<h2 class="text-sm font-medium">History</h2>
 					<p class="text-sm text-muted-foreground">
 						Keep a version of your graph whenever it is worth coming back to, and see what has
@@ -344,10 +429,14 @@
 						Open the history
 					</Button>
 					<HistorySettings />
-				</div>
+				</section>
 			{/if}
 		{:else}
-			<div class="space-y-3 border-t border-border pt-8">
+			<section
+				id="your-sloppy"
+				tabindex="-1"
+				class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+			>
 				<h2 class="text-sm font-medium">Where your Sloppy is</h2>
 				<p class="text-sm text-muted-foreground">
 					Your writing lives wherever Sloppy is. Give the web address of one you run yourself and
@@ -381,17 +470,25 @@
 						Use the one Sloppy came with
 					</Button>
 				{/if}
-			</div>
+			</section>
 
 			{#if graphHere.offered}
-				<div class="space-y-3 border-t border-border pt-8">
+				<section
+					id="graph-here"
+					tabindex="-1"
+					class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+				>
 					<OpenHere />
-				</div>
+				</section>
 			{/if}
 		{/if}
 
 		{#if offersCopy}
-			<div class="space-y-3 border-t border-border pt-8">
+			<section
+				id="your-writing"
+				tabindex="-1"
+				class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+			>
 				<h2 class="text-sm font-medium">Your writing</h2>
 				<p class="text-sm text-muted-foreground">
 					A copy of everything you have written — every graph, every note, and every section of them
@@ -414,17 +511,25 @@
 				{#if copyProblem}
 					<p class="text-sm text-destructive" role="alert">{copyProblem}</p>
 				{/if}
-			</div>
+			</section>
 		{/if}
 
 		{#if chat.reaches}
-			<div class="space-y-3 border-t border-border pt-8">
+			<section
+				id="an-assistant"
+				tabindex="-1"
+				class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+			>
 				<h2 class="text-sm font-medium">An assistant</h2>
 				<AiSettings />
-			</div>
+			</section>
 		{/if}
 
-		<div class="space-y-3 border-t border-border pt-8">
+		<section
+			id="what-went-wrong"
+			tabindex="-1"
+			class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+		>
 			<h2 class="text-sm font-medium">When something goes wrong</h2>
 			<p class="text-sm text-muted-foreground">
 				Sloppy can keep a record of what it does while you use it — what you asked of it, what came
@@ -432,10 +537,15 @@
 				the record to whoever is fixing it.
 			</p>
 			<WhatHappened />
-		</div>
+		</section>
 
 		{#if !session.onDevice}
-			<div class="space-y-3 border-t border-border pt-8">
+			<section
+				id="you"
+				tabindex="-1"
+				class="space-y-3 border-t border-border pt-8 scroll-mt-[calc(var(--app-chrome-top,0px)+1.5rem)]"
+			>
+				<h2 class="text-sm font-medium">You</h2>
 				{#if session.signedIn}
 					{#if profile}
 						<a
@@ -463,10 +573,34 @@
 						Sign in
 					</a>
 				{/if}
-			</div>
+			</section>
 		{/if}
 	</div>
 </div>
+
+<DeskNavParts>
+	{#snippet children({ collapsed }: { collapsed: boolean })}
+		<nav aria-label="On this page" class="flex flex-col gap-0.5">
+			{#each sections as section (section.id)}
+				{@const Icon = section.icon}
+				{@const here = read.at === section.id}
+				<button
+					type="button"
+					aria-label={section.name}
+					aria-current={here ? 'true' : undefined}
+					title={collapsed ? section.name : undefined}
+					onclick={() => goToSection(section.id)}
+					class="flex min-h-control w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-sm transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {collapsed
+						? 'justify-center'
+						: ''} {here ? 'bg-muted text-foreground' : 'text-muted-foreground'}"
+				>
+					<Icon class="size-5 shrink-0" />
+					{#if !collapsed}<span class="min-w-0 truncate">{section.name}</span>{/if}
+				</button>
+			{/each}
+		</nav>
+	{/snippet}
+</DeskNavParts>
 
 {#if graphHistory.keeps}
 	<HistorySurface bind:open={showingHistory} />
