@@ -505,6 +505,8 @@ until a tag is selected.
   generations fade out under the question has answered by drawing a different graph. It is
   measured against the band a picture can put under a mark as well as against the paper
   (§ "The wallpaper"), so a wallpaper cannot take the unselected graph off the page either.
+  **The sets reading keeps that dim and gives those notes a place**: outside every region
+  rather than off the canvas (§ "Sets — the tags as places").
 - Past eight selected tags the slots repeat. Eight questions at once is already more than
   the channel can carry, and the rail carries the written tag regardless.
 - Every slot owes **3:1 against the surface** on every theme, because a node fill carrying
@@ -1589,11 +1591,11 @@ nothing under it.
   column against its edge, held clear of the system nav (§ "The four inset vars") — the edge
   nearest the rest of the chrome, which is the thumb's edge over the canvas and the column's
   edge beside it, so a pointer never crosses the whole field to reach them.
-- **Which way the notes are seen — the graph or the outline — is one control, kept with the
-  graph's name in both.** It is the one act that has to be reachable from either view, so it
-  never rides the canvas, which the outline puts away: it stands in the row over the canvas
-  and in the column beside it, in the same place whichever view is up, and says both ways at
-  once rather than only the way back.
+- **Which way the notes are seen — the graph, the outline or the sets (§ "Sets — the tags as
+  places") — is one control, kept with the graph's name in all three.** It is the one act that
+  has to be reachable from every view, so it never rides the canvas, which the outline puts
+  away: it stands in the row over the canvas and in the column beside it, in the same place
+  whichever view is up, and says every way at once rather than only the way back.
 - **Two arrangements of the same parts, and the width the docks stand at decides which.**
   Over the canvas, where the graph is the whole screen: a pill anchored bottom-centre
   (`fixed`, safe-area inset) holds the destinations, a card at the top holds the graph you
@@ -1604,7 +1606,7 @@ nothing under it.
   keyboard-reachable, `aria-label`led, either way. **Neither arrangement has a part the
   other lacks**, and the column narrows to an icon rail and opens again, which is this
   device's choice (§ Persistence). Its head is where the page is looked at differently —
-  the column narrowed, and the graph or the outline chosen — so those two stand together
+  the column narrowed, and the way the notes are seen chosen — so those two stand together
   there, apart from the acts that write. The column folds nothing behind a "More": the acts
   the row over the canvas keeps behind one, for want of room, stand as rows of their own
   beside the graph, and the tags below them can be found by typing and ordered by name or
@@ -2068,6 +2070,88 @@ up and the lift can be 0 in the panned case.
   tap that opens the note and the press that opens the menu, both untouched, and the canvas
   already writes the address and the title beside every mark big enough to carry them.
 
+### Sets — the tags as places
+
+**A third reading of the same canvas, beside the graph and the outline: the tags the reader
+selected drawn as regions, with every note standing in the region of exactly the drawn tags it
+carries.** A note carrying two of them stands where the two overlap; one carrying none stands
+outside every region. The question the rail asks is the shape of the field.
+
+**It is an arrangement of the same marks, never a second canvas.** Depth, provenance, the
+author's look, the orbit on a chosen mark and the lift on an open one are all drawn exactly as
+§ "The mark" draws them, and the only thing that changes is where a mark stands — from the
+genealogy's own geometry to the sets a note is in. A reading that redrew notes as plain dots
+would be a poorer copy of the mark, and the phone would be the surface that lost it.
+
+- **Four sets are drawn at the most**, in selection order, each in the hue slot it already
+  borrows (§ Hue): one circle, two overlapping, three in a ring, four as ellipses — the
+  constructions in which every one of the 1, 3, 7 and 15 regions is actually present. **The
+  geometry is fixed rather than fitted to the counts**, so two devices draw the same diagram
+  from the same question. A fifth selected tag colours its marks exactly as it does today and
+  draws no region; the chrome says so in one line, "The first four are drawn."
+- **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
+  tag's name in quiet ink just inside its outer edge.** Where regions overlap the fills
+  overlap, and that is what says a note is in both. **The fills owe the marks their floors**
+  (§ "Contrast is measured, not assumed"): a mark standing on a tinted region keeps **3:1
+  against the surface it actually lands on** and a dimmed one keeps **1.6:1**, measured over
+  every look the collection dresses rather than assumed. Where one of those fails it is the
+  fill alpha that comes down, never the floor.
+- **No genealogical edges are drawn here, and no edge looks** (§ Edges). A line between two
+  notes says nothing about which sets they are in, and the address and title beside a mark are
+  drawn as they are on the genealogy.
+- **Each field draws its own diagram.** With several graphs on the canvas each one gets its own
+  regions from the same selected tags, laid out beside the last and named exactly as fields
+  are (§ "Several graphs on one canvas"). The tag axis is read inside one graph
+  (docs/ARCHITECTURE.md § "Tagging a note"), and this keeps it so.
+- **Marks are packed inside their region** on a hexagonal lattice from its centre outward, in
+  one deterministic order: notes carrying the same undrawn tags stand together, then by address
+  order, then by ref. The spacing keeps marks clear of one another at the zoom they are drawn
+  at.
+- **The count is bounded here as it is everywhere.** A region holding more notes than its area
+  can show at this zoom folds into one mega-node at its centre, sized by count with the count
+  written on it — the same fold the genealogy draws. A tap brings the canvas to that region,
+  where there is room, and it unfolds; zooming out refolds. **The rest** — every note outside
+  every drawn region — folds the same way and is dimmed. Nothing about a fold is kept: it is a
+  function of the zoom and of what the notes carry.
+- **Nothing selected draws one dimmed fold holding every note**, with one line in the chrome —
+  "Choose tags to draw them as sets." — and one quiet control beside it, "Start with the three
+  most used", which selects the three tags most notes carry.
+
+What a person does:
+
+- **Tags are chosen where they always were, in the rail**, and selecting one draws it. The
+  rail's order is the hue order is the drawing order, so there is nothing new to find.
+- **Tap opens a note, press opens the menu, a pointer resting on a mark previews it**, and
+  choosing and sweeping are untouched.
+- **Moving a note between sets is retagging, and it reaches every surface a tag reaches.** The
+  press menu on a mark carries one row per drawn set — "Into biology" where the note is outside
+  it, "Out of biology" where it is inside — and the bar over a chosen set carries the same rows
+  for everything chosen. **On a desk the mouse drags a mark into a region and drops it**, and a
+  mark that is part of the chosen set takes the set with it. A drop gives those notes the sets
+  of the place they landed, among the drawn tags alone: into every drawn tag the point is
+  inside, out of every drawn tag it is not, and a tag that is not drawn is left untouched. A
+  drop outside every region takes the drawn tags off, and a drop where the mark already stands
+  does nothing. While a mark is held, the region under the pointer is lit a little more so the
+  drop is legible.
+- **Pen inks and touch pans exactly as they do everywhere else.** A finger retags from the
+  menu, and the drag is the desk's shortcut to an act the menu already carries everywhere
+  (PRODUCT.md principle 6) — never a part one arrangement has and the other lacks.
+- **The renderer reports the move and the host writes it.** `GraphRetag` names the notes and
+  the drawn tags they are moving into and out of; the page that owns the notes saves them the
+  way it saves every other change to one. The mark moves on the next layout, and the fold
+  counts follow.
+
+Where it lives:
+
+- **It is a reading, kept the way the graph and the outline are** (§ Persistence): per folder,
+  this device's, and nothing a note or a peer ever hears about.
+- **Changing the reading never remounts the canvas.** The graph keeps where it was looking
+  across a visit to the sets, so coming back is coming back rather than reloading; entering the
+  sets frames the diagram.
+- **Comparing two states is not offered here** (§ "A difference between two states"). What a
+  difference draws is where the notes were, and these regions draw where their tags put them —
+  two answers to one mark. Picking a link target works as it does on the genealogy.
+
 ### The ground
 
 The field is drawn on paper, and the reader says which: **dots, ruled lines, or neither**.
@@ -2318,7 +2402,7 @@ someone signs in.
 The same store holds the view choices that are nobody's business but this device's — the
 tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
 it (§ "The wallpaper"), which graph the reader is in and which they have stood up beside it
-(§ "Several graphs on one canvas"), whether it is read as an outline rather than drawn, and
+(§ "Several graphs on one canvas"), which of the three readings it is seen in, and
 how much room each dock beside it was last given. **Where a device opens several folders at
 once, which of them are open, which is in front, and how each was being read are this
 device's too** — the first two held by the shell that opens them, the last as `views` here,

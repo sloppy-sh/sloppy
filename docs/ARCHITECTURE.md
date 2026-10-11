@@ -2585,6 +2585,21 @@ The ownership line between Svelte and pixi, and level-of-detail as the perf stra
 in [`DESIGN.md`](../DESIGN.md) § "The canvas" — they are design contracts, not just
 implementation notes.
 
+**The host asks for an arrangement; the renderer owns the geometry of both.**
+`GraphSurfaceProps.arrangement` is `'genealogy'` or `'sets'` and an absent one is the
+genealogy, so a host that says nothing draws what it always drew. Which reading is up is a
+view choice the host keeps (`seenAs` in `prefs.svelte.ts`); where every mark lands under
+either reading is the renderer's, computed from the ref and the parent chain or from the
+selected tags — never handed in as coordinates. `DRAWN_SETS_MOST` bounds how many of those
+tags are drawn as regions. Changing the arrangement is not a `remountKey`: the canvas keeps
+its viewport across a visit the way it keeps it across a pan.
+
+**A move between sets is REPORTED, never written here.** `onRetag({ notes, into, outOf })`
+names the notes and, among the drawn tags alone, which they are moving into and out of; the
+page that owns them writes it through `nodes.update` or the bulk tag acts. `@sloppy/graph`
+reaches no server and writes no note field, for the same reason the picker does not
+(§ "Tagging a note"): two writers to one node is the bug that costs a person their edit.
+
 ## A look a person set on a line
 
 **A look is a note's, and it is a look rather than a fact.** `node.edges` is a list of
@@ -4171,38 +4186,38 @@ the canvas beside it, and a count that includes notes that canvas will never lig
 number nobody can act on. Selecting tags still intersects sets across the genealogical tree,
 which is the axis AI.md means; what it does not cross is a graph.
 
-`TagPicker`, in `@sloppy/ui`'s `components/tags/`, is the one surface that edits a note's
+`TagField`, in `@sloppy/ui`'s `components/tags/`, is the one surface that edits a note's
 tags. It is **controlled and does not persist**:
 
 ```ts
-tags: readonly string[];                 // what the note carries now
-known: readonly TagCount[];              // what to complete against, most-used first
-onassign: (tags: string[]) => Promise<void>; // the WHOLE set, never a delta
-refused?: string | null;                 // the server's own words for a set that would not save
+tags: readonly Tag[];                    // what the note carries now
+suggestions?: readonly Tag[];            // what to complete against, most-used first
+onchange: (tags: Tag[]) => Promise<void> | void; // the WHOLE set, never a delta
+refused?: string | null;                 // what to say when onchange rejected without words of its own
 ```
 
-The page that owns the note writes it, through `nodes.update`. The picker writing for itself
+The page that owns the note writes it, through `nodes.update`. The field writing for itself
 would race the save path, the optimistic state and the error copy that page already owns, and
-two writers to one node is the bug that costs a person their edit. `onassign` returning a
-promise is what lets the picker hold its own pending state while the host saves.
+two writers to one node is the bug that costs a person their edit. `onchange` returning a
+promise is what lets the field hold its own chips while the host saves.
 
-**`onassign` must REJECT when the save fails, and set `refused` before it does.** The
-rejection is the whole failure signal: the picker catches it, and that catch is the only
-thing that renders the message. A host that resolves on failure gets a chip that snaps
-silently back with nothing said to the person who tapped it — the type `Promise<void>`
-cannot express this, which is why it is written down.
+**`onchange` must REJECT when the save fails.** The rejection is the whole failure signal:
+the field catches it and that catch is the only thing that renders a message — the server's
+own words where `refused` carries them, and its own sentence where it does not. A host that
+resolves on failure gets a chip that snaps silently back with nothing said to the person who
+tapped it, and the return type cannot express this, which is why it is written down.
 
-**A tag the picker hands back need not be normalized.** `TagsSchema` is where the rules
+**A tag the field hands back need not be normalized.** `TagsSchema` is where the rules
 live — the trimming, the case, the canonical form, the set — and the server parses through
-it either way; a picker that re-implements them is a second copy of them.
+it either way; a surface that re-implements them is a second copy of them.
 
-**`known` is a prop rather than a store read, and that is structural.** `@sloppy/ui` is
+**`suggestions` is a prop rather than a store read, and that is structural.** `@sloppy/ui` is
 depended on _by_ `@sloppy/app-core`, so a component here reaching into an app-core store
 would close the loop `ui → app-core → ui`, which the workspace has no build order for.
 Every component in this package takes its data as props for that reason — see
 `GraphSurface` and `BlockStack`.
 
-**The page owns the trigger; the picker is only the surface behind it.** A component that
+**The page owns the trigger; the field is only the surface behind it.** A component that
 mounted its own floating control would fight the layout of whatever hosts it — the note page
 is already reconciling a fixed-position editor toolbar in the same region.
 

@@ -33,9 +33,11 @@ Two orthogonal axes:
 
 A subtree collapses into a **mega-node** that expands on tap. **Selecting tags
 highlights the notes that carry them and dims the rest** — highlight, not filter, so
-the shape of the graph survives the question. A node's interior is a stack of
-**blocks**, each one a section its author added deliberately and wrote as many
-paragraphs, lists, pictures and Apple-Pencil drawings into as they liked.
+the shape of the graph survives the question. A third reading, **Sets**, draws the
+selected tags as overlapping regions the notes stand in — DESIGN.md § "Sets — the tags
+as places". A node's interior is a stack of **blocks**, each one a section its author
+added deliberately and wrote as many paragraphs, lists, pictures and Apple-Pencil
+drawings into as they liked.
 
 **Platform stance: mobile and tablet are the primary surface.** Desktop is the same
 parts given room — stood beside the graph rather than over it, from the width the docks
