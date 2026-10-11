@@ -27,6 +27,11 @@
 		key: string;
 		name: string;
 		author: string;
+		/** The page it draws on, the ink it draws in, and the colour it answers
+		 *  in — enough to read the row as the look itself. */
+		page: string;
+		ink: string;
+		accent: string;
 		colours: readonly string[];
 	}
 
@@ -111,6 +116,9 @@
 			key: chosen,
 			name: prefs.current.lookName ?? chosen,
 			author: '',
+			page: paint.tokens['--background'] ?? OWN_PALETTE.paper[0],
+			ink: paint.tokens['--foreground'] ?? OWN_PALETTE.paper[3],
+			accent: paint.tokens['--primary'] ?? OWN_PALETTE.paper[2],
 			colours: FOUR.map((token) => paint.tokens[token]).filter((colour) => colour !== undefined)
 		};
 	});
@@ -121,6 +129,9 @@
 			key: built,
 			name: LOOK_LABELS[built],
 			author: '',
+			page: OWN_PALETTE[built][0],
+			ink: OWN_PALETTE[built][3],
+			accent: OWN_PALETTE[built][2],
 			colours: OWN_PALETTE[built]
 		}));
 		const collection = open ? shown.map(({ scheme }) => ofTheCollection(scheme)) : [];
@@ -231,24 +242,42 @@
 	/** A look out of the collection, with the sixteen it shows of itself in the
 	 *  collection's own order. */
 	function ofTheCollection(scheme: Scheme): Row {
+		// The dressing rather than the palette: what the app would be drawn in is
+		// what `dress` made of the collection's colours, not the colours as they
+		// arrived.
+		const paint = dressed(scheme)?.tokens;
 		return {
 			key: scheme.slug,
 			name: scheme.name,
 			author: scheme.author,
+			page: paint?.['--background'] ?? scheme.palette.base00,
+			ink: paint?.['--foreground'] ?? scheme.palette.base05,
+			accent: paint?.['--primary'] ?? scheme.palette.base0D,
 			colours: BASE_KEYS.map((key) => scheme.palette[key])
 		};
 	}
 </script>
 
-{#snippet band(colours: readonly string[])}
-	<span class="flex h-6 w-32 shrink-0 overflow-hidden rounded-sm" aria-hidden="true">
+{#snippet band({ page, ink, accent, colours }: Row)}
+	<span class="flex h-7 w-32 shrink-0 overflow-hidden rounded-sm" aria-hidden="true">
+		<!-- What the app is drawn in, in miniature: its page, its ink on it, and
+		     the colour it answers in. -->
+		<span
+			data-specimen
+			class="flex h-full w-14 shrink-0 items-center justify-center gap-1 text-xs"
+			style="background-color: {page}; color: {ink}"
+		>
+			Aa
+			<span data-accent class="size-2 rounded-full" style="background-color: {accent}"></span>
+		</span>
 		{#each colours as colour, at (at)}
-			<span class="flex-1" style="background-color: {colour}"></span>
+			<span data-swatch class="flex-1" style="background-color: {colour}"></span>
 		{/each}
 	</span>
 {/snippet}
 
-{#snippet row({ key, name, author, colours }: Row)}
+{#snippet row(one: Row)}
+	{@const { key, name, author } = one}
 	<button
 		type="button"
 		role="radio"
@@ -259,7 +288,7 @@
 		onclick={() => wear(key)}
 		onkeydown={(event) => onkey(event, key)}
 	>
-		{@render band(colours)}
+		{@render band(one)}
 		<span class="min-w-0 flex-1">
 			<span class="block truncate">{name}</span>
 			{#if author !== ''}

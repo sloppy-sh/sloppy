@@ -3,7 +3,7 @@
 // surface that offers all of them in one list, and what picking one leaves on
 // `<html>`.
 
-import { dressed, schemes } from '@sloppy/ui';
+import { dressed, type Scheme, schemes } from '@sloppy/ui';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { flushSync, mount, unmount } from 'svelte';
@@ -193,7 +193,7 @@ describe('the looks on offer', () => {
 
 		find(NORD.name);
 		const strip = rowFor(NORD.name).querySelector<HTMLElement>('span[aria-hidden]');
-		const swatches = [...(strip?.querySelectorAll<HTMLElement>('span[style]') ?? [])];
+		const swatches = [...(strip?.querySelectorAll<HTMLElement>('[data-swatch]') ?? [])];
 		expect(swatches).toHaveLength(16);
 		// jsdom lays nothing out, so what the row is held to is the bound itself:
 		// a strip of its own width that clips, beside a name that may shrink.
@@ -203,6 +203,24 @@ describe('the looks on offer', () => {
 
 		const nord = (await schemes()).find((one) => one.slug === NORD.slug);
 		expect(swatches[0].style.backgroundColor).toBe(asPainted(nord?.palette.base00 ?? ''));
+	});
+
+	it('shows what the app would be drawn in, in the look itself', async () => {
+		show();
+		await settle();
+		await openUp();
+
+		find(NORD.name);
+		const specimen = rowFor(NORD.name).querySelector<HTMLElement>('[data-specimen]');
+		const nord = (await schemes()).find((one) => one.slug === NORD.slug);
+		const paint = dressed(nord as Scheme)?.tokens ?? {};
+		// The dressing rather than the palette: a look is read in what the app
+		// would wear, not in the colours as the collection drew them.
+		expect(specimen?.style.backgroundColor).toBe(asPainted(paint['--background'] ?? ''));
+		expect(specimen?.style.color).toBe(asPainted(paint['--foreground'] ?? ''));
+		expect(specimen?.textContent?.trim()).toBe('Aa');
+		const accent = specimen?.querySelector<HTMLElement>('[data-accent]');
+		expect(accent?.style.backgroundColor).toBe(asPainted(paint['--primary'] ?? ''));
 	});
 
 	it('bounds every row inside the section, so the page scrolls one way', async () => {
@@ -278,7 +296,7 @@ describe("the strip on each of Sloppy's own", () => {
 		await settle();
 
 		const strip = rowFor(LOOK_LABELS[look]).querySelector<HTMLElement>('span[aria-hidden]');
-		const swatches = [...(strip?.querySelectorAll<HTMLElement>('span[style]') ?? [])];
+		const swatches = [...(strip?.querySelectorAll<HTMLElement>('[data-swatch]') ?? [])];
 		const block = declared(look);
 		expect(swatches).toHaveLength(SHOWN.length);
 		for (const [at, token] of SHOWN.entries()) {
@@ -392,7 +410,7 @@ describe('picking one', () => {
 
 		expect(rows()).toHaveLength(OWN + 1);
 		expect(chosen()).toEqual([NORD.name]);
-		expect(rowFor(NORD.name).querySelectorAll('span[aria-hidden] span[style]')).toHaveLength(16);
+		expect(rowFor(NORD.name).querySelectorAll('span[aria-hidden] [data-swatch]')).toHaveLength(16);
 	});
 
 	it("hands the app back to one of Sloppy's own", async () => {
