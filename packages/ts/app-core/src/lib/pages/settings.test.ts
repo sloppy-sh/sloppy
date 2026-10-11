@@ -273,21 +273,31 @@ describe('settings', () => {
 
 	// DESIGN.md § "The effect axis": how much of a screen there is is the
 	// reader's, and there is nothing to ask about where no screen is on.
-	it('asks how much of the screen there is, once one is on', () => {
+	it('asks how much of each screen there is, once it is on', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 		expect(target.textContent).not.toContain('How strong');
 
-		target.querySelector<HTMLInputElement>('input[name="effect"][value="grain"]')?.click();
+		const turnOn = (screen: string) =>
+			target.querySelector<HTMLInputElement>(`input[name="effect"][value="${screen}"]`)?.click();
+		turnOn('grain');
 		flushSync();
 
 		expect(target.textContent).toContain('How strong');
 		expect(target.textContent).toContain('How big');
+		// One pair of numbers a screen, and nothing to ask about a screen that
+		// is off.
+		expect(target.querySelector('#screen-grain-strength')).not.toBeNull();
+		expect(target.querySelector('#screen-crt-scale')).toBeNull();
+
+		turnOn('crt');
+		flushSync();
+		expect(target.querySelector('#screen-crt-scale')).not.toBeNull();
 
 		target.querySelector<HTMLButtonElement>('#screen-edges')?.click();
 		flushSync();
 
-		expect(prefs.current.screen.edges).toBe(true);
+		expect(prefs.current.screenReach).toBe('edges');
 		expect(document.documentElement.getAttribute('data-screen-reach')).toBe('edges');
 	});
 

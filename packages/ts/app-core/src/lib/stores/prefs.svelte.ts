@@ -24,6 +24,10 @@ import {
 	EFFECTS,
 	SCREEN_LEAST,
 	SCREEN_MOST,
+	SCREEN_REACHES,
+	type ScreenReach,
+	TEXTURES,
+	type Texture,
 	type Effect,
 	LOOK_CSS_MAX,
 	LOOK_ID,
@@ -38,7 +42,7 @@ import {
 } from '@sloppy/types';
 import { sanitizeWallpapers, type WallpaperPrefs } from '../wallpaper.js';
 
-export { DENSITIES, EFFECTS, namesAFace, STYLES } from '@sloppy/types';
+export { DENSITIES, EFFECTS, namesAFace, STYLES, TEXTURES } from '@sloppy/types';
 export type { Density, Effect, Style } from '@sloppy/types';
 
 /** The looks Sloppy ships. Every other look is a palette carried as data, so
@@ -95,10 +99,13 @@ export interface Prefs {
 	 *  § "The look". Several are drawn at once, in the order `EFFECTS` names
 	 *  them, and an empty list is a plain page. */
 	effects: Effect[];
-	/** How the screen is drawn: how much of it there is, how big it is drawn,
-	 *  and whether it keeps to the edges of the page. At rest it is 1, 1 and
-	 *  everywhere, which is what the stylesheet draws on its own. */
-	screen: { strength: number; scale: number; edges: boolean };
+	/** How much of each screen there is and how big it is drawn. A screen with
+	 *  nothing said about it is at rest, which is 1 and 1 — what the stylesheet
+	 *  draws on its own. */
+	screens: Partial<Record<Texture, { strength: number; scale: number }>>;
+	/** How far onto the page they reach. One answer for all of them, because
+	 *  they share the one mask they are drawn through. */
+	screenReach: ScreenReach;
 	/** The faces the app, its headings and its code are set in — DESIGN.md
 	 *  § Typography. Each is one this build offers or a family somebody named. */
 	fonts: { ui: string; heading: string; mono: string };
@@ -343,7 +350,8 @@ function defaults(): Prefs {
 		lookName: null,
 		style: 'default',
 		effects: [],
-		screen: { strength: 1, scale: 1, edges: false },
+		screens: {},
+		screenReach: 'everywhere',
 		fonts: { ui: 'system', heading: 'system', mono: 'system' },
 		css: '',
 		tags: [],
@@ -404,27 +412,48 @@ function lookNameIn(value: unknown): string | null {
 /** The screens a page is drawn through, in the order `EFFECTS` names them so
  *  two devices stamp the same page the same way. Plain is none of them, however
  *  it was written down. */
-function screensIn(value: unknown): Effect[] {
+function effectsIn(value: unknown): Effect[] {
 	const asked = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
 	return EFFECTS.filter((screen) => screen !== 'none' && asked.includes(screen));
 }
 
-/** How a screen is drawn, held to what the stylesheet can be asked for: a
- *  number nobody could have meant is the one it draws at rest. */
-function screenIn(value: unknown): Prefs['screen'] {
-	const held = (typeof value === 'object' && value !== null ? value : {}) as Record<
-		string,
-		unknown
-	>;
-	const asked = (one: unknown): number =>
-		typeof one === 'number' && Number.isFinite(one) && one >= SCREEN_LEAST && one <= SCREEN_MOST
-			? one
-			: 1;
-	return {
-		strength: asked(held.strength),
-		scale: asked(held.scale),
-		edges: held.edges === true
-	};
+/** An object as its fields, or nothing where it is not one. */
+function fieldsOf(value: unknown): Record<string, unknown> {
+	return (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+}
+
+/** A number the stylesheet can be asked for: anything else is drawn at rest. */
+function screenNumber(value: unknown): number {
+	return typeof value === 'number' &&
+		Number.isFinite(value) &&
+		value >= SCREEN_LEAST &&
+		value <= SCREEN_MOST
+		? value
+		: 1;
+}
+
+/** How much of each screen there is, as this device holds it. The numbers an
+ *  earlier build kept for the one screen it drew are every screen's, since
+ *  that one is whichever of them was on. */
+function screensIn(value: unknown, together: unknown): Prefs['screens'] {
+	const each = fieldsOf(value);
+	const both = fieldsOf(together);
+	const held: Prefs['screens'] = {};
+	for (const screen of TEXTURES) {
+		const said = fieldsOf(each[screen]);
+		const strength = screenNumber(said.strength ?? both.strength);
+		const scale = screenNumber(said.scale ?? both.scale);
+		if (strength !== 1 || scale !== 1) held[screen] = { strength, scale };
+	}
+	return held;
+}
+
+/** How far the screens reach, from what this build keeps or what an earlier
+ *  one did. */
+function reachIn(value: unknown, together: unknown): ScreenReach {
+	if (typeof value === 'string' && (SCREEN_REACHES as readonly string[]).includes(value))
+		return value as ScreenReach;
+	return fieldsOf(together).edges === true ? 'edges' : 'everywhere';
 }
 
 /** One face, as a name rather than as a rule — a family this build does not
@@ -691,8 +720,9 @@ class PrefsStore {
 			ownLook: lookIn(saved.ownLook),
 			lookName: lookNameIn(saved.lookName),
 			style: oneOf(saved.style, STYLES, base.style),
-			effects: screensIn(saved.effects ?? saved.effect),
-			screen: screenIn(saved.screen),
+			effects: effectsIn(saved.effects ?? saved.effect),
+			screens: screensIn(saved.screens, saved.screen),
+			screenReach: reachIn(saved.screenReach, saved.screen),
 			fonts: facesIn(saved.fonts, saved.font),
 			css: rulesIn(saved.css),
 			tags: tagsIn(saved.tags),
@@ -793,7 +823,10 @@ class PrefsStore {
 		}
 		// The screens are drawn in one order whatever order they were asked for in,
 		// so what the page says is what another device would say.
-		if (key === 'effects') next.effects = screensIn(value);
+		if (key === 'effects') next.effects = effectsIn(value);
+		// A screen back at rest is a screen this device says nothing about, so it
+		// is not carried on to the next one either.
+		if (key === 'screens') next.screens = screensIn(value, undefined);
 		// A name arrived with one look, so another look has none until it says so.
 		if (key === 'look' && value !== this.#current.look) next.lookName = null;
 		// A graph, the canvas beside it, the pictures under them and how each
@@ -845,17 +878,22 @@ class PrefsStore {
 		else root.removeAttribute('data-density');
 		if (p.effects.length === 0) root.removeAttribute('data-effect');
 		else root.setAttribute('data-effect', p.effects.join(' '));
-		// Two numbers and a reach: the stylesheet holds what each screen IS and
-		// reads these for how much of it there is — DESIGN.md § "The effect axis".
-		// At rest is absent again, so a page nobody has moved carries nothing.
-		for (const [token, asked] of [
-			['--screen-strength', p.screen.strength],
-			['--screen-scale', p.screen.scale]
-		] as const) {
-			if (asked === 1) root.style.removeProperty(token);
-			else root.style.setProperty(token, String(asked));
+		// Two numbers a screen, and one reach for all of them: the stylesheet holds
+		// what each screen IS and reads these for how much of it there is —
+		// DESIGN.md § "The effect axis". At rest is absent again, so a page nobody
+		// has moved carries nothing.
+		for (const screen of TEXTURES) {
+			const held = p.screens[screen];
+			for (const [name, asked] of [
+				['strength', held?.strength ?? 1],
+				['scale', held?.scale ?? 1]
+			] as const) {
+				const token = `--screen-${screen}-${name}`;
+				if (asked === 1) root.style.removeProperty(token);
+				else root.style.setProperty(token, String(asked));
+			}
 		}
-		if (p.screen.edges) root.setAttribute('data-screen-reach', 'edges');
+		if (p.screenReach === 'edges') root.setAttribute('data-screen-reach', 'edges');
 		else root.removeAttribute('data-screen-reach');
 		// The three faces, written over the tokens `app.css` declares them at:
 		// a family a look asks for by name is not a value a stylesheet can hold

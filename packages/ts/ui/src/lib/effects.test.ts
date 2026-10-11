@@ -4,15 +4,12 @@
 // asked for less of it. Every screen is held to all of it, so a new one cannot
 // ship with half.
 
-import { EFFECTS } from '@sloppy/types';
+import { TEXTURES } from '@sloppy/types';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const SHEET = readFileSync(new URL('./effects.css', import.meta.url), 'utf8');
 const CSS = SHEET.replace(/\/\*[\s\S]*?\*\//g, '');
-
-/** The screens that are a texture: every one but plain, which is the absence. */
-const TEXTURES = EFFECTS.filter((effect) => effect !== 'none');
 
 /** The declarations of the block at `selector`, from `after`, skipping
  *  `past` earlier blocks that the same selector stands in. */
@@ -185,17 +182,19 @@ describe('several screens at once', () => {
 describe('how much of a screen there is', () => {
 	it('stands at rest until somebody moves it', () => {
 		const held = declarations('', ':root {');
-		expect(held.get('--screen-strength')).toBe('1');
-		expect(held.get('--screen-scale')).toBe('1');
-		// Opaque at rest: a screen reaches the whole page until asked otherwise.
+		// Opaque at rest: the screens reach the whole page until asked otherwise.
 		expect(held.get('--screen-mask')).toContain('var(--foreground)');
 		expect(held.get('--screen-mask')).not.toContain('transparent');
 	});
 
-	it.each(TEXTURES)('draws %s at the strength and the size it is asked for', (effect) => {
+	it.each(TEXTURES)('draws %s at the strength and the size IT is asked for', (effect) => {
 		const rules = rulesFor(effect);
-		expect(rules).toContain('var(--screen-strength)');
-		expect(rules).toContain('var(--screen-scale)');
+		// Its own two numbers, falling back to the one thing it is at rest: a
+		// screen somebody turned up says nothing about the screen beside it.
+		expect(rules).toContain(`var(--screen-${effect}-strength, 1)`);
+		expect(rules).toContain(`var(--screen-${effect}-scale, 1)`);
+		for (const other of TEXTURES)
+			if (other !== effect) expect(rules).not.toContain(`var(--screen-${other}-`);
 	});
 
 	it('gives the middle up where somebody asks for the edges alone', () => {

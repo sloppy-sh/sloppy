@@ -2,15 +2,15 @@
    colour of its own, no shape, and nothing a pointer can land on.
 
    Several are drawn at once, so `data-effect` is a list and every screen is
-   matched out of it. How much of them there is and how big they are drawn are
-   the reader's, as two numbers the store writes: every amount below is what one
-   screen takes at rest, and every size what it is drawn at. Nothing else
-   varies, so a screen stays the one thing it is at any setting. */
+   matched out of it. How much of each there is and how big it is drawn are the
+   reader's, as two numbers of its own the store writes — `--screen-crt-scale`
+   and the rest — so one screen turned up says nothing about the next. Every
+   amount below is what that screen takes at rest, and every size what it is
+   drawn at; nothing else varies, so a screen stays the one thing it is at any
+   setting. */
 :root {
-	--screen-strength: 1;
-	--screen-scale: 1;
-	/* Opaque, in a colour that is the look's rather than a literal: where a
-	   screen is only wanted at the edges, this is what the middle gives up. */
+	/* Opaque, in a colour that is the look's rather than a literal: where the
+	   screens are only wanted at the edges, this is what the middle gives up. */
 	--screen-mask: linear-gradient(var(--foreground), var(--foreground));
 }
 
@@ -108,7 +108,7 @@
 [data-screen='grain']::before {
 	background-color: color-mix(
 		in oklab,
-		var(--foreground) calc(7% * var(--screen-strength)),
+		var(--foreground) calc(7% * var(--screen-grain-strength, 1)),
 		transparent
 	);
 	-webkit-mask-image:
@@ -120,10 +120,10 @@
 	-webkit-mask-composite: source-in;
 	mask-composite: intersect;
 	-webkit-mask-size:
-		calc(180px * var(--screen-scale)) calc(180px * var(--screen-scale)),
+		calc(180px * var(--screen-grain-scale, 1)) calc(180px * var(--screen-grain-scale, 1)),
 		cover;
 	mask-size:
-		calc(180px * var(--screen-scale)) calc(180px * var(--screen-scale)),
+		calc(180px * var(--screen-grain-scale, 1)) calc(180px * var(--screen-grain-scale, 1)),
 		cover;
 }
 
@@ -131,11 +131,12 @@
 :root[data-effect~='dots'] body::after,
 [data-screen='dots']::after {
 	--screen-dots: radial-gradient(
-		color-mix(in oklab, var(--foreground) calc(16% * var(--screen-strength)), transparent)
-			calc(1.5px * var(--screen-scale)),
-		transparent calc(1.9px * var(--screen-scale))
+		color-mix(in oklab, var(--foreground) calc(16% * var(--screen-dots-strength, 1)), transparent)
+			calc(1.5px * var(--screen-dots-scale, 1)),
+		transparent calc(1.9px * var(--screen-dots-scale, 1))
 	);
-	--screen-dots-size: calc(6px * var(--screen-scale)) calc(6px * var(--screen-scale));
+	--screen-dots-size: calc(6px * var(--screen-dots-scale, 1))
+		calc(6px * var(--screen-dots-scale, 1));
 }
 
 /* Two rules crossing, the way a pen shades. */
@@ -144,15 +145,15 @@
 	--screen-hatch:
 		repeating-linear-gradient(
 			45deg,
-			color-mix(in oklab, var(--foreground) calc(8% * var(--screen-strength)), transparent) 0
-				calc(1px * var(--screen-scale)),
-			transparent calc(1px * var(--screen-scale)) calc(7px * var(--screen-scale))
+			color-mix(in oklab, var(--foreground) calc(8% * var(--screen-hatch-strength, 1)), transparent)
+				0 calc(1px * var(--screen-hatch-scale, 1)),
+			transparent calc(1px * var(--screen-hatch-scale, 1)) calc(7px * var(--screen-hatch-scale, 1))
 		),
 		repeating-linear-gradient(
 			-45deg,
-			color-mix(in oklab, var(--foreground) calc(8% * var(--screen-strength)), transparent) 0
-				calc(1px * var(--screen-scale)),
-			transparent calc(1px * var(--screen-scale)) calc(7px * var(--screen-scale))
+			color-mix(in oklab, var(--foreground) calc(8% * var(--screen-hatch-strength, 1)), transparent)
+				0 calc(1px * var(--screen-hatch-scale, 1)),
+			transparent calc(1px * var(--screen-hatch-scale, 1)) calc(7px * var(--screen-hatch-scale, 1))
 		);
 }
 
@@ -163,14 +164,15 @@
 	--screen-glow: radial-gradient(
 		ellipse closest-side at center,
 		transparent 45%,
-		color-mix(in oklab, var(--foreground) calc(18% * var(--screen-strength)), transparent) 100%
+		color-mix(in oklab, var(--foreground) calc(18% * var(--screen-glow-strength, 1)), transparent)
+			100%
 	);
 }
 
 :root[data-effect~='glow'] body,
 [data-screen='glow'] {
-	--screen-ink-glow: 0 0 calc(8px * var(--screen-scale))
-		color-mix(in oklab, var(--foreground) calc(30% * var(--screen-strength)), transparent);
+	--screen-ink-glow: 0 0 calc(8px * var(--screen-glow-scale, 1))
+		color-mix(in oklab, var(--foreground) calc(30% * var(--screen-glow-strength, 1)), transparent);
 }
 
 /* The tube: scanlines, the corners falling away, a band travelling down it and
@@ -183,21 +185,23 @@
 	--screen-band: linear-gradient(
 		to bottom,
 		transparent 0%,
-		color-mix(in oklab, var(--foreground) calc(18% * var(--screen-strength)), transparent) 50%,
+		color-mix(in oklab, var(--foreground) calc(18% * var(--screen-crt-strength, 1)), transparent)
+			50%,
 		transparent 100%
 	);
 	--screen-band-size: 100% 14%;
 	--screen-band-at: 0 -14%;
 	--screen-lines: repeating-linear-gradient(
 		to bottom,
-		color-mix(in oklab, var(--foreground) calc(9% * var(--screen-strength)), transparent) 0
-			calc(1px * var(--screen-scale)),
-		transparent calc(1px * var(--screen-scale)) calc(3px * var(--screen-scale))
+		color-mix(in oklab, var(--foreground) calc(9% * var(--screen-crt-strength, 1)), transparent) 0
+			calc(1px * var(--screen-crt-scale, 1)),
+		transparent calc(1px * var(--screen-crt-scale, 1)) calc(3px * var(--screen-crt-scale, 1))
 	);
 	--screen-tube: radial-gradient(
 		ellipse closest-side at center,
 		transparent 55%,
-		color-mix(in oklab, var(--foreground) calc(14% * var(--screen-strength)), transparent) 100%
+		color-mix(in oklab, var(--foreground) calc(14% * var(--screen-crt-strength, 1)), transparent)
+			100%
 	);
 	animation:
 		sloppy-crt-flicker 0.12s steps(2, jump-none) infinite alternate,
@@ -206,8 +210,8 @@
 
 :root[data-effect~='crt'] body,
 [data-screen='crt'] {
-	--screen-ink-tube: 0 0 calc(1px * var(--screen-scale))
-		color-mix(in oklab, var(--foreground) calc(20% * var(--screen-strength)), transparent);
+	--screen-ink-tube: 0 0 calc(1px * var(--screen-crt-scale, 1))
+		color-mix(in oklab, var(--foreground) calc(20% * var(--screen-crt-strength, 1)), transparent);
 }
 
 @keyframes sloppy-crt-flicker {

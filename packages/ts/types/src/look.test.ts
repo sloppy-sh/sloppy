@@ -96,18 +96,35 @@ describe("a look somebody was sent", () => {
 
   // How much of a screen there is is a number, held to what the stylesheet can
   // be asked for, with every part of it its own answer.
-  it("says how much of its screen there is, within the bounds", () => {
-    expect(look({ screen: {} }).success).toBe(true);
-    expect(look({ screen: { strength: SCREEN_LEAST } }).success).toBe(true);
-    expect(look({ screen: { scale: SCREEN_MOST, edges: true } }).success).toBe(
-      true,
-    );
-    expect(look({ screen: { strength: SCREEN_MOST + 0.1 } }).success).toBe(
+  it("says how much of each screen there is, within the bounds", () => {
+    expect(look({ screens: {} }).success).toBe(true);
+    expect(
+      look({ screens: { grain: { strength: SCREEN_LEAST } } }).success,
+    ).toBe(true);
+    expect(
+      look({ screens: { crt: { scale: SCREEN_MOST } }, reach: "edges" })
+        .success,
+    ).toBe(true);
+    expect(
+      look({ screens: { grain: { strength: SCREEN_MOST + 0.1 } } }).success,
+    ).toBe(false);
+    expect(
+      look({ screens: { grain: { scale: SCREEN_LEAST - 0.1 } } }).success,
+    ).toBe(false);
+    expect(look({ screens: { grain: { strength: "a lot" } } }).success).toBe(
       false,
     );
-    expect(look({ screen: { scale: SCREEN_LEAST - 0.1 } }).success).toBe(false);
-    expect(look({ screen: { strength: "a lot" } }).success).toBe(false);
-    expect(look({ screen: { edges: "yes" } }).success).toBe(false);
+    expect(look({ screens: { none: { scale: 2 } } }).success).toBe(false);
+    expect(look({ reach: "nowhere" }).success).toBe(false);
+  });
+
+  // A look written when every screen moved together says its numbers once, and
+  // keeps the reach where it kept it.
+  it("still reads a look that moved every screen together", () => {
+    expect(
+      look({ screen: { strength: 2, scale: 0.5, edges: true } }).success,
+    ).toBe(true);
+    expect(look({ screen: { strength: SCREEN_MOST + 1 } }).success).toBe(false);
   });
 
   // A look names a family this build does not ship — that is how it asks for

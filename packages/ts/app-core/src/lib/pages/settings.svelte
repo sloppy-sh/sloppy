@@ -14,7 +14,7 @@
 	import Palette from '@lucide/svelte/icons/palette';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import UserRound from '@lucide/svelte/icons/user-round';
-	import { type Effect, SCREEN_LEAST, SCREEN_MOST } from '@sloppy/types';
+	import { type Effect, SCREEN_LEAST, SCREEN_MOST, type Texture } from '@sloppy/types';
 	import { ChoicePill, DESK_FROM_PX, DeskNavParts, PersonChip, scrollFade } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
@@ -61,7 +61,21 @@
 	 *  screen turned off, it is one that has stopped being drawn. */
 	const SMALLEST_SCREEN = 0.25;
 
-	const screens = $derived(prefs.current.effects);
+	/** The screens that are on, which are the ones there is anything to ask
+	 *  about. */
+	const screens = $derived(prefs.current.effects.filter((one) => one !== 'none'));
+
+	/** How much of one screen there is, at rest until somebody moves it. */
+	function screenNumbers(screen: Texture): { strength: number; scale: number } {
+		return prefs.current.screens[screen] ?? { strength: 1, scale: 1 };
+	}
+
+	function setScreen(screen: Texture, moved: { strength?: number; scale?: number }): void {
+		prefs.set('screens', {
+			...prefs.current.screens,
+			[screen]: { ...screenNumbers(screen), ...moved }
+		});
+	}
 
 	/** Plain clears them; any other screen goes on or off on its own. */
 	function wearScreen(effect: Effect): void {
@@ -341,52 +355,58 @@
 								/>
 							{/each}
 						</div>
-						{#if screens.length > 0}
-							<div class="space-y-4 pt-1">
+						{#each screens as screen (screen)}
+							<div class="space-y-3 border-l-2 border-border py-1 ps-4">
+								<p class="text-sm font-medium">{EFFECT_LABELS[screen]}</p>
 								<div class="space-y-2">
-									<Label for="screen-strength" class="text-sm font-normal text-muted-foreground">
+									<Label
+										for="screen-{screen}-strength"
+										class="text-sm font-normal text-muted-foreground"
+									>
 										How strong
 									</Label>
 									<Slider
-										id="screen-strength"
+										id="screen-{screen}-strength"
 										type="single"
 										min={SCREEN_LEAST}
 										max={SCREEN_MOST}
 										step={0.1}
-										value={prefs.current.screen.strength}
-										onValueChange={(strength) =>
-											prefs.set('screen', { ...prefs.current.screen, strength })}
+										value={screenNumbers(screen).strength}
+										onValueChange={(strength) => setScreen(screen, { strength })}
 									/>
 								</div>
 								<div class="space-y-2">
-									<Label for="screen-scale" class="text-sm font-normal text-muted-foreground">
+									<Label
+										for="screen-{screen}-scale"
+										class="text-sm font-normal text-muted-foreground"
+									>
 										How big
 									</Label>
 									<Slider
-										id="screen-scale"
+										id="screen-{screen}-scale"
 										type="single"
 										min={SMALLEST_SCREEN}
 										max={SCREEN_MOST}
 										step={0.05}
-										value={prefs.current.screen.scale}
-										onValueChange={(scale) =>
-											prefs.set('screen', { ...prefs.current.screen, scale })}
+										value={screenNumbers(screen).scale}
+										onValueChange={(scale) => setScreen(screen, { scale })}
 									/>
 								</div>
-								<div class="flex items-start gap-3">
-									<Switch
-										id="screen-edges"
-										checked={prefs.current.screen.edges}
-										onCheckedChange={(edges) =>
-											prefs.set('screen', { ...prefs.current.screen, edges })}
-									/>
-									<div class="min-w-0 flex-1 space-y-1">
-										<Label for="screen-edges" class="text-sm font-normal">Only at the edges</Label>
-										<p class="text-xs text-muted-foreground">
-											The screen fades out of the middle of the page, so what you are reading is
-											left clear.
-										</p>
-									</div>
+							</div>
+						{/each}
+						{#if screens.length > 0}
+							<div class="flex items-start gap-3 pt-1">
+								<Switch
+									id="screen-edges"
+									checked={prefs.current.screenReach === 'edges'}
+									onCheckedChange={(edges) =>
+										prefs.set('screenReach', edges ? 'edges' : 'everywhere')}
+								/>
+								<div class="min-w-0 flex-1 space-y-1">
+									<Label for="screen-edges" class="text-sm font-normal">Only at the edges</Label>
+									<p class="text-xs text-muted-foreground">
+										They fade out of the middle of the page, so what you are reading is left clear.
+									</p>
 								</div>
 							</div>
 						{/if}

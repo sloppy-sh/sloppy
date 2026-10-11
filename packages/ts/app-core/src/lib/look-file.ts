@@ -10,6 +10,7 @@ import {
 	BUILT_IN_LOOKS,
 	type BuiltInLook,
 	FACE_ROLES,
+	TEXTURES,
 	LOOK_LABELS,
 	namesAFace,
 	type Prefs,
@@ -37,7 +38,8 @@ const OF_THE_LOOK: readonly string[] = [
 	'style',
 	'density',
 	'effects',
-	'screen',
+	'screens',
+	'screenReach',
 	'fonts',
 	'css'
 ];
@@ -153,7 +155,8 @@ export async function lookNow(withPreferences: boolean): Promise<Look> {
 		style: held.style,
 		density: held.density,
 		effect: [...held.effects],
-		screen: { ...held.screen },
+		reach: held.screenReach,
+		screens: screensOf(held.screens),
 		fonts: { ...held.fonts }
 	};
 	const paint = prefs.dressing?.tokens;
@@ -245,18 +248,36 @@ function wear(
 	if (look.density !== undefined) prefs.set('density', look.density);
 	if (look.effect !== undefined)
 		prefs.set('effects', typeof look.effect === 'string' ? [look.effect] : look.effect);
-	// What a look leaves out of its screen is the screen at rest, not what this
+	// What a look leaves out of a screen is that screen at rest, not what this
 	// device happened to be set to.
-	if (look.screen !== undefined) {
-		prefs.set('screen', {
-			strength: look.screen.strength ?? 1,
-			scale: look.screen.scale ?? 1,
-			edges: look.screen.edges ?? false
-		});
-	}
+	if (look.screens !== undefined || look.screen !== undefined)
+		prefs.set('screens', screensAsked(look));
+	if (look.reach !== undefined) prefs.set('screenReach', look.reach);
+	else if (look.screen?.edges !== undefined)
+		prefs.set('screenReach', look.screen.edges ? 'edges' : 'everywhere');
 	if (look.fonts !== undefined) prefs.set('fonts', faces(look.fonts));
 	if (look.css !== undefined) prefs.set('css', look.css);
 	if (look.preferences !== undefined) moveIn(look.preferences);
+}
+
+/** How much of each screen a look asks for. A look written when every screen
+ *  moved together names its numbers once, and they are each screen's. */
+function screensAsked(look: Look): Prefs['screens'] {
+	const asked: Prefs['screens'] = {};
+	for (const screen of TEXTURES) {
+		const said = look.screens?.[screen];
+		const strength = said?.strength ?? look.screen?.strength ?? 1;
+		const scale = said?.scale ?? look.screen?.scale ?? 1;
+		if (strength !== 1 || scale !== 1) asked[screen] = { strength, scale };
+	}
+	return asked;
+}
+
+/** The screens this device has moved off rest, as a look carries them. */
+function screensOf(held: Prefs['screens']): NonNullable<Look['screens']> {
+	return Object.fromEntries(
+		Object.entries(held).map(([screen, numbers]) => [screen, { ...numbers }])
+	);
 }
 
 /** The three faces with the ones the look names laid over them. A name no role

@@ -31,7 +31,8 @@ function aDeviceLivedOn(): void {
 	prefs.set('style', 'hardline');
 	prefs.set('density', 'compact');
 	prefs.set('effects', ['grain', 'crt']);
-	prefs.set('screen', { strength: 1.6, scale: 0.75, edges: true });
+	prefs.set('screens', { grain: { strength: 1.6, scale: 0.75 }, crt: { strength: 2, scale: 1 } });
+	prefs.set('screenReach', 'edges');
 	prefs.set('fonts', { ui: 'Inter', heading: 'Iosevka Etoile', mono: 'JetBrains Mono' });
 	prefs.set('css', '.sloppy-prose h2 { letter-spacing: .02em }');
 	prefs.set('tagOrder', 'name');
@@ -64,7 +65,8 @@ describe('the look this device wears', () => {
 			style: 'hardline',
 			density: 'compact',
 			effect: ['grain', 'crt'],
-			screen: { strength: 1.6, scale: 0.75, edges: true },
+			reach: 'edges',
+			screens: { grain: { strength: 1.6, scale: 0.75 }, crt: { strength: 2, scale: 1 } },
 			fonts: { ui: 'Inter', heading: 'Iosevka Etoile', mono: 'JetBrains Mono' },
 			css: '.sloppy-prose h2 { letter-spacing: .02em }'
 		});
@@ -252,19 +254,35 @@ describe('wearing one', () => {
 		expect(prefs.current.effects).toEqual(['dots', 'crt']);
 	});
 
-	// What a look leaves out of its screen is the screen at rest: a file saying
+	// What a look leaves out of a screen is that screen at rest: a file saying
 	// grain and nothing else is read the same on a device somebody had turned
 	// every number up on as on one they had not.
-	it('draws the screen at rest where the look says only part of it', async () => {
+	it('draws a screen at rest where the look says only part of it', async () => {
 		aDeviceLivedOn();
-		expect(await wearLook({ name: 'Mine', effect: 'grain', screen: { scale: 2 } })).toBeNull();
-		expect(prefs.current.screen).toEqual({ strength: 1, scale: 2, edges: false });
+		expect(
+			await wearLook({ name: 'Mine', effect: 'grain', screens: { grain: { scale: 2 } } })
+		).toBeNull();
+		expect(prefs.current.screens).toEqual({ grain: { strength: 1, scale: 2 } });
 	});
 
-	it('leaves the screen alone where the look says nothing about it', async () => {
+	it('leaves the screens alone where the look says nothing about them', async () => {
 		aDeviceLivedOn();
 		expect(await wearLook({ name: 'Mine', effect: 'grain' })).toBeNull();
-		expect(prefs.current.screen).toEqual({ strength: 1.6, scale: 0.75, edges: true });
+		expect(prefs.current.screens).toEqual({
+			grain: { strength: 1.6, scale: 0.75 },
+			crt: { strength: 2, scale: 1 }
+		});
+		expect(prefs.current.screenReach).toBe('edges');
+	});
+
+	// A look written when every screen moved together said its numbers once.
+	it('gives every screen the numbers a look kept for one', async () => {
+		expect(
+			await wearLook({ name: 'Mine', effect: ['dots', 'crt'], screen: { scale: 2, edges: true } })
+		).toBeNull();
+		expect(prefs.current.screens.dots).toEqual({ strength: 1, scale: 2 });
+		expect(prefs.current.screens.crt).toEqual({ strength: 1, scale: 2 });
+		expect(prefs.current.screenReach).toBe('edges');
 	});
 
 	it('takes only the faces the look names', async () => {

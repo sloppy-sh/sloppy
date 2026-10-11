@@ -280,18 +280,45 @@ describe('the saved look', () => {
 		expect(document.documentElement.getAttribute('data-effect')).toBe('hatch');
 	});
 
-	it('writes how much of the screen there is, and where it reaches', () => {
+	it('writes how much of each screen there is, and where they reach', () => {
 		prefs.init();
 		// At rest is absent, the same bargain every other axis makes.
 		expect(painted()).toEqual({});
 		expect(document.documentElement.hasAttribute('data-screen-reach')).toBe(false);
-		prefs.set('screen', { strength: 2.5, scale: 0.4, edges: true });
-		expect(painted()['--screen-strength']).toBe('2.5');
-		expect(painted()['--screen-scale']).toBe('0.4');
+
+		prefs.set('screens', { grain: { strength: 2.5, scale: 0.4 }, crt: { strength: 1, scale: 2 } });
+		prefs.set('screenReach', 'edges');
+
+		// One screen moved says nothing about another, and a number at rest is
+		// not written down at all.
+		expect(painted()).toEqual({
+			'--screen-grain-strength': '2.5',
+			'--screen-grain-scale': '0.4',
+			'--screen-crt-scale': '2'
+		});
 		expect(document.documentElement.getAttribute('data-screen-reach')).toBe('edges');
-		prefs.set('screen', { strength: 1, scale: 1, edges: false });
+
+		// A screen slid back to rest is one this device says nothing about.
+		prefs.set('screens', { ...prefs.current.screens, grain: { strength: 1, scale: 1 } });
+		expect(prefs.current.screens.grain).toBeUndefined();
+
+		prefs.set('screens', {});
+		prefs.set('screenReach', 'everywhere');
 		expect(painted()).toEqual({});
 		expect(document.documentElement.hasAttribute('data-screen-reach')).toBe(false);
+	});
+
+	// The numbers an earlier build kept for the one screen it drew were that
+	// screen's, and that screen is whichever of them was on.
+	it('gives every screen the numbers an earlier build kept for one', () => {
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({ effect: 'hatch', screen: { strength: 2, scale: 0.5, edges: true } })
+		);
+		prefs.init();
+		expect(prefs.current.screens.hatch).toEqual({ strength: 2, scale: 0.5 });
+		expect(prefs.current.screens.grain).toEqual({ strength: 2, scale: 0.5 });
+		expect(prefs.current.screenReach).toBe('edges');
 	});
 
 	// Both shells paint the first paint from the same saved object, so what they
@@ -310,6 +337,25 @@ describe('the saved look', () => {
 			[{ effect: 'grain', screen: { strength: 2.4, scale: 0.5, edges: true } }, null],
 			[{ effect: 'grain', screen: { strength: 9, scale: 'big', edges: 'yes' } }, null],
 			[{ effect: 'grain', screen: 'a lot' }, null],
+			[
+				{
+					effects: ['grain', 'crt'],
+					screens: { grain: { strength: 2.4 }, crt: { scale: 0.5 } },
+					screenReach: 'edges'
+				},
+				null
+			],
+			// A number nobody could have meant, a screen nobody has, and the one
+			// pair an earlier build kept under the screen each leaves out.
+			[
+				{
+					effects: ['grain'],
+					screens: { grain: { strength: 'lots' }, nothing: { scale: 2 } },
+					screen: { strength: 2, edges: true }
+				},
+				null
+			],
+			[{ effects: ['grain'], screens: 'a lot', screenReach: 'nowhere' }, null],
 			// What an earlier build saved, which both painters read the same way.
 			[{ theme: 'dark', accent: 'moss', font: 'opendyslexic' }, null],
 			[{ theme: 'paper', scheme: GRUVBOX.slug }, GRUVBOX, 'sloppy_scheme'],
@@ -402,6 +448,8 @@ describe('the saved look', () => {
 				effect: 'neon',
 				effects: ['neon', 7],
 				screen: { strength: 9, scale: 'big', edges: 'yes' },
+				screens: { grain: { strength: 9 }, nothing: { scale: 2 } },
+				screenReach: 'nowhere',
 				ownLook: 'Not An Id',
 				fonts: { ui: 'a face; position: fixed', heading: 7 },
 				css: 'x'.repeat(65_537),
@@ -425,7 +473,8 @@ describe('the saved look', () => {
 			ownLook: null,
 			style: 'default',
 			effects: [],
-			screen: { strength: 1, scale: 1, edges: false },
+			screens: {},
+			screenReach: 'everywhere',
 			fonts: { ui: 'system', heading: 'system', mono: 'system' },
 			css: '',
 			tags: [],

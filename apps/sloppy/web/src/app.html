@@ -75,17 +75,26 @@
 				return typeof asked === 'string' ? asked === screen : (asked || []).indexOf(screen) >= 0;
 			});
 			if (worn.length) root.setAttribute('data-effect', worn.join(' '));
-			// How much of the screen there is and how big it is drawn, held the way
-			// the store holds them: anything else is the screen at rest.
-			var screen = saved.screen && typeof saved.screen === 'object' ? saved.screen : {};
-			var held = function (one) {
-				return typeof one === 'number' && isFinite(one) && one >= 0 && one <= 3 ? one : 1;
+			// How much of each screen there is and how big it is drawn, held the way
+			// the store holds them: anything else is that screen at rest. The
+			// numbers an earlier build kept for the one screen it drew are every
+			// screen's, since that one is whichever of them was on.
+			var sizes = saved.screens && typeof saved.screens === 'object' ? saved.screens : {};
+			var both = saved.screen && typeof saved.screen === 'object' ? saved.screen : {};
+			var held = function (one, instead) {
+				var asked = one === undefined || one === null ? instead : one;
+				return typeof asked === 'number' && isFinite(asked) && asked >= 0 && asked <= 3 ? asked : 1;
 			};
-			if (held(screen.strength) !== 1)
-				root.style.setProperty('--screen-strength', String(held(screen.strength)));
-			if (held(screen.scale) !== 1)
-				root.style.setProperty('--screen-scale', String(held(screen.scale)));
-			if (screen.edges === true) root.setAttribute('data-screen-reach', 'edges');
+			['grain', 'dots', 'hatch', 'glow', 'crt'].forEach(function (screen) {
+				var said = sizes[screen] && typeof sizes[screen] === 'object' ? sizes[screen] : {};
+				var strength = held(said.strength, both.strength);
+				var scale = held(said.scale, both.scale);
+				if (strength !== 1)
+					root.style.setProperty('--screen-' + screen + '-strength', String(strength));
+				if (scale !== 1) root.style.setProperty('--screen-' + screen + '-scale', String(scale));
+			});
+			if (saved.screenReach === 'edges' || (!saved.screenReach && both.edges === true))
+				root.setAttribute('data-screen-reach', 'edges');
 			// The three faces, over the tokens app.css declares them at. The store
 			// writes the same three from the same table of what a face this build
 			// offers asks for, and the one face an earlier build kept stands in every

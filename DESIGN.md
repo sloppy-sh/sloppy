@@ -232,17 +232,20 @@ than a paint, and a mask takes the whole layer it is on, so it is drawn on a lay
 own; a second masked screen would need one too. `effects.test.ts` holds every screen to
 writing nothing another screen writes, which is the whole of what makes them stack.
 
-**How much of a screen there is and how big it is drawn are the reader's**, as two
-numbers every screen reads the same way — `--screen-strength` multiplies every share of
-the ink it takes, `--screen-scale` every length it is drawn at, both 1 at rest and both
-absent from the page until somebody moves them. A third choice decides where it reaches:
-`data-screen-reach="edges"` swaps the one mask every screen is drawn through for a
-radial one, so the texture falls away from the middle of the page and what somebody is
-reading is left clear. Nothing else varies, so a screen is the one thing it is at any
-setting, and a sixth is still a texture and nothing else. A sample carries its own mask,
-because a sample is small enough to be the whole texture whatever the page is giving up.
-Both numbers reach every screen that is on: they say how much of the screen there is, and
-the screen is all of them together.
+**How much of each screen there is and how big it is drawn are the reader's**, as two
+numbers of that screen's own — `--screen-grain-strength` multiplies every share of the ink
+grain takes, `--screen-grain-scale` every length it is drawn at, and every screen has its
+pair. Each falls back to 1, the one thing that screen is at rest, so the store writes a
+number only where somebody has moved one and a page nobody has touched carries none of
+them. Settings asks for the pair under each screen that is on, because turning grain up is
+not a thing to say about the tube beside it.
+
+**Where they reach is one answer for all of them**, because they share the one mask they
+are drawn through: `data-screen-reach="edges"` swaps it for a radial one, so the textures
+fall away from the middle of the page and what somebody is reading is left clear. Nothing
+else varies, so a screen is the one thing it is at any setting, and a sixth is still a
+texture and nothing else. A sample carries its own mask, because a sample is small enough
+to be the whole texture whatever the page is giving up.
 
 Four rules, and each is a way an effect ships broken:
 
@@ -380,8 +383,13 @@ Sloppy reads can have it by being sent one.
   // the screens drawn over it, together; one name alone is a look written
   // before several could be on
   "effect": ["grain", "crt"],
-  // how much of them there is; a field it leaves out is drawn at rest
-  "screen": { "strength": 1.6, "scale": 0.75, "edges": true },
+  // how far onto the page they reach — one answer for all of them
+  "reach": "edges",
+  // how much of each there is; a screen or a field it leaves out is at rest
+  "screens": {
+    "grain": { "strength": 1.6, "scale": 0.75 },
+    "crt": { "scale": 2 },
+  },
   "fonts": {
     "ui": "Inter",
     "heading": "Iosevka Etoile",
@@ -395,10 +403,11 @@ Sloppy reads can have it by being sent one.
 
 `LookSchema` in `@sloppy/types` is the shape. **What a file holds is what is applied, and
 what it leaves out is left alone** — one carrying a palette and nothing else changes the
-colours and leaves the faces, the density and the screen as they were. **A screen it says
-only part of is drawn at rest for the rest of it**, so a look that asks for big grain
-reads the same on a machine somebody had turned every number up on as on one they had
-not. Settings offers
+colours and leaves the faces, the density and the screens as they were. **A screen it says
+only part of is drawn at rest for the rest of it**, so a look that asks for big grain reads
+the same on a machine somebody had turned every number up on as on one they had not. A look
+written when every screen moved together says `screen` once instead, and its numbers are
+each named screen's. Settings offers
 _Copy_, _Save a look…_ (the look alone, for sending), _Save my settings…_ (the look plus
 `preferences`, for moving to another machine), _Open a look…_, and a box that takes the
 same JSON pasted in. A file that is not a look is turned down in one line saying what to
