@@ -42,6 +42,7 @@
 		onExpand,
 		onChoose,
 		onChooseWithin,
+		onHover,
 		onMenu,
 		onRetag,
 		onInkPointer
@@ -108,6 +109,21 @@
 			>
 				menu on {note.address}
 			</button>
+			<button
+				type="button"
+				data-rest={note.address}
+				onclick={() =>
+					onHover?.({
+						clientX: 0,
+						clientY: 0,
+						radius: 8,
+						ref: note.ref,
+						folded: 0,
+						tags: note.tags
+					})}
+			>
+				rest on {note.address}
+			</button>
 		</li>
 	{/each}
 	<li>
@@ -118,6 +134,41 @@
 		>
 			menu on the canvas
 		</button>
+		<!-- The fold a set draws where there is no room for its notes: the real
+		     surface names the first note standing there and says the mark answers
+		     for the whole set rather than for that note. -->
+		{#if arrangement === 'sets' && nodes.length > 0}
+			<button
+				type="button"
+				data-menu="a set"
+				onclick={() =>
+					onMenu?.({
+						clientX: 0,
+						clientY: 0,
+						ref: nodes[0].ref,
+						foldable: true,
+						region: true
+					})}
+			>
+				menu on a set's fold
+			</button>
+			<button
+				type="button"
+				data-rest="a set"
+				onclick={() =>
+					onHover?.({
+						clientX: 0,
+						clientY: 0,
+						radius: 24,
+						ref: nodes[0].ref,
+						folded: nodes.length - 1,
+						tags: drawn,
+						region: true
+					})}
+			>
+				rest on a set's fold
+			</button>
+		{/if}
 		<button type="button" data-drop-chosen onclick={() => dropped([...(chosen ?? [])])}>
 			drop the picked notes in the first set
 		</button>

@@ -181,6 +181,18 @@ async function openMenu(on: string): Promise<void> {
 	await settle();
 }
 
+async function rest(on: string): Promise<void> {
+	document.body.querySelector<HTMLButtonElement>(`[data-rest="${on}"]`)?.click();
+	await settle();
+}
+
+/** The card a mark draws under a pointer at rest: hidden from a screen reader,
+ *  and the only such thing on the page that writes an address. */
+const preview = () =>
+	[...document.body.querySelectorAll<HTMLElement>('[aria-hidden="true"]')].find((one) =>
+		one.querySelector('.address')
+	);
+
 async function runRow(words: string): Promise<void> {
 	const row = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
 		(one) => (one.textContent ?? '').replace(/\s+/g, ' ').trim() === words
@@ -405,6 +417,18 @@ describe('moving notes between the sets', () => {
 		expect(written).toEqual([{ tags: ['biology'] }]);
 	});
 
+	it('leaves the fold out, since the notes a subtree holds are spread over the sets', async () => {
+		await inSets(['biology']);
+		await openMenu('1');
+		expect(menuRows()).not.toContain('Fold what is under this');
+
+		labelled('Graph').click();
+		await settle();
+		await openMenu('1');
+
+		expect(menuRows()).toContain('Fold what is under this');
+	});
+
 	it('offers nothing of the sort while the notes are drawn by the genealogy', async () => {
 		await open();
 		tags.select(['biology'] as Tag[]);
@@ -452,5 +476,31 @@ describe('moving notes between the sets', () => {
 		await runRow('Into biology');
 
 		expect(screen()).not.toContain('Sloppy could not change that note.');
+	});
+});
+
+describe('the fold a set draws where its notes do not all fit', () => {
+	it('offers the canvas’s own acts, naming none of the notes standing there', async () => {
+		await inSets(['biology']);
+
+		await openMenu('a set');
+
+		expect(menuRows()).toEqual([
+			'Choose the note lit up',
+			'New note',
+			'New branch',
+			'Choose notes'
+		]);
+	});
+
+	it('writes no note’s words on it where a pointer comes to rest', async () => {
+		await inSets(['biology']);
+
+		await rest('1');
+		expect(preview()?.textContent).toContain('Origins');
+
+		await rest('a set');
+
+		expect(preview()).toBeUndefined();
 	});
 });

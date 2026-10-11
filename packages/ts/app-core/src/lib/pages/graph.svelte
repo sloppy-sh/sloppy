@@ -784,7 +784,9 @@
 	/** What the mark under the pointer stands for: the note it IS, and — since a
 	 *  fold is drawn rather than stored — what the canvas folded into it. */
 	const previewed = $derived.by((): PreviewedNote | undefined => {
-		if (!hoverAt) return undefined;
+		// A fold over a set answers for every note standing there rather than for
+		// one of them, so no note's words belong on it — `GraphHoverAt.region`.
+		if (!hoverAt || hoverAt.region) return undefined;
 		const note = foreign
 			? heldNotes.find((held) => held.ref === hoverAt?.ref)
 			: nodes.get(hoverAt.ref);
@@ -1623,7 +1625,9 @@
 	const menuItems = $derived.by((): CanvasMenuItem[] => {
 		const at = menuAt;
 		if (!at) return [];
-		const on = at.ref;
+		// A fold over a set stands for the notes in it and not for any one of them,
+		// so the acts on offer are the canvas's — `GraphMenuAt.region`.
+		const on = at.region ? null : at.ref;
 		if (!choosing) {
 			if (!on) {
 				const bare: CanvasMenuItem[] = [
@@ -1633,7 +1637,9 @@
 				];
 				return chooseLit ? [chooseLit, ...bare] : bare;
 			}
-			return actsOnOne(on, at.foldable);
+			// Nothing gathers a subtree in the sets reading — a subtree's notes are
+			// spread across the sets — so there is nothing to fold there either.
+			return actsOnOne(on, at.foldable && !inSets);
 		}
 
 		const items: CanvasMenuItem[] = [];
