@@ -643,6 +643,7 @@ Object.assign(window, {
     handle.update(props());
   },
   __stats: () => handle.stats(),
+  __viewport: () => handle.viewport(),
   __carries: () => corpus.tags,
 });
 

@@ -25,6 +25,7 @@ import {
   membershipOf,
   SETS_STEP,
   setsSpacing,
+  setsSpacingTier,
   type SetsStanding,
 } from "./sets/pack.js";
 import type { LayoutCommand, LayoutEvent } from "./layout/protocol.js";
@@ -2427,6 +2428,28 @@ describe("the sets reading", () => {
       const apart = setsSpacing(sets.scene.viewport.scale);
       expect(apart).toBeGreaterThan(SETS_STEP);
       expect(nearestApart(sets.model())).toBeCloseTo(apart, 6);
+    } finally {
+      StandInScene.fitsTo = null;
+    }
+  });
+
+  // A reader who lands in the diagram and zooms has taken the field: the pack
+  // answers that zoom and nothing frames the figure back over it.
+  it("holds the zoom a reader asks for straight off a frame", async () => {
+    // A phone's width against the whole figure, so a frame really would take
+    // the zoom back off the reader.
+    StandInScene.fitsTo = 0.167;
+    try {
+      const sets = await inSets();
+      const framed = sets.scene.fits;
+
+      sets.wheel(-400);
+
+      const scale = sets.scene.viewport.scale;
+      expect(scale).toBeGreaterThan(0.167);
+      expect(sets.scene.fits).toBe(framed);
+      expect(setsSpacingTier(scale)).toBeLessThan(setsSpacingTier(0.167));
+      expect(nearestApart(sets.model())).toBeCloseTo(setsSpacing(scale), 6);
     } finally {
       StandInScene.fitsTo = null;
     }

@@ -471,8 +471,10 @@ export function mountGraph(
       // move every mark off its place in the diagram.
       epoch += 1;
       settled = true;
-      // And with no settle to frame off, the first framing happens here.
-      if (framing) frameAll();
+      // And with no settle to frame off, the first framing happens here — off
+      // the field arriving, never off a zoom, which this pack has already
+      // answered and a frame would undo.
+      if (framing && !answeringZoom) frameAll();
       return;
     }
     if (!relayout) return;
@@ -524,15 +526,15 @@ export function mountGraph(
    *  the field here — which is what refolds a region there is no longer room in,
    *  and opens one there is. A pack of its own moves the zoom, so it never
    *  starts a second one from inside the first. */
-  let packing = false;
+  let answeringZoom = false;
   const repack = (): void => {
-    if (destroyed || packing || reading() !== "sets" || !scene) return;
+    if (destroyed || answeringZoom || reading() !== "sets" || !scene) return;
     if (setsSpacingTier(scene.viewport.scale) === packedTier) return;
-    packing = true;
+    answeringZoom = true;
     try {
       rebuild();
     } finally {
-      packing = false;
+      answeringZoom = false;
     }
   };
 
