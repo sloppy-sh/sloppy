@@ -87,7 +87,7 @@ async function canvasOn(
   );
   scene.fit();
   app.tick();
-  const [, genealogy, runs, connections] = worldOf(app).children.filter(
+  const [, , genealogy, runs, connections] = worldOf(app).children.filter(
     (child): child is FakeGraphics => child instanceof FakeGraphics,
   );
   return { scene, app, passes: { genealogy, runs, connections } as Passes };

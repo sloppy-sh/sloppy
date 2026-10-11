@@ -14,11 +14,13 @@ import type {
   GraphPickMarks,
   GraphReadingMarks,
   GraphPictures,
+  GraphRetag,
   GraphTransform,
 } from "./contract.js";
 import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
+import { membershipOf, type SetsStanding } from "./sets/pack.js";
 import type { LayoutCommand, LayoutEvent } from "./layout/protocol.js";
 import type { GraphHandle, GraphMountOptions } from "./mount.js";
 import type { Bounds } from "./viewport.js";
@@ -91,6 +93,28 @@ class StandInScene {
 
   setReading(reading: GraphReadingMarks | null): void {
     this.reading = reading;
+  }
+
+  /** The region a held mark is over, which a drag lights and a drop clears. */
+  drop: SetsStanding | null = null;
+  /** Every region the canvas was told to light, in order, so a test can read
+   *  what a whole drag said rather than only where it ended. */
+  readonly dropped: (SetsStanding | null)[] = [];
+
+  setSetsDrop(at: SetsStanding | null): void {
+    this.drop = at;
+    this.dropped.push(at);
+  }
+
+  /** The region folds a tap asked the canvas to frame. */
+  readonly framedRegions: string[] = [];
+
+  frameRegion(ref: string): boolean {
+    if (!this.model?.sets?.folds.has(ref as OwnedRef)) return false;
+    this.framedRegions.push(ref);
+    // A frame is a zoom, which is what the mount packs again off.
+    this.viewport.scale = Math.min(MAX_SCALE, this.viewport.scale * 4);
+    return true;
   }
 
   setGround(ground: string): void {
@@ -330,6 +354,7 @@ async function mount(
     postMessage: (command: LayoutCommand) => sent.push(command),
     terminate() {},
   };
+  const retags: GraphRetag[] = [];
   const props: GraphMountOptions = {
     nodes: corpus.nodes,
     collapsed: new Set<OwnedRef>(),
@@ -338,6 +363,7 @@ async function mount(
     createLayoutWorker: () => worker as unknown as Worker,
     onOpenNode: (ref) => opened.push(ref),
     onExpand: (ref) => expanded.push(ref),
+    onRetag: (retag) => retags.push(retag),
     onCollapse: () => {},
     ...overrides,
   };
@@ -380,6 +406,7 @@ async function mount(
     field,
     expanded,
     opened,
+    retags,
     /** Settles the layout has been asked to run. */
     starts: (): number =>
       sent.filter((command) => command.kind === "start").length,
@@ -503,6 +530,38 @@ async function mount(
           metaKey: false,
         } as Partial<PointerEvent>);
       }
+    },
+    /** The desk's zoom: a wheel over the field. */
+    wheel(deltaY: number): void {
+      field.send("wheel", {
+        deltaY,
+        clientX: 0,
+        clientY: 0,
+        ctrlKey: false,
+        preventDefault: () => {},
+      } as unknown as Partial<PointerEvent>);
+    },
+    /** The same, and the button released at the last point of the path. */
+    carry(ref: string, path: readonly { x: number; y: number }[]): void {
+      scene.under = ref;
+      const at = (point: { x: number; y: number }, down: boolean) =>
+        ({
+          pointerId: 3,
+          pointerType: "mouse",
+          button: down ? 0 : -1,
+          clientX: point.x,
+          clientY: point.y,
+          shiftKey: false,
+          ctrlKey: false,
+          metaKey: false,
+        }) as Partial<PointerEvent>;
+      for (const [step, point] of path.entries()) {
+        field.send(
+          step === 0 ? "pointerdown" : "pointermove",
+          at(point, step === 0),
+        );
+      }
+      field.send("pointerup", at(path[path.length - 1], false));
     },
     /** The layout answering the settle it was last asked to run. */
     answer(settled = false): void {
@@ -1973,12 +2032,187 @@ describe("the reading the host asked for", () => {
     expect(named.model().graph.size).toBe(absent.model().graph.size);
     expect(named.starts()).toBe(absent.starts());
   });
+});
 
-  it("takes the sets reading and draws the genealogy until it has one", async () => {
-    const genealogy = await mount();
-    const sets = await mount({ arrangement: "sets" });
-    expect([...sets.model().order]).toEqual([...genealogy.model().order]);
-    expect(sets.model().graph.size).toBe(genealogy.model().graph.size);
-    expect(sets.starts()).toBe(genealogy.starts());
+// DESIGN.md § "Sets — the tags as places": the same marks, standing in the
+// regions of the tags the reader selected. What is held here is where the marks
+// end up and what a move between regions reports — the figure itself is a GPU
+// fact and `bench/` is where it is looked at.
+describe("the sets reading", () => {
+  const two = corpus.tags.slice(0, 2) as Tag[];
+
+  const inSets = (overrides: Partial<GraphMountOptions> = {}) =>
+    mount({
+      arrangement: "sets",
+      selection: two,
+      lod: { depth: 3, maxDrawn: 400 },
+      ...overrides,
+    });
+
+  /** A world point inside one region of the first field's diagram. */
+  const pointIn = (model: BuiltModel, region: number) => {
+    const field = model.sets?.fields[0];
+    const found = field?.regions.find((at) => at.id === region);
+    if (!field || !found) throw new Error(`region ${region} is not drawn`);
+    return { x: found.centre.x + field.dx, y: found.centre.y + field.dy };
+  };
+
+  /** A mark standing on its own in one region, which is what a drag takes
+   *  hold of. */
+  const standingIn = (model: BuiltModel, region: number): OwnedRef => {
+    const found = model.order.find(
+      (ref) =>
+        !model.sets?.folds.has(ref) &&
+        model.sets?.standing.get(ref)?.region === region,
+    );
+    if (!found) throw new Error(`nothing stands in region ${region}`);
+    return found;
+  };
+
+  it("stands every mark in the region of the drawn tags it carries", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+    expect(model.sets?.tags).toEqual(two);
+    expect(model.order.length).toBeGreaterThan(0);
+    for (const ref of model.order) {
+      if (model.sets?.folds.has(ref)) continue;
+      const at = model.graph.getNodeAttributes(ref);
+      expect(
+        model.sets?.standing.get(ref)?.region,
+        `${at.address} stands in the wrong region`,
+      ).toBe(membershipOf(at.tags, two));
+    }
+  });
+
+  it("draws no line between them, and asks for no settle", async () => {
+    const sets = await inSets();
+    expect(sets.model().graph.size).toBe(0);
+    expect(sets.starts()).toBe(0);
+    expect(sets.handle.stats()?.settled).toBe(true);
+  });
+
+  // The renderer owns no note field, so a move between regions is reported and
+  // the mark goes back where the packing put it until the host writes.
+  it("reports a move between sets and moves nothing itself", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+    const ref = standingIn(model, 1);
+    const was = model.graph.getNodeAttributes(ref);
+
+    sets.carry(ref, [pointIn(model, 1), pointIn(model, 3)]);
+
+    expect(sets.retags).toEqual([{ notes: [ref], into: two, outOf: [] }]);
+    expect(sets.scene.positionOf(was.index)).toEqual({ x: was.x, y: was.y });
+  });
+
+  it("takes the drawn tags off a mark dropped outside every region", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+    const ref = standingIn(model, 3);
+
+    sets.carry(ref, [pointIn(model, 3), pointIn(model, 0)]);
+
+    expect(sets.retags).toEqual([{ notes: [ref], into: [], outOf: two }]);
+  });
+
+  it("says nothing about a mark dropped where it already stands", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+    const ref = standingIn(model, 1);
+    const at = pointIn(model, 1);
+
+    sets.carry(ref, [at, { x: at.x + 30, y: at.y + 30 }]);
+
+    expect(sets.retags).toEqual([]);
+  });
+
+  it("moves the whole chosen set when the held mark is in it", async () => {
+    const first = await inSets();
+    const model = first.model();
+    const chosen = new Set([standingIn(model, 1), standingIn(model, 3)]);
+    const sets = await inSets({ chosen });
+    const held = standingIn(sets.model(), 1);
+
+    sets.carry(held, [pointIn(sets.model(), 1), pointIn(sets.model(), 3)]);
+
+    // The one already standing in the region it was dropped on is left out.
+    expect(sets.retags).toEqual([{ notes: [held], into: two, outOf: [] }]);
+    expect(chosen.size).toBe(2);
+  });
+
+  it("lights the region under a held mark and lets it go on the drop", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+
+    sets.carry(standingIn(model, 1), [pointIn(model, 1), pointIn(model, 3)]);
+
+    expect(sets.scene.dropped).toContainEqual({ field: 0, region: 3 });
+    expect(sets.scene.drop).toBeNull();
+  });
+
+  // A fold answers for a whole region, so there is no one note behind it to
+  // move; a tap brings the canvas to the region instead.
+  it("leaves a region's fold where it is, and frames it on a tap", async () => {
+    const sets = await inSets({ lod: { depth: 3, maxDrawn: 4 } });
+    const model = sets.model();
+    const fold = [...(model.sets?.folds ?? [])][0];
+    expect(fold).toBeTruthy();
+
+    sets.carry(fold, [pointIn(model, 1), pointIn(model, 3)]);
+    expect(sets.retags).toEqual([]);
+
+    sets.tap(fold);
+    expect(sets.scene.framedRegions).toEqual([fold]);
+    expect(sets.opened).toEqual([]);
+    expect(sets.expanded).toEqual([]);
+  });
+
+  // The spacing holds the marks apart on the SCREEN, so a field zoomed out has
+  // less room in it than the same field zoomed in — which is what folds.
+  it("packs again once the field is zoomed out of a region's room", async () => {
+    const sets = await inSets();
+    const spread = sets.model().order.length;
+    const packed = sets.scene.models;
+    expect(sets.model().sets?.folds.size).toBe(0);
+
+    sets.wheel(3000);
+
+    expect(sets.scene.models).toBeGreaterThan(packed);
+    expect(sets.model().order.length).toBeLessThan(spread);
+    expect(sets.model().sets?.folds.size).toBeGreaterThan(0);
+  });
+
+  it("ignores a difference, which is read against the genealogy", async () => {
+    const sets = await inSets({
+      difference: {
+        added: new Set(corpus.nodes.slice(0, 4).map((node) => node.ref)),
+        removed: [],
+        moved: [],
+        changed: new Set<OwnedRef>(),
+      },
+    });
+    const model = sets.model();
+    for (const ref of model.order) {
+      expect(model.graph.getNodeAttributes(ref).difference).toBeUndefined();
+    }
+  });
+
+  it("frames the diagram going in and comes back where it was", async () => {
+    const graph = await mount();
+    graph.answer(true);
+    graph.handle.lookAt({ x: 12, y: 34, scale: 1.5 });
+    const read = graph.handle.viewport();
+    const framed = graph.scene.fits;
+
+    graph.handle.update({
+      ...graph.props,
+      arrangement: "sets",
+      selection: two,
+    });
+    expect(graph.scene.fits).toBeGreaterThan(framed);
+    graph.scene.viewport.lookAt({ x: 0, y: 0, scale: 1 });
+
+    graph.handle.update(graph.props);
+    expect(graph.handle.viewport()).toEqual(read);
   });
 });

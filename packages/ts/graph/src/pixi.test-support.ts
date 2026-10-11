@@ -84,43 +84,86 @@ export interface StrokedLine {
   alpha: number;
 }
 
+/** One `rect(…).fill(…)`, which is how a region's cover is lit. */
+export interface FilledRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: number;
+  alpha: number;
+}
+
+/** One path laid down and filled, which is how a leaning region is drawn. */
+export interface FilledPath {
+  points: [number, number][];
+  color: number;
+  alpha: number;
+}
+
 export class FakeGraphics extends FakeContainer {
   readonly rings: StrokedRing[] = [];
   readonly discs: FilledDisc[] = [];
+  readonly rects: FilledRect[] = [];
+  readonly paths: FilledPath[] = [];
   readonly lines: StrokedLine[] = [];
   /** Where each `arc(…)` was struck, which is how a broken ring is drawn. */
   readonly arcs: { x: number; y: number; radius: number }[] = [];
-  private pending: { x: number; y: number; radius: number } | null = null;
+  private pendingCircle: { x: number; y: number; radius: number } | null = null;
+  private pendingRect: FilledRect | null = null;
   private pen: [number, number] | null = null;
+  private laid: [number, number][] = [];
   private unstroked: StrokedLine[] = [];
+  /** Whether the path just laid has already been filled or stroked, so the next
+   *  `moveTo` starts a fresh one the way pixi's own context does. */
+  private spent = false;
   clear(): this {
     this.rings.length = 0;
     this.discs.length = 0;
+    this.rects.length = 0;
+    this.paths.length = 0;
     this.lines.length = 0;
     this.arcs.length = 0;
-    this.pending = null;
+    this.pendingCircle = null;
+    this.pendingRect = null;
     this.pen = null;
+    this.laid = [];
     this.unstroked = [];
+    this.spent = false;
     return this;
   }
   circle(x = 0, y = 0, radius = 0): this {
-    this.pending = { x, y, radius };
+    this.pendingCircle = { x, y, radius };
+    return this;
+  }
+  rect(x = 0, y = 0, width = 0, height = 0): this {
+    this.pendingRect = { x, y, width, height, color: 0, alpha: 1 };
     return this;
   }
   arc(x = 0, y = 0, radius = 0): this {
     this.arcs.push({ x, y, radius });
-    this.pending = null;
+    this.pendingCircle = null;
+    return this;
+  }
+  closePath(): this {
     return this;
   }
   fill(style?: number | { color?: number; alpha?: number }): this {
-    if (this.pending) {
-      const ink = typeof style === "number" ? { color: style } : style;
-      this.discs.push({
-        ...this.pending,
-        color: ink?.color ?? 0,
-        alpha: ink?.alpha ?? 1,
-      });
-      this.pending = null;
+    const ink = typeof style === "number" ? { color: style } : style;
+    const drawn = { color: ink?.color ?? 0, alpha: ink?.alpha ?? 1 };
+    if (this.pendingCircle) {
+      this.discs.push({ ...this.pendingCircle, ...drawn });
+      this.pendingCircle = null;
+      return this;
+    }
+    if (this.pendingRect) {
+      this.rects.push({ ...this.pendingRect, ...drawn });
+      this.pendingRect = null;
+      return this;
+    }
+    if (this.laid.length > 2) {
+      this.paths.push({ points: [...this.laid], ...drawn });
+      this.spent = true;
     }
     return this;
   }
@@ -130,16 +173,22 @@ export class FakeGraphics extends FakeContainer {
       alpha: style?.alpha ?? 1,
       width: style?.width ?? 1,
     };
-    if (this.pending) {
-      this.rings.push({ ...this.pending, ...drawn });
-      this.pending = null;
+    if (this.pendingCircle) {
+      this.rings.push({ ...this.pendingCircle, ...drawn });
+      this.pendingCircle = null;
     }
     for (const line of this.unstroked) Object.assign(line, drawn);
     this.unstroked = [];
+    if (this.laid.length > 0) this.spent = true;
     return this;
   }
   moveTo(x = 0, y = 0): this {
+    if (this.spent) {
+      this.laid = [];
+      this.spent = false;
+    }
     this.pen = [x, y];
+    this.laid.push([x, y]);
     return this;
   }
   lineTo(x = 0, y = 0): this {
@@ -155,6 +204,7 @@ export class FakeGraphics extends FakeContainer {
       this.unstroked.push(line);
     }
     this.pen = [x, y];
+    this.laid.push([x, y]);
     return this;
   }
 }

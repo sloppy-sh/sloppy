@@ -29,6 +29,7 @@ import type {
 } from "pixi.js";
 import { clamp } from "./color.js";
 import {
+  DRAWN_SETS_MOST,
   edgeLookKey,
   type GraphEdgeLook,
   type GraphPickMarks,
@@ -49,6 +50,8 @@ import {
   type NamedField,
 } from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
+import { shapeOutline } from "./sets/geometry.js";
+import type { SetsDrawn, SetsStanding } from "./sets/pack.js";
 import { pictureStep, shownAt, TURN_MS } from "./turn.js";
 import {
   type Bounds,
@@ -151,6 +154,18 @@ const FIELD_NAME_ALPHA = 0.55;
 const FIELD_NAME_CHARS = 36;
 /** What a name held against a screen edge keeps clear of it. */
 const FIELD_NAME_GAP = 10;
+
+/** A region's hairline and the ink it takes: enough to read as the set's own
+ *  edge, under the lightest line a pair of notes is joined by. */
+const SETS_EDGE = 1;
+const SETS_EDGE_INK = 0.7;
+/** A set's name, written just inside its own outline and quiet enough that the
+ *  figure stays ground. */
+const SETS_NAME_SIZE = 13;
+const SETS_NAME_ALPHA = 0.72;
+const SETS_NAME_CHARS = 24;
+/** How many of those names this scene keeps: every set of every field. */
+const MAX_SETS_NAMES = DRAWN_SETS_MOST * MAX_FIELDS;
 
 /** How far outside a mark the orbit sits. Clear of the edge, so nothing drawn
  *  there reads as the provenance ring DESIGN.md § Form draws ON the edge. */
@@ -416,6 +431,12 @@ export class GraphScene {
   /** Which slot each line's words are written in, keyed by {@link edgeLookKey}. */
   private readonly edgeLabelSlots = new Map<string, number>();
   private fieldNames: readonly NamedField[] = [];
+  /** The diagram the sets reading drew, and `null` on the genealogy. */
+  private sets: SetsDrawn | null = null;
+  /** The region a held mark is over, and the one the region layer was last
+   *  drawn for — so the lit region is redrawn when it changes and not per frame. */
+  private setsDrop: SetsStanding | null = null;
+  private setsDropDrawn: SetsStanding | null = null;
   private selecting = false;
   private readonly ground: GroundLayer;
   private picking: GraphPickMarks | null = null;
@@ -454,6 +475,7 @@ export class GraphScene {
     private readonly pixi: Pixi,
     private readonly app: Application,
     private readonly world: Container,
+    private readonly regions: Graphics,
     private readonly lift: Graphics,
     private readonly edges: Graphics,
     private readonly runs: Graphics,
@@ -471,6 +493,7 @@ export class GraphScene {
     private readonly labelPool: LabelSlot[],
     private readonly edgeLabelPool: Text[],
     private readonly fieldPool: Text[],
+    private readonly setsNamePool: Text[],
     private textures: MarkTextures,
     private sheetTier: number,
     private options: SceneOptions,
@@ -499,6 +522,7 @@ export class GraphScene {
     });
 
     const world = new pixi.Container();
+    const regions = new pixi.Graphics();
     const lift = new pixi.Graphics();
     const edges = new pixi.Graphics();
     const runs = new pixi.Graphics();
@@ -520,13 +544,16 @@ export class GraphScene {
     const shapeRings = new pixi.Graphics();
     const picks = new pixi.Graphics();
     const codeMoved = new pixi.Graphics();
-    // The lift is under everything: it is paper, not a line drawn on the field.
+    // The regions are under everything: a wash on the paper rather than
+    // anything drawn on the field. The lift is paper too, not a line drawn on
+    // the field.
     // The author's ring is UNDER their picture, so widening the cover past it
     // takes it — which is what the cover slider is for. Provenance is OVER the
     // picture, so no cover can take that: it is the graph's word, not the
     // author's. DESIGN.md § "The mark". A mark too big for the sheet is drawn as
     // a shape beside the particles it stands in for, so it keeps that order.
     world.addChild(
+      regions,
       lift,
       edges,
       runs,
@@ -548,6 +575,25 @@ export class GraphScene {
 
     const sheetTier = markSheetTier(1, options.resolution);
     const textures = markTextures(pixi, app, sheetTier);
+
+    // First on the layer, so a set's name stays under every word written over
+    // it: it is the figure's own label, and the figure is ground.
+    const setsNamePool = Array.from({ length: MAX_SETS_NAMES }, () => {
+      const text = new pixi.Text({
+        text: "",
+        style: {
+          fontFamily: options.fonts.ui,
+          fontSize: SETS_NAME_SIZE,
+          fill: 0xffffff,
+        },
+        resolution: options.resolution,
+      });
+      text.visible = false;
+      text.alpha = SETS_NAME_ALPHA;
+      text.anchor.set(0.5, 0.5);
+      labels.addChild(text);
+      return text;
+    });
 
     // Two texts per label, because DESIGN.md § Typography gives the address its
     // own face at every size: `1a1` against `1al` must never be a question.
@@ -609,6 +655,7 @@ export class GraphScene {
       pixi,
       app,
       world,
+      regions,
       lift,
       edges,
       runs,
@@ -626,6 +673,7 @@ export class GraphScene {
       labelPool,
       edgeLabelPool,
       fieldPool,
+      setsNamePool,
       textures,
       sheetTier,
       options,
@@ -664,6 +712,7 @@ export class GraphScene {
     }
     for (const label of this.edgeLabelPool) label.resolution = resolution;
     for (const name of this.fieldPool) name.resolution = resolution;
+    for (const name of this.setsNamePool) name.resolution = resolution;
     this.previewsDirty = true;
     this.positionsDirty = true;
   }
@@ -692,6 +741,39 @@ export class GraphScene {
     this.positionsDirty = true;
   }
 
+  /** The region a held mark is over, lit a little more so the drop is legible;
+   *  `null` while nothing is held. */
+  setSetsDrop(at: SetsStanding | null): void {
+    this.setsDrop = at;
+    this.positionsDirty = true;
+  }
+
+  /**
+   * Bring the canvas to the region `ref`'s mark stands for the whole of, and
+   * say whether it was one — a mark that is a note of its own is nothing to
+   * frame, and the genealogy has no regions at all.
+   */
+  frameRegion(ref: string): boolean {
+    const sets = this.sets;
+    if (sets === null || !sets.folds.has(ref as never)) return false;
+    const standing = sets.standing.get(ref as never);
+    const field = standing && sets.fields[standing.field];
+    const region = field?.regions.find((at) => at.id === standing?.region);
+    if (!field || !region) return false;
+    this.viewport.fit(
+      {
+        minX: region.bounds.minX + field.dx,
+        maxX: region.bounds.maxX + field.dx,
+        minY: region.bounds.minY + field.dy,
+        maxY: region.bounds.maxY + field.dy,
+      },
+      this.width,
+      this.height,
+    );
+    this.positionsDirty = true;
+    return true;
+  }
+
   /**
    * Re-colour the marks already up: `fill` and `alpha` are all a tag question
    * moves — DESIGN.md § Hue. The caller must have established that this model's
@@ -701,6 +783,7 @@ export class GraphScene {
   setTints(model: BuiltModel, selecting: boolean): void {
     this.model = model;
     this.selecting = selecting;
+    this.sets = model.sets ?? null;
     for (const mark of this.marks) {
       const attributes = model.graph.getNodeAttributes(mark.ref);
       mark.attributes = attributes;
@@ -724,6 +807,7 @@ export class GraphScene {
     this.rings.update();
     this.looks.update();
     this.readComparing();
+    this.setsDropDrawn = null;
     this.positionsDirty = true;
   }
 
@@ -817,6 +901,7 @@ export class GraphScene {
   setModel(model: BuiltModel, selecting: boolean): void {
     this.model = model;
     this.selecting = selecting;
+    this.sets = model.sets ?? null;
     this.positions = new Float32Array(model.order.length * 2);
 
     const looking = new Map(this.marks.map((mark) => [mark.ref, mark.looking]));
@@ -981,13 +1066,17 @@ export class GraphScene {
   }
 
   bounds(): Bounds {
+    // The sets reading is framed on its figure and not only on its marks: a
+    // set's name is written inside its own outline, and the room the notes
+    // outside every set stand in is part of what there is to look at.
+    const figure = this.setsBox();
     if (this.marks.length === 0) {
-      return { minX: -1, minY: -1, maxX: 1, maxY: 1 };
+      return figure ?? { minX: -1, minY: -1, maxX: 1, maxY: 1 };
     }
-    let minX = Number.POSITIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
+    let minX = figure?.minX ?? Number.POSITIVE_INFINITY;
+    let minY = figure?.minY ?? Number.POSITIVE_INFINITY;
+    let maxX = figure?.maxX ?? Number.NEGATIVE_INFINITY;
+    let maxY = figure?.maxY ?? Number.NEGATIVE_INFINITY;
     for (const mark of this.marks) {
       const x = this.positions[mark.index * 2];
       const y = this.positions[mark.index * 2 + 1];
@@ -997,6 +1086,18 @@ export class GraphScene {
       maxY = Math.max(maxY, y + mark.radius);
     }
     return { minX, minY, maxX, maxY };
+  }
+
+  /** Every field's diagram, in world coordinates; `null` on the genealogy. */
+  private setsBox(): Bounds | null {
+    const fields = this.sets?.fields ?? [];
+    if (fields.length === 0) return null;
+    return {
+      minX: Math.min(...fields.map((field) => field.box.minX + field.dx)),
+      maxX: Math.max(...fields.map((field) => field.box.maxX + field.dx)),
+      minY: Math.min(...fields.map((field) => field.box.minY + field.dy)),
+      maxY: Math.max(...fields.map((field) => field.box.maxY + field.dy)),
+    };
   }
 
   fit(): void {
@@ -1088,6 +1189,8 @@ export class GraphScene {
     if (this.positionsDirty) this.syncMarks();
     if (turning) this.advanceTurns();
     if (this.sweeping !== null) this.advanceSweep();
+    const lit = !sameStanding(this.setsDrop, this.setsDropDrawn);
+    if (rebuilt || scaleMoved || lit) this.drawRegions();
     if (this.positionsDirty || scaleMoved || rebuilt || recut) {
       this.drawShapes();
     }
@@ -1098,6 +1201,7 @@ export class GraphScene {
     if (this.positionsDirty || scaleMoved) this.drawCodeMoved();
     if (this.positionsDirty || scaleMoved) this.layoutLabels();
     if (this.positionsDirty || scaleMoved) this.layoutFieldNames();
+    if (this.positionsDirty || scaleMoved) this.layoutSetsNames();
 
     this.world.position.set(this.viewport.x, this.viewport.y);
     this.world.scale.set(this.viewport.scale);
@@ -1928,6 +2032,91 @@ export class GraphScene {
   }
 
   /**
+   * The drawn sets as places on the paper — DESIGN.md § "Sets — the tags as
+   * places". Each one is a wash in its tag's hue with a hairline round it, so
+   * where two overlap the washes overlap and that is the lens; the region a
+   * held mark is over takes one more wash, in ink.
+   */
+  private drawRegions(): void {
+    this.setsDropDrawn = this.setsDrop;
+    this.regions.clear();
+    const sets = this.sets;
+    if (sets === null) return;
+    const { palette } = this.options;
+    const width = Math.min(3, Math.max(0.4, SETS_EDGE / this.viewport.scale));
+
+    for (const [which, field] of sets.fields.entries()) {
+      for (const set of field.sets) {
+        const outline = shapeOutline(set.shape);
+        this.regions.moveTo(outline[0].x + field.dx, outline[0].y + field.dy);
+        for (let at = 1; at < outline.length; at++) {
+          this.regions.lineTo(
+            outline[at].x + field.dx,
+            outline[at].y + field.dy,
+          );
+        }
+        this.regions
+          .closePath()
+          .fill({ color: palette.setsFill(set.slot), alpha: palette.setsWash })
+          .stroke({
+            color: palette.tag(set.slot),
+            alpha: SETS_EDGE_INK,
+            width,
+          });
+      }
+
+      const lit = this.setsDrop;
+      if (lit === null || lit.field !== which) continue;
+      const region = field.regions.find((at) => at.id === lit.region);
+      for (const box of region?.cover ?? []) {
+        this.regions
+          .rect(
+            box.minX + field.dx,
+            box.minY + field.dy,
+            box.maxX - box.minX,
+            box.maxY - box.minY,
+          )
+          .fill({ color: palette.ink, alpha: palette.setsLit });
+      }
+    }
+  }
+
+  /**
+   * Each drawn set's name, just inside its own outline — the one place the
+   * canvas writes a tag, in quiet ink so the figure stays ground.
+   */
+  private layoutSetsNames(): void {
+    const named = (this.sets?.fields ?? [])
+      .flatMap((field) => field.sets.map((set) => ({ field, set })))
+      .slice(0, this.setsNamePool.length);
+    for (const [at, text] of this.setsNamePool.entries()) {
+      const entry = named[at];
+      if (entry === undefined) {
+        text.visible = false;
+        continue;
+      }
+      const words = shorten(entry.set.tag, SETS_NAME_CHARS);
+      if (text.text !== words) text.text = words;
+      const where = this.viewport.toScreen(
+        entry.set.nameAt.x + entry.field.dx,
+        entry.set.nameAt.y + entry.field.dy,
+      );
+      if (
+        where.x < 0 ||
+        where.x > this.width ||
+        where.y < 0 ||
+        where.y > this.height
+      ) {
+        text.visible = false;
+        continue;
+      }
+      text.position.set(where.x, where.y);
+      text.tint = this.options.palette.ink;
+      text.visible = true;
+    }
+  }
+
+  /**
    * The paper under each open note, which DESIGN.md § "The mark" gives to the
    * fact that it is open.
    */
@@ -2327,6 +2516,12 @@ export class GraphScene {
     }
     return placed;
   }
+}
+
+function sameStanding(a: SetsStanding | null, b: SetsStanding | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  return a.field === b.field && a.region === b.region;
 }
 
 /** `placed` is a flat `[left, midY, width, …]`; boxes are one line tall. */

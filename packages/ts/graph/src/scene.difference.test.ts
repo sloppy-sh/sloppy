@@ -121,10 +121,10 @@ function layers(app: FakeApplication): {
     (child): child is FakeGraphics => child instanceof FakeGraphics,
   );
   return {
-    genealogy: held[1],
-    runs: held[2],
-    connections: held[3],
-    difference: held[4],
+    genealogy: held[2],
+    runs: held[3],
+    connections: held[4],
+    difference: held[5],
     orbit: held[held.length - 2],
   };
 }

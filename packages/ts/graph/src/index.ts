@@ -16,4 +16,6 @@ export * from "./model.js";
 export * from "./mount.js";
 export * from "./palette.js";
 export * from "./scene.js";
+export * from "./sets/geometry.js";
+export * from "./sets/pack.js";
 export * from "./viewport.js";

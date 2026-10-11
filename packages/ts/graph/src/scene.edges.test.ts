@@ -85,10 +85,10 @@ async function canvasOn(
     selecting,
   );
   app.tick();
-  // Lift, genealogy, runs, connections, the difference, the shapes, their edges,
-  // then the orbit — `scene.ts` adds them in that order and nothing else on the
-  // world is a graphics.
-  const [, genealogy, runs, connections] = worldOf(app).children.filter(
+  // The regions, the lift, genealogy, runs, connections, the difference, the
+  // shapes, their edges, then the orbit — `scene.ts` adds them in that order and
+  // nothing else on the world is a graphics.
+  const [, , genealogy, runs, connections] = worldOf(app).children.filter(
     (child): child is FakeGraphics => child instanceof FakeGraphics,
   );
   return { scene, passes: { genealogy, runs, connections } };

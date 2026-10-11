@@ -16,6 +16,7 @@ import {
   makeCorpus,
 } from "../src/corpus.test-support.js";
 import type {
+  GraphArrangement,
   GraphDifference,
   GraphPictures,
   GraphWallpaper,
@@ -77,12 +78,22 @@ const built = (total: number): Corpus =>
 
 let corpus = built(notes);
 /**
+ * `?arrangement=sets` reads the corpus as the tags-as-places figure rather than
+ * as the genealogy, and `?tags=a,b,c` is the selection it draws — tags of the
+ * corpus above, which `window.__carries` lists.
+ */
+let arrangement: GraphArrangement =
+  asked.get("arrangement") === "sets" ? "sets" : "genealogy";
+/**
  * `?drawn=N` lifts the level-of-detail bound, which otherwise decides the mark
  * count before any of this does — the way to measure a pass at a size the
  * product never draws, rather than measuring the budget.
  */
 const maxDrawn = Number(asked.get("drawn")) || undefined;
-let selection: Tag[] = [];
+let selection: Tag[] = (asked.get("tags") ?? "")
+  .split(",")
+  .map((tag) => tag.trim())
+  .filter((tag) => tag !== "") as Tag[];
 let ground: GraphGround = "none";
 let wallpaper: GraphWallpaper = { picture: null, strength: 1 };
 let handle: GraphHandle;
@@ -186,6 +197,7 @@ function compared(of: Corpus): {
 let comparing: ReturnType<typeof compared> | null = null;
 
 const props = (): GraphMountOptions => ({
+  arrangement,
   nodes: comparing ? comparing.region : pictured ? withPictures : corpus.nodes,
   difference: comparing?.difference,
   collapsed,
@@ -202,6 +214,25 @@ const props = (): GraphMountOptions => ({
   onCollapse: (ref) => {
     say(`collapse ${ref.slice(-8)}`);
     collapsed.add(ref);
+    handle.update(props());
+  },
+  // The renderer reports a move between sets and writes nothing, so the bench
+  // writes it the way a host does: onto the notes it is holding.
+  onRetag: ({ notes, into, outOf }) => {
+    say(
+      `retag ${notes.length} into [${into.join(", ")}] out of [${outOf.join(", ")}]`,
+    );
+    const moving = new Set(notes);
+    for (const node of corpus.nodes) {
+      if (!moving.has(node.ref)) continue;
+      node.tags = [
+        ...new Set([
+          ...node.tags.filter((tag) => !outOf.includes(tag)),
+          ...into,
+        ]),
+      ] as Tag[];
+    }
+    corpus = { ...corpus, nodes: [...corpus.nodes] };
     handle.update(props());
   },
   createLayoutWorker: withWorker ? () => new LayoutWorker() : undefined,
@@ -558,6 +589,12 @@ function cycleGround(): void {
   say(`ground ${ground}`);
 }
 
+function cycleArrangement(): void {
+  arrangement = arrangement === "sets" ? "genealogy" : "sets";
+  handle.update(props());
+  say(`reading ${arrangement}`);
+}
+
 function toggleDifference(): void {
   comparing = comparing === null ? compared(corpus) : null;
   handle.update(props());
@@ -568,6 +605,7 @@ for (const [label, action] of [
   ["fit", fit],
   ["select a tag", cycleSelection],
   ["ground", cycleGround],
+  ["sets", cycleArrangement],
   ["compare two states", toggleDifference],
 ] as const) {
   const button = document.createElement("button");
@@ -579,6 +617,10 @@ for (const [label, action] of [
 Object.assign(window, {
   __fit: fit,
   __select: cycleSelection,
+  __arrangement: (reading: GraphArrangement) => {
+    arrangement = reading;
+    handle.update(props());
+  },
   __ground: (paper: GraphGround) => {
     ground = paper;
     handle.update(props());
@@ -601,6 +643,7 @@ Object.assign(window, {
     handle.update(props());
   },
   __stats: () => handle.stats(),
+  __carries: () => corpus.tags,
 });
 
 void run();

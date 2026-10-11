@@ -237,7 +237,7 @@ export interface FieldPlacement {
 
 /** How far one field stands off the next, in world units. Wide enough that the
  *  crowding the force pass resolves never carries a mark out of its own field. */
-const FIELD_GUTTER = 900;
+export const FIELD_GUTTER = 900;
 /** How far above its seeds a field's name is written. */
 const FIELD_NAME_RISE = 320;
 
