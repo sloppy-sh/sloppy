@@ -215,9 +215,11 @@ through; **Hatch**, two rules crossing the way a pen shades; **Glow**, the edges
 away and a little light on the ink, which is the half of a tube that is restful to read
 in; and **CRT**, that glow with scanlines and a flicker over it. They share one block —
 everything but the texture itself is the same — so a sixth is a texture and nothing else.
-**Each is shown as itself where it is chosen**: the same declarations dress a sample in
-Settings (`[data-screen]`) as dress the page, so what somebody sees in the row is the
-screen rather than a drawing of it, and there is still one copy of what each one is.
+**Each is shown as itself where it is chosen**: the same declarations that dress the page
+dress the choice that names it (`[data-screen]`), over the whole of it rather than in a
+sample beside the name — a texture a few pixels across says nothing at the size of a
+swatch. So what somebody reads in the row is the screen, and there is still one copy of
+what each one is.
 Four rules, and each is a way an effect ships broken:
 
 - **An effect is a texture, never a colour and never a shape.** It mixes from

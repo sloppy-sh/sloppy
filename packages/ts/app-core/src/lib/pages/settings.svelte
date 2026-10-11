@@ -306,24 +306,17 @@
 						<legend class="text-sm font-medium">Screen</legend>
 						<div class="flex flex-wrap gap-2">
 							{#each EFFECTS as effect (effect)}
+								<!-- The screen over the pill rather than over the page: the same
+								     rules reach both, so there is one copy of what each is and the
+								     texture is shown at a size somebody can read. -->
 								<ChoicePill
 									group="effect"
 									value={effect}
 									label={EFFECT_LABELS[effect]}
 									checked={prefs.current.effect === effect}
+									data-screen={effect === 'none' ? undefined : effect}
 									onpick={() => prefs.set('effect', effect)}
-								>
-									{#snippet sample()}
-										<!-- The screen over a box rather than over the page: the same
-										     rules reach both, so there is one copy of what each is. -->
-										<span
-											data-screen={effect === 'none' ? undefined : effect}
-											class="flex h-5 w-8 items-center justify-center rounded-xs border border-border bg-background text-[0.6rem] text-foreground"
-										>
-											Aa
-										</span>
-									{/snippet}
-								</ChoicePill>
+								/>
 							{/each}
 						</div>
 					</fieldset>

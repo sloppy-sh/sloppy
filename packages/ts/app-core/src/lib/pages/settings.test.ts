@@ -253,15 +253,16 @@ describe('settings', () => {
 
 	// DESIGN.md § "The effect axis": a screen is shown as itself, from the same
 	// rules the page wears.
-	it('shows each screen in the texture it is', () => {
+	it('wears each screen over the whole of the choice that names it', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
 
-		const samples = [...target.querySelectorAll('input[name="effect"]')].map((one) =>
-			one.closest('label')?.querySelector('[data-screen]')?.getAttribute('data-screen')
-		);
-		// Plain is the absence of one, so its sample carries no texture.
-		expect(samples).toEqual([undefined, ...EFFECTS.filter((one) => one !== 'none')]);
+		const worn = [...target.querySelectorAll('input[name="effect"]')].map((one) => {
+			const pill = one.closest('label')?.querySelector('span');
+			return pill?.getAttribute('data-screen') ?? undefined;
+		});
+		// Plain is the absence of one, so the choice that names it wears nothing.
+		expect(worn).toEqual([undefined, ...EFFECTS.filter((one) => one !== 'none')]);
 	});
 
 	// A look is a file somebody can send, so the page has a section for one
