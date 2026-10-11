@@ -2081,6 +2081,33 @@ describe("the sets reading", () => {
     return found;
   };
 
+  /** How close the two nearest marks of one region stand, in world units —
+   *  which is what the packing's spacing shows up as. */
+  const nearestApart = (model: BuiltModel): number => {
+    const marks = model.order
+      .filter((ref) => !model.sets?.folds.has(ref))
+      .map((ref) => ({
+        at: model.graph.getNodeAttributes(ref),
+        standing: model.sets?.standing.get(ref),
+      }));
+    let nearest = Number.POSITIVE_INFINITY;
+    for (const [which, one] of marks.entries()) {
+      for (const other of marks.slice(which + 1)) {
+        if (
+          one.standing?.field !== other.standing?.field ||
+          one.standing?.region !== other.standing?.region
+        ) {
+          continue;
+        }
+        nearest = Math.min(
+          nearest,
+          Math.hypot(one.at.x - other.at.x, one.at.y - other.at.y),
+        );
+      }
+    }
+    return nearest;
+  };
+
   it("stands every mark in the region of the drawn tags it carries", async () => {
     const sets = await inSets();
     const model = sets.model();
@@ -2265,32 +2292,38 @@ describe("the sets reading", () => {
     StandInScene.fitsTo = 0.167;
     try {
       const sets = await inSets();
-      const model = sets.model();
       const apart = setsSpacing(sets.scene.viewport.scale);
       expect(apart).toBeGreaterThan(SETS_STEP);
+      expect(nearestApart(sets.model())).toBeCloseTo(apart, 6);
+    } finally {
+      StandInScene.fitsTo = null;
+    }
+  });
 
-      let nearest = Number.POSITIVE_INFINITY;
-      const marks = model.order
-        .filter((ref) => !model.sets?.folds.has(ref))
-        .map((ref) => ({
-          at: model.graph.getNodeAttributes(ref),
-          standing: model.sets?.standing.get(ref),
-        }));
-      for (const [which, one] of marks.entries()) {
-        for (const other of marks.slice(which + 1)) {
-          if (
-            one.standing?.field !== other.standing?.field ||
-            one.standing?.region !== other.standing?.region
-          ) {
-            continue;
-          }
-          nearest = Math.min(
-            nearest,
-            Math.hypot(one.at.x - other.at.x, one.at.y - other.at.y),
-          );
-        }
-      }
-      expect(nearest).toBeCloseTo(apart, 6);
+  // Every frame of the whole field is one, however the reader asked for it: the
+  // control in the chrome, and coming back to a folder.
+  it("packs again at the zoom the control frames to", async () => {
+    const sets = await inSets();
+    expect(nearestApart(sets.model())).toBeCloseTo(SETS_STEP, 6);
+    StandInScene.fitsTo = 0.167;
+    try {
+      sets.handle.fit();
+      const apart = setsSpacing(sets.scene.viewport.scale);
+      expect(apart).toBeGreaterThan(SETS_STEP);
+      expect(nearestApart(sets.model())).toBeCloseTo(apart, 6);
+    } finally {
+      StandInScene.fitsTo = null;
+    }
+  });
+
+  it("packs again at the zoom a visit frames to", async () => {
+    const sets = await inSets();
+    StandInScene.fitsTo = 0.167;
+    try {
+      sets.handle.frameWhenSettled();
+      const apart = setsSpacing(sets.scene.viewport.scale);
+      expect(apart).toBeGreaterThan(SETS_STEP);
+      expect(nearestApart(sets.model())).toBeCloseTo(apart, 6);
     } finally {
       StandInScene.fitsTo = null;
     }

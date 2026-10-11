@@ -65,6 +65,10 @@ const SPRING: Record<GraphEdgeAttributes["kind"], number> = {
   link: 0.12,
 };
 
+/** The most times a frame and the sets packing answer each other before the
+ *  frame stands where it is. */
+const FRAME_PASSES = 3;
+
 /** What the sets reading hands `drawnNodes`: a region's own room is what bounds
  *  the count there, so nothing is folded by generation. */
 const NOTHING_FOLDED: LodResult = {
@@ -246,6 +250,9 @@ export function mountGraph(
    */
   let framing = true;
   let framed = false;
+  /** Whether a frame is already answering the packing: the rebuild that answer
+   *  drives must not frame again from inside it. */
+  let reframing = false;
   let dragged: { index: number; world: Point } | null = null;
   let bringing: OwnedRef | null = null;
   /** The diagram the last sets rebuild drew, and the spacing tier it packed at;
@@ -274,9 +281,18 @@ export function mountGraph(
   };
 
   const frameAll = (): void => {
-    if (!scene) return;
+    const built = scene;
+    if (!built || reframing) return;
     framed = true;
-    scene.fit();
+    reframing = true;
+    // A frame changes the zoom, the sets packing answers to the zoom, and a
+    // fold's own size moves the figure the frame is measured over: the frame and
+    // the packing answer each other until neither has anything left to say.
+    for (let pass = 0; pass < FRAME_PASSES; pass += 1) {
+      built.fit();
+      if (!repack()) break;
+    }
+    reframing = false;
     tellTransform();
   };
 
@@ -496,11 +512,12 @@ export function mountGraph(
 
   /** The packing is a function of the zoom, so a frame or a pinch that carries
    *  the field onto another spacing packs again — which is what refolds a region
-   *  there is no longer room in. */
-  const repack = (): void => {
-    if (reading() !== "sets" || !scene) return;
-    if (setsSpacingTier(scene.viewport.scale) === packedTier) return;
+   *  there is no longer room in. Answers whether it packed. */
+  const repack = (): boolean => {
+    if (reading() !== "sets" || !scene) return false;
+    if (setsSpacingTier(scene.viewport.scale) === packedTier) return false;
     rebuild();
+    return true;
   };
 
   const startCarry = (target: string, world: Point): boolean => {
@@ -705,9 +722,6 @@ export function mountGraph(
       inkTarget: () => props.onInkPointer,
     });
     rebuild();
-    // The first packing is made at the zoom the canvas opened at, and framing
-    // the diagram changes that zoom, so the spacing answers to where it landed.
-    repack();
     tellTransform();
   };
 
@@ -815,10 +829,7 @@ export function mountGraph(
         framed = false;
       }
       rebuild(relayout);
-      if (intoSets) {
-        frameAll();
-        repack();
-      }
+      if (intoSets) frameAll();
       if (outOfSets) {
         setsDrawn = null;
         packedTier = null;
