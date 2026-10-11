@@ -405,7 +405,7 @@
 								<div class="min-w-0 flex-1 space-y-1">
 									<Label for="screen-edges" class="text-sm font-normal">Only at the edges</Label>
 									<p class="text-xs text-muted-foreground">
-										They fade out of the middle of the page, so what you are reading is left clear.
+										They gather at the edges and fade out of the middle.
 									</p>
 								</div>
 							</div>

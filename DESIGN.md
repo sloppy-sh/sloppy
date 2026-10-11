@@ -242,9 +242,9 @@ not a thing to say about the tube beside it.
 
 **Where they reach is one answer for all of them**, because they share the one mask they
 are drawn through: `data-screen-reach="edges"` swaps it for a radial one, so the textures
-fall away from the middle of the page and what somebody is reading is left clear. Nothing
-else varies, so a screen is the one thing it is at any setting, and a sixth is still a
-texture and nothing else. A sample carries its own mask, because a sample is small enough
+gather at the edges of the page and fade out of its middle. Nothing else varies, so a
+screen is the one thing it is at any setting, and a sixth is still a texture and nothing
+else. A sample carries its own mask, because a sample is small enough
 to be the whole texture whatever the page is giving up.
 
 Four rules, and each is a way an effect ships broken:

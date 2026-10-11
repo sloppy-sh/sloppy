@@ -178,8 +178,8 @@
 /* The tube: scanlines, the corners falling away, a band travelling down it and
    a flicker over the whole. The band is the page's own ink, which reads as
    light on a dark look and as shade on a light one — the same bargain every
-   screen here makes. Parked above the page where nothing moves, so a reader who
-   asked for less motion is not left with a band across what they are reading. */
+   screen here makes. Parked above the page where nothing moves, so stopping the
+   motion leaves no band standing across it. */
 :root[data-effect~='crt'] body::after,
 [data-screen='crt']::after {
 	--screen-band: linear-gradient(
