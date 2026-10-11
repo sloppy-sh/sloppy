@@ -163,8 +163,8 @@ describe('the saved look', () => {
 		expect(prefs.current.look).toBe('dark');
 		expect(prefs.current.fonts).toEqual({
 			ui: 'opendyslexic',
-			heading: 'system',
-			mono: 'system'
+			heading: 'opendyslexic',
+			mono: 'opendyslexic'
 		});
 		expect('accent' in prefs.current).toBe(false);
 
@@ -267,11 +267,11 @@ describe('the saved look', () => {
 			[{ theme: 'dark', accent: 'moss', font: 'opendyslexic' }, null],
 			[{ theme: 'paper', scheme: GRUVBOX.slug }, GRUVBOX, 'sloppy_scheme'],
 			[{ look: GRUVBOX.slug }, GRUVBOX],
-			// Paint reaching for a token another axis owns: neither painter gives
-			// it up, so both leave the same thing on the page.
+			// Paint reaching for the one token another axis owns: neither painter
+			// writes it, so both leave the same thing on the page.
 			[
 				{ look: GRUVBOX.slug },
-				{ ...GRUVBOX, tokens: { ...GRUVBOX.tokens, '--border': '#504945', '--ring': '#83a598' } }
+				{ ...GRUVBOX, tokens: { ...GRUVBOX.tokens, '--border': '#504945' } }
 			],
 			// Paint cached for another look is not this one's, so neither painter
 			// uses it and `app.css` answers for the look instead.
@@ -372,6 +372,7 @@ describe('the saved look', () => {
 		prefs.init();
 		expect(prefs.current).toEqual({
 			look: 'paper',
+			lookName: null,
 			ownLook: null,
 			style: 'default',
 			effect: 'none',

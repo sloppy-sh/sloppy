@@ -71,9 +71,15 @@ afterEach(() => {
 });
 
 describe('the faces somebody sets', () => {
-	it('offers each of the three every face, and one more for a family of their own', () => {
+	it('offers each of the three every face but its own, and one more for a family of their own', () => {
 		show();
-		for (const role of ['ui', 'heading', 'mono']) {
+		// The app is already set in Inter, so offering it beside Default would
+		// be the same choice twice; no other role is set in a face it ships.
+		expect(choices('ui').map((one) => one.value)).toEqual([
+			...FACES.filter((face) => face !== 'inter'),
+			'…'
+		]);
+		for (const role of ['heading', 'mono']) {
 			expect(choices(role).map((one) => one.value)).toEqual([...FACES, '…']);
 		}
 		for (const row of ['The app', 'Headings', 'Code and addresses']) {
@@ -130,12 +136,12 @@ describe('the faces somebody sets', () => {
 
 	it('comes back out of the field to the face that is kept', () => {
 		show();
-		pick('ui', 'inter');
+		pick('ui', 'atkinson');
 		pick('ui', '…');
 		nevermind('ui');
 
 		expect(field('ui')).toBeNull();
-		expect(choices('ui').find((one) => one.checked)?.value).toBe('inter');
+		expect(choices('ui').find((one) => one.checked)?.value).toBe('atkinson');
 
 		pick('heading', '…');
 		type('heading', 'Iosevka Etoile');
@@ -148,13 +154,15 @@ describe('the faces somebody sets', () => {
 
 	it('says what a name that is not one needs, and changes nothing', () => {
 		show();
-		pick('ui', 'inter');
+		pick('ui', 'atkinson');
 		pick('ui', '…');
 		type('ui', 'Inter; position: fixed');
 
-		expect(prefs.current.fonts.ui).toBe('inter');
+		expect(prefs.current.fonts.ui).toBe('atkinson');
 		expect(target.querySelector('[role="alert"]')?.textContent).toContain('not the name of a face');
-		expect(document.documentElement.style.getPropertyValue('--font-sans')).toContain('Inter');
+		expect(document.documentElement.style.getPropertyValue('--font-sans')).toContain(
+			'Atkinson Hyperlegible'
+		);
 	});
 
 	it('comes back to a face this build ships from a family of somebody’s own', () => {
@@ -179,7 +187,7 @@ describe('the faces somebody sets', () => {
 		const families = new Set<string>();
 		for (const face of FACES) {
 			for (const [role, token] of [
-				['ui', '--font-sans'],
+				['heading', '--font-heading'],
 				['mono', '--font-mono']
 			] as const) {
 				pick(role, face);

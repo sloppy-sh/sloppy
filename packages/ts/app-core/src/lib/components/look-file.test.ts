@@ -51,6 +51,14 @@ function screen(): string {
 	return (target.textContent ?? '').replace(/\s+/g, ' ');
 }
 
+/** The line Sloppy answers an act with, and the control it stands with. */
+function answer(): { line: string; with: string | null } | null {
+	const said = target.querySelector<HTMLElement>('[role="alert"], [role="status"]');
+	if (!said) return null;
+	const controls = [...(said.parentElement?.querySelectorAll('button, textarea') ?? [])];
+	return { line: said.textContent?.trim() ?? '', with: controls[0]?.tagName ?? null };
+}
+
 function aFile(text: string): File {
 	return new File([text], 'a-look.json', { type: 'application/json' });
 }
@@ -106,6 +114,74 @@ describe('handing the look over', () => {
 		const read = LookSchema.safeParse(JSON.parse(clipboard[0]));
 		expect(read.success && read.data).toMatchObject({ based_on: 'paper', style: 'hardline' });
 		expect(labels()).toContain('Copied');
+	});
+
+	// The name is the look's own, so a look somebody was sent comes back under
+	// the name they were sent it under — DESIGN.md § "A look is a file".
+	it('keeps the name a look arrived with, in a copy of it', async () => {
+		show();
+		paste(JSON.stringify({ name: 'Midnight Ink', based_on: 'graphite' }));
+		press('Use this look');
+		await settle();
+
+		press('Copy');
+		await settle();
+
+		expect(JSON.parse(clipboard[0])).toMatchObject({
+			name: 'Midnight Ink',
+			based_on: 'graphite'
+		});
+	});
+
+	// Rules that reach the web are refused on the way in, so a file carrying
+	// them would be one nobody could open.
+	it('leaves rules that reach the web out, and says so where it copied', async () => {
+		prefs.set('css', 'h2 { background: url(https://elsewhere.example/p.png) }');
+		show();
+		press('Copy');
+		await settle();
+
+		expect(JSON.parse(clipboard[0])).not.toHaveProperty('css');
+		expect(screen()).toContain('without the rules that reach the web');
+	});
+
+	it('says the same where it saved one', async () => {
+		prefs.set('css', 'h2 { background: url(https://elsewhere.example/p.png) }');
+		show();
+		press('Save a look…');
+		await settle();
+
+		expect(JSON.parse(await saved[0].body.text())).not.toHaveProperty('css');
+		expect(screen()).toContain('without the rules that reach the web');
+	});
+
+	it('says nothing of the sort where the rules travel', async () => {
+		prefs.set('css', '.a { color: red }');
+		show();
+		press('Copy');
+		await settle();
+
+		expect(JSON.parse(clipboard[0]).css).toBe('.a { color: red }');
+		expect(screen()).not.toContain('without the rules');
+	});
+
+	// A webview that turns the clipboard down turns it down every time, so
+	// trying again is not the way through — the file is.
+	it('offers the file where the clipboard is refused', async () => {
+		Object.defineProperty(navigator, 'clipboard', {
+			configurable: true,
+			value: {
+				writeText: async () => {
+					throw new Error('no clipboard here');
+				}
+			}
+		});
+		show();
+		press('Copy');
+		await settle();
+
+		expect(screen()).toContain('Save the look to a file instead.');
+		expect(screen()).not.toContain('Try again');
 	});
 
 	it('leaves the rest of how Sloppy is kept off the clipboard', async () => {
@@ -165,6 +241,35 @@ describe('taking one in', () => {
 		expect(prefs.current.look).toBe('graphite');
 		expect(prefs.current.style).toBe('bevel');
 		expect(screen()).toContain('Now wearing Midnight Ink.');
+	});
+
+	// A file that moved the settings moved something the person can see for
+	// themselves everywhere else in Settings, so the line says so.
+	it('says when the settings came with the look', async () => {
+		show();
+		offered = aFile(JSON.stringify({ name: 'Mine', preferences: { tagOrder: 'name' } }));
+		press('Open a look…');
+		await settle();
+
+		expect(screen()).toContain('Now wearing Mine, and your settings came with it.');
+	});
+
+	// At phone width a line under the paste box is a line somebody who pressed
+	// Open a look… may never see.
+	it('stands the line with the controls it answers for', async () => {
+		show();
+		offered = aFile('this is not a look at all');
+		press('Open a look…');
+		await settle();
+
+		expect(answer()).toMatchObject({ with: 'BUTTON' });
+		expect(answer()?.line).toContain('That is not a look');
+
+		paste('also not a look');
+		press('Use this look');
+		await settle();
+
+		expect(answer()).toMatchObject({ with: 'TEXTAREA' });
 	});
 
 	it('changes nothing where somebody opens the file dialog and chooses nothing', async () => {

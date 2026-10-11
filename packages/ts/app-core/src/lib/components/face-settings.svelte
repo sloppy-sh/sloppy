@@ -6,6 +6,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import {
+		type Face,
 		FACE_LABELS,
 		FACE_ROLES,
 		FACES,
@@ -22,6 +23,16 @@
 	};
 	/** The choice that stands for a family of their own. */
 	const THEIR_OWN = '…';
+	/** The face a role's own stack already is: the app's own face is Inter
+	 *  (DESIGN.md § Typography), so The app would otherwise stand two choices
+	 *  that set the same face. */
+	const ITS_OWN: Partial<Record<FaceRole, Face>> = { ui: 'inter' };
+
+	/** The faces a role is offered, which is every one of them but the face it
+	 *  is already set in by default. */
+	function offered(role: FaceRole): Face[] {
+		return FACES.filter((face) => face !== ITS_OWN[role]);
+	}
 
 	let naming = $state<FaceRole | null>(null);
 	/** What is in a role's field, where that is not the family already kept
@@ -45,7 +56,9 @@
 
 	/** The one of a row's choices that is on. */
 	function picked(role: FaceRole): string {
-		return asking(role) ? THEIR_OWN : prefs.current.fonts[role];
+		if (asking(role)) return THEIR_OWN;
+		const face = prefs.current.fonts[role];
+		return face === ITS_OWN[role] ? 'system' : face;
 	}
 
 	function inTheField(role: FaceRole): string {
@@ -88,7 +101,7 @@
 		<fieldset class="space-y-2">
 			<legend class="text-sm text-muted-foreground">{ROLES[role].name}</legend>
 			<div class="flex flex-wrap gap-2">
-				{#each FACES as face (face)}
+				{#each offered(role) as face (face)}
 					<ChoicePill
 						group="face-{role}"
 						value={face}

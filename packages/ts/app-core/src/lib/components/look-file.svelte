@@ -5,18 +5,27 @@
 	import { Label } from '@sloppy/ui/label';
 	import { Textarea } from '@sloppy/ui/textarea';
 	import { onDestroy } from 'svelte';
-	import { lookId, lookNow, readLook, wearLook } from '../look-file.js';
+	import { lookId, lookNow, readLook, rulesWithheld, wearLook } from '../look-file.js';
 	import { openHere, opensFiles, saveHere, savesFiles } from '../save-file.js';
+	import { prefs } from '../stores/prefs.svelte.js';
 	import OwnCss from './own-css.svelte';
 
 	/** How long "Copied" stands before the offer comes back. */
 	const SAID_FOR_MS = 2500;
+	/** What a copy of the look leaves behind, where the rules of their own on it
+	 *  are ones a look cannot carry. */
+	const WITHOUT_THE_RULES = ', without the rules that reach the web.';
 
 	const canSave = savesFiles();
 	const canOpen = opensFiles();
+	/** Whether the look on holds rules a copy of it leaves out. */
+	const withheld = $derived(rulesWithheld(prefs.current.css));
 
-	let said = $state<string | null>(null);
-	let wrong = $state(false);
+	/** Which controls a line answers for, so it stands with them rather than
+	 *  wherever this section ends. */
+	type Answering = 'the files' | 'the box';
+
+	let said = $state<{ line: string; wrong: boolean; at: Answering } | null>(null);
 	let working = $state(false);
 	let copied = $state(false);
 	let pasted = $state('');
@@ -24,9 +33,8 @@
 
 	onDestroy(() => clearTimeout(clearing));
 
-	function say(line: string, amiss = false): void {
-		said = line;
-		wrong = amiss;
+	function say(at: Answering, line: string, amiss = false): void {
+		said = { line, wrong: amiss, at };
 	}
 
 	async function copy(): Promise<void> {
@@ -38,8 +46,15 @@
 			clearTimeout(clearing);
 			copied = true;
 			clearing = setTimeout(() => (copied = false), SAID_FOR_MS);
+			if (withheld) say('the files', `Copied${WITHOUT_THE_RULES}`);
 		} catch {
-			say('Sloppy could not copy that just now. Try again.', true);
+			say(
+				'the files',
+				canSave
+					? 'Sloppy could not copy that. Save the look to a file instead.'
+					: 'Sloppy could not copy that. Open Sloppy in a browser to copy a look.',
+				true
+			);
 		} finally {
 			working = false;
 		}
@@ -52,25 +67,31 @@
 			const look = await lookNow(withPreferences);
 			const name = `${lookId(look.name)}${withPreferences ? '-settings' : ''}.json`;
 			await saveHere(name, new Blob([JSON.stringify(look, null, 2)], { type: 'application/json' }));
+			if (withheld) say('the files', `Saved${WITHOUT_THE_RULES}`);
 		} catch {
-			say('Sloppy could not put that in a file just now. Try again.', true);
+			say('the files', 'Sloppy could not put that in a file just now. Try again.', true);
 		} finally {
 			working = false;
 		}
 	}
 
-	async function take(text: string): Promise<boolean> {
+	async function take(at: Answering, text: string): Promise<boolean> {
 		const read = readLook(text);
 		if (typeof read === 'string') {
-			say(read, true);
+			say(at, read, true);
 			return false;
 		}
 		const why = await wearLook(read);
 		if (why !== null) {
-			say(why, true);
+			say(at, why, true);
 			return false;
 		}
-		say(`Now wearing ${read.name}.`);
+		say(
+			at,
+			read.preferences === undefined
+				? `Now wearing ${read.name}.`
+				: `Now wearing ${read.name}, and your settings came with it.`
+		);
 		return true;
 	}
 
@@ -80,9 +101,9 @@
 		try {
 			const chosen = await openHere('.json');
 			if (!chosen) return;
-			await take(await chosen.text());
+			await take('the files', await chosen.text());
 		} catch {
-			say('Sloppy could not read that file. Try another.', true);
+			say('the files', 'Sloppy could not read that file. Try another.', true);
 		} finally {
 			working = false;
 		}
@@ -92,12 +113,22 @@
 		working = true;
 		said = null;
 		try {
-			if (await take(pasted)) pasted = '';
+			if (await take('the box', pasted)) pasted = '';
 		} finally {
 			working = false;
 		}
 	}
 </script>
+
+{#snippet answer(at: Answering)}
+	{#if said !== null && said.at === at}
+		{#if said.wrong}
+			<p class="text-sm text-destructive" role="alert">{said.line}</p>
+		{:else}
+			<p class="text-sm text-muted-foreground" role="status">{said.line}</p>
+		{/if}
+	{/if}
+{/snippet}
 
 <div class="space-y-6">
 	<div class="space-y-3">
@@ -139,6 +170,7 @@
 				</Button>
 			{/if}
 		</div>
+		{@render answer('the files')}
 		<p class="text-sm text-muted-foreground">
 			Your look is a small file. Send one to somebody and their Sloppy reads like yours. A look you
 			open changes what it says and leaves the rest of yours alone.
@@ -162,15 +194,8 @@
 		>
 			Use this look
 		</Button>
+		{@render answer('the box')}
 	</div>
-
-	{#if said}
-		{#if wrong}
-			<p class="text-sm text-destructive" role="alert">{said}</p>
-		{:else}
-			<p class="text-sm text-muted-foreground" aria-live="polite">{said}</p>
-		{/if}
-	{/if}
 
 	<OwnCss />
 </div>

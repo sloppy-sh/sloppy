@@ -152,12 +152,28 @@ const PaintSchema = z
     ctx.issues.push({ code: "custom", input: ctx.value, message: reaching });
   });
 
+/** A name is written into a declaration of its own, so anything that could end
+ *  that declaration, or reach off the device from inside it, is not one. */
+const NOT_A_FACE = /[;{}]|url\(|\p{Cc}/iu;
+
+/**
+ * Whether a family is the name of a face at all. The one bound on a face, held
+ * by the file a look arrives in and by the store that keeps it, so a look
+ * naming one cannot pass the first and be dropped by the second.
+ */
+export function namesAFace(family: string): boolean {
+  const named = family.trim();
+  return (
+    named !== "" && named.length <= FACE_NAME_MAX && !NOT_A_FACE.test(named)
+  );
+}
+
 const FaceSchema = z
   .string()
   .trim()
   .min(1, "A face needs a name.")
   .max(FACE_NAME_MAX, `A face's name is at most ${FACE_NAME_MAX} characters.`)
-  .regex(/^[^;{}]+$/, "That is not the name of a face.");
+  .refine(namesAFace, "That is not the name of a face.");
 
 const LookCssSchema = z
   .string()

@@ -33,6 +33,7 @@ const SPOKEN: ReadonlySet<string> = new Set(['custom', 'too_big', 'too_small', '
 const OF_THE_LOOK: readonly string[] = [
 	'look',
 	'ownLook',
+	'lookName',
 	'style',
 	'density',
 	'effect',
@@ -40,11 +41,13 @@ const OF_THE_LOOK: readonly string[] = [
 	'css'
 ];
 
-/** What is this device's rather than this person's: the graph in front of them,
- *  the canvas beside it, the pictures under those and the Sloppy that minted
- *  every one of them mean nothing on another machine. */
+/** What is this device's rather than this person's — DESIGN.md § Persistence:
+ *  the graph in front of them, the question lighting it, the canvas beside it,
+ *  the pictures under those and the Sloppy that minted every one of them mean
+ *  nothing on another machine. */
 const OF_THIS_DEVICE: readonly string[] = [
 	'graph',
+	'tags',
 	'alsoOnCanvas',
 	'wallpapers',
 	'views',
@@ -114,20 +117,30 @@ async function ownId(name: string): Promise<string> {
 
 /** What the look this device wears is called, and the look to lay it over again
  *  — one of Sloppy's five, or one in the collection. A look that is in neither
- *  stands on its own, so it travels as its palette and nothing under it. */
+ *  stands on its own, so it travels as its palette and nothing under it, under
+ *  the name it arrived with. */
 async function standing(): Promise<{ name: string; based_on?: string }> {
 	const look = prefs.current.look;
-	if (isBuiltIn(look)) return { name: LOOK_LABELS[look], based_on: look };
+	const kept = prefs.current.lookName;
+	if (isBuiltIn(look)) return { name: kept ?? LOOK_LABELS[look], based_on: look };
 	try {
 		const found = await schemeAt(look);
-		if (found === null) return { name: look };
-		return { name: found.name.trim().slice(0, LOOK_NAME_MAX) || look, based_on: look };
+		if (found === null) return { name: kept ?? look };
+		const named = found.name.trim().slice(0, LOOK_NAME_MAX);
+		return { name: kept ?? (named === '' ? look : named), based_on: look };
 	} catch {
 		// The collection could not be read, which says nothing about whether it
 		// carries this look — so the file keeps it, rather than turning a look of
 		// the collection's into one standing on its own.
-		return { name: look, based_on: look };
+		return { name: kept ?? look, based_on: look };
 	}
+}
+
+/** Rules of this person's own that no copy of their look can carry: a file
+ *  Sloppy wrote and then turned down is one nobody can do anything with, so
+ *  these stay in Settings, in front of whoever can fix them. */
+export function rulesWithheld(css: string): boolean {
+	return css !== '' && cssIsSafe(css) !== null;
 }
 
 /** The look as this device wears it, with `preferences` only where asked — the
@@ -143,7 +156,7 @@ export async function lookNow(withPreferences: boolean): Promise<Look> {
 	};
 	const paint = prefs.dressing?.tokens;
 	if (paint !== undefined && Object.keys(paint).length > 0) look.palette = { ...paint };
-	if (held.css !== '') look.css = held.css;
+	if (held.css !== '' && !rulesWithheld(held.css)) look.css = held.css;
 	if (withPreferences) {
 		const taking = carried();
 		look.preferences = Object.fromEntries(
@@ -153,17 +166,23 @@ export async function lookNow(withPreferences: boolean): Promise<Look> {
 	return look;
 }
 
-/** The paint the named look is laid over: null where Sloppy writes it itself,
- *  and a line for a person where there is nothing to lay it on. */
-async function laidOver(basedOn: string): Promise<SchemeDressing | null | string> {
-	if (isBuiltIn(basedOn)) return null;
+/** The look a palette is laid over: its paint, null where Sloppy writes that
+ *  itself, and what it is called. A line for a person where there is nothing to
+ *  lay the palette on. */
+async function laidOver(
+	basedOn: string
+): Promise<{ paint: SchemeDressing | null; name: string } | string> {
+	if (isBuiltIn(basedOn)) return { paint: null, name: LOOK_LABELS[basedOn] };
 	let found: Scheme | null;
 	try {
 		found = await schemeAt(basedOn);
 	} catch {
 		return LOOKS_UNREAD;
 	}
-	return (found === null ? null : dressed(found)) ?? NOTHING_UNDER_IT;
+	const paint = found === null ? null : dressed(found);
+	if (found === null || paint === null) return NOTHING_UNDER_IT;
+	const named = found.name.trim().slice(0, LOOK_NAME_MAX);
+	return { paint, name: named === '' ? basedOn : named };
 }
 
 /** Wear a look: what it holds is applied and what it leaves out is left alone.
@@ -177,7 +196,7 @@ export async function wearLook(look: Look): Promise<string | null> {
 	const under = look.based_on === undefined ? null : await laidOver(look.based_on);
 	if (typeof under === 'string') return under;
 	const own = look.based_on === undefined && palette !== null ? await ownId(look.name) : null;
-	wear(look, palette, under, own);
+	wear(look, palette, under?.paint ?? null, own, under?.name ?? null);
 	return null;
 }
 
@@ -193,7 +212,8 @@ function wear(
 	look: Look,
 	palette: NonNullable<Look['palette']> | null,
 	under: SchemeDressing | null,
-	own: string | null
+	own: string | null,
+	underName: string | null
 ): void {
 	if (look.based_on !== undefined) {
 		prefs.setLook(under, look.based_on);
@@ -209,10 +229,15 @@ function wear(
 				look.based_on
 			);
 		}
+		// The name is the look's own: a file sent as Midnight Ink is that whatever
+		// it was laid over, so it is kept wherever the look underneath is called
+		// something else, and nowhere else.
+		prefs.set('lookName', look.name === underName ? null : look.name);
 	} else if (palette !== null && own !== null) {
 		// A look that stands on its own stands on the app's own colours, which
 		// are a light ground — DESIGN.md § "A look is a file".
 		prefs.setLook({ slug: own, variant: 'light', tokens: palette }, own, true);
+		prefs.set('lookName', look.name);
 	}
 	if (look.style !== undefined) prefs.set('style', look.style);
 	if (look.density !== undefined) prefs.set('density', look.density);
@@ -237,13 +262,15 @@ function faces(named: NonNullable<Look['fonts']>): Prefs['fonts'] {
 /** The rest of how somebody keeps Sloppy, from a file. A key this build does
  *  not keep is left where it is, and every value arrived from outside — so the
  *  store reads its own storage again afterwards and holds each of them to what
- *  it holds a saved one to. */
+ *  it holds a saved one to. Where nothing could be written down there is
+ *  nothing to read back, and reading anyway would hand this person the
+ *  defaults instead of the file they just opened. */
 function moveIn(held: Record<string, unknown>): void {
 	const taking = carried();
 	for (const [key, value] of Object.entries(held)) {
 		if (taking.includes(key)) prefs.set(key as keyof Prefs, value as never);
 	}
-	prefs.init();
+	if (prefs.kept) prefs.init();
 }
 
 /** A look from what a file or the clipboard holds, or the one line to put in

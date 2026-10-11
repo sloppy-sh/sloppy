@@ -251,10 +251,14 @@ from either is a row that does not look picked. Every theme in `app.css` draws i
 way — a step deeper than muted on a light theme, a step lighter on a dark one.
 
 **The picker stands closed.** Dressing five hundred schemes is colour maths a phone would
-stall on, so the section is one row saying what is on, its sixteen colours beside the name;
-opening it reads the collection and draws the sixty that match what has been typed, the rest
-behind the search and the one being worn always among them. The rows are one group — arrows
-move through them, Space picks — rather than five hundred tab stops.
+stall on, so the section is one row saying what is on, its sixteen colours beside the name,
+standing with Sloppy's own five as the one that is chosen; opening it reads the collection
+and draws the sixty that match what has been typed, the rest behind the search and the one
+being worn always among them. The rows are one group — arrows move through them, Space
+picks — rather than five hundred tab stops, and **the group always answers which look is
+on**, a look of somebody's own included, since a list of five looks none of which is the one
+in front of you is a list that lies. The control that opens the rest stands above the rows
+and says what it opens.
 
 **The eight slots share one lightness, so hue is all that is left to tell them apart — and
 a pair a scheme drew too close together is opened rather than thrown away.** Lightness
@@ -369,10 +373,11 @@ collection having nothing for it is the point of it, not a look that has gone, s
 keep which look is theirs and the picker leaves that one standing.
 
 **`preferences` carries how somebody keeps Sloppy, never what one machine alone means**:
-the graph in front of them, the canvas beside it, the pictures under those and the Sloppy
-that minted any of them stay where they are, so a file moved between machines cannot point
-somebody at a graph that is not there. What a present one holds is held to exactly what the
-store holds a saved setting to, and a key this build does not keep is left where it is.
+the graph in front of them, the question lighting it, the canvas beside it, the pictures
+under those and the Sloppy that minted any of them stay where they are, so a file moved
+between machines cannot point somebody at a graph that is not there, or light one by tags it
+does not carry. What a present one holds is held to exactly what the store holds a saved
+setting to, and a key this build does not keep is left where it is.
 
 **A look's own CSS is part of the look**, and bounded: at most 64 KiB, applied through one
 `<style>` element the app owns and nothing else writes. **That element stands last in
@@ -1505,7 +1510,10 @@ nothing under it.
   is chosen per role, and a role that derives from another follows it: somebody who needs
   OpenDyslexic to read sets the app's face and the headings come with it, while the face for
   code is theirs to set or to leave. A family the device does not have falls back to the
-  stack the role already had, the derived ones included.
+  stack the role already had, the derived ones included. The app's own row offers no second
+  Inter — `Default` there IS the app's own face — and the one face an earlier build kept
+  stands in all three roles, because it was what the whole app was read in, addresses and
+  all.
 - **A face that cannot hold its figures to one width drops the guarantee, never the
   family.** **Legibility outranks alignment** — a reader who needs OpenDyslexic to read an
   address at all does not get an exception carved out of it for our nicest column. A family

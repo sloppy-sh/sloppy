@@ -7,6 +7,7 @@ import {
   LOOK_CSS_MAX,
   LOOK_NAME_MAX,
   LookSchema,
+  namesAFace,
   STYLES,
 } from "./look.js";
 
@@ -109,6 +110,32 @@ describe("a look somebody was sent", () => {
     expect(look({ fonts: { ui: "x".repeat(FACE_NAME_MAX + 1) } }).success).toBe(
       false,
     );
+  });
+
+  // One bound on a face, so a look naming one the store would not keep is
+  // turned down here rather than read and quietly ignored there.
+  it("holds a face to the one bound a kept face is held to", () => {
+    for (const named of [
+      "Inter",
+      "Iosevka Etoile",
+      "x".repeat(FACE_NAME_MAX),
+      " Inter ",
+    ]) {
+      expect(namesAFace(named), named).toBe(true);
+      expect(look({ fonts: { ui: named } }).success, named).toBe(true);
+    }
+    for (const named of [
+      "",
+      "   ",
+      "Inter; position: fixed",
+      "url(https://a.example/f.woff2)",
+      "Inter{",
+      "In\u0000ter",
+      "x".repeat(FACE_NAME_MAX + 1),
+    ]) {
+      expect(namesAFace(named), named).toBe(false);
+      expect(look({ fonts: { ui: named } }).success, named).toBe(false);
+    }
   });
 
   it("carries rules of its own, up to what a look runs to", () => {

@@ -69,12 +69,13 @@
    and the style axis below them has to beat for --border. */
 @import './schemes.css';
 
-/* The accent a look carried as data is owed: a dressing may not carry the
-   accent family (`schemes/scheme.ts`), so the stylesheet answers for it, in the
-   family of the ground the look stands on. The one place the `dark` class
-   decides a colour rather than `data-look` — the collection runs both ways under
-   ids this stylesheet does not know — and the five looks below beat both by
-   source order. */
+/* The accent an id with no paint beside it stands on — a device that kept the
+   id alone, a collection that no longer carries that look — until a dressing
+   resolves and paints its own over this, or for good where none ever does.
+   DESIGN.md § "A look carried as data". The one place the `dark` class decides a
+   colour rather than `data-look` — the collection runs both ways under ids this
+   stylesheet does not know — and the five looks below beat both by source
+   order. */
 :root[data-look] {
 	--primary: oklch(0.52 0.14 265);
 	--primary-foreground: oklch(0.99 0.004 85);

@@ -5,7 +5,7 @@
 import { LOOK_CSS_MAX, LOOK_ID } from '@sloppy/types';
 import { dressed, schemes } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { lookId, lookNow, readLook, wearLook } from './look-file.js';
+import { lookId, lookNow, readLook, rulesWithheld, wearLook } from './look-file.js';
 import { BUILT_IN_LOOKS, prefs } from './stores/prefs.svelte.js';
 
 /** A scheme the collection carries, which it runs dark. */
@@ -93,6 +93,36 @@ describe('the look this device wears', () => {
 		expect(moving.preferences).not.toHaveProperty('origin');
 		expect(moving.preferences).not.toHaveProperty('graph');
 		expect(moving.preferences).not.toHaveProperty('views');
+	});
+
+	// The selection lighting the graph is a question asked of the graph in front
+	// of them — DESIGN.md § Persistence.
+	it('leaves the question lighting the graph out of it too', async () => {
+		prefs.set('tags', ['biology', 'seed']);
+		const moving = await lookNow(true);
+		expect(moving.preferences).not.toHaveProperty('tags');
+		expect(prefs.current.tags).toEqual(['biology', 'seed']);
+	});
+
+	// A file Sloppy writes is one Sloppy reads: rules that reach the web are
+	// refused on the way in, so they are left out on the way out, and stay in
+	// Settings where they can be fixed.
+	it('leaves rules that reach the web out of the file, and keeps them to fix', async () => {
+		const reaching = 'h2 { background: url(https://elsewhere.example/p.png) }';
+		prefs.set('css', reaching);
+		expect(rulesWithheld(reaching)).toBe(true);
+
+		const look = await lookNow(false);
+
+		expect(look.css).toBeUndefined();
+		expect(prefs.current.css).toBe(reaching);
+		expect(readLook(JSON.stringify(look))).toMatchObject({ name: 'Paper' });
+	});
+
+	it('carries the rules a look can carry', async () => {
+		prefs.set('css', '.a { color: red }');
+		expect(rulesWithheld('.a { color: red }')).toBe(false);
+		expect((await lookNow(false)).css).toBe('.a { color: red }');
 	});
 
 	it('states nothing twice: what the look says is not in the settings beside it', async () => {
@@ -280,11 +310,91 @@ describe('wearing one', () => {
 		expect(prefs.current.ownLook).toBeNull();
 	});
 
+	// A browser told to block site data throws on the write, and then memory is
+	// all there is: re-reading storage would hand this person the defaults
+	// instead of the look they just opened.
+	it('keeps what a look moved in where the device will not write it down', async () => {
+		const blocked = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+			throw new Error('site data is blocked');
+		});
+		try {
+			expect(
+				await wearLook({
+					name: 'Mine',
+					style: 'bevel',
+					preferences: { tagOrder: 'name', autosaveMinutes: 15 }
+				})
+			).toBeNull();
+			expect(prefs.current.style).toBe('bevel');
+			expect(prefs.current.tagOrder).toBe('name');
+			expect(prefs.current.autosaveMinutes).toBe(15);
+		} finally {
+			blocked.mockRestore();
+		}
+	});
+
 	it('turns down rules that would reach the web, and leaves the ones standing', async () => {
 		prefs.set('css', '.a { color: red }');
 		const why = await wearLook({ name: 'Phoning home', css: '@import url(https://x.test/a.css)' });
 		expect(why).toContain('cannot load anything from the web');
 		expect(prefs.current.css).toBe('.a { color: red }');
+	});
+});
+
+// A look arrives under a name of its own, and that name is what the next copy
+// of it carries — DESIGN.md § "A look is a file".
+describe('the name a look arrived with', () => {
+	it('outlives the name of the look it was laid over', async () => {
+		expect(
+			await wearLook({
+				name: 'Midnight Ink',
+				based_on: 'graphite',
+				palette: { '--background': 'oklch(.17 .02 265)' }
+			})
+		).toBeNull();
+		expect((await lookNow(false)).name).toBe('Midnight Ink');
+
+		prefs.init();
+
+		expect((await lookNow(false)).name).toBe('Midnight Ink');
+		expect((await lookNow(false)).based_on).toBe('graphite');
+	});
+
+	it('is what a look of their own is called, rather than the id it is worn under', async () => {
+		expect(
+			await wearLook({ name: 'Midnight Ink', palette: { '--background': 'oklch(.97 0 0)' } })
+		).toBeNull();
+		expect(prefs.current.look).toBe('midnight-ink');
+		expect((await lookNow(false)).name).toBe('Midnight Ink');
+
+		prefs.init();
+
+		expect((await lookNow(false)).name).toBe('Midnight Ink');
+	});
+
+	it('is kept only where it is a name neither Sloppy nor the collection has', async () => {
+		expect(await wearLook({ name: 'Graphite', based_on: 'graphite' })).toBeNull();
+		expect(prefs.current.lookName).toBeNull();
+
+		expect(await wearLook({ name: 'Nord', based_on: NORD })).toBeNull();
+		expect(prefs.current.lookName).toBeNull();
+	});
+
+	it('goes when another look does', async () => {
+		expect(await wearLook({ name: 'Midnight Ink', based_on: 'graphite' })).toBeNull();
+		prefs.setLook(null, 'light');
+		expect(prefs.current.lookName).toBeNull();
+		expect((await lookNow(false)).name).toBe('Light');
+	});
+
+	// A file naming no palette and nothing under it says nothing about which
+	// look is on, so it leaves the one that is standing — its name with it.
+	it('stands where a look changes only the rules', async () => {
+		expect(
+			await wearLook({ name: 'Midnight Ink', palette: { '--background': 'oklch(.97 0 0)' } })
+		).toBeNull();
+		expect(await wearLook({ name: 'Tighter headings', css: '.a { color: red }' })).toBeNull();
+		expect((await lookNow(false)).name).toBe('Midnight Ink');
 	});
 });
 

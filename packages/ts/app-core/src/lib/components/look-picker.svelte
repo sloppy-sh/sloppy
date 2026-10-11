@@ -21,6 +21,15 @@
 		dressing: SchemeDressing;
 	}
 
+	/** One look as the group stands it: what picking it asks for, what it is
+	 *  called, whoever wrote it, and what it shows of itself. */
+	interface Row {
+		key: string;
+		name: string;
+		author: string;
+		colours: readonly string[];
+	}
+
 	/** How many of the collection's rows stand at once. It is five hundred looks
 	 *  and a phone draws every row it is given, so past this the search is the way
 	 *  through. */
@@ -48,6 +57,10 @@
 		contrast: ['oklch(0.99 0 0)', 'oklch(0.955 0 0)', 'oklch(0.52 0.14 265)', 'oklch(0.13 0 0)']
 	};
 
+	/** What a look carried as data shows of itself where there is nothing in the
+	 *  collection to show: the same four, out of the paint in hand. */
+	const FOUR = ['--background', '--muted', '--primary', '--foreground'] as const;
+
 	/** Which key each arrow takes the focus to, given where it stands and the
 	 *  last row there is. */
 	const MOVES: Record<string, (at: number, last: number) => number> = {
@@ -69,10 +82,6 @@
 
 	const chosen = $derived(prefs.current.look);
 	const wearing = $derived(held !== null && held.scheme.slug === chosen ? held : null);
-	/** What the control under the rows says: the look carried as data that is on,
-	 *  or the way to the rest of them — which is also what it says in the moment
-	 *  before a saved look resolves to a name of its own. */
-	const saying = $derived(wearing === null ? 'More looks' : wearing.scheme.name);
 	const matching = $derived.by(() => {
 		const all = offered ?? [];
 		const needle = typed.trim().toLowerCase();
@@ -90,10 +99,35 @@
 		return worn === undefined ? head : [worn, ...head.slice(0, MOST - 1)];
 	});
 	const more = $derived(matching.length - shown.length);
-	const keys = $derived([
-		...BUILT_IN_LOOKS,
-		...(open ? shown.map(({ scheme }) => scheme.slug) : [])
-	]);
+	/** The row for the look that is on where none of the rest of them would be
+	 *  it: the one carried as data while the collection stands behind the search,
+	 *  and a look of somebody's own, which no collection names. */
+	const worn = $derived.by<Row | null>(() => {
+		if (BUILT_IN_LOOKS.some((one) => one === chosen)) return null;
+		if (wearing !== null) return ofTheCollection(wearing.scheme);
+		const paint = prefs.dressing;
+		if (paint === null) return null;
+		return {
+			key: chosen,
+			name: prefs.current.lookName ?? chosen,
+			author: '',
+			colours: FOUR.map((token) => paint.tokens[token]).filter((colour) => colour !== undefined)
+		};
+	});
+	/** Sloppy's own five, the look that is on where it is neither of those, and
+	 *  the collection behind them once it is opened. */
+	const rows = $derived.by<Row[]>(() => {
+		const own: Row[] = BUILT_IN_LOOKS.map((built) => ({
+			key: built,
+			name: LOOK_LABELS[built],
+			author: '',
+			colours: OWN_PALETTE[built]
+		}));
+		const collection = open ? shown.map(({ scheme }) => ofTheCollection(scheme)) : [];
+		const also = worn !== null && !collection.some((one) => one.key === worn.key) ? [worn] : [];
+		return [...own, ...also, ...collection];
+	});
+	const keys = $derived(rows.map((one) => one.key));
 	/** The group's one tab stop: where the keyboard was last taken, else the row
 	 *  being worn, else the first of Sloppy's own. */
 	const stop = $derived.by(() => {
@@ -194,10 +228,15 @@
 		);
 	}
 
-	/** The sixteen a look carried as data shows of itself, in the collection's own
-	 *  order. */
-	function sixteen(scheme: Scheme): string[] {
-		return BASE_KEYS.map((key) => scheme.palette[key]);
+	/** A look out of the collection, with the sixteen it shows of itself in the
+	 *  collection's own order. */
+	function ofTheCollection(scheme: Scheme): Row {
+		return {
+			key: scheme.slug,
+			name: scheme.name,
+			author: scheme.author,
+			colours: BASE_KEYS.map((key) => scheme.palette[key])
+		};
 	}
 </script>
 
@@ -209,7 +248,7 @@
 	</span>
 {/snippet}
 
-{#snippet row(key: string, name: string, author: string, colours: readonly string[])}
+{#snippet row({ key, name, author, colours }: Row)}
 	<button
 		type="button"
 		role="radio"
@@ -237,37 +276,14 @@
 		spacing stay as you set them.
 	</p>
 
-	{#if open && !unread}
-		<Input type="search" bind:value={typed} aria-label="Find a look" placeholder="Find a look" />
-	{/if}
-
-	<div
-		role="radiogroup"
-		aria-label="Look"
-		bind:this={group}
-		class="max-h-80 min-w-0 space-y-1 overflow-y-auto scroll-fade-y [--scroll-fade:1rem]"
-		{@attach scrollFade('y')}
-	>
-		{#each BUILT_IN_LOOKS as built (built)}
-			{@render row(built, LOOK_LABELS[built], '', OWN_PALETTE[built])}
-		{/each}
-
-		{#if open}
-			{#each shown as { scheme } (scheme.slug)}
-				{@render row(scheme.slug, scheme.name, scheme.author, sixteen(scheme))}
-			{/each}
-		{/if}
-	</div>
-
 	<button
 		type="button"
 		aria-expanded={open}
-		aria-label={wearing === null ? saying : `Look: ${saying}`}
-		class={look(wearing !== null)}
+		aria-controls="the-looks"
+		class={look(false)}
 		onclick={toggle}
 	>
-		{#if wearing !== null}{@render band(sixteen(wearing.scheme))}{/if}
-		<span class="min-w-0 flex-1 truncate text-foreground">{saying}</span>
+		<span class="min-w-0 flex-1 truncate text-foreground">More looks</span>
 		<ChevronDown
 			class={cn(
 				'size-4 shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none',
@@ -275,6 +291,23 @@
 			)}
 		/>
 	</button>
+
+	{#if open && !unread}
+		<Input type="search" bind:value={typed} aria-label="Find a look" placeholder="Find a look" />
+	{/if}
+
+	<div
+		id="the-looks"
+		role="radiogroup"
+		aria-label="Look"
+		bind:this={group}
+		class="max-h-80 min-w-0 space-y-1 overflow-y-auto scroll-fade-y [--scroll-fade:1rem]"
+		{@attach scrollFade('y')}
+	>
+		{#each rows as one (one.key)}
+			{@render row(one)}
+		{/each}
+	</div>
 
 	{#if open}
 		{#if unread}

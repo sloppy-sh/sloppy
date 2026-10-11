@@ -23,9 +23,10 @@ import {
 	type Density,
 	EFFECTS,
 	type Effect,
-	FACE_NAME_MAX,
 	LOOK_CSS_MAX,
 	LOOK_ID,
+	LOOK_NAME_MAX,
+	namesAFace,
 	type OwnedRef,
 	OwnedRefSchema,
 	STYLES,
@@ -35,7 +36,7 @@ import {
 } from '@sloppy/types';
 import { sanitizeWallpapers, type WallpaperPrefs } from '../wallpaper.js';
 
-export { DENSITIES, EFFECTS, STYLES } from '@sloppy/types';
+export { DENSITIES, EFFECTS, namesAFace, STYLES } from '@sloppy/types';
 export type { Density, Effect, Style } from '@sloppy/types';
 
 /** The looks Sloppy ships. Every other look is a palette carried as data, so
@@ -83,6 +84,10 @@ export interface Prefs {
 	 *  is minted past every look this Sloppy answers to, so a surface that
 	 *  resolves ids would otherwise read it as a look that has gone. */
 	ownLook: string | null;
+	/** What the look on is called, where neither Sloppy's own five nor the
+	 *  collection has a name for it: the name it arrived under in a file, which
+	 *  is the name a copy of it carries. Null is a look one of those names. */
+	lookName: string | null;
 	style: Style;
 	/** What the screen itself is drawn like over everything else — DESIGN.md
 	 *  § "The look". */
@@ -251,18 +256,6 @@ const FACE_TOKENS: Record<FaceRole, { token: string; under: string }> = {
 /** The three, in the order they are offered. */
 export const FACE_ROLES = Object.keys(FACE_TOKENS) as FaceRole[];
 
-/** A name is written into a declaration of its own, so anything that could end
- *  that declaration, or reach off the device from inside it, is not one. */
-const NOT_A_FACE = /[;{}]|url\(|\p{Cc}/iu;
-
-/** Whether a family somebody typed is the name of a face at all. The field asks
- *  before the name is kept, so a refusal is a line somebody can act on rather
- *  than a face that silently did not take. */
-export function namesAFace(family: string): boolean {
-	const named = family.trim();
-	return named !== '' && named.length <= FACE_NAME_MAX && !NOT_A_FACE.test(named);
-}
-
 function shippedFace(face: string): (typeof FACE_FAMILIES)[Exclude<Face, 'system'>] | null {
 	return Object.hasOwn(FACE_FAMILIES, face) ? FACE_FAMILIES[face as Exclude<Face, 'system'>] : null;
 }
@@ -336,6 +329,7 @@ function defaults(): Prefs {
 	return {
 		look: firstLook(),
 		ownLook: null,
+		lookName: null,
 		style: 'default',
 		effect: 'none',
 		fonts: { ui: 'system', heading: 'system', mono: 'system' },
@@ -388,22 +382,32 @@ function lookIn(value: unknown): string | null {
 	return typeof value === 'string' && LOOK_ID.test(value) ? value : null;
 }
 
+/** The name a look arrived under, bounded the way the file's own name is. */
+function lookNameIn(value: unknown): string | null {
+	if (typeof value !== 'string') return null;
+	const named = value.trim().slice(0, LOOK_NAME_MAX);
+	return named === '' ? null : named;
+}
+
 /** One face, as a name rather than as a rule — a family this build does not
  *  ship is still the person's to ask for, so only the bound is held. */
 function faceIn(value: unknown, fallback: string): string {
 	return typeof value === 'string' && namesAFace(value) ? value.trim() : fallback;
 }
 
-/** The three, with `was` the one face an earlier build kept. */
+/** The three, with `was` the one face an earlier build kept — which stands in
+ *  every role rather than in the app alone, because a reader who needed one to
+ *  read needed it on an address too (DESIGN.md § Typography). */
 function facesIn(value: unknown, was: unknown): Prefs['fonts'] {
 	const held = (typeof value === 'object' && value !== null ? value : {}) as Record<
 		string,
 		unknown
 	>;
+	const whole = faceIn(was, 'system');
 	return {
-		ui: faceIn(held.ui, faceIn(was, 'system')),
-		heading: faceIn(held.heading, 'system'),
-		mono: faceIn(held.mono, 'system')
+		ui: faceIn(held.ui, whole),
+		heading: faceIn(held.heading, whole),
+		mono: faceIn(held.mono, whole)
 	};
 }
 
@@ -606,6 +610,7 @@ class PrefsStore {
 	/** Watching `<head>` for the stylesheets that arrive in it, while the look
 	 *  has rules of its own standing there. */
 	#watchingHead: MutationObserver | null = null;
+	#kept = true;
 
 	get current(): Prefs {
 		return this.#current;
@@ -615,6 +620,13 @@ class PrefsStore {
 	 *  it. */
 	get dressing(): SchemeDressing | null {
 		return this.#dressing;
+	}
+
+	/** Whether what the store holds reached storage. A browser told to block
+	 *  site data throws on the write, and then memory is all there is — so
+	 *  nothing may re-read storage and call the answer this person's settings. */
+	get kept(): boolean {
+		return this.#kept;
 	}
 
 	get isDark(): boolean {
@@ -639,6 +651,7 @@ class PrefsStore {
 		this.#current = {
 			look,
 			ownLook: lookIn(saved.ownLook),
+			lookName: lookNameIn(saved.lookName),
 			style: oneOf(saved.style, STYLES, base.style),
 			effect: oneOf(saved.effect, EFFECTS, base.effect),
 			fonts: facesIn(saved.fonts, saved.font),
@@ -739,6 +752,8 @@ class PrefsStore {
 		if (key === 'look' && this.#dressing !== null && value !== this.#dressing.slug) {
 			this.#dress(null);
 		}
+		// A name arrived with one look, so another look has none until it says so.
+		if (key === 'look' && value !== this.#current.look) next.lookName = null;
 		// A graph, the canvas beside it, the pictures under them and how each
 		// folder was being read are refs the Sloppy being left minted; they mean
 		// nothing on the next one.
@@ -756,7 +771,9 @@ class PrefsStore {
 	#persist(): void {
 		try {
 			localStorage.setItem(KEY, JSON.stringify(this.#current));
+			this.#kept = true;
 		} catch {
+			this.#kept = false;
 			// Memory already holds it; only carrying the choice to the next visit
 			// is lost.
 		}

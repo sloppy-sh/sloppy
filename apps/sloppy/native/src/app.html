@@ -68,9 +68,9 @@
 			if (saved.effect && saved.effect !== 'none') root.setAttribute('data-effect', saved.effect);
 			// The three faces, over the tokens app.css declares them at. The store
 			// writes the same three from the same table of what a face this build
-			// offers asks for, and a face an earlier build kept is still the one the
-			// app is read in. A family nothing here ships is used if this machine has
-			// it, with the role's own stack behind it.
+			// offers asks for, and the one face an earlier build kept stands in every
+			// one of the three. A family nothing here ships is used if this machine
+			// has it, with the role's own stack behind it.
 			var shipped = {
 				inter: ["'Inter'", "'Inter'", true],
 				atkinson: ["'Atkinson Hyperlegible'", "'Atkinson Hyperlegible'", false],
@@ -101,7 +101,7 @@
 			];
 			var monoFace = 'system';
 			for (var role = 0; role < roles.length; role++) {
-				var face = aFace(kept[roles[role][0]], roles[role][0] === 'ui' ? saved.font : undefined);
+				var face = aFace(kept[roles[role][0]], saved.font);
 				if (roles[role][0] === 'mono') monoFace = face;
 				if (face === 'system') continue;
 				var asked = itsOwn(face);

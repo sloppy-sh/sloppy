@@ -158,7 +158,22 @@ describe('the looks on offer', () => {
 		expect(named()).toEqual(BUILT_IN_LOOKS.map((look) => LOOK_LABELS[look]));
 		expect(chosen()).toEqual(['Paper']);
 		expect(target.querySelector('input[type="search"]')).toBeNull();
-		expect(disclosure().getAttribute('aria-label')).toBe('More looks');
+		expect(disclosure().textContent?.trim()).toBe('More looks');
+	});
+
+	// A control that opens something says so, and says what — and a reader meets
+	// it before the rows it adds to.
+	it('says what it opens, and stands before it', async () => {
+		show();
+		await settle();
+
+		expect(disclosure().getAttribute('aria-expanded')).toBe('false');
+		expect(disclosure().getAttribute('aria-controls')).toBe(group().id);
+		expect(group().id).not.toBe('');
+		expect(disclosure().compareDocumentPosition(group())).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+		await openUp();
+		expect(disclosure().getAttribute('aria-expanded')).toBe('true');
 	});
 
 	it("leads with Sloppy's own once it is opened, and caps what stands at once", async () => {
@@ -363,7 +378,9 @@ describe('picking one', () => {
 		expect(root.getAttribute('data-look')).not.toBe(first);
 	});
 
-	it('is what the closed row says afterwards', async () => {
+	// Closed, the group still has to say what is on: the rest of the collection
+	// goes away and the look being worn stands with Sloppy's own five.
+	it('stands in the group afterwards, closed, as the one that is on', async () => {
 		show();
 		await settle();
 		await openUp();
@@ -373,9 +390,9 @@ describe('picking one', () => {
 		disclosure().click();
 		flushSync();
 
-		expect(disclosure().getAttribute('aria-label')).toBe(`Look: ${NORD.name}`);
-		expect(rows()).toHaveLength(OWN);
-		expect(disclosure().querySelector('span[aria-hidden] span[style]')).not.toBeNull();
+		expect(rows()).toHaveLength(OWN + 1);
+		expect(chosen()).toEqual([NORD.name]);
+		expect(rowFor(NORD.name).querySelectorAll('span[aria-hidden] span[style]')).toHaveLength(16);
 	});
 
 	it("hands the app back to one of Sloppy's own", async () => {
@@ -422,7 +439,7 @@ describe('picking one', () => {
 
 		expect(prefs.dressing?.slug).toBe(NORD.slug);
 		expect(document.documentElement.getAttribute('data-look')).toBe(NORD.slug);
-		expect(disclosure().getAttribute('aria-label')).toBe(`Look: ${NORD.name}`);
+		expect(chosen()).toEqual([NORD.name]);
 	});
 
 	// Paint cached by a build whose dressing stopped short of the accent: it is
@@ -463,7 +480,8 @@ describe('picking one', () => {
 
 		expect(prefs.current.look).toBe('paper');
 		expect(document.documentElement.getAttribute('data-look')).toBe('paper');
-		expect(disclosure().getAttribute('aria-label')).toBe('More looks');
+		expect(chosen()).toEqual([LOOK_LABELS.paper]);
+		expect(rows()).toHaveLength(OWN);
 	});
 
 	// The look it stood down from was painting a dark page, so the one it hands
@@ -493,7 +511,11 @@ describe('picking one', () => {
 	it("leaves a look of somebody's own standing", async () => {
 		localStorage.setItem(
 			'sloppy_prefs',
-			JSON.stringify({ look: 'midnight-ink', ownLook: 'midnight-ink' })
+			JSON.stringify({
+				look: 'midnight-ink',
+				ownLook: 'midnight-ink',
+				lookName: 'Midnight Ink'
+			})
 		);
 		localStorage.setItem(
 			'sloppy_look',
@@ -511,6 +533,9 @@ describe('picking one', () => {
 		expect(prefs.current.look).toBe('midnight-ink');
 		expect(document.documentElement.getAttribute('data-look')).toBe('midnight-ink');
 		expect(document.documentElement.style.getPropertyValue('--background')).toBe('#101010');
+		// And it stands in the group under the name it arrived with, as the one
+		// that is on — nothing else here would say so.
+		expect(chosen()).toEqual(['Midnight Ink']);
 	});
 
 	it('keeps a saved look where the collection could not be read', async () => {

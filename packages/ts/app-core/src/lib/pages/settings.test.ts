@@ -240,11 +240,14 @@ describe('settings', () => {
 		for (const legend of ['Style', 'Faces', 'How close it is drawn', 'Screen']) {
 			expect(target.textContent).toContain(legend);
 		}
-		// Each role is offered every face this build has, and one more choice for
-		// a family nobody here ships.
+		// Each role is offered every face this build has but the one it is
+		// already set in, and one more choice for a family nobody here ships.
 		const axes = [STYLES, DENSITIES, EFFECTS];
+		const ownFace = 1;
 		expect(target.querySelectorAll('input[type="radio"]').length).toBe(
-			axes.reduce((all, axis) => all + axis.length, 0) + FACE_ROLES.length * (FACES.length + 1)
+			axes.reduce((all, axis) => all + axis.length, 0) +
+				FACE_ROLES.length * (FACES.length + 1) -
+				ownFace
 		);
 	});
 
@@ -268,7 +271,11 @@ describe('settings', () => {
 		flushSync();
 
 		const face = [...target.querySelectorAll<HTMLInputElement>('input[name="face-ui"]')];
-		expect(face.map((option) => option.value)).toEqual([...FACES, '…']);
+		// The app is already set in Inter, so that row does not offer it twice.
+		expect(face.map((option) => option.value)).toEqual([
+			...FACES.filter((one) => one !== 'inter'),
+			'…'
+		]);
 		expect(target.textContent).toContain('OpenDyslexic');
 
 		const dyslexic = face.find((option) => option.value === 'opendyslexic');
