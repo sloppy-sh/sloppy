@@ -435,4 +435,22 @@ describe('moving notes between the sets', () => {
 
 		expect(screen()).toContain('Sloppy could not change that note.');
 	});
+
+	it('takes that back the moment a move lands', async () => {
+		await inSets(['biology']);
+		api.on(`PATCH ${path(THIRD)}`, () => new Response('{}', { status: 500 }));
+		await openMenu('2');
+		await runRow('Into biology');
+		expect(screen()).toContain('Sloppy could not change that note.');
+
+		api.on(`PATCH ${path(THIRD)}`, (_url, init) => {
+			const after = { ...held.get(THIRD)!, ...JSON.parse(String(init?.body ?? '{}')) } as NodeView;
+			held.set(THIRD, after);
+			return after;
+		});
+		await openMenu('2');
+		await runRow('Into biology');
+
+		expect(screen()).not.toContain('Sloppy could not change that note.');
+	});
 });

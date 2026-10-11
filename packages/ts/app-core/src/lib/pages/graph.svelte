@@ -1455,15 +1455,11 @@
 		await mine;
 	}
 
-	/**
-	 * A move between the sets the canvas draws — DESIGN.md § "Sets — the tags as
-	 * places". `into` and `outOf` name drawn tags only, so whatever else a note
-	 * carries is left where it is.
-	 */
 	async function moveBetweenSets({ notes, into, outOf }: GraphRetag): Promise<void> {
 		const asked = notes.filter((ref) => nodes.get(ref) !== undefined);
 		if (asked.length === 0 || (into.length === 0 && outOf.length === 0)) return;
 		forgetLastAct();
+		refused = null;
 		const full = noRoomFor(asked);
 		if (full) {
 			moveRefused(full);
@@ -1473,7 +1469,6 @@
 			await moveOneBetweenSets(asked[0], into, outOf);
 			return;
 		}
-		// Two acts, because one bulk act either adds tags or takes them away.
 		const moves: NodeBulkAct[] = [
 			...(into.length > 0 ? [{ act: 'tag' as const, tags: [...into] }] : []),
 			...(outOf.length > 0 ? [{ act: 'untag' as const, tags: [...outOf] }] : [])
@@ -1675,11 +1670,8 @@
 		return items;
 	});
 
-	/**
-	 * One row per drawn set: the move those notes can make into it, or out of it
-	 * where every one of them is already inside. Empty wherever the canvas draws
-	 * no sets, so it adds nothing in the other readings.
-	 */
+	/** One row per drawn set; out of it only where every one of the notes is
+	 *  already inside. */
 	function setMoves(notes: readonly OwnedRef[]): CanvasMenuItem[] {
 		const held = notes.map((ref) => nodes.get(ref)).filter((note) => note !== undefined);
 		return drawnSets.map((tag) => {
