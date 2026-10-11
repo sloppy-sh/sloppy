@@ -20,7 +20,12 @@ import type {
 import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
-import { membershipOf, type SetsStanding } from "./sets/pack.js";
+import {
+  membershipOf,
+  SETS_STEP,
+  setsSpacing,
+  type SetsStanding,
+} from "./sets/pack.js";
 import type { LayoutCommand, LayoutEvent } from "./layout/protocol.js";
 import type { GraphHandle, GraphMountOptions } from "./mount.js";
 import type { Bounds } from "./viewport.js";
@@ -205,8 +210,14 @@ class StandInScene {
     this.positions.set(positions);
   }
   setPalette(): void {}
+  /** The zoom a frame of the whole field lands on, for the tests that read the
+   *  packing back: the real scene fits the figure to the screen, and `null`
+   *  leaves the zoom alone. */
+  static fitsTo: number | null = null;
+
   fit(): void {
     this.fits += 1;
+    if (StandInScene.fitsTo !== null) this.viewport.scale = StandInScene.fitsTo;
   }
   invalidate(): void {}
   resizes = 0;
@@ -398,6 +409,35 @@ async function mount(
     field.send("pointerup", event as Partial<PointerEvent>);
   };
 
+  const mouseAt = (point: { x: number; y: number }, down: boolean) =>
+    ({
+      pointerId: 3,
+      pointerType: "mouse",
+      button: down ? 0 : -1,
+      clientX: point.x,
+      clientY: point.y,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+    }) as Partial<PointerEvent>;
+
+  const dragAlong = (
+    ref: string,
+    path: readonly { x: number; y: number }[],
+  ): void => {
+    scene.under = ref;
+    for (const [step, point] of path.entries()) {
+      field.send(
+        step === 0 ? "pointerdown" : "pointermove",
+        mouseAt(point, step === 0),
+      );
+    }
+  };
+
+  const letGo = (point: { x: number; y: number }): void => {
+    field.send("pointerup", mouseAt(point, false));
+  };
+
   return {
     handle,
     props,
@@ -515,22 +555,11 @@ async function mount(
         clientY: y,
       } as Partial<PointerEvent>);
     },
-    /** A mouse taking hold of `ref` and carrying it along `path`. */
-    drag(ref: string, path: readonly { x: number; y: number }[]): void {
-      scene.under = ref;
-      for (const [at, point] of path.entries()) {
-        field.send(at === 0 ? "pointerdown" : "pointermove", {
-          pointerId: 3,
-          pointerType: "mouse",
-          button: at === 0 ? 0 : -1,
-          clientX: point.x,
-          clientY: point.y,
-          shiftKey: false,
-          ctrlKey: false,
-          metaKey: false,
-        } as Partial<PointerEvent>);
-      }
-    },
+    /** A mouse taking hold of `ref` and carrying it along `path`, the button
+     *  still down where it stopped. */
+    drag: dragAlong,
+    /** The button released where a drag left it. */
+    drop: letGo,
     /** The desk's zoom: a wheel over the field. */
     wheel(deltaY: number): void {
       field.send("wheel", {
@@ -543,25 +572,8 @@ async function mount(
     },
     /** The same, and the button released at the last point of the path. */
     carry(ref: string, path: readonly { x: number; y: number }[]): void {
-      scene.under = ref;
-      const at = (point: { x: number; y: number }, down: boolean) =>
-        ({
-          pointerId: 3,
-          pointerType: "mouse",
-          button: down ? 0 : -1,
-          clientX: point.x,
-          clientY: point.y,
-          shiftKey: false,
-          ctrlKey: false,
-          metaKey: false,
-        }) as Partial<PointerEvent>;
-      for (const [step, point] of path.entries()) {
-        field.send(
-          step === 0 ? "pointerdown" : "pointermove",
-          at(point, step === 0),
-        );
-      }
-      field.send("pointerup", at(path[path.length - 1], false));
+      dragAlong(ref, path);
+      letGo(path[path.length - 1]);
     },
     /** The layout answering the settle it was last asked to run. */
     answer(settled = false): void {
@@ -2128,16 +2140,50 @@ describe("the sets reading", () => {
 
   it("moves the whole chosen set when the held mark is in it", async () => {
     const first = await inSets();
-    const model = first.model();
-    const chosen = new Set([standingIn(model, 1), standingIn(model, 3)]);
+    const held = standingIn(first.model(), 1);
+    const along = standingIn(first.model(), 2);
+    const chosen = new Set([held, along]);
     const sets = await inSets({ chosen });
-    const held = standingIn(sets.model(), 1);
+    const model = sets.model();
+    const from = pointIn(model, 1);
+    const to = pointIn(model, 3);
+    // A drag begins where the pointer leaves the mark, so the step the marks
+    // take is the one it travels after that.
+    const took = { x: from.x + 40, y: from.y + 40 };
 
-    sets.carry(held, [pointIn(sets.model(), 1), pointIn(sets.model(), 3)]);
+    sets.drag(held, [from, took, to]);
 
-    // The one already standing in the region it was dropped on is left out.
-    expect(sets.retags).toEqual([{ notes: [held], into: two, outOf: [] }]);
+    for (const ref of [held, along]) {
+      const at = model.graph.getNodeAttributes(ref);
+      const stood = sets.scene.positionOf(at.index);
+      expect(stood.x, `${at.address} did not come along`).toBeCloseTo(
+        at.x + (to.x - took.x),
+        3,
+      );
+      expect(stood.y, `${at.address} did not come along`).toBeCloseTo(
+        at.y + (to.y - took.y),
+        3,
+      );
+    }
+
+    sets.drop(to);
+
+    expect(sets.retags).toEqual([
+      { notes: [held, along], into: two, outOf: [] },
+    ]);
     expect(chosen.size).toBe(2);
+  });
+
+  it("leaves out the one already standing where the set was dropped", async () => {
+    const first = await inSets();
+    const held = standingIn(first.model(), 1);
+    const there = standingIn(first.model(), 3);
+    const sets = await inSets({ chosen: new Set([held, there]) });
+    const model = sets.model();
+
+    sets.carry(held, [pointIn(model, 1), pointIn(model, 3)]);
+
+    expect(sets.retags).toEqual([{ notes: [held], into: two, outOf: [] }]);
   });
 
   it("lights the region under a held mark and lets it go on the drop", async () => {
@@ -2157,9 +2203,12 @@ describe("the sets reading", () => {
     const model = sets.model();
     const fold = [...(model.sets?.folds ?? [])][0];
     expect(fold).toBeTruthy();
+    const standing = [...sets.scene.positions];
 
     sets.carry(fold, [pointIn(model, 1), pointIn(model, 3)]);
     expect(sets.retags).toEqual([]);
+    expect([...sets.scene.positions]).toEqual(standing);
+    expect(sets.pins()).toEqual([]);
 
     sets.tap(fold);
     expect(sets.scene.framedRegions).toEqual([fold]);
@@ -2194,6 +2243,56 @@ describe("the sets reading", () => {
     const model = sets.model();
     for (const ref of model.order) {
       expect(model.graph.getNodeAttributes(ref).difference).toBeUndefined();
+    }
+  });
+
+  it("moves no mark where there is nothing to retag on", async () => {
+    const sets = await inSets({ onRetag: undefined });
+    const model = sets.model();
+    const standing = [...sets.scene.positions];
+
+    sets.carry(standingIn(model, 1), [pointIn(model, 1), pointIn(model, 3)]);
+
+    expect(sets.retags).toEqual([]);
+    expect([...sets.scene.positions]).toEqual(standing);
+    expect(sets.pins()).toEqual([]);
+  });
+
+  // The spacing is a function of the zoom and framing the diagram is a zoom, so
+  // a reader who opens straight into this reading is owed the packing for it.
+  it("packs at the zoom it framed the diagram to", async () => {
+    // A phone's width against the whole figure.
+    StandInScene.fitsTo = 0.167;
+    try {
+      const sets = await inSets();
+      const model = sets.model();
+      const apart = setsSpacing(sets.scene.viewport.scale);
+      expect(apart).toBeGreaterThan(SETS_STEP);
+
+      let nearest = Number.POSITIVE_INFINITY;
+      const marks = model.order
+        .filter((ref) => !model.sets?.folds.has(ref))
+        .map((ref) => ({
+          at: model.graph.getNodeAttributes(ref),
+          standing: model.sets?.standing.get(ref),
+        }));
+      for (const [which, one] of marks.entries()) {
+        for (const other of marks.slice(which + 1)) {
+          if (
+            one.standing?.field !== other.standing?.field ||
+            one.standing?.region !== other.standing?.region
+          ) {
+            continue;
+          }
+          nearest = Math.min(
+            nearest,
+            Math.hypot(one.at.x - other.at.x, one.at.y - other.at.y),
+          );
+        }
+      }
+      expect(nearest).toBeCloseTo(apart, 6);
+    } finally {
+      StandInScene.fitsTo = null;
     }
   });
 

@@ -705,6 +705,9 @@ export function mountGraph(
       inkTarget: () => props.onInkPointer,
     });
     rebuild();
+    // The first packing is made at the zoom the canvas opened at, and framing
+    // the diagram changes that zoom, so the spacing answers to where it landed.
+    repack();
     tellTransform();
   };
 
@@ -721,6 +724,9 @@ export function mountGraph(
   };
 
   const pin = (target: string, world: Point, held: boolean): void => {
+    // Nothing settles the sets reading, so a mark a drag displaced would stay
+    // displaced: a drag there carries marks between regions or moves nothing.
+    if (reading() === "sets") return;
     const index = scene?.indexOf(target);
     dragged = held && index !== undefined ? { index, world } : null;
     if (!scene || index === undefined) return;
