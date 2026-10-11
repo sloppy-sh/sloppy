@@ -57,6 +57,25 @@ describe('the screen a page is drawn on', () => {
 		expect(Number(overlay.get('z-index'))).toBeGreaterThan(CHROME_CEILING);
 	});
 
+	it.each(TEXTURES)('shows %s as itself, from the rules the page wears', (effect) => {
+		// The sample is not a second copy: every block that dresses the page in a
+		// screen dresses a sample in it too, in the same selector list.
+		for (const block of CSS.matchAll(
+			new RegExp(`([^}]*):root\\[data-effect='${effect}'\\]([^{]*)\\{`, 'g')
+		)) {
+			const selectors = `${block[1].split('}').at(-1) ?? ''}:root[data-effect='${effect}']${block[2]}`;
+			expect(selectors).toContain(`[data-screen='${effect}']`);
+		}
+		expect(CSS).toContain(`[data-screen='${effect}']`);
+	});
+
+	it('lets a sample carry its screen without laying it over anything else', () => {
+		const sample = declarations('', '[data-screen]::after');
+		expect(sample.get('position')).toBe('absolute');
+		expect(sample.get('pointer-events')).toBe('none');
+		expect(declarations('', '[data-screen] {').get('overflow')).toBe('hidden');
+	});
+
 	it.each(TEXTURES)('draws %s as a texture of its own', (effect) => {
 		const rules = rulesFor(effect);
 		expect(rules.trim()).not.toBe('');

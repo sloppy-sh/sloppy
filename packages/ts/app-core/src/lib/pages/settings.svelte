@@ -312,7 +312,18 @@
 									label={EFFECT_LABELS[effect]}
 									checked={prefs.current.effect === effect}
 									onpick={() => prefs.set('effect', effect)}
-								/>
+								>
+									{#snippet sample()}
+										<!-- The screen over a box rather than over the page: the same
+										     rules reach both, so there is one copy of what each is. -->
+										<span
+											data-screen={effect === 'none' ? undefined : effect}
+											class="flex h-5 w-8 items-center justify-center rounded-xs border border-border bg-background text-[0.6rem] text-foreground"
+										>
+											Aa
+										</span>
+									{/snippet}
+								</ChoicePill>
 							{/each}
 						</div>
 					</fieldset>

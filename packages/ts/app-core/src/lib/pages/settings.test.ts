@@ -251,6 +251,19 @@ describe('settings', () => {
 		);
 	});
 
+	// DESIGN.md § "The effect axis": a screen is shown as itself, from the same
+	// rules the page wears.
+	it('shows each screen in the texture it is', () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+
+		const samples = [...target.querySelectorAll('input[name="effect"]')].map((one) =>
+			one.closest('label')?.querySelector('[data-screen]')?.getAttribute('data-screen')
+		);
+		// Plain is the absence of one, so its sample carries no texture.
+		expect(samples).toEqual([undefined, ...EFFECTS.filter((one) => one !== 'none')]);
+	});
+
 	// A look is a file somebody can send, so the page has a section for one
 	// whether or not anybody is signed in.
 	it('offers a look of your own beside the axes', async () => {

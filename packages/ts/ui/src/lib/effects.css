@@ -16,10 +16,26 @@
 	pointer-events: none;
 }
 
+/* A sample of one, for somebody choosing between them: the same texture over a
+   box rather than over the page, so each screen is shown as itself and there
+   is still one copy of what it is. */
+[data-screen] {
+	position: relative;
+	overflow: hidden;
+}
+
+[data-screen]::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
 /* Paper rather than glass: noise at a size no letterform is, so it reads as
    grain on the page instead of as a pattern over it. The picture carries no
    colour — it is a mask, and the ink underneath is the theme's. */
-:root[data-effect='grain'] body::after {
+:root[data-effect='grain'] body::after,
+[data-screen='grain']::after {
 	background-color: color-mix(in oklab, var(--foreground) 7%, transparent);
 	-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -28,7 +44,8 @@
 }
 
 /* A halftone the page is printed through. */
-:root[data-effect='dots'] body::after {
+:root[data-effect='dots'] body::after,
+[data-screen='dots']::after {
 	background-image: radial-gradient(
 		color-mix(in oklab, var(--foreground) 12%, transparent) 0.5px,
 		transparent 0.6px
@@ -37,7 +54,8 @@
 }
 
 /* Two rules crossing, the way a pen shades. */
-:root[data-effect='hatch'] body::after {
+:root[data-effect='hatch'] body::after,
+[data-screen='hatch']::after {
 	background-image:
 		repeating-linear-gradient(
 			45deg,
@@ -53,7 +71,8 @@
 
 /* A lit screen with none of the tube: the edges fall away and the ink carries
    a little light, which is the half of CRT that is restful to read in. */
-:root[data-effect='glow'] body::after {
+:root[data-effect='glow'] body::after,
+[data-screen='glow']::after {
 	background: radial-gradient(
 		ellipse 100% 100% at center,
 		transparent 60%,
@@ -61,11 +80,13 @@
 	);
 }
 
-:root[data-effect='glow'] body {
+:root[data-effect='glow'] body,
+[data-screen='glow'] {
 	text-shadow: 0 0 2px color-mix(in oklab, var(--foreground) 14%, transparent);
 }
 
-:root[data-effect='crt'] body::after {
+:root[data-effect='crt'] body::after,
+[data-screen='crt']::after {
 	background:
 		repeating-linear-gradient(
 			to bottom,
@@ -80,7 +101,8 @@
 	animation: sloppy-crt-flicker 0.12s steps(2, jump-none) infinite alternate;
 }
 
-:root[data-effect='crt'] body {
+:root[data-effect='crt'] body,
+[data-screen='crt'] {
 	text-shadow: 0 0 1px color-mix(in oklab, var(--foreground) 20%, transparent);
 }
 
@@ -94,7 +116,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	:root[data-effect='crt'] body::after {
+	:root[data-effect='crt'] body::after,
+	[data-screen='crt']::after {
 		animation: none;
 	}
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
 	// One of a handful of choices, as a row of pills: a radio underneath, so a
 	// keyboard and a screen reader read the set as the one choice it is.
+	import type { Snippet } from 'svelte';
 	import { cn } from '$lib/utils.js';
 
 	let {
@@ -11,7 +12,8 @@
 		disabled = false,
 		onpick,
 		class: className,
-		style
+		style,
+		sample
 	}: {
 		/** The choices this one stands among; every pill in a set shares it. */
 		group: string;
@@ -25,6 +27,9 @@
 		/** Drawn on the label itself, for a choice that is best read as what it
 		 *  names — a face in the face it is. */
 		style?: string;
+		/** A choice shown as itself, ahead of its name — a screen drawn in the
+		 *  texture it is. The name still carries the meaning. */
+		sample?: Snippet;
 	} = $props();
 </script>
 
@@ -42,6 +47,9 @@
 		{style}
 		class="inline-flex h-control items-center rounded-md border border-border bg-card px-4 text-sm text-muted-foreground transition-colors duration-150 ease-out peer-checked:border-primary peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background motion-reduce:transition-none"
 	>
+		{#if sample}
+			<span class="mr-2 flex shrink-0 items-center" aria-hidden="true">{@render sample()}</span>
+		{/if}
 		{label}
 	</span>
 </label>
