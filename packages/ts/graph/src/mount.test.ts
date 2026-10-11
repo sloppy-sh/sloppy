@@ -1964,3 +1964,21 @@ describe("the looks the lines are drawn under", () => {
     expect(graph.scene.models).toBe(drew + 1);
   });
 });
+
+describe("the reading the host asked for", () => {
+  it("draws the genealogy where the host named no arrangement", async () => {
+    const absent = await mount();
+    const named = await mount({ arrangement: "genealogy" });
+    expect([...named.model().order]).toEqual([...absent.model().order]);
+    expect(named.model().graph.size).toBe(absent.model().graph.size);
+    expect(named.starts()).toBe(absent.starts());
+  });
+
+  it("takes the sets reading and draws the genealogy until it has one", async () => {
+    const genealogy = await mount();
+    const sets = await mount({ arrangement: "sets" });
+    expect([...sets.model().order]).toEqual([...genealogy.model().order]);
+    expect(sets.model().graph.size).toBe(genealogy.model().graph.size);
+    expect(sets.starts()).toBe(genealogy.starts());
+  });
+});

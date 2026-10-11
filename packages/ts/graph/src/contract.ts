@@ -264,7 +264,40 @@ export function nodesWithGone(
   return [...nodes, ...gone.filter((node) => !held.has(node.ref))];
 }
 
+/**
+ * The readings of one canvas: the geometry the parent chain gives, and the
+ * selected tags drawn as the places notes stand in — DESIGN.md § "Sets — the
+ * tags as places".
+ */
+export const GRAPH_ARRANGEMENTS = ["genealogy", "sets"] as const;
+export type GraphArrangement = (typeof GRAPH_ARRANGEMENTS)[number];
+
+/** The most selected tags the sets arrangement draws as regions; past it a tag
+ *  colours its marks and draws none. */
+export const DRAWN_SETS_MOST = 4;
+
+/**
+ * A move between sets a gesture asked for, which the HOST writes: the renderer
+ * reports one and never saves it, the way it owns no other note field.
+ *
+ * `into` and `outOf` name DRAWN tags only — a tag outside the diagram is
+ * untouched by a move inside it — and a note already carrying everything in
+ * `into` and nothing in `outOf` is left out, so a drop where a mark already
+ * stands reports nothing.
+ */
+export interface GraphRetag {
+  notes: readonly OwnedRef[];
+  into: readonly Tag[];
+  outOf: readonly Tag[];
+}
+
 export interface GraphSurfaceProps {
+  /**
+   * Which reading of the canvas is drawn — DESIGN.md § "Sets — the tags as
+   * places". ABSENT is `"genealogy"`, so a host that says nothing gets the
+   * genealogical field it has always drawn.
+   */
+  arrangement?: GraphArrangement;
   /** The region to draw. */
   nodes: readonly NodeView[];
   /**
@@ -360,6 +393,9 @@ export interface GraphSurfaceProps {
   chosen?: ReadonlySet<OwnedRef>;
   /** Add or remove one note. Absent is a surface nothing can be chosen on. */
   onChoose?: (ref: OwnedRef) => void;
+  /** A move between sets, for the host to write — {@link GraphRetag}. Absent
+   *  is a surface nothing can be retagged on. */
+  onRetag?: (retag: GraphRetag) => void;
   /** Add every note a sweep enclosed — a mouse with shift, control or command
    *  held, dragged over bare canvas. Absent leaves that drag panning. */
   onChooseWithin?: (refs: readonly OwnedRef[]) => void;

@@ -1117,7 +1117,7 @@ describe('the draft on the canvas', () => {
 				onShowDraft: (shown) => {
 					told.push(shown);
 					// Reads reactive state and writes it, the way the page does.
-					prefs.set('walking', !prefs.current.walking);
+					prefs.set('seenAs', prefs.current.seenAs === 'graph' ? 'outline' : 'graph');
 				}
 			}
 		});

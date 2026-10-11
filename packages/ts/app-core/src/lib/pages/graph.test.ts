@@ -2711,7 +2711,7 @@ describe('reading the graph as an outline', () => {
 		document.documentElement.style.getPropertyValue('--chosen-bar-inset-bottom');
 
 	it('opens on the outline for a reader who was last there', async () => {
-		prefs.set('walking', true);
+		prefs.set('seenAs', 'outline');
 		await open();
 
 		expect(inOutline('1')).toBeTruthy();
@@ -2908,7 +2908,7 @@ describe('reading the graph as an outline', () => {
 	// AI.md § "The Genealogy Is the Protocol": the address is what a person cites
 	// and a peer resolves, so it has to land somewhere for whoever follows it.
 	it('opens a note reached by its address where it stands while the reader is walking', async () => {
-		prefs.set('walking', true);
+		prefs.set('seenAs', 'outline');
 		startAt(`/n/${segments(FIRST)}`);
 		await open();
 

@@ -27,7 +27,7 @@ const READING: FolderView = {
 	graph: null,
 	alsoOnCanvas: [],
 	tags: [],
-	walking: false,
+	seenAs: 'graph',
 	folded: [],
 	unfolded: []
 };

@@ -430,7 +430,7 @@
 			graph: prefs.current.graph,
 			alsoOnCanvas: prefs.current.alsoOnCanvas,
 			tags: tags.selected,
-			walking,
+			seenAs,
 			note: page.state.note,
 			notes: page.state.notes ? [...page.state.notes] : undefined,
 			folded: [...folded],
@@ -449,7 +449,7 @@
 		prefs.set('graph', view?.graph ?? null);
 		prefs.set('alsoOnCanvas', view?.alsoOnCanvas ?? []);
 		tags.select(view?.tags ?? []);
-		prefs.set('walking', view?.walking ?? false);
+		prefs.set('seenAs', view?.seenAs ?? 'graph');
 		folded.clear();
 		for (const ref of view?.folded ?? []) folded.add(ref);
 		unfolded.clear();
@@ -754,9 +754,10 @@
 			visiting
 	);
 
-	/** Reading the graph as a walk rather than a canvas, which this device
-	 *  remembers — DESIGN.md § Persistence. */
-	const walking = $derived(prefs.current.walking);
+	/** Which reading of the graph is up, which this device remembers —
+	 *  DESIGN.md § Persistence. */
+	const seenAs = $derived(prefs.current.seenAs);
+	const walking = $derived(seenAs === 'outline');
 
 	/** Pointing a link at a note is a question put to the canvas, so the canvas
 	 *  comes back for as long as it is being asked. */
@@ -1206,7 +1207,7 @@
 	 *  and what it does not draw — the look, the links, publishing — is read
 	 *  beside the graph. */
 	function openPage(ref: OwnedRef): void {
-		prefs.set('walking', false);
+		prefs.set('seenAs', 'graph');
 		show(ref);
 	}
 
@@ -1993,7 +1994,7 @@
 			icon: Network,
 			group: 'Look',
 			where: ['palette', 'menu'],
-			run: () => prefs.set('walking', false)
+			run: () => prefs.set('seenAs', 'graph')
 		},
 		{
 			id: 'the-outline',
@@ -2001,7 +2002,7 @@
 			icon: ListTree,
 			group: 'Look',
 			where: ['palette', 'menu'],
-			run: () => prefs.set('walking', true)
+			run: () => prefs.set('seenAs', 'outline')
 		},
 		{
 			id: 'choose-notes',
@@ -2335,7 +2336,7 @@
 				aria-label="Graph"
 				aria-pressed={!walking}
 				title={wide ? undefined : 'Graph'}
-				onclick={() => prefs.set('walking', false)}
+				onclick={() => prefs.set('seenAs', 'graph')}
 				class="flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {wide
 					? 'flex-1 px-3'
 					: 'px-2'} {walking
@@ -2350,7 +2351,7 @@
 				aria-label="Outline"
 				aria-pressed={walking}
 				title={wide ? undefined : 'Outline'}
-				onclick={() => prefs.set('walking', true)}
+				onclick={() => prefs.set('seenAs', 'outline')}
 				class="flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {wide
 					? 'flex-1 px-3'
 					: 'px-2'} {walking

@@ -1,6 +1,8 @@
 import type { NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import {
+  DRAWN_SETS_MOST,
+  GRAPH_ARRANGEMENTS,
   drawnRefs,
   drawnNodes,
   drawnReading,
@@ -255,5 +257,15 @@ describe("the looks a canvas was handed", () => {
   it("is empty where the host handed none", () => {
     expect(edgeLooksByPair(undefined).size).toBe(0);
     expect(edgeLooksByPair([]).size).toBe(0);
+  });
+});
+
+describe("the readings of one canvas", () => {
+  it("offers the two readings, the genealogy first — what absent means", () => {
+    expect([...GRAPH_ARRANGEMENTS]).toEqual(["genealogy", "sets"]);
+  });
+
+  it("draws four sets as regions at the most", () => {
+    expect(DRAWN_SETS_MOST).toBe(4);
   });
 });

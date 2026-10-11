@@ -36,7 +36,7 @@ const READING: FolderView = {
 	graph: null,
 	alsoOnCanvas: [],
 	tags: [],
-	walking: false,
+	seenAs: 'graph',
 	folded: [],
 	unfolded: []
 };
@@ -459,7 +459,7 @@ describe('the saved look', () => {
 				alsoOnCanvas: ['neither is this'],
 				wallpapers: 'a picture',
 				views: 'how it was read',
-				walking: 'yes',
+				seenAs: 'a reading nobody has',
 				readingWidth: 'wide',
 				chatWidth: 'narrow',
 				chatModel: { claude_code: 'a model from later', nobody: 'opus' },
@@ -483,7 +483,7 @@ describe('the saved look', () => {
 			alsoOnCanvas: [],
 			wallpapers: {},
 			views: {},
-			walking: false,
+			seenAs: 'graph',
 			recordsWhatHappens: false,
 			readingWidth: null,
 			readingFull: false,
@@ -509,10 +509,27 @@ describe('the saved look', () => {
 	// is a preference, so it is waiting the next time the app opens.
 	it('opens on the outline again for a reader who left it there', () => {
 		prefs.init();
-		expect(prefs.current.walking).toBe(false);
-		prefs.set('walking', true);
+		expect(prefs.current.seenAs).toBe('graph');
+		prefs.set('seenAs', 'outline');
 		prefs.init();
-		expect(prefs.current.walking).toBe(true);
+		expect(prefs.current.seenAs).toBe('outline');
+	});
+
+	// The field this replaced was a boolean, and a reader who left the outline up
+	// under the earlier build comes back to it rather than to the canvas.
+	it('reads a saved walk as the outline', () => {
+		localStorage.setItem('sloppy_prefs', JSON.stringify({ walking: true }));
+		prefs.init();
+		expect(prefs.current.seenAs).toBe('outline');
+	});
+
+	it('reads a saved walk as the outline in a folder too', () => {
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({ views: { [GARDEN]: { walking: true, folded: [], unfolded: [] } } })
+		);
+		prefs.init();
+		expect(prefs.view(GARDEN)?.seenAs).toBe('outline');
 	});
 
 	// Which graph somebody is in, and which they have stood up beside it, are
@@ -582,7 +599,7 @@ describe('the saved look', () => {
 						graph: 'not a ref',
 						alsoOnCanvas: ['neither is this'],
 						tags: ['seed', 7],
-						walking: 'yes',
+						seenAs: 'a reading nobody has',
 						note: 'nor this',
 						folded: [ref(20)],
 						unfolded: 'none of them',
@@ -598,7 +615,7 @@ describe('the saved look', () => {
 			graph: null,
 			alsoOnCanvas: [],
 			tags: ['seed'],
-			walking: false,
+			seenAs: 'graph',
 			folded: [ref(20)],
 			unfolded: []
 		});

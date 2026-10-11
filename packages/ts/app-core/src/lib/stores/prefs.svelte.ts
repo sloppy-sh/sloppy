@@ -54,17 +54,21 @@ export type Face = 'system' | 'inter' | 'atkinson' | 'opendyslexic' | 'apple';
 /** The three things a face is chosen for. */
 export type FaceRole = keyof Prefs['fonts'];
 
+/** The readings of one graph the chrome offers — DESIGN.md § Layout. */
+export const SEEN_AS = ['graph', 'outline', 'sets'] as const;
+export type SeenAs = (typeof SEEN_AS)[number];
+
 /**
  * How one folder was last being read, for the tab that comes back to it —
  * docs/ARCHITECTURE.md § "Several folders open at once". `graph`,
- * `alsoOnCanvas`, `tags` and `walking` are on the terms {@link Prefs} states
+ * `alsoOnCanvas`, `tags` and `seenAs` are on the terms {@link Prefs} states
  * for them; the rest is what the surface reading the folder was holding.
  */
 export interface FolderView {
 	graph: OwnedRef | null;
 	alsoOnCanvas: OwnedRef[];
 	tags: Tag[];
-	walking: boolean;
+	seenAs: SeenAs;
 	/** The note open beside the graph. ABSENT is a folder left with none. */
 	note?: OwnedRef;
 	/** Every note open on the reading surface, in the order they were opened.
@@ -131,9 +135,9 @@ export interface Prefs {
 	 *  it was left — DESIGN.md § Persistence. A folder with no entry starts
 	 *  clean. */
 	views: Record<string, FolderView>;
-	/** Whether the graph is read as a walk through the notes rather than drawn on
-	 *  the canvas — DESIGN.md § Persistence. */
-	walking: boolean;
+	/** Which reading of the graph is up — DESIGN.md § Persistence. A build before
+	 *  this one saved `walking: true` for the outline and nothing for the graph. */
+	seenAs: SeenAs;
 	/** Whether the app is keeping a record of what it does, for somebody about
 	 *  to say what went wrong — `stores/what-happened.svelte.ts`. */
 	recordsWhatHappens: boolean;
@@ -360,7 +364,7 @@ function defaults(): Prefs {
 		alsoOnCanvas: [],
 		wallpapers: {},
 		views: {},
-		walking: false,
+		seenAs: 'graph',
 		recordsWhatHappens: false,
 		readingWidth: null,
 		chatWidth: null,
@@ -529,6 +533,11 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback
 	return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
+function seenAsIn(value: unknown, walking: unknown): SeenAs {
+	if (SEEN_AS.includes(value as SeenAs)) return value as SeenAs;
+	return walking === true ? 'outline' : 'graph';
+}
+
 function oneNumberOf<T extends number>(value: unknown, allowed: readonly T[], fallback: T): T {
 	return allowed.includes(value as T) ? (value as T) : fallback;
 }
@@ -606,7 +615,7 @@ function viewIn(value: unknown): FolderView | null {
 		graph: refIn(held.graph),
 		alsoOnCanvas: refsIn(held.alsoOnCanvas),
 		tags: tagsIn(held.tags),
-		walking: held.walking === true,
+		seenAs: seenAsIn(held.seenAs, held.walking),
 		folded: refsIn(held.folded),
 		unfolded: refsIn(held.unfolded)
 	};
@@ -731,7 +740,7 @@ class PrefsStore {
 			alsoOnCanvas: refsIn(saved.alsoOnCanvas),
 			wallpapers: sanitizeWallpapers(saved.wallpapers),
 			views: viewsIn(saved.views),
-			walking: saved.walking === true,
+			seenAs: seenAsIn(saved.seenAs, saved.walking),
 			recordsWhatHappens: saved.recordsWhatHappens === true,
 			readingWidth: widthIn(saved.readingWidth),
 			chatWidth: widthIn(saved.chatWidth),

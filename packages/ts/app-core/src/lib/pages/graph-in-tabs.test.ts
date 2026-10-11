@@ -266,7 +266,7 @@ describe('leaving the folder in front of the reader', () => {
 			graph: null,
 			alsoOnCanvas: [],
 			tags: ['seed'],
-			walking: false,
+			seenAs: 'graph',
 			note: open,
 			notes: [open],
 			folded: [
@@ -295,7 +295,7 @@ describe('arriving at a folder that was read here before', () => {
 			graph: graphIn(GARDEN),
 			alsoOnCanvas: [],
 			tags: ['soil' as Tag],
-			walking: false,
+			seenAs: 'graph',
 			note: compost.ref,
 			notes: [compost.ref],
 			folded: [compost.ref],
@@ -343,7 +343,7 @@ describe('arriving at a folder that was read here before', () => {
 	it('walks the notes where that is how they were being seen', async () => {
 		await serving(GARDEN);
 		await openGraph();
-		const left = { ...asLeft(), walking: true };
+		const left: FolderView = { ...asLeft(), seenAs: 'outline' };
 		await serving(THESIS);
 		await openGraph();
 		prefs.setView(GARDEN, left);
