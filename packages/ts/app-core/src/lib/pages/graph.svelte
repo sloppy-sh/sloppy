@@ -54,7 +54,7 @@
 	import {
 		comparingStates,
 		DEFAULT_BUDGET,
-		DRAWN_SETS_MOST,
+		drawnSetsOf,
 		type GraphDifference,
 		type GraphHandle,
 		type GraphHoverAt,
@@ -767,7 +767,7 @@
 	/** The selected tags the canvas draws as places, in selection order. The rest
 	 *  colour their marks and draw nothing — DESIGN.md § "Sets — the tags as
 	 *  places". */
-	const drawnSets = $derived(inSets ? selection.slice(0, DRAWN_SETS_MOST) : []);
+	const drawnSets = $derived(inSets ? drawnSetsOf(selection) : []);
 
 	// The sets draw where a note's tags put it and a difference draws where the
 	// note was, so one mark cannot answer both — DESIGN.md § "Sets — the tags as

@@ -25,9 +25,13 @@ import {
   DEPTH_STEPS,
   DIM_FLOOR,
   DIM_RECESSION,
+  groundBand,
+  LABEL_FLOOR,
   MARK_FLOOR,
+  paperCeiling,
   SETS_TINT,
   setsBand,
+  setsCeiling,
 } from "./palette.js";
 
 const themes: { name: string; ink: string; paper: string }[] = [
@@ -317,6 +321,30 @@ describe("a mark standing inside the drawn sets", () => {
       }
     });
 
+    // The set names and the marks' captions are small text lettered in the
+    // canvas's own ink, so what they owe is LABEL_FLOOR over every ground a
+    // wash can lay under them: the paper, one to four washes, and both ends of
+    // the band a wallpaper at its ceiling makes.
+    it(`letters above the small-text floor under every wash on ${theme.name}`, () => {
+      const tokens = { ...theme, hues };
+      const ink = parseCssColor(theme.ink) as Oklch;
+      const paper = parseCssColor(theme.paper) as Oklch;
+      for (const presence of [0, paperCeiling(tokens)]) {
+        for (let sets = 1; sets <= DRAWN_SETS_MOST; sets++) {
+          const { setsWash } = buildPalette(tokens, presence, sets);
+          for (const under of groundBand(paper, presence)) {
+            const grounds = [under, ...setsBand(tokens, under, sets, setsWash)];
+            for (const ground of grounds) {
+              expect(
+                contrastRatio(ink, ground),
+                `${sets} washes over a picture at ${presence.toFixed(3)}`,
+              ).toBeGreaterThanOrEqual(LABEL_FLOOR - 1e-9);
+            }
+          }
+        }
+      }
+    });
+
     it(`stays on the page where the tags leave it out on ${theme.name}`, () => {
       for (let sets = 1; sets <= DRAWN_SETS_MOST; sets++) {
         const { palette, grounds } = washed(theme, sets);
@@ -345,6 +373,20 @@ describe("a mark standing inside the drawn sets", () => {
       expect(under.setsWash, theme.name).toBe(SETS_TINT);
       expect(under.generations, theme.name).toBe(plain.generations);
     }
+  });
+
+  // The wash is the one thing that gives, down to the hairlines alone: a
+  // reader with a picture up has not asked for a quieter wallpaper by selecting
+  // a tag, and the picture's own ceiling is where it was. The same theme with
+  // nothing up still washes the whole of SETS_TINT, above.
+  it("comes down where a picture at its ceiling leaves it no room", () => {
+    const narrowed = themes.filter((theme) => {
+      const tokens = { ...theme, hues };
+      return (
+        setsCeiling(tokens, DRAWN_SETS_MOST, paperCeiling(tokens)) < SETS_TINT
+      );
+    });
+    expect(narrowed.length).toBeGreaterThan(0);
   });
 
   // The band was measured off this colour, so the region has to be drawn in it:

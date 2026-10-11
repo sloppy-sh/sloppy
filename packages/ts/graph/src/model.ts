@@ -414,8 +414,8 @@ interface MarkPlace {
   difference?: DifferenceMark;
   /** A mark standing for a whole region rather than for a note. Its ref is a
    *  note's so the mark can be found again, and {@link NO_NOTE} is what it
-   *  draws of that note. */
-  forRegion?: boolean;
+   *  draws of that note — bar the provenance, which is the region's. */
+  forRegion?: { provenance: Provenance };
 }
 
 /** What the note a mark stands for says about how the mark is drawn. */
@@ -429,20 +429,31 @@ interface NoteSays {
 }
 
 /**
- * What a fold over a region says, which is nothing: it stands for every note
- * there rather than for one of them — DESIGN.md § "Sets — the tags as places".
- * So it is drawn plain, at the size its count alone asks for, and its
- * generation is the ramp's first step, where the palette itself lands a mark no
- * selected tag answers for.
+ * What a fold over a region says of the note whose ref names it, which is
+ * nothing: it stands for every note there rather than for one of them —
+ * DESIGN.md § "Sets — the tags as places". So it is drawn plain, at the size
+ * its count alone asks for, and its generation is the ramp's first step, where
+ * the palette itself lands a mark no selected tag answers for. The provenance
+ * is the region's and comes from {@link regionProvenance}.
  */
-const NO_NOTE: NoteSays = {
+const NO_NOTE: Omit<NoteSays, "provenance"> = {
   look: UNSTYLED,
   address: undefined,
   depth: 1,
   title: "",
-  provenance: "own",
   codeMoved: false,
 };
+
+/**
+ * The provenance a fold draws: what every note standing in the region shares,
+ * and `pulled` wherever they differ and any one of them is — PRODUCT.md
+ * principle 4, which never lets a pulled note be taken for one of yours.
+ */
+function regionProvenance(standing: readonly Provenance[]): Provenance {
+  if (standing.includes("pulled")) return "pulled";
+  const first = standing[0] ?? "own";
+  return standing.every((one) => one === first) ? first : "own";
+}
 
 /** One mark, as both readings draw it: everything but where it stands. */
 function addMark(
@@ -458,7 +469,7 @@ function addMark(
   // A mega-node wears the look of the note it IS, never an average of the
   // looks it folded — DESIGN.md § "The mark".
   const says: NoteSays = place.forRegion
-    ? NO_NOTE
+    ? { ...NO_NOTE, provenance: place.forRegion.provenance }
     : {
         look:
           node.appearance == null
@@ -531,6 +542,10 @@ function buildSetsModel(
   });
 
   standing.forEach(({ mark, entry }, index) => {
+    const held = mark.holds.flatMap((ref) => {
+      const there = byRef.get(ref);
+      return there === undefined ? [] : [there];
+    });
     const forRegion = mark.holds.length > 0;
     const stands: DrawnNode = forRegion
       ? {
@@ -539,7 +554,7 @@ function buildSetsModel(
           // The mark answers for the region rather than standing as one of its
           // notes, so what it counts is every note standing there.
           folded: mark.holds.length + 1,
-          tags: regionTags(mark.holds, byRef, entry.tags),
+          tags: regionTags(held, entry.tags),
         }
       : entry;
     const at = { x: mark.x, y: mark.y };
@@ -551,7 +566,15 @@ function buildSetsModel(
       // A mark outside every drawn set is what the reader did not ask about,
       // and recedes — the dim "the rest" is drawn in.
       answering: mark.region !== 0,
-      forRegion,
+      forRegion: forRegion
+        ? {
+            provenance: regionProvenance(
+              [entry, ...held].map(({ node }) =>
+                provenanceOf(node, options.viewer),
+              ),
+            ),
+          }
+        : undefined,
     });
   });
 
@@ -570,13 +593,12 @@ function buildSetsModel(
 /** Every tag a region's fold answers for: its own mark's and those of the notes
  *  standing behind it, the way `drawnNodes` unions a subtree's. */
 function regionTags(
-  holds: readonly OwnedRef[],
-  byRef: ReadonlyMap<OwnedRef, DrawnNode>,
+  held: readonly DrawnNode[],
   own: readonly Tag[],
 ): readonly Tag[] {
   const all = new Set(own);
-  for (const ref of holds) {
-    for (const tag of byRef.get(ref)?.tags ?? []) all.add(tag);
+  for (const there of held) {
+    for (const tag of there.tags) all.add(tag);
   }
   return [...all];
 }

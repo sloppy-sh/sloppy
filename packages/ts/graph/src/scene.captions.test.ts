@@ -283,7 +283,7 @@ describe("what is written on a region's fold", () => {
     // Close enough that a mark carries its words at all, which the whole figure
     // framed is not.
     scene.viewport.lookAt({ x: 0, y: 0, scale: 1 });
-    const fold = [...(model.sets?.folds ?? [])][0];
+    const fold = [...(model.sets?.folds.keys() ?? [])][0];
     scene.centreOn(fold);
     for (let frame = 0; frame < 4; frame++) {
       scene.invalidate();

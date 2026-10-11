@@ -8,7 +8,7 @@
 	// in for the pixels.
 	import {
 		differenceMarks,
-		DRAWN_SETS_MOST,
+		drawnSetsOf,
 		type GraphHandle,
 		type GraphSurfaceProps,
 		type GraphTransform
@@ -53,7 +53,7 @@
 	const marks = $derived(differenceMarks(difference));
 
 	/** The sets a drop could land in, read the way the real surface reads them. */
-	const drawn = $derived(arrangement === 'sets' ? selection.slice(0, DRAWN_SETS_MOST) : []);
+	const drawn = $derived(arrangement === 'sets' ? drawnSetsOf(selection) : []);
 
 	/** A drop in the first drawn set and outside every other one, which is the
 	 *  shape of every drop: the place's membership among the drawn tags. */

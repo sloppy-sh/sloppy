@@ -5,6 +5,11 @@
 	import { DRAWN_SETS_MOST } from '@sloppy/graph';
 	import { Button } from '@sloppy/ui/button';
 
+	/** The count as a reader reads it, so the line cannot say four where the
+	 *  canvas draws three. */
+	const WORDS: Record<number, string> = { 2: 'two', 3: 'three', 4: 'four', 5: 'five' };
+	const most = WORDS[DRAWN_SETS_MOST] ?? String(DRAWN_SETS_MOST);
+
 	let {
 		selected,
 		onStart
@@ -35,7 +40,7 @@
 					</Button>
 				{/if}
 			{:else}
-				<p class="text-sm text-muted-foreground" role="status">The first four are drawn.</p>
+				<p class="text-sm text-muted-foreground" role="status">The first {most} are drawn.</p>
 			{/if}
 		</div>
 	</div>

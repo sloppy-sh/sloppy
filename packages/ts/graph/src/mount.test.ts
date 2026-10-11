@@ -24,6 +24,7 @@ import type { BuiltModel } from "./model.js";
 import {
   membershipOf,
   SETS_STEP,
+  SETS_TIER_ZOOM,
   setsSpacing,
   setsSpacingTier,
   type SetsStanding,
@@ -2089,6 +2090,16 @@ describe("the sets reading", () => {
     throw new Error("the field never ran out of room");
   };
 
+  /** A fold over one of the DRAWN regions, which is what a tap frames: the
+   *  rest is the ground the figure stands on and zooms in instead. */
+  const foldOverASet = (model: BuiltModel): OwnedRef => {
+    const found = [...(model.sets?.folds.keys() ?? [])].find(
+      (ref) => (model.sets?.standing.get(ref)?.region ?? 0) !== 0,
+    );
+    if (!found) throw new Error("no drawn region folded");
+    return found;
+  };
+
   /** A mark standing on its own in one region, which is what a drag takes
    *  hold of. */
   const standingIn = (model: BuiltModel, region: number): OwnedRef => {
@@ -2268,7 +2279,7 @@ describe("the sets reading", () => {
       onMenu: (at) => asked.push(at),
     });
     const model = sets.model();
-    const fold = [...(model.sets?.folds ?? [])][0];
+    const fold = [...(model.sets?.folds.keys() ?? [])][0];
     const own = standingIn(model, 0);
 
     // Asking for the menu takes the hover down, so each answer is read as it
@@ -2292,7 +2303,7 @@ describe("the sets reading", () => {
     const sets = await inSets();
     zoomedOutOfRoom(sets);
     const model = sets.model();
-    const folds = [...(model.sets?.folds ?? [])];
+    const folds = [...(model.sets?.folds.keys() ?? [])];
     const drawn = new Set(model.order);
     const hidden = corpus.nodes.find(
       (node) => !drawn.has(node.ref),
@@ -2307,6 +2318,41 @@ describe("the sets reading", () => {
 
     sets.handle.update({ ...sets.props, chosen: new Set<OwnedRef>() });
     expect([...(sets.scene.chosen ?? [])]).toEqual([]);
+  });
+
+  // A fold is everyone standing in its region, on this surface as on every
+  // other: a sweep over one chooses every note standing there rather than the
+  // one note whose ref happens to name the mark.
+  it("chooses everyone standing in a region a sweep covered", async () => {
+    const sets = await inSets();
+    zoomedOutOfRoom(sets);
+    const swept: OwnedRef[][] = [];
+    sets.handle.update({
+      ...sets.props,
+      chosen: new Set<OwnedRef>(),
+      onChooseWithin: (refs) => swept.push([...refs]),
+    });
+    const model = sets.model();
+    const fold = [...(model.sets?.folds.keys() ?? [])][0];
+    const region = model.sets?.standing.get(fold)?.region;
+    const there = sets.props.nodes
+      .filter((node) => membershipOf(node.tags as Tag[], two) === region)
+      .map((node) => node.ref);
+    expect(there.length).toBeGreaterThan(1);
+
+    sets.sweep({ x: -4000, y: -4000 }, { x: 4000, y: 4000 });
+
+    expect(swept).toHaveLength(1);
+    for (const ref of there) {
+      expect(
+        swept[0],
+        `${ref} stands in the region and was left out`,
+      ).toContain(ref);
+    }
+    // More notes than there are marks, and each of them once: the fold handed
+    // over its crowd rather than one stand-in for it.
+    expect(swept[0].length).toBeGreaterThan(model.order.length);
+    expect(new Set(swept[0]).size).toBe(swept[0].length);
   });
 
   it("leaves out the one already standing where the set was dropped", async () => {
@@ -2336,8 +2382,7 @@ describe("the sets reading", () => {
   it("leaves a region's fold where it is, and frames it on a tap", async () => {
     const sets = await inSets({ lod: { depth: 3, maxDrawn: 4 } });
     const model = sets.model();
-    const fold = [...(model.sets?.folds ?? [])][0];
-    expect(fold).toBeTruthy();
+    const fold = foldOverASet(model);
     const standing = [...sets.scene.positions];
 
     sets.carry(fold, [pointIn(model, 1), pointIn(model, 3)]);
@@ -2351,6 +2396,26 @@ describe("the sets reading", () => {
     expect(sets.expanded).toEqual([]);
   });
 
+  // The rest is the ground the figure stands on rather than a place inside it,
+  // and the canvas is already framed on that — so a tap there zooms in a step,
+  // which is the only thing that gives the region room to open.
+  it("zooms in a step on a tap on the fold over the rest", async () => {
+    const sets = await inSets({ lod: { depth: 3, maxDrawn: 4 } });
+    const model = sets.model();
+    const rest = [...(model.sets?.folds.keys() ?? [])].find(
+      (ref) => model.sets?.standing.get(ref)?.region === 0,
+    );
+    expect(rest, "the rest never folded").toBeTruthy();
+    const was = sets.scene.viewport.scale;
+
+    sets.tap(rest as OwnedRef);
+
+    expect(sets.scene.viewport.scale).toBeCloseTo(was * SETS_TIER_ZOOM, 6);
+    expect(sets.scene.framedRegions).toEqual([]);
+    expect(sets.opened).toEqual([]);
+    expect(sets.expanded).toEqual([]);
+  });
+
   // The pack that answers the zoom must not frame the field again over the
   // region the reader just asked for: the tap IS taking the viewport.
   it("stays on the region a tap framed, with the field never touched before", async () => {
@@ -2359,7 +2424,7 @@ describe("the sets reading", () => {
     StandInScene.fitsTo = 0.167;
     try {
       const sets = await inSets({ lod: { depth: 3, maxDrawn: 4 } });
-      const fold = [...(sets.model().sets?.folds ?? [])][0];
+      const fold = foldOverASet(sets.model());
       const framed = sets.scene.fits;
 
       sets.tap(fold);

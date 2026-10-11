@@ -51,6 +51,7 @@ import {
   type SetsPacking,
   setsSpacing,
   setsSpacingTier,
+  SETS_TIER_ZOOM,
 } from "./sets/pack.js";
 import type { Bounds, Point, Viewport } from "./viewport.js";
 import { WallLayer } from "./wall.js";
@@ -555,6 +556,38 @@ export function mountGraph(
     });
   };
 
+  /**
+   * What a tap on a region's fold does: bring the canvas to that region, where
+   * the pack that follows the zoom opens it. The rest is the ground the figure
+   * stands on rather than a place inside it, and the canvas is already framed
+   * on that, so a tap there zooms in one spacing tier — which is the only thing
+   * that gives it room.
+   */
+  const openRegion = (ref: OwnedRef): void => {
+    const sets = setsDrawn;
+    if (!scene || sets === null) return;
+    const index = scene.indexOf(ref);
+    const rest = sets.tags.length > 0 && sets.standing.get(ref)?.region === 0;
+    if (!rest || index === undefined) {
+      scene.frameRegion(ref);
+      return;
+    }
+    const where = scene.positionOf(index);
+    const on = scene.viewport.toScreen(where.x, where.y);
+    scene.viewport.zoomAt(on.x, on.y, SETS_TIER_ZOOM);
+  };
+
+  /** What a sweep chose: a fold is everyone standing in its region, so a box
+   *  over one hands back every note there rather than the one whose ref names
+   *  the mark — DESIGN.md § "Sets — the tags as places". */
+  const swept = (covered: readonly string[]): OwnedRef[] => {
+    const sets = setsDrawn;
+    if (sets === null) return covered as OwnedRef[];
+    return covered.flatMap(
+      (ref) => sets.folds.get(ref as OwnedRef) ?? [ref as OwnedRef],
+    );
+  };
+
   const startCarry = (target: string, world: Point): boolean => {
     const sets = setsDrawn;
     if (sets === null || props.onRetag === undefined || !scene) return false;
@@ -651,7 +684,7 @@ export function mountGraph(
           // onto the whole figure under the answer.
           if (setsDrawn?.folds.has(ref)) {
             takeViewport();
-            built.frameRegion(ref);
+            openRegion(ref);
             tellTransform();
             return;
           }
@@ -725,7 +758,7 @@ export function mountGraph(
         }
         showSweep(null);
         props.onChooseWithin?.(
-          built.marksWithin(worldBox(built.viewport, box)) as OwnedRef[],
+          swept(built.marksWithin(worldBox(built.viewport, box))),
         );
       },
       onDragStart: (target, world) => {

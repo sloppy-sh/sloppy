@@ -2093,9 +2093,13 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   tag's name in quiet ink just inside its outer edge.** Where regions overlap the fills
   overlap, and that is what says a note is in both. **The fills owe the marks their floors**
   (§ "Contrast is measured, not assumed"): a mark standing on a tinted region keeps **3:1
-  against the surface it actually lands on** and a dimmed one keeps **1.6:1**, measured over
-  every look the collection dresses rather than assumed. Where one of those fails it is the
-  fill alpha that comes down, never the floor.
+  against the surface it actually lands on** and a dimmed one keeps **1.6:1**, and the ink the
+  canvas letters the names and the captions in keeps the **4.5:1** small text owes — over the
+  paper, under one to four washes, and over a wallpaper at its own strongest. All of it
+  measured over every look the collection dresses rather than assumed. Where one of those
+  fails it is the fill alpha that comes down, never the floor and never the wallpaper's
+  ceiling, which is the picture's own: a reader who put a picture up did not ask for a quieter
+  one by selecting a tag, and a region with no room left for a wash is its hairline alone.
 - **No genealogical edges are drawn here, and no edge looks** (§ Edges). A line between two
   notes says nothing about which sets they are in, and the address and title beside a mark are
   drawn as they are on the genealogy.
@@ -2132,9 +2136,15 @@ What a person does:
   everyone standing there, so nothing of one note is on it: no words — a pointer at rest on it
   previews nothing and a press offers the acts the canvas offers anywhere — and nothing of a
   note's own drawing either. It wears no author's ring, picture or size, says nothing about
-  whose it is or whether the code under it moved, and the count alone is what sizes it, so two
-  regions holding the same number draw the same. It is orbited where any note standing there
-  is chosen. The tap that brings the canvas to the region is what a reader does with it.
+  whether the code under it moved, and the count alone is what sizes it, so two regions holding
+  the same number draw the same. **Provenance is the one thing of theirs it carries**: it draws
+  what everyone standing there shares, and draws pulled wherever they differ and any one of
+  them is pulled, because a pulled note is never read as one of yours (PRODUCT.md principle 4).
+  It is orbited where any note standing there is chosen, and a sweep over it chooses everyone
+  standing there rather than the one note whose ref names the mark. The tap that brings the
+  canvas to the region is what a reader does with it — and on the rest, which is the ground the
+  figure stands on rather than a place inside it, the tap zooms in a step instead, since that is
+  the only thing that gives it room.
 - **Moving a note between sets is retagging, and it reaches every surface a tag reaches.** The
   press menu on a mark carries one row per drawn set — "Into biology" where the note is outside
   it, "Out of biology" where it is inside — and the bar over a chosen set carries the same rows
@@ -2162,9 +2172,11 @@ Where it lives:
 - **Changing the reading never remounts the canvas.** The graph keeps where it was looking
   across a visit to the sets, so coming back is coming back rather than reloading; entering the
   sets frames the diagram.
-- **Comparing two states is not offered here** (§ "A difference between two states"). What a
-  difference draws is where the notes were, and these regions draw where their tags put them —
-  two answers to one mark. Picking a link target works as it does on the genealogy.
+- **A difference between two states is not drawn here** (§ "A difference between two states").
+  What a difference draws is where the notes were, and these regions draw where their tags put
+  them — two answers to one mark. What the history says in words it goes on saying here; what
+  it does not offer is drawing a difference over the regions, and entering them puts a drawn
+  one away. Picking a link target works as it does on the genealogy.
 
 ### The ground
 

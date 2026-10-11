@@ -54,7 +54,7 @@ export const SLOTS_KEPT = 0.9;
  * The most of its tag's hue a drawn set washes over the paper — DESIGN.md
  * § "Sets — the tags as places". What bounds it is the depth ramp: four of
  * these stacked still have to leave every theme that ships the generations it
- * carries on the plain paper, and `palette.test.ts` is what holds that. A theme
+ * carries on the plain paper, and `palette.test.ts` is what holds that. A ground
  * with less room to spare washes less — {@link setsCeiling}.
  */
 export const SETS_TINT = 0.11;
@@ -83,14 +83,15 @@ export interface GraphPalette {
    */
   tag(slot: TagHueSlot): number;
   /**
-   * The wash a drawn set lays over the paper, at {@link SETS_TINT} — the slot's
-   * own hue, and the colour {@link setsBand} measured the marks' floors
-   * against. The region's hairline and its name take {@link tag} instead,
-   * because those carry meaning and owe a floor of their own.
+   * The wash a drawn set lays over the paper — the slot's own hue, at
+   * {@link setsWash}, and the colour {@link setsBand} measured the floors
+   * against. The region's hairline takes {@link tag} instead, because it
+   * carries meaning and owes a floor of its own; the name beside it is
+   * lettered in {@link ink}.
    */
   setsFill(slot: TagHueSlot): number;
-  /** What a region's wash is laid at on this theme — {@link setsCeiling}. 0 off
-   *  the sets reading, and on a theme with no room for one. */
+  /** What a region's wash is laid at on this ground — {@link setsCeiling}. 0
+   *  off the sets reading, and on a ground with no room for one. */
   setsWash: number;
   /** What the region under a held mark is lit by, in ink. */
   setsLit: number;
@@ -214,19 +215,31 @@ export function setsBand(
 }
 
 /**
- * How much of its hue a drawn set may wash over the paper on this theme, 0 to
- * {@link SETS_TINT}: the most that still leaves the INK above
- * {@link MARK_FLOOR} over every ground {@link setsBand} makes of it. A theme
- * with no room at all washes nothing, and the regions are their hairlines
- * alone.
+ * How much of its hue a drawn set may wash over the paper, 0 to
+ * {@link SETS_TINT}: the most that still leaves the INK — which is what the
+ * canvas letters the set names and the captions in — above
+ * {@link LABEL_FLOOR} over every ground {@link setsBand} makes of the grounds a
+ * picture at `presence` can put under it. A ground with no room at all washes
+ * nothing, and the regions are their hairlines alone.
+ *
+ * The wash is what comes down for that floor. {@link paperCeiling} does not:
+ * how strong a picture may be is the picture's own bound, and a reader who has
+ * one up has not asked for a quieter wallpaper by selecting a tag.
  */
-export function setsCeiling(tokens: PaletteTokens, sets: number): number {
+export function setsCeiling(
+  tokens: PaletteTokens,
+  sets: number,
+  presence = 0,
+): number {
   if (sets <= 0) return 0;
   const ink = parseCssColor(tokens.ink) ?? UNTHEMED_INK;
   const paper = parseCssColor(tokens.paper) ?? UNTHEMED_PAPER;
+  const band = groundBand(paper, presence);
   const holds = (alpha: number): boolean =>
-    setsBand(tokens, paper, sets, alpha).every(
-      (ground) => contrastRatio(ink, ground) >= MARK_FLOOR,
+    band.every((under) =>
+      setsBand(tokens, under, sets, alpha).every(
+        (ground) => contrastRatio(ink, ground) >= LABEL_FLOOR,
+      ),
     );
   if (holds(SETS_TINT)) return SETS_TINT;
   let lo = 0;
@@ -372,7 +385,7 @@ export function buildPalette(
   const ink = parseCssColor(tokens.ink) ?? UNTHEMED_INK;
   const paper = parseCssColor(tokens.paper) ?? UNTHEMED_PAPER;
   const band = groundBand(paper, presence);
-  const wash = setsCeiling(tokens, sets);
+  const wash = setsCeiling(tokens, sets, presence);
   const ground = [
     ...band,
     ...band.flatMap((under) => setsBand(tokens, under, sets, wash)),

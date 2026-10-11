@@ -16,7 +16,12 @@ import {
   FakeText,
   worldOf,
 } from "./pixi.test-support.js";
-import { packSets, SETS_STEP, type SetsStanding } from "./sets/pack.js";
+import {
+  membershipOf,
+  packSets,
+  SETS_STEP,
+  type SetsStanding,
+} from "./sets/pack.js";
 
 vi.mock("pixi.js", async () => {
   const { fakePixi } = await import("./pixi.test-support.js");
@@ -305,7 +310,7 @@ describe("the drawn sets as places on the paper", () => {
       palette,
     });
     scene.setModel(model, true);
-    const fold = [...(model.sets?.folds ?? [])][0];
+    const fold = [...(model.sets?.folds.keys() ?? [])][0];
     const standing = model.order.find((ref) => !model.sets?.folds.has(ref));
 
     const looking = () => {
@@ -422,7 +427,6 @@ describe("the fold over a crowded region", () => {
     const fold = markIn(model(dressed, 2), 0b01);
 
     expect(fold.folded).toBe(4);
-    expect(fold.provenance).toBe("own");
     expect(fold.ringWeight).toBe("none");
     expect(fold.preview.pictures).toEqual([]);
     expect(fold.codeMoved).toBe(false);
@@ -440,6 +444,48 @@ describe("the fold over a crowded region", () => {
     expect(dressedFold.folded).toBe(plainFold.folded);
     expect(dressedFold.radius).toBe(plainFold.radius);
     expect(dressedFold.radius).toBeLessThan(MAX_RADIUS);
+  });
+
+  // PRODUCT.md principle 4: a pulled note is never taken for one of yours, and
+  // a fold is the one mark that stands for several notes at once. So the
+  // provenance of the notes standing there is the one thing of theirs it draws.
+  describe("the provenance it draws", () => {
+    /** The same field, with everything standing in `region` written by a peer
+     *  — or published by its own author, where `published` says so. */
+    const written = (
+      region: number,
+      by: { created_by?: string; published?: boolean },
+    ): DrawnNode[] =>
+      field.map((entry) =>
+        membershipOf(entry.tags, TAGS) === region
+          ? { ...entry, node: { ...entry.node, ...by } as NodeView }
+          : entry,
+      );
+
+    /** The mark standing for a region, where it is one the notes folded into. */
+    const foldIn = (built: ReturnType<typeof model>, region: number) => {
+      const fold = markIn(built, region);
+      expect(fold.folded).toBeGreaterThan(0);
+      return fold;
+    };
+
+    it("folds a region of pulled notes pulled", () => {
+      const built = model(written(0b10, { created_by: PEER }), 2);
+      expect(foldIn(built, 0b10).provenance).toBe("pulled");
+    });
+
+    it("folds a region pulled where any note standing there is", () => {
+      expect(foldIn(model(dressed, 2), 0b01).provenance).toBe("pulled");
+    });
+
+    it("folds a region of your own notes own", () => {
+      expect(foldIn(model(dressed, 2), 0b11).provenance).toBe("own");
+    });
+
+    it("folds a region everybody can read as what they all are", () => {
+      const built = model(written(0b10, { published: true }), 2);
+      expect(foldIn(built, 0b10).provenance).toBe("published");
+    });
   });
 
   // The rest stands in no region, so no selected tag answers for its fold and

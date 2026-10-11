@@ -75,8 +75,10 @@ export interface SetsDrawn {
   tags: readonly Tag[];
   fields: readonly SetsFieldDrawn[];
   standing: ReadonlyMap<OwnedRef, SetsStanding>;
-  /** The marks standing for a whole region rather than for one note. */
-  folds: ReadonlySet<OwnedRef>;
+  /** The marks standing for a whole region rather than for one note, each with
+   *  everyone standing in that region — the note whose ref names the mark
+   *  included, which is what choosing one chooses. */
+  folds: ReadonlyMap<OwnedRef, readonly OwnedRef[]>;
 }
 
 /** One mark the packing placed, in world coordinates. */
@@ -120,6 +122,10 @@ export function setsSpacingTier(scale: number): number {
 export function setsSpacing(scale: number): number {
   return SETS_STEP * 2 ** (setsSpacingTier(scale) / 2);
 }
+
+/** What a zoom is multiplied by to cross exactly one {@link setsSpacingTier} —
+ *  one step more room in every region. */
+export const SETS_TIER_ZOOM = Math.SQRT2;
 
 /** The tags a selection draws as regions: the first {@link DRAWN_SETS_MOST},
  *  deduped the way `assignTagHueSlots` hands out the hues. */
@@ -227,7 +233,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
   const byField = fieldsOf(options.notes, options.fields);
   const marks: SetsMark[] = [];
   const standing = new Map<OwnedRef, SetsStanding>();
-  const folds = new Set<OwnedRef>();
+  const folds = new Map<OwnedRef, readonly OwnedRef[]>();
   const fields: SetsFieldDrawn[] = [];
   const most = Math.max(1, Math.floor(options.most / byField.length));
   /** The middle of the figure being laid out, and half the width of the one
@@ -307,7 +313,10 @@ export function packSets(options: SetsPackOptions): SetsPacking {
           holds: rest.map((note) => note.ref),
         });
         standing.set(first.ref, { field: at, region: region.id });
-        folds.add(first.ref);
+        folds.set(
+          first.ref,
+          notes.map((note) => note.ref),
+        );
         continue;
       }
       for (const [standsAt, note] of notes.entries()) {
