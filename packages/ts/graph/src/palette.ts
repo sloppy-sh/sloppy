@@ -59,9 +59,8 @@ export const SLOTS_KEPT = 0.9;
  */
 export const SETS_TINT = 0.11;
 
-/** What the region under a held mark is lit by, as a share of the wash the
- *  regions are drawn at: enough that the drop is legible, not enough to read as
- *  another set. In ink, because it is the canvas saying "here" and not a tag. */
+/** What the region under a held mark is lit by, as a share of the regions' own
+ *  wash. In ink: it says where a drop lands, and names no tag. */
 const SETS_LIT_SHARE = 0.6;
 
 const UNTHEMED_INK: Oklch = { l: 0.15, c: 0, h: 0 };
@@ -218,10 +217,8 @@ export function setsBand(
  * How much of its hue a drawn set may wash over the paper on this theme, 0 to
  * {@link SETS_TINT}: the most that still leaves the INK above
  * {@link MARK_FLOOR} over every ground {@link setsBand} makes of it. A theme
- * whose ink cannot carry meaning on the wash has no depth ramp over it either —
- * every step of the ramp is reached from the ink — so this is the one
- * condition, and a theme with no room at all washes nothing and draws the
- * regions as their hairlines alone.
+ * with no room at all washes nothing, and the regions are their hairlines
+ * alone.
  */
 export function setsCeiling(tokens: PaletteTokens, sets: number): number {
   if (sets <= 0) return 0;

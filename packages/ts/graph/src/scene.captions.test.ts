@@ -2,11 +2,12 @@
 // one and by its title where it has none, so a mega-node's count has to follow
 // whichever of the two named it.
 
-import type { Address, NodeView, OwnedRef } from "@sloppy/types";
+import type { Address, NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it, vi } from "vitest";
 import type { DrawnNode } from "./contract.js";
 import { buildModel } from "./model.js";
 import { buildPalette } from "./palette.js";
+import { packSets, SETS_STEP } from "./sets/pack.js";
 import {
   FakeApplication,
   type FakeContainer,
@@ -230,5 +231,77 @@ describe("a caption that moves while the canvas is up", () => {
     );
     app.tick();
     expect(writtenOn(app).sort()).toEqual(["1 +1", "Mushrooms"].sort());
+  });
+});
+
+// A region's fold is not a note — it answers for every note standing in that
+// region — so what is written on it is how many they are, and no note's own
+// words. DESIGN.md § "Sets — the tags as places".
+describe("what is written on a region's fold", () => {
+  const TAG = "biology" as Tag;
+  const held = Array.from({ length: 24 }, (_unused, at) =>
+    standing(
+      noteOf({
+        ref: `${OWNER}/01JCAPTIONSETS${at.toString(36).padStart(12, "0")}` as OwnedRef,
+        address: `1a${at + 1}`,
+        title: `Mushrooms ${at}`,
+      }),
+    ),
+  );
+  const field: DrawnNode[] = held.map((entry, at) => ({
+    ...entry,
+    tags: at % 2 === 0 ? [TAG] : [],
+  }));
+
+  async function folded() {
+    const model = buildModel(field, {
+      arrangement: "sets",
+      // Too little room to stand them in, so each region folds to one mark.
+      sets: packSets({
+        notes: field.map((entry) => ({
+          ref: entry.node.ref,
+          graph: OWNER as OwnedRef,
+          tags: entry.tags,
+          created_at: entry.node.created_at,
+        })),
+        fields: [],
+        selection: [TAG],
+        spacing: SETS_STEP * 40,
+        most: 400,
+        gutter: 900,
+      }),
+      selection: [TAG],
+      palette,
+    });
+    const scene = await GraphScene.create({} as HTMLCanvasElement, {
+      fonts: { ui: "ui", address: "mono" },
+      palette,
+      resolution: 2,
+    });
+    const app = FakeApplication.latest as FakeApplication;
+    scene.setModel(model, true);
+    // Close enough that a mark carries its words at all, which the whole figure
+    // framed is not.
+    scene.viewport.lookAt({ x: 0, y: 0, scale: 1 });
+    const fold = [...(model.sets?.folds ?? [])][0];
+    scene.centreOn(fold);
+    for (let frame = 0; frame < 4; frame++) {
+      scene.invalidate();
+      app.tick();
+    }
+    return { scene, app, model };
+  }
+
+  it("writes the count of the notes standing there, and nothing else", async () => {
+    const { scene, app, model } = await folded();
+    expect(model.sets?.folds.size).toBe(2);
+
+    const written = writtenOn(app);
+    expect(written.filter((words) => words.startsWith("+"))).toEqual(["+12"]);
+    for (const words of written) {
+      expect(words).not.toContain("Mushrooms");
+      expect(words).not.toContain("1a");
+    }
+    scene.destroy();
   });
 });

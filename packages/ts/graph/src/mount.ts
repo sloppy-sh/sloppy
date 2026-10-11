@@ -259,9 +259,18 @@ export function mountGraph(
    *  `null` on the genealogy. */
   let setsDrawn: SetsDrawn | null = null;
   let packedTier: number | null = null;
-  /** The marks a mouse is carrying across a diagram, and where it took hold:
-   *  moving a mark between sets IS retagging, and the host writes the move. */
-  let carrying: { refs: OwnedRef[]; from: Point; at: Point } | null = null;
+  /**
+   * What a mouse is carrying across a diagram, and where it took hold: moving a
+   * mark between sets IS retagging, and the host writes the move. `notes` is
+   * every note the drop would retag and `moving` the ones with a mark of their
+   * own to carry along — a chosen note inside a region's fold has none.
+   */
+  let carrying: {
+    moving: OwnedRef[];
+    notes: { ref: OwnedRef; tags: readonly Tag[] }[];
+    from: Point;
+    at: Point;
+  } | null = null;
   /** Where the genealogy was last read, so coming back from the sets reading is
    *  coming back — DESIGN.md § "Sets — the tags as places". */
   let keptView: GraphTransform | null = null;
@@ -285,12 +294,13 @@ export function mountGraph(
     if (!built || reframing) return;
     framed = true;
     reframing = true;
-    // A frame changes the zoom, the sets packing answers to the zoom, and a
-    // fold's own size moves the figure the frame is measured over: the frame and
-    // the packing answer each other until neither has anything left to say.
+    // A frame changes the zoom, which packs again, and a fold's own size moves
+    // the figure the next frame is measured over: the two answer each other
+    // until neither has anything left to say.
     for (let pass = 0; pass < FRAME_PASSES; pass += 1) {
+      const packed = packedTier;
       built.fit();
-      if (!repack()) break;
+      if (packedTier === packed) break;
     }
     reframing = false;
     tellTransform();
@@ -510,29 +520,52 @@ export function mountGraph(
     });
   };
 
-  /** The packing is a function of the zoom, so a frame or a pinch that carries
-   *  the field onto another spacing packs again — which is what refolds a region
-   *  there is no longer room in. Answers whether it packed. */
-  const repack = (): boolean => {
-    if (reading() !== "sets" || !scene) return false;
-    if (setsSpacingTier(scene.viewport.scale) === packedTier) return false;
-    rebuild();
-    return true;
+  /** The packing is a function of the zoom, so every change of the zoom carries
+   *  the field here — which is what refolds a region there is no longer room in,
+   *  and opens one there is. A pack of its own moves the zoom, so it never
+   *  starts a second one from inside the first. */
+  let packing = false;
+  const repack = (): void => {
+    if (destroyed || packing || reading() !== "sets" || !scene) return;
+    if (setsSpacingTier(scene.viewport.scale) === packedTier) return;
+    packing = true;
+    try {
+      rebuild();
+    } finally {
+      packing = false;
+    }
+  };
+
+  /** Every note a drag answers for: the whole chosen set where the mark taken
+   *  hold of is in it, and one note otherwise. A chosen note standing inside a
+   *  region's fold is as much in the set as one with a mark of its own, so the
+   *  drag moves exactly what the menu rows move. */
+  const carried = (
+    target: OwnedRef,
+  ): { ref: OwnedRef; tags: readonly Tag[] }[] => {
+    const chosen = props.chosen;
+    const refs = chosen?.has(target) ? [...chosen] : [target];
+    const held = new Map(props.nodes.map((node) => [node.ref, node.tags]));
+    return refs.flatMap((ref) => {
+      const tags = held.get(ref);
+      return tags === undefined ? [] : [{ ref, tags }];
+    });
   };
 
   const startCarry = (target: string, world: Point): boolean => {
     const sets = setsDrawn;
     if (sets === null || props.onRetag === undefined || !scene) return false;
     // A fold answers for a whole region rather than for one note, so there is
-    // no one note behind it to move.
+    // no one note behind it to take hold of.
     if (sets.folds.has(target)) return false;
-    const chosen = props.chosen;
-    const refs = chosen?.has(target as OwnedRef)
-      ? [...chosen].filter(
-          (held) => !sets.folds.has(held) && scene?.indexOf(held) !== undefined,
-        )
-      : [target as OwnedRef];
-    carrying = { refs, from: world, at: world };
+    const notes = carried(target as OwnedRef);
+    if (notes.length === 0) return false;
+    const moving = notes
+      .map((note) => note.ref)
+      .filter(
+        (ref) => !sets.folds.has(ref) && scene?.indexOf(ref) !== undefined,
+      );
+    carrying = { moving, notes, from: world, at: world };
     carryTo(world);
     return true;
   };
@@ -543,7 +576,7 @@ export function mountGraph(
     held.at = world;
     const dx = world.x - held.from.x;
     const dy = world.y - held.from.y;
-    for (const ref of held.refs) {
+    for (const ref of held.moving) {
       const index = scene.indexOf(ref);
       const at = scene.attributesOf(ref);
       if (index === undefined || at === null) continue;
@@ -560,17 +593,15 @@ export function mountGraph(
     if (held === null || sets === null || !scene) return;
     // Back where the packing put it: a mark moves when the host's write comes
     // back as new props, never because somebody dragged it.
-    const notes: { ref: OwnedRef; tags: readonly Tag[] }[] = [];
-    for (const ref of held.refs) {
+    for (const ref of held.moving) {
       const index = scene.indexOf(ref);
       const at = scene.attributesOf(ref);
       if (index === undefined || at === null) continue;
       scene.movePosition(index, { x: at.x, y: at.y });
-      notes.push({ ref, tags: at.tags });
     }
     const where = setsDropAt(sets, held.at);
     if (where === null) return;
-    const retag = retagInto(sets, notes, where.region);
+    const retag = retagInto(sets, held.notes, where.region);
     if (retag !== null) props.onRetag?.(retag);
   };
 
@@ -612,11 +643,13 @@ export function mountGraph(
         if (node.collapsed) {
           // A fold in the sets reading answers for a region rather than for a
           // subtree, so a tap brings the canvas to that region — where there is
-          // room, the pack that follows the zoom opens it.
-          if (built.frameRegion(ref)) {
+          // room, the pack that follows the zoom opens it. The reader has the
+          // field from the moment they ask for that, so nothing frames it back
+          // onto the whole figure under the answer.
+          if (setsDrawn?.folds.has(ref)) {
             takeViewport();
+            built.frameRegion(ref);
             tellTransform();
-            repack();
             return;
           }
           // Opening a mega-node moves the focus to it, so the budget measures
@@ -660,6 +693,7 @@ export function mountGraph(
             ...at,
             ref: target as OwnedRef | null,
             foldable: target !== null && built.hasDrawnChildren(target),
+            region: target !== null && (setsDrawn?.folds.has(target) ?? false),
           });
           return;
         }
@@ -672,7 +706,7 @@ export function mountGraph(
         props.onHover?.(
           target === null || asked(props)
             ? null
-            : hoverAt(built, field, target),
+            : hoverAt(built, field, target, setsDrawn?.folds.has(target)),
         );
       },
       canSweep: () => !comparing() && props.onChooseWithin !== undefined,
@@ -717,10 +751,13 @@ export function mountGraph(
         takeViewport();
         built.invalidate();
         tellTransform();
-        repack();
       },
       inkTarget: () => props.onInkPointer,
     });
+    // Every change of the zoom arrives in one place, whoever made it: a pinch,
+    // a frame, a region a tap brought the canvas to, a place read back off an
+    // earlier visit.
+    built.viewport.onScale = repack;
     rebuild();
     tellTransform();
   };
@@ -1034,6 +1071,7 @@ function hoverAt(
   scene: GraphScene,
   field: HTMLElement,
   ref: string,
+  region = false,
 ): GraphHoverAt | null {
   const node = scene.attributesOf(ref);
   const index = scene.indexOf(ref);
@@ -1049,6 +1087,7 @@ function hoverAt(
     radius: node.radius * scene.viewport.scale,
     folded: node.folded,
     tags: node.tags,
+    region,
   };
 }
 

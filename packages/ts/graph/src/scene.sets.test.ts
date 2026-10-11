@@ -5,7 +5,7 @@
 
 import type { NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it, vi } from "vitest";
-import type { DrawnNode } from "./contract.js";
+import { DRAWN_SETS_MOST, type DrawnNode } from "./contract.js";
 import { buildModel } from "./model.js";
 import { buildPalette } from "./palette.js";
 import {
@@ -22,7 +22,7 @@ vi.mock("pixi.js", async () => {
   return fakePixi();
 });
 
-const { GraphScene } = await import("./scene.js");
+const { GraphScene, LABEL_LINE, MAX_FIELDS } = await import("./scene.js");
 
 const OWNER = "did:syr:someone";
 const TAGS = ["biology", "seed"] as Tag[];
@@ -158,6 +158,75 @@ describe("the drawn sets as places on the paper", () => {
     scene.destroy();
   });
 
+  /** The texts the canvas keeps for the set names, and the ones it keeps for
+   *  everything else written on the marks. */
+  function written(app: FakeApplication) {
+    const layer = app.stage.children.find((child) =>
+      child.children.some((kid) => kid instanceof FakeText),
+    ) as FakeContainer;
+    const shown = (of: readonly FakeContainer[]) =>
+      of.filter(
+        (kid): kid is FakeText =>
+          kid instanceof FakeText && kid.visible && kid.text !== "",
+      );
+    const names = DRAWN_SETS_MOST * MAX_FIELDS;
+    return {
+      names: shown(layer.children.slice(0, names)),
+      captions: shown(layer.children.slice(names, -MAX_FIELDS)),
+    };
+  }
+
+  /** Inside one lens, with most of both sets off the screen. */
+  async function zoomedIn() {
+    const { scene, app } = await canvas();
+    const model = sets();
+    const inside = model.order.find(
+      (ref) => model.sets?.standing.get(ref)?.region === 0b11,
+    ) as string;
+    scene.viewport.lookAt({ x: 0, y: 0, scale: 1 });
+    scene.centreOn(inside);
+    for (let frame = 0; frame < field.length; frame++) {
+      scene.invalidate();
+      app.tick();
+    }
+    return { scene, app };
+  }
+
+  // A reader zoomed into a lens is still owed which sets they are standing in,
+  // so a name is held inside its own set and inside the screen.
+  it("holds each name on the screen while its set runs off it", async () => {
+    const { scene, app } = await zoomedIn();
+    const { names } = written(app);
+
+    expect(names.map((text) => text.text).sort()).toEqual([...TAGS].sort());
+    for (const text of names) {
+      expect(text.x).toBeGreaterThanOrEqual(0);
+      expect(text.x).toBeLessThanOrEqual(390);
+      expect(text.y).toBeGreaterThanOrEqual(0);
+      expect(text.y).toBeLessThanOrEqual(740);
+    }
+    scene.destroy();
+  });
+
+  // The name is the only thing on the canvas saying in words which place is
+  // which tag, so a mark's caption gives way to it rather than over it.
+  it("writes nothing over a name", async () => {
+    const { scene, app } = await zoomedIn();
+    const { names, captions } = written(app);
+
+    expect(captions.length).toBeGreaterThan(0);
+    for (const name of names) {
+      for (const caption of captions) {
+        if (Math.abs(caption.y - name.y) >= LABEL_LINE) continue;
+        const over =
+          caption.x < name.x + name.width / 2 &&
+          name.x - name.width / 2 < caption.x + caption.width;
+        expect(over, `${caption.text} over ${name.text}`).toBe(false);
+      }
+    }
+    scene.destroy();
+  });
+
   // A mark's own caption is drawn exactly as it is in the genealogy, so the
   // marks have to be big enough on screen to carry one — which is what the
   // framed figure is not.
@@ -235,9 +304,13 @@ describe("the drawn sets as places on the paper", () => {
     const fold = [...(model.sets?.folds ?? [])][0];
     const standing = model.order.find((ref) => !model.sets?.folds.has(ref));
 
-    const before = { ...scene.viewport };
+    const looking = () => {
+      const { x, y, scale } = scene.viewport;
+      return { x, y, scale };
+    };
+    const before = looking();
     expect(scene.frameRegion(fold)).toBe(true);
-    expect({ ...scene.viewport }).not.toEqual(before);
+    expect(looking()).not.toEqual(before);
     if (standing !== undefined) {
       expect(scene.frameRegion(standing)).toBe(false);
     }

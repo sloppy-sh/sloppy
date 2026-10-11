@@ -2086,7 +2086,7 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
 - **Four sets are drawn at the most**, in selection order, each in the hue slot it already
   borrows (§ Hue): one circle, two overlapping, three in a ring, four as ellipses — the
   constructions in which every one of the 1, 3, 7 and 15 regions is actually present. **The
-  geometry is fixed rather than fitted to the counts**, so two devices draw the same diagram
+  shape is fixed rather than fitted to the counts**, so two devices draw the same diagram
   from the same question. A fifth selected tag colours its marks exactly as it does today and
   draws no region; the chrome says so in one line, "The first four are drawn."
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
@@ -2110,7 +2110,10 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
 - **The count is bounded here as it is everywhere.** A region holding more notes than its area
   can show at this zoom folds into one mega-node at its centre, sized by count with the count
   written on it — the same fold the genealogy draws. A tap brings the canvas to that region,
-  where there is room, and it unfolds; zooming out refolds. **The rest** — every note outside
+  where there is room, and it unfolds; zooming out refolds. **The figure itself grows with the
+  field** — four times the notes draws it twice the size, by the same rule on every device — so
+  every region's room grows with the notes it is asked to hold, and a fold has somewhere to
+  open into rather than being a crowd nobody can reach. **The rest** — every note outside
   every drawn region — folds the same way and is dimmed. Nothing about a fold is kept: it is a
   function of the zoom and of what the notes carry.
 - **Nothing selected draws one dimmed fold holding every note**, with one line in the chrome —

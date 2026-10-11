@@ -1,10 +1,11 @@
 // The diagrams a sets reading stands its marks inside. DESIGN.md § "Sets — the
 // tags as places" is the doc of record.
 //
-// The shapes are fixed and never fitted to how many notes land in them, so two
-// devices reading the same selection draw the same figure: circles for one, two
-// and three drawn sets, and four ellipses in Venn's own construction for four,
-// which is the fewest shapes that still show all fifteen overlaps.
+// The SHAPE is fixed — circles for one, two and three drawn sets, and four
+// ellipses in Venn's own construction for four, which is the fewest shapes that
+// still show all fifteen overlaps — and the size answers the count of notes on
+// the field ({@link setsGrowth}), so two devices reading the same selection of
+// the same notes draw the same figure.
 //
 // A REGION is one combination of the drawn sets, written as a bitmask over them:
 // bit `1 << i` is the i-th drawn tag, in selection order, and 0 is the region
@@ -12,6 +13,7 @@
 // where a fold stands in it, what a tap on it frames, and the rectangles that
 // cover it — is measured on a fixed grid, so it is the same on every peer.
 
+import { DRAWN_SETS_MOST } from "../contract.js";
 import type { Bounds, Point } from "../viewport.js";
 
 /** How far a diagram reaches from its centre, in world units. Wide enough that
@@ -22,9 +24,8 @@ export const SETS_REACH = 900;
  *  {@link SETS_REACH}: the room the notes outside every drawn set stand in. */
 const OUTSIDE_MARGIN = 0.5;
 
-/** The grid each region's extent, centre and cover are measured on. Finer
- *  resolves the stair on a region's cover; coarser is cheaper to walk, and this
- *  is walked once per count of drawn sets. */
+/** The grid each region's extent, centre and cover are measured on, walked once
+ *  per count of drawn sets. */
 const GRID = 384;
 
 /** How far inside a set's outline its name is written, in world units. */
@@ -78,21 +79,61 @@ export interface SetsDiagram {
   box: Bounds;
 }
 
-/** The most drawn sets any diagram here is built for. */
-export const SETS_DIAGRAMS_MOST = 4;
+/**
+ * The notes a figure holds at its own size. Past it the whole figure is drawn
+ * larger rather than packed tighter, so a region's room grows with the notes it
+ * is asked to hold — DESIGN.md § "Sets — the tags as places".
+ */
+export const SETS_FITS = 150;
+
+/** How much larger than its own size a field of `notes` notes draws its figure:
+ *  the square root of its share of {@link SETS_FITS}, so four times the notes is
+ *  twice the figure and four times the room. */
+export function setsGrowth(notes: number): number {
+  return notes <= SETS_FITS ? 1 : Math.sqrt(notes / SETS_FITS);
+}
 
 /**
- * The diagram for `count` drawn sets, `count` being 0 to
- * {@link SETS_DIAGRAMS_MOST} — 0 drawing no shape at all, one region, and
- * every note standing outside. Measured once and held, because the figure is a
- * function of the count alone.
+ * The diagram for `count` drawn sets — 0 drawing no shape at all, one region,
+ * and every note standing outside — on a field of `notes` notes, which is what
+ * {@link setsGrowth} draws it at. Measured once per count and held; growing a
+ * measurement is a multiplication over what it already said.
  */
-export function setsDiagram(count: number): SetsDiagram {
-  const at = Math.min(Math.max(Math.round(count), 0), SETS_DIAGRAMS_MOST);
-  return (held[at] ??= measure(SHAPES[at]));
+export function setsDiagram(count: number, notes = 0): SetsDiagram {
+  const at = Math.min(Math.max(Math.round(count), 0), DRAWN_SETS_MOST);
+  return grownBy((held[at] ??= measure(SHAPES[at])), setsGrowth(notes));
 }
 
 const held: (SetsDiagram | undefined)[] = [];
+
+/** `diagram` drawn `factor` times its own size about its centre. */
+function grownBy(diagram: SetsDiagram, factor: number): SetsDiagram {
+  if (factor === 1) return diagram;
+  const point = (at: Point): Point => ({ x: at.x * factor, y: at.y * factor });
+  const box = (at: Bounds): Bounds => ({
+    minX: at.minX * factor,
+    maxX: at.maxX * factor,
+    minY: at.minY * factor,
+    maxY: at.maxY * factor,
+  });
+  return {
+    shapes: diagram.shapes.map((shape) => ({
+      ...shape,
+      cx: shape.cx * factor,
+      cy: shape.cy * factor,
+      rx: shape.rx * factor,
+      ry: shape.ry * factor,
+    })),
+    regions: diagram.regions.map((region) => ({
+      id: region.id,
+      centre: point(region.centre),
+      area: region.area * factor * factor,
+      bounds: box(region.bounds),
+      cover: region.cover.map(box),
+    })),
+    box: box(diagram.box),
+  };
+}
 
 /** Whether a point is inside one shape. */
 export function inShape(shape: SetsShape, at: Point): boolean {
@@ -129,6 +170,21 @@ export function namePoint(shape: SetsShape): Point {
   const u = Math.max(shape.rx - NAME_INSET, 0) * Math.cos(shape.nameAt);
   const v = Math.max(shape.ry - NAME_INSET, 0) * Math.sin(shape.nameAt);
   return { x: shape.cx + u * cos - v * sin, y: shape.cy + u * sin + v * cos };
+}
+
+/** The box one shape fills, in diagram coordinates — what holds a set's name
+ *  inside the set it names. */
+export function shapeBounds(shape: SetsShape): Bounds {
+  const cos = Math.cos(shape.rotation);
+  const sin = Math.sin(shape.rotation);
+  const reachX = Math.hypot(shape.rx * cos, shape.ry * sin);
+  const reachY = Math.hypot(shape.rx * sin, shape.ry * cos);
+  return {
+    minX: shape.cx - reachX,
+    maxX: shape.cx + reachX,
+    minY: shape.cy - reachY,
+    maxY: shape.cy + reachY,
+  };
 }
 
 /** One shape's outline as a closed run of points, which is how a leaning

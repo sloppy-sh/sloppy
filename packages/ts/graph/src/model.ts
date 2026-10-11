@@ -272,7 +272,6 @@ export function buildModel(
   }
   const graph: GraphModel = new Graph({ type: "undirected" });
   const hues = hueSlots(options.selection);
-  const { slots, rank } = hues;
   const { seedOf, fields } = seedFields(drawn, options.fields ?? []);
   const starts = startPoints(drawn, seedOf, options.keep);
   const marks = differenceMarks(options.difference);
@@ -491,14 +490,15 @@ function buildSetsModel(
   });
 
   standing.forEach(({ mark, entry }, index) => {
-    const folded = mark.holds.length;
     const stands: DrawnNode =
-      folded === 0
+      mark.holds.length === 0
         ? entry
         : {
-            node: entry.node,
+            node: withoutWords(entry.node),
             collapsed: true,
-            folded,
+            // The mark answers for the region rather than standing as one of
+            // its notes, so what it counts is every note standing there.
+            folded: mark.holds.length + 1,
             tags: regionTags(mark.holds, byRef, entry.tags),
           };
     const at = { x: mark.x, y: mark.y };
@@ -523,6 +523,14 @@ function buildSetsModel(
     difference: { arrived: [], gone: [] },
     sets: packing.drawn,
   };
+}
+
+/** A region's fold is not a note — it answers for every note standing in that
+ *  region — so what it says is the count and the tags of the region, and no
+ *  note's own address or title. */
+function withoutWords(node: NodeView): NodeView {
+  const { address, ...rest } = node;
+  return { ...rest, title: "" };
 }
 
 /** Every tag a region's fold answers for: its own mark's and those of the notes

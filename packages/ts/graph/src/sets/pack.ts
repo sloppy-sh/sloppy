@@ -20,6 +20,7 @@ import { LEAF_RADIUS } from "../model.js";
 import type { Bounds, Point } from "../viewport.js";
 import {
   inBox,
+  inShape,
   namePoint,
   regionAt,
   type SetsRegion,
@@ -50,8 +51,8 @@ export interface SetsSetDrawn {
 
 /**
  * One graph's diagram and where it stands on the canvas. The shapes and the
- * regions are in DIAGRAM coordinates — the figure is the same in every field —
- * and `dx`/`dy` is where this field's own copy of it sits.
+ * regions are in DIAGRAM coordinates — this field's own figure, drawn at the
+ * size its count of notes asks for — and `dx`/`dy` is where it sits.
  */
 export interface SetsFieldDrawn {
   ref: OwnedRef;
@@ -97,6 +98,11 @@ export interface SetsMark {
  */
 export const SETS_STEP = Math.ceil(LEAF_RADIUS * MARK_SCALE_MAX * 2 + 6);
 
+/** How far inside its region a mark's centre stands: the widest a leaf mark is
+ *  drawn, so the whole disc is in the one set and no mark reads as standing in
+ *  two. */
+const SETS_MARK_REACH = SETS_STEP / 2;
+
 /** The least two marks stand apart on SCREEN, in CSS pixels. */
 const SETS_SCREEN_STEP = 14;
 
@@ -132,6 +138,32 @@ export function membershipOf(
     if (carried.has(tag)) mask |= 1 << bit;
   }
   return mask;
+}
+
+/**
+ * Where a membership stands when the figure draws no place for that exact
+ * combination of sets: the most of them it does draw a place for, and outside
+ * every one of them where it draws none. Every note stands somewhere.
+ */
+export function regionFor(mask: number, drawn: ReadonlySet<number>): number {
+  if (drawn.has(mask)) return mask;
+  let found = 0;
+  let most = -1;
+  for (let part = mask - 1; part > 0; part--) {
+    if ((part & mask) !== part || !drawn.has(part)) continue;
+    const held = setsIn(part);
+    if (held > most) {
+      most = held;
+      found = part;
+    }
+  }
+  return found;
+}
+
+function setsIn(mask: number): number {
+  let held = 0;
+  for (let bits = mask; bits > 0; bits >>= 1) held += bits & 1;
+  return held;
 }
 
 /**
@@ -191,14 +223,6 @@ export interface SetsPacking {
 export function packSets(options: SetsPackOptions): SetsPacking {
   const tags = drawnSetsOf(options.selection);
   const slots = assignTagHueSlots(options.selection);
-  const diagram = setsDiagram(tags.length);
-  const across = diagram.box.maxX - diagram.box.minX;
-  const sets: SetsSetDrawn[] = tags.map((tag, bit) => ({
-    shape: diagram.shapes[bit],
-    tag,
-    slot: slots.get(tag) ?? 1,
-    nameAt: namePoint(diagram.shapes[bit]),
-  }));
 
   const byField = fieldsOf(options.notes, options.fields);
   const marks: SetsMark[] = [];
@@ -206,21 +230,38 @@ export function packSets(options: SetsPackOptions): SetsPacking {
   const folds = new Set<OwnedRef>();
   const fields: SetsFieldDrawn[] = [];
   const most = Math.max(1, Math.floor(options.most / byField.length));
+  /** The middle of the figure being laid out, and half the width of the one
+   *  before it: the fields draw at the sizes their own counts ask for, so each
+   *  one stands off the width the last came out at. */
+  let middle = 0;
+  let half = 0;
 
   for (const [at, field] of byField.entries()) {
-    const dx = at * (across + options.gutter);
+    const diagram = setsDiagram(tags.length, field.notes.length);
+    const reach = (diagram.box.maxX - diagram.box.minX) / 2;
+    if (at > 0) middle += half + options.gutter + reach;
+    half = reach;
+    const dx = middle - (diagram.box.minX + diagram.box.maxX) / 2;
+    const dy = 0;
+    const sets: SetsSetDrawn[] = tags.map((tag, bit) => ({
+      shape: diagram.shapes[bit],
+      tag,
+      slot: slots.get(tag) ?? 1,
+      nameAt: namePoint(diagram.shapes[bit]),
+    }));
     fields.push({
       ref: field.ref,
       dx,
-      dy: 0,
+      dy,
       sets,
       regions: diagram.regions,
       box: diagram.box,
     });
 
+    const drawnRegions = new Set(diagram.regions.map((region) => region.id));
     const byRegion = new Map<number, SetsNote[]>();
     for (const note of field.notes) {
-      const id = membershipOf(note.tags, tags);
+      const id = regionFor(membershipOf(note.tags, tags), drawnRegions);
       const held = byRegion.get(id);
       if (held === undefined) byRegion.set(id, [note]);
       else held.push(note);
@@ -260,7 +301,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
         marks.push({
           ref: first.ref,
           x: region.centre.x + dx,
-          y: region.centre.y,
+          y: region.centre.y + dy,
           field: at,
           region: region.id,
           holds: rest.map((note) => note.ref),
@@ -273,7 +314,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
         marks.push({
           ref: note.ref,
           x: places[standsAt].x + dx,
-          y: places[standsAt].y,
+          y: places[standsAt].y + dy,
           field: at,
           region: region.id,
           holds: [],
@@ -367,9 +408,27 @@ const AROUND: readonly [number, number][] = [
 ];
 
 /**
+ * One shape with room for a whole mark taken off it, or given to it — which is
+ * how a disc is held clear of an outline rather than only its centre: a mark
+ * stands clear of a set when its centre is inside that set shrunk by its reach,
+ * or outside the set grown by it.
+ *
+ * Both axes move by the same SHARE, the reach over the shorter one, because an
+ * ellipse's own inward offset is nearer than the reach wherever it leans.
+ */
+function roomFor(shape: SetsShape, reach: number): SetsShape {
+  const share = 1 + reach / Math.min(shape.rx, shape.ry);
+  return {
+    ...shape,
+    rx: Math.max(shape.rx * share, 1e-6),
+    ry: Math.max(shape.ry * share, 1e-6),
+  };
+}
+
+/**
  * Up to `want` points of a hexagonal lattice standing inside `region`, from its
- * centre outward. Fewer than `want` is a region the lattice has no more room in
- * at this spacing.
+ * centre outward, each with room for the WHOLE of the widest mark. Fewer than
+ * `want` is a region the lattice has no more room in at this spacing.
  */
 export function latticeIn(
   region: SetsRegion,
@@ -382,8 +441,21 @@ export function latticeIn(
     x: region.centre.x + q * basis.x + r * (basis.x / 2),
     y: region.centre.y + r * basis.y,
   });
+  const inside = diagram.shapes.map((shape) =>
+    roomFor(shape, -SETS_MARK_REACH),
+  );
+  const outside = diagram.shapes.map((shape) =>
+    roomFor(shape, SETS_MARK_REACH),
+  );
+  // Inside every set the region is in and outside every one it is not, with
+  // room for the whole of the widest mark on the near side of each outline.
   const stands = (point: Point): boolean =>
-    inBox(diagram.box, point) && regionAt(diagram.shapes, point) === region.id;
+    inBox(diagram.box, point) &&
+    diagram.shapes.every((_unused, bit) =>
+      (region.id & (1 << bit)) === 0
+        ? !inShape(outside[bit], point)
+        : inShape(inside[bit], point),
+    );
 
   const found: Point[] = [];
   if (want <= 0) return found;

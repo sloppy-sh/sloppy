@@ -50,7 +50,7 @@ import {
   type NamedField,
 } from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
-import { shapeOutline } from "./sets/geometry.js";
+import { shapeBounds, shapeOutline } from "./sets/geometry.js";
 import type { SetsDrawn, SetsStanding } from "./sets/pack.js";
 import { pictureStep, shownAt, TURN_MS } from "./turn.js";
 import {
@@ -159,11 +159,14 @@ const FIELD_NAME_GAP = 10;
  *  edge, under the lightest line a pair of notes is joined by. */
 const SETS_EDGE = 1;
 const SETS_EDGE_INK = 0.7;
-/** A set's name, written just inside its own outline and quiet enough that the
- *  figure stays ground. */
+/** A set's name, written just inside its own outline, in the ink a caption
+ *  takes: it is the one thing on the canvas saying in words which place is
+ *  which tag. */
 const SETS_NAME_SIZE = 13;
-const SETS_NAME_ALPHA = 0.72;
 const SETS_NAME_CHARS = 24;
+/** What a name held against an edge — its own set's, or the screen's — keeps
+ *  clear of it. */
+const SETS_NAME_GAP = 8;
 /** How many of those names this scene keeps: every set of every field. */
 const MAX_SETS_NAMES = DRAWN_SETS_MOST * MAX_FIELDS;
 
@@ -576,8 +579,8 @@ export class GraphScene {
     const sheetTier = markSheetTier(1, options.resolution);
     const textures = markTextures(pixi, app, sheetTier);
 
-    // First on the layer, so a set's name stays under every word written over
-    // it: it is the figure's own label, and the figure is ground.
+    // First on the layer, under the marks' own words — which give way to a
+    // name rather than overprinting one, so nothing is written over it there.
     const setsNamePool = Array.from({ length: MAX_SETS_NAMES }, () => {
       const text = new pixi.Text({
         text: "",
@@ -589,7 +592,6 @@ export class GraphScene {
         resolution: options.resolution,
       });
       text.visible = false;
-      text.alpha = SETS_NAME_ALPHA;
       text.anchor.set(0.5, 0.5);
       labels.addChild(text);
       return text;
@@ -1201,7 +1203,6 @@ export class GraphScene {
     if (this.positionsDirty || scaleMoved) this.drawCodeMoved();
     if (this.positionsDirty || scaleMoved) this.layoutLabels();
     if (this.positionsDirty || scaleMoved) this.layoutFieldNames();
-    if (this.positionsDirty || scaleMoved) this.layoutSetsNames();
 
     this.world.position.set(this.viewport.x, this.viewport.y);
     this.world.scale.set(this.viewport.scale);
@@ -2082,10 +2083,12 @@ export class GraphScene {
   }
 
   /**
-   * Each drawn set's name, just inside its own outline — the one place the
-   * canvas writes a tag, in quiet ink so the figure stays ground.
+   * Each drawn set's name, just inside its own outline and held there: a reader
+   * zoomed into one lens still reads which sets they are in. Answers the boxes
+   * the names took, which the captions are placed around.
    */
-  private layoutSetsNames(): void {
+  private layoutSetsNames(): number[] {
+    const placed: number[] = [];
     const named = (this.sets?.fields ?? [])
       .flatMap((field) => field.sets.map((set) => ({ field, set })))
       .slice(0, this.setsNamePool.length);
@@ -2097,23 +2100,41 @@ export class GraphScene {
       }
       const words = shorten(entry.set.tag, SETS_NAME_CHARS);
       if (text.text !== words) text.text = words;
+      const box = shapeBounds(entry.set.shape);
+      const from = this.viewport.toScreen(
+        box.minX + entry.field.dx,
+        box.minY + entry.field.dy,
+      );
+      const to = this.viewport.toScreen(
+        box.maxX + entry.field.dx,
+        box.maxY + entry.field.dy,
+      );
+      if (to.x < 0 || from.x > this.width || to.y < 0 || from.y > this.height) {
+        text.visible = false;
+        continue;
+      }
       const where = this.viewport.toScreen(
         entry.set.nameAt.x + entry.field.dx,
         entry.set.nameAt.y + entry.field.dy,
       );
-      if (
-        where.x < 0 ||
-        where.x > this.width ||
-        where.y < 0 ||
-        where.y > this.height
-      ) {
-        text.visible = false;
-        continue;
-      }
-      text.position.set(where.x, where.y);
+      const edgeX = text.width / 2 + SETS_NAME_GAP;
+      const edgeY = SETS_NAME_SIZE / 2 + SETS_NAME_GAP;
+      const x = within(
+        where.x,
+        Math.max(from.x, 0) + edgeX,
+        Math.min(to.x, this.width) - edgeX,
+      );
+      const y = within(
+        where.y,
+        Math.max(from.y, 0) + edgeY,
+        Math.min(to.y, this.height) - edgeY,
+      );
+      text.position.set(x, y);
       text.tint = this.options.palette.ink;
       text.visible = true;
+      placed.push(x - text.width / 2, y, text.width);
     }
+    return placed;
   }
 
   /**
@@ -2283,6 +2304,10 @@ export class GraphScene {
    */
   private layoutLabels(): void {
     const view = visibleBounds(this.viewport, this.width, this.height, 80);
+    // The set names are placed first: a name is the only thing on the canvas
+    // that says in words which place is which tag, so a caption gives way to
+    // one rather than overprinting it.
+    const named = this.layoutSetsNames();
     const held = this.labelSlots;
     const enter = LABEL_MIN_RADIUS / this.viewport.scale;
     const leave = enter * LABEL_HYSTERESIS;
@@ -2336,9 +2361,9 @@ export class GraphScene {
       slot.title.text = caption.title;
     }
 
-    // The marks are placed first, so a line's words give way to a note's name
+    // The marks are placed next, so a line's words give way to a note's name
     // rather than the other way round.
-    this.layoutEdgeLabels(this.placeMarkLabels(wanted));
+    this.layoutEdgeLabels(this.placeMarkLabels(wanted, named));
   }
 
   /**
@@ -2475,13 +2500,16 @@ export class GraphScene {
 
   /** Answers the boxes it took, so whatever is written next keeps clear of
    *  them. */
-  private placeMarkLabels(wanted: readonly Mark[]): number[] {
+  private placeMarkLabels(
+    wanted: readonly Mark[],
+    reserved: readonly number[],
+  ): number[] {
     const held = this.labelSlots;
     // Placed biggest first, and a label that would land on one already placed is
     // dropped for this frame rather than overprinted. It keeps its slot, so the
     // next pan brings it back without paying to rasterise it again.
     const fill = this.options.palette.ink;
-    const placed: number[] = [];
+    const placed: number[] = [...reserved];
     for (const mark of wanted) {
       const at = held.get(mark.ref);
       if (at === undefined) continue;
@@ -2522,6 +2550,12 @@ function sameStanding(a: SetsStanding | null, b: SetsStanding | null): boolean {
   if (a === b) return true;
   if (a === null || b === null) return false;
   return a.field === b.field && a.region === b.region;
+}
+
+/** `want`, held between two edges — the middle of what room there is where the
+ *  two have closed past each other. */
+function within(want: number, low: number, high: number): number {
+  return high < low ? (low + high) / 2 : clamp(want, low, high);
 }
 
 /** `placed` is a flat `[left, midY, width, …]`; boxes are one line tall. */

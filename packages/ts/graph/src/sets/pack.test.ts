@@ -14,8 +14,10 @@ import {
   membershipOf,
   packSets,
   regionCapacity,
+  regionFor,
   retagInto,
   SETS_STEP,
+  type SetsDrawn,
   setsDropAt,
   type SetsNote,
   setsSpacing,
@@ -65,6 +67,13 @@ function shuffled<T>(items: readonly T[], seed: number): T[] {
   return out;
 }
 
+/** The figure a field was drawn with: the shapes its marks were stood in, at
+ *  the size that field's own count of notes asked for. */
+const figure = (drawn: SetsDrawn, at = 0) => ({
+  ...drawn.fields[at],
+  shapes: drawn.fields[at].sets.map((set) => set.shape),
+});
+
 const packed = (notes: readonly SetsNote[], selection: readonly Tag[]) =>
   packSets({
     notes,
@@ -91,6 +100,23 @@ describe("the tags a selection draws", () => {
     expect(membershipOf([TAGS[0], TAGS[2], TAGS[4]], drawn)).toBe(0b101);
     expect(membershipOf([TAGS[4]], drawn)).toBe(0);
     expect(membershipOf(drawn, drawn)).toBe(0b111);
+  });
+});
+
+// Nothing is lost to a combination the figure draws no place for: the note
+// stands in the most of its sets the figure does draw.
+describe("a membership the figure has no place for", () => {
+  it("stands in the most of its sets the figure does draw", () => {
+    const drawn = new Set([0, 0b01, 0b10, 0b100, 0b110]);
+    expect(regionFor(0b110, drawn)).toBe(0b110);
+    expect(regionFor(0b111, drawn)).toBe(0b110);
+    expect(regionFor(0b101, drawn)).toBe(0b100);
+    expect(regionFor(0b1000, drawn)).toBe(0);
+    expect(regionFor(0, drawn)).toBe(0);
+  });
+
+  it("stands outside every one of them where the figure draws none", () => {
+    expect(regionFor(0b11, new Set([0]))).toBe(0);
   });
 });
 
@@ -134,6 +160,31 @@ describe("the lattice a region is packed on", () => {
       }
     });
 
+    // A disc crossing a hairline reads as standing in two sets at once, so the
+    // WHOLE mark is inside its region and not only its centre.
+    it(`keeps every whole mark of ${count} inside its own region`, () => {
+      const rim = Array.from({ length: 64 }, (_unused, step) => {
+        const turn = (step / 64) * Math.PI * 2;
+        return {
+          x: (Math.cos(turn) * SETS_STEP) / 2,
+          y: (Math.sin(turn) * SETS_STEP) / 2,
+        };
+      });
+      for (const region of diagram.regions) {
+        for (const at of latticeIn(region, diagram, SETS_STEP, 24)) {
+          for (const edge of rim) {
+            expect(
+              regionAt(diagram.shapes, {
+                x: at.x + edge.x,
+                y: at.y + edge.y,
+              }),
+              `region ${region.id.toString(2)}`,
+            ).toBe(region.id);
+          }
+        }
+      }
+    });
+
     it(`never stands two marks of ${count} within one step`, () => {
       for (const region of diagram.regions) {
         const points = latticeIn(region, diagram, SETS_STEP, 60);
@@ -168,22 +219,45 @@ describe("packing a field", () => {
 
   it("stands each mark in the region of the drawn tags it carries", () => {
     const { marks, drawn } = packed(notes, selection);
-    const diagram = setsDiagram(drawn.tags.length);
+    const drew = figure(drawn);
     for (const mark of marks) {
       if (mark.holds.length > 0) continue;
       const held = notes.find((entry) => entry.ref === mark.ref) as SetsNote;
       expect(mark.region).toBe(membershipOf(held.tags, drawn.tags));
-      expect(regionAt(diagram.shapes, { x: mark.x, y: mark.y })).toBe(
-        mark.region,
-      );
+      expect(
+        regionAt(drew.shapes, {
+          x: mark.x - drew.dx,
+          y: mark.y - drew.dy,
+        }),
+      ).toBe(mark.region);
     }
   });
 
-  it("answers for every note exactly once", () => {
-    const { marks } = packed(notes, selection);
-    const answered = marks.flatMap((mark) => [mark.ref, ...mark.holds]);
-    expect(new Set(answered).size).toBe(notes.length);
-    expect(answered).toHaveLength(notes.length);
+  // A note the figure has no place for would be a note nobody can reach in this
+  // reading, so there is no such note: every one of them is placed or counted.
+  it("answers for every note exactly once, whatever is drawn", () => {
+    for (let count = 0; count <= DRAWN_SETS_MOST; count++) {
+      const { marks } = packed(notes, TAGS.slice(0, count));
+      const answered = marks.flatMap((mark) => [mark.ref, ...mark.holds]);
+      expect(new Set(answered).size, `${count} drawn`).toBe(notes.length);
+      expect(answered, `${count} drawn`).toHaveLength(notes.length);
+    }
+  });
+
+  // The figure grows with the field, so a region's room grows with the notes it
+  // is asked to hold — DESIGN.md § "Sets — the tags as places".
+  it("draws a bigger field a bigger figure, and folds less of it", () => {
+    const few = packed(field(100, 11), selection);
+    const many = packed(field(400, 11), selection);
+    const across = (drawn: SetsDrawn) =>
+      drawn.fields[0].box.maxX - drawn.fields[0].box.minX;
+
+    expect(across(many.drawn)).toBeGreaterThan(across(few.drawn));
+    for (const [at, region] of many.drawn.fields[0].regions.entries()) {
+      expect(regionCapacity(region, SETS_STEP)).toBeGreaterThan(
+        regionCapacity(few.drawn.fields[0].regions[at], SETS_STEP),
+      );
+    }
   });
 
   it("stands the same marks in the same places whatever order it is handed", () => {
@@ -232,16 +306,16 @@ describe("packing a field", () => {
       most: 4000,
       gutter: 900,
     });
-    const diagram = setsDiagram(drawn.tags.length);
+    const drew = figure(drawn);
     expect(drawn.folds.size).toBeGreaterThan(0);
     for (const mark of marks) {
-      const region = diagram.regions.find(
+      const region = drew.regions.find(
         (at) => at.id === mark.region,
-      ) as (typeof diagram.regions)[number];
+      ) as (typeof drew.regions)[number];
       if (mark.holds.length === 0) continue;
       expect(drawn.folds.has(mark.ref)).toBe(true);
-      expect(mark.x).toBe(region.centre.x);
-      expect(mark.y).toBe(region.centre.y);
+      expect(mark.x).toBe(region.centre.x + drawn.fields[0].dx);
+      expect(mark.y).toBe(region.centre.y + drawn.fields[0].dy);
       expect(mark.holds.length + 1).toBeGreaterThan(
         regionCapacity(region, SETS_STEP * 8),
       );
