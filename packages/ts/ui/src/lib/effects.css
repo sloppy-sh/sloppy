@@ -1,5 +1,28 @@
 /* The effect axis — DESIGN.md § "The effect axis". A texture over the page: no
-   colour of its own, no shape, and nothing a pointer can land on. */
+   colour of its own, no shape, and nothing a pointer can land on.
+
+   How much of it there is and how big it is are the reader's, as two numbers
+   the store writes: every amount below is what one screen takes at rest, and
+   every size what it is drawn at. Nothing else varies, so a screen stays the
+   one thing it is at any setting. */
+:root {
+	--screen-strength: 1;
+	--screen-scale: 1;
+	/* Opaque, in a colour that is the look's rather than a literal: where a
+	   screen is only wanted at the edges, this is what the middle gives up. */
+	--screen-mask: linear-gradient(var(--foreground), var(--foreground));
+}
+
+/* `closest-side`, here and in the two vignettes below: an ellipse sized to the
+   box reaches 100% of its WIDTH on both axes, so a stop at 100% lands well off
+   the page and nothing on it ever reaches the share that stop names. */
+:root[data-screen-reach='edges'] {
+	--screen-mask: radial-gradient(
+		ellipse closest-side at center,
+		transparent 30%,
+		var(--foreground) 85%
+	);
+}
 
 /* Over every dock and every sheet — a dock filling the page stacks to 61,
    `side-dock.svelte` — because a screen is in front of what is on it.
@@ -14,14 +37,18 @@
 	inset: 0;
 	z-index: 100;
 	pointer-events: none;
+	-webkit-mask-image: var(--screen-mask);
+	mask-image: var(--screen-mask);
 }
 
 /* A sample of one, for somebody choosing between them: the same texture over a
    box rather than over the page, so each screen is shown as itself and there
-   is still one copy of what it is. */
+   is still one copy of what it is. A sample is small, so it shows the whole
+   texture whatever the page is giving up. */
 [data-screen] {
 	position: relative;
 	overflow: hidden;
+	--screen-mask: linear-gradient(var(--foreground), var(--foreground));
 }
 
 [data-screen]::after {
@@ -29,28 +56,47 @@
 	position: absolute;
 	inset: 0;
 	pointer-events: none;
+	-webkit-mask-image: var(--screen-mask);
+	mask-image: var(--screen-mask);
 }
 
 /* Paper rather than glass: noise at a size no letterform is, so it reads as
    grain on the page instead of as a pattern over it. The picture carries no
-   colour — it is a mask, and the ink underneath is the theme's. */
+   colour — it is a mask, and the ink underneath is the theme's. Where the page
+   is giving its middle up, the grain gives it up with it, which is what the
+   two masks are composed for. */
 :root[data-effect='grain'] body::after,
 [data-screen='grain']::after {
-	background-color: color-mix(in oklab, var(--foreground) 7%, transparent);
-	-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-	-webkit-mask-size: 180px 180px;
-	mask-size: 180px 180px;
+	background-color: color-mix(
+		in oklab,
+		var(--foreground) calc(7% * var(--screen-strength)),
+		transparent
+	);
+	-webkit-mask-image:
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+		var(--screen-mask);
+	mask-image:
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+		var(--screen-mask);
+	-webkit-mask-composite: source-in;
+	mask-composite: intersect;
+	-webkit-mask-size:
+		calc(180px * var(--screen-scale)) calc(180px * var(--screen-scale)),
+		cover;
+	mask-size:
+		calc(180px * var(--screen-scale)) calc(180px * var(--screen-scale)),
+		cover;
 }
 
 /* A halftone the page is printed through. */
 :root[data-effect='dots'] body::after,
 [data-screen='dots']::after {
 	background-image: radial-gradient(
-		color-mix(in oklab, var(--foreground) 12%, transparent) 0.5px,
-		transparent 0.6px
+		color-mix(in oklab, var(--foreground) calc(16% * var(--screen-strength)), transparent)
+			calc(1.5px * var(--screen-scale)),
+		transparent calc(1.9px * var(--screen-scale))
 	);
-	background-size: 5px 5px;
+	background-size: calc(6px * var(--screen-scale)) calc(6px * var(--screen-scale));
 }
 
 /* Two rules crossing, the way a pen shades. */
@@ -59,13 +105,15 @@
 	background-image:
 		repeating-linear-gradient(
 			45deg,
-			color-mix(in oklab, var(--foreground) 8%, transparent) 0 1px,
-			transparent 1px 7px
+			color-mix(in oklab, var(--foreground) calc(8% * var(--screen-strength)), transparent) 0
+				calc(1px * var(--screen-scale)),
+			transparent calc(1px * var(--screen-scale)) calc(7px * var(--screen-scale))
 		),
 		repeating-linear-gradient(
 			-45deg,
-			color-mix(in oklab, var(--foreground) 8%, transparent) 0 1px,
-			transparent 1px 7px
+			color-mix(in oklab, var(--foreground) calc(8% * var(--screen-strength)), transparent) 0
+				calc(1px * var(--screen-scale)),
+			transparent calc(1px * var(--screen-scale)) calc(7px * var(--screen-scale))
 		);
 }
 
@@ -74,36 +122,52 @@
 :root[data-effect='glow'] body::after,
 [data-screen='glow']::after {
 	background: radial-gradient(
-		ellipse 100% 100% at center,
-		transparent 60%,
-		color-mix(in oklab, var(--foreground) 10%, transparent) 100%
+		ellipse closest-side at center,
+		transparent 45%,
+		color-mix(in oklab, var(--foreground) calc(18% * var(--screen-strength)), transparent) 100%
 	);
 }
 
 :root[data-effect='glow'] body,
 [data-screen='glow'] {
-	text-shadow: 0 0 2px color-mix(in oklab, var(--foreground) 14%, transparent);
+	text-shadow: 0 0 calc(8px * var(--screen-scale))
+		color-mix(in oklab, var(--foreground) calc(30% * var(--screen-strength)), transparent);
 }
 
+/* The tube: scanlines, the corners falling away, a line travelling down it and
+   a flicker over the whole. The line is a band of the page's own ink, which
+   reads as light on a dark look and as shade on a light one — the same bargain
+   every screen here makes. */
 :root[data-effect='crt'] body::after,
 [data-screen='crt']::after {
 	background:
+		linear-gradient(
+				to bottom,
+				transparent 0%,
+				color-mix(in oklab, var(--foreground) calc(18% * var(--screen-strength)), transparent) 50%,
+				transparent 100%
+			)
+			0 -14% / 100% 14% no-repeat,
 		repeating-linear-gradient(
 			to bottom,
-			color-mix(in oklab, var(--foreground) 9%, transparent) 0 1px,
-			transparent 1px 3px
+			color-mix(in oklab, var(--foreground) calc(9% * var(--screen-strength)), transparent) 0
+				calc(1px * var(--screen-scale)),
+			transparent calc(1px * var(--screen-scale)) calc(3px * var(--screen-scale))
 		),
 		radial-gradient(
-			ellipse 100% 100% at center,
+			ellipse closest-side at center,
 			transparent 55%,
-			color-mix(in oklab, var(--foreground) 14%, transparent) 100%
+			color-mix(in oklab, var(--foreground) calc(14% * var(--screen-strength)), transparent) 100%
 		);
-	animation: sloppy-crt-flicker 0.12s steps(2, jump-none) infinite alternate;
+	animation:
+		sloppy-crt-flicker 0.12s steps(2, jump-none) infinite alternate,
+		sloppy-crt-sweep 7s linear infinite;
 }
 
 :root[data-effect='crt'] body,
 [data-screen='crt'] {
-	text-shadow: 0 0 1px color-mix(in oklab, var(--foreground) 20%, transparent);
+	text-shadow: 0 0 calc(1px * var(--screen-scale))
+		color-mix(in oklab, var(--foreground) calc(20% * var(--screen-strength)), transparent);
 }
 
 @keyframes sloppy-crt-flicker {
@@ -112,6 +176,24 @@
 	}
 	to {
 		opacity: 1;
+	}
+}
+
+/* Only the band moves. Every layer is named at each end because a position
+   shorter than the layers it is given to is repeated across them, which would
+   sweep the scanlines and the corners down the page along with the band. */
+@keyframes sloppy-crt-sweep {
+	from {
+		background-position:
+			0 -14%,
+			0 0,
+			0 0;
+	}
+	to {
+		background-position:
+			0 114%,
+			0 0,
+			0 0;
 	}
 }
 

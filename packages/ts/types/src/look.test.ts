@@ -8,6 +8,8 @@ import {
   LOOK_NAME_MAX,
   LookSchema,
   namesAFace,
+  SCREEN_LEAST,
+  SCREEN_MOST,
   STYLES,
 } from "./look.js";
 
@@ -85,6 +87,22 @@ describe("a look somebody was sent", () => {
     expect(look({ style: "sketch" }).success).toBe(false);
     expect(look({ density: "roomy" }).success).toBe(false);
     expect(look({ effect: "neon" }).success).toBe(false);
+  });
+
+  // How much of a screen there is is a number, held to what the stylesheet can
+  // be asked for, with every part of it its own answer.
+  it("says how much of its screen there is, within the bounds", () => {
+    expect(look({ screen: {} }).success).toBe(true);
+    expect(look({ screen: { strength: SCREEN_LEAST } }).success).toBe(true);
+    expect(look({ screen: { scale: SCREEN_MOST, edges: true } }).success).toBe(
+      true,
+    );
+    expect(look({ screen: { strength: SCREEN_MOST + 0.1 } }).success).toBe(
+      false,
+    );
+    expect(look({ screen: { scale: SCREEN_LEAST - 0.1 } }).success).toBe(false);
+    expect(look({ screen: { strength: "a lot" } }).success).toBe(false);
+    expect(look({ screen: { edges: "yes" } }).success).toBe(false);
   });
 
   // A look names a family this build does not ship — that is how it asks for

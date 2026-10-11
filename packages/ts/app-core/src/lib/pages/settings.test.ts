@@ -265,6 +265,26 @@ describe('settings', () => {
 		expect(worn).toEqual([undefined, ...EFFECTS.filter((one) => one !== 'none')]);
 	});
 
+	// DESIGN.md § "The effect axis": how much of a screen there is is the
+	// reader's, and there is nothing to ask about where no screen is on.
+	it('asks how much of the screen there is, once one is on', () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		expect(target.textContent).not.toContain('How strong');
+
+		target.querySelector<HTMLInputElement>('input[name="effect"][value="grain"]')?.click();
+		flushSync();
+
+		expect(target.textContent).toContain('How strong');
+		expect(target.textContent).toContain('How big');
+
+		target.querySelector<HTMLButtonElement>('#screen-edges')?.click();
+		flushSync();
+
+		expect(prefs.current.screen.edges).toBe(true);
+		expect(document.documentElement.getAttribute('data-screen-reach')).toBe('edges');
+	});
+
 	// A look is a file somebody can send, so the page has a section for one
 	// whether or not anybody is signed in.
 	it('offers a look of your own beside the axes', async () => {

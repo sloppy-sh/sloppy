@@ -37,6 +37,7 @@ const OF_THE_LOOK: readonly string[] = [
 	'style',
 	'density',
 	'effect',
+	'screen',
 	'fonts',
 	'css'
 ];
@@ -152,6 +153,7 @@ export async function lookNow(withPreferences: boolean): Promise<Look> {
 		style: held.style,
 		density: held.density,
 		effect: held.effect,
+		screen: { ...held.screen },
 		fonts: { ...held.fonts }
 	};
 	const paint = prefs.dressing?.tokens;
@@ -242,6 +244,15 @@ function wear(
 	if (look.style !== undefined) prefs.set('style', look.style);
 	if (look.density !== undefined) prefs.set('density', look.density);
 	if (look.effect !== undefined) prefs.set('effect', look.effect);
+	// What a look leaves out of its screen is the screen at rest, not what this
+	// device happened to be set to.
+	if (look.screen !== undefined) {
+		prefs.set('screen', {
+			strength: look.screen.strength ?? 1,
+			scale: look.screen.scale ?? 1,
+			edges: look.screen.edges ?? false
+		});
+	}
 	if (look.fonts !== undefined) prefs.set('fonts', faces(look.fonts));
 	if (look.css !== undefined) prefs.set('css', look.css);
 	if (look.preferences !== undefined) moveIn(look.preferences);

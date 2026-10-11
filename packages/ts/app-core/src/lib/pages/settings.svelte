@@ -14,10 +14,13 @@
 	import Palette from '@lucide/svelte/icons/palette';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import UserRound from '@lucide/svelte/icons/user-round';
+	import { SCREEN_LEAST, SCREEN_MOST } from '@sloppy/types';
 	import { ChoicePill, DESK_FROM_PX, DeskNavParts, PersonChip, scrollFade } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
+	import { Slider } from '@sloppy/ui/slider';
+	import { Switch } from '@sloppy/ui/switch';
 	import { api } from '../api.js';
 	import FaceSettings from '../components/face-settings.svelte';
 	import HistorySettings from '../components/history-settings.svelte';
@@ -53,6 +56,10 @@
 	import { tick } from 'svelte';
 
 	const vault = runtime.vault();
+
+	/** The smallest a screen is offered at: a texture drawn at nothing is not a
+	 *  screen turned off, it is one that has stopped being drawn. */
+	const SMALLEST_SCREEN = 0.25;
 
 	let leaving = $state(false);
 	let showingHistory = $state(false);
@@ -319,6 +326,55 @@
 								/>
 							{/each}
 						</div>
+						{#if prefs.current.effect !== 'none'}
+							<div class="space-y-4 pt-1">
+								<div class="space-y-2">
+									<Label for="screen-strength" class="text-sm font-normal text-muted-foreground">
+										How strong
+									</Label>
+									<Slider
+										id="screen-strength"
+										type="single"
+										min={SCREEN_LEAST}
+										max={SCREEN_MOST}
+										step={0.1}
+										value={prefs.current.screen.strength}
+										onValueChange={(strength) =>
+											prefs.set('screen', { ...prefs.current.screen, strength })}
+									/>
+								</div>
+								<div class="space-y-2">
+									<Label for="screen-scale" class="text-sm font-normal text-muted-foreground">
+										How big
+									</Label>
+									<Slider
+										id="screen-scale"
+										type="single"
+										min={SMALLEST_SCREEN}
+										max={SCREEN_MOST}
+										step={0.05}
+										value={prefs.current.screen.scale}
+										onValueChange={(scale) =>
+											prefs.set('screen', { ...prefs.current.screen, scale })}
+									/>
+								</div>
+								<div class="flex items-start gap-3">
+									<Switch
+										id="screen-edges"
+										checked={prefs.current.screen.edges}
+										onCheckedChange={(edges) =>
+											prefs.set('screen', { ...prefs.current.screen, edges })}
+									/>
+									<div class="min-w-0 flex-1 space-y-1">
+										<Label for="screen-edges" class="text-sm font-normal">Only at the edges</Label>
+										<p class="text-xs text-muted-foreground">
+											The screen fades out of the middle of the page, so what you are reading is
+											left clear.
+										</p>
+									</div>
+								</div>
+							</div>
+						{/if}
 					</fieldset>
 				</div>
 			</section>

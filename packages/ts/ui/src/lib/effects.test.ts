@@ -108,19 +108,73 @@ describe('the screen a page is drawn on', () => {
 	});
 });
 
-// DESIGN.md § "The effect axis": held to no floor, bounded instead — these are
-// the bounds the doc promises, read off the rules.
-describe('how much of the ink a screen takes', () => {
-	const shares = (text: string): number[] =>
-		[...text.matchAll(/var\(--foreground\)\s+(\d+(?:\.\d+)?)%/g)].map((one) => Number(one[1]));
+// DESIGN.md § "The effect axis": how much of a screen there is and how big it
+// is are the reader's, as two numbers every screen reads the same way.
+describe('how much of a screen there is', () => {
+	it('stands at rest until somebody moves it', () => {
+		const held = declarations('', ':root {');
+		expect(held.get('--screen-strength')).toBe('1');
+		expect(held.get('--screen-scale')).toBe('1');
+		// Opaque at rest: a screen reaches the whole page until asked otherwise.
+		expect(held.get('--screen-mask')).toContain('var(--foreground)');
+		expect(held.get('--screen-mask')).not.toContain('transparent');
+	});
 
-	it('never more than a fifth anywhere, and never more than 14% over the page', () => {
+	it.each(TEXTURES)('draws %s at the strength and the size it is asked for', (effect) => {
+		const rules = rulesFor(effect);
+		expect(rules).toContain('var(--screen-strength)');
+		expect(rules).toContain('var(--screen-scale)');
+	});
+
+	it('gives the middle up where somebody asks for the edges alone', () => {
+		const edges = declarations('', ":root[data-screen-reach='edges']");
+		expect(edges.get('--screen-mask')).toContain('transparent');
+		for (const block of [OVERLAY, '[data-screen]::after'])
+			expect(declarations('', block).get('mask-image')).toBe('var(--screen-mask)');
+	});
+
+	it('shows a sample whole, whatever the page is giving up', () => {
+		const sample = declarations('', '[data-screen] {');
+		expect(sample.get('--screen-mask')).toContain('var(--foreground)');
+		expect(sample.get('--screen-mask')).not.toContain('transparent');
+	});
+
+	it('sweeps one band down the tube and leaves the rest of it still', () => {
+		expect(rulesFor('crt')).toContain('sloppy-crt-sweep');
+		const sweep = /@keyframes sloppy-crt-sweep\s*\{([\s\S]*?\n\})/.exec(CSS);
+		const ends = sweep?.[1].split('background-position:').slice(1) ?? [];
+		expect(ends.length).toBe(2);
+		// A position shorter than the layers it is given to is repeated across
+		// them, so each end of the sweep names every layer the tube is drawn in
+		// — otherwise the scanlines and the corners travel with the band.
+		const layers = (
+			rulesFor('crt')
+				.split('background:')[1]
+				?.match(/-gradient\(/g) ?? []
+		).length;
+		expect(layers).toBeGreaterThan(1);
+		for (const end of ends) expect(end.split(';')[0].split(',').length).toBe(layers);
+	});
+});
+
+// DESIGN.md § "The effect axis": held to no floor, bounded instead — these are
+// the bounds the doc promises at rest. A reader who wants more of a screen than
+// this is what the strength is for, so the bounds are read off the rules rather
+// than off what any one person has set.
+describe('how much of the ink a screen takes at rest', () => {
+	const shares = (text: string): number[] =>
+		[...text.matchAll(/var\(--foreground\)\s+(?:calc\(\s*)?(\d+(?:\.\d+)?)%/g)].map((one) =>
+			Number(one[1])
+		);
+
+	it('never more than a fifth over the page, and never a third of the ink', () => {
 		const everywhere = shares(SHEET);
 		expect(everywhere.length).toBeGreaterThan(0);
-		for (const share of everywhere) expect(share).toBeLessThanOrEqual(20);
 
-		for (const over of SHEET.matchAll(/body::after[^{]*\{([^}]*)\}/g)) {
-			for (const share of shares(over[1])) expect(share).toBeLessThanOrEqual(14);
-		}
+		for (const over of SHEET.matchAll(/body::after[^{]*\{([^}]*)\}/g))
+			for (const share of shares(over[1])) expect(share).toBeLessThanOrEqual(20);
+
+		for (const ink of SHEET.matchAll(/text-shadow:([^;]*)/g))
+			for (const share of shares(ink[1])) expect(share).toBeLessThanOrEqual(30);
 	});
 });

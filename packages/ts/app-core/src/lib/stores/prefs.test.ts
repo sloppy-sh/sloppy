@@ -80,6 +80,7 @@ function stamped(): Record<string, unknown> {
 		style: root.getAttribute('data-style'),
 		density: root.getAttribute('data-density'),
 		effect: root.getAttribute('data-effect'),
+		reach: root.getAttribute('data-screen-reach'),
 		dark: String(root.classList.contains('dark')),
 		painted: painted(),
 		rules: rules()
@@ -88,7 +89,13 @@ function stamped(): Record<string, unknown> {
 
 function unstamp(): void {
 	const root = document.documentElement;
-	for (const axis of ['data-look', 'data-style', 'data-density', 'data-effect'])
+	for (const axis of [
+		'data-look',
+		'data-style',
+		'data-density',
+		'data-effect',
+		'data-screen-reach'
+	])
 		root.removeAttribute(axis);
 	for (const token of Object.keys(painted())) root.style.removeProperty(token);
 	root.classList.remove('dark');
@@ -255,6 +262,20 @@ describe('the saved look', () => {
 		expect(document.documentElement.hasAttribute('data-effect')).toBe(false);
 	});
 
+	it('writes how much of the screen there is, and where it reaches', () => {
+		prefs.init();
+		// At rest is absent, the same bargain every other axis makes.
+		expect(painted()).toEqual({});
+		expect(document.documentElement.hasAttribute('data-screen-reach')).toBe(false);
+		prefs.set('screen', { strength: 2.5, scale: 0.4, edges: true });
+		expect(painted()['--screen-strength']).toBe('2.5');
+		expect(painted()['--screen-scale']).toBe('0.4');
+		expect(document.documentElement.getAttribute('data-screen-reach')).toBe('edges');
+		prefs.set('screen', { strength: 1, scale: 1, edges: false });
+		expect(painted()).toEqual({});
+		expect(document.documentElement.hasAttribute('data-screen-reach')).toBe(false);
+	});
+
 	// Both shells paint the first paint from the same saved object, so what they
 	// stamp is held against the store rather than against a copy of the rules.
 	it.each(['web', 'native'])('paints the %s shell the way the store would', (shell) => {
@@ -263,6 +284,11 @@ describe('the saved look', () => {
 			[{ look: 'dark', style: 'hardline' }, null],
 			[{ look: 'contrast', style: 'default', density: 'compact' }, null],
 			[{ style: 'bevel', effect: 'crt' }, null],
+			// How much of a screen there is, as the reader left it — and a number
+			// nobody could have meant, which both painters draw at rest instead.
+			[{ effect: 'grain', screen: { strength: 2.4, scale: 0.5, edges: true } }, null],
+			[{ effect: 'grain', screen: { strength: 9, scale: 'big', edges: 'yes' } }, null],
+			[{ effect: 'grain', screen: 'a lot' }, null],
 			// What an earlier build saved, which both painters read the same way.
 			[{ theme: 'dark', accent: 'moss', font: 'opendyslexic' }, null],
 			[{ theme: 'paper', scheme: GRUVBOX.slug }, GRUVBOX, 'sloppy_scheme'],
@@ -353,6 +379,7 @@ describe('the saved look', () => {
 				theme: 'neon',
 				style: 'sketch',
 				effect: 'neon',
+				screen: { strength: 9, scale: 'big', edges: 'yes' },
 				ownLook: 'Not An Id',
 				fonts: { ui: 'a face; position: fixed', heading: 7 },
 				css: 'x'.repeat(65_537),
@@ -376,6 +403,7 @@ describe('the saved look', () => {
 			ownLook: null,
 			style: 'default',
 			effect: 'none',
+			screen: { strength: 1, scale: 1, edges: false },
 			fonts: { ui: 'system', heading: 'system', mono: 'system' },
 			css: '',
 			tags: [],

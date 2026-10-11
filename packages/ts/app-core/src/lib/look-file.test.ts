@@ -31,6 +31,7 @@ function aDeviceLivedOn(): void {
 	prefs.set('style', 'hardline');
 	prefs.set('density', 'compact');
 	prefs.set('effect', 'crt');
+	prefs.set('screen', { strength: 1.6, scale: 0.75, edges: true });
 	prefs.set('fonts', { ui: 'Inter', heading: 'Iosevka Etoile', mono: 'JetBrains Mono' });
 	prefs.set('css', '.sloppy-prose h2 { letter-spacing: .02em }');
 	prefs.set('tagOrder', 'name');
@@ -63,6 +64,7 @@ describe('the look this device wears', () => {
 			style: 'hardline',
 			density: 'compact',
 			effect: 'crt',
+			screen: { strength: 1.6, scale: 0.75, edges: true },
 			fonts: { ui: 'Inter', heading: 'Iosevka Etoile', mono: 'JetBrains Mono' },
 			css: '.sloppy-prose h2 { letter-spacing: .02em }'
 		});
@@ -127,7 +129,7 @@ describe('the look this device wears', () => {
 
 	it('states nothing twice: what the look says is not in the settings beside it', async () => {
 		const moving = await lookNow(true);
-		for (const key of ['look', 'ownLook', 'style', 'density', 'effect', 'fonts', 'css'])
+		for (const key of ['look', 'ownLook', 'style', 'density', 'effect', 'screen', 'fonts', 'css'])
 			expect(moving.preferences).not.toHaveProperty(key);
 	});
 });
@@ -233,6 +235,21 @@ describe('wearing one', () => {
 		expect(prefs.current.tagOrder).toBe('count');
 		expect(prefs.current.autosaveMinutes).toBe(5);
 		expect(prefs.current.graph).toBeNull();
+	});
+
+	// What a look leaves out of its screen is the screen at rest: a file saying
+	// grain and nothing else is read the same on a device somebody had turned
+	// every number up on as on one they had not.
+	it('draws the screen at rest where the look says only part of it', async () => {
+		aDeviceLivedOn();
+		expect(await wearLook({ name: 'Mine', effect: 'grain', screen: { scale: 2 } })).toBeNull();
+		expect(prefs.current.screen).toEqual({ strength: 1, scale: 2, edges: false });
+	});
+
+	it('leaves the screen alone where the look says nothing about it', async () => {
+		aDeviceLivedOn();
+		expect(await wearLook({ name: 'Mine', effect: 'grain' })).toBeNull();
+		expect(prefs.current.screen).toEqual({ strength: 1.6, scale: 0.75, edges: true });
 	});
 
 	it('takes only the faces the look names', async () => {

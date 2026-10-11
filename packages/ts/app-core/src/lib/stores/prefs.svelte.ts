@@ -22,6 +22,8 @@ import {
 	DENSITIES,
 	type Density,
 	EFFECTS,
+	SCREEN_LEAST,
+	SCREEN_MOST,
 	type Effect,
 	LOOK_CSS_MAX,
 	LOOK_ID,
@@ -92,6 +94,10 @@ export interface Prefs {
 	/** What the screen itself is drawn like over everything else — DESIGN.md
 	 *  § "The look". */
 	effect: Effect;
+	/** How the screen is drawn: how much of it there is, how big it is drawn,
+	 *  and whether it keeps to the edges of the page. At rest it is 1, 1 and
+	 *  everywhere, which is what the stylesheet draws on its own. */
+	screen: { strength: number; scale: number; edges: boolean };
 	/** The faces the app, its headings and its code are set in — DESIGN.md
 	 *  § Typography. Each is one this build offers or a family somebody named. */
 	fonts: { ui: string; heading: string; mono: string };
@@ -336,6 +342,7 @@ function defaults(): Prefs {
 		lookName: null,
 		style: 'default',
 		effect: 'none',
+		screen: { strength: 1, scale: 1, edges: false },
 		fonts: { ui: 'system', heading: 'system', mono: 'system' },
 		css: '',
 		tags: [],
@@ -391,6 +398,24 @@ function lookNameIn(value: unknown): string | null {
 	if (typeof value !== 'string') return null;
 	const named = value.trim().slice(0, LOOK_NAME_MAX);
 	return named === '' ? null : named;
+}
+
+/** How a screen is drawn, held to what the stylesheet can be asked for: a
+ *  number nobody could have meant is the one it draws at rest. */
+function screenIn(value: unknown): Prefs['screen'] {
+	const held = (typeof value === 'object' && value !== null ? value : {}) as Record<
+		string,
+		unknown
+	>;
+	const asked = (one: unknown): number =>
+		typeof one === 'number' && Number.isFinite(one) && one >= SCREEN_LEAST && one <= SCREEN_MOST
+			? one
+			: 1;
+	return {
+		strength: asked(held.strength),
+		scale: asked(held.scale),
+		edges: held.edges === true
+	};
 }
 
 /** One face, as a name rather than as a rule — a family this build does not
@@ -658,6 +683,7 @@ class PrefsStore {
 			lookName: lookNameIn(saved.lookName),
 			style: oneOf(saved.style, STYLES, base.style),
 			effect: oneOf(saved.effect, EFFECTS, base.effect),
+			screen: screenIn(saved.screen),
 			fonts: facesIn(saved.fonts, saved.font),
 			css: rulesIn(saved.css),
 			tags: tagsIn(saved.tags),
@@ -807,6 +833,18 @@ class PrefsStore {
 		else root.removeAttribute('data-density');
 		if (p.effect === 'none') root.removeAttribute('data-effect');
 		else root.setAttribute('data-effect', p.effect);
+		// Two numbers and a reach: the stylesheet holds what each screen IS and
+		// reads these for how much of it there is — DESIGN.md § "The effect axis".
+		// At rest is absent again, so a page nobody has moved carries nothing.
+		for (const [token, asked] of [
+			['--screen-strength', p.screen.strength],
+			['--screen-scale', p.screen.scale]
+		] as const) {
+			if (asked === 1) root.style.removeProperty(token);
+			else root.style.setProperty(token, String(asked));
+		}
+		if (p.screen.edges) root.setAttribute('data-screen-reach', 'edges');
+		else root.removeAttribute('data-screen-reach');
 		// The three faces, written over the tokens `app.css` declares them at:
 		// a family a look asks for by name is not a value a stylesheet can hold
 		// a block for — DESIGN.md § Typography.

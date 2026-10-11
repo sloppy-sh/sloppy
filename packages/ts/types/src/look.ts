@@ -29,6 +29,11 @@ export const EFFECTS = [
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
+/** How far a screen may be turned up or down, and how big it may be drawn.
+ *  One is what the stylesheet draws at rest. */
+export const SCREEN_LEAST = 0;
+export const SCREEN_MOST = 3;
+
 /** A look's id: one of Sloppy's own, or a scheme's slug in the collection.
  *  `data-look` carries exactly this. */
 export const LOOK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -196,6 +201,15 @@ const LookCssSchema = z
  * out. Every field but the name is optional, and an ABSENT one is LEFT ALONE:
  * a look carrying only a palette changes the colours and nothing else.
  */
+/** How a screen is drawn: how much of it there is, how big it is, and whether
+ *  it keeps to the edges of the page. Absent is the screen at rest. */
+export const ScreenSchema = z.object({
+  strength: z.number().min(SCREEN_LEAST).max(SCREEN_MOST).optional(),
+  scale: z.number().min(SCREEN_LEAST).max(SCREEN_MOST).optional(),
+  edges: z.boolean().optional(),
+});
+export type Screen = z.infer<typeof ScreenSchema>;
+
 export const LookSchema = z.object({
   name: z
     .string()
@@ -215,6 +229,7 @@ export const LookSchema = z.object({
   style: z.enum(STYLES).optional(),
   density: z.enum(DENSITIES).optional(),
   effect: z.enum(EFFECTS).optional(),
+  screen: ScreenSchema.optional(),
   /** The faces the app, its headings and its code are set in. Each is a face
    *  this build offers or a family the author named, which is how a look asks
    *  for one Sloppy does not ship. */

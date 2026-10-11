@@ -208,18 +208,29 @@ unaffordable. The style changes the chrome around the graph and nothing inside i
 ### The effect axis (`data-effect`) — what the screen is like
 
 `data-effect` draws a texture over the whole page. Absent is plain, the same convention
-the style and face axes keep; the rest are five, each one thing and not a setting with
-knobs: **Grain**, paper rather than glass — noise at a size no letterform is, laid as a
+the style and face axes keep; the rest are five, each one texture rather than a family of
+them: **Grain**, paper rather than glass — noise at a size no letterform is, laid as a
 mask so the ink under it is the look's own; **Dots**, a halftone the page is printed
 through; **Hatch**, two rules crossing the way a pen shades; **Glow**, the edges falling
 away and a little light on the ink, which is the half of a tube that is restful to read
-in; and **CRT**, that glow with scanlines and a flicker over it. They share one block —
-everything but the texture itself is the same — so a sixth is a texture and nothing else.
+in; and **CRT**, that glow with scanlines, a band travelling down it and a flicker over
+the whole. They share one block — everything but the texture itself is the same.
 **Each is shown as itself where it is chosen**: the same declarations that dress the page
 dress the choice that names it (`[data-screen]`), over the whole of it rather than in a
 sample beside the name — a texture a few pixels across says nothing at the size of a
 swatch. So what somebody reads in the row is the screen, and there is still one copy of
 what each one is.
+
+**How much of a screen there is and how big it is drawn are the reader's**, as two
+numbers every screen reads the same way — `--screen-strength` multiplies every share of
+the ink it takes, `--screen-scale` every length it is drawn at, both 1 at rest and both
+absent from the page until somebody moves them. A third choice decides where it reaches:
+`data-screen-reach="edges"` swaps the one mask every screen is drawn through for a
+radial one, so the texture falls away from the middle of the page and what somebody is
+reading is left clear. Nothing else varies, so a screen is the one thing it is at any
+setting, and a sixth is still a texture and nothing else. A sample carries its own mask,
+because a sample is small enough to be the whole texture whatever the page is giving up.
+
 Four rules, and each is a way an effect ships broken:
 
 - **An effect is a texture, never a colour and never a shape.** It mixes from
@@ -228,14 +239,17 @@ Four rules, and each is a way an effect ships broken:
 - **Nothing a pointer can land on.** The overlay is `pointer-events: none` on a
   pseudo-element; an effect that eats a tap has eaten the product.
 - **No animation under `prefers-reduced-motion`.** A flicker is the one part of a tube
-  nobody can opt out of by looking away, so it is the first part to go. Only CRT moves at
-  all; `effects.test.ts` holds every screen that declares motion to a twin that stops it.
+  nobody can opt out of by looking away, so it is the first part to go, and the band
+  sweeping down the tube goes with it. Only CRT moves at all; `effects.test.ts` holds
+  every screen that declares motion to a twin that stops it.
 - **An effect is held to no contrast floor, and is bounded instead.** It is a texture
   somebody turned on over a page that is already measured, so the floor stays the page's;
-  what the sheet promises is how little it may take — never more than 14% of the ink
-  anywhere in the overlay and never more than 20% in the glow, which `effects.test.ts`
-  reads off the rules — so the most it costs a pairing at 4.5:1 is a few tenths. That is
-  the one place this design system takes a texture over a floor, and it is opt-in.
+  what the sheet promises is how little it may take **at rest** — never more than a fifth
+  of the ink over the page and never more than 30% of it on the ink itself, which
+  `effects.test.ts` reads off the rules — so the most it costs a pairing at 4.5:1 is a few
+  tenths. A reader who turns the strength up past that is past the bound deliberately,
+  which is the whole of what the number is for. That is the one place this design system
+  takes a texture over a floor, and it is opt-in twice over.
 
 ### A look carried as data
 
@@ -351,6 +365,8 @@ Sloppy reads can have it by being sent one.
   "style": "hardline",
   "density": "compact",
   "effect": "crt",
+  // how much of that screen there is; a field it leaves out is drawn at rest
+  "screen": { "strength": 1.6, "scale": 0.75, "edges": true },
   "fonts": {
     "ui": "Inter",
     "heading": "Iosevka Etoile",
@@ -364,7 +380,10 @@ Sloppy reads can have it by being sent one.
 
 `LookSchema` in `@sloppy/types` is the shape. **What a file holds is what is applied, and
 what it leaves out is left alone** — one carrying a palette and nothing else changes the
-colours and leaves the faces, the density and the screen as they were. Settings offers
+colours and leaves the faces, the density and the screen as they were. **A screen it says
+only part of is drawn at rest for the rest of it**, so a look that asks for big grain
+reads the same on a machine somebody had turned every number up on as on one they had
+not. Settings offers
 _Copy_, _Save a look…_ (the look alone, for sending), _Save my settings…_ (the look plus
 `preferences`, for moving to another machine), _Open a look…_, and a box that takes the
 same JSON pasted in. A file that is not a look is turned down in one line saying what to
