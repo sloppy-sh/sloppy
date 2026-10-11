@@ -1,4 +1,4 @@
-import { graphOf, type OwnedRef, type Tag } from "@sloppy/types";
+import { graphOf, type NodeView, type OwnedRef, type Tag } from "@sloppy/types";
 import {
   afterAll,
   beforeAll,
@@ -11,14 +11,23 @@ import {
 import type {
   GraphField,
   GraphHoverAt,
+  GraphMenuAt,
   GraphPickMarks,
   GraphReadingMarks,
   GraphPictures,
+  GraphRetag,
   GraphTransform,
 } from "./contract.js";
 import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
+import {
+  membershipOf,
+  SETS_STEP,
+  setsSpacing,
+  setsSpacingTier,
+  type SetsStanding,
+} from "./sets/pack.js";
 import type { LayoutCommand, LayoutEvent } from "./layout/protocol.js";
 import type { GraphHandle, GraphMountOptions } from "./mount.js";
 import type { Bounds } from "./viewport.js";
@@ -91,6 +100,28 @@ class StandInScene {
 
   setReading(reading: GraphReadingMarks | null): void {
     this.reading = reading;
+  }
+
+  /** The region a held mark is over, which a drag lights and a drop clears. */
+  drop: SetsStanding | null = null;
+  /** Every region the canvas was told to light, in order, so a test can read
+   *  what a whole drag said rather than only where it ended. */
+  readonly dropped: (SetsStanding | null)[] = [];
+
+  setSetsDrop(at: SetsStanding | null): void {
+    this.drop = at;
+    this.dropped.push(at);
+  }
+
+  /** The region folds a tap asked the canvas to frame. */
+  readonly framedRegions: string[] = [];
+
+  frameRegion(ref: string): boolean {
+    if (!this.model?.sets?.folds.has(ref as OwnedRef)) return false;
+    this.framedRegions.push(ref);
+    // A frame is a zoom, which is what the mount packs again off.
+    this.viewport.scale = Math.min(MAX_SCALE, this.viewport.scale * 4);
+    return true;
   }
 
   setGround(ground: string): void {
@@ -181,8 +212,14 @@ class StandInScene {
     this.positions.set(positions);
   }
   setPalette(): void {}
+  /** The zoom a frame of the whole field lands on, for the tests that read the
+   *  packing back: the real scene fits the figure to the screen, and `null`
+   *  leaves the zoom alone. */
+  static fitsTo: number | null = null;
+
   fit(): void {
     this.fits += 1;
+    if (StandInScene.fitsTo !== null) this.viewport.scale = StandInScene.fitsTo;
   }
   invalidate(): void {}
   resizes = 0;
@@ -330,6 +367,7 @@ async function mount(
     postMessage: (command: LayoutCommand) => sent.push(command),
     terminate() {},
   };
+  const retags: GraphRetag[] = [];
   const props: GraphMountOptions = {
     nodes: corpus.nodes,
     collapsed: new Set<OwnedRef>(),
@@ -338,6 +376,7 @@ async function mount(
     createLayoutWorker: () => worker as unknown as Worker,
     onOpenNode: (ref) => opened.push(ref),
     onExpand: (ref) => expanded.push(ref),
+    onRetag: (retag) => retags.push(retag),
     onCollapse: () => {},
     ...overrides,
   };
@@ -372,6 +411,35 @@ async function mount(
     field.send("pointerup", event as Partial<PointerEvent>);
   };
 
+  const mouseAt = (point: { x: number; y: number }, down: boolean) =>
+    ({
+      pointerId: 3,
+      pointerType: "mouse",
+      button: down ? 0 : -1,
+      clientX: point.x,
+      clientY: point.y,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+    }) as Partial<PointerEvent>;
+
+  const dragAlong = (
+    ref: string,
+    path: readonly { x: number; y: number }[],
+  ): void => {
+    scene.under = ref;
+    for (const [step, point] of path.entries()) {
+      field.send(
+        step === 0 ? "pointerdown" : "pointermove",
+        mouseAt(point, step === 0),
+      );
+    }
+  };
+
+  const letGo = (point: { x: number; y: number }): void => {
+    field.send("pointerup", mouseAt(point, false));
+  };
+
   return {
     handle,
     props,
@@ -380,6 +448,7 @@ async function mount(
     field,
     expanded,
     opened,
+    retags,
     /** Settles the layout has been asked to run. */
     starts: (): number =>
       sent.filter((command) => command.kind === "start").length,
@@ -488,21 +557,25 @@ async function mount(
         clientY: y,
       } as Partial<PointerEvent>);
     },
-    /** A mouse taking hold of `ref` and carrying it along `path`. */
-    drag(ref: string, path: readonly { x: number; y: number }[]): void {
-      scene.under = ref;
-      for (const [at, point] of path.entries()) {
-        field.send(at === 0 ? "pointerdown" : "pointermove", {
-          pointerId: 3,
-          pointerType: "mouse",
-          button: at === 0 ? 0 : -1,
-          clientX: point.x,
-          clientY: point.y,
-          shiftKey: false,
-          ctrlKey: false,
-          metaKey: false,
-        } as Partial<PointerEvent>);
-      }
+    /** A mouse taking hold of `ref` and carrying it along `path`, the button
+     *  still down where it stopped. */
+    drag: dragAlong,
+    /** The button released where a drag left it. */
+    drop: letGo,
+    /** The desk's zoom: a wheel over the field. */
+    wheel(deltaY: number): void {
+      field.send("wheel", {
+        deltaY,
+        clientX: 0,
+        clientY: 0,
+        ctrlKey: false,
+        preventDefault: () => {},
+      } as unknown as Partial<PointerEvent>);
+    },
+    /** The same, and the button released at the last point of the path. */
+    carry(ref: string, path: readonly { x: number; y: number }[]): void {
+      dragAlong(ref, path);
+      letGo(path[path.length - 1]);
     },
     /** The layout answering the settle it was last asked to run. */
     answer(settled = false): void {
@@ -1614,7 +1687,7 @@ describe("the notes open on the reading surface", () => {
 describe("asking the canvas for a menu", () => {
   const asking = async () => {
     const graph = await mount();
-    const asked: { ref: OwnedRef | null; foldable: boolean }[] = [];
+    const asked: GraphMenuAt[] = [];
     graph.handle.update({ ...graph.props, onMenu: (at) => asked.push(at) });
     return { graph, asked };
   };
@@ -1631,8 +1704,8 @@ describe("asking the canvas for a menu", () => {
     graph.rightClick(null, 8, 8);
 
     expect(asked).toEqual([
-      { clientX: 120, clientY: 48, ref, foldable: true },
-      { clientX: 8, clientY: 8, ref: null, foldable: false },
+      { clientX: 120, clientY: 48, ref, foldable: true, region: false },
+      { clientX: 8, clientY: 8, ref: null, foldable: false, region: false },
     ]);
   });
 
@@ -1642,7 +1715,7 @@ describe("asking the canvas for a menu", () => {
     graph.press(null);
 
     expect(asked).toEqual([
-      { clientX: 0, clientY: 0, ref: null, foldable: false },
+      { clientX: 0, clientY: 0, ref: null, foldable: false, region: false },
     ]);
   });
 
@@ -1701,6 +1774,7 @@ describe("resting a pointer on a note", () => {
         radius: mark.radius * 2,
         folded: mark.folded,
         tags: mark.tags,
+        region: false,
       },
     ]);
 
@@ -1973,12 +2047,443 @@ describe("the reading the host asked for", () => {
     expect(named.model().graph.size).toBe(absent.model().graph.size);
     expect(named.starts()).toBe(absent.starts());
   });
+});
 
-  it("takes the sets reading and draws the genealogy until it has one", async () => {
-    const genealogy = await mount();
-    const sets = await mount({ arrangement: "sets" });
-    expect([...sets.model().order]).toEqual([...genealogy.model().order]);
-    expect(sets.model().graph.size).toBe(genealogy.model().graph.size);
-    expect(sets.starts()).toBe(genealogy.starts());
+// DESIGN.md § "Sets — the tags as places": the same marks, standing in the
+// regions of the tags the reader selected. What is held here is where the marks
+// end up and what a move between regions reports — the figure itself is a GPU
+// fact and `bench/` is where it is looked at.
+describe("the sets reading", () => {
+  const two = corpus.tags.slice(0, 2) as Tag[];
+
+  const inSets = (overrides: Partial<GraphMountOptions> = {}) =>
+    mount({
+      arrangement: "sets",
+      selection: two,
+      lod: { depth: 3, maxDrawn: 400 },
+      ...overrides,
+    });
+
+  /** Where a world point of the diagram is on the SCREEN, which is what a
+   *  pointer is sent at — the two agree only while the field is unmoved. */
+  const screenOf = (
+    sets: { scene: StandInScene },
+    at: { x: number; y: number },
+  ) => sets.scene.viewport.toScreen(at.x, at.y);
+
+  /** A world point inside one region of the first field's diagram. */
+  const pointIn = (model: BuiltModel, region: number) => {
+    const field = model.sets?.fields[0];
+    const found = field?.regions.find((at) => at.id === region);
+    if (!field || !found) throw new Error(`region ${region} is not drawn`);
+    return { x: found.centre.x + field.dx, y: found.centre.y + field.dy };
+  };
+
+  /** Zoomed out until a region has no room left in it, which is what folds one
+   *  — the rest, which is the widest region there is, still stands its own. */
+  const zoomedOutOfRoom = (sets: Awaited<ReturnType<typeof inSets>>): void => {
+    for (let step = 0; step < 40; step++) {
+      if ((sets.model().sets?.folds.size ?? 0) > 0) return;
+      sets.wheel(200);
+    }
+    throw new Error("the field never ran out of room");
+  };
+
+  /** A mark standing on its own in one region, which is what a drag takes
+   *  hold of. */
+  const standingIn = (model: BuiltModel, region: number): OwnedRef => {
+    const found = model.order.find(
+      (ref) =>
+        !model.sets?.folds.has(ref) &&
+        model.sets?.standing.get(ref)?.region === region,
+    );
+    if (!found) throw new Error(`nothing stands in region ${region}`);
+    return found;
+  };
+
+  /** How close the two nearest marks of one region stand, in world units —
+   *  which is what the packing's spacing shows up as. */
+  const nearestApart = (model: BuiltModel): number => {
+    const marks = model.order
+      .filter((ref) => !model.sets?.folds.has(ref))
+      .map((ref) => ({
+        at: model.graph.getNodeAttributes(ref),
+        standing: model.sets?.standing.get(ref),
+      }));
+    let nearest = Number.POSITIVE_INFINITY;
+    for (const [which, one] of marks.entries()) {
+      for (const other of marks.slice(which + 1)) {
+        if (
+          one.standing?.field !== other.standing?.field ||
+          one.standing?.region !== other.standing?.region
+        ) {
+          continue;
+        }
+        nearest = Math.min(
+          nearest,
+          Math.hypot(one.at.x - other.at.x, one.at.y - other.at.y),
+        );
+      }
+    }
+    return nearest;
+  };
+
+  it("stands every mark in the region of the drawn tags it carries", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+    expect(model.sets?.tags).toEqual(two);
+    expect(model.order.length).toBeGreaterThan(0);
+    for (const ref of model.order) {
+      if (model.sets?.folds.has(ref)) continue;
+      const at = model.graph.getNodeAttributes(ref);
+      expect(
+        model.sets?.standing.get(ref)?.region,
+        `${at.address} stands in the wrong region`,
+      ).toBe(membershipOf(at.tags, two));
+    }
+  });
+
+  it("draws no line between them, and asks for no settle", async () => {
+    const sets = await inSets();
+    expect(sets.model().graph.size).toBe(0);
+    expect(sets.starts()).toBe(0);
+    expect(sets.handle.stats()?.settled).toBe(true);
+  });
+
+  // The renderer owns no note field, so a move between regions is reported and
+  // the mark goes back where the packing put it until the host writes.
+  it("reports a move between sets and moves nothing itself", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+    const ref = standingIn(model, 1);
+    const was = model.graph.getNodeAttributes(ref);
+
+    sets.carry(ref, [pointIn(model, 1), pointIn(model, 3)]);
+
+    expect(sets.retags).toEqual([{ notes: [ref], into: two, outOf: [] }]);
+    // What the canvas holds is a float of the place, so the mark is back where
+    // the packing put it to the pixel and not to the bit.
+    const back = sets.scene.positionOf(was.index);
+    expect(back.x).toBeCloseTo(was.x, 3);
+    expect(back.y).toBeCloseTo(was.y, 3);
+  });
+
+  it("takes the drawn tags off a mark dropped outside every region", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+    const ref = standingIn(model, 3);
+
+    sets.carry(ref, [pointIn(model, 3), pointIn(model, 0)]);
+
+    expect(sets.retags).toEqual([{ notes: [ref], into: [], outOf: two }]);
+  });
+
+  it("says nothing about a mark dropped where it already stands", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+    const ref = standingIn(model, 1);
+    const at = pointIn(model, 1);
+
+    sets.carry(ref, [at, { x: at.x + 30, y: at.y + 30 }]);
+
+    expect(sets.retags).toEqual([]);
+  });
+
+  it("moves the whole chosen set when the held mark is in it", async () => {
+    const first = await inSets();
+    const held = standingIn(first.model(), 1);
+    const along = standingIn(first.model(), 2);
+    const chosen = new Set([held, along]);
+    const sets = await inSets({ chosen });
+    const model = sets.model();
+    const from = pointIn(model, 1);
+    const to = pointIn(model, 3);
+    // A drag begins where the pointer leaves the mark, so the step the marks
+    // take is the one it travels after that.
+    const took = { x: from.x + 40, y: from.y + 40 };
+
+    sets.drag(held, [from, took, to]);
+
+    for (const ref of [held, along]) {
+      const at = model.graph.getNodeAttributes(ref);
+      const stood = sets.scene.positionOf(at.index);
+      expect(stood.x, `${at.address} did not come along`).toBeCloseTo(
+        at.x + (to.x - took.x),
+        3,
+      );
+      expect(stood.y, `${at.address} did not come along`).toBeCloseTo(
+        at.y + (to.y - took.y),
+        3,
+      );
+    }
+
+    sets.drop(to);
+
+    expect(sets.retags).toEqual([
+      { notes: [held, along], into: two, outOf: [] },
+    ]);
+    expect(chosen.size).toBe(2);
+  });
+
+  // The canvas folds a crowded region into one mark, and a note behind that
+  // mark is as chosen as one standing on its own: the drag moves exactly what
+  // the menu rows move.
+  it("carries a chosen note the canvas folded into a region's mark", async () => {
+    const sets = await inSets();
+    zoomedOutOfRoom(sets);
+    const folded = sets.model();
+    const held = standingIn(folded, 0);
+    const drawn = new Set(folded.order);
+    const hidden = corpus.nodes.find(
+      (node) =>
+        !drawn.has(node.ref) && membershipOf(node.tags as Tag[], two) !== 0b01,
+    ) as NodeView;
+    expect(hidden, "nothing stands inside a fold to be chosen").toBeTruthy();
+
+    sets.handle.update({
+      ...sets.props,
+      chosen: new Set([held, hidden.ref]),
+    });
+    const model = sets.model();
+    sets.carry(held, [
+      screenOf(sets, pointIn(model, 0)),
+      screenOf(sets, pointIn(model, 1)),
+    ]);
+
+    expect(sets.retags).toEqual([
+      { notes: [held, hidden.ref], into: [two[0]], outOf: [two[1]] },
+    ]);
+  });
+
+  // A region's fold is not a note: there is no one note behind it whose title
+  // belongs on it, so every surface it reaches is told so.
+  it("says a fold answers for a region rather than for a note", async () => {
+    const sets = await inSets();
+    zoomedOutOfRoom(sets);
+    const rested: (GraphHoverAt | null)[] = [];
+    const asked: GraphMenuAt[] = [];
+    sets.handle.update({
+      ...sets.props,
+      onHover: (at) => rested.push(at),
+      onMenu: (at) => asked.push(at),
+    });
+    const model = sets.model();
+    const fold = [...(model.sets?.folds ?? [])][0];
+    const own = standingIn(model, 0);
+
+    // Asking for the menu takes the hover down, so each answer is read as it
+    // comes rather than off the end of the list.
+    sets.rest(fold);
+    const onFold = rested.at(-1);
+    sets.rightClick(fold);
+    const menuOnFold = asked.at(-1);
+    sets.rest(own);
+    const onOwn = rested.at(-1);
+    sets.rightClick(own);
+
+    expect([onFold?.region, menuOnFold?.region]).toEqual([true, true]);
+    expect([onOwn?.region, asked.at(-1)?.region]).toEqual([false, false]);
+  });
+
+  it("leaves out the one already standing where the set was dropped", async () => {
+    const first = await inSets();
+    const held = standingIn(first.model(), 1);
+    const there = standingIn(first.model(), 3);
+    const sets = await inSets({ chosen: new Set([held, there]) });
+    const model = sets.model();
+
+    sets.carry(held, [pointIn(model, 1), pointIn(model, 3)]);
+
+    expect(sets.retags).toEqual([{ notes: [held], into: two, outOf: [] }]);
+  });
+
+  it("lights the region under a held mark and lets it go on the drop", async () => {
+    const sets = await inSets();
+    const model = sets.model();
+
+    sets.carry(standingIn(model, 1), [pointIn(model, 1), pointIn(model, 3)]);
+
+    expect(sets.scene.dropped).toContainEqual({ field: 0, region: 3 });
+    expect(sets.scene.drop).toBeNull();
+  });
+
+  // A fold answers for a whole region, so there is no one note behind it to
+  // move; a tap brings the canvas to the region instead.
+  it("leaves a region's fold where it is, and frames it on a tap", async () => {
+    const sets = await inSets({ lod: { depth: 3, maxDrawn: 4 } });
+    const model = sets.model();
+    const fold = [...(model.sets?.folds ?? [])][0];
+    expect(fold).toBeTruthy();
+    const standing = [...sets.scene.positions];
+
+    sets.carry(fold, [pointIn(model, 1), pointIn(model, 3)]);
+    expect(sets.retags).toEqual([]);
+    expect([...sets.scene.positions]).toEqual(standing);
+    expect(sets.pins()).toEqual([]);
+
+    sets.tap(fold);
+    expect(sets.scene.framedRegions).toEqual([fold]);
+    expect(sets.opened).toEqual([]);
+    expect(sets.expanded).toEqual([]);
+  });
+
+  // The pack that answers the zoom must not frame the field again over the
+  // region the reader just asked for: the tap IS taking the viewport.
+  it("stays on the region a tap framed, with the field never touched before", async () => {
+    // A phone's width against the whole figure, so coming to one region is a
+    // zoom the packing answers.
+    StandInScene.fitsTo = 0.167;
+    try {
+      const sets = await inSets({ lod: { depth: 3, maxDrawn: 4 } });
+      const fold = [...(sets.model().sets?.folds ?? [])][0];
+      const framed = sets.scene.fits;
+
+      sets.tap(fold);
+
+      expect(sets.scene.framedRegions).toEqual([fold]);
+      expect(sets.scene.fits).toBe(framed);
+    } finally {
+      StandInScene.fitsTo = null;
+    }
+  });
+
+  // The spacing holds the marks apart on the SCREEN, so a field zoomed out has
+  // less room in it than the same field zoomed in — which is what folds.
+  it("packs again once the field is zoomed out of a region's room", async () => {
+    const sets = await inSets();
+    const spread = sets.model().order.length;
+    const packed = sets.scene.models;
+    expect(sets.model().sets?.folds.size).toBe(0);
+
+    sets.wheel(3000);
+
+    expect(sets.scene.models).toBeGreaterThan(packed);
+    expect(sets.model().order.length).toBeLessThan(spread);
+    expect(sets.model().sets?.folds.size).toBeGreaterThan(0);
+  });
+
+  it("ignores a difference, which is read against the genealogy", async () => {
+    const sets = await inSets({
+      difference: {
+        added: new Set(corpus.nodes.slice(0, 4).map((node) => node.ref)),
+        removed: [],
+        moved: [],
+        changed: new Set<OwnedRef>(),
+      },
+    });
+    const model = sets.model();
+    for (const ref of model.order) {
+      expect(model.graph.getNodeAttributes(ref).difference).toBeUndefined();
+    }
+  });
+
+  it("moves no mark where there is nothing to retag on", async () => {
+    const sets = await inSets({ onRetag: undefined });
+    const model = sets.model();
+    const standing = [...sets.scene.positions];
+
+    sets.carry(standingIn(model, 1), [pointIn(model, 1), pointIn(model, 3)]);
+
+    expect(sets.retags).toEqual([]);
+    expect([...sets.scene.positions]).toEqual(standing);
+    expect(sets.pins()).toEqual([]);
+  });
+
+  // The spacing is a function of the zoom and framing the diagram is a zoom, so
+  // a reader who opens straight into this reading is owed the packing for it.
+  it("packs at the zoom it framed the diagram to", async () => {
+    // A phone's width against the whole figure.
+    StandInScene.fitsTo = 0.167;
+    try {
+      const sets = await inSets();
+      const apart = setsSpacing(sets.scene.viewport.scale);
+      expect(apart).toBeGreaterThan(SETS_STEP);
+      expect(nearestApart(sets.model())).toBeCloseTo(apart, 6);
+    } finally {
+      StandInScene.fitsTo = null;
+    }
+  });
+
+  // Every frame of the whole field is one, however the reader asked for it: the
+  // control in the chrome, and coming back to a folder.
+  it("packs again at the zoom the control frames to", async () => {
+    const sets = await inSets();
+    expect(nearestApart(sets.model())).toBeCloseTo(SETS_STEP, 6);
+    StandInScene.fitsTo = 0.167;
+    try {
+      sets.handle.fit();
+      const apart = setsSpacing(sets.scene.viewport.scale);
+      expect(apart).toBeGreaterThan(SETS_STEP);
+      expect(nearestApart(sets.model())).toBeCloseTo(apart, 6);
+    } finally {
+      StandInScene.fitsTo = null;
+    }
+  });
+
+  it("packs again at the zoom a visit frames to", async () => {
+    const sets = await inSets();
+    StandInScene.fitsTo = 0.167;
+    try {
+      sets.handle.frameWhenSettled();
+      const apart = setsSpacing(sets.scene.viewport.scale);
+      expect(apart).toBeGreaterThan(SETS_STEP);
+      expect(nearestApart(sets.model())).toBeCloseTo(apart, 6);
+    } finally {
+      StandInScene.fitsTo = null;
+    }
+  });
+
+  // A reader who lands in the diagram and zooms has taken the field: the pack
+  // answers that zoom and nothing frames the figure back over it.
+  it("holds the zoom a reader asks for straight off a frame", async () => {
+    // A phone's width against the whole figure, so a frame really would take
+    // the zoom back off the reader.
+    StandInScene.fitsTo = 0.167;
+    try {
+      const sets = await inSets();
+      const framed = sets.scene.fits;
+
+      sets.wheel(-400);
+
+      const scale = sets.scene.viewport.scale;
+      expect(scale).toBeGreaterThan(0.167);
+      expect(sets.scene.fits).toBe(framed);
+      expect(setsSpacingTier(scale)).toBeLessThan(setsSpacingTier(0.167));
+      expect(nearestApart(sets.model())).toBeCloseTo(setsSpacing(scale), 6);
+    } finally {
+      StandInScene.fitsTo = null;
+    }
+  });
+
+  // Coming back to a folder puts the field where it was left, which is a zoom
+  // like any other: the packing answers it the way it answers a frame.
+  it("packs at the zoom a place read back off an earlier visit", async () => {
+    const sets = await inSets();
+    expect(nearestApart(sets.model())).toBeCloseTo(SETS_STEP, 6);
+
+    sets.handle.lookAt({ x: 40, y: 20, scale: 0.167 });
+
+    const apart = setsSpacing(sets.scene.viewport.scale);
+    expect(apart).toBeGreaterThan(SETS_STEP);
+    expect(nearestApart(sets.model())).toBeCloseTo(apart, 6);
+  });
+
+  it("frames the diagram going in and comes back where it was", async () => {
+    const graph = await mount();
+    graph.answer(true);
+    graph.handle.lookAt({ x: 12, y: 34, scale: 1.5 });
+    const read = graph.handle.viewport();
+    const framed = graph.scene.fits;
+
+    graph.handle.update({
+      ...graph.props,
+      arrangement: "sets",
+      selection: two,
+    });
+    expect(graph.scene.fits).toBeGreaterThan(framed);
+    graph.scene.viewport.lookAt({ x: 0, y: 0, scale: 1 });
+
+    graph.handle.update(graph.props);
+    expect(graph.handle.viewport()).toEqual(read);
   });
 });

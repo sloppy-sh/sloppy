@@ -161,6 +161,14 @@ export interface GraphMenuAt {
   ref: OwnedRef | null;
   /** This note has drawn children, so there is something for a fold to gather. */
   foldable: boolean;
+  /**
+   * The mark under the point answers for a REGION of the sets reading and not
+   * for a note: `ref` names the mark, there is no one note behind it, and what
+   * it stands for is how many notes are there and which sets they are in. A
+   * surface that writes a title here has written one note's words over the
+   * whole region. Absent, and false, is an ordinary mark.
+   */
+  region?: boolean;
 }
 
 /**
@@ -179,6 +187,13 @@ export interface GraphHoverAt {
   /** Every tag the MARK stands for, which on a mega-node is the subtree's and
    *  not the one note's — the hue it is drawn in answers off these. */
   tags: readonly Tag[];
+  /**
+   * This mark answers for a REGION of the sets reading and not for a note:
+   * {@link folded} + 1 notes stand there, {@link tags} are theirs, and there is
+   * no one note behind it whose title belongs on it. Absent, and false, is an
+   * ordinary mark.
+   */
+  region?: boolean;
 }
 
 /**

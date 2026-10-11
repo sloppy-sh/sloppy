@@ -14,9 +14,11 @@ import {
   contrastRatio,
   parseCssColor,
   toOklab,
+  toSrgb8,
   over,
   type Oklch,
 } from "./color.js";
+import { DRAWN_SETS_MOST } from "./contract.js";
 import {
   buildPalette,
   DEPTH_SEPARATION,
@@ -24,6 +26,8 @@ import {
   DIM_FLOOR,
   DIM_RECESSION,
   MARK_FLOOR,
+  SETS_TINT,
+  setsBand,
 } from "./palette.js";
 
 const themes: { name: string; ink: string; paper: string }[] = [
@@ -274,6 +278,85 @@ describe("the ring a look draws", () => {
     for (const slot of TAG_HUE_SLOTS) {
       expect(ends.has(palette.lookRing(palette.tag(slot)))).toBe(true);
     }
+  });
+});
+
+// DESIGN.md § "Sets — the tags as places": a region is a wash the marks stand
+// ON, so what a mark owes is owed against the ground that wash makes — one,
+// two, three and four of them over one another. The alpha is what gives to
+// pass; the floors do not move.
+describe("a mark standing inside the drawn sets", () => {
+  const washed = (theme: (typeof themes)[number], sets: number) => {
+    const palette = buildPalette({ ...theme, hues }, 0, sets);
+    return {
+      palette,
+      grounds: setsBand(
+        { ...theme, hues },
+        parseCssColor(theme.paper) as Oklch,
+        sets,
+        palette.setsWash,
+      ),
+    };
+  };
+
+  for (const theme of [...themes, ...generatedThemes()]) {
+    it(`carries its meaning on every stack of washes on ${theme.name}`, () => {
+      for (let sets = 1; sets <= DRAWN_SETS_MOST; sets++) {
+        const { palette, grounds } = washed(theme, sets);
+        expect(grounds).toHaveLength(
+          palette.setsWash > 0 ? 2 ** (sets + 1) - 1 : 0,
+        );
+        for (const ground of grounds) {
+          for (const fill of marks(palette)) {
+            expect(
+              contrastRatio(rgb(fill), ground),
+              `${sets} washes, fill ${fill.toString(16)}`,
+            ).toBeGreaterThanOrEqual(MARK_FLOOR - 1e-9);
+          }
+        }
+      }
+    });
+
+    it(`stays on the page where the tags leave it out on ${theme.name}`, () => {
+      for (let sets = 1; sets <= DRAWN_SETS_MOST; sets++) {
+        const { palette, grounds } = washed(theme, sets);
+        for (const ground of grounds) {
+          for (const fill of marks(palette)) {
+            expect(
+              contrastRatio(
+                over(rgb(fill), ground, palette.unselectedAlpha(fill)),
+                ground,
+              ),
+              `${sets} washes, fill ${fill.toString(16)}`,
+            ).toBeGreaterThanOrEqual(DIM_FLOOR - 1e-6);
+          }
+        }
+      }
+    });
+  }
+
+  // What bounds the wash: four of them stacked still have to leave a theme
+  // every generation it carries on the plain paper. A louder wash buys nothing
+  // and costs the lightness channel.
+  it("leaves every theme that ships its whole ramp under four of them", () => {
+    for (const theme of themes) {
+      const plain = buildPalette({ ...theme, hues });
+      const under = buildPalette({ ...theme, hues }, 0, DRAWN_SETS_MOST);
+      expect(under.setsWash, theme.name).toBe(SETS_TINT);
+      expect(under.generations, theme.name).toBe(plain.generations);
+    }
+  });
+
+  // The band was measured off this colour, so the region has to be drawn in it:
+  // a wash drawn in anything else is a floor measured against a ground the
+  // canvas does not have.
+  it("washes in the hue the band was measured from", () => {
+    const palette = buildPalette({ ...themes[0], hues }, 0, DRAWN_SETS_MOST);
+    const paper = parseCssColor(themes[0].paper) as Oklch;
+    const [one] = setsBand({ ...themes[0], hues }, paper, 1, palette.setsWash);
+    expect(
+      toSrgb8(over(rgb(palette.setsFill(1)), paper, palette.setsWash)),
+    ).toEqual(toSrgb8(one));
   });
 });
 

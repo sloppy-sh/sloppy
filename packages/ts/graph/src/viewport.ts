@@ -21,7 +21,26 @@ export const MAX_SCALE = 3;
 export class Viewport {
   x = 0;
   y = 0;
-  scale = 1;
+
+  /**
+   * Raised after the zoom changes, however it changed — a pinch, a wheel, a
+   * frame, a place read back off an earlier visit. Anything measured against
+   * the zoom rather than scaled with it answers here, so no path can leave it
+   * behind. The pan is already where it belongs when this is raised.
+   */
+  onScale: (() => void) | null = null;
+
+  #scale = 1;
+
+  get scale(): number {
+    return this.#scale;
+  }
+
+  set scale(to: number) {
+    if (to === this.#scale) return;
+    this.#scale = to;
+    this.onScale?.();
+  }
 
   toWorld(screenX: number, screenY: number): Point {
     return {
@@ -53,9 +72,9 @@ export class Viewport {
     const next = clampScale(this.scale * factor);
     if (next === this.scale) return;
     const world = this.toWorld(screenX, screenY);
+    this.x = screenX - world.x * next;
+    this.y = screenY - world.y * next;
     this.scale = next;
-    this.x = screenX - world.x * this.scale;
-    this.y = screenY - world.y * this.scale;
   }
 
   /** Frame `bounds` inside a viewport of this size, leaving `padding` around. */
@@ -64,15 +83,10 @@ export class Viewport {
     const spanY = Math.max(bounds.maxY - bounds.minY, 1);
     const room = Math.max(width - padding * 2, 1);
     const tall = Math.max(height - padding * 2, 1);
-    this.scale = clampScale(Math.min(room / spanX, tall / spanY));
-    this.centreOn(
-      {
-        x: (bounds.minX + bounds.maxX) / 2,
-        y: (bounds.minY + bounds.maxY) / 2,
-      },
-      width,
-      height,
-    );
+    const to = clampScale(Math.min(room / spanX, tall / spanY));
+    this.x = width / 2 - ((bounds.minX + bounds.maxX) / 2) * to;
+    this.y = height / 2 - ((bounds.minY + bounds.maxY) / 2) * to;
+    this.scale = to;
   }
 
   centreOn(world: Point, width: number, height: number): void {

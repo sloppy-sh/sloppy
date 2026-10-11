@@ -17,6 +17,7 @@ import {
   resolveAppearance,
   type RingStyle,
   type RingWeight,
+  type TagHueSlot,
   liesInARun,
   runKeyOf,
   runPairs,
@@ -28,6 +29,7 @@ import {
   type DifferenceMark,
   differenceMarks,
   type DrawnNode,
+  type GraphArrangement,
   type GraphDifference,
   type GraphEdgeLook,
   edgeLookKey,
@@ -42,6 +44,9 @@ import {
   seedField,
 } from "./layout/geometry.js";
 import type { GraphPalette } from "./palette.js";
+// Types only: the packing reads this file's mark sizes, so a value imported
+// back from it would be a cycle the module graph resolves at random.
+import type { SetsDrawn, SetsPacking } from "./sets/pack.js";
 import { MAX_SCALE, type Point } from "./viewport.js";
 
 /** DESIGN.md § Form: provenance survives greyscale, so it is never a hue. */
@@ -197,6 +202,15 @@ export interface GraphEdgeAttributes {
 export type GraphModel = Graph<GraphNodeAttributes, GraphEdgeAttributes>;
 
 export interface ModelOptions {
+  /**
+   * Which reading this model is of — {@link GraphSurfaceProps.arrangement}.
+   * Absent is the genealogy, and so is `"sets"` with no {@link sets} beside it:
+   * where a mark stands in that reading is the packing's to say.
+   */
+  arrangement?: GraphArrangement;
+  /** Where the sets reading stands every mark — `packSets` in `sets/pack.ts`.
+   *  Read only while {@link arrangement} is `"sets"`. */
+  sets?: SetsPacking;
   /** In selection order, which is the order the hue slots are handed out in. */
   selection: readonly Tag[];
   /** {@link GraphSurfaceProps.codeMoved} — the notes the code has moved under
@@ -244,17 +258,20 @@ export interface BuiltModel {
   /** Empty on a canvas drawing one graph, which needs no name to tell apart. */
   fields: readonly NamedField[];
   difference: DifferenceLines;
+  /** The diagram the sets reading drew, absent on the genealogy. What a drop,
+   *  a fold's frame and the region layer all answer off. */
+  sets?: SetsDrawn;
 }
 
 export function buildModel(
   drawn: readonly DrawnNode[],
   options: ModelOptions,
 ): BuiltModel {
+  if (options.arrangement === "sets" && options.sets !== undefined) {
+    return buildSetsModel(drawn, options, options.sets);
+  }
   const graph: GraphModel = new Graph({ type: "undirected" });
-  const slots = assignTagHueSlots(options.selection);
-  // Ranked off the slot map's keys rather than off the selection, so the dedupe
-  // rule that hands out the hues is the same one that picks between them.
-  const rank = new Map([...slots.keys()].map((tag, at) => [tag, at] as const));
+  const hues = hueSlots(options.selection);
   const { seedOf, fields } = seedFields(drawn, options.fields ?? []);
   const starts = startPoints(drawn, seedOf, options.keep);
   const marks = differenceMarks(options.difference);
@@ -267,53 +284,18 @@ export function buildModel(
 
   drawn.forEach((entry, index) => {
     const { node } = entry;
-    const tag = earliestSelected(entry.tags, rank);
-    const slot = tag === undefined ? undefined : slots.get(tag);
     const seed = seedOf(node);
-    const start = starts.get(node.ref) ?? seed;
-    // A mega-node wears the look of the note it IS, never an average of the
-    // looks it folded — DESIGN.md § "The mark".
-    const look =
-      node.appearance == null ? UNSTYLED : resolveAppearance(node.appearance);
-    const fill =
-      slot === undefined
-        ? options.palette.depth(node.depth)
-        : options.palette.tag(slot);
     const difference = marks.get(node.ref);
-    // A note that went is a band around nothing: there is no mark inside it to
-    // carry a look or a picture — DESIGN.md § "A difference between two states".
-    const gone = difference === "gone";
-    const answering =
-      (options.selection.length === 0 || slot !== undefined) &&
-      (!comparing || difference !== undefined);
-
-    graph.addNode(node.ref, {
+    const slot = slotOf(entry.tags, hues);
+    addMark(graph, entry, hues, options, {
       index,
-      ref: node.ref,
-      ...(node.address === undefined ? {} : { address: node.address }),
-      depth: node.depth,
-      title: node.title,
-      collapsed: entry.collapsed,
-      folded: entry.folded,
-      radius: radiusFor(entry, look),
-      provenance: provenanceOf(node, options.viewer),
-      children: 0,
-      tags: entry.tags,
-      tag,
-      ringWeight: gone ? "none" : look.ringWeight,
-      ringStyle: look.ringStyle,
-      // A note that went is a band around nothing, so there is no rim to mark.
-      codeMoved: !gone && (options.codeMoved?.has(node.ref) ?? false),
-      preview: gone ? { ...look.preview, pictures: [] } : look.preview,
-      previewCover: look.previewCover,
-      ...(difference === undefined ? {} : { difference }),
-      fill,
-      alpha: answering ? 1 : options.palette.unselectedAlpha(fill),
-      x: start.x,
-      y: start.y,
-      anchorX: seed.x,
-      anchorY: seed.y,
+      at: starts.get(node.ref) ?? seed,
+      anchor: seed,
       anchorStrength: SEED_ANCHOR,
+      answering:
+        (options.selection.length === 0 || slot !== undefined) &&
+        (!comparing || difference !== undefined),
+      difference,
     });
   });
 
@@ -393,6 +375,193 @@ export function buildModel(
     fields,
     difference: differenceLines(drawn, graph, marks, options.difference),
   };
+}
+
+/** The hue slots a selection hands out, and the order they were handed out in —
+ *  ranked off the slot map's keys rather than off the selection, so the dedupe
+ *  rule that hands out the hues is the same one that picks between them. */
+function hueSlots(selection: readonly Tag[]): HueSlots {
+  const slots = assignTagHueSlots(selection);
+  return {
+    slots,
+    rank: new Map([...slots.keys()].map((tag, at) => [tag, at] as const)),
+  };
+}
+
+interface HueSlots {
+  slots: ReadonlyMap<Tag, TagHueSlot>;
+  rank: ReadonlyMap<Tag, number>;
+}
+
+/** The slot a mark draws the hue of, absent where it stands for no selected
+ *  tag — DESIGN.md § Hue, one mark one hue. */
+function slotOf(tags: readonly Tag[], hues: HueSlots): TagHueSlot | undefined {
+  const tag = earliestSelected(tags, hues.rank);
+  return tag === undefined ? undefined : hues.slots.get(tag);
+}
+
+/** Where one reading put a mark, and what the question in front of the reader
+ *  has to say about it. */
+interface MarkPlace {
+  index: number;
+  /** Where the mark is drawn now. */
+  at: Point;
+  /** Where the settle holds it, if one is running. */
+  anchor: Point;
+  anchorStrength: number;
+  /** False recedes the mark — DESIGN.md § Hue, which is why it never leaves. */
+  answering: boolean;
+  difference?: DifferenceMark;
+}
+
+/** One mark, as both readings draw it: everything but where it stands. */
+function addMark(
+  graph: GraphModel,
+  entry: DrawnNode,
+  hues: HueSlots,
+  options: ModelOptions,
+  place: MarkPlace,
+): void {
+  const { node } = entry;
+  const tag = earliestSelected(entry.tags, hues.rank);
+  const slot = tag === undefined ? undefined : hues.slots.get(tag);
+  // A mega-node wears the look of the note it IS, never an average of the
+  // looks it folded — DESIGN.md § "The mark".
+  const look =
+    node.appearance == null ? UNSTYLED : resolveAppearance(node.appearance);
+  const fill =
+    slot === undefined
+      ? options.palette.depth(node.depth)
+      : options.palette.tag(slot);
+  // A note that went is a band around nothing: there is no mark inside it to
+  // carry a look or a picture — DESIGN.md § "A difference between two states".
+  const gone = place.difference === "gone";
+
+  graph.addNode(node.ref, {
+    index: place.index,
+    ref: node.ref,
+    ...(node.address === undefined ? {} : { address: node.address }),
+    depth: node.depth,
+    title: node.title,
+    collapsed: entry.collapsed,
+    folded: entry.folded,
+    radius: radiusFor(entry, look),
+    provenance: provenanceOf(node, options.viewer),
+    children: 0,
+    tags: entry.tags,
+    tag,
+    ringWeight: gone ? "none" : look.ringWeight,
+    ringStyle: look.ringStyle,
+    // A note that went is a band around nothing, so there is no rim to mark.
+    codeMoved: !gone && (options.codeMoved?.has(node.ref) ?? false),
+    preview: gone ? { ...look.preview, pictures: [] } : look.preview,
+    previewCover: look.previewCover,
+    ...(place.difference === undefined ? {} : { difference: place.difference }),
+    fill,
+    alpha: place.answering ? 1 : options.palette.unselectedAlpha(fill),
+    x: place.at.x,
+    y: place.at.y,
+    anchorX: place.anchor.x,
+    anchorY: place.anchor.y,
+    anchorStrength: place.anchorStrength,
+  });
+}
+
+/**
+ * The same marks, standing in the regions of the tags the reader selected —
+ * DESIGN.md § "Sets — the tags as places". What the packing decided is final,
+ * so every mark is its own anchor at full strength and the model carries no
+ * edges at all: no line is drawn in this reading, and nothing is settled.
+ *
+ * A difference is ignored here: two states are compared against the genealogy,
+ * which is where a note's parent means anything.
+ */
+function buildSetsModel(
+  drawn: readonly DrawnNode[],
+  options: ModelOptions,
+  packing: SetsPacking,
+): BuiltModel {
+  const graph: GraphModel = new Graph({ type: "undirected" });
+  const hues = hueSlots(options.selection);
+  const byRef = new Map(drawn.map((entry) => [entry.node.ref, entry]));
+  const standing = packing.marks.flatMap((mark) => {
+    const entry = byRef.get(mark.ref);
+    return entry === undefined ? [] : [{ mark, entry }];
+  });
+
+  standing.forEach(({ mark, entry }, index) => {
+    const stands: DrawnNode =
+      mark.holds.length === 0
+        ? entry
+        : {
+            node: withoutWords(entry.node),
+            collapsed: true,
+            // The mark answers for the region rather than standing as one of
+            // its notes, so what it counts is every note standing there.
+            folded: mark.holds.length + 1,
+            tags: regionTags(mark.holds, byRef, entry.tags),
+          };
+    const at = { x: mark.x, y: mark.y };
+    addMark(graph, stands, hues, options, {
+      index,
+      at,
+      anchor: at,
+      anchorStrength: 1,
+      // A mark outside every drawn set is what the reader did not ask about,
+      // and recedes — the dim "the rest" is drawn in.
+      answering: mark.region !== 0,
+    });
+  });
+
+  return {
+    graph,
+    order: standing.map(({ mark }) => mark.ref),
+    fields:
+      (options.fields ?? []).length < 2
+        ? []
+        : setsFields(packing, options.fields ?? []),
+    difference: { arrived: [], gone: [] },
+    sets: packing.drawn,
+  };
+}
+
+/** A region's fold is not a note — it answers for every note standing in that
+ *  region — so what it says is the count and the tags of the region, and no
+ *  note's own address or title. */
+function withoutWords(node: NodeView): NodeView {
+  const { address, ...rest } = node;
+  return { ...rest, title: "" };
+}
+
+/** Every tag a region's fold answers for: its own mark's and those of the notes
+ *  standing behind it, the way `drawnNodes` unions a subtree's. */
+function regionTags(
+  holds: readonly OwnedRef[],
+  byRef: ReadonlyMap<OwnedRef, DrawnNode>,
+  own: readonly Tag[],
+): readonly Tag[] {
+  const all = new Set(own);
+  for (const ref of holds) {
+    for (const tag of byRef.get(ref)?.tags ?? []) all.add(tag);
+  }
+  return [...all];
+}
+
+/** Each field's name written over its own diagram, in the margin the box
+ *  already holds above the shapes. */
+function setsFields(
+  packing: SetsPacking,
+  asked: readonly GraphField[],
+): NamedField[] {
+  const named = new Map(asked.map((field) => [field.ref, field.title]));
+  return packing.drawn.fields.map((field) => ({
+    ref: field.ref,
+    title: named.get(field.ref) ?? "",
+    x: field.dx + (field.box.minX + field.box.maxX) / 2,
+    y: field.dy + field.box.minY,
+    minX: field.dx + field.box.minX,
+    maxX: field.dx + field.box.maxX,
+  }));
 }
 
 /**

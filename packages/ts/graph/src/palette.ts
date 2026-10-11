@@ -50,6 +50,19 @@ export const LABEL_FLOOR = 4.5;
  *  DESIGN.md § "The wallpaper", where the number is argued. */
 export const SLOTS_KEPT = 0.9;
 
+/**
+ * The most of its tag's hue a drawn set washes over the paper — DESIGN.md
+ * § "Sets — the tags as places". What bounds it is the depth ramp: four of
+ * these stacked still have to leave every theme that ships the generations it
+ * carries on the plain paper, and `palette.test.ts` is what holds that. A theme
+ * with less room to spare washes less — {@link setsCeiling}.
+ */
+export const SETS_TINT = 0.11;
+
+/** What the region under a held mark is lit by, as a share of the regions' own
+ *  wash. In ink: it says where a drop lands, and names no tag. */
+const SETS_LIT_SHARE = 0.6;
+
 const UNTHEMED_INK: Oklch = { l: 0.15, c: 0, h: 0 };
 const UNTHEMED_PAPER: Oklch = { l: 1, c: 0, h: 0 };
 
@@ -69,6 +82,18 @@ export interface GraphPalette {
    * in `@sloppy/ui` is what holds every slot above {@link MARK_FLOOR}.
    */
   tag(slot: TagHueSlot): number;
+  /**
+   * The wash a drawn set lays over the paper, at {@link SETS_TINT} — the slot's
+   * own hue, and the colour {@link setsBand} measured the marks' floors
+   * against. The region's hairline and its name take {@link tag} instead,
+   * because those carry meaning and owe a floor of their own.
+   */
+  setsFill(slot: TagHueSlot): number;
+  /** What a region's wash is laid at on this theme — {@link setsCeiling}. 0 off
+   *  the sets reading, and on a theme with no room for one. */
+  setsWash: number;
+  /** What the region under a held mark is lit by, in ink. */
+  setsLit: number;
   /**
    * The ring a look draws inside a mark filled `fill`: whichever of ink and
    * paper stands out against it, so a look is never lost in its own mark.
@@ -127,8 +152,12 @@ export function readPaletteTokens(element: Element): PaletteTokens {
   return { ink, paper, hues };
 }
 
-export function readPalette(element: Element, presence = 0): GraphPalette {
-  return buildPalette(readPaletteTokens(element), presence);
+export function readPalette(
+  element: Element,
+  presence = 0,
+  sets = 0,
+): GraphPalette {
+  return buildPalette(readPaletteTokens(element), presence, sets);
 }
 
 /**
@@ -143,6 +172,71 @@ export function groundBand(paper: Oklch, presence: number): readonly Oklch[] {
   const showing = (pixel: number): Oklch =>
     fromSrgb8(bytes.map((c) => c * (1 - presence) + pixel * presence));
   return [showing(0), showing(255)];
+}
+
+/**
+ * The grounds the drawn sets make over `paper`: every non-empty stack of the
+ * first `sets` hue washes, composited in slot order the way the regions are
+ * drawn, so a mark standing in a lens is measured against the lens — and each
+ * of those stacks under the ink a held mark lights its region with, the bare
+ * paper included, since the region outside every set lights too. Empty for
+ * `sets` 0, which is a canvas with no diagram on it.
+ *
+ * Over the hue TOKENS rather than over what {@link GraphPalette.tag} hands
+ * back: the slot colours are themselves shaded to clear their floor against
+ * this ground, so the wash has to be a colour that does not depend on it —
+ * which is what {@link GraphPalette.setsFill} draws.
+ */
+export function setsBand(
+  tokens: PaletteTokens,
+  paper: Oklch,
+  sets: number,
+  alpha: number,
+): Oklch[] {
+  if (alpha <= 0) return [];
+  const ink = parseCssColor(tokens.ink) ?? UNTHEMED_INK;
+  const lit = alpha * SETS_LIT_SHARE;
+  const washes = Array.from({ length: Math.max(0, sets) }, (_unused, at) =>
+    parseCssColor(tokens.hues[at] ?? ""),
+  ).map((hue) => (hue === null ? null : intoGamut(hue)));
+  const grounds: Oklch[] = [];
+  const held: Oklch[] = [];
+  for (let stack = 0; stack < 1 << washes.length; stack++) {
+    let under = paper;
+    for (const [bit, hue] of washes.entries()) {
+      if ((stack & (1 << bit)) === 0 || hue === null) continue;
+      under = over(hue, under, alpha);
+    }
+    if (stack > 0) grounds.push(under);
+    held.push(over(ink, under, lit));
+  }
+  return [...grounds, ...held];
+}
+
+/**
+ * How much of its hue a drawn set may wash over the paper on this theme, 0 to
+ * {@link SETS_TINT}: the most that still leaves the INK above
+ * {@link MARK_FLOOR} over every ground {@link setsBand} makes of it. A theme
+ * with no room at all washes nothing, and the regions are their hairlines
+ * alone.
+ */
+export function setsCeiling(tokens: PaletteTokens, sets: number): number {
+  if (sets <= 0) return 0;
+  const ink = parseCssColor(tokens.ink) ?? UNTHEMED_INK;
+  const paper = parseCssColor(tokens.paper) ?? UNTHEMED_PAPER;
+  const holds = (alpha: number): boolean =>
+    setsBand(tokens, paper, sets, alpha).every(
+      (ground) => contrastRatio(ink, ground) >= MARK_FLOOR,
+    );
+  if (holds(SETS_TINT)) return SETS_TINT;
+  let lo = 0;
+  let hi = SETS_TINT;
+  for (let step = 0; step < 12; step++) {
+    const mid = (lo + hi) / 2;
+    if (holds(mid)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /** Strengths the ceiling is walked up in, before it refines the one that gave. */
@@ -265,14 +359,24 @@ export interface PaletteTokens {
  * can make rather than against the paper alone, so what is drawn stays legible
  * on the ground it is actually on; DESIGN.md § "The wallpaper" says what that
  * costs the depth ramp, and {@link paperCeiling} is what bounds it.
+ *
+ * `sets` is how many tags are drawn as regions — 0 off the sets reading. The
+ * washes they lay are ground under the marks exactly as a picture is, so they
+ * join the band ({@link setsBand}) rather than being measured afterwards.
  */
 export function buildPalette(
   tokens: PaletteTokens,
   presence = 0,
+  sets = 0,
 ): GraphPalette {
   const ink = parseCssColor(tokens.ink) ?? UNTHEMED_INK;
   const paper = parseCssColor(tokens.paper) ?? UNTHEMED_PAPER;
-  const ground = groundBand(paper, presence);
+  const band = groundBand(paper, presence);
+  const wash = setsCeiling(tokens, sets);
+  const ground = [
+    ...band,
+    ...band.flatMap((under) => setsBand(tokens, under, sets, wash)),
+  ];
   // The lightness a slot moves toward to clear its floor: away from the paper,
   // so a light theme's marks darken and a dark theme's lighten.
   const away = ink.l < paper.l ? 0 : 1;
@@ -304,6 +408,10 @@ export function buildPalette(
   const hues = slotColours.map((slot) =>
     slot === null ? null : toRgb24(slot),
   );
+  const washes = TAG_HUE_SLOTS.map((_unused, at) => {
+    const token = parseCssColor(tokens.hues[at] ?? "");
+    return token === null ? null : toRgb24(intoGamut(token));
+  });
 
   const inkRgb = toRgb24(ink);
   const paperRgb = toRgb24(paper);
@@ -326,6 +434,10 @@ export function buildPalette(
     depth,
     generations: steps + 1,
     tag: (slot) => hues[clamp(slot - 1, 0, hues.length - 1)] ?? depth(1),
+    setsFill: (slot) =>
+      washes[clamp(slot - 1, 0, washes.length - 1)] ?? depth(1),
+    setsWash: wash,
+    setsLit: wash * SETS_LIT_SHARE,
     lookRing: (fill) => rings.get(fill) ?? inkRgb,
     edgeAlpha: 0.24,
     edgeAlphaWhileSelecting: 0.08,

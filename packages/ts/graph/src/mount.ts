@@ -6,9 +6,10 @@
 // and drag" — a component that owned the viewport would have to re-render to
 // move it, which is the remount this design exists to avoid.
 
-import type { OwnedRef } from "@sloppy/types";
+import { graphOf, type OwnedRef, type Tag } from "@sloppy/types";
 import {
   comparingStates,
+  type DrawnNode,
   drawnRefs,
   drawnNodes,
   drawnReading,
@@ -25,7 +26,12 @@ import { screenDensity } from "./density.js";
 import { attachGestures, type ScreenBox } from "./gestures.js";
 import { LayoutClient } from "./layout/client.js";
 import type { LayoutEvent } from "./layout/protocol.js";
-import { DEFAULT_BUDGET, type LodBudget, makeFold } from "./lod.js";
+import {
+  DEFAULT_BUDGET,
+  type LodBudget,
+  type LodResult,
+  makeFold,
+} from "./lod.js";
 import { buildModel, type GraphEdgeAttributes } from "./model.js";
 import {
   buildPalette,
@@ -35,6 +41,16 @@ import {
   readPaletteTokens,
 } from "./palette.js";
 import { type FrameStats, GraphScene } from "./scene.js";
+import { FIELD_GUTTER } from "./layout/geometry.js";
+import {
+  drawnSetsOf,
+  packSets,
+  retagInto,
+  type SetsDrawn,
+  setsDropAt,
+  setsSpacing,
+  setsSpacingTier,
+} from "./sets/pack.js";
 import type { Bounds, Point, Viewport } from "./viewport.js";
 import { WallLayer } from "./wall.js";
 
@@ -47,6 +63,17 @@ const SPRING: Record<GraphEdgeAttributes["kind"], number> = {
   run: 0.3,
   reference: 0.12,
   link: 0.12,
+};
+
+/** The most times a frame and the sets packing answer each other before the
+ *  frame stands where it is. */
+const FRAME_PASSES = 3;
+
+/** What the sets reading hands `drawnNodes`: a region's own room is what bounds
+ *  the count there, so nothing is folded by generation. */
+const NOTHING_FOLDED: LodResult = {
+  collapsed: new Set<OwnedRef>(),
+  folded: new Set<OwnedRef>(),
 };
 
 export interface GraphMountOptions extends GraphSurfaceProps {
@@ -187,7 +214,7 @@ export function mountGraph(
   let ceilingNow: number | null = null;
   const ceiling = (): number => (ceilingNow ??= paperCeiling(tokens));
   let presence = presenceOf(props, ceiling);
-  let palette: GraphPalette = buildPalette(tokens, presence);
+  let palette: GraphPalette = buildPalette(tokens, presence, setsWashes(props));
   // Before the renderer is up: the picture is the reader's ground, and it has
   // nothing to wait for.
   wall.show(
@@ -223,8 +250,30 @@ export function mountGraph(
    */
   let framing = true;
   let framed = false;
+  /** Whether a frame is already answering the packing: the rebuild that answer
+   *  drives must not frame again from inside it. */
+  let reframing = false;
   let dragged: { index: number; world: Point } | null = null;
   let bringing: OwnedRef | null = null;
+  /** The diagram the last sets rebuild drew, and the spacing tier it packed at;
+   *  `null` on the genealogy. */
+  let setsDrawn: SetsDrawn | null = null;
+  let packedTier: number | null = null;
+  /**
+   * What a mouse is carrying across a diagram, and where it took hold: moving a
+   * mark between sets IS retagging, and the host writes the move. `notes` is
+   * every note the drop would retag and `moving` the ones with a mark of their
+   * own to carry along — a chosen note inside a region's fold has none.
+   */
+  let carrying: {
+    moving: OwnedRef[];
+    notes: { ref: OwnedRef; tags: readonly Tag[] }[];
+    from: Point;
+    at: Point;
+  } | null = null;
+  /** Where the genealogy was last read, so coming back from the sets reading is
+   *  coming back — DESIGN.md § "Sets — the tags as places". */
+  let keptView: GraphTransform | null = null;
 
   let told: GraphTransform | null = null;
 
@@ -241,9 +290,19 @@ export function mountGraph(
   };
 
   const frameAll = (): void => {
-    if (!scene) return;
+    const built = scene;
+    if (!built || reframing) return;
     framed = true;
-    scene.fit();
+    reframing = true;
+    // A frame changes the zoom, which packs again, and a fold's own size moves
+    // the figure the next frame is measured over: the two answer each other
+    // until neither has anything left to say.
+    for (let pass = 0; pass < FRAME_PASSES; pass += 1) {
+      const packed = packedTier;
+      built.fit();
+      if (packedTier === packed) break;
+    }
+    reframing = false;
     tellTransform();
   };
 
@@ -301,7 +360,11 @@ export function mountGraph(
 
   const fold = makeFold();
   const lodBudget = (): LodBudget => ({ ...DEFAULT_BUDGET, ...props.lod });
-  const comparing = (): boolean => comparingStates(props.difference);
+  const reading = (): "genealogy" | "sets" => props.arrangement ?? "genealogy";
+  /** Two states are compared against the genealogy, which is where a note's
+   *  parent means anything — the sets reading ignores a difference entirely. */
+  const comparing = (): boolean =>
+    reading() !== "sets" && comparingStates(props.difference);
 
   /**
    * Everything the marks now on the canvas were drawn from EXCEPT the reader's
@@ -331,7 +394,11 @@ export function mountGraph(
     if (!scene) return;
     const budget = lodBudget();
     const standing = drawnFrom;
+    const sets = reading() === "sets";
+    // A tag question moves every mark in the sets reading rather than only its
+    // colour, so there is no cheap path through it.
     const recolour =
+      !sets &&
       !relayout &&
       standing !== null &&
       standing.nodes === props.nodes &&
@@ -345,13 +412,25 @@ export function mountGraph(
       standing.budget.depth === budget.depth &&
       standing.budget.maxDrawn === budget.maxDrawn;
 
+    const difference = sets ? undefined : props.difference;
     // The notes the difference says went stand in the region alongside it, so
     // every mark on the canvas is seeded and folded by the one rule.
-    const nodes = nodesWithGone(props.nodes, props.difference);
-    const lod = fold(nodes, props.collapsed, focus, budget);
+    const nodes = nodesWithGone(props.nodes, difference);
+    // What bounds the count in the sets reading is a region's own room, so the
+    // genealogical fold is left out of it: a subtree's notes land in different
+    // regions, and a mega-node standing in one of them would answer for notes
+    // that are not there.
+    const lod = sets
+      ? NOTHING_FOLDED
+      : fold(nodes, props.collapsed, focus, budget);
     budgetFolded = lod.folded;
+    const drawn = drawnNodes(nodes, lod.collapsed);
+    const packing = sets ? pack(drawn, budget) : undefined;
+    setsDrawn = packing?.drawn ?? null;
 
-    const model = buildModel(drawnNodes(nodes, lod.collapsed), {
+    const model = buildModel(drawn, {
+      arrangement: props.arrangement,
+      ...(packing === undefined ? {} : { sets: packing }),
       selection: props.selection,
       ...(props.codeMoved === undefined
         ? {}
@@ -360,7 +439,7 @@ export function mountGraph(
       viewer: props.viewer,
       keep: scene.snapshot(),
       fields: props.fields,
-      difference: props.difference,
+      difference,
       edgeLooks: props.edgeLooks,
     });
 
@@ -384,6 +463,20 @@ export function mountGraph(
       props.reading ? drawnReading(nodes, lod.collapsed, props.reading) : null,
     );
     dragged = null;
+    carrying = null;
+    scene.setSetsDrop(null);
+    if (sets) {
+      // The packing is final, so there is nothing to settle. The epoch still
+      // moves: a settle the genealogy left in flight would otherwise arrive and
+      // move every mark off its place in the diagram.
+      epoch += 1;
+      settled = true;
+      // And with no settle to frame off, the first framing happens here — off
+      // the field arriving, never off a zoom, which this pack has already
+      // answered and a frame would undo.
+      if (framing && !answeringZoom) frameAll();
+      return;
+    }
     if (!relayout) return;
 
     epoch += 1;
@@ -405,6 +498,113 @@ export function mountGraph(
       }),
       edges: edgeInputs(model),
     });
+  };
+
+  /** Where the sets reading stands every mark at the zoom the field is at. */
+  const pack = (drawn: readonly DrawnNode[], budget: LodBudget) => {
+    const scale = scene?.viewport.scale ?? 1;
+    packedTier = setsSpacingTier(scale);
+    return packSets({
+      notes: drawn.map((entry) => ({
+        ref: entry.node.ref,
+        graph: graphOf(entry.node),
+        tags: entry.tags,
+        ...(entry.node.address === undefined
+          ? {}
+          : { address: entry.node.address }),
+        created_at: entry.node.created_at,
+      })),
+      fields: (props.fields ?? []).map((field) => field.ref),
+      selection: props.selection,
+      spacing: setsSpacing(scale),
+      most: budget.maxDrawn,
+      gutter: FIELD_GUTTER,
+    });
+  };
+
+  /** The packing is a function of the zoom, so every change of the zoom carries
+   *  the field here — which is what refolds a region there is no longer room in,
+   *  and opens one there is. A pack of its own moves the zoom, so it never
+   *  starts a second one from inside the first. */
+  let answeringZoom = false;
+  const repack = (): void => {
+    if (destroyed || answeringZoom || reading() !== "sets" || !scene) return;
+    if (setsSpacingTier(scene.viewport.scale) === packedTier) return;
+    answeringZoom = true;
+    try {
+      rebuild();
+    } finally {
+      answeringZoom = false;
+    }
+  };
+
+  /** Every note a drag answers for: the whole chosen set where the mark taken
+   *  hold of is in it, and one note otherwise. A chosen note standing inside a
+   *  region's fold is as much in the set as one with a mark of its own, so the
+   *  drag moves exactly what the menu rows move. */
+  const carried = (
+    target: OwnedRef,
+  ): { ref: OwnedRef; tags: readonly Tag[] }[] => {
+    const chosen = props.chosen;
+    const refs = chosen?.has(target) ? [...chosen] : [target];
+    const held = new Map(props.nodes.map((node) => [node.ref, node.tags]));
+    return refs.flatMap((ref) => {
+      const tags = held.get(ref);
+      return tags === undefined ? [] : [{ ref, tags }];
+    });
+  };
+
+  const startCarry = (target: string, world: Point): boolean => {
+    const sets = setsDrawn;
+    if (sets === null || props.onRetag === undefined || !scene) return false;
+    // A fold answers for a whole region rather than for one note, so there is
+    // no one note behind it to take hold of.
+    if (sets.folds.has(target)) return false;
+    const notes = carried(target as OwnedRef);
+    if (notes.length === 0) return false;
+    const moving = notes
+      .map((note) => note.ref)
+      .filter(
+        (ref) => !sets.folds.has(ref) && scene?.indexOf(ref) !== undefined,
+      );
+    carrying = { moving, notes, from: world, at: world };
+    carryTo(world);
+    return true;
+  };
+
+  const carryTo = (world: Point): void => {
+    const held = carrying;
+    if (held === null || !scene) return;
+    held.at = world;
+    const dx = world.x - held.from.x;
+    const dy = world.y - held.from.y;
+    for (const ref of held.moving) {
+      const index = scene.indexOf(ref);
+      const at = scene.attributesOf(ref);
+      if (index === undefined || at === null) continue;
+      scene.movePosition(index, { x: at.x + dx, y: at.y + dy });
+    }
+    scene.setSetsDrop(setsDrawn === null ? null : setsDropAt(setsDrawn, world));
+  };
+
+  const dropCarry = (): void => {
+    const held = carrying;
+    const sets = setsDrawn;
+    carrying = null;
+    scene?.setSetsDrop(null);
+    if (held === null || sets === null || !scene) return;
+    // Back where the packing put it: a mark moves when the host's write comes
+    // back as new props, never because somebody dragged it.
+    for (const ref of held.moving) {
+      const index = scene.indexOf(ref);
+      const at = scene.attributesOf(ref);
+      if (index === undefined || at === null) continue;
+      scene.movePosition(index, { x: at.x, y: at.y });
+    }
+    const where = setsDropAt(sets, held.at);
+    if (where === null) return;
+    const retag = retagInto(sets, held.notes, where.region);
+    if (retag !== null) props.onRetag?.(retag);
   };
 
   const start = async (): Promise<void> => {
@@ -443,6 +643,17 @@ export function mountGraph(
         if (!node) return;
         const ref = target as OwnedRef;
         if (node.collapsed) {
+          // A fold in the sets reading answers for a region rather than for a
+          // subtree, so a tap brings the canvas to that region — where there is
+          // room, the pack that follows the zoom opens it. The reader has the
+          // field from the moment they ask for that, so nothing frames it back
+          // onto the whole figure under the answer.
+          if (setsDrawn?.folds.has(ref)) {
+            takeViewport();
+            built.frameRegion(ref);
+            tellTransform();
+            return;
+          }
           // Opening a mega-node moves the focus to it, so the budget measures
           // from where the reader just looked and the subtree has room to draw.
           focus = ref;
@@ -484,6 +695,7 @@ export function mountGraph(
             ...at,
             ref: target as OwnedRef | null,
             foldable: target !== null && built.hasDrawnChildren(target),
+            region: target !== null && (setsDrawn?.folds.has(target) ?? false),
           });
           return;
         }
@@ -496,7 +708,7 @@ export function mountGraph(
         props.onHover?.(
           target === null || asked(props)
             ? null
-            : hoverAt(built, field, target),
+            : hoverAt(built, field, target, setsDrawn?.folds.has(target)),
         );
       },
       canSweep: () => !comparing() && props.onChooseWithin !== undefined,
@@ -517,10 +729,21 @@ export function mountGraph(
       },
       onDragStart: (target, world) => {
         takeViewport();
+        if (startCarry(target, world)) return;
         pin(target, world, true);
       },
-      onDragMove: (target, world) => pin(target, world, true),
+      onDragMove: (target, world) => {
+        if (carrying) {
+          carryTo(world);
+          return;
+        }
+        pin(target, world, true);
+      },
       onDragEnd: (target) => {
+        if (carrying) {
+          dropCarry();
+          return;
+        }
         const index = built.indexOf(target);
         if (index !== undefined) {
           pin(target, built.positionOf(index), false);
@@ -533,6 +756,10 @@ export function mountGraph(
       },
       inkTarget: () => props.onInkPointer,
     });
+    // Every change of the zoom arrives in one place, whoever made it: a pinch,
+    // a frame, a region a tap brought the canvas to, a place read back off an
+    // earlier visit.
+    built.viewport.onScale = repack;
     rebuild();
     tellTransform();
   };
@@ -550,6 +777,9 @@ export function mountGraph(
   };
 
   const pin = (target: string, world: Point, held: boolean): void => {
+    // Nothing settles the sets reading, so a mark a drag displaced would stay
+    // displaced: a drag there carries marks between regions or moves nothing.
+    if (reading() === "sets") return;
     const index = scene?.indexOf(target);
     dragged = held && index !== undefined ? { index, world } : null;
     if (!scene || index === undefined) return;
@@ -561,7 +791,7 @@ export function mountGraph(
    *  theme change and a change to the picture both land here. */
   const repaint = (): void => {
     presence = presenceOf(props, ceiling);
-    palette = buildPalette(tokens, presence);
+    palette = buildPalette(tokens, presence, setsWashes(props));
     scene?.setPalette(palette);
     wall.show(
       props.wallpaper?.picture ?? null,
@@ -597,6 +827,11 @@ export function mountGraph(
       const remounting = next.remountKey !== mountedKey;
       const moved = layoutMoved(props, next);
       const relayout = moved || remounting;
+      const intoSets =
+        next.arrangement === "sets" && props.arrangement !== "sets";
+      const outOfSets =
+        props.arrangement === "sets" && next.arrangement !== "sets";
+      const washed = setsWashes(next) !== setsWashes(props);
       const asking = next.picking?.from !== props.picking?.from;
       const grounded = next.ground !== props.ground;
       const takingOver = asked(next) && !asked(props);
@@ -611,11 +846,13 @@ export function mountGraph(
       // where the field is looking now, not where it goes next.
       const listening =
         next.onTransform !== undefined && props.onTransform === undefined;
+      // Kept before the rebuild, while the viewport is still the genealogy's.
+      if (intoSets) keptView = viewportNow(scene);
       props = next;
       if (listening) told = null;
       if (reframed) frame(next.inset);
       if (grounded) scene?.setGround(next.ground ?? "none");
-      if (papered) repaint();
+      if (papered || washed) repaint();
       if (takingOver) next.onHover?.(null);
       // The canvas comes to the note the choice is being made for, so the reader
       // is never asked to pick against a viewport they left somewhere else.
@@ -631,6 +868,14 @@ export function mountGraph(
         framed = false;
       }
       rebuild(relayout);
+      if (intoSets) frameAll();
+      if (outOfSets) {
+        setsDrawn = null;
+        packedTier = null;
+        if (keptView !== null) look(keptView);
+        else frameAll();
+        keptView = null;
+      }
       // An act that starts no settle has nothing that could carry the mark off
       // screen, so the ask ends with the act rather than waiting for whatever
       // the reader does next.
@@ -671,8 +916,7 @@ export function mountGraph(
       if (settled) frameAll();
     },
     viewport() {
-      const view = scene?.viewport;
-      return view ? { x: view.x, y: view.y, scale: view.scale } : null;
+      return viewportNow(scene);
     },
     lookAt(at) {
       look(at);
@@ -698,6 +942,17 @@ export function mountGraph(
   };
 }
 
+/** How many tags are drawn as regions, which the floors are measured against —
+ *  0 off the sets reading. */
+function setsWashes(props: GraphSurfaceProps): number {
+  return props.arrangement === "sets" ? drawnSetsOf(props.selection).length : 0;
+}
+
+function viewportNow(scene: GraphScene | null): GraphTransform | null {
+  const view = scene?.viewport;
+  return view ? { x: view.x, y: view.y, scale: view.scale } : null;
+}
+
 /**
  * How much of the picture actually reaches the reader: what they asked for, of
  * what this ground can carry. A surface with no picture up is presence 0, so
@@ -713,7 +968,8 @@ function presenceOf(props: GraphSurfaceProps, ceiling: () => number): number {
  * Whether anything the layout reads has moved. `selection` is deliberately not
  * one of them: DESIGN.md § Hue answers a tag question in colour, and a field
  * that re-settled under the reader would be answering it somewhere else. A
- * difference IS one, because the notes it says went stand in the field.
+ * difference IS one, because the notes it says went stand in the field, and so
+ * is the arrangement, which is where every mark stands.
  *
  * `lod` and `difference` are read rather than compared by identity, because a
  * host naturally writes either bag inline and a fresh object each render is not
@@ -722,6 +978,7 @@ function presenceOf(props: GraphSurfaceProps, ceiling: () => number): number {
  */
 function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
   return (
+    a.arrangement !== b.arrangement ||
     a.nodes !== b.nodes ||
     a.collapsed !== b.collapsed ||
     a.viewer !== b.viewer ||
@@ -816,6 +1073,7 @@ function hoverAt(
   scene: GraphScene,
   field: HTMLElement,
   ref: string,
+  region = false,
 ): GraphHoverAt | null {
   const node = scene.attributesOf(ref);
   const index = scene.indexOf(ref);
@@ -831,6 +1089,7 @@ function hoverAt(
     radius: node.radius * scene.viewport.scale,
     folded: node.folded,
     tags: node.tags,
+    region,
   };
 }
 

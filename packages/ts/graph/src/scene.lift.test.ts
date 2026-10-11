@@ -74,9 +74,9 @@ async function canvasOn(
   return { scene, app };
 }
 
-/** The layer the lift is laid on: the first the world holds, under every line. */
+/** The layer the lift is laid on: under every line, over the regions alone. */
 function liftLayer(app: FakeApplication): FakeGraphics {
-  const first = worldOf(app).children[0];
+  const first = worldOf(app).children[1];
   if (!(first instanceof FakeGraphics)) {
     throw new Error("The world draws something else beneath its marks");
   }
