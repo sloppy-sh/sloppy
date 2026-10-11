@@ -2597,7 +2597,7 @@ its viewport across a visit the way it keeps it across a pan.
 **A move between sets is REPORTED, never written here.** `onRetag({ notes, into, outOf })`
 names the notes and, among the drawn tags alone, which they are moving into and out of; the
 page that owns them writes it through `nodes.update` or the bulk tag acts. `@sloppy/graph`
-reaches no server and writes no note field, for the same reason the picker does not
+reaches no server and writes no note field, for the same reason the field does not
 (§ "Tagging a note"): two writers to one node is the bug that costs a person their edit.
 
 ## A look a person set on a line

@@ -2145,6 +2145,8 @@ Where it lives:
 
 - **It is a reading, kept the way the graph and the outline are** (§ Persistence): per folder,
   this device's, and nothing a note or a peer ever hears about.
+- **It is offered while a set is being chosen.** The canvas marks a chosen set where the
+  outline could not, and moving a chosen set between the regions is the point of choosing here.
 - **Changing the reading never remounts the canvas.** The graph keeps where it was looking
   across a visit to the sets, so coming back is coming back rather than reloading; entering the
   sets frames the diagram.

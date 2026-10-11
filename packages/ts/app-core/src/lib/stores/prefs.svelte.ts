@@ -135,8 +135,8 @@ export interface Prefs {
 	 *  it was left — DESIGN.md § Persistence. A folder with no entry starts
 	 *  clean. */
 	views: Record<string, FolderView>;
-	/** Which reading of the graph is up — DESIGN.md § Persistence. A build before
-	 *  this one saved `walking: true` for the outline and nothing for the graph. */
+	/** Which reading of the graph is up — DESIGN.md § Persistence. A saved
+	 *  `walking: true` is the outline. */
 	seenAs: SeenAs;
 	/** Whether the app is keeping a record of what it does, for somebody about
 	 *  to say what went wrong — `stores/what-happened.svelte.ts`. */

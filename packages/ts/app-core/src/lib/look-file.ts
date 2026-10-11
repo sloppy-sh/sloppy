@@ -45,12 +45,13 @@ const OF_THE_LOOK: readonly string[] = [
 ];
 
 /** What is this device's rather than this person's — DESIGN.md § Persistence:
- *  the graph in front of them, the question lighting it, the canvas beside it,
- *  the pictures under those and the Sloppy that minted every one of them mean
- *  nothing on another machine. */
+ *  the graph in front of them, the question lighting it, the reading it is up
+ *  in, the canvas beside it, the pictures under those and the Sloppy that
+ *  minted every one of them mean nothing on another machine. */
 const OF_THIS_DEVICE: readonly string[] = [
 	'graph',
 	'tags',
+	'seenAs',
 	'alsoOnCanvas',
 	'wallpapers',
 	'views',

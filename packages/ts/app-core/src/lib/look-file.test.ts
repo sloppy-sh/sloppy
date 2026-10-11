@@ -97,6 +97,7 @@ describe('the look this device wears', () => {
 		expect(moving.preferences).not.toHaveProperty('origin');
 		expect(moving.preferences).not.toHaveProperty('graph');
 		expect(moving.preferences).not.toHaveProperty('views');
+		expect(moving.preferences).not.toHaveProperty('seenAs');
 	});
 
 	// The selection lighting the graph is a question asked of the graph in front
