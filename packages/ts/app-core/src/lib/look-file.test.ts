@@ -30,7 +30,7 @@ async function wearTheCollection(slug: string): Promise<void> {
 function aDeviceLivedOn(): void {
 	prefs.set('style', 'hardline');
 	prefs.set('density', 'compact');
-	prefs.set('effect', 'crt');
+	prefs.set('effects', ['grain', 'crt']);
 	prefs.set('screen', { strength: 1.6, scale: 0.75, edges: true });
 	prefs.set('fonts', { ui: 'Inter', heading: 'Iosevka Etoile', mono: 'JetBrains Mono' });
 	prefs.set('css', '.sloppy-prose h2 { letter-spacing: .02em }');
@@ -63,7 +63,7 @@ describe('the look this device wears', () => {
 			based_on: 'paper',
 			style: 'hardline',
 			density: 'compact',
-			effect: 'crt',
+			effect: ['grain', 'crt'],
 			screen: { strength: 1.6, scale: 0.75, edges: true },
 			fonts: { ui: 'Inter', heading: 'Iosevka Etoile', mono: 'JetBrains Mono' },
 			css: '.sloppy-prose h2 { letter-spacing: .02em }'
@@ -129,7 +129,7 @@ describe('the look this device wears', () => {
 
 	it('states nothing twice: what the look says is not in the settings beside it', async () => {
 		const moving = await lookNow(true);
-		for (const key of ['look', 'ownLook', 'style', 'density', 'effect', 'screen', 'fonts', 'css'])
+		for (const key of ['look', 'ownLook', 'style', 'density', 'effects', 'screen', 'fonts', 'css'])
 			expect(moving.preferences).not.toHaveProperty(key);
 	});
 });
@@ -235,6 +235,21 @@ describe('wearing one', () => {
 		expect(prefs.current.tagOrder).toBe('count');
 		expect(prefs.current.autosaveMinutes).toBe(5);
 		expect(prefs.current.graph).toBeNull();
+	});
+
+	// A look written before several screens could be on at once names one, and
+	// is still the look it was.
+	it('wears the one screen a look written with one names', async () => {
+		aDeviceLivedOn();
+		expect(await wearLook({ name: 'Mine', effect: 'dots' })).toBeNull();
+		expect(prefs.current.effects).toEqual(['dots']);
+		expect(await wearLook({ name: 'Mine', effect: 'none' })).toBeNull();
+		expect(prefs.current.effects).toEqual([]);
+	});
+
+	it('wears every screen a look names, in the order they are drawn', async () => {
+		expect(await wearLook({ name: 'Mine', effect: ['crt', 'dots'] })).toBeNull();
+		expect(prefs.current.effects).toEqual(['dots', 'crt']);
 	});
 
 	// What a look leaves out of its screen is the screen at rest: a file saying

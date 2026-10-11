@@ -84,6 +84,11 @@ describe("a look somebody was sent", () => {
     for (const density of DENSITIES)
       expect(look({ density }).success).toBe(true);
     for (const effect of EFFECTS) expect(look({ effect }).success).toBe(true);
+    // Several screens are drawn at once, and one name alone is what a look
+    // written before they could be says.
+    expect(look({ effect: [...EFFECTS] }).success).toBe(true);
+    expect(look({ effect: [] }).success).toBe(true);
+    expect(look({ effect: ["grain", "neon"] }).success).toBe(false);
     expect(look({ style: "sketch" }).success).toBe(false);
     expect(look({ density: "roomy" }).success).toBe(false);
     expect(look({ effect: "neon" }).success).toBe(false);

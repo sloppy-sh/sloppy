@@ -228,7 +228,10 @@ export const LookSchema = z.object({
   palette: z.record(PaletteTokenSchema, PaintSchema).optional(),
   style: z.enum(STYLES).optional(),
   density: z.enum(DENSITIES).optional(),
-  effect: z.enum(EFFECTS).optional(),
+  /** The screens the page is drawn through, drawn at once. One name alone is
+   *  the one screen it names, which is what a look written before several
+   *  could be on says. */
+  effect: z.union([z.enum(EFFECTS), z.array(z.enum(EFFECTS))]).optional(),
   screen: ScreenSchema.optional(),
   /** The faces the app, its headings and its code are set in. Each is a face
    *  this build offers or a family the author named, which is how a look asks

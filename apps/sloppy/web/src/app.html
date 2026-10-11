@@ -68,17 +68,23 @@
 			}
 			root.setAttribute('data-look', look);
 			if (saved.style && saved.style !== 'default') root.setAttribute('data-style', saved.style);
-			if (saved.effect && saved.effect !== 'none') root.setAttribute('data-effect', saved.effect);
+			// Several screens are drawn at once, in the order the stylesheet draws
+			// them, and one name is what a build that kept only one saved.
+			var asked = saved.effects || saved.effect;
+			var worn = ['grain', 'dots', 'hatch', 'glow', 'crt'].filter(function (screen) {
+				return typeof asked === 'string' ? asked === screen : (asked || []).indexOf(screen) >= 0;
+			});
+			if (worn.length) root.setAttribute('data-effect', worn.join(' '));
 			// How much of the screen there is and how big it is drawn, held the way
 			// the store holds them: anything else is the screen at rest.
 			var screen = saved.screen && typeof saved.screen === 'object' ? saved.screen : {};
-			var asked = function (one) {
+			var held = function (one) {
 				return typeof one === 'number' && isFinite(one) && one >= 0 && one <= 3 ? one : 1;
 			};
-			if (asked(screen.strength) !== 1)
-				root.style.setProperty('--screen-strength', String(asked(screen.strength)));
-			if (asked(screen.scale) !== 1)
-				root.style.setProperty('--screen-scale', String(asked(screen.scale)));
+			if (held(screen.strength) !== 1)
+				root.style.setProperty('--screen-strength', String(held(screen.strength)));
+			if (held(screen.scale) !== 1)
+				root.style.setProperty('--screen-scale', String(held(screen.scale)));
 			if (screen.edges === true) root.setAttribute('data-screen-reach', 'edges');
 			// The three faces, over the tokens app.css declares them at. The store
 			// writes the same three from the same table of what a face this build

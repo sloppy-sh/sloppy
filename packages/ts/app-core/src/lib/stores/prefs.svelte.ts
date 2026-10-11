@@ -92,8 +92,9 @@ export interface Prefs {
 	lookName: string | null;
 	style: Style;
 	/** What the screen itself is drawn like over everything else — DESIGN.md
-	 *  § "The look". */
-	effect: Effect;
+	 *  § "The look". Several are drawn at once, in the order `EFFECTS` names
+	 *  them, and an empty list is a plain page. */
+	effects: Effect[];
 	/** How the screen is drawn: how much of it there is, how big it is drawn,
 	 *  and whether it keeps to the edges of the page. At rest it is 1, 1 and
 	 *  everywhere, which is what the stylesheet draws on its own. */
@@ -341,7 +342,7 @@ function defaults(): Prefs {
 		ownLook: null,
 		lookName: null,
 		style: 'default',
-		effect: 'none',
+		effects: [],
 		screen: { strength: 1, scale: 1, edges: false },
 		fonts: { ui: 'system', heading: 'system', mono: 'system' },
 		css: '',
@@ -398,6 +399,14 @@ function lookNameIn(value: unknown): string | null {
 	if (typeof value !== 'string') return null;
 	const named = value.trim().slice(0, LOOK_NAME_MAX);
 	return named === '' ? null : named;
+}
+
+/** The screens a page is drawn through, in the order `EFFECTS` names them so
+ *  two devices stamp the same page the same way. Plain is none of them, however
+ *  it was written down. */
+function screensIn(value: unknown): Effect[] {
+	const asked = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
+	return EFFECTS.filter((screen) => screen !== 'none' && asked.includes(screen));
 }
 
 /** How a screen is drawn, held to what the stylesheet can be asked for: a
@@ -682,7 +691,7 @@ class PrefsStore {
 			ownLook: lookIn(saved.ownLook),
 			lookName: lookNameIn(saved.lookName),
 			style: oneOf(saved.style, STYLES, base.style),
-			effect: oneOf(saved.effect, EFFECTS, base.effect),
+			effects: screensIn(saved.effects ?? saved.effect),
 			screen: screenIn(saved.screen),
 			fonts: facesIn(saved.fonts, saved.font),
 			css: rulesIn(saved.css),
@@ -782,6 +791,9 @@ class PrefsStore {
 		if (key === 'look' && this.#dressing !== null && value !== this.#dressing.slug) {
 			this.#dress(null);
 		}
+		// The screens are drawn in one order whatever order they were asked for in,
+		// so what the page says is what another device would say.
+		if (key === 'effects') next.effects = screensIn(value);
 		// A name arrived with one look, so another look has none until it says so.
 		if (key === 'look' && value !== this.#current.look) next.lookName = null;
 		// A graph, the canvas beside it, the pictures under them and how each
@@ -831,8 +843,8 @@ class PrefsStore {
 		// Absent IS comfortable, the same bargain the style axis makes.
 		if (densityNow(p.density) === 'compact') root.setAttribute('data-density', 'compact');
 		else root.removeAttribute('data-density');
-		if (p.effect === 'none') root.removeAttribute('data-effect');
-		else root.setAttribute('data-effect', p.effect);
+		if (p.effects.length === 0) root.removeAttribute('data-effect');
+		else root.setAttribute('data-effect', p.effects.join(' '));
 		// Two numbers and a reach: the stylesheet holds what each screen IS and
 		// reads these for how much of it there is — DESIGN.md § "The effect axis".
 		// At rest is absent again, so a page nobody has moved carries nothing.

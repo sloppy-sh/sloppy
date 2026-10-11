@@ -242,13 +242,19 @@ describe('settings', () => {
 		}
 		// Each role is offered every face this build has but the one it is
 		// already set in, and one more choice for a family nobody here ships.
-		const axes = [STYLES, DENSITIES, EFFECTS];
+		const axes = [STYLES, DENSITIES];
 		const ownFace = 1;
-		expect(target.querySelectorAll('input[type="radio"]').length).toBe(
+		expect(target.querySelectorAll('input[type="radio"]:not([name="effect"])').length).toBe(
 			axes.reduce((all, axis) => all + axis.length, 0) +
 				FACE_ROLES.length * (FACES.length + 1) -
 				ownFace
 		);
+		// Several screens are drawn at once, so each is its own choice to make,
+		// and Plain is the one that is none of them.
+		expect(target.querySelectorAll('input[type="checkbox"][name="effect"]').length).toBe(
+			EFFECTS.length - 1
+		);
+		expect(target.querySelectorAll('input[type="radio"][name="effect"]').length).toBe(1);
 	});
 
 	// DESIGN.md § "The effect axis": a screen is shown as itself, from the same
@@ -283,6 +289,32 @@ describe('settings', () => {
 
 		expect(prefs.current.screen.edges).toBe(true);
 		expect(document.documentElement.getAttribute('data-screen-reach')).toBe('edges');
+	});
+
+	// DESIGN.md § "The effect axis": several screens are drawn at once, and the
+	// row says which are on rather than which one is.
+	it('turns a screen on beside the ones already on, and Plain clears them', () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		const pill = (screen: string) =>
+			target.querySelector<HTMLInputElement>(`input[name="effect"][value="${screen}"]`);
+
+		pill('crt')?.click();
+		pill('grain')?.click();
+		flushSync();
+
+		expect(prefs.current.effects).toEqual(['grain', 'crt']);
+		expect(document.documentElement.getAttribute('data-effect')).toBe('grain crt');
+		expect(pill('none')?.checked).toBe(false);
+
+		pill('crt')?.click();
+		flushSync();
+		expect(prefs.current.effects).toEqual(['grain']);
+
+		pill('none')?.click();
+		flushSync();
+		expect(prefs.current.effects).toEqual([]);
+		expect(document.documentElement.hasAttribute('data-effect')).toBe(false);
 	});
 
 	// A look is a file somebody can send, so the page has a section for one

@@ -36,7 +36,7 @@ const OF_THE_LOOK: readonly string[] = [
 	'lookName',
 	'style',
 	'density',
-	'effect',
+	'effects',
 	'screen',
 	'fonts',
 	'css'
@@ -152,7 +152,7 @@ export async function lookNow(withPreferences: boolean): Promise<Look> {
 		...(await standing()),
 		style: held.style,
 		density: held.density,
-		effect: held.effect,
+		effect: [...held.effects],
 		screen: { ...held.screen },
 		fonts: { ...held.fonts }
 	};
@@ -243,7 +243,8 @@ function wear(
 	}
 	if (look.style !== undefined) prefs.set('style', look.style);
 	if (look.density !== undefined) prefs.set('density', look.density);
-	if (look.effect !== undefined) prefs.set('effect', look.effect);
+	if (look.effect !== undefined)
+		prefs.set('effects', typeof look.effect === 'string' ? [look.effect] : look.effect);
 	// What a look leaves out of its screen is the screen at rest, not what this
 	// device happened to be set to.
 	if (look.screen !== undefined) {

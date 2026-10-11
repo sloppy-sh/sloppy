@@ -1,6 +1,7 @@
 <script lang="ts">
 	// One of a handful of choices, as a row of pills: a radio underneath, so a
-	// keyboard and a screen reader read the set as the one choice it is.
+	// keyboard and a screen reader read the set as the one choice it is — or a
+	// checkbox, where several of the set may be on at once.
 	import type { HTMLAttributes } from 'svelte/elements';
 	import { cn } from '$lib/utils.js';
 
@@ -9,6 +10,7 @@
 		value,
 		label,
 		checked = false,
+		together = false,
 		disabled = false,
 		onpick,
 		class: className,
@@ -20,6 +22,9 @@
 		value: string;
 		label: string;
 		checked?: boolean;
+		/** Several of this set may be on at once, so the pill is a checkbox and
+		 *  picking it turns this one choice on or off. */
+		together?: boolean;
 		/** A choice this device cannot make, shown so somebody knows it exists. */
 		disabled?: boolean;
 		onpick: () => void;
@@ -32,7 +37,7 @@
 
 <label class={cn(disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer', className)}>
 	<input
-		type="radio"
+		type={together ? 'checkbox' : 'radio'}
 		name={group}
 		{value}
 		{checked}

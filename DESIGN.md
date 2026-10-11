@@ -61,7 +61,8 @@ decides colour; the other four decide none of it.** Five in all, mixed freely:
 4. **Density** → how close everything is drawn (§ Layout). `data-density="compact"`,
    absent when comfortable.
 5. **Effect** → how the screen is drawn over: a texture, never a colour or a shape.
-   `data-effect="crt"`, absent when plain — see "The effect axis" below.
+   `data-effect="grain crt"` — a list, because several are drawn at once — absent when
+   plain. See "The effect axis" below.
 
 **There is no accent axis, and that is the point.** An accent picked apart from the
 surfaces it lands on is a pairing somebody has to measure — seven accents across five
@@ -207,10 +208,11 @@ unaffordable. The style changes the chrome around the graph and nothing inside i
 
 ### The effect axis (`data-effect`) — what the screen is like
 
-`data-effect` draws a texture over the whole page. Absent is plain, the same convention
-the style and face axes keep; the rest are five, each one texture rather than a family of
-them: **Grain**, paper rather than glass — noise at a size no letterform is, laid as a
-mask so the ink under it is the look's own; **Dots**, a halftone the page is printed
+`data-effect` draws textures over the whole page, as many at once as somebody turns on —
+so it is a space-separated list and every screen is matched out of it with `~=`. Absent is
+plain, the same convention the style and face axes keep; the rest are five, each one
+texture rather than a family of them: **Grain**, paper rather than glass — noise at a
+size no letterform is, laid as a mask so the ink under it is the look's own; **Dots**, a halftone the page is printed
 through; **Hatch**, two rules crossing the way a pen shades; **Glow**, the edges falling
 away and a little light on the ink, which is the half of a tube that is restful to read
 in; and **CRT**, that glow with scanlines, a band travelling down it and a flicker over
@@ -218,8 +220,17 @@ the whole. They share one block — everything but the texture itself is the sam
 **Each is shown as itself where it is chosen**: the same declarations that dress the page
 dress the choice that names it (`[data-screen]`), over the whole of it rather than in a
 sample beside the name — a texture a few pixels across says nothing at the size of a
-swatch. So what somebody reads in the row is the screen, and there is still one copy of
-what each one is.
+swatch. A choice wears the one screen it names however many the page is wearing, so what
+somebody reads in the row is that screen, and there is still one copy of what each one
+is.
+
+**No screen is in another's way.** The painted ones share one layer with a slot each —
+a custom property per screen, drawn in a background list whose sizes, places and repeats
+stay beside their own paint, and `none` where nobody filled it — and the light they put on
+the ink shares a text-shadow the same way. Grain is the one screen that is a mask rather
+than a paint, and a mask takes the whole layer it is on, so it is drawn on a layer of its
+own; a second masked screen would need one too. `effects.test.ts` holds every screen to
+writing nothing another screen writes, which is the whole of what makes them stack.
 
 **How much of a screen there is and how big it is drawn are the reader's**, as two
 numbers every screen reads the same way — `--screen-strength` multiplies every share of
@@ -230,6 +241,8 @@ radial one, so the texture falls away from the middle of the page and what someb
 reading is left clear. Nothing else varies, so a screen is the one thing it is at any
 setting, and a sixth is still a texture and nothing else. A sample carries its own mask,
 because a sample is small enough to be the whole texture whatever the page is giving up.
+Both numbers reach every screen that is on: they say how much of the screen there is, and
+the screen is all of them together.
 
 Four rules, and each is a way an effect ships broken:
 
@@ -364,8 +377,10 @@ Sloppy reads can have it by being sent one.
   "palette": { "--background": "oklch(.17 .02 265)" },
   "style": "hardline",
   "density": "compact",
-  "effect": "crt",
-  // how much of that screen there is; a field it leaves out is drawn at rest
+  // the screens drawn over it, together; one name alone is a look written
+  // before several could be on
+  "effect": ["grain", "crt"],
+  // how much of them there is; a field it leaves out is drawn at rest
   "screen": { "strength": 1.6, "scale": 0.75, "edges": true },
   "fonts": {
     "ui": "Inter",

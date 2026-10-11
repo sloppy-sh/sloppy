@@ -1,10 +1,11 @@
 /* The effect axis — DESIGN.md § "The effect axis". A texture over the page: no
    colour of its own, no shape, and nothing a pointer can land on.
 
-   How much of it there is and how big it is are the reader's, as two numbers
-   the store writes: every amount below is what one screen takes at rest, and
-   every size what it is drawn at. Nothing else varies, so a screen stays the
-   one thing it is at any setting. */
+   Several are drawn at once, so `data-effect` is a list and every screen is
+   matched out of it. How much of them there is and how big they are drawn are
+   the reader's, as two numbers the store writes: every amount below is what one
+   screen takes at rest, and every size what it is drawn at. Nothing else
+   varies, so a screen stays the one thing it is at any setting. */
 :root {
 	--screen-strength: 1;
 	--screen-scale: 1;
@@ -24,13 +25,14 @@
 	);
 }
 
-/* Over every dock and every sheet — a dock filling the page stacks to 61,
-   `side-dock.svelte` — because a screen is in front of what is on it.
+/* The two layers a page is screened through — over every dock and every sheet,
+   a dock filling the page stacks to 61 in `side-dock.svelte`, because a screen
+   is in front of what is on it.
 
-   One block for every screen, because what they share is everything but the
-   texture itself. No blend mode: a texture mixed from the theme's own ink
-   composites straight, darkening a light theme and lightening a dark one,
-   which is the one thing that reads on every look. */
+   No blend mode: a texture mixed from the theme's own ink composites straight,
+   darkening a light theme and lightening a dark one, which is the one thing
+   that reads on every look. */
+:root[data-effect] body::before,
 :root[data-effect] body::after {
 	content: '';
 	position: fixed;
@@ -44,13 +46,19 @@
 /* A sample of one, for somebody choosing between them: the same texture over a
    box rather than over the page, so each screen is shown as itself and there
    is still one copy of what it is. A sample is small, so it shows the whole
-   texture whatever the page is giving up. */
+   texture whatever the page is giving up, and it shows one screen rather than
+   whatever the page is wearing. */
 [data-screen] {
 	position: relative;
 	overflow: hidden;
 	--screen-mask: linear-gradient(var(--foreground), var(--foreground));
+	/* The page's own slots reach in here, so a sample of one screen standing on
+	   a page wearing another would carry both. */
+	--screen-ink-glow: 0 0 0 transparent;
+	--screen-ink-tube: 0 0 0 transparent;
 }
 
+[data-screen]::before,
 [data-screen]::after {
 	content: '';
 	position: absolute;
@@ -60,13 +68,44 @@
 	mask-image: var(--screen-mask);
 }
 
+/* Every painted screen shares this layer, a slot each, so turning one on does
+   not take another off. A slot nobody filled draws `none`, which is why the
+   lists stay the same length however many screens are on and the sizes beside
+   them stay with their own paint. */
+:root[data-effect] body::after,
+[data-screen]::after {
+	background-image:
+		var(--screen-band, none), var(--screen-dots, none), var(--screen-hatch, none, none),
+		var(--screen-lines, none), var(--screen-glow, none), var(--screen-tube, none);
+	background-size:
+		var(--screen-band-size, auto), var(--screen-dots-size, auto), auto, auto, auto, auto, auto;
+	background-position:
+		var(--screen-band-at, 0 0),
+		0 0,
+		0 0,
+		0 0,
+		0 0,
+		0 0,
+		0 0;
+	background-repeat: no-repeat, repeat, repeat, repeat, repeat, repeat, repeat;
+}
+
+/* The light on the ink, a slot each for the same reason: a second screen
+   would otherwise write over the first one's rather than stand beside it. */
+:root[data-effect] body,
+[data-screen] {
+	text-shadow: var(--screen-ink-glow, 0 0 0 transparent), var(--screen-ink-tube, 0 0 0 transparent);
+}
+
 /* Paper rather than glass: noise at a size no letterform is, so it reads as
    grain on the page instead of as a pattern over it. The picture carries no
-   colour — it is a mask, and the ink underneath is the theme's. Where the page
-   is giving its middle up, the grain gives it up with it, which is what the
-   two masks are composed for. */
-:root[data-effect='grain'] body::after,
-[data-screen='grain']::after {
+   colour — it is a mask, and the ink underneath is the theme's — which is why
+   this is the one screen on a layer of its own: a mask takes the whole layer it
+   is on, and it would cut every painted screen beside it into noise. Where the
+   page is giving its middle up, the grain gives it up with it, which is what
+   the two masks are composed for. */
+:root[data-effect~='grain'] body::before,
+[data-screen='grain']::before {
 	background-color: color-mix(
 		in oklab,
 		var(--foreground) calc(7% * var(--screen-strength)),
@@ -89,20 +128,20 @@
 }
 
 /* A halftone the page is printed through. */
-:root[data-effect='dots'] body::after,
+:root[data-effect~='dots'] body::after,
 [data-screen='dots']::after {
-	background-image: radial-gradient(
+	--screen-dots: radial-gradient(
 		color-mix(in oklab, var(--foreground) calc(16% * var(--screen-strength)), transparent)
 			calc(1.5px * var(--screen-scale)),
 		transparent calc(1.9px * var(--screen-scale))
 	);
-	background-size: calc(6px * var(--screen-scale)) calc(6px * var(--screen-scale));
+	--screen-dots-size: calc(6px * var(--screen-scale)) calc(6px * var(--screen-scale));
 }
 
 /* Two rules crossing, the way a pen shades. */
-:root[data-effect='hatch'] body::after,
+:root[data-effect~='hatch'] body::after,
 [data-screen='hatch']::after {
-	background-image:
+	--screen-hatch:
 		repeating-linear-gradient(
 			45deg,
 			color-mix(in oklab, var(--foreground) calc(8% * var(--screen-strength)), transparent) 0
@@ -119,54 +158,55 @@
 
 /* A lit screen with none of the tube: the edges fall away and the ink carries
    a little light, which is the half of CRT that is restful to read in. */
-:root[data-effect='glow'] body::after,
+:root[data-effect~='glow'] body::after,
 [data-screen='glow']::after {
-	background: radial-gradient(
+	--screen-glow: radial-gradient(
 		ellipse closest-side at center,
 		transparent 45%,
 		color-mix(in oklab, var(--foreground) calc(18% * var(--screen-strength)), transparent) 100%
 	);
 }
 
-:root[data-effect='glow'] body,
+:root[data-effect~='glow'] body,
 [data-screen='glow'] {
-	text-shadow: 0 0 calc(8px * var(--screen-scale))
+	--screen-ink-glow: 0 0 calc(8px * var(--screen-scale))
 		color-mix(in oklab, var(--foreground) calc(30% * var(--screen-strength)), transparent);
 }
 
-/* The tube: scanlines, the corners falling away, a line travelling down it and
-   a flicker over the whole. The line is a band of the page's own ink, which
-   reads as light on a dark look and as shade on a light one — the same bargain
-   every screen here makes. */
-:root[data-effect='crt'] body::after,
+/* The tube: scanlines, the corners falling away, a band travelling down it and
+   a flicker over the whole. The band is the page's own ink, which reads as
+   light on a dark look and as shade on a light one — the same bargain every
+   screen here makes. Parked above the page where nothing moves, so a reader who
+   asked for less motion is not left with a band across what they are reading. */
+:root[data-effect~='crt'] body::after,
 [data-screen='crt']::after {
-	background:
-		linear-gradient(
-				to bottom,
-				transparent 0%,
-				color-mix(in oklab, var(--foreground) calc(18% * var(--screen-strength)), transparent) 50%,
-				transparent 100%
-			)
-			0 -14% / 100% 14% no-repeat,
-		repeating-linear-gradient(
-			to bottom,
-			color-mix(in oklab, var(--foreground) calc(9% * var(--screen-strength)), transparent) 0
-				calc(1px * var(--screen-scale)),
-			transparent calc(1px * var(--screen-scale)) calc(3px * var(--screen-scale))
-		),
-		radial-gradient(
-			ellipse closest-side at center,
-			transparent 55%,
-			color-mix(in oklab, var(--foreground) calc(14% * var(--screen-strength)), transparent) 100%
-		);
+	--screen-band: linear-gradient(
+		to bottom,
+		transparent 0%,
+		color-mix(in oklab, var(--foreground) calc(18% * var(--screen-strength)), transparent) 50%,
+		transparent 100%
+	);
+	--screen-band-size: 100% 14%;
+	--screen-band-at: 0 -14%;
+	--screen-lines: repeating-linear-gradient(
+		to bottom,
+		color-mix(in oklab, var(--foreground) calc(9% * var(--screen-strength)), transparent) 0
+			calc(1px * var(--screen-scale)),
+		transparent calc(1px * var(--screen-scale)) calc(3px * var(--screen-scale))
+	);
+	--screen-tube: radial-gradient(
+		ellipse closest-side at center,
+		transparent 55%,
+		color-mix(in oklab, var(--foreground) calc(14% * var(--screen-strength)), transparent) 100%
+	);
 	animation:
 		sloppy-crt-flicker 0.12s steps(2, jump-none) infinite alternate,
 		sloppy-crt-sweep 7s linear infinite;
 }
 
-:root[data-effect='crt'] body,
+:root[data-effect~='crt'] body,
 [data-screen='crt'] {
-	text-shadow: 0 0 calc(1px * var(--screen-scale))
+	--screen-ink-tube: 0 0 calc(1px * var(--screen-scale))
 		color-mix(in oklab, var(--foreground) calc(20% * var(--screen-strength)), transparent);
 }
 
@@ -179,13 +219,17 @@
 	}
 }
 
-/* Only the band moves. Every layer is named at each end because a position
+/* Only the band moves. Every slot is named at each end because a position
    shorter than the layers it is given to is repeated across them, which would
-   sweep the scanlines and the corners down the page along with the band. */
+   sweep every screen beside the band down the page along with it. */
 @keyframes sloppy-crt-sweep {
 	from {
 		background-position:
 			0 -14%,
+			0 0,
+			0 0,
+			0 0,
+			0 0,
 			0 0,
 			0 0;
 	}
@@ -193,12 +237,16 @@
 		background-position:
 			0 114%,
 			0 0,
+			0 0,
+			0 0,
+			0 0,
+			0 0,
 			0 0;
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	:root[data-effect='crt'] body::after,
+	:root[data-effect~='crt'] body::after,
 	[data-screen='crt']::after {
 		animation: none;
 	}

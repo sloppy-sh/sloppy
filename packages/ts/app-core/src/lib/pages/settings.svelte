@@ -14,7 +14,7 @@
 	import Palette from '@lucide/svelte/icons/palette';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import UserRound from '@lucide/svelte/icons/user-round';
-	import { SCREEN_LEAST, SCREEN_MOST } from '@sloppy/types';
+	import { type Effect, SCREEN_LEAST, SCREEN_MOST } from '@sloppy/types';
 	import { ChoicePill, DESK_FROM_PX, DeskNavParts, PersonChip, scrollFade } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
@@ -60,6 +60,19 @@
 	/** The smallest a screen is offered at: a texture drawn at nothing is not a
 	 *  screen turned off, it is one that has stopped being drawn. */
 	const SMALLEST_SCREEN = 0.25;
+
+	const screens = $derived(prefs.current.effects);
+
+	/** Plain clears them; any other screen goes on or off on its own. */
+	function wearScreen(effect: Effect): void {
+		if (effect === 'none') prefs.set('effects', []);
+		else if (screens.includes(effect))
+			prefs.set(
+				'effects',
+				screens.filter((one) => one !== effect)
+			);
+		else prefs.set('effects', [...screens, effect]);
+	}
 
 	let leaving = $state(false);
 	let showingHistory = $state(false);
@@ -315,18 +328,20 @@
 							{#each EFFECTS as effect (effect)}
 								<!-- The screen over the pill rather than over the page: the same
 								     rules reach both, so there is one copy of what each is and the
-								     texture is shown at a size somebody can read. -->
+								     texture is shown at a size somebody can read. A pill wears the
+								     one screen it names, whatever the page is wearing. -->
 								<ChoicePill
 									group="effect"
 									value={effect}
 									label={EFFECT_LABELS[effect]}
-									checked={prefs.current.effect === effect}
+									together={effect !== 'none'}
+									checked={effect === 'none' ? screens.length === 0 : screens.includes(effect)}
 									data-screen={effect === 'none' ? undefined : effect}
-									onpick={() => prefs.set('effect', effect)}
+									onpick={() => wearScreen(effect)}
 								/>
 							{/each}
 						</div>
-						{#if prefs.current.effect !== 'none'}
+						{#if screens.length > 0}
 							<div class="space-y-4 pt-1">
 								<div class="space-y-2">
 									<Label for="screen-strength" class="text-sm font-normal text-muted-foreground">

@@ -5,7 +5,7 @@
      data-look     → every colour there is    (paper | graphite | light | dark | contrast, or a look carried as data)
      data-style    → how surfaces are DRAWN   (hardline | bevel | terminal | pixel); structural, never colour
      data-density  → how close it is drawn    (compact); absent is comfortable
-     data-effect   → what the screen is like  (crt); a texture over the page, absent is plain
+     data-effect   → what the screen is like  (grain crt); textures over the page, absent is plain
 
    The fifth axis carries no attribute: the three faces are the tokens below,
    written over :root by the prefs store, because a family a look asks for by

@@ -256,10 +256,28 @@ describe('the saved look', () => {
 	it('leaves data-effect absent for a plain screen, because absent IS plain', () => {
 		prefs.init();
 		expect(document.documentElement.hasAttribute('data-effect')).toBe(false);
-		prefs.set('effect', 'crt');
+		prefs.set('effects', ['crt']);
 		expect(document.documentElement.getAttribute('data-effect')).toBe('crt');
-		prefs.set('effect', 'none');
+		prefs.set('effects', []);
 		expect(document.documentElement.hasAttribute('data-effect')).toBe(false);
+	});
+
+	// Several screens are drawn at once, and the page says so the same way on
+	// every device: the order the stylesheet draws them in, never the order
+	// somebody happened to tap them.
+	it('stamps every screen on at once, in the one order', () => {
+		prefs.init();
+		prefs.set('effects', ['crt', 'grain', 'crt']);
+		expect(document.documentElement.getAttribute('data-effect')).toBe('grain crt');
+		expect(prefs.current.effects).toEqual(['grain', 'crt']);
+	});
+
+	// The one screen an earlier build kept is the screen this one opens on.
+	it('wears the screen an earlier build saved', () => {
+		localStorage.setItem('sloppy_prefs', JSON.stringify({ effect: 'hatch' }));
+		prefs.init();
+		expect(prefs.current.effects).toEqual(['hatch']);
+		expect(document.documentElement.getAttribute('data-effect')).toBe('hatch');
 	});
 
 	it('writes how much of the screen there is, and where it reaches', () => {
@@ -284,6 +302,9 @@ describe('the saved look', () => {
 			[{ look: 'dark', style: 'hardline' }, null],
 			[{ look: 'contrast', style: 'default', density: 'compact' }, null],
 			[{ style: 'bevel', effect: 'crt' }, null],
+			[{ effects: ['crt', 'grain'] }, null],
+			[{ effects: ['grain', 'nothing of the sort'] }, null],
+			[{ effects: 'hatch' }, null],
 			// How much of a screen there is, as the reader left it — and a number
 			// nobody could have meant, which both painters draw at rest instead.
 			[{ effect: 'grain', screen: { strength: 2.4, scale: 0.5, edges: true } }, null],
@@ -379,6 +400,7 @@ describe('the saved look', () => {
 				theme: 'neon',
 				style: 'sketch',
 				effect: 'neon',
+				effects: ['neon', 7],
 				screen: { strength: 9, scale: 'big', edges: 'yes' },
 				ownLook: 'Not An Id',
 				fonts: { ui: 'a face; position: fixed', heading: 7 },
@@ -402,7 +424,7 @@ describe('the saved look', () => {
 			lookName: null,
 			ownLook: null,
 			style: 'default',
-			effect: 'none',
+			effects: [],
 			screen: { strength: 1, scale: 1, edges: false },
 			fonts: { ui: 'system', heading: 'system', mono: 'system' },
 			css: '',
