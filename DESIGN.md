@@ -207,10 +207,15 @@ unaffordable. The style changes the chrome around the graph and nothing inside i
 
 ### The effect axis (`data-effect`) — what the screen is like
 
-`data-effect="crt"` draws the page as though it were on a tube: scanlines and a soft
-vignette over everything, a faint phosphor glow on text. Absent is plain, the same
-convention the style and font axes keep. Three rules, and each is a way an effect ships
-broken:
+`data-effect` draws a texture over the whole page. Absent is plain, the same convention
+the style and face axes keep; the rest are five, each one thing and not a setting with
+knobs: **Grain**, paper rather than glass — noise at a size no letterform is, laid as a
+mask so the ink under it is the look's own; **Dots**, a halftone the page is printed
+through; **Hatch**, two rules crossing the way a pen shades; **Glow**, the edges falling
+away and a little light on the ink, which is the half of a tube that is restful to read
+in; and **CRT**, that glow with scanlines and a flicker over it. They share one block —
+everything but the texture itself is the same — so a sixth is a texture and nothing else.
+Four rules, and each is a way an effect ships broken:
 
 - **An effect is a texture, never a colour and never a shape.** It mixes from
   `--foreground` toward transparent, exactly as a style derives `--border`, so it composes
@@ -218,7 +223,8 @@ broken:
 - **Nothing a pointer can land on.** The overlay is `pointer-events: none` on a
   pseudo-element; an effect that eats a tap has eaten the product.
 - **No animation under `prefers-reduced-motion`.** A flicker is the one part of a tube
-  nobody can opt out of by looking away, so it is the first part to go.
+  nobody can opt out of by looking away, so it is the first part to go. Only CRT moves at
+  all; `effects.test.ts` holds every screen that declares motion to a twin that stops it.
 - **An effect is held to no contrast floor, and is bounded instead.** It is a texture
   somebody turned on over a page that is already measured, so the floor stays the page's;
   what the sheet promises is how little it may take — never more than 14% of the ink

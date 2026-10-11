@@ -19,7 +19,14 @@ export const DENSITIES = ["auto", "comfortable", "compact"] as const;
 export type Density = (typeof DENSITIES)[number];
 
 /** What the screen itself is drawn like over everything else. */
-export const EFFECTS = ["none", "crt"] as const;
+export const EFFECTS = [
+  "none",
+  "grain",
+  "dots",
+  "hatch",
+  "glow",
+  "crt",
+] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 /** A look's id: one of Sloppy's own, or a scheme's slug in the collection.

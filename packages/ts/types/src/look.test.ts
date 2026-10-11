@@ -84,7 +84,7 @@ describe("a look somebody was sent", () => {
     for (const effect of EFFECTS) expect(look({ effect }).success).toBe(true);
     expect(look({ style: "sketch" }).success).toBe(false);
     expect(look({ density: "roomy" }).success).toBe(false);
-    expect(look({ effect: "glow" }).success).toBe(false);
+    expect(look({ effect: "neon" }).success).toBe(false);
   });
 
   // A look names a family this build does not ship — that is how it asks for

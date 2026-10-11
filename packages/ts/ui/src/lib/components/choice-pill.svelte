@@ -10,7 +10,8 @@
 		checked = false,
 		disabled = false,
 		onpick,
-		class: className
+		class: className,
+		style
 	}: {
 		/** The choices this one stands among; every pill in a set shares it. */
 		group: string;
@@ -21,6 +22,9 @@
 		disabled?: boolean;
 		onpick: () => void;
 		class?: string;
+		/** Drawn on the label itself, for a choice that is best read as what it
+		 *  names — a face in the face it is. */
+		style?: string;
 	} = $props();
 </script>
 
@@ -35,6 +39,7 @@
 		class="peer sr-only"
 	/>
 	<span
+		{style}
 		class="inline-flex h-control items-center rounded-md border border-border bg-card px-4 text-sm text-muted-foreground transition-colors duration-150 ease-out peer-checked:border-primary peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background motion-reduce:transition-none"
 	>
 		{label}

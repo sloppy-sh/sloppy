@@ -1,18 +1,71 @@
 /* The effect axis — DESIGN.md § "The effect axis". A texture over the page: no
    colour of its own, no shape, and nothing a pointer can land on. */
 
-/* Over every dock and every sheet — a dock filling the page stacks to 61, `side-dock.svelte` — because a
-   screen is in front of what is on it.
+/* Over every dock and every sheet — a dock filling the page stacks to 61,
+   `side-dock.svelte` — because a screen is in front of what is on it.
 
-   No blend mode: the texture is mixed from the theme's own ink, so compositing
-   it straight darkens a light theme and lightens a dark one — the one thing
-   that reads on every theme and every scheme. */
-:root[data-effect='crt'] body::after {
+   One block for every screen, because what they share is everything but the
+   texture itself. No blend mode: a texture mixed from the theme's own ink
+   composites straight, darkening a light theme and lightening a dark one,
+   which is the one thing that reads on every look. */
+:root[data-effect] body::after {
 	content: '';
 	position: fixed;
 	inset: 0;
 	z-index: 100;
 	pointer-events: none;
+}
+
+/* Paper rather than glass: noise at a size no letterform is, so it reads as
+   grain on the page instead of as a pattern over it. The picture carries no
+   colour — it is a mask, and the ink underneath is the theme's. */
+:root[data-effect='grain'] body::after {
+	background-color: color-mix(in oklab, var(--foreground) 7%, transparent);
+	-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	-webkit-mask-size: 180px 180px;
+	mask-size: 180px 180px;
+}
+
+/* A halftone the page is printed through. */
+:root[data-effect='dots'] body::after {
+	background-image: radial-gradient(
+		color-mix(in oklab, var(--foreground) 12%, transparent) 0.5px,
+		transparent 0.6px
+	);
+	background-size: 5px 5px;
+}
+
+/* Two rules crossing, the way a pen shades. */
+:root[data-effect='hatch'] body::after {
+	background-image:
+		repeating-linear-gradient(
+			45deg,
+			color-mix(in oklab, var(--foreground) 8%, transparent) 0 1px,
+			transparent 1px 7px
+		),
+		repeating-linear-gradient(
+			-45deg,
+			color-mix(in oklab, var(--foreground) 8%, transparent) 0 1px,
+			transparent 1px 7px
+		);
+}
+
+/* A lit screen with none of the tube: the edges fall away and the ink carries
+   a little light, which is the half of CRT that is restful to read in. */
+:root[data-effect='glow'] body::after {
+	background: radial-gradient(
+		ellipse 100% 100% at center,
+		transparent 60%,
+		color-mix(in oklab, var(--foreground) 10%, transparent) 100%
+	);
+}
+
+:root[data-effect='glow'] body {
+	text-shadow: 0 0 2px color-mix(in oklab, var(--foreground) 14%, transparent);
+}
+
+:root[data-effect='crt'] body::after {
 	background:
 		repeating-linear-gradient(
 			to bottom,

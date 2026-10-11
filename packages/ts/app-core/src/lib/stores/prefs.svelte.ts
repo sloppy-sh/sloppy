@@ -199,6 +199,10 @@ export const STYLE_LABELS: Record<Style, string> = {
 };
 export const EFFECT_LABELS: Record<Effect, string> = {
 	none: 'Plain',
+	grain: 'Grain',
+	dots: 'Dots',
+	hatch: 'Hatch',
+	glow: 'Glow',
 	crt: 'CRT'
 };
 export const FACE_LABELS: Record<Face, string> = {
@@ -273,7 +277,7 @@ function quoted(family: string): string {
  * machine has it, and the role's own stack stands behind it so a look asking
  * for a face this build does not ship still reads — DESIGN.md § Typography.
  */
-function faceStack(role: FaceRole, face: string): string | null {
+export function faceStack(role: FaceRole, face: string): string | null {
 	// Asked again here rather than on the way in alone: this is the one place a
 	// name reaches a declaration, and a look applied to the standing prefs has
 	// not been through `init()`.

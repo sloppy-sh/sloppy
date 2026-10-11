@@ -11,6 +11,7 @@
 		FACE_ROLES,
 		FACES,
 		type FaceRole,
+		faceStack,
 		namesAFace,
 		prefs
 	} from '../stores/prefs.svelte.js';
@@ -86,6 +87,14 @@
 		wear(role, asked);
 	}
 
+	/** A face reads best as itself, so each name is drawn in the face it names.
+	 *  `system` is drawn in whatever the role already has, which is what
+	 *  Default means. */
+	function drawnIn(role: FaceRole, face: string): string | undefined {
+		const stack = faceStack(role, face);
+		return stack === null ? undefined : `font-family: ${stack}`;
+	}
+
 	/** Back to the face that is kept: the family, where the role stands on one,
 	 *  and otherwise out of the field and on to the face it had. */
 	function letItBe(role: FaceRole): void {
@@ -107,6 +116,7 @@
 						value={face}
 						label={FACE_LABELS[face]}
 						checked={picked(role) === face}
+						style={drawnIn(role, face)}
 						onpick={() => wear(role, face)}
 					/>
 				{/each}
@@ -115,6 +125,7 @@
 					value={THEIR_OWN}
 					label={named ?? 'Something else…'}
 					checked={picked(role) === THEIR_OWN}
+					style={named === null ? undefined : drawnIn(role, named)}
 					onpick={() => nameOne(role)}
 				/>
 			</div>

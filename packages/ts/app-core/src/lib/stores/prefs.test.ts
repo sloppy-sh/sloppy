@@ -352,7 +352,7 @@ describe('the saved look', () => {
 				look: 'Not An Id!',
 				theme: 'neon',
 				style: 'sketch',
-				effect: 'glow',
+				effect: 'neon',
 				ownLook: 'Not An Id',
 				fonts: { ui: 'a face; position: fixed', heading: 7 },
 				css: 'x'.repeat(65_537),
