@@ -3,10 +3,11 @@
 // here is what the scene ASKED to have drawn — the figure itself is a GPU fact
 // and `bench/` is where it is looked at.
 
-import type { NodeView, OwnedRef, Tag } from "@sloppy/types";
+import type { DidSyr, NodeView, OwnedRef, Tag } from "@sloppy/types";
+import { MARK_SCALE_MAX } from "@sloppy/types";
 import { describe, expect, it, vi } from "vitest";
 import { DRAWN_SETS_MOST, type DrawnNode } from "./contract.js";
-import { buildModel } from "./model.js";
+import { buildModel, LEAF_RADIUS, MAX_RADIUS } from "./model.js";
 import { buildPalette } from "./palette.js";
 import {
   FakeApplication,
@@ -33,8 +34,11 @@ const tokens = {
 };
 const palette = buildPalette(tokens, 0, TAGS.length);
 
+const refOf = (serial: number): OwnedRef =>
+  `${OWNER}/${serial.toString(36).padStart(26, "0")}` as OwnedRef;
+
 function drawn(serial: number, tags: Tag[]): DrawnNode {
-  const ref = `${OWNER}/${serial.toString(36).padStart(26, "0")}` as OwnedRef;
+  const ref = refOf(serial);
   return {
     node: {
       ref,
@@ -332,5 +336,121 @@ describe("the drawn sets as places on the paper", () => {
     expect(regions.rects).toEqual([]);
     expect(words(app)).not.toContain(TAGS[0]);
     scene.destroy();
+  });
+});
+
+// DESIGN.md § "Sets — the tags as places": a fold over a region is not a note
+// and no surface treats it as one. The note whose ref names the mark is picked
+// by where it sorts in the region, so anything of that note the fold wore would
+// be the graph saying something about hundreds of notes that is true of one.
+describe("the fold over a crowded region", () => {
+  const PEER = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
+  /** The note sorting first in the region of `TAGS[0]`, and the one sorting
+   *  first outside every region. */
+  const NAMING = 10;
+  const NAMING_THE_REST = 0;
+
+  /** The same field, with the two notes a fold would name dressed in everything
+   *  a mark carries of its author, and the graph's own word over them. */
+  const dressed: DrawnNode[] = field.map((entry) =>
+    entry.node.ref === refOf(NAMING)
+      ? {
+          ...entry,
+          node: {
+            ...entry.node,
+            created_by: PEER,
+            published: true,
+            appearance: {
+              ring_weight: "heavy",
+              ring_style: "dashed",
+              mark_radius: "giant",
+              preview: "upload-1",
+            },
+          } as NodeView,
+        }
+      : entry.node.ref === refOf(NAMING_THE_REST)
+        ? { ...entry, node: { ...entry.node, depth: 5 } as NodeView }
+        : entry,
+  );
+
+  /** `most` is what crowds the regions: 2 leaves no region room for its four. */
+  function model(entries: readonly DrawnNode[], most: number) {
+    return buildModel(entries, {
+      arrangement: "sets",
+      sets: packSets({
+        notes: entries.map((entry) => ({
+          ref: entry.node.ref,
+          graph: OWNER as OwnedRef,
+          tags: entry.tags,
+          created_at: entry.node.created_at,
+        })),
+        fields: [],
+        selection: TAGS,
+        spacing: SETS_STEP,
+        most,
+        gutter: 900,
+      }),
+      selection: TAGS,
+      palette,
+      viewer: OWNER as DidSyr,
+      codeMoved: new Set([refOf(NAMING)]),
+    });
+  }
+
+  /** The mark standing for one region, which where it folded is its fold. */
+  function markIn(built: ReturnType<typeof model>, region: number) {
+    const ref = built.order.find(
+      (one) => built.sets?.standing.get(one)?.region === region,
+    );
+    expect(ref).toBeDefined();
+    return built.graph.getNodeAttributes(ref as OwnedRef);
+  }
+
+  it("carries every channel the note it names set while it stands alone", () => {
+    const mark = markIn(model(dressed, 400), 0b01);
+
+    expect(mark.folded).toBe(0);
+    expect(mark.provenance).toBe("pulled");
+    expect(mark.ringWeight).toBe("heavy");
+    expect(mark.ringStyle).toBe("dashed");
+    expect(mark.preview.pictures).toEqual(["upload-1"]);
+    expect(mark.codeMoved).toBe(true);
+    expect(mark.radius).toBe(LEAF_RADIUS * MARK_SCALE_MAX);
+  });
+
+  it("wears none of them once it answers for the whole region", () => {
+    const fold = markIn(model(dressed, 2), 0b01);
+
+    expect(fold.folded).toBe(4);
+    expect(fold.provenance).toBe("own");
+    expect(fold.ringWeight).toBe("none");
+    expect(fold.preview.pictures).toEqual([]);
+    expect(fold.codeMoved).toBe(false);
+    expect(fold.title).toBe("");
+    expect(fold.address).toBeUndefined();
+  });
+
+  // The count is what a fold says, so a size that also said whose note sorted
+  // first would stop the size being readable as the count.
+  it("is sized by its count alone, whatever the note it names is sized at", () => {
+    const built = model(dressed, 2);
+    const dressedFold = markIn(built, 0b01);
+    const plainFold = markIn(built, 0b10);
+
+    expect(dressedFold.folded).toBe(plainFold.folded);
+    expect(dressedFold.radius).toBe(plainFold.radius);
+    expect(dressedFold.radius).toBeLessThan(MAX_RADIUS);
+  });
+
+  // The rest stands in no region, so no selected tag answers for its fold and
+  // the fill falls to the ramp — which is a fact about the ramp, not about
+  // whichever note the region happens to name.
+  it("draws the rest at no generation of one note's", () => {
+    const fold = markIn(model(dressed, 2), 0);
+
+    expect(fold.tag).toBeUndefined();
+    expect(fold.depth).toBe(1);
+    expect(fold.fill).toBe(palette.depth(1));
+    expect(fold.fill).not.toBe(palette.depth(5));
   });
 });

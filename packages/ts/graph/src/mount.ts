@@ -48,6 +48,7 @@ import {
   retagInto,
   type SetsDrawn,
   setsDropAt,
+  type SetsPacking,
   setsSpacing,
   setsSpacingTier,
 } from "./sets/pack.js";
@@ -458,7 +459,7 @@ export function mountGraph(
       budget,
     };
     scene.setPicking(props.picking ?? null);
-    scene.setChosen(props.chosen ?? null);
+    scene.setChosen(orbited(props.chosen, packing));
     scene.setReading(
       props.reading ? drawnReading(nodes, lod.collapsed, props.reading) : null,
     );
@@ -1065,6 +1066,25 @@ function sameFields(
 function asked(props: GraphSurfaceProps): boolean {
   if (comparingStates(props.difference)) return false;
   return props.picking !== undefined || props.chosen !== undefined;
+}
+
+/**
+ * The marks an orbit is drawn around. A chosen note standing inside a region's
+ * fold is as much in the set as one with a mark of its own — the drag already
+ * moves it — so the fold is orbited for any note standing there rather than
+ * only for the one whose ref names the mark.
+ */
+function orbited(
+  chosen: ReadonlySet<OwnedRef> | undefined,
+  packing: SetsPacking | undefined,
+): ReadonlySet<string> | null {
+  if (chosen === undefined) return null;
+  if (packing === undefined) return chosen;
+  const orbits = new Set<string>(chosen);
+  for (const mark of packing.marks) {
+    if (mark.holds.some((ref) => chosen.has(ref))) orbits.add(mark.ref);
+  }
+  return orbits;
 }
 
 /** Where a mark is on the screen, so a preview can be placed against the mark

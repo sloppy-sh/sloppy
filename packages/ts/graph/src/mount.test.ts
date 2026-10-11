@@ -2285,6 +2285,30 @@ describe("the sets reading", () => {
     expect([onOwn?.region, asked.at(-1)?.region]).toEqual([false, false]);
   });
 
+  // A fold stands for everyone standing there, so the orbit on it is the
+  // region's: any note the fold holds draws it, not only the one whose ref
+  // names the mark.
+  it("orbits a fold where a note standing inside it is chosen", async () => {
+    const sets = await inSets();
+    zoomedOutOfRoom(sets);
+    const model = sets.model();
+    const folds = [...(model.sets?.folds ?? [])];
+    const drawn = new Set(model.order);
+    const hidden = corpus.nodes.find(
+      (node) => !drawn.has(node.ref),
+    ) as NodeView;
+    expect(hidden, "nothing stands inside a fold to be chosen").toBeTruthy();
+
+    sets.handle.update({ ...sets.props, chosen: new Set([hidden.ref]) });
+    const orbited = folds.filter((ref) => sets.scene.chosen?.has(ref) ?? false);
+
+    expect(orbited).toHaveLength(1);
+    expect(orbited[0]).not.toBe(hidden.ref);
+
+    sets.handle.update({ ...sets.props, chosen: new Set<OwnedRef>() });
+    expect([...(sets.scene.chosen ?? [])]).toEqual([]);
+  });
+
   it("leaves out the one already standing where the set was dropped", async () => {
     const first = await inSets();
     const held = standingIn(first.model(), 1);

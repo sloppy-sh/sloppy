@@ -2129,9 +2129,12 @@ What a person does:
   subtree's notes are spread across the regions, so there is nothing in this reading to
   gather.
 - **A fold over a region is not a note, and no surface treats it as one.** It stands for
-  everyone standing there, so nothing writes one note's words on it — a pointer at rest on it
-  previews nothing, and a press offers the acts the canvas offers anywhere. The tap that
-  brings the canvas to the region is what a reader does with it.
+  everyone standing there, so nothing of one note is on it: no words — a pointer at rest on it
+  previews nothing and a press offers the acts the canvas offers anywhere — and nothing of a
+  note's own drawing either. It wears no author's ring, picture or size, says nothing about
+  whose it is or whether the code under it moved, and the count alone is what sizes it, so two
+  regions holding the same number draw the same. It is orbited where any note standing there
+  is chosen. The tap that brings the canvas to the region is what a reader does with it.
 - **Moving a note between sets is retagging, and it reaches every surface a tag reaches.** The
   press menu on a mark carries one row per drawn set — "Into biology" where the note is outside
   it, "Out of biology" where it is inside — and the bar over a chosen set carries the same rows

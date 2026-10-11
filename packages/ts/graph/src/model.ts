@@ -412,7 +412,37 @@ interface MarkPlace {
   /** False recedes the mark — DESIGN.md § Hue, which is why it never leaves. */
   answering: boolean;
   difference?: DifferenceMark;
+  /** A mark standing for a whole region rather than for a note. Its ref is a
+   *  note's so the mark can be found again, and {@link NO_NOTE} is what it
+   *  draws of that note. */
+  forRegion?: boolean;
 }
+
+/** What the note a mark stands for says about how the mark is drawn. */
+interface NoteSays {
+  look: ResolvedAppearance;
+  address: Address | undefined;
+  depth: number;
+  title: string;
+  provenance: Provenance;
+  codeMoved: boolean;
+}
+
+/**
+ * What a fold over a region says, which is nothing: it stands for every note
+ * there rather than for one of them — DESIGN.md § "Sets — the tags as places".
+ * So it is drawn plain, at the size its count alone asks for, and its
+ * generation is the ramp's first step, where the palette itself lands a mark no
+ * selected tag answers for.
+ */
+const NO_NOTE: NoteSays = {
+  look: UNSTYLED,
+  address: undefined,
+  depth: 1,
+  title: "",
+  provenance: "own",
+  codeMoved: false,
+};
 
 /** One mark, as both readings draw it: everything but where it stands. */
 function addMark(
@@ -427,11 +457,22 @@ function addMark(
   const slot = tag === undefined ? undefined : hues.slots.get(tag);
   // A mega-node wears the look of the note it IS, never an average of the
   // looks it folded — DESIGN.md § "The mark".
-  const look =
-    node.appearance == null ? UNSTYLED : resolveAppearance(node.appearance);
+  const says: NoteSays = place.forRegion
+    ? NO_NOTE
+    : {
+        look:
+          node.appearance == null
+            ? UNSTYLED
+            : resolveAppearance(node.appearance),
+        address: node.address,
+        depth: node.depth,
+        title: node.title,
+        provenance: provenanceOf(node, options.viewer),
+        codeMoved: options.codeMoved?.has(node.ref) ?? false,
+      };
   const fill =
     slot === undefined
-      ? options.palette.depth(node.depth)
+      ? options.palette.depth(says.depth)
       : options.palette.tag(slot);
   // A note that went is a band around nothing: there is no mark inside it to
   // carry a look or a picture — DESIGN.md § "A difference between two states".
@@ -440,22 +481,22 @@ function addMark(
   graph.addNode(node.ref, {
     index: place.index,
     ref: node.ref,
-    ...(node.address === undefined ? {} : { address: node.address }),
-    depth: node.depth,
-    title: node.title,
+    ...(says.address === undefined ? {} : { address: says.address }),
+    depth: says.depth,
+    title: says.title,
     collapsed: entry.collapsed,
     folded: entry.folded,
-    radius: radiusFor(entry, look),
-    provenance: provenanceOf(node, options.viewer),
+    radius: radiusFor(entry, says.look),
+    provenance: says.provenance,
     children: 0,
     tags: entry.tags,
     tag,
-    ringWeight: gone ? "none" : look.ringWeight,
-    ringStyle: look.ringStyle,
+    ringWeight: gone ? "none" : says.look.ringWeight,
+    ringStyle: says.look.ringStyle,
     // A note that went is a band around nothing, so there is no rim to mark.
-    codeMoved: !gone && (options.codeMoved?.has(node.ref) ?? false),
-    preview: gone ? { ...look.preview, pictures: [] } : look.preview,
-    previewCover: look.previewCover,
+    codeMoved: !gone && says.codeMoved,
+    preview: gone ? { ...says.look.preview, pictures: [] } : says.look.preview,
+    previewCover: says.look.previewCover,
     ...(place.difference === undefined ? {} : { difference: place.difference }),
     fill,
     alpha: place.answering ? 1 : options.palette.unselectedAlpha(fill),
@@ -490,17 +531,17 @@ function buildSetsModel(
   });
 
   standing.forEach(({ mark, entry }, index) => {
-    const stands: DrawnNode =
-      mark.holds.length === 0
-        ? entry
-        : {
-            node: withoutWords(entry.node),
-            collapsed: true,
-            // The mark answers for the region rather than standing as one of
-            // its notes, so what it counts is every note standing there.
-            folded: mark.holds.length + 1,
-            tags: regionTags(mark.holds, byRef, entry.tags),
-          };
+    const forRegion = mark.holds.length > 0;
+    const stands: DrawnNode = forRegion
+      ? {
+          node: entry.node,
+          collapsed: true,
+          // The mark answers for the region rather than standing as one of its
+          // notes, so what it counts is every note standing there.
+          folded: mark.holds.length + 1,
+          tags: regionTags(mark.holds, byRef, entry.tags),
+        }
+      : entry;
     const at = { x: mark.x, y: mark.y };
     addMark(graph, stands, hues, options, {
       index,
@@ -510,6 +551,7 @@ function buildSetsModel(
       // A mark outside every drawn set is what the reader did not ask about,
       // and recedes — the dim "the rest" is drawn in.
       answering: mark.region !== 0,
+      forRegion,
     });
   });
 
@@ -523,14 +565,6 @@ function buildSetsModel(
     difference: { arrived: [], gone: [] },
     sets: packing.drawn,
   };
-}
-
-/** A region's fold is not a note — it answers for every note standing in that
- *  region — so what it says is the count and the tags of the region, and no
- *  note's own address or title. */
-function withoutWords(node: NodeView): NodeView {
-  const { address, ...rest } = node;
-  return { ...rest, title: "" };
 }
 
 /** Every tag a region's fold answers for: its own mark's and those of the notes
