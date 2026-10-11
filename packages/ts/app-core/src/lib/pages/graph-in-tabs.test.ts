@@ -193,6 +193,24 @@ function walking(): boolean {
 	return found.getAttribute('aria-pressed') === 'true';
 }
 
+/** The reading the switch says is up — the one segment pressed. */
+function seenAs(): string {
+	const pressed = [...document.body.querySelectorAll<HTMLElement>('[role="group"] button')].find(
+		(one) => one.getAttribute('aria-pressed') === 'true'
+	);
+	if (!pressed) throw new Error('There is nowhere to choose how the notes are seen');
+	return pressed.getAttribute('aria-label') ?? '';
+}
+
+async function seeAs(label: string): Promise<void> {
+	const found = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+		(one) => one.getAttribute('aria-label') === label
+	);
+	if (!found) throw new Error(`The notes cannot be seen as "${label}" from here`);
+	found.click();
+	await settle();
+}
+
 async function openGraphs(): Promise<void> {
 	const found = [...document.body.querySelectorAll('button')].find(
 		(one) => one.getAttribute('aria-label') === 'Your graphs'
@@ -277,6 +295,16 @@ describe('leaving the folder in front of the reader', () => {
 		});
 	});
 
+	it('keeps the sets where that is how the notes were being seen', async () => {
+		await serving(THESIS);
+		await openGraph();
+		await seeAs('Sets');
+
+		await switchTo(GARDEN);
+
+		expect(prefs.view(THESIS)?.seenAs).toBe('sets');
+	});
+
 	it('keeps nothing of a folder taken off the reading surface', async () => {
 		await serving(THESIS);
 		await openGraph();
@@ -352,6 +380,20 @@ describe('arriving at a folder that was read here before', () => {
 		await switchTo(GARDEN);
 
 		expect(walking()).toBe(true);
+	});
+
+	it('draws the sets where that is how they were being seen', async () => {
+		await serving(GARDEN);
+		await openGraph();
+		const left: FolderView = { ...asLeft(), seenAs: 'sets' };
+		await serving(THESIS);
+		await openGraph();
+		prefs.setView(GARDEN, left);
+		expect(seenAs()).toBe('Graph');
+
+		await switchTo(GARDEN);
+
+		expect(seenAs()).toBe('Sets');
 	});
 
 	// There and back again: what the page puts its own sets and its own router

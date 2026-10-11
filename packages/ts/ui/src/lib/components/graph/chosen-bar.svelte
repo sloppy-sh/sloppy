@@ -10,6 +10,7 @@
 	let {
 		count,
 		says = null,
+		sets = [],
 		onTags,
 		onLook,
 		onPublish,
@@ -20,6 +21,10 @@
 		/** What the last act left to say — why it did not land, or what it did not
 		 *  reach where the rest of it did. In the caller's words. */
 		says?: string | null;
+		/** A move the chosen notes can make into or out of each set the canvas is
+		 *  drawing — DESIGN.md § "Sets — the tags as places". Empty wherever the
+		 *  canvas draws none. */
+		sets?: readonly { label: string; onSelect: () => void }[];
 		onTags: () => void;
 		onLook: () => void;
 		onPublish?: (() => void) | undefined;
@@ -81,6 +86,20 @@
 
 		{#if says}
 			<p class="px-2 pb-2 text-sm text-destructive" role="alert">{says}</p>
+		{/if}
+
+		{#if count > 0 && sets.length > 0}
+			<div class="flex flex-wrap gap-1 px-2 pb-2">
+				{#each sets as set (set.label)}
+					<Button
+						variant="outline"
+						class="h-9 shrink-0 rounded-full text-sm"
+						onclick={set.onSelect}
+					>
+						{set.label}
+					</Button>
+				{/each}
+			</div>
 		{/if}
 
 		{#if count > 0}

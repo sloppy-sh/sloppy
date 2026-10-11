@@ -219,6 +219,14 @@ function menu(on: string): HTMLButtonElement {
 	return found;
 }
 
+function labelled(label: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].find(
+		(one) => one.getAttribute('aria-label') === label
+	);
+	if (!found) throw new Error(`Nothing on screen is labelled "${label}"`);
+	return found as HTMLButtonElement;
+}
+
 function item(label: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
 		(row) => row.textContent?.trim() === label
@@ -305,6 +313,49 @@ describe('two states of the graph, set against each other', () => {
 		await settle();
 
 		expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(0);
+	});
+
+	// DESIGN.md § "Sets — the tags as places": a difference draws where the notes
+	// were and the sets draw where their tags put them, so the sets are not a
+	// canvas a comparison is offered on. The words are still read on the surface.
+	it('draws nothing on the canvas while the notes are being seen as sets', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		mounted = mount(Graph, { target });
+		await settle();
+		labelled('Sets').click();
+		await settle();
+		await openMore();
+		item('History').click();
+		await settle();
+
+		await pick('From', 'A first version');
+		control('Show what changed').click();
+		await settle();
+
+		expect(screen()).not.toContain('What changed ·');
+		expect(
+			document.body.querySelectorAll('[aria-label="The graph"] [data-difference]')
+		).toHaveLength(0);
+	});
+
+	it('is put away when the reader goes on to see the notes as sets', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		mounted = mount(Graph, { target });
+		await settle();
+		await openMore();
+		item('History').click();
+		await settle();
+		await pick('From', 'A first version');
+		control('Show what changed').click();
+		await settle();
+		expect(screen()).toContain('What changed ·');
+
+		labelled('Sets').click();
+		await settle();
+
+		expect(screen()).not.toContain('What changed ·');
 	});
 
 	it('teaches the four things the marks and the lines mean, and stops when the comparison does', async () => {

@@ -8,6 +8,7 @@
 	// in for the pixels.
 	import {
 		differenceMarks,
+		DRAWN_SETS_MOST,
 		type GraphHandle,
 		type GraphSurfaceProps,
 		type GraphTransform
@@ -27,9 +28,11 @@
 
 	let {
 		handle = $bindable(),
+		arrangement,
 		nodes,
 		codeMoved,
 		difference,
+		selection,
 		wallpaper,
 		picking,
 		chosen,
@@ -40,16 +43,27 @@
 		onChoose,
 		onChooseWithin,
 		onMenu,
+		onRetag,
 		onInkPointer
 	}: GraphSurfaceProps & { handle?: GraphHandle } = $props();
 
 	handle = canvas;
 
 	const marks = $derived(differenceMarks(difference));
+
+	/** The sets a drop could land in, read the way the real surface reads them. */
+	const drawn = $derived(arrangement === 'sets' ? selection.slice(0, DRAWN_SETS_MOST) : []);
+
+	/** A drop in the first drawn set and outside every other one, which is the
+	 *  shape of every drop: the place's membership among the drawn tags. */
+	function dropped(notes: readonly string[]): void {
+		onRetag?.({ notes, into: drawn.slice(0, 1), outOf: drawn.slice(1) });
+	}
 </script>
 
 <ul
 	aria-label="The graph"
+	data-arrangement={arrangement ?? 'genealogy'}
 	data-focus={focus}
 	data-choosing={chosen ? 'yes' : undefined}
 	data-wallpaper={wallpaper?.picture ?? ''}
@@ -84,6 +98,9 @@
 			<button type="button" data-expand={note.address} onclick={() => onExpand(note.ref)}>
 				open what is under {note.address}
 			</button>
+			<button type="button" data-drop={note.address} onclick={() => dropped([note.ref])}>
+				drop {note.address} in the first set
+			</button>
 			<button
 				type="button"
 				data-menu={note.address}
@@ -100,6 +117,9 @@
 			onclick={() => onMenu?.({ clientX: 0, clientY: 0, ref: null, foldable: false })}
 		>
 			menu on the canvas
+		</button>
+		<button type="button" data-drop-chosen onclick={() => dropped([...(chosen ?? [])])}>
+			drop the picked notes in the first set
 		</button>
 		<button
 			type="button"

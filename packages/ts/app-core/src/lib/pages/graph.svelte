@@ -23,6 +23,7 @@
 
 	// The home surface: the whole graph, the tags it is lit by, and the note that
 	// opens beside it. DESIGN.md § Layout — the graph is the page.
+	import Blend from '@lucide/svelte/icons/blend';
 	import Check from '@lucide/svelte/icons/check';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -53,11 +54,13 @@
 	import {
 		comparingStates,
 		DEFAULT_BUDGET,
+		DRAWN_SETS_MOST,
 		type GraphDifference,
 		type GraphHandle,
 		type GraphHoverAt,
 		type GraphMenuAt,
 		type GraphPictures,
+		type GraphRetag,
 		type GraphTransform
 	} from '@sloppy/graph';
 	import {
@@ -130,7 +133,7 @@
 	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
-	import { onMount, tick, untrack } from 'svelte';
+	import { type Component, onMount, tick, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -138,6 +141,7 @@
 	import EdgeSheet from '../components/edge-sheet.svelte';
 	import OpenHere from '../components/open-here.svelte';
 	import PersonSurface from '../components/person-surface.svelte';
+	import SetsChrome from '../components/sets-chrome.svelte';
 	import { api } from '../api.js';
 	import { looksOnCanvas } from '../edge-look.js';
 	import { graphHere } from '../graph-here.svelte.js';
@@ -162,7 +166,7 @@
 	import HistoryColumn from '../components/history-column.svelte';
 	import { savesWhileWriting } from '../stores/autosave.svelte.js';
 	import { acts, type Act } from '../stores/acts.svelte.js';
-	import { prefs } from '../stores/prefs.svelte.js';
+	import { prefs, type SeenAs } from '../stores/prefs.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { refusal, serverMessage } from '../stores/errors.js';
@@ -758,6 +762,20 @@
 	 *  DESIGN.md § Persistence. */
 	const seenAs = $derived(prefs.current.seenAs);
 	const walking = $derived(seenAs === 'outline');
+	const inSets = $derived(seenAs === 'sets');
+
+	/** The selected tags the canvas draws as places, in selection order. The rest
+	 *  colour their marks and draw nothing — DESIGN.md § "Sets — the tags as
+	 *  places". */
+	const drawnSets = $derived(inSets ? selection.slice(0, DRAWN_SETS_MOST) : []);
+
+	// The sets draw where a note's tags put it and a difference draws where the
+	// note was, so one mark cannot answer both — DESIGN.md § "Sets — the tags as
+	// places". Entering the sets puts a comparison away, from whichever surface
+	// set one up.
+	$effect(() => {
+		if (inSets && comparing !== null) comparing = null;
+	});
 
 	/** Pointing a link at a note is a question put to the canvas, so the canvas
 	 *  comes back for as long as it is being asked. */
@@ -1426,11 +1444,83 @@
 	 * caller cannot tell a dropped act from a done one.
 	 */
 	async function actOnThem(act: NodeBulkAct): Promise<void> {
-		const asked = [...acted];
+		await actOnThese(acted, act);
+	}
+
+	async function actOnThese(notes: readonly OwnedRef[], act: NodeBulkAct): Promise<void> {
+		const asked = [...notes];
 		if (asked.length === 0) return;
 		const mine = acting.then(() => runAct(asked, act));
 		acting = mine.catch(() => {});
 		await mine;
+	}
+
+	/**
+	 * A move between the sets the canvas draws — DESIGN.md § "Sets — the tags as
+	 * places". `into` and `outOf` name drawn tags only, so whatever else a note
+	 * carries is left where it is.
+	 */
+	async function moveBetweenSets({ notes, into, outOf }: GraphRetag): Promise<void> {
+		const asked = notes.filter((ref) => nodes.get(ref) !== undefined);
+		if (asked.length === 0 || (into.length === 0 && outOf.length === 0)) return;
+		forgetLastAct();
+		const full = noRoomFor(asked);
+		if (full) {
+			moveRefused(full);
+			return;
+		}
+		if (asked.length === 1) {
+			await moveOneBetweenSets(asked[0], into, outOf);
+			return;
+		}
+		// Two acts, because one bulk act either adds tags or takes them away.
+		const moves: NodeBulkAct[] = [
+			...(into.length > 0 ? [{ act: 'tag' as const, tags: [...into] }] : []),
+			...(outOf.length > 0 ? [{ act: 'untag' as const, tags: [...outOf] }] : [])
+		];
+		for (const move of moves) {
+			try {
+				await actOnThese(asked, move);
+			} catch {
+				moveRefused(actRefused ?? 'Sloppy could not change those notes. Try again in a moment.');
+				return;
+			}
+		}
+	}
+
+	async function moveOneBetweenSets(
+		ref: OwnedRef,
+		into: readonly TagName[],
+		outOf: readonly TagName[]
+	): Promise<void> {
+		const note = nodes.get(ref);
+		if (!note) return;
+		const carrying = [
+			...note.tags.filter((tag) => !outOf.includes(tag)),
+			...into.filter((tag) => !note.tags.includes(tag))
+		];
+		try {
+			await graphHistory.lineToWriteOn();
+			await nodes.update(ref, { tags: carrying });
+			void tags.reload(graphOf(note)).catch(() => {});
+		} catch (error) {
+			moveRefused(
+				serverMessage(error) ?? 'Sloppy could not change that note. Try again in a moment.'
+			);
+		}
+	}
+
+	/** Said in the bar over the chosen set where one is up, and beside the graph
+	 *  where the mark's own menu did the asking. */
+	function moveRefused(says: string): void {
+		if (choosing) actRefused = says;
+		else refused = says;
+	}
+
+	/** The three tags most of the notes on the canvas carry, which is where the
+	 *  sets start from nothing — `railTags` is already in that order. */
+	function startWithTheMostUsed(): void {
+		tags.select(railTags.slice(0, 3).map((one) => one.tag as TagName));
 	}
 
 	async function runAct(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
@@ -1585,6 +1675,28 @@
 		return items;
 	});
 
+	/**
+	 * One row per drawn set: the move those notes can make into it, or out of it
+	 * where every one of them is already inside. Empty wherever the canvas draws
+	 * no sets, so it adds nothing in the other readings.
+	 */
+	function setMoves(notes: readonly OwnedRef[]): CanvasMenuItem[] {
+		const held = notes.map((ref) => nodes.get(ref)).filter((note) => note !== undefined);
+		return drawnSets.map((tag) => {
+			const inside = held.length > 0 && held.every((note) => note.tags.includes(tag));
+			return {
+				label: `${inside ? 'Out of' : 'Into'} ${tag}`,
+				icon: inside ? Minus : Plus,
+				onSelect: () =>
+					void moveBetweenSets({
+						notes,
+						into: inside ? [] : [tag],
+						outOf: inside ? [tag] : []
+					})
+			};
+		});
+	}
+
 	/** Kept short: the menu has a phone to fit on, beside the note it is about. */
 	function actsOnOne(on: OwnedRef, foldable: boolean): CanvasMenuItem[] {
 		const items: CanvasMenuItem[] = [
@@ -1602,6 +1714,7 @@
 				onSelect: () => writeUnder(on)
 			},
 			{ label: 'Tags', icon: Tag, onSelect: () => openTags(on) },
+			...setMoves([on]),
 			{ label: 'Give it a look', icon: CircleDashed, onSelect: () => openLook(on) }
 		);
 		if (foldable) {
@@ -2005,6 +2118,14 @@
 			run: () => prefs.set('seenAs', 'outline')
 		},
 		{
+			id: 'the-sets',
+			label: 'See the notes as sets',
+			icon: Blend,
+			group: 'Look',
+			where: ['palette', 'menu'],
+			run: () => prefs.set('seenAs', 'sets')
+		},
+		{
 			id: 'choose-notes',
 			label: 'Choose notes',
 			icon: ListChecks,
@@ -2318,51 +2439,42 @@
 	}}
 />
 
-<!-- Which of the two ways the notes are seen: one control, kept with the graph's
-     name in both, so a person in either finds it where they left it — DESIGN.md
-     § Layout. Out of the chrome while a set is being chosen: the bar over that
-     set acts on notes the outline does not mark. -->
+<!-- Which of the three ways the notes are seen: one control, kept with the
+     graph's name in all of them, so a person in any of them finds it where they
+     left it — DESIGN.md § Layout. The outline alone goes out of the chrome while
+     a set is being chosen, because the bar over that set acts on notes the tree
+     does not mark; the canvas does, in either of its readings. -->
+{#snippet viewChoice(as: SeenAs, label: string, Icon: Component, wide: boolean)}
+	{@const here = seenAs === as}
+	<button
+		type="button"
+		aria-label={label}
+		aria-pressed={here}
+		title={wide ? undefined : label}
+		onclick={() => prefs.set('seenAs', as)}
+		class="flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {wide
+			? 'flex-1 px-3'
+			: 'px-2'} {here ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+	>
+		<Icon class="size-4" />
+		{#if wide}<span>{label}</span>{/if}
+	</button>
+{/snippet}
+
 {#snippet viewSwitch(wide: boolean, stacked: boolean)}
-	{#if !choosing}
-		<div
-			role="group"
-			aria-label="See the notes as"
-			class="flex shrink-0 items-center rounded-full border border-input p-0.5 {stacked
-				? 'flex-col'
-				: ''}"
-		>
-			<button
-				type="button"
-				aria-label="Graph"
-				aria-pressed={!walking}
-				title={wide ? undefined : 'Graph'}
-				onclick={() => prefs.set('seenAs', 'graph')}
-				class="flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {wide
-					? 'flex-1 px-3'
-					: 'px-2'} {walking
-					? 'text-muted-foreground hover:text-foreground'
-					: 'bg-muted text-foreground'}"
-			>
-				<Network class="size-4" />
-				{#if wide}<span>Graph</span>{/if}
-			</button>
-			<button
-				type="button"
-				aria-label="Outline"
-				aria-pressed={walking}
-				title={wide ? undefined : 'Outline'}
-				onclick={() => prefs.set('seenAs', 'outline')}
-				class="flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {wide
-					? 'flex-1 px-3'
-					: 'px-2'} {walking
-					? 'bg-muted text-foreground'
-					: 'text-muted-foreground hover:text-foreground'}"
-			>
-				<ListTree class="size-4" />
-				{#if wide}<span>Outline</span>{/if}
-			</button>
-		</div>
-	{/if}
+	<div
+		role="group"
+		aria-label="See the notes as"
+		class="flex shrink-0 items-center rounded-full border border-input p-0.5 {stacked
+			? 'flex-col'
+			: ''}"
+	>
+		{@render viewChoice('graph', 'Graph', Network, wide)}
+		{#if !choosing}
+			{@render viewChoice('outline', 'Outline', ListTree, wide)}
+		{/if}
+		{@render viewChoice('sets', 'Sets', Blend, wide)}
+	</div>
 {/snippet}
 
 <!-- Only where there is something to take back: a pen is how a drawing starts,
@@ -2431,6 +2543,7 @@
 			<div class="absolute inset-0" class:invisible={walkingNow} inert={walkingNow}>
 				<GraphSurface
 					bind:handle={canvas}
+					arrangement={inSets ? 'sets' : 'genealogy'}
 					inset={{ top: `${canvasTop}px`, bottom: 'var(--sysnav-clearance)' }}
 					nodes={visible}
 					{collapsed}
@@ -2466,6 +2579,9 @@
 					onChoose={pointing || foreign || notNow ? undefined : chooseAlso}
 					onChooseWithin={pointing || foreign || notNow ? undefined : chooseWithin}
 					onMenu={pointing || foreign || notNow ? undefined : (at) => (menuAt = at)}
+					onRetag={pointing || foreign || notNow
+						? undefined
+						: (retag) => void moveBetweenSets(retag)}
 					onEdge={pointing || foreign || notNow ? undefined : setLookOn}
 					onOpenNode={notNow
 						? (ref) => (bringingTo = ref)
@@ -2619,6 +2735,12 @@
 					/>
 				</div>
 			</div>
+		{/if}
+		{#if inSets && !pointing}
+			<SetsChrome
+				selected={selection.length}
+				onStart={railTags.length > 0 ? startWithTheMostUsed : undefined}
+			/>
 		{/if}
 		<DeskNavParts>
 			{#snippet head({ collapsed }: { collapsed: boolean })}
@@ -3062,6 +3184,7 @@
 		<ChosenBar
 			count={picked.size}
 			says={actRefused ?? actMissed}
+			sets={setMoves([...picked])}
 			onTags={() => openTags(null)}
 			onLook={() => openLook(null)}
 			onPublish={session.onDevice ? undefined : openPublish}
@@ -3167,18 +3290,20 @@
 		comparing = null;
 		asWas = version;
 	}}
-	onShowDifference={(shown) => {
-		stopActing();
-		asWas = shown?.later ?? null;
-		comparing =
-			shown === null || !comparingStates(shown.difference)
-				? null
-				: {
-						says: shown.says,
-						difference: shown.difference,
-						inWords: () => (showingHistory = true)
-					};
-	}}
+	onShowDifference={inSets
+		? undefined
+		: (shown) => {
+				stopActing();
+				asWas = shown?.later ?? null;
+				comparing =
+					shown === null || !comparingStates(shown.difference)
+						? null
+						: {
+								says: shown.says,
+								difference: shown.difference,
+								inWords: () => (showingHistory = true)
+							};
+			}}
 />
 
 <BinSheet
