@@ -7,7 +7,13 @@ import type { Address, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { DRAWN_SETS_MOST, drawnSetsOf } from "../contract.js";
 import { makeCorpus, mulberry32 } from "../corpus.test-support.js";
-import { lensArea, regionAt, setsFigure } from "./geometry.js";
+import {
+  boxGap,
+  lensArea,
+  nameRoom,
+  regionAt,
+  setsFigure,
+} from "./geometry.js";
 import {
   askOf,
   latticeIn,
@@ -66,6 +72,16 @@ function field(
 }
 
 const setsIn = (mask: number) => mask.toString(2).replace(/0/g, "").length;
+
+/** The edge of the widest mark a lattice point stands the centre of: a disc
+ *  crossing a hairline reads as standing in two sets at once. */
+const RIM = Array.from({ length: 64 }, (_unused, step) => {
+  const turn = (step / 64) * Math.PI * 2;
+  return {
+    x: (Math.cos(turn) * SETS_STEP) / 2,
+    y: (Math.sin(turn) * SETS_STEP) / 2,
+  };
+});
 
 function shuffled<T>(items: readonly T[], seed: number): T[] {
   const random = mulberry32(seed);
@@ -200,16 +216,9 @@ describe("the lattice a region is packed on", () => {
     // A disc crossing a hairline reads as standing in two sets at once, so the
     // WHOLE mark is inside its region and not only its centre.
     it(`keeps every whole mark of ${count} inside its own region`, () => {
-      const rim = Array.from({ length: 64 }, (_unused, step) => {
-        const turn = (step / 64) * Math.PI * 2;
-        return {
-          x: (Math.cos(turn) * SETS_STEP) / 2,
-          y: (Math.sin(turn) * SETS_STEP) / 2,
-        };
-      });
       for (const region of diagram.regions) {
         for (const at of latticeIn(region, diagram, SETS_STEP, 24)) {
-          for (const edge of rim) {
+          for (const edge of RIM) {
             expect(
               regionAt(diagram.shapes, {
                 x: at.x + edge.x,
@@ -217,6 +226,22 @@ describe("the lattice a region is packed on", () => {
               }),
               `region ${region.id.toString(2)}`,
             ).toBe(region.id);
+          }
+        }
+      }
+    });
+
+    // A name is written inside its own outline, where the lattice would
+    // otherwise pack: a mark standing under one hides the word that says which
+    // place this is.
+    it(`keeps every mark of ${count} clear of every name`, () => {
+      for (const region of diagram.regions) {
+        for (const at of latticeIn(region, diagram, SETS_STEP, 24)) {
+          for (const shape of diagram.shapes) {
+            expect(
+              boxGap(nameRoom(shape), at),
+              `region ${region.id.toString(2)}`,
+            ).toBeGreaterThanOrEqual(SETS_STEP / 2);
           }
         }
       }
@@ -404,6 +429,64 @@ describe("packing a field", () => {
         regionCapacity(region, SETS_STEP * 8),
       );
     }
+  });
+
+  // A fold answers for a whole region, so it stands where a mark stands: the
+  // nearest place in the region with room for a whole one. A crescent's deepest
+  // point is on the far side of its own set, which is where that set's name is
+  // written, so a fold placed there is a fold under the name.
+  it("stands a fold where a whole mark has room", () => {
+    const pair = TAGS.slice(0, 2);
+    const crowd = [
+      ...Array.from({ length: 10 }, (_unused, at) =>
+        note(at, [pair[0]], HOME, `1a${at + 1}`),
+      ),
+      ...Array.from({ length: 10 }, (_unused, at) =>
+        note(100 + at, [pair[1]], HOME, `1b${at + 1}`),
+      ),
+      ...Array.from({ length: 10 }, (_unused, at) =>
+        note(200 + at, pair, HOME, `1c${at + 1}`),
+      ),
+    ];
+    const { marks, drawn } = packSets({
+      notes: crowd,
+      fields: [],
+      selection: pair,
+      spacing: SETS_STEP,
+      most: 4,
+      gutter: 900,
+    });
+    const diagram = setsFigure(askOf(crowd, drawn.tags));
+    const { dx, dy } = drawn.fields[0];
+    const crescent = diagram.regions.find(
+      (at) => at.id === 0b01,
+    ) as (typeof diagram.regions)[number];
+    expect(boxGap(nameRoom(diagram.shapes[0]), crescent.centre)).toBeLessThan(
+      SETS_STEP / 2,
+    );
+
+    let held = 0;
+    for (const mark of marks) {
+      if (mark.holds.length === 0) continue;
+      const region = diagram.regions.find(
+        (at) => at.id === mark.region,
+      ) as (typeof diagram.regions)[number];
+      held += 1;
+      const at = { x: mark.x - dx, y: mark.y - dy };
+      for (const edge of RIM) {
+        expect(
+          regionAt(diagram.shapes, { x: at.x + edge.x, y: at.y + edge.y }),
+          `region ${region.id.toString(2)}`,
+        ).toBe(region.id);
+      }
+      for (const shape of diagram.shapes) {
+        expect(
+          boxGap(nameRoom(shape), at),
+          `region ${region.id.toString(2)}`,
+        ).toBeGreaterThanOrEqual(SETS_STEP / 2);
+      }
+    }
+    expect(held).toBe(3);
   });
 
   it("holds the whole canvas under the count it was given", () => {
@@ -768,6 +851,27 @@ describe("the corpus the reading is measured on", () => {
     }
   });
 
+  it("stands no mark of it under a set's name", () => {
+    for (const selection of asked) {
+      const { marks, drawn } = packed(notes, selection);
+      const diagram = setsFigure(askOf(notes, drawn.tags));
+      const { dx, dy } = drawn.fields[0];
+      for (const mark of marks) {
+        const region = diagram.regions.find(
+          (at) => at.id === mark.region,
+        ) as (typeof diagram.regions)[number];
+        if (latticeIn(region, diagram, SETS_STEP, 1).length === 0) continue;
+        const at = { x: mark.x - dx, y: mark.y - dy };
+        for (const shape of diagram.shapes) {
+          expect(
+            boxGap(nameRoom(shape), at),
+            `${mark.ref} in ${region.id.toString(2)}`,
+          ).toBeGreaterThanOrEqual(SETS_STEP / 2);
+        }
+      }
+    }
+  });
+
   it("stands every note inside the first of its own drawn sets", () => {
     for (const selection of asked) {
       const { marks, drawn } = packed(notes, selection);
@@ -860,6 +964,50 @@ describe("the corpus the reading is measured on", () => {
 // Each field draws the drawn tags its OWN notes carry: the rail's legend is the
 // canvas's, and a circle with nothing in it would say this graph holds a tag it
 // does not.
+// The drawn tags are the canvas's, so a graph whose own tags are not among them
+// draws no circle. Its notes are still its notes: each one stands outside, as
+// every note carrying none of the drawn tags does.
+describe("a graph the canvas draws no set of", () => {
+  const pool = Array.from(
+    { length: DRAWN_SETS_MOST },
+    (_unused, at) => `tag${at}` as Tag,
+  );
+  const here = Array.from({ length: 80 }, (_unused, at) =>
+    note(at, [pool[at % pool.length]], HOME, `1a${at + 1}`),
+  );
+  const elsewhere = "elsewhere" as Tag;
+  const there = Array.from({ length: 6 }, (_unused, at) => ({
+    ...note(at, [elsewhere], AWAY, `1b${at + 1}`),
+    ref: `${AWAY}/${at.toString(36).padStart(26, "0")}` as OwnedRef,
+  }));
+  const both = () =>
+    packSets({
+      notes: [...here, ...there],
+      fields: [HOME, AWAY],
+      selection: [],
+      spacing: SETS_STEP,
+      most: 4000,
+      gutter: 900,
+    });
+
+  it("draws the canvas's tags, and no circle in the graph carrying none", () => {
+    const { drawn } = both();
+    expect(drawn.tags).toEqual(pool);
+    expect(drawn.fields[1].sets).toEqual([]);
+  });
+
+  it("stands each of its notes outside, rather than folding them into one", () => {
+    const { marks, drawn } = both();
+    const its = marks.filter((mark) => mark.field === 1);
+    expect(its).toHaveLength(there.length);
+    for (const mark of its) {
+      expect(mark.region).toBe(0);
+      expect(mark.holds).toEqual([]);
+    }
+    expect(drawn.folds.size).toBe(0);
+  });
+});
+
 describe("two graphs carrying different tags", () => {
   const here = TAGS[0];
   const there = TAGS[1];

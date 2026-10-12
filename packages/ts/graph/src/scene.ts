@@ -50,7 +50,14 @@ import {
   type NamedField,
 } from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
-import { shapeBounds, shapeOutline } from "./sets/geometry.js";
+import {
+  nameRoom,
+  SETS_NAME_CHARS,
+  SETS_NAME_GAP,
+  SETS_NAME_SIZE,
+  shapeBounds,
+  shapeOutline,
+} from "./sets/geometry.js";
 import type { SetsDrawn, SetsStanding } from "./sets/pack.js";
 import { pictureStep, shownAt, TURN_MS } from "./turn.js";
 import {
@@ -159,14 +166,6 @@ const FIELD_NAME_GAP = 10;
  *  edge, under the lightest line a pair of notes is joined by. */
 const SETS_EDGE = 1;
 const SETS_EDGE_INK = 0.7;
-/** A set's name, written just inside its own outline, in the ink a caption
- *  takes: it is the one thing on the canvas saying in words which place is
- *  which tag. */
-const SETS_NAME_SIZE = 13;
-const SETS_NAME_CHARS = 24;
-/** What a name held against an edge — its own set's, or the screen's — keeps
- *  clear of it. */
-const SETS_NAME_GAP = 8;
 /** How many of those names this scene keeps: every set of every field. */
 const MAX_SETS_NAMES = DRAWN_SETS_MOST * MAX_FIELDS;
 
@@ -2117,17 +2116,34 @@ export class GraphScene {
         entry.set.nameAt.x + entry.field.dx,
         entry.set.nameAt.y + entry.field.dy,
       );
-      const edgeX = text.width / 2 + SETS_NAME_GAP;
-      const edgeY = SETS_NAME_SIZE / 2 + SETS_NAME_GAP;
+      // The room kept clear for this name is where it belongs; the set's own
+      // box is where it goes when a reader has zoomed past that room.
+      const room = nameRoom(entry.set.shape);
+      const roomFrom = this.viewport.toScreen(
+        room.minX + entry.field.dx,
+        room.minY + entry.field.dy,
+      );
+      const roomTo = this.viewport.toScreen(
+        room.maxX + entry.field.dx,
+        room.maxY + entry.field.dy,
+      );
+      const kept =
+        Math.min(roomTo.x, this.width) - Math.max(roomFrom.x, 0) >=
+          text.width &&
+        Math.min(roomTo.y, this.height) - Math.max(roomFrom.y, 0) >=
+          SETS_NAME_SIZE;
+      const hold = kept ? { from: roomFrom, to: roomTo } : { from, to };
+      const edgeX = text.width / 2 + (kept ? 0 : SETS_NAME_GAP);
+      const edgeY = SETS_NAME_SIZE / 2 + (kept ? 0 : SETS_NAME_GAP);
       const x = within(
         where.x,
-        Math.max(from.x, 0) + edgeX,
-        Math.min(to.x, this.width) - edgeX,
+        Math.max(hold.from.x, 0) + edgeX,
+        Math.min(hold.to.x, this.width) - edgeX,
       );
       const y = within(
         where.y,
-        Math.max(from.y, 0) + edgeY,
-        Math.min(to.y, this.height) - edgeY,
+        Math.max(hold.from.y, 0) + edgeY,
+        Math.min(hold.to.y, this.height) - edgeY,
       );
       text.position.set(x, y);
       text.tint = this.options.palette.ink;

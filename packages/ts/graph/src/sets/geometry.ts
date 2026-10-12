@@ -50,6 +50,24 @@ const GRID = 320;
 /** How far inside a set's outline its name is written, in world units. */
 const NAME_INSET = 26;
 
+/** A set's name as `scene.ts` writes it: the size in CSS pixels, the most
+ *  letters of a tag it writes, and what it keeps clear of an edge. */
+export const SETS_NAME_SIZE = 13;
+export const SETS_NAME_CHARS = 24;
+export const SETS_NAME_GAP = 8;
+
+/** What one letter of the UI face takes at {@link SETS_NAME_SIZE}, near enough
+ *  to keep room by. */
+const NAME_LETTER = 7;
+
+/**
+ * A name is written in screen pixels and its room is kept in world units, which
+ * are the same length at the zoom a figure is framed at; a reader who has zoomed
+ * far out of that reads a name wider than the room kept for it.
+ */
+const NAME_HALF_WIDTH = (SETS_NAME_CHARS * NAME_LETTER) / 2 + SETS_NAME_GAP;
+const NAME_HALF_HEIGHT = SETS_NAME_SIZE / 2 + SETS_NAME_GAP;
+
 /** Directions a candidate placement is tried in round an already-placed set. */
 const FIT_TURNS = 72;
 
@@ -249,6 +267,26 @@ export function namePoint(shape: SetsShape): Point {
     x: shape.cx + reach * Math.cos(shape.nameAt),
     y: shape.cy + reach * Math.sin(shape.nameAt),
   };
+}
+
+/** The room one set's name takes round {@link namePoint}, in figure
+ *  coordinates: what the lattice packs no mark into, and what the name is held
+ *  inside while any of it is on screen. */
+export function nameRoom(shape: SetsShape): Bounds {
+  const at = namePoint(shape);
+  return {
+    minX: at.x - NAME_HALF_WIDTH,
+    maxX: at.x + NAME_HALF_WIDTH,
+    minY: at.y - NAME_HALF_HEIGHT,
+    maxY: at.y + NAME_HALF_HEIGHT,
+  };
+}
+
+/** How far a point stands from a box, 0 inside it. */
+export function boxGap(box: Bounds, at: Point): number {
+  const dx = Math.max(box.minX - at.x, 0, at.x - box.maxX);
+  const dy = Math.max(box.minY - at.y, 0, at.y - box.maxY);
+  return Math.hypot(dx, dy);
 }
 
 /** The box one disc fills, in figure coordinates — what holds a set's name
