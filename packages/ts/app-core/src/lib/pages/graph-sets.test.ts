@@ -214,6 +214,12 @@ const menuRows = () =>
 		(row.textContent ?? '').replace(/\s+/g, ' ').trim()
 	);
 
+/** The same rows where the bar over a chosen set carries them, in its order. */
+const barMoves = () =>
+	[...document.body.querySelectorAll<HTMLButtonElement>('button')]
+		.map((one) => (one.textContent ?? '').replace(/\s+/g, ' ').trim())
+		.filter((words) => words.startsWith('Into ') || words.startsWith('Out of '));
+
 async function openMenu(on: string): Promise<void> {
 	document.body.querySelector<HTMLButtonElement>(`[data-menu="${on}"]`)?.click();
 	await settle();
@@ -496,6 +502,17 @@ describe('moving notes between the sets', () => {
 		await openMenu('1');
 
 		expect(moves()).toEqual(['Into later', 'Into claim', 'Out of biology', 'Into hunch']);
+		// The sets past the four are reached where every tag is reached.
+		expect(menuRows()).toContain('Tags');
+	});
+
+	it('carries those same four in the bar over a chosen set', async () => {
+		carrying(THIRD, ...MANY);
+		await inSets(['later', 'claim']);
+		await choose('1', '2');
+
+		expect(barMoves()).toEqual(['Into later', 'Into claim', 'Into biology', 'Into hunch']);
+		expect(says('Tags')).toBeDefined();
 	});
 
 	it('offers that menu the way in where the note is outside the set', async () => {

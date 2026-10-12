@@ -2201,19 +2201,22 @@ What a person does:
 - **Moving a note between sets is retagging, and it reaches every surface a tag reaches.** The
   press menu on a mark carries a row for each of the first four drawn sets — "Into biology"
   where the note is outside it, "Out of biology" where it is inside, the selected sets leading
-  — and the bar over a chosen set carries the same rows for everything chosen. Four, because a
-  menu is read on a phone beside the note it is about, and the Tags row beneath it reaches every
-  tag there is. **On a desk the mouse drags a mark into a region and drops it**, and a
-  mark that is part of the chosen set takes the set with it. A drop gives those notes the sets
-  of the place they landed, among the drawn tags alone: into every drawn tag the point is
-  inside, out of every drawn tag it is not, and a tag that is not drawn is left untouched. A
+  — and the bar over a chosen set carries the same four for everything chosen. Four, because a
+  menu is read on a phone beside the note it is about, and the Tags row standing with them
+  reaches every tag there is, drawn or not. **On a desk the mouse drags a mark into a region
+  and drops it**, and a mark that is part of the chosen set takes the set with it. A drop
+  gives those notes the sets of the place they landed, among the drawn tags alone: into every
+  drawn tag the point is inside, out of every drawn tag it is not, and a tag that is not
+  drawn is left untouched. A
   drop outside every region takes the drawn tags off, and **a drop into the region the mark is
   standing in does nothing** — where it stands, which is not always the place its own tags name,
   so letting a mark go where it was picked up is how a drag is called off. While a mark is held,
   the region under the pointer is lit a little more so the drop is legible.
 - **Pen inks and touch pans exactly as they do everywhere else.** A finger retags from the
-  menu, and the drag is the desk's shortcut to an act the menu already carries everywhere
-  (PRODUCT.md principle 6) — never a part one arrangement has and the other lacks.
+  menu — its rows for the sets leading, the Tags row for every other tag the figure draws — so
+  there is no set a drag can move a note into that a finger cannot. The drag is the desk's
+  shortcut to an act the phone carries (PRODUCT.md principle 6), never a part one arrangement
+  has and the other lacks.
 - **The renderer reports the move and the host writes it.** `GraphRetag` names the notes and
   the drawn tags they are moving into and out of; the page that owns the notes saves them the
   way it saves every other change to one. The mark moves on the next layout, and the fold

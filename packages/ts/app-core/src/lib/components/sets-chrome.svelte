@@ -48,7 +48,7 @@
 		class="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-3 sm:px-6"
 	>
 		<div
-			class="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-2xl border bg-card/90 px-3 py-1 shadow-sm backdrop-blur"
+			class="pointer-events-auto max-w-full rounded-2xl border bg-card/90 px-3 py-1 shadow-sm backdrop-blur"
 		>
 			<p class="text-sm text-muted-foreground" role="status">
 				{drawn} of the {word(tags)} tags are drawn. Select tags to choose which.
