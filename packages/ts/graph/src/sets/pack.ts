@@ -19,7 +19,6 @@ import {
   inBox,
   inShape,
   namePoint,
-  regionAt,
   type SetsAsk,
   type SetsRegion,
   SETS_STEP,
@@ -48,6 +47,10 @@ export interface SetsSetDrawn {
   shape: SetsShape;
   tag: Tag;
   slot: TagHueSlot;
+  /** Which of {@link SetsDrawn.tags} this set draws: bit `1 << bit` of every
+   *  region mask. A field draws only the drawn tags its own notes carry, so
+   *  these are a run of the canvas's list rather than all of it. */
+  bit: number;
   /** Where the tag's name is written, in diagram coordinates. */
   nameAt: Point;
 }
@@ -55,7 +58,9 @@ export interface SetsSetDrawn {
 /**
  * One graph's diagram and where it stands on the canvas. The shapes and the
  * regions are in DIAGRAM coordinates — this field's own figure, drawn at the
- * size its count of notes asks for — and `dx`/`dy` is where it sits.
+ * size its count of notes asks for — and `dx`/`dy` is where it sits. Every
+ * region mask is over {@link SetsDrawn.tags}, the canvas's own list, so two
+ * fields drawing different sets still read their regions the same way.
  */
 export interface SetsFieldDrawn {
   ref: OwnedRef;
@@ -77,6 +82,8 @@ export interface SetsDrawn {
    *  canvas whose notes carry no tag at all, where every note stands outside. */
   tags: readonly Tag[];
   fields: readonly SetsFieldDrawn[];
+  /** Where every note stands, the ones behind a fold included: a fold stands
+   *  its whole region, so each of them stands where the fold does. */
   standing: ReadonlyMap<OwnedRef, SetsStanding>;
   /** The marks standing for a whole region rather than for one note, each with
    *  everyone standing in that region — the note whose ref names the mark
@@ -138,52 +145,32 @@ export function membershipOf(
 
 /**
  * Where a membership stands when the figure draws no place for that exact
- * combination of sets: the most of them it does draw a place for, and failing
- * that {@link beside}. Only a note carrying none of the drawn tags stands
- * outside every one of them.
+ * combination of sets: inside its LEADING set — the first of the ones it
+ * carries in drawing order, which is the first the reader selected — in
+ * whichever place of that set holds the most of its others, ties to the lowest
+ * mask. Eight circles cannot cross in every way eight tags do, so the figure
+ * has no place for every combination; what it never does is stand a mark
+ * outside a set it carries while a reader is asking about that set. 0 only for
+ * a note carrying no drawn tag at all, or one whose sets the figure draws no
+ * place in.
  */
 export function regionFor(mask: number, drawn: ReadonlySet<number>): number {
   if (drawn.has(mask)) return mask;
-  let found = 0;
-  let most = -1;
-  for (let part = mask - 1; part > 0; part--) {
-    if ((part & mask) !== part || !drawn.has(part)) continue;
-    const held = setsIn(part);
-    if (held > most) {
-      most = held;
-      found = part;
+  for (let bit = 1; bit <= mask; bit <<= 1) {
+    if ((mask & bit) === 0) continue;
+    let found = 0;
+    let most = -1;
+    for (const place of drawn) {
+      if ((place & bit) === 0) continue;
+      const mine = setsIn(place & mask);
+      if (mine > most || (mine === most && place < found)) {
+        most = mine;
+        found = place;
+      }
     }
+    if (found !== 0) return found;
   }
-  return found === 0 && mask !== 0 ? beside(mask, drawn) : found;
-}
-
-/**
- * Where a note stands whose sets the figure draws no corner of: enough sets at
- * once and a small one is drawn wholly under the others, so no place at all is
- * in it alone. The nearest place there is — in the most of the note's own sets
- * and the fewest besides — puts the mark inside a set it carries and inside one
- * it does not, which is the only choice a covered disc leaves. 0 only where no
- * place holds any of its sets.
- */
-function beside(mask: number, drawn: ReadonlySet<number>): number {
-  let found = 0;
-  let own = 0;
-  let besides = 0;
-  for (const place of drawn) {
-    const mine = setsIn(place & mask);
-    if (mine === 0) continue;
-    const other = setsIn(place & ~mask);
-    const better =
-      found === 0 ||
-      mine > own ||
-      (mine === own &&
-        (other < besides || (other === besides && place < found)));
-    if (!better) continue;
-    found = place;
-    own = mine;
-    besides = other;
-  }
-  return found;
+  return 0;
 }
 
 function setsIn(mask: number): number {
@@ -263,31 +250,45 @@ export function packSets(options: SetsPackOptions): SetsPacking {
   let half = 0;
 
   for (const [at, field] of byField.entries()) {
-    const diagram = setsFigure(askOf(field.notes, tags));
+    // A field draws a circle for a drawn tag its own notes carry and for no
+    // other: a tag that lives in another graph on the canvas is in the rail's
+    // legend, and there is nothing here for it to be a place among.
+    const bits = tags
+      .map((_tag, bit) => bit)
+      .filter((bit) =>
+        field.notes.some((note) => note.tags.includes(tags[bit])),
+      );
+    const own = bits.map((bit) => tags[bit]);
+    const diagram = setsFigure(askOf(field.notes, own));
     const reach = (diagram.box.maxX - diagram.box.minX) / 2;
     if (at > 0) middle += half + options.gutter + reach;
     half = reach;
     const dx = middle - (diagram.box.minX + diagram.box.maxX) / 2;
     const dy = 0;
-    const sets: SetsSetDrawn[] = tags.map((tag, bit) => ({
-      shape: diagram.shapes[bit],
+    const sets: SetsSetDrawn[] = own.map((tag, local) => ({
+      shape: diagram.shapes[local],
       tag,
       slot: slots.get(tag) ?? 1,
-      nameAt: namePoint(diagram.shapes[bit]),
+      bit: bits[local],
+      nameAt: namePoint(diagram.shapes[local]),
     }));
+    const lift = (local: number) => liftMask(local, bits);
     fields.push({
       ref: field.ref,
       dx,
       dy,
       sets,
-      regions: diagram.regions,
+      regions: diagram.regions.map((region) => ({
+        ...region,
+        id: lift(region.id),
+      })),
       box: diagram.box,
     });
 
     const drawnRegions = new Set(diagram.regions.map((region) => region.id));
     const byRegion = new Map<number, SetsNote[]>();
     for (const note of field.notes) {
-      const id = regionFor(membershipOf(note.tags, tags), drawnRegions);
+      const id = regionFor(membershipOf(note.tags, own), drawnRegions);
       const held = byRegion.get(id);
       if (held === undefined) byRegion.set(id, [note]);
       else held.push(note);
@@ -306,7 +307,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
           // With nothing drawn there is no question to stand the notes inside,
           // so they fold into the one mark that says how many there are.
           room:
-            tags.length === 0
+            own.length === 0
               ? 0
               : Math.min(notes.length, regionCapacity(region, options.spacing)),
         };
@@ -318,6 +319,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
 
     for (const [which, crowd] of crowds.entries()) {
       const { region, notes } = crowd;
+      const stands = { field: at, region: lift(region.id) };
       const places =
         allowed[which] < notes.length
           ? []
@@ -329,10 +331,10 @@ export function packSets(options: SetsPackOptions): SetsPacking {
           x: region.centre.x + dx,
           y: region.centre.y + dy,
           field: at,
-          region: region.id,
+          region: stands.region,
           holds: rest.map((note) => note.ref),
         });
-        standing.set(first.ref, { field: at, region: region.id });
+        for (const note of notes) standing.set(note.ref, stands);
         folds.set(
           first.ref,
           notes.map((note) => note.ref),
@@ -345,15 +347,25 @@ export function packSets(options: SetsPackOptions): SetsPacking {
           x: places[standsAt].x + dx,
           y: places[standsAt].y + dy,
           field: at,
-          region: region.id,
+          region: stands.region,
           holds: [],
         });
-        standing.set(note.ref, { field: at, region: region.id });
+        standing.set(note.ref, stands);
       }
     }
   }
 
   return { marks, drawn: { tags, fields, standing, folds } };
+}
+
+/** A mask over the sets one field draws, read as a mask over the canvas's own
+ *  list: `bits[i]` is which drawn tag that field's i-th set draws. */
+function liftMask(local: number, bits: readonly number[]): number {
+  let mask = 0;
+  for (const [at, bit] of bits.entries()) {
+    if ((local & (1 << at)) !== 0) mask |= 1 << bit;
+  }
+  return mask;
 }
 
 /**
@@ -426,20 +438,19 @@ export function setsDropAt(drawn: SetsDrawn, at: Point): SetsStanding | null {
     }
   }
   const field = drawn.fields[found];
-  return {
-    field: found,
-    region: regionAt(
-      field.sets.map((set) => set.shape),
-      { x: at.x - field.dx, y: at.y - field.dy },
-    ),
-  };
+  const where = { x: at.x - field.dx, y: at.y - field.dy };
+  let region = 0;
+  for (const set of field.sets) {
+    if (inShape(set.shape, where)) region |= 1 << set.bit;
+  }
+  return { field: found, region };
 }
 
 /**
  * The move a drop reports, or `null` for one that would change nothing. `into`
  * and `outOf` name the DRAWN tags alone — a tag outside the diagram is untouched
- * by a move inside it — and a note already standing where it was dropped is left
- * out of `notes`.
+ * by a move inside it — and a note dropped where its own mark already stands is
+ * left out of `notes`, which is what makes that drop the way to call one off.
  */
 export function retagInto(
   drawn: SetsDrawn,
@@ -453,10 +464,23 @@ export function retagInto(
     ((region & (1 << bit)) === 0 ? outOf : into).push(tag);
   }
   const moving = notes
-    .filter((note) => membershipOf(note.tags, drawn.tags) !== region)
+    .filter((note) => standsIn(drawn, note) !== region)
     .map((note) => note.ref);
   if (moving.length === 0) return null;
   return { notes: moving, into, outOf };
+}
+
+/**
+ * The region a note's mark stands in: the packing's own answer, which is not
+ * always the one its tags name — the figure has no place for every combination
+ * of eight sets. A note the canvas never stood anywhere is read off its tags.
+ */
+function standsIn(
+  drawn: SetsDrawn,
+  note: Pick<SetsNote, "ref" | "tags">,
+): number {
+  const stands = drawn.standing.get(note.ref);
+  return stands?.region ?? membershipOf(note.tags, drawn.tags);
 }
 
 /** The six steps round a hexagonal ring, in axial coordinates. */

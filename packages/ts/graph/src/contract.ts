@@ -336,9 +336,9 @@ export function drawnSetSlots(
  * reports one and never saves it, the way it owns no other note field.
  *
  * `into` and `outOf` name DRAWN tags only — a tag outside the diagram is
- * untouched by a move inside it — and a note already carrying everything in
- * `into` and nothing in `outOf` is left out, so a drop where a mark already
- * stands reports nothing.
+ * untouched by a move inside it — and a note whose mark is already standing in
+ * the region it was dropped into is left out, so a drop where a mark stands
+ * reports nothing.
  */
 export interface GraphRetag {
   notes: readonly OwnedRef[];

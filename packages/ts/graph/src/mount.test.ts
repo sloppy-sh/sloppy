@@ -2100,6 +2100,14 @@ describe("the sets reading", () => {
     throw new Error("the field never ran out of room");
   };
 
+  /** The places the figure draws, lowest mask first. Eight circles cannot cross
+   *  in every way eight tags do, so one tag's own place is not always among
+   *  them and a drag is sent to a place that is. */
+  const placesDrawn = (model: BuiltModel): number[] =>
+    (model.sets?.fields[0].regions ?? [])
+      .map((region) => region.id)
+      .filter((id) => id !== 0);
+
   /** A fold over one of the DRAWN regions, which is what a tap frames: the
    *  rest is the ground the figure stands on and zooms in instead. */
   const foldOverASet = (model: BuiltModel): OwnedRef => {
@@ -2302,12 +2310,13 @@ describe("the sets reading", () => {
     const sets = await inSets();
     withAFoldedRegion(sets);
     const folded = sets.model();
+    const [to] = placesDrawn(folded);
     const held = standingIn(folded, 0);
     const standing = new Set(folded.order);
     const hidden = corpus.nodes.find(
       (node) =>
         !standing.has(node.ref) &&
-        membershipOf(node.tags as Tag[], drawn) !== 1,
+        folded.sets?.standing.get(node.ref)?.region !== to,
     ) as NodeView;
     expect(hidden, "nothing stands inside a fold to be chosen").toBeTruthy();
 
@@ -2318,11 +2327,11 @@ describe("the sets reading", () => {
     const model = sets.model();
     sets.carry(held, [
       screenOf(sets, pointIn(model, 0)),
-      screenOf(sets, pointIn(model, 1)),
+      screenOf(sets, pointIn(model, to)),
     ]);
 
     expect(sets.retags).toEqual([
-      { notes: [held, hidden.ref], into: into(1), outOf: outOf(1) },
+      { notes: [held, hidden.ref], into: into(to), outOf: outOf(to) },
     ]);
   });
 
@@ -2451,8 +2460,10 @@ describe("the sets reading", () => {
     const model = sets.model();
     const fold = foldOverASet(model);
     const standing = [...sets.scene.positions];
+    const at = model.sets?.standing.get(fold)?.region ?? 0;
+    const elsewhere = placesDrawn(model).find((id) => id !== at) as number;
 
-    sets.carry(fold, [pointIn(model, 1), pointIn(model, 3)]);
+    sets.carry(fold, [pointIn(model, at), pointIn(model, elsewhere)]);
     expect(sets.retags).toEqual([]);
     expect([...sets.scene.positions]).toEqual(standing);
     expect(sets.pins()).toEqual([]);

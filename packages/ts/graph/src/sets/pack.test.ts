@@ -6,8 +6,8 @@
 import type { Address, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { DRAWN_SETS_MOST, drawnSetsOf } from "../contract.js";
-import { mulberry32 } from "../corpus.test-support.js";
-import { regionAt, setsFigure } from "./geometry.js";
+import { makeCorpus, mulberry32 } from "../corpus.test-support.js";
+import { lensArea, regionAt, setsFigure } from "./geometry.js";
 import {
   askOf,
   latticeIn,
@@ -104,25 +104,39 @@ describe("the tags a selection draws", () => {
 });
 
 // Nothing is lost to a combination the figure draws no place for: the note
-// stands in the most of its sets the figure does draw.
+// stands inside the first of its own sets, which is the one a reader asked
+// about first, among the most of its others it can be in there.
 describe("a membership the figure has no place for", () => {
-  it("stands in the most of its sets the figure does draw", () => {
-    const drawn = new Set([0, 0b01, 0b10, 0b100, 0b110]);
+  it("stands inside its leading set, with the most of its others", () => {
+    const drawn = new Set([0, 0b01, 0b10, 0b100, 0b110, 0b101]);
     expect(regionFor(0b110, drawn)).toBe(0b110);
-    expect(regionFor(0b111, drawn)).toBe(0b110);
-    expect(regionFor(0b101, drawn)).toBe(0b100);
+    expect(regionFor(0b111, drawn)).toBe(0b101);
+    expect(regionFor(0b011, drawn)).toBe(0b01);
     expect(regionFor(0b1000, drawn)).toBe(0);
     expect(regionFor(0, drawn)).toBe(0);
   });
 
+  it("breaks a tie between two places of its leading set by the lowest", () => {
+    const drawn = new Set([0, 0b011, 0b101]);
+    expect(regionFor(0b111, drawn)).toBe(0b011);
+  });
+
   // Enough sets at once and a small one is drawn wholly under the others, so no
-  // place at all is in it alone. Its notes stand in the nearest place there is
-  // rather than out on the paper with the notes carrying nothing.
-  it("stands in the nearest place where it draws no corner of them", () => {
+  // place at all is in it alone. Its notes stand in a place of it all the same,
+  // which is inside a set they do not carry as well — and nowhere is what that
+  // is instead of.
+  it("stands inside a leading set the figure draws no corner of", () => {
     const drawn = new Set([0, 0b10, 0b11]);
     expect(regionFor(0b01, drawn)).toBe(0b11);
     expect(regionFor(0b101, drawn)).toBe(0b11);
     expect(regionFor(0b100, drawn)).toBe(0);
+  });
+
+  // Its leading set has nowhere at all, so the next of its own sets answers
+  // rather than the note standing out on the paper carrying a drawn tag.
+  it("falls to the next of its own sets where its leading set has none", () => {
+    const drawn = new Set([0, 0b10]);
+    expect(regionFor(0b11, drawn)).toBe(0b10);
   });
 
   it("stands outside every one of them where the figure draws none", () => {
@@ -646,9 +660,16 @@ describe("where a drop lands", () => {
     }
   });
 
+  /** One of the field's own notes standing in `region`, which is what a drag
+   *  takes hold of. */
+  const standingIn = (drawn: SetsDrawn, region: number) =>
+    notes.find(
+      (one) => drawn.standing.get(one.ref)?.region === region,
+    ) as SetsNote;
+
   it("names the drawn tags of the region and leaves the rest alone", () => {
     const { drawn } = packed(notes, selection);
-    const outside = note(1, [TAGS[4]]);
+    const outside = standingIn(drawn, 0);
 
     expect(retagInto(drawn, [outside], 0b11)).toEqual({
       notes: [outside.ref],
@@ -664,7 +685,7 @@ describe("where a drop lands", () => {
 
   it("says nothing about a note already standing where it was dropped", () => {
     const { drawn } = packed(notes, selection);
-    const already = note(1, [selection[0], TAGS[4]]);
+    const already = standingIn(drawn, 0b01);
     expect(retagInto(drawn, [already], 0b01)).toBeNull();
     expect(retagInto(drawn, [already], 0b11)).toEqual({
       notes: [already.ref],
@@ -675,8 +696,8 @@ describe("where a drop lands", () => {
 
   it("reports only the notes a drop would actually move", () => {
     const { drawn } = packed(notes, selection);
-    const already = note(1, [selection[0]]);
-    const moving = note(2, []);
+    const already = standingIn(drawn, 0b01);
+    const moving = standingIn(drawn, 0);
     expect(retagInto(drawn, [already, moving], 0b01)).toEqual({
       notes: [moving.ref],
       into: [selection[0]],
@@ -684,10 +705,207 @@ describe("where a drop lands", () => {
     });
   });
 
+  // A note the canvas never stood anywhere — one the host is holding that this
+  // packing does not answer for — is read off the tags it carries.
+  it("reads a note the packing never placed off its own tags", () => {
+    const { drawn } = packed(notes, selection);
+    const elsewhere = note(900, [selection[0]], AWAY);
+    expect(drawn.standing.has(elsewhere.ref)).toBe(false);
+    expect(retagInto(drawn, [elsewhere], 0b01)).toBeNull();
+    expect(retagInto(drawn, [elsewhere], 0b10)?.notes).toEqual([elsewhere.ref]);
+  });
+
   it("reports nothing at all where no set is drawn", () => {
     const plain = Array.from({ length: 20 }, (_unused, at) => note(at, []));
     const { drawn } = packed(plain, []);
     expect(drawn.tags).toEqual([]);
     expect(retagInto(drawn, [note(1, [TAGS[0]])], 0)).toBeNull();
+  });
+});
+
+// The figure's two claims about a reader's question, held over the corpus the
+// reading is measured on: a lens says two sets share notes, and a mark inside a
+// circle says the note carries that tag. Eight circles cannot cross in every
+// way eight tags do, so what is held is not that every combination has a place
+// — it is that no mark stands outside a set the reader is asking about.
+describe("the corpus the reading is measured on", () => {
+  const corpus = makeCorpus();
+  const notes: SetsNote[] = corpus.nodes.map((node) => ({
+    ref: node.ref,
+    graph: HOME,
+    tags: node.tags,
+    address: node.address,
+    created_at: node.created_at,
+  }));
+  const asked: Tag[][] = [[], ["claim"], ["settled"], ["seed", "claim"]].map(
+    (one) => one as Tag[],
+  );
+
+  it("draws a lens for every pair of sets that shares a note", () => {
+    for (const selection of asked) {
+      const { drawn } = packed(notes, selection);
+      const field0 = drawn.fields[0];
+      expect(field0.sets).toHaveLength(DRAWN_SETS_MOST);
+      const ask = askOf(notes, drawn.tags);
+      const count = drawn.tags.length;
+      let sharing = 0;
+      for (const a of field0.sets) {
+        for (const b of field0.sets) {
+          if (a.bit >= b.bit) continue;
+          if ((ask.shared[a.bit * count + b.bit] ?? 0) === 0) continue;
+          sharing += 1;
+          expect(
+            lensArea(
+              a.shape.r,
+              b.shape.r,
+              Math.hypot(a.shape.cx - b.shape.cx, a.shape.cy - b.shape.cy),
+            ),
+            `${a.tag} and ${b.tag} of ${selection.join(",") || "nothing"}`,
+          ).toBeGreaterThan(0);
+        }
+      }
+      expect(sharing).toBeGreaterThan(DRAWN_SETS_MOST);
+    }
+  });
+
+  it("stands every note inside the first of its own drawn sets", () => {
+    for (const selection of asked) {
+      const { marks, drawn } = packed(notes, selection);
+      for (const mark of marks) {
+        for (const ref of [mark.ref, ...mark.holds]) {
+          const note = notes.find((one) => one.ref === ref) as SetsNote;
+          const carries = membershipOf(note.tags, drawn.tags);
+          const leading = carries & -carries;
+          expect(
+            mark.region & leading,
+            `${note.address} of ${selection.join(",") || "nothing"}`,
+          ).toBe(leading);
+        }
+      }
+    }
+  });
+
+  // What selecting a tag is FOR: its notes light up, and they light up inside
+  // its own circle rather than somewhere in the figure that says they carry
+  // something else.
+  it("lights the notes of a selected tag inside that tag's own circle", () => {
+    for (const tag of ["claim", "settled", "seed"] as Tag[]) {
+      const { marks, drawn } = packed(notes, [tag]);
+      const bit = 1 << drawn.tags.indexOf(tag);
+      let lit = 0;
+      for (const mark of marks) {
+        for (const ref of [mark.ref, ...mark.holds]) {
+          const note = notes.find((one) => one.ref === ref) as SetsNote;
+          if (!note.tags.includes(tag)) continue;
+          lit += 1;
+          expect(mark.region & bit, `${note.address} of ${tag}`).toBe(bit);
+        }
+      }
+      expect(lit, tag).toBeGreaterThan(100);
+    }
+  });
+
+  // A drop where the mark already stands is how a drag is called off, so it is
+  // read off where the mark IS and not off the tags it carries: the figure has
+  // no place for every combination, and the two are often not the same region.
+  it("says nothing about a mark dropped where it already stands", () => {
+    const { drawn } = packed(notes, ["claim"] as Tag[]);
+    const moved = notes.filter((one) => {
+      const stands = drawn.standing.get(one.ref);
+      return (
+        stands !== undefined &&
+        stands.region !== membershipOf(one.tags, drawn.tags)
+      );
+    });
+    expect(moved.length).toBeGreaterThan(100);
+    for (const one of moved.slice(0, 40)) {
+      const stands = drawn.standing.get(one.ref) as { region: number };
+      expect(
+        retagInto(drawn, [one], stands.region),
+        `${one.address}`,
+      ).toBeNull();
+      const report = retagInto(
+        drawn,
+        [one],
+        membershipOf(one.tags, drawn.tags),
+      );
+      expect(report?.notes, `${one.address}`).toEqual([one.ref]);
+    }
+  });
+
+  // A fold answers for everyone standing in its region, so each of them stands
+  // where it does — a note behind one is not a note the canvas lost.
+  it("stands every note behind a fold where the fold stands", () => {
+    const { marks, drawn } = packSets({
+      notes,
+      fields: [],
+      selection: [],
+      spacing: SETS_STEP * 8,
+      most: 4000,
+      gutter: 900,
+    });
+    const folded = marks.filter((mark) => mark.holds.length > 0);
+    expect(folded.length).toBeGreaterThan(0);
+    for (const mark of folded) {
+      for (const ref of mark.holds) {
+        expect(drawn.standing.get(ref)).toEqual({
+          field: mark.field,
+          region: mark.region,
+        });
+      }
+    }
+  });
+});
+
+// Each field draws the drawn tags its OWN notes carry: the rail's legend is the
+// canvas's, and a circle with nothing in it would say this graph holds a tag it
+// does not.
+describe("two graphs carrying different tags", () => {
+  const here = TAGS[0];
+  const there = TAGS[1];
+  const notes = [
+    ...Array.from({ length: 20 }, (_unused, at) =>
+      note(at, [here], HOME, `1a${at + 1}`),
+    ),
+    ...Array.from({ length: 20 }, (_unused, at) => ({
+      ...note(at, [there], AWAY, `1b${at + 1}`),
+      ref: `${AWAY}/${at.toString(36).padStart(26, "0")}` as OwnedRef,
+    })),
+  ];
+  const both = () =>
+    packSets({
+      notes,
+      fields: [HOME, AWAY],
+      selection: [here, there],
+      spacing: SETS_STEP,
+      most: 4000,
+      gutter: 900,
+    });
+
+  it("draws each field a circle for its own tag alone", () => {
+    const { drawn } = both();
+    expect(drawn.tags).toEqual([here, there]);
+    expect(drawn.fields[0].sets.map((set) => set.tag)).toEqual([here]);
+    expect(drawn.fields[1].sets.map((set) => set.tag)).toEqual([there]);
+    expect(drawn.fields[0].sets[0].bit).toBe(0);
+    expect(drawn.fields[1].sets[0].bit).toBe(1);
+    expect(drawn.fields[0].sets[0].slot).not.toBe(drawn.fields[1].sets[0].slot);
+  });
+
+  // Each circle is as wide as the notes its OWN field holds of that tag, so a
+  // tag the other graph carries nothing of does not shrink it.
+  it("sizes each circle by the notes of its own field", () => {
+    const { drawn } = both();
+    const [here0, there0] = drawn.fields.map((field) => field.sets[0].shape.r);
+    expect(here0).toBeCloseTo(there0, 9);
+  });
+
+  it("stands every mark of a field inside its own field's set", () => {
+    const { marks, drawn } = both();
+    for (const mark of marks) {
+      expect(mark.region).toBe(mark.field === 0 ? 0b01 : 0b10);
+    }
+    expect(new Set(marks.map((mark) => mark.field)).size).toBe(2);
+    expect(drawn.fields[1].dx).toBeGreaterThan(drawn.fields[0].dx);
   });
 });

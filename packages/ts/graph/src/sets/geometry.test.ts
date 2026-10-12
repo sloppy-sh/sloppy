@@ -13,7 +13,6 @@ import {
   regionAt,
   type SetsAsk,
   SETS_NOTE_AREA,
-  SETS_SET_LEAST,
   SETS_STEP,
   setsFigure,
   setsRadii,
@@ -52,46 +51,15 @@ const apart = (ask: SetsAsk) => setsFigure(ask).shapes;
 
 describe("how wide a set is drawn", () => {
   it("gives every note of a figure the same share of the paper", () => {
-    for (const counts of [
-      [1],
-      [3, 5],
-      [1, 40, 137],
-      [12, 300, 600],
-      [0, 7, 7],
-      [300, 0],
-      [300, 40, 0],
-    ]) {
+    for (const counts of [[1], [3, 5], [1, 40, 137], [12, 300, 600]]) {
       const unit = setsUnitArea(counts);
-      const floor = SETS_SET_LEAST / unit;
       for (const [at, r] of setsRadii(counts).entries()) {
         expect((Math.PI * r ** 2) / unit, `${counts} at ${at}`).toBeCloseTo(
-          Math.max(counts[at], floor),
+          counts[at],
           6,
         );
       }
     }
-  });
-
-  // A set a figure draws no note of is the one width that is not a count —
-  // which is why it is the LEAST disc and not the width of whatever the field's
-  // smallest real set came out at. A canvas drawing two graphs asks each field
-  // for every tag either of them carries, so this is the ordinary case.
-  it("draws a set holding nothing the least disc there is", () => {
-    const floor = Math.sqrt(SETS_SET_LEAST / Math.PI);
-    for (const counts of [
-      [300, 0],
-      [300, 40, 0],
-      [0, 0, 120],
-      [0, 0],
-    ]) {
-      for (const [at, r] of setsRadii(counts).entries()) {
-        if (counts[at] > 0) continue;
-        expect(r, `${counts} at ${at}`).toBeCloseTo(floor, 9);
-      }
-    }
-    const [wide, narrow, nothing] = setsRadii([300, 40, 0]);
-    expect(nothing).toBeLessThan(narrow);
-    expect(narrow).toBeLessThan(wide);
   });
 
   // Two counts that came out the same width would draw a containment as one
@@ -299,6 +267,41 @@ describe("what the figure says about the counts", () => {
     ).toBeCloseTo(1, 1);
   });
 
+  // Two circles standing clear of each other say the two sets have nothing in
+  // common, which is the one thing the figure must not say about sets that do
+  // share notes — so that is what the fit spends its budget on first, and the
+  // areas come second. Eight circles cannot cross in every way eight tags do.
+  it("draws a lens for every pair of sets that shares a note", () => {
+    for (const [name, asked] of [
+      ["eight in a chain", chain(DRAWN_SETS_MOST, 40, 9)],
+      ["eight from three pools", pooled([3, 3, 2], 600)],
+      ["eight from two pools", pooled([5, 3], 400)],
+      ["five from two pools", pooled([2, 3], 200)],
+    ] as const) {
+      const shapes = apart(asked);
+      const count = asked.counts.length;
+      let sharing = 0;
+      for (let a = 0; a < count; a++) {
+        for (let b = a + 1; b < count; b++) {
+          if ((asked.shared[a * count + b] ?? 0) === 0) continue;
+          sharing += 1;
+          expect(
+            lensArea(
+              shapes[a].r,
+              shapes[b].r,
+              Math.hypot(
+                shapes[a].cx - shapes[b].cx,
+                shapes[a].cy - shapes[b].cy,
+              ),
+            ),
+            `${a} and ${b} of ${name}`,
+          ).toBeGreaterThan(0);
+        }
+      }
+      expect(sharing, name).toBeGreaterThan(count / 2);
+    }
+  });
+
   it("keeps two sets sharing nothing clear of each other", () => {
     for (const [count, size] of [
       [2, 1],
@@ -383,6 +386,20 @@ describe("the same ask drawn twice", () => {
     }
   });
 });
+
+/** An ask whose tags come in pools of mutually exclusive ones — a note carries
+ *  one tag of each pool — which is the shape a field's own tags come in. */
+function pooled(sizes: readonly number[], notes: number): SetsAsk {
+  const sets: number[][] = [];
+  for (const [pool, size] of sizes.entries()) {
+    for (let tag = 0; tag < size; tag++) {
+      sets.push(
+        range(0, notes).filter((note) => (note + pool * 3) % size === tag),
+      );
+    }
+  }
+  return ask(sets, 0);
+}
 
 function range(from: number, length: number): number[] {
   return Array.from({ length }, (_unused, at) => from + at);

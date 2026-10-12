@@ -54,7 +54,22 @@ const NAME_INSET = 26;
 const FIT_TURNS = 72;
 
 /** The budget the fit spends walking down the overlap error. */
-const FIT_STEPS = 120;
+const FIT_STEPS = 160;
+
+/**
+ * How far one set reaches into another it shares notes with, at the least, in
+ * world units: a lens with room for a mark rather than two outlines grazing.
+ * Never asked of a pair whose shared count wants a shallower lens than this.
+ */
+const MEET_LEAST = SETS_STEP;
+
+/**
+ * What a pair that shares notes costs the fit per world unit it stands short of
+ * meeting, against an area error counted in notes: high enough that no figure
+ * drawing two such sets clear of each other is ever the cheaper one, because
+ * two outlines standing clear say the two sets share nothing.
+ */
+const MEET_WEIGHT = 1e6;
 
 /** How far a step is halved before the fit takes the error it has. */
 const FIT_BACKTRACKS = 14;
@@ -138,16 +153,13 @@ export function setsUnitArea(counts: readonly number[]): number {
 
 /**
  * How wide each drawn set is drawn, in world units, in drawing order: its own
- * count at the figure's unit, floored at {@link SETS_SET_LEAST} so that a set
- * this field holds no note of is still a disc with its own name in it. The
- * unit is raised by the smallest set the field does hold, so the floor only
- * ever bites on a set holding nothing — every other width is a count.
+ * count at the figure's unit, which the narrowest set of the figure raises
+ * until it is a disc with its own name in it. Every width is a count, because
+ * a field draws a circle for a tag its notes carry and for no other.
  */
 export function setsRadii(counts: readonly number[]): number[] {
   const unit = setsUnitArea(counts);
-  return counts.map((count) =>
-    Math.sqrt(Math.max(unit * count, SETS_SET_LEAST) / Math.PI),
-  );
+  return counts.map((count) => Math.sqrt((unit * count) / Math.PI));
 }
 
 /** How much of each other two discs cover. */
@@ -290,19 +302,50 @@ function fitShapes(ask: SetsAsk): SetsShape[] {
   const apart = target.map((area, at) =>
     lensDistance(radii[Math.floor(at / count)], radii[at % count], area),
   );
-  const at = settle(radii, target, place(radii, apart, count), count, unit);
+  const meet = meetBy(radii, target, apart, count);
+  const at = settle(
+    radii,
+    target,
+    meet,
+    place(radii, apart, meet, count),
+    count,
+    unit,
+  );
   return named(radii, at);
 }
 
 /**
+ * How close two sets have to stand for the figure to say they share notes: the
+ * distance their shared count asks for, or {@link MEET_LEAST} deep into each
+ * other, whichever is the further apart of the two — so a pair sharing one note
+ * is not dragged deeper than its count. A pair sharing nothing is unbounded:
+ * what holds those apart is the area they are asked to cover, which is none.
+ */
+function meetBy(
+  radii: readonly number[],
+  target: readonly number[],
+  apart: readonly number[],
+  count: number,
+): number[] {
+  return target.map((area, at) => {
+    const a = Math.floor(at / count);
+    const b = at % count;
+    if (a === b || area <= 0) return Number.POSITIVE_INFINITY;
+    return Math.max(apart[at], radii[a] + radii[b] - MEET_LEAST);
+  });
+}
+
+/**
  * Where each disc starts: the widest first at the origin, and each next one at
- * whichever candidate stands nearest the distances it is asked to keep from the
- * discs already placed. Candidates are taken round each placed disc at the
- * distance this one wants from it, and where two of those circles cross.
+ * whichever candidate meets the most of the sets it shares notes with and then
+ * stands nearest the distances it is asked to keep. Candidates are taken round
+ * each placed disc at the distance this one wants from it, and where two of
+ * those circles cross.
  */
 function place(
   radii: readonly number[],
   apart: readonly number[],
+  meet: readonly number[],
   count: number,
 ): Point[] {
   const order = radii
@@ -341,17 +384,21 @@ function place(
     }
     const scored = tries.map((point) => {
       let error = 0;
+      let clear = 0;
       for (const other of placed) {
-        const off =
-          Math.hypot(point.x - at[other].x, point.y - at[other].y) -
-          wants(other);
+        const away = Math.hypot(point.x - at[other].x, point.y - at[other].y);
+        const off = away - wants(other);
         error += off * off;
+        if (away > meet[which * count + other]) clear += 1;
       }
-      return { point, error };
+      return { point, clear, error };
     });
     scored.sort(
       (a, b) =>
-        a.error - b.error || a.point.x - b.point.x || a.point.y - b.point.y,
+        a.clear - b.clear ||
+        a.error - b.error ||
+        a.point.x - b.point.x ||
+        a.point.y - b.point.y,
     );
     at[which] = scored[0].point;
     placed.push(which);
@@ -379,13 +426,18 @@ function crossings(a: Point, ra: number, b: Point, rb: number): Point[] {
 
 /**
  * The placement walked down the sum of squared overlap-area errors, counted in
- * notes so the fit minimises the number a reader is looking at. A fixed budget
- * of steps, each a halving search along the numerical gradient that takes the
- * first step which lowers the error: monotone, bounded, the same on every peer.
+ * notes so the fit minimises the number a reader is looking at, with a pair
+ * that shares notes and stands short of meeting weighted far above that. A
+ * fixed budget of steps, each a halving search along the numerical gradient
+ * that takes the first step which lowers the error: monotone, bounded, the same
+ * on every peer. The meeting term is a distance and the area term an area, so
+ * two sets drawn clear of each other are pulled together from a tangency the
+ * area term alone has no slope at.
  */
 function settle(
   radii: readonly number[],
   target: readonly number[],
+  meet: readonly number[],
   from: readonly Point[],
   count: number,
   unit: number,
@@ -404,6 +456,8 @@ function settle(
         const off =
           (lensArea(radii[a], radii[b], apart) - target[a * count + b]) / unit;
         sum += off * off;
+        const short = apart - meet[a * count + b];
+        if (short > 0) sum += (MEET_WEIGHT * short) / scale;
       }
     }
     return sum;

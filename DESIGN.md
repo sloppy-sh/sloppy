@@ -2076,9 +2076,9 @@ up and the lift can be 0 in the panned case.
 ### Sets — the tags as places
 
 **A third reading of the same canvas, beside the graph and the outline: the field's own tags
-drawn as regions, with every note standing in the region of exactly the drawn tags it
-carries.** A note carrying two of them stands where the two overlap; one carrying none stands
-outside every region. The question the rail asks is the shape of the field.
+drawn as circles, with every note standing inside the ones it carries.** A note carrying two of
+them stands where the two overlap; one carrying none stands outside every circle. The question
+the rail asks is the shape of the field.
 
 **It is an arrangement of the same marks, never a second canvas.** Depth, provenance, the
 author's look, the orbit on a chosen mark and the lift on an open one are all drawn exactly as
@@ -2099,26 +2099,29 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
 - **A set is a circle whose area is its own count, and the circles are placed so that what two
   of them share is what the two sets share.** The notes carrying a tag are its area, and the
   distance between two circles is the one at which the area they cover of each other is the
-  notes the two tags share. Two sets sharing nothing stand clear of each other; a set every
-  note of which carries another nests inside it, with the crescent round it left for the notes
-  it does not hold. **One share of the paper serves the whole figure**, raised until the
-  narrowest set in it is a disc with room for its own name — never floored under one set
-  alone, which would draw two counts the same width and so draw a containment as one disc
-  over another with every note of the wider set left outside every set there is. A set this
-  field holds no note of — a tag another graph on the canvas carries — has no count to be
-  drawn in proportion to, and is drawn at that least disc and nothing wider. **The figure
-  is fitted, and fitted the same way everywhere**: the targets come from the counts, the first
-  placement is taken in one order the counts decide, and a fixed budget of steps walks down
-  what is left of the error. Nothing in it reads a clock or a random number, so two devices
-  holding the same notes draw the same figure to the last digit.
-- **Three sets and more can ask for a combination no figure of circles has room for**, and a
-  note carrying one of those stands in the most of its own sets the figure does draw. **Enough
-  sets at once and a small one is drawn wholly under the others**, and then no place in the
-  figure is in it alone: its notes stand in the nearest place there is — in the most of their
-  own sets and the fewest besides — which is inside a set they carry and inside one they do
-  not, because a covered disc has no part of it that is only itself, and inside its own circle
-  is where a reader who selected that tag looks for them. **No note stands outside every set
-  while it carries one, and none stands nowhere.**
+  notes the two tags share. **Two sets that share a note overlap, and that comes first**: a
+  pair drawn clear of each other says the two sets have nothing in common, so the fit keeps
+  every sharing pair in a lens with room for a mark before it spends anything on the areas,
+  and two sets sharing nothing stay clear. A set every note of which carries another nests
+  inside it, with the crescent round it left for the notes it does not hold. **One share of the
+  paper serves the whole figure**, raised until the narrowest set in it is a disc with room for
+  its own name — never floored under one set alone, which would draw two counts the same width
+  and so draw a containment as one disc over another with every note of the wider set left
+  outside every set there is. **The figure is fitted, and fitted the same way everywhere**: the
+  targets come from the counts, the first placement is taken in one order the counts decide,
+  and a fixed budget of steps walks down what is left of the error. Nothing in it reads a clock
+  or a random number, so two devices holding the same notes draw the same figure to the last
+  digit.
+- **Eight circles cannot cross in every way eight tags do**, so the figure has no exact place
+  for every combination a field carries — and a note the figure has no place for stands inside
+  its **leading** set, the first of its own tags in the drawing order, in whichever place there
+  holds the most of its others. The drawing order puts the selected tags first, so **selecting
+  a tag always lights its notes inside its own circle**, which is where a reader who asked
+  about it looks for them. **Enough sets at once and a small one is drawn wholly under the
+  others**, and then no place in the figure is in it alone: its notes stand in a place of it
+  all the same, which is inside a set they do not carry as well, because a covered disc has no
+  part of it that is only itself. **No note stands outside a set it carries while a reader is
+  asking about that set, and none stands nowhere.**
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
   tag's name in quiet ink just inside its outer edge.** Where regions overlap the fills
   overlap, and that is what says a note is in both. **The fills owe the marks their floors**
@@ -2134,10 +2137,13 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
 - **No genealogical edges are drawn here, and no edge looks** (§ Edges). A line between two
   notes says nothing about which sets they are in, and the address and title beside a mark are
   drawn as they are on the genealogy.
-- **Each field draws its own diagram.** With several graphs on the canvas each one gets its own
-  regions, sized by its own notes and drawn from the tags those notes carry, laid out beside
-  the last and named exactly as fields are (§ "Several graphs on one canvas"). The tag axis is
-  read inside one graph (docs/ARCHITECTURE.md § "Tagging a note"), and this keeps it so.
+- **Each field draws its own diagram, from the drawn tags its own notes carry.** With several
+  graphs on the canvas each one gets its own regions, sized by its own notes and laid out beside
+  the last, named exactly as fields are (§ "Several graphs on one canvas"). A drawn tag this
+  field carries no note of gets no circle here — an empty one would say this graph holds a tag
+  it does not — while the rail still names it, because the rail is the canvas's question and the
+  figure is one graph's answer. The tag axis is read inside one graph
+  (docs/ARCHITECTURE.md § "Tagging a note"), and this keeps it so.
 - **Marks are packed inside their region** on a hexagonal lattice from its centre outward, in
   one deterministic order: notes carrying the same undrawn tags stand together, then by address
   order, then by ref. The spacing keeps marks clear of one another at the zoom they are drawn
@@ -2185,9 +2191,10 @@ What a person does:
   mark that is part of the chosen set takes the set with it. A drop gives those notes the sets
   of the place they landed, among the drawn tags alone: into every drawn tag the point is
   inside, out of every drawn tag it is not, and a tag that is not drawn is left untouched. A
-  drop outside every region takes the drawn tags off, and a drop where the mark already stands
-  does nothing. While a mark is held, the region under the pointer is lit a little more so the
-  drop is legible.
+  drop outside every region takes the drawn tags off, and **a drop into the region the mark is
+  standing in does nothing** — where it stands, which is not always the place its own tags name,
+  so letting a mark go where it was picked up is how a drag is called off. While a mark is held,
+  the region under the pointer is lit a little more so the drop is legible.
 - **Pen inks and touch pans exactly as they do everywhere else.** A finger retags from the
   menu, and the drag is the desk's shortcut to an act the menu already carries everywhere
   (PRODUCT.md principle 6) — never a part one arrangement has and the other lacks.
