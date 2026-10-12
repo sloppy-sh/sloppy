@@ -2104,14 +2104,21 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   it does not hold. **One share of the paper serves the whole figure**, raised until the
   narrowest set in it is a disc with room for its own name — never floored under one set
   alone, which would draw two counts the same width and so draw a containment as one disc
-  over another with every note of the wider set left outside every set there is. **The figure
+  over another with every note of the wider set left outside every set there is. A set this
+  field holds no note of — a tag another graph on the canvas carries — has no count to be
+  drawn in proportion to, and is drawn at that least disc and nothing wider. **The figure
   is fitted, and fitted the same way everywhere**: the targets come from the counts, the first
   placement is taken in one order the counts decide, and a fixed budget of steps walks down
   what is left of the error. Nothing in it reads a clock or a random number, so two devices
   holding the same notes draw the same figure to the last digit.
 - **Three sets and more can ask for a combination no figure of circles has room for**, and a
-  note carrying one of those stands in the most of its own sets the figure does draw — never in
-  a set it is not in, and never nowhere.
+  note carrying one of those stands in the most of its own sets the figure does draw. **Enough
+  sets at once and a small one is drawn wholly under the others**, and then no place in the
+  figure is in it alone: its notes stand in the nearest place there is — in the most of their
+  own sets and the fewest besides — which is inside a set they carry and inside one they do
+  not, because a covered disc has no part of it that is only itself, and inside its own circle
+  is where a reader who selected that tag looks for them. **No note stands outside every set
+  while it carries one, and none stands nowhere.**
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
   tag's name in quiet ink just inside its outer edge.** Where regions overlap the fills
   overlap, and that is what says a note is in both. **The fills owe the marks their floors**

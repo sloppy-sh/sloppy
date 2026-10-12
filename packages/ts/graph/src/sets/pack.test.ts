@@ -19,6 +19,7 @@ import {
   SETS_STEP,
   type SetsDrawn,
   setsDropAt,
+  type SetsMark,
   type SetsNote,
   setsSpacing,
   setsSpacingTier,
@@ -112,6 +113,16 @@ describe("a membership the figure has no place for", () => {
     expect(regionFor(0b101, drawn)).toBe(0b100);
     expect(regionFor(0b1000, drawn)).toBe(0);
     expect(regionFor(0, drawn)).toBe(0);
+  });
+
+  // Enough sets at once and a small one is drawn wholly under the others, so no
+  // place at all is in it alone. Its notes stand in the nearest place there is
+  // rather than out on the paper with the notes carrying nothing.
+  it("stands in the nearest place where it draws no corner of them", () => {
+    const drawn = new Set([0, 0b10, 0b11]);
+    expect(regionFor(0b01, drawn)).toBe(0b11);
+    expect(regionFor(0b101, drawn)).toBe(0b11);
+    expect(regionFor(0b100, drawn)).toBe(0);
   });
 
   it("stands outside every one of them where the figure draws none", () => {
@@ -515,6 +526,104 @@ describe("a field of a few notes", () => {
       0, 0b01, 0b10,
     ]);
     expect(marks.map((mark) => mark.region).sort()).toEqual([0b01, 0b10]);
+  });
+});
+
+// Twelve tags on six hundred notes: more tags than the figure draws places for,
+// which is the field the reading was opened on. At six sets and more the fit
+// draws a small one wholly under the others, so there is no point of it that is
+// in it alone — and a note carrying that tag has to be drawn inside it all the
+// same, because a reader who selected the tag looks for its notes in its circle
+// and not out on the paper among the notes carrying nothing.
+describe("a field carrying more tags than the figure draws", () => {
+  const POOL = [
+    "seed",
+    "question",
+    "biology",
+    "evergreen",
+    "method",
+    "claim",
+    "working",
+    "growing",
+    "spare",
+    "ink",
+    "paper",
+    "pencil",
+  ] as Tag[];
+  const spread = (pool: readonly Tag[]) => {
+    const random = mulberry32(606);
+    return Array.from({ length: 600 }, (_unused, at) =>
+      note(
+        at,
+        pool.filter(() => random() < 0.25),
+        HOME,
+        `1a${at + 1}`,
+      ),
+    );
+  };
+  /** Which of the drawn sets the figure gave a place of their own, which is
+   *  what a note carrying that tag alone would otherwise have nowhere to be. */
+  const alone = (drawn: SetsDrawn) => {
+    const places = new Set(drawn.fields[0].regions.map((one) => one.id));
+    return drawn.tags.filter((_tag, bit) => places.has(1 << bit)).length;
+  };
+
+  for (const selection of [[], ["claim"] as Tag[]]) {
+    const asked =
+      selection.length === 0 ? "nothing selected" : "claim selected";
+    it(`stands every mark in a set it carries, ${asked}`, () => {
+      let buried = 0;
+      for (let tags = 1; tags <= POOL.length; tags++) {
+        const held = spread(POOL.slice(0, tags));
+        const { marks, drawn } = packed(
+          held,
+          selection.filter((tag) => POOL.slice(0, tags).includes(tag)),
+        );
+        if (alone(drawn) < drawn.tags.length) buried += 1;
+        const answered = new Set<OwnedRef>();
+        for (const mark of marks) {
+          for (const ref of [mark.ref, ...mark.holds]) {
+            answered.add(ref);
+            const one = held.find((entry) => entry.ref === ref) as SetsNote;
+            const carries = membershipOf(one.tags, drawn.tags);
+            const where = `${one.address} of ${tags} tags`;
+            if (carries === 0) {
+              expect(mark.region, where).toBe(0);
+              continue;
+            }
+            expect(mark.region & carries, where).toBeGreaterThan(0);
+          }
+        }
+        expect(answered.size, `${tags} tags`).toBe(held.length);
+      }
+      // Without a buried set the sweep never reaches the last resort, and the
+      // rest of this test would hold whether or not it worked.
+      expect(buried).toBeGreaterThan(0);
+    });
+  }
+
+  // Standing a mark where its own set is drawn under another is standing it in
+  // that other set too; there is nowhere else for it to be, and nowhere is what
+  // this is instead of.
+  it("stands a mark whose own set is drawn under another inside both", () => {
+    const held = spread(POOL);
+    const { marks, drawn } = packed(held, []);
+    const places = new Set(drawn.fields[0].regions.map((one) => one.id));
+    const buried = drawn.tags
+      .map((_tag, bit) => 1 << bit)
+      .filter((bit) => !places.has(bit));
+    expect(buried.length).toBeGreaterThan(0);
+    const only = held.filter(
+      (one) => membershipOf(one.tags, drawn.tags) === buried[0],
+    );
+    expect(only.length).toBeGreaterThan(0);
+    for (const one of only) {
+      const mark = marks.find(
+        (at) => at.ref === one.ref || at.holds.includes(one.ref),
+      ) as SetsMark;
+      expect(mark.region & buried[0], `${one.address}`).toBe(buried[0]);
+      expect(mark.region & ~buried[0], `${one.address}`).toBeGreaterThan(0);
+    }
   });
 });
 

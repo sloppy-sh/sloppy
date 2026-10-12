@@ -2178,8 +2178,9 @@ describe("the sets reading", () => {
   };
 
   // Where the figure draws the combination a note carries, that is where it
-  // stands; where the fit left that combination without room, it stands in the
-  // most of its own sets the figure does draw and never in a set it is not in.
+  // stands; where it draws that combination no place, the mark stands in a set
+  // the note does carry all the same, and only a note carrying none of the
+  // drawn tags stands outside every one of them.
   it("stands every mark in the region of the drawn tags it carries", async () => {
     const sets = await inSets();
     const model = sets.model();
@@ -2196,7 +2197,8 @@ describe("the sets reading", () => {
       const region = model.sets?.standing.get(ref)?.region ?? 0;
       const where = `${at.address} stands in the wrong region`;
       expect(places.has(region), where).toBe(true);
-      expect(region & carries, where).toBe(region);
+      if (carries === 0) expect(region, where).toBe(0);
+      else expect(region & carries, where).toBeGreaterThan(0);
       if (places.has(carries)) expect(region, where).toBe(carries);
       else fallen += 1;
     }

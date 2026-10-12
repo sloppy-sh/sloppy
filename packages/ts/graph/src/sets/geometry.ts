@@ -39,7 +39,7 @@ export const SETS_NOTE_AREA = SETS_CELL * 3;
  * The least paper a drawn set is given, in square world units: twelve notes'
  * share at the smallest unit, which is a disc a tag's name fits inside.
  */
-const SETS_SET_LEAST = SETS_NOTE_AREA * 12;
+export const SETS_SET_LEAST = SETS_NOTE_AREA * 12;
 
 /** The least room the ring outside every set is given, in world units. */
 const OUTSIDE_LEAST = SETS_STEP * 3;
@@ -120,34 +120,34 @@ export interface SetsAsk {
 
 /**
  * How much paper one note's share of a set is drawn on, in square world units:
- * the figure's own unit, raised until the SMALLEST set it draws reaches
- * {@link SETS_SET_LEAST}. Raising the unit of the whole figure rather than
- * flooring the small discs is what keeps every area in the ratio its count is
- * in, so a set another one holds whole is always the narrower of the two and
- * nests inside it with a crescent left for the notes it does not hold.
+ * the figure's own unit, raised until the FEWEST notes any one of its sets
+ * holds reach {@link SETS_SET_LEAST}. Raising the unit of the whole figure
+ * rather than flooring the small discs is what keeps every area in the ratio
+ * its count is in, so a set another one holds whole is always the narrower of
+ * the two and nests inside it with a crescent left for the notes it does not
+ * hold.
  */
 export function setsUnitArea(counts: readonly number[]): number {
-  return Math.max(SETS_NOTE_AREA, SETS_SET_LEAST / leastHeld(counts));
-}
-
-/** How wide each drawn set is drawn, in world units, in drawing order. A set
- *  this field holds no note of has no count to be drawn in proportion to, and
- *  is drawn as narrow as the narrowest set the field does hold. */
-export function setsRadii(counts: readonly number[]): number[] {
-  const unit = setsUnitArea(counts);
-  const least = leastHeld(counts);
-  return counts.map((count) =>
-    Math.sqrt((unit * Math.max(count, least)) / Math.PI),
-  );
-}
-
-/** The fewest notes any drawn set holds, and one where every set is empty. */
-function leastHeld(counts: readonly number[]): number {
   let least = Number.POSITIVE_INFINITY;
   for (const count of counts) {
     if (count > 0 && count < least) least = count;
   }
-  return Number.isFinite(least) ? least : 1;
+  if (!Number.isFinite(least)) return SETS_NOTE_AREA;
+  return Math.max(SETS_NOTE_AREA, SETS_SET_LEAST / least);
+}
+
+/**
+ * How wide each drawn set is drawn, in world units, in drawing order: its own
+ * count at the figure's unit, floored at {@link SETS_SET_LEAST} so that a set
+ * this field holds no note of is still a disc with its own name in it. The
+ * unit is raised by the smallest set the field does hold, so the floor only
+ * ever bites on a set holding nothing — every other width is a count.
+ */
+export function setsRadii(counts: readonly number[]): number[] {
+  const unit = setsUnitArea(counts);
+  return counts.map((count) =>
+    Math.sqrt(Math.max(unit * count, SETS_SET_LEAST) / Math.PI),
+  );
 }
 
 /** How much of each other two discs cover. */

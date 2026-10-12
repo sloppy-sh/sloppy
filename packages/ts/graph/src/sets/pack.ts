@@ -73,8 +73,8 @@ export interface SetsStanding {
 }
 
 export interface SetsDrawn {
-  /** The drawn tags, in selection order: index `i` is bit `1 << i`. Empty is a
-   *  reading with nothing chosen, where every note stands outside. */
+  /** The drawn tags, in drawing order: index `i` is bit `1 << i`. Empty is a
+   *  canvas whose notes carry no tag at all, where every note stands outside. */
   tags: readonly Tag[];
   fields: readonly SetsFieldDrawn[];
   standing: ReadonlyMap<OwnedRef, SetsStanding>;
@@ -138,8 +138,9 @@ export function membershipOf(
 
 /**
  * Where a membership stands when the figure draws no place for that exact
- * combination of sets: the most of them it does draw a place for, and outside
- * every one of them where it draws none. Every note stands somewhere.
+ * combination of sets: the most of them it does draw a place for, and failing
+ * that {@link beside}. Only a note carrying none of the drawn tags stands
+ * outside every one of them.
  */
 export function regionFor(mask: number, drawn: ReadonlySet<number>): number {
   if (drawn.has(mask)) return mask;
@@ -152,6 +153,35 @@ export function regionFor(mask: number, drawn: ReadonlySet<number>): number {
       most = held;
       found = part;
     }
+  }
+  return found === 0 && mask !== 0 ? beside(mask, drawn) : found;
+}
+
+/**
+ * Where a note stands whose sets the figure draws no corner of: enough sets at
+ * once and a small one is drawn wholly under the others, so no place at all is
+ * in it alone. The nearest place there is — in the most of the note's own sets
+ * and the fewest besides — puts the mark inside a set it carries and inside one
+ * it does not, which is the only choice a covered disc leaves. 0 only where no
+ * place holds any of its sets.
+ */
+function beside(mask: number, drawn: ReadonlySet<number>): number {
+  let found = 0;
+  let own = 0;
+  let besides = 0;
+  for (const place of drawn) {
+    const mine = setsIn(place & mask);
+    if (mine === 0) continue;
+    const other = setsIn(place & ~mask);
+    const better =
+      found === 0 ||
+      mine > own ||
+      (mine === own &&
+        (other < besides || (other === besides && place < found)));
+    if (!better) continue;
+    found = place;
+    own = mine;
+    besides = other;
   }
   return found;
 }

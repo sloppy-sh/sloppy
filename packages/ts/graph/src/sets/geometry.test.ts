@@ -13,6 +13,7 @@ import {
   regionAt,
   type SetsAsk,
   SETS_NOTE_AREA,
+  SETS_SET_LEAST,
   SETS_STEP,
   setsFigure,
   setsRadii,
@@ -57,21 +58,46 @@ describe("how wide a set is drawn", () => {
       [1, 40, 137],
       [12, 300, 600],
       [0, 7, 7],
+      [300, 0],
+      [300, 40, 0],
     ]) {
       const unit = setsUnitArea(counts);
-      const least = Math.min(...counts.filter((count) => count > 0));
+      const floor = SETS_SET_LEAST / unit;
       for (const [at, r] of setsRadii(counts).entries()) {
         expect((Math.PI * r ** 2) / unit, `${counts} at ${at}`).toBeCloseTo(
-          Math.max(counts[at], least),
+          Math.max(counts[at], floor),
           6,
         );
       }
     }
   });
 
+  // A set a figure draws no note of is the one width that is not a count —
+  // which is why it is the LEAST disc and not the width of whatever the field's
+  // smallest real set came out at. A canvas drawing two graphs asks each field
+  // for every tag either of them carries, so this is the ordinary case.
+  it("draws a set holding nothing the least disc there is", () => {
+    const floor = Math.sqrt(SETS_SET_LEAST / Math.PI);
+    for (const counts of [
+      [300, 0],
+      [300, 40, 0],
+      [0, 0, 120],
+      [0, 0],
+    ]) {
+      for (const [at, r] of setsRadii(counts).entries()) {
+        if (counts[at] > 0) continue;
+        expect(r, `${counts} at ${at}`).toBeCloseTo(floor, 9);
+      }
+    }
+    const [wide, narrow, nothing] = setsRadii([300, 40, 0]);
+    expect(nothing).toBeLessThan(narrow);
+    expect(narrow).toBeLessThan(wide);
+  });
+
   // Two counts that came out the same width would draw a containment as one
   // disc over another, and leave every note of the wider set outside every set
-  // there is — which is why the floor raises the figure's unit and never a disc.
+  // there is — which is why a count is drawn at the figure's own unit and never
+  // floored one disc at a time.
   it("draws no two counts the same width, however few either holds", () => {
     for (let notes = 1; notes < 60; notes++) {
       const [narrow, wide] = setsRadii([notes, notes + 1]);

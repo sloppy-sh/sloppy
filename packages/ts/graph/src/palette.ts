@@ -329,10 +329,9 @@ const DIM_STEP = 1 / 255;
  * more as {@link DIM_FLOOR} takes over the faintest ground it can land on.
  * 1 where the mark is under that floor before it is dimmed at all.
  *
- * Walked up a step at a time, and every ground measured again at what the last
- * one asked for: what owes the floor is the eight-bit pixel, so the measured
- * contrast is a thousandth either side of the mix and does not climb with the
- * alpha.
+ * Walked up a step at a time, with every ground measured again at the alpha the
+ * last one asked for: a step that answers one ground does not have to leave the
+ * others where they were.
  */
 function recession(fill: Oklch, ground: readonly Oklch[]): number {
   for (const on of ground) {
