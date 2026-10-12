@@ -2149,23 +2149,25 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
 - **Each field draws its own diagram, from the drawn tags its own notes carry.** With several
   graphs on the canvas each one gets its own regions, sized by its own notes and laid out beside
   the last, named exactly as fields are (§ "Several graphs on one canvas"). A drawn tag this
-  field carries no note of gets no circle here — an empty one would say this graph holds a tag
-  it does not — while the rail still names it, because the rail is the canvas's question and the
-  figure is one graph's answer. The tag axis is read inside one graph
-  (docs/ARCHITECTURE.md § "Tagging a note"), and this keeps it so.
+  field carries no note of gets no circle here — an empty one would say this graph holds a tag it
+  does not — and a graph carrying none of them draws no circle at all, its notes standing outside
+  the way a note carrying none of them stands anywhere, while the rail still names them, because
+  the rail is the canvas's question and the figure is one graph's answer. The tag axis is read
+  inside one graph (docs/ARCHITECTURE.md § "Tagging a note"), and this keeps it so.
 - **Marks are packed inside their region** on a hexagonal lattice from its centre outward, in
   one deterministic order: notes carrying the same undrawn tags stand together, then by address
   order, then by ref. The spacing keeps marks clear of one another at the zoom they are drawn
-  at.
+  at, and nothing is packed where a set's name is written, so the word that says which place a
+  reader is looking at never has a mark on top of it.
 - **The count is bounded here as it is everywhere.** A region holding more notes than its area
-  can show at this zoom folds into one mega-node at its centre, sized by count with the count
-  written on it — the same fold the genealogy draws. A tap brings the canvas to that region,
-  where there is room, and it unfolds; zooming out refolds. **The room comes from the counts
-  themselves** — a set twice as carried is drawn twice the area, and every note is given the
-  same share of the paper — so a region sized by its own count has somewhere for a fold to open
-  into, and the slivers where several sets cross are what fold instead. **The rest** — every
-  note outside every drawn region — folds the same way and is dimmed. Nothing about a fold is
-  kept: it is a function of the zoom and of what the notes carry.
+  can show at this zoom folds into one mega-node, sized by count with the count written on it and
+  standing at the nearest place in the region a whole mark has room — the same fold the genealogy
+  draws. A tap brings the canvas to that region, where there is room, and it unfolds; zooming out
+  refolds. **The room comes from the counts themselves** — a set twice as carried is drawn twice
+  the area, and every note is given the same share of the paper — so a region sized by its own
+  count has somewhere for a fold to open into, and the slivers where several sets cross are what
+  fold instead. **The rest** — every note outside every drawn region — folds the same way and is
+  dimmed. Nothing about a fold is kept: it is a function of the zoom and of what the notes carry.
 - **Nothing selected draws the field's most-carried tags**, which is why there is no empty
   state here to read past: the reading opens on an answer, and the rail is where a reader asks
   for a different one.

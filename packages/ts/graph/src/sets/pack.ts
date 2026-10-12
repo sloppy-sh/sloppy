@@ -16,9 +16,11 @@ import {
 import { drawnSetSlots, drawnSetsOf, type GraphRetag } from "../contract.js";
 import type { Bounds, Point } from "../viewport.js";
 import {
+  boxGap,
   inBox,
   inShape,
   namePoint,
+  nameRoom,
   type SetsAsk,
   type SetsRegion,
   SETS_STEP,
@@ -304,10 +306,12 @@ export function packSets(options: SetsPackOptions): SetsPacking {
         return {
           region,
           notes,
-          // With nothing drawn there is no question to stand the notes inside,
-          // so they fold into the one mark that says how many there are.
+          // With no set drawn anywhere on the canvas there is no question to
+          // stand the notes inside, so they fold into the one mark that says
+          // how many there are. A field drawing no circle of its own is not
+          // that: its notes stand outside, as every untagged note does.
           room:
-            own.length === 0
+            tags.length === 0
               ? 0
               : Math.min(notes.length, regionCapacity(region, options.spacing)),
         };
@@ -326,10 +330,14 @@ export function packSets(options: SetsPackOptions): SetsPacking {
           : latticeIn(region, diagram, options.spacing, notes.length);
       if (places.length < notes.length) {
         const [first, ...rest] = notes;
+        // A sliver with room for no whole mark at all still answers for its
+        // notes, and stands its fold at its deepest point.
+        const stood =
+          latticeIn(region, diagram, options.spacing, 1)[0] ?? region.centre;
         marks.push({
           ref: first.ref,
-          x: region.centre.x + dx,
-          y: region.centre.y + dy,
+          x: stood.x + dx,
+          y: stood.y + dy,
           field: at,
           region: stands.region,
           holds: rest.map((note) => note.ref),
@@ -505,8 +513,9 @@ function roomFor(shape: SetsShape, reach: number): SetsShape {
 
 /**
  * Up to `want` points of a hexagonal lattice standing inside `region`, from its
- * centre outward, each with room for the WHOLE of the widest mark. Fewer than
- * `want` is a region the lattice has no more room in at this spacing.
+ * centre outward, each with room for the WHOLE of the widest mark and clear of
+ * the room every set's name is written in. Fewer than `want` is a region the
+ * lattice has no more room in at this spacing.
  */
 export function latticeIn(
   region: SetsRegion,
@@ -525,10 +534,13 @@ export function latticeIn(
   const outside = diagram.shapes.map((shape) =>
     roomFor(shape, SETS_MARK_REACH),
   );
+  const names = diagram.shapes.map(nameRoom);
   // Inside every set the region is in and outside every one it is not, with
-  // room for the whole of the widest mark on the near side of each outline.
+  // room for the whole of the widest mark on the near side of each outline and
+  // of every name.
   const stands = (point: Point): boolean =>
     inBox(diagram.box, point) &&
+    names.every((room) => boxGap(room, point) >= SETS_MARK_REACH) &&
     diagram.shapes.every((_unused, bit) =>
       (region.id & (1 << bit)) === 0
         ? !inShape(outside[bit], point)
