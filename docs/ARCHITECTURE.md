@@ -2590,9 +2590,12 @@ implementation notes.
 genealogy, so a host that says nothing draws what it always drew. Which reading is up is a
 view choice the host keeps (`seenAs` in `prefs.svelte.ts`); where every mark lands under
 either reading is the renderer's, computed from the ref and the parent chain or from the
-selected tags — never handed in as coordinates. `DRAWN_SETS_MOST` bounds how many of those
-tags are drawn as regions. Changing the arrangement is not a `remountKey`: the canvas keeps
-its viewport across a visit the way it keeps it across a pan.
+tags the notes themselves carry — never handed in as coordinates. `drawnSetsOf` reads the
+selection AND the nodes to decide which tags are drawn as regions, so a field draws a
+figure with nothing selected, and `DRAWN_SETS_MOST` bounds that drawn list rather than the
+selection. How wide the figure comes out is measured from those counts as well, so no size
+and no scale is handed in with the arrangement either. Changing the arrangement is not a
+`remountKey`: the canvas keeps its viewport across a visit the way it keeps it across a pan.
 
 **A move between sets is REPORTED, never written here.** `onRetag({ notes, into, outOf })`
 names the notes and, among the drawn tags alone, which they are moving into and out of; the

@@ -446,6 +446,78 @@ describe("packing a field", () => {
   });
 });
 
+// A handful of notes, some of them carrying a second tag as well, is the shape
+// a new graph is read in. The figure has to say as much there as it does of
+// three hundred: every note in the sets it carries, and none of them drawn
+// outside every set while it carries one.
+describe("a field of a few notes", () => {
+  const twoTags = TAGS.slice(0, 2);
+  const flat = (count: number, both: number) =>
+    Array.from({ length: count }, (_unused, at) =>
+      note(at, at < both ? twoTags : [twoTags[0]], HOME, `1a${at + 1}`),
+    );
+
+  it("stands the two notes outside a nested set in the set they do carry", () => {
+    const { marks, drawn } = packed(flat(5, 3), twoTags);
+    expect(drawn.tags).toEqual(twoTags);
+    const [carrying, both] = drawn.fields[0].sets;
+    expect(carrying.shape.r).toBeGreaterThan(both.shape.r);
+    // Outside both, the crescent of the first alone, and the three in both.
+    expect(drawn.fields[0].regions.map((one) => one.id)).toEqual([
+      0, 0b01, 0b11,
+    ]);
+    const standing = (address: string) =>
+      marks.find(
+        (mark) =>
+          mark.ref ===
+          (flat(5, 3).find((one) => one.address === address) as SetsNote).ref,
+      )?.region;
+    expect(standing("1a4")).toBe(0b01);
+    expect(standing("1a5")).toBe(0b01);
+    expect(standing("1a1")).toBe(0b11);
+    expect(marks.every((mark) => mark.region !== 0)).toBe(true);
+  });
+
+  it("stands every note in the sets it carries, however few there are", () => {
+    for (let count = 1; count <= 12; count++) {
+      for (let both = 0; both <= count; both++) {
+        const notes = flat(count, both);
+        const { marks, drawn } = packed(notes, twoTags);
+        const where = `${both} of ${count} in both`;
+        expect(drawn.tags, where).toEqual(twoTags);
+        const answered = new Set<OwnedRef>();
+        for (const mark of marks) {
+          for (const ref of [mark.ref, ...mark.holds]) {
+            answered.add(ref);
+            const held = notes.find((one) => one.ref === ref) as SetsNote;
+            expect(mark.region, `${held.address} of ${where}`).toBe(
+              membershipOf(held.tags, drawn.tags),
+            );
+          }
+        }
+        expect(answered.size, where).toBe(count);
+      }
+    }
+  });
+
+  it("draws two one-note sets sharing nothing as two clear discs", () => {
+    const { marks, drawn } = packed(
+      [note(0, [twoTags[0]], HOME, "1a"), note(1, [twoTags[1]], HOME, "1b")],
+      twoTags,
+    );
+    const [a, b] = drawn.fields[0].sets.map((set) => set.shape);
+    expect(a.r).toBeGreaterThan(0);
+    expect(a.r).toBeCloseTo(b.r, 9);
+    expect(Math.hypot(a.cx - b.cx, a.cy - b.cy)).toBeGreaterThanOrEqual(
+      a.r + b.r - 1e-6,
+    );
+    expect(drawn.fields[0].regions.map((one) => one.id)).toEqual([
+      0, 0b01, 0b10,
+    ]);
+    expect(marks.map((mark) => mark.region).sort()).toEqual([0b01, 0b10]);
+  });
+});
+
 describe("where a drop lands", () => {
   const selection = TAGS.slice(0, 2);
   // A field carrying nothing but the two selected tags, so those two are the

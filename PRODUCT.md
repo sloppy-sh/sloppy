@@ -140,8 +140,9 @@ precise rather than clever. A good notebook does not have opinions about your ha
 7. **Legible before beautiful.** Ten thousand nodes that stay readable beat a hundred that
    look impressive. Level of detail and collapse exist so the canvas never draws more than
    a person can read; selecting tags answers a question inside what is drawn rather than
-   by drawing something else. **Sets** is a reading the reader chooses deliberately, and
-   inside it the selection is the drawing — which is the whole point of choosing it.
+   by drawing something else. **Sets** is a reading the reader chooses deliberately: it
+   draws the graph's own tags as the places its notes stand in, and selecting a tag there
+   leads the drawing and lights its notes, as selecting does anywhere.
 
 ## Accessibility & Inclusion
 

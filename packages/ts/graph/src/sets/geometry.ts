@@ -25,18 +25,21 @@ export const SETS_STEP = Math.ceil(LEAF_RADIUS * MARK_SCALE_MAX * 2 + 6);
 const SETS_CELL = SETS_STEP * SETS_STEP * (Math.sqrt(3) / 2);
 
 /**
- * How much of the paper one note's share of a set is drawn at, in square world
- * units: three lattice cells rather than one, because a region keeps a whole
- * mark clear of its outline and the fit approximates the overlaps rather than
- * hitting them. At three, a region sized by its own count keeps about twice the
- * room its notes need (`pack.test.ts`), and the slivers where several sets
- * cross fold by capacity as a crowd does anywhere else.
+ * The least paper one note's share of a set is drawn on, in square world units,
+ * which {@link setsUnitArea} raises for a figure that needs more: three lattice
+ * cells rather than one, because a region keeps a whole mark clear of its
+ * outline and the fit approximates the overlaps rather than hitting them. At
+ * three, a region sized by its own count keeps about twice the room its notes
+ * need (`pack.test.ts`), and the slivers where several sets cross fold by
+ * capacity as a crowd does anywhere else.
  */
 export const SETS_NOTE_AREA = SETS_CELL * 3;
 
-/** The fewest notes a set is drawn as big as, so a one-note set is still a disc
- *  with room for its own name. */
-export const SETS_LEAST_NOTES = 12;
+/**
+ * The least paper a drawn set is given, in square world units: twelve notes'
+ * share at the smallest unit, which is a disc a tag's name fits inside.
+ */
+const SETS_SET_LEAST = SETS_NOTE_AREA * 12;
 
 /** The least room the ring outside every set is given, in world units. */
 const OUTSIDE_LEAST = SETS_STEP * 3;
@@ -115,10 +118,36 @@ export interface SetsAsk {
   outside: number;
 }
 
-/** How wide a set carrying `notes` notes is drawn, in world units. */
-export function setsRadiusFor(notes: number): number {
-  const area = SETS_NOTE_AREA * Math.max(notes, SETS_LEAST_NOTES);
-  return Math.sqrt(area / Math.PI);
+/**
+ * How much paper one note's share of a set is drawn on, in square world units:
+ * the figure's own unit, raised until the SMALLEST set it draws reaches
+ * {@link SETS_SET_LEAST}. Raising the unit of the whole figure rather than
+ * flooring the small discs is what keeps every area in the ratio its count is
+ * in, so a set another one holds whole is always the narrower of the two and
+ * nests inside it with a crescent left for the notes it does not hold.
+ */
+export function setsUnitArea(counts: readonly number[]): number {
+  return Math.max(SETS_NOTE_AREA, SETS_SET_LEAST / leastHeld(counts));
+}
+
+/** How wide each drawn set is drawn, in world units, in drawing order. A set
+ *  this field holds no note of has no count to be drawn in proportion to, and
+ *  is drawn as narrow as the narrowest set the field does hold. */
+export function setsRadii(counts: readonly number[]): number[] {
+  const unit = setsUnitArea(counts);
+  const least = leastHeld(counts);
+  return counts.map((count) =>
+    Math.sqrt((unit * Math.max(count, least)) / Math.PI),
+  );
+}
+
+/** The fewest notes any drawn set holds, and one where every set is empty. */
+function leastHeld(counts: readonly number[]): number {
+  let least = Number.POSITIVE_INFINITY;
+  for (const count of counts) {
+    if (count > 0 && count < least) least = count;
+  }
+  return Number.isFinite(least) ? least : 1;
 }
 
 /** How much of each other two discs cover. */
@@ -157,7 +186,7 @@ export function setsFigure(ask: SetsAsk): SetsDiagram {
   const key = `${ask.counts.join(",")}|${ask.shared.join(",")}|${ask.outside}`;
   const found = held.get(key);
   if (found !== undefined) return found;
-  const made = measure(fitShapes(ask), ask.outside);
+  const made = measure(fitShapes(ask), ask.outside, setsUnitArea(ask.counts));
   // Every write into a note is a new ask, so what is held has to be bounded.
   if (held.size >= FIGURES_HELD) {
     for (const stale of [...held.keys()].slice(
@@ -234,22 +263,18 @@ export function shapeOutline(shape: SetsShape, steps = 180): Point[] {
 
 /**
  * How much of each other two sets are asked to cover, in square world units:
- * the share of the smaller set its shared notes make, of the smaller DISC.
- * Taken as a share rather than as an area so that a set the floor drew larger
- * than its count asked for still nests a whole containment whole, and leaves
- * two sets sharing nothing apart.
+ * the paper their shared notes ask for, so the lens says what the shared count
+ * says. Every set is drawn at the same unit, so a set every note of which
+ * carries the other asks for exactly the smaller disc and nests whole.
  */
-function targetAreas(ask: SetsAsk, radii: readonly number[]): number[] {
+function targetAreas(ask: SetsAsk, unit: number): number[] {
   const count = ask.counts.length;
   const target = new Array<number>(count * count).fill(0);
   for (let a = 0; a < count; a++) {
     for (let b = a + 1; b < count; b++) {
-      const least = Math.min(ask.counts[a], ask.counts[b]);
-      const shared = ask.shared[a * count + b] ?? 0;
-      const share = least > 0 ? Math.min(shared / least, 1) : 0;
-      const disc = Math.PI * Math.min(radii[a], radii[b]) ** 2;
-      target[a * count + b] = share * disc;
-      target[b * count + a] = share * disc;
+      const want = (ask.shared[a * count + b] ?? 0) * unit;
+      target[a * count + b] = want;
+      target[b * count + a] = want;
     }
   }
   return target;
@@ -259,12 +284,13 @@ function targetAreas(ask: SetsAsk, radii: readonly number[]): number[] {
  *  overlaps they ask for. */
 function fitShapes(ask: SetsAsk): SetsShape[] {
   const count = ask.counts.length;
-  const radii = ask.counts.map(setsRadiusFor);
-  const target = targetAreas(ask, radii);
+  const unit = setsUnitArea(ask.counts);
+  const radii = setsRadii(ask.counts);
+  const target = targetAreas(ask, unit);
   const apart = target.map((area, at) =>
     lensDistance(radii[Math.floor(at / count)], radii[at % count], area),
   );
-  const at = settle(radii, target, place(radii, apart, count), count);
+  const at = settle(radii, target, place(radii, apart, count), count, unit);
   return named(radii, at);
 }
 
@@ -362,11 +388,11 @@ function settle(
   target: readonly number[],
   from: readonly Point[],
   count: number,
+  unit: number,
 ): Point[] {
   if (count < 2) return [...from];
   const scale = radii.reduce((sum, r) => sum + r, 0) / count;
   const nudge = scale * 1e-3;
-  const unit = SETS_NOTE_AREA;
   const errorAt = (coords: readonly number[]): number => {
     let sum = 0;
     for (let a = 0; a < count; a++) {
@@ -449,8 +475,12 @@ function named(radii: readonly number[], at: readonly Point[]): SetsShape[] {
  * Every region of a figure, measured on {@link GRID}: which cells stand in
  * each, where each one's deepest point is, and the runs of cells that cover it.
  */
-function measure(shapes: readonly SetsShape[], outside: number): SetsDiagram {
-  const { box, margin } = boxAround(shapes, outside);
+function measure(
+  shapes: readonly SetsShape[],
+  outside: number,
+  unit: number,
+): SetsDiagram {
+  const { box, margin } = boxAround(shapes, outside, unit);
   const stepX = (box.maxX - box.minX) / GRID;
   const stepY = (box.maxY - box.minY) / GRID;
   const centreOf = (gx: number, gy: number): Point => ({
@@ -604,8 +634,9 @@ function depthWithin(mask: Int32Array): Float32Array {
 function boxAround(
   shapes: readonly SetsShape[],
   outside: number,
+  unit: number,
 ): { box: Bounds; margin: number } {
-  const want = SETS_NOTE_AREA * Math.max(outside, 0);
+  const want = unit * Math.max(outside, 0);
   if (shapes.length === 0) {
     const half = Math.max(Math.sqrt(want) / 2, OUTSIDE_LEAST);
     return {

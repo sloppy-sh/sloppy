@@ -2090,20 +2090,25 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   selected tags draw first, in selection order, and then the rest of the tags the field's notes
   carry — most-carried first, ties by name. So a graph opened in this reading is already a
   figure rather than a request for a question, and selecting a tag moves it to the front of the
-  drawing rather than being the only way to get one. **Eight sets are drawn at the most**, which
-  is how many hue slots there are (§ Hue), because a drawn set borrows one whether or not it is
-  selected. A field carrying more tags than that says how many of them are drawn in one line,
-  and selecting tags is how a reader chooses which.
+  drawing rather than being the only way to get one. Selecting a tag also lights the notes
+  carrying it and lets the rest recede, exactly as selecting does under the other two
+  readings. **Eight sets are drawn at the most**, which is how many hue slots there are
+  (§ Hue), because a drawn set borrows one whether or not it is selected. A field carrying
+  more tags than that says how many of them are drawn in one line, and selecting tags is how
+  a reader chooses which.
 - **A set is a circle whose area is its own count, and the circles are placed so that what two
-  of them share is what the two sets share.** The notes carrying a tag are its area — with a
-  floor, so a set one note carries is still a disc with room for its name — and the distance
-  between two circles is the one at which the area they cover of each other is the notes the two
-  tags share. Two sets sharing nothing stand clear of each other; a set every note of which
-  carries another nests inside it. **The figure is fitted, and fitted the same way everywhere**:
-  the targets come from the counts, the first placement is taken in one order the counts decide,
-  and a fixed budget of steps walks down what is left of the error. Nothing in it reads a clock
-  or a random number, so two devices holding the same notes draw the same figure to the last
-  digit.
+  of them share is what the two sets share.** The notes carrying a tag are its area, and the
+  distance between two circles is the one at which the area they cover of each other is the
+  notes the two tags share. Two sets sharing nothing stand clear of each other; a set every
+  note of which carries another nests inside it, with the crescent round it left for the notes
+  it does not hold. **One share of the paper serves the whole figure**, raised until the
+  narrowest set in it is a disc with room for its own name — never floored under one set
+  alone, which would draw two counts the same width and so draw a containment as one disc
+  over another with every note of the wider set left outside every set there is. **The figure
+  is fitted, and fitted the same way everywhere**: the targets come from the counts, the first
+  placement is taken in one order the counts decide, and a fixed budget of steps walks down
+  what is left of the error. Nothing in it reads a clock or a random number, so two devices
+  holding the same notes draw the same figure to the last digit.
 - **Three sets and more can ask for a combination no figure of circles has room for**, and a
   note carrying one of those stands in the most of its own sets the figure does draw — never in
   a set it is not in, and never nowhere.

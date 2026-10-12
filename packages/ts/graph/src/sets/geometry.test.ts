@@ -12,10 +12,11 @@ import {
   namePoint,
   regionAt,
   type SetsAsk,
-  SETS_LEAST_NOTES,
   SETS_NOTE_AREA,
+  SETS_STEP,
   setsFigure,
-  setsRadiusFor,
+  setsRadii,
+  setsUnitArea,
   shapeBounds,
   shapeOutline,
 } from "./geometry.js";
@@ -49,33 +50,67 @@ function chain(count: number, size: number, share: number): SetsAsk {
 const apart = (ask: SetsAsk) => setsFigure(ask).shapes;
 
 describe("how wide a set is drawn", () => {
-  it("gives every note the same share of the paper", () => {
-    for (const notes of [SETS_LEAST_NOTES, 40, 137, 900]) {
-      const area = Math.PI * setsRadiusFor(notes) ** 2;
-      expect(area / SETS_NOTE_AREA).toBeCloseTo(notes, 6);
+  it("gives every note of a figure the same share of the paper", () => {
+    for (const counts of [
+      [1],
+      [3, 5],
+      [1, 40, 137],
+      [12, 300, 600],
+      [0, 7, 7],
+    ]) {
+      const unit = setsUnitArea(counts);
+      const least = Math.min(...counts.filter((count) => count > 0));
+      for (const [at, r] of setsRadii(counts).entries()) {
+        expect((Math.PI * r ** 2) / unit, `${counts} at ${at}`).toBeCloseTo(
+          Math.max(counts[at], least),
+          6,
+        );
+      }
     }
-    // Twice the notes is twice the area, which is √2 the width.
-    expect(setsRadiusFor(600) / setsRadiusFor(300)).toBeCloseTo(Math.SQRT2, 12);
   });
 
-  it("draws a set under the floor at the floor, so its name fits beside it", () => {
-    for (const notes of [0, 1, 5, SETS_LEAST_NOTES]) {
-      expect(setsRadiusFor(notes)).toBe(setsRadiusFor(SETS_LEAST_NOTES));
+  // Two counts that came out the same width would draw a containment as one
+  // disc over another, and leave every note of the wider set outside every set
+  // there is — which is why the floor raises the figure's unit and never a disc.
+  it("draws no two counts the same width, however few either holds", () => {
+    for (let notes = 1; notes < 60; notes++) {
+      const [narrow, wide] = setsRadii([notes, notes + 1]);
+      expect(wide, `${notes} against one more`).toBeGreaterThan(narrow);
+      expect((wide ** 2 - narrow ** 2) / narrow ** 2).toBeCloseTo(1 / notes, 6);
     }
-    expect(setsRadiusFor(SETS_LEAST_NOTES + 1)).toBeGreaterThan(
-      setsRadiusFor(SETS_LEAST_NOTES),
-    );
   });
 
-  it("draws each set at the area its own count asks for", () => {
-    const drawn = apart(chain(5, 60, 12));
-    for (const shape of drawn) {
-      expect((Math.PI * shape.r ** 2) / SETS_NOTE_AREA).toBeCloseTo(60, 6);
+  it("draws even the narrowest set a disc with room beside its name", () => {
+    const floor = setsRadii([1])[0];
+    expect(floor).toBeGreaterThan(SETS_STEP * 2);
+    for (const counts of [[1], [3, 5], [40, 200], [7, 7, 7, 300]]) {
+      const least = Math.min(...setsRadii(counts));
+      expect(least, `${counts}`).toBeGreaterThanOrEqual(floor - 1e-9);
     }
-    const uneven = apart(ask([[1, 2, 3], range(0, 80), range(0, 300)], 0));
-    expect(
-      (Math.PI * uneven[2].r ** 2) / (Math.PI * uneven[1].r ** 2),
-    ).toBeCloseTo(300 / 80, 6);
+  });
+
+  // The unit rises exactly as far as the narrowest set needs and no further,
+  // so a figure whose sets all hold twelve notes or more is drawn at the floor.
+  it("raises the unit by what the narrowest set asks of it", () => {
+    expect(setsUnitArea([12])).toBe(SETS_NOTE_AREA);
+    expect(setsUnitArea([12, 90])).toBe(SETS_NOTE_AREA);
+    expect(setsUnitArea([4, 90])).toBeCloseTo(SETS_NOTE_AREA * 3, 9);
+    expect(setsUnitArea([1, 90])).toBeCloseTo(SETS_NOTE_AREA * 12, 9);
+  });
+
+  it("draws each set of a figure at the area its own count asks for", () => {
+    const notesOf = (shape: { r: number }, unit: number) =>
+      (Math.PI * shape.r ** 2) / unit;
+    const even = chain(5, 60, 12);
+    for (const shape of apart(even)) {
+      expect(notesOf(shape, setsUnitArea(even.counts))).toBeCloseTo(60, 6);
+    }
+    const uneven = ask([[1, 2, 3], range(0, 80), range(0, 300)], 0);
+    const unit = setsUnitArea(uneven.counts);
+    const drawn = apart(uneven).map((shape) => notesOf(shape, unit));
+    expect(drawn[0]).toBeCloseTo(3, 6);
+    expect(drawn[1]).toBeCloseTo(80, 6);
+    expect(drawn[2]).toBeCloseTo(300, 6);
   });
 });
 
@@ -195,40 +230,104 @@ describe("the figure a field's notes draw", () => {
 // What the figure is FOR: the sizes and the overlaps say what the counts say,
 // so a reader reads the answer off the picture rather than off a legend.
 describe("what the figure says about the counts", () => {
+  const covers = (asked: SetsAsk) => {
+    const [a, b] = apart(asked);
+    return (
+      lensArea(a.r, b.r, Math.hypot(a.cx - b.cx, a.cy - b.cy)) /
+      setsUnitArea(asked.counts)
+    );
+  };
+
   it("covers two sets of each other by what the two share", () => {
     for (const share of [10, 30, 55]) {
-      const [a, b] = apart(ask([range(0, 80), range(80 - share, 160 - share)]));
-      const covered =
-        lensArea(a.r, b.r, Math.hypot(a.cx - b.cx, a.cy - b.cy)) /
-        SETS_NOTE_AREA;
-      expect(covered).toBeCloseTo(share, 1);
+      expect(
+        covers(ask([range(0, 80), range(80 - share, 160 - share)])),
+      ).toBeCloseTo(share, 1);
     }
   });
 
+  // A field of five notes is the common case for a new graph, and the figure
+  // says as much there as it does of three hundred.
+  it("covers two small sets of each other by what the two share", () => {
+    expect(
+      covers(
+        ask(
+          [
+            [1, 2, 3, 4, 5],
+            [4, 5, 6],
+          ],
+          0,
+        ),
+      ),
+    ).toBeCloseTo(2, 1);
+    expect(
+      covers(
+        ask(
+          [
+            [1, 2],
+            [2, 3, 4],
+          ],
+          0,
+        ),
+      ),
+    ).toBeCloseTo(1, 1);
+  });
+
   it("keeps two sets sharing nothing clear of each other", () => {
-    for (const count of [2, 3, 5]) {
+    for (const [count, size] of [
+      [2, 1],
+      [2, 50],
+      [3, 50],
+      [5, 1],
+      [5, 50],
+    ]) {
       const drawn = apart(
         ask(
-          Array.from({ length: count }, (_unused, at) => range(at * 50, 50)),
+          Array.from({ length: count }, (_unused, at) =>
+            range(at * size, size),
+          ),
           0,
         ),
       );
       for (let a = 0; a < count; a++) {
+        expect(drawn[a].r, `${a} of ${count}`).toBeGreaterThan(0);
         for (let b = a + 1; b < count; b++) {
           expect(
             Math.hypot(drawn[a].cx - drawn[b].cx, drawn[a].cy - drawn[b].cy),
-            `${a} and ${b} of ${count}`,
+            `${a} and ${b} of ${count} of ${size}`,
           ).toBeGreaterThanOrEqual(drawn[a].r + drawn[b].r - 1e-6);
         }
       }
     }
   });
 
-  it("nests a set every note of which carries another inside it", () => {
-    const [big, small] = apart(ask([range(0, 200), range(0, 40)], 0));
-    const between = Math.hypot(big.cx - small.cx, big.cy - small.cy);
-    expect(small.r).toBeLessThan(big.r);
-    expect(between).toBeLessThanOrEqual(big.r - small.r + 1e-6);
+  // However few notes either set holds. The crescent round the nested set is
+  // where the notes outside it stand, and the figure has to draw that
+  // combination rather than leaving them nowhere.
+  it("nests a set every note of which carries another, with a crescent left", () => {
+    for (const [held, holding] of [
+      [1, 2],
+      [3, 5],
+      [11, 12],
+      [40, 200],
+    ]) {
+      const asked = ask([range(0, holding), range(0, held)], 0);
+      const figure = setsFigure(asked);
+      const [big, small] = figure.shapes;
+      const between = Math.hypot(big.cx - small.cx, big.cy - small.cy);
+      const where = `${held} of ${holding}`;
+      expect(small.r, where).toBeLessThan(big.r);
+      expect(between, where).toBeLessThanOrEqual(big.r - small.r + 1e-6);
+      expect(between, where).toBeGreaterThan(0);
+      expect(
+        (Math.PI * (big.r ** 2 - small.r ** 2)) / setsUnitArea(asked.counts),
+        where,
+      ).toBeCloseTo(holding - held, 6);
+      expect(
+        figure.regions.map((region) => region.id),
+        where,
+      ).toEqual([0, 0b01, 0b11]);
+    }
   });
 
   it("draws the set more notes carry wider", () => {
@@ -255,15 +354,6 @@ describe("the same ask drawn twice", () => {
     const again = await import("./geometry.js");
     for (const one of asked) {
       expect(again.setsFigure(one)).toEqual(setsFigure(one));
-    }
-  });
-
-  it("reads the same figure off an ask built in another order", () => {
-    // The ask is a tuple of numbers; the same numbers are the same figure.
-    for (const one of asked) {
-      expect(setsFigure({ ...one, counts: [...one.counts] })).toEqual(
-        setsFigure(one),
-      );
     }
   });
 });

@@ -332,7 +332,7 @@ const DIM_STEP = 1 / 255;
  * Walked up a step at a time, and every ground measured again at what the last
  * one asked for: what owes the floor is the eight-bit pixel, so the measured
  * contrast is a thousandth either side of the mix and does not climb with the
- * alpha — which is what a halving search, and a single pass, read as an answer.
+ * alpha.
  */
 function recession(fill: Oklch, ground: readonly Oklch[]): number {
   for (const on of ground) {
