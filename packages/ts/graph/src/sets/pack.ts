@@ -8,25 +8,28 @@
 
 import {
   type Address,
-  assignTagHueSlots,
-  MARK_SCALE_MAX,
   type OwnedRef,
   orderSiblings,
   type Tag,
   type TagHueSlot,
 } from "@sloppy/types";
-import { DRAWN_SETS_MOST, type GraphRetag } from "../contract.js";
-import { LEAF_RADIUS } from "../model.js";
+import { drawnSetSlots, drawnSetsOf, type GraphRetag } from "../contract.js";
 import type { Bounds, Point } from "../viewport.js";
 import {
   inBox,
   inShape,
   namePoint,
   regionAt,
+  type SetsAsk,
   type SetsRegion,
+  SETS_STEP,
   type SetsShape,
-  setsDiagram,
+  setsFigure,
 } from "./geometry.js";
+
+// The lattice step is a fact about the widest mark, and the unit of area the
+// figure is sized in is chosen against it — `geometry.ts` holds both.
+export { SETS_STEP } from "./geometry.js";
 
 /** A note as the packing reads it. */
 export interface SetsNote {
@@ -93,13 +96,6 @@ export interface SetsMark {
   holds: readonly OwnedRef[];
 }
 
-/**
- * How far apart the lattice stands two marks at full zoom, in world units: the
- * widest a leaf mark can be drawn at either side of the gap and a hair over, so
- * no two marks touch however large their authors sized them.
- */
-export const SETS_STEP = Math.ceil(LEAF_RADIUS * MARK_SCALE_MAX * 2 + 6);
-
 /** How far inside its region a mark's centre stands: the widest a leaf mark is
  *  drawn, so the whole disc is in the one set and no mark reads as standing in
  *  two. */
@@ -126,12 +122,6 @@ export function setsSpacing(scale: number): number {
 /** What a zoom is multiplied by to cross exactly one {@link setsSpacingTier} —
  *  one step more room in every region. */
 export const SETS_TIER_ZOOM = Math.SQRT2;
-
-/** The tags a selection draws as regions: the first {@link DRAWN_SETS_MOST},
- *  deduped the way `assignTagHueSlots` hands out the hues. */
-export function drawnSetsOf(selection: readonly Tag[]): Tag[] {
-  return [...new Set(selection)].slice(0, DRAWN_SETS_MOST);
-}
 
 /** The region a note stands in, as a bitmask over `drawn`. */
 export function membershipOf(
@@ -210,8 +200,8 @@ export interface SetsPackOptions {
    * than two is one field holding every note, the way the genealogy draws one.
    */
   fields: readonly OwnedRef[];
-  /** The tags selected, in selection order — the drawn ones are the first
-   *  {@link DRAWN_SETS_MOST} of them. */
+  /** The tags selected, in selection order. Which of them, and which of the
+   *  tags the notes carry besides, are drawn as places is `drawnSetsOf`. */
   selection: readonly Tag[];
   spacing: number;
   /** The most marks the whole canvas may draw. */
@@ -225,10 +215,10 @@ export interface SetsPacking {
   drawn: SetsDrawn;
 }
 
-/** Where every mark stands, and the diagram each field draws. */
+/** Where every mark stands, and the figure each field draws. */
 export function packSets(options: SetsPackOptions): SetsPacking {
-  const tags = drawnSetsOf(options.selection);
-  const slots = assignTagHueSlots(options.selection);
+  const tags = drawnSetsOf(options.selection, options.notes);
+  const slots = drawnSetSlots(tags);
 
   const byField = fieldsOf(options.notes, options.fields);
   const marks: SetsMark[] = [];
@@ -243,7 +233,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
   let half = 0;
 
   for (const [at, field] of byField.entries()) {
-    const diagram = setsDiagram(tags.length, field.notes.length);
+    const diagram = setsFigure(askOf(field.notes, tags));
     const reach = (diagram.box.maxX - diagram.box.minX) / 2;
     if (at > 0) middle += half + options.gutter + reach;
     half = reach;
@@ -336,6 +326,39 @@ export function packSets(options: SetsPackOptions): SetsPacking {
   return { marks, drawn: { tags, fields, standing, folds } };
 }
 
+/**
+ * What a field asks its figure for: how many of its notes carry each drawn tag,
+ * how many carry each pair of them, and how many carry none. Counted in drawing
+ * order over the notes as they were handed in, so the ask — and the figure
+ * measured from it — is the same whatever order a host reads its notes out in.
+ */
+export function askOf(
+  notes: readonly Pick<SetsNote, "tags">[],
+  drawn: readonly Tag[],
+): SetsAsk {
+  const count = drawn.length;
+  const counts = new Array<number>(count).fill(0);
+  const shared = new Array<number>(count * count).fill(0);
+  let outside = 0;
+  for (const note of notes) {
+    const mask = membershipOf(note.tags, drawn);
+    if (mask === 0) {
+      outside += 1;
+      continue;
+    }
+    for (let a = 0; a < count; a++) {
+      if ((mask & (1 << a)) === 0) continue;
+      counts[a] += 1;
+      for (let b = a + 1; b < count; b++) {
+        if ((mask & (1 << b)) === 0) continue;
+        shared[a * count + b] += 1;
+        shared[b * count + a] += 1;
+      }
+    }
+  }
+  return { counts, shared, outside };
+}
+
 /** The notes of each field, in the order the fields stand. */
 function fieldsOf(
   notes: readonly SetsNote[],
@@ -417,21 +440,13 @@ const AROUND: readonly [number, number][] = [
 ];
 
 /**
- * One shape with room for a whole mark taken off it, or given to it — which is
- * how a disc is held clear of an outline rather than only its centre: a mark
+ * One disc with room for a whole mark taken off it, or given to it — which is
+ * how a mark is held clear of an outline rather than only its centre: a mark
  * stands clear of a set when its centre is inside that set shrunk by its reach,
  * or outside the set grown by it.
- *
- * Both axes move by the same SHARE, the reach over the shorter one, because an
- * ellipse's own inward offset is nearer than the reach wherever it leans.
  */
 function roomFor(shape: SetsShape, reach: number): SetsShape {
-  const share = 1 + reach / Math.min(shape.rx, shape.ry);
-  return {
-    ...shape,
-    rx: Math.max(shape.rx * share, 1e-6),
-    ry: Math.max(shape.ry * share, 1e-6),
-  };
+  return { ...shape, r: Math.max(shape.r + reach, 1e-6) };
 }
 
 /**

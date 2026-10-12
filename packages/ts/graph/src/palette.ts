@@ -52,12 +52,13 @@ export const SLOTS_KEPT = 0.9;
 
 /**
  * The most of its tag's hue a drawn set washes over the paper — DESIGN.md
- * § "Sets — the tags as places". What bounds it is the depth ramp: four of
- * these stacked still have to leave every theme that ships the generations it
- * carries on the plain paper, and `palette.test.ts` is what holds that. A ground
- * with less room to spare washes less — {@link setsCeiling}.
+ * § "Sets — the tags as places". What bounds it is the depth ramp: as many of
+ * these stacked as that reading draws places (`DRAWN_SETS_MOST`) still have to
+ * leave every theme the generations it carries on the plain paper, and
+ * `palette.test.ts` is what holds that. A ground with less room to spare washes
+ * less — {@link setsCeiling}.
  */
-export const SETS_TINT = 0.11;
+export const SETS_TINT = 0.1;
 
 /** What the region under a held mark is lit by, as a share of the regions' own
  *  wash. In ink: it says where a drop lands, and names no tag. */
@@ -319,26 +320,38 @@ function shadedSlots(
   });
 }
 
+/** The step the recession is walked up in: one eight-bit channel, which is the
+ *  finest difference the canvas can draw. */
+const DIM_STEP = 1 / 255;
+
 /**
  * How much of `fill` a dimmed mark keeps: {@link DIM_RECESSION}, or as much
  * more as {@link DIM_FLOOR} takes over the faintest ground it can land on.
  * 1 where the mark is under that floor before it is dimmed at all.
+ *
+ * Walked up a step at a time, and every ground measured again at what the last
+ * one asked for: what owes the floor is the eight-bit pixel, so the measured
+ * contrast is a thousandth either side of the mix and does not climb with the
+ * alpha — which is what a halving search, and a single pass, read as an answer.
  */
 function recession(fill: Oklch, ground: readonly Oklch[]): number {
-  let alpha = DIM_RECESSION;
   for (const on of ground) {
     if (contrastRatio(fill, on) < DIM_FLOOR) return 1;
-    if (contrastRatio(over(fill, on, alpha), on) >= DIM_FLOOR) continue;
-    let lo = alpha;
-    let hi = 1;
-    for (let i = 0; i < 12; i++) {
-      const mid = (lo + hi) / 2;
-      if (contrastRatio(over(fill, on, mid), on) >= DIM_FLOOR) hi = mid;
-      else lo = mid;
-    }
-    alpha = hi;
   }
-  return alpha;
+  let alpha = DIM_RECESSION;
+  for (;;) {
+    let raised = false;
+    for (const on of ground) {
+      while (
+        alpha < 1 &&
+        contrastRatio(over(fill, on, alpha), on) < DIM_FLOOR
+      ) {
+        alpha = Math.min(alpha + DIM_STEP, 1);
+        raised = true;
+      }
+    }
+    if (!raised) return alpha;
+  }
 }
 
 const unpack = (fill: number): Oklch =>

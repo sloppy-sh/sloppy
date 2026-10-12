@@ -13,6 +13,7 @@ import {
   drawnRefs,
   drawnNodes,
   drawnReading,
+  drawnSetsOf,
   type GraphDifference,
   type GraphField,
   type GraphEdgeLook,
@@ -43,7 +44,6 @@ import {
 import { type FrameStats, GraphScene } from "./scene.js";
 import { FIELD_GUTTER } from "./layout/geometry.js";
 import {
-  drawnSetsOf,
   packSets,
   retagInto,
   type SetsDrawn,
@@ -979,7 +979,9 @@ export function mountGraph(
 /** How many tags are drawn as regions, which the floors are measured against —
  *  0 off the sets reading. */
 function setsWashes(props: GraphSurfaceProps): number {
-  return props.arrangement === "sets" ? drawnSetsOf(props.selection).length : 0;
+  return props.arrangement === "sets"
+    ? drawnSetsOf(props.selection, props.nodes).length
+    : 0;
 }
 
 function viewportNow(scene: GraphScene | null): GraphTransform | null {

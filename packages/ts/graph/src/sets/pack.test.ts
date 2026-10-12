@@ -5,11 +5,11 @@
 
 import type { Address, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { DRAWN_SETS_MOST } from "../contract.js";
+import { DRAWN_SETS_MOST, drawnSetsOf } from "../contract.js";
 import { mulberry32 } from "../corpus.test-support.js";
-import { regionAt, setsDiagram } from "./geometry.js";
+import { regionAt, setsFigure } from "./geometry.js";
 import {
-  drawnSetsOf,
+  askOf,
   latticeIn,
   membershipOf,
   packSets,
@@ -28,6 +28,9 @@ import {
 const HOME = "did:syr:zHome" as OwnedRef;
 const AWAY = "did:syr:zAway" as OwnedRef;
 const TAGS = ["biology", "seed", "question", "working", "spare"] as Tag[];
+/** As many tags as a figure draws places for, which is more than a field needs
+ *  to carry for the rest of this suite. */
+const EVERY_TAG = [...TAGS, "ink", "paper", "pencil"] as Tag[];
 
 function note(
   serial: number,
@@ -44,18 +47,24 @@ function note(
   };
 }
 
-/** A field of notes drawn from the tag pool, the same every run. */
-function field(count: number, seed: number): SetsNote[] {
+/** A field of notes drawn from a tag pool, the same every run. */
+function field(
+  count: number,
+  seed: number,
+  pool: readonly Tag[] = TAGS,
+): SetsNote[] {
   const random = mulberry32(seed);
   return Array.from({ length: count }, (_unused, at) =>
     note(
       at,
-      TAGS.filter(() => random() < 0.45),
+      pool.filter(() => random() < 0.45),
       HOME,
       `1a${at + 1}`,
     ),
   );
 }
+
+const setsIn = (mask: number) => mask.toString(2).replace(/0/g, "").length;
 
 function shuffled<T>(items: readonly T[], seed: number): T[] {
   const random = mulberry32(seed);
@@ -85,16 +94,6 @@ const packed = (notes: readonly SetsNote[], selection: readonly Tag[]) =>
   });
 
 describe("the tags a selection draws", () => {
-  it("takes the first few in selection order and dedupes them", () => {
-    expect(drawnSetsOf([...TAGS, TAGS[0]])).toEqual(
-      TAGS.slice(0, DRAWN_SETS_MOST),
-    );
-    expect(drawnSetsOf([TAGS[1], TAGS[1], TAGS[0]])).toEqual([
-      TAGS[1],
-      TAGS[0],
-    ]);
-  });
-
   it("reads a note's region off the drawn tags alone", () => {
     const drawn = TAGS.slice(0, 3);
     expect(membershipOf([TAGS[0], TAGS[2], TAGS[4]], drawn)).toBe(0b101);
@@ -149,8 +148,21 @@ describe("the order notes stand in inside a region", () => {
 });
 
 describe("the lattice a region is packed on", () => {
-  for (const count of [1, 2, 3, 4]) {
-    const diagram = setsDiagram(count);
+  for (const count of [1, 2, 3, 4, DRAWN_SETS_MOST]) {
+    const drawn = EVERY_TAG.slice(0, count);
+    // One note per combination of the drawn tags, which asks the figure for
+    // every region that many sets can have.
+    const diagram = setsFigure(
+      askOf(
+        Array.from({ length: 1 << count }, (_unused, mask) =>
+          note(
+            mask,
+            drawn.filter((_tag, bit) => (mask & (1 << bit)) !== 0),
+          ),
+        ),
+        drawn,
+      ),
+    );
 
     it(`stands every mark inside its own region of ${count}`, () => {
       for (const region of diagram.regions) {
@@ -220,10 +232,13 @@ describe("packing a field", () => {
   it("stands each mark in the region of the drawn tags it carries", () => {
     const { marks, drawn } = packed(notes, selection);
     const drew = figure(drawn);
+    const places = new Set(drew.regions.map((region) => region.id));
     for (const mark of marks) {
       if (mark.holds.length > 0) continue;
       const held = notes.find((entry) => entry.ref === mark.ref) as SetsNote;
-      expect(mark.region).toBe(membershipOf(held.tags, drawn.tags));
+      expect(mark.region).toBe(
+        regionFor(membershipOf(held.tags, drawn.tags), places),
+      );
       expect(
         regionAt(drew.shapes, {
           x: mark.x - drew.dx,
@@ -244,19 +259,63 @@ describe("packing a field", () => {
     }
   });
 
-  // The figure grows with the field, so a region's room grows with the notes it
-  // is asked to hold — DESIGN.md § "Sets — the tags as places".
-  it("draws a bigger field a bigger figure, and folds less of it", () => {
+  // Each set is as wide as the notes carrying its tag, so a field four times
+  // the size draws every one of them wider and the figure with them.
+  it("draws a bigger field a bigger figure", () => {
     const few = packed(field(100, 11), selection);
     const many = packed(field(400, 11), selection);
     const across = (drawn: SetsDrawn) =>
       drawn.fields[0].box.maxX - drawn.fields[0].box.minX;
 
     expect(across(many.drawn)).toBeGreaterThan(across(few.drawn));
-    for (const [at, region] of many.drawn.fields[0].regions.entries()) {
-      expect(regionCapacity(region, SETS_STEP)).toBeGreaterThan(
-        regionCapacity(few.drawn.fields[0].regions[at], SETS_STEP),
+    for (const [bit, set] of many.drawn.fields[0].sets.entries()) {
+      expect(set.shape.r, set.tag).toBeGreaterThan(
+        few.drawn.fields[0].sets[bit].shape.r,
       );
+    }
+  });
+
+  // What a note's share of the paper buys: a region the fit can size by its
+  // own count has room for the notes standing in it at full zoom, so folding is
+  // left to the slivers where four sets or more cross and no 2D figure can give
+  // a combination the area its count asks for.
+  for (const size of [600, 1200]) {
+    it(`leaves every region a figure can size room for ${size} notes`, () => {
+      const held = field(size, 606);
+      const { drawn } = packed(held, selection);
+      const field0 = drawn.fields[0];
+      const places = new Set(field0.regions.map((region) => region.id));
+      const standing = new Map<number, number>();
+      for (const note of held) {
+        const id = regionFor(membershipOf(note.tags, drawn.tags), places);
+        standing.set(id, (standing.get(id) ?? 0) + 1);
+      }
+      for (const region of field0.regions) {
+        const want = standing.get(region.id) ?? 0;
+        if (want === 0 || setsIn(region.id) > 3) continue;
+        expect(
+          regionCapacity(region, SETS_STEP),
+          `region ${region.id.toString(2)}`,
+        ).toBeGreaterThanOrEqual(want);
+      }
+    });
+  }
+
+  // What the figure is FOR: the picture says what the counts say, so a reader
+  // reads the answer off it rather than off a legend.
+  it("sizes each set by the notes carrying its tag", () => {
+    const { drawn } = packed(notes, selection);
+    const carried = (tag: Tag) =>
+      notes.filter((note) => note.tags.includes(tag)).length;
+    const sets = [...drawn.fields[0].sets].sort(
+      (a, b) => a.shape.r - b.shape.r,
+    );
+    for (const [at, set] of sets.entries()) {
+      if (at === 0) continue;
+      expect(
+        carried(set.tag),
+        `${set.tag} against ${sets[at - 1].tag}`,
+      ).toBeGreaterThanOrEqual(carried(sets[at - 1].tag));
     }
   });
 
@@ -323,7 +382,7 @@ describe("packing a field", () => {
   });
 
   it("holds the whole canvas under the count it was given", () => {
-    const { marks } = packSets({
+    const { marks, drawn } = packSets({
       notes,
       fields: [],
       selection,
@@ -331,16 +390,30 @@ describe("packing a field", () => {
       most: 40,
       gutter: 900,
     });
-    expect(marks.length).toBeLessThanOrEqual(40 + 2 ** selection.length);
+    expect(marks.length).toBeLessThanOrEqual(40 + 2 ** drawn.tags.length);
+  });
+
+  // A reader who has asked nothing is still shown the shape of the field: the
+  // tags its own notes carry draw, most-carried first.
+  it("draws the field's own tags where nothing is selected", () => {
+    const { drawn } = packed(notes, []);
+    expect(drawn.tags).toEqual(drawnSetsOf([], notes));
+    expect(drawn.tags.length).toBeGreaterThan(1);
+    expect(drawn.fields[0].sets.map((set) => set.slot)).toEqual(
+      drawn.tags.map((_tag, at) => at + 1),
+    );
   });
 
   // With nothing drawn there is no question to stand the notes inside, so the
   // one mark that says how many there are is the whole of the reading.
-  it("folds everything into one mark where nothing is selected", () => {
-    const { marks, drawn } = packed(notes, []);
+  it("folds everything into one mark where no tag is carried at all", () => {
+    const plain = Array.from({ length: 40 }, (_unused, at) =>
+      note(at, [], HOME, `1b${at + 1}`),
+    );
+    const { marks, drawn } = packed(plain, []);
     expect(marks).toHaveLength(1);
     expect(marks[0].region).toBe(0);
-    expect(marks[0].holds).toHaveLength(notes.length - 1);
+    expect(marks[0].holds).toHaveLength(plain.length - 1);
     expect(drawn.tags).toEqual([]);
   });
 
@@ -362,8 +435,7 @@ describe("packing a field", () => {
       gutter: 900,
     });
     expect(drawn.fields.map((one) => one.ref)).toEqual([HOME, AWAY]);
-    expect(drawn.fields[0].dx).toBe(0);
-    expect(drawn.fields[1].dx).toBeGreaterThan(0);
+    expect(drawn.fields[1].dx).toBeGreaterThan(drawn.fields[0].dx);
     const home = marks.filter((mark) => mark.field === 0);
     const away = marks.filter((mark) => mark.field === 1);
     expect(home.length).toBeGreaterThan(0);
@@ -375,8 +447,10 @@ describe("packing a field", () => {
 });
 
 describe("where a drop lands", () => {
-  const notes = field(120, 7);
   const selection = TAGS.slice(0, 2);
+  // A field carrying nothing but the two selected tags, so those two are the
+  // whole of what is drawn and `TAGS[4]` is a tag no place names.
+  const notes = field(120, 7, selection);
 
   it("reads the region a world point falls in", () => {
     const { drawn } = packed(notes, selection);
@@ -430,7 +504,9 @@ describe("where a drop lands", () => {
   });
 
   it("reports nothing at all where no set is drawn", () => {
-    const { drawn } = packed(notes, []);
+    const plain = Array.from({ length: 20 }, (_unused, at) => note(at, []));
+    const { drawn } = packed(plain, []);
+    expect(drawn.tags).toEqual([]);
     expect(retagInto(drawn, [note(1, [TAGS[0]])], 0)).toBeNull();
   });
 });

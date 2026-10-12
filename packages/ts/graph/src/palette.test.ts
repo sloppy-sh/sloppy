@@ -286,8 +286,8 @@ describe("the ring a look draws", () => {
 });
 
 // DESIGN.md § "Sets — the tags as places": a region is a wash the marks stand
-// ON, so what a mark owes is owed against the ground that wash makes — one,
-// two, three and four of them over one another. The alpha is what gives to
+// ON, so what a mark owes is owed against the ground that wash makes — every
+// stack of them the figure can draw, up to the cap. The alpha is what gives to
 // pass; the floors do not move.
 describe("a mark standing inside the drawn sets", () => {
   const washed = (theme: (typeof themes)[number], sets: number) => {
@@ -323,8 +323,8 @@ describe("a mark standing inside the drawn sets", () => {
 
     // The set names and the marks' captions are small text lettered in the
     // canvas's own ink, so what they owe is LABEL_FLOOR over every ground a
-    // wash can lay under them: the paper, one to four washes, and both ends of
-    // the band a wallpaper at its ceiling makes.
+    // wash can lay under them: the paper, every stack of washes, and both ends
+    // of the band a wallpaper at its ceiling makes.
     it(`letters above the small-text floor under every wash on ${theme.name}`, () => {
       const tokens = { ...theme, hues };
       const ink = parseCssColor(theme.ink) as Oklch;
@@ -363,10 +363,10 @@ describe("a mark standing inside the drawn sets", () => {
     });
   }
 
-  // What bounds the wash: four of them stacked still have to leave a theme
-  // every generation it carries on the plain paper. A louder wash buys nothing
-  // and costs the lightness channel.
-  it("leaves every theme that ships its whole ramp under four of them", () => {
+  // What bounds the wash: as many of them stacked as the figure draws places
+  // still have to leave a theme every generation it carries on the plain paper.
+  // A louder wash buys nothing and costs the lightness channel.
+  it("leaves every theme its whole ramp under as many washes as it draws", () => {
     for (const theme of themes) {
       const plain = buildPalette({ ...theme, hues });
       const under = buildPalette({ ...theme, hues }, 0, DRAWN_SETS_MOST);

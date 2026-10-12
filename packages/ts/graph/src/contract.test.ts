@@ -1,4 +1,9 @@
-import type { NodeView, OwnedRef, Tag } from "@sloppy/types";
+import {
+  type NodeView,
+  type OwnedRef,
+  type Tag,
+  TAG_HUE_SLOTS,
+} from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import {
   DRAWN_SETS_MOST,
@@ -6,6 +11,8 @@ import {
   drawnRefs,
   drawnNodes,
   drawnReading,
+  drawnSetSlots,
+  drawnSetsOf,
   edgeLookKey,
   edgeLooksByPair,
   type GraphEdgeLook,
@@ -265,7 +272,89 @@ describe("the readings of one canvas", () => {
     expect([...GRAPH_ARRANGEMENTS]).toEqual(["genealogy", "sets"]);
   });
 
-  it("draws four sets as regions at the most", () => {
-    expect(DRAWN_SETS_MOST).toBe(4);
+  it("draws as many sets as there are hue slots, at the most", () => {
+    expect(DRAWN_SETS_MOST).toBe(TAG_HUE_SLOTS.length);
+  });
+});
+
+// Which tags are drawn as places is one function, so the canvas, the rail and
+// the menu cannot disagree about what the reader is looking at.
+describe("the tags a field draws as places", () => {
+  const tagged = (serial: number, tags: string[]): NodeView =>
+    node(serial, `1a${serial}`, root, tags);
+
+  /** Three tags one note apart, so the order by count is unambiguous. */
+  const field = [
+    tagged(10, ["beta", "alpha", "gamma"]),
+    tagged(11, ["beta", "alpha"]),
+    tagged(12, ["beta"]),
+  ];
+
+  it("leads with the selection, in selection order", () => {
+    expect(drawnSetsOf(["gamma", "alpha"] as Tag[], field)).toEqual([
+      "gamma",
+      "alpha",
+      "beta",
+    ]);
+  });
+
+  it("draws the most-carried tags of a field nobody has asked about", () => {
+    expect(drawnSetsOf([], field)).toEqual(["beta", "alpha", "gamma"]);
+  });
+
+  it("reads two tags the same notes carry in name order", () => {
+    const evenly = [tagged(20, ["zebra", "aardvark"]), tagged(21, ["zebra"])];
+    expect(drawnSetsOf([], evenly)).toEqual(["zebra", "aardvark"]);
+    expect(drawnSetsOf([], [tagged(22, ["zebra", "aardvark"])])).toEqual([
+      "aardvark",
+      "zebra",
+    ]);
+  });
+
+  it("names a tag once, however it arrives twice", () => {
+    expect(drawnSetsOf(["beta", "beta"] as Tag[], field)).toEqual([
+      "beta",
+      "alpha",
+      "gamma",
+    ]);
+    expect(drawnSetsOf([], [tagged(30, ["beta", "beta"]), ...field])).toEqual([
+      "beta",
+      "alpha",
+      "gamma",
+    ]);
+  });
+
+  it("draws nothing where neither the reader nor the notes name a tag", () => {
+    expect(drawnSetsOf([], [node(40, "1c", root)])).toEqual([]);
+    expect(drawnSetsOf([], [])).toEqual([]);
+  });
+
+  it("stops at the cap, selection first", () => {
+    const many = Array.from(
+      { length: DRAWN_SETS_MOST * 2 },
+      (_unused, at) => `tag-${String(at).padStart(2, "0")}`,
+    );
+    // The later a tag stands in `many`, the more of these notes carry it.
+    const carried = many.map((_unused, at) => tagged(50 + at, many.slice(at)));
+    const last = many[many.length - 1] as Tag;
+    const drawn = drawnSetsOf([last], carried);
+
+    expect(drawn).toHaveLength(DRAWN_SETS_MOST);
+    expect(drawn[0]).toBe(last);
+    expect(new Set(drawn).size).toBe(DRAWN_SETS_MOST);
+    // The cap falls on the count, so the tags left out are the least carried.
+    expect(drawn.slice(1)).toEqual(
+      many.slice(many.length - DRAWN_SETS_MOST, many.length - 1).reverse(),
+    );
+  });
+
+  it("hands each drawn set the hue slot its place is painted in", () => {
+    const drawn = drawnSetsOf(["gamma"] as Tag[], field);
+    expect([...drawnSetSlots(drawn)]).toEqual([
+      ["gamma", 1],
+      ["beta", 2],
+      ["alpha", 3],
+    ]);
+    expect(drawnSetSlots([]).size).toBe(0);
   });
 });

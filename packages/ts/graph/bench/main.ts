@@ -79,8 +79,8 @@ const built = (total: number): Corpus =>
 let corpus = built(notes);
 /**
  * `?arrangement=sets` reads the corpus as the tags-as-places figure rather than
- * as the genealogy, and `?tags=a,b,c` is the selection it draws — tags of the
- * corpus above, which `window.__carries` lists.
+ * as the genealogy — the corpus's own tags draw, and `?tags=a,b,c` names the ones
+ * that lead, tags of the corpus above, which `window.__carries` lists.
  */
 let arrangement: GraphArrangement =
   asked.get("arrangement") === "sets" ? "sets" : "genealogy";

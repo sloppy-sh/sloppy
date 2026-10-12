@@ -7,7 +7,15 @@
 
 	/** The count as a reader reads it, so the line cannot say four where the
 	 *  canvas draws three. */
-	const WORDS: Record<number, string> = { 2: 'two', 3: 'three', 4: 'four', 5: 'five' };
+	const WORDS: Record<number, string> = {
+		2: 'two',
+		3: 'three',
+		4: 'four',
+		5: 'five',
+		6: 'six',
+		7: 'seven',
+		8: 'eight'
+	};
 	const most = WORDS[DRAWN_SETS_MOST] ?? String(DRAWN_SETS_MOST);
 
 	let {

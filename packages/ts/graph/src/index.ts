@@ -16,7 +16,4 @@ export * from "./model.js";
 export * from "./mount.js";
 export * from "./palette.js";
 export * from "./scene.js";
-// Named: the packing is the renderer's own, and the one thing a host reads of
-// it is which of the selected tags are drawn as places.
-export { drawnSetsOf } from "./sets/pack.js";
 export * from "./viewport.js";

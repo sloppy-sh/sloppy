@@ -297,7 +297,11 @@ describe("what is written on a region's fold", () => {
     expect(model.sets?.folds.size).toBe(2);
 
     const written = writtenOn(app);
-    expect(written.filter((words) => words.startsWith("+"))).toEqual(["+12"]);
+    // Both regions folded and both are in view, each writing its own twelve.
+    expect(written.filter((words) => words.startsWith("+"))).toEqual([
+      "+12",
+      "+12",
+    ]);
     for (const words of written) {
       expect(words).not.toContain("Mushrooms");
       expect(words).not.toContain("1a");

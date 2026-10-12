@@ -2,14 +2,16 @@
 // draws the ownership line this expresses: the host owns which nodes exist, the
 // surface owns pan, zoom and drag.
 
-import type {
-  DidSyr,
-  EdgeDirection,
-  EdgeStroke,
-  NodeView,
-  OwnedRef,
-  PictureTransition,
-  Tag,
+import {
+  assignTagHueSlots,
+  type DidSyr,
+  type EdgeDirection,
+  type EdgeStroke,
+  type NodeView,
+  type OwnedRef,
+  type PictureTransition,
+  type Tag,
+  type TagHueSlot,
 } from "@sloppy/types";
 import type { GraphGround } from "./ground.js";
 
@@ -281,15 +283,53 @@ export function nodesWithGone(
 
 /**
  * The readings of one canvas: the geometry the parent chain gives, and the
- * selected tags drawn as the places notes stand in — DESIGN.md § "Sets — the
- * tags as places".
+ * field's own tags drawn as the places notes stand in — DESIGN.md § "Sets —
+ * the tags as places".
  */
 export const GRAPH_ARRANGEMENTS = ["genealogy", "sets"] as const;
 export type GraphArrangement = (typeof GRAPH_ARRANGEMENTS)[number];
 
-/** The most selected tags the sets arrangement draws as regions; past it a tag
- *  colours its marks and draws none. */
-export const DRAWN_SETS_MOST = 4;
+/** The most tags the sets arrangement draws as places: the hue slots there are
+ *  (`TAG_HUE_SLOTS`), since a drawn set borrows one. Past it a tag colours its
+ *  marks and draws no place — DESIGN.md § "Sets — the tags as places". */
+export const DRAWN_SETS_MOST = 8;
+
+/**
+ * The tags the sets arrangement draws as places: the selected ones in selection
+ * order, then the other tags `nodes` carry, by the notes carrying each (most
+ * first) and then by name — deduped, and capped at {@link DRAWN_SETS_MOST}.
+ *
+ * An empty selection draws the field's own most-carried tags, so only a field
+ * whose notes carry nothing draws no place at all. Names a tag ONCE however
+ * many times a note repeats it.
+ */
+export function drawnSetsOf(
+  selection: readonly Tag[],
+  nodes: readonly { readonly tags: readonly Tag[] }[],
+): Tag[] {
+  const drawn = [...new Set(selection)].slice(0, DRAWN_SETS_MOST);
+  const chosen = new Set(drawn);
+  const carried = new Map<Tag, number>();
+  for (const node of nodes) {
+    for (const tag of new Set(node.tags)) {
+      if (chosen.has(tag)) continue;
+      carried.set(tag, (carried.get(tag) ?? 0) + 1);
+    }
+  }
+  const rest = [...carried]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([tag]) => tag);
+  return [...drawn, ...rest].slice(0, DRAWN_SETS_MOST);
+}
+
+/** The hue slot each drawn set borrows, in drawing order — what the canvas
+ *  paints a place in and what the rail shows beside the tag, from the one
+ *  mapping (`assignTagHueSlots`) so the two cannot disagree. */
+export function drawnSetSlots(
+  drawn: readonly Tag[],
+): ReadonlyMap<Tag, TagHueSlot> {
+  return assignTagHueSlots(drawn);
+}
 
 /**
  * A move between sets a gesture asked for, which the HOST writes: the renderer

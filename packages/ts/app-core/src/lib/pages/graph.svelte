@@ -764,10 +764,9 @@
 	const walking = $derived(seenAs === 'outline');
 	const inSets = $derived(seenAs === 'sets');
 
-	/** The selected tags the canvas draws as places, in selection order. The rest
-	 *  colour their marks and draw nothing — DESIGN.md § "Sets — the tags as
-	 *  places". */
-	const drawnSets = $derived(inSets ? drawnSetsOf(selection) : []);
+	/** The tags the canvas draws as places: the selected ones lead and the field's
+	 *  own most-carried tags follow — DESIGN.md § "Sets — the tags as places". */
+	const drawnSets = $derived(inSets ? drawnSetsOf(selection, visible) : []);
 
 	// The sets draw where a note's tags put it and a difference draws where the
 	// note was, so one mark cannot answer both — DESIGN.md § "Sets — the tags as

@@ -491,6 +491,9 @@ until a tag is selected.
   and the canvas cannot disagree about which colour answers which question.
   `assignTagHueSlots` in `@sloppy/types` is where that mapping is made, and the only
   place it is.
+- **In the sets reading the drawing is the question, so a set borrows a slot whether or not
+  it is selected** — in the order the sets are drawn, the selected ones first, and the rail
+  shows the drawn sets in those same hues (§ "Sets — the tags as places").
 - **A note carrying more than one selected tag draws in the earliest-selected one's hue.**
   One mark, one hue: mixing or striping makes the channel ambiguous, and the rail already
   says which sets a note is in.
@@ -2072,8 +2075,8 @@ up and the lift can be 0 in the panned case.
 
 ### Sets — the tags as places
 
-**A third reading of the same canvas, beside the graph and the outline: the tags the reader
-selected drawn as regions, with every note standing in the region of exactly the drawn tags it
+**A third reading of the same canvas, beside the graph and the outline: the field's own tags
+drawn as regions, with every note standing in the region of exactly the drawn tags it
 carries.** A note carrying two of them stands where the two overlap; one carrying none stands
 outside every region. The question the rail asks is the shape of the field.
 
@@ -2083,30 +2086,46 @@ author's look, the orbit on a chosen mark and the lift on an open one are all dr
 genealogy's own geometry to the sets a note is in. A reading that redrew notes as plain dots
 would be a poorer copy of the mark, and the phone would be the surface that lost it.
 
-- **Four sets are drawn at the most**, in selection order, each in the hue slot it already
-  borrows (§ Hue): one circle, two overlapping, three in a ring, four as ellipses — the
-  constructions in which every one of the 1, 3, 7 and 15 regions is actually present. **The
-  shape is fixed rather than fitted to the counts**, so two devices draw the same diagram
-  from the same question. A fifth selected tag colours its marks exactly as it does today and
-  draws no region; the chrome says so in one line, "The first four are drawn."
+- **The sets are the field's own tags, and the selection chooses which of them lead.** The
+  selected tags draw first, in selection order, and then the rest of the tags the field's notes
+  carry — most-carried first, ties by name. So a graph opened in this reading is already a
+  figure rather than a request for a question, and selecting a tag moves it to the front of the
+  drawing rather than being the only way to get one. **Eight sets are drawn at the most**, which
+  is how many hue slots there are (§ Hue), because a drawn set borrows one whether or not it is
+  selected. A field carrying more tags than that says how many of them are drawn in one line,
+  and selecting tags is how a reader chooses which.
+- **A set is a circle whose area is its own count, and the circles are placed so that what two
+  of them share is what the two sets share.** The notes carrying a tag are its area — with a
+  floor, so a set one note carries is still a disc with room for its name — and the distance
+  between two circles is the one at which the area they cover of each other is the notes the two
+  tags share. Two sets sharing nothing stand clear of each other; a set every note of which
+  carries another nests inside it. **The figure is fitted, and fitted the same way everywhere**:
+  the targets come from the counts, the first placement is taken in one order the counts decide,
+  and a fixed budget of steps walks down what is left of the error. Nothing in it reads a clock
+  or a random number, so two devices holding the same notes draw the same figure to the last
+  digit.
+- **Three sets and more can ask for a combination no figure of circles has room for**, and a
+  note carrying one of those stands in the most of its own sets the figure does draw — never in
+  a set it is not in, and never nowhere.
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
   tag's name in quiet ink just inside its outer edge.** Where regions overlap the fills
   overlap, and that is what says a note is in both. **The fills owe the marks their floors**
   (§ "Contrast is measured, not assumed"): a mark standing on a tinted region keeps **3:1
   against the surface it actually lands on** and a dimmed one keeps **1.6:1**, and the ink the
   canvas letters the names and the captions in keeps the **4.5:1** small text owes — over the
-  paper, under one to four washes, and over a wallpaper at its own strongest. All of it
-  measured over every look the collection dresses rather than assumed. Where one of those
-  fails it is the fill alpha that comes down, never the floor and never the wallpaper's
-  ceiling, which is the picture's own: a reader who put a picture up did not ask for a quieter
-  one by selecting a tag, and a region with no room left for a wash is its hairline alone.
+  paper, under every stack of washes the figure can draw, and over a wallpaper at its own
+  strongest. All of it measured over every look the collection dresses rather than assumed.
+  Where one of those fails it is the fill alpha that comes down, never the floor and never
+  the wallpaper's ceiling, which is the picture's own: a reader who put a picture up did not
+  ask for a quieter one by selecting a tag, and a region with no room left for a wash is its
+  hairline alone.
 - **No genealogical edges are drawn here, and no edge looks** (§ Edges). A line between two
   notes says nothing about which sets they are in, and the address and title beside a mark are
   drawn as they are on the genealogy.
 - **Each field draws its own diagram.** With several graphs on the canvas each one gets its own
-  regions from the same selected tags, laid out beside the last and named exactly as fields
-  are (§ "Several graphs on one canvas"). The tag axis is read inside one graph
-  (docs/ARCHITECTURE.md § "Tagging a note"), and this keeps it so.
+  regions, sized by its own notes and drawn from the tags those notes carry, laid out beside
+  the last and named exactly as fields are (§ "Several graphs on one canvas"). The tag axis is
+  read inside one graph (docs/ARCHITECTURE.md § "Tagging a note"), and this keeps it so.
 - **Marks are packed inside their region** on a hexagonal lattice from its centre outward, in
   one deterministic order: notes carrying the same undrawn tags stand together, then by address
   order, then by ref. The spacing keeps marks clear of one another at the zoom they are drawn
@@ -2114,20 +2133,22 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
 - **The count is bounded here as it is everywhere.** A region holding more notes than its area
   can show at this zoom folds into one mega-node at its centre, sized by count with the count
   written on it — the same fold the genealogy draws. A tap brings the canvas to that region,
-  where there is room, and it unfolds; zooming out refolds. **The figure itself grows with the
-  field** — four times the notes draws it twice the size, by the same rule on every device — so
-  every region's room grows with the notes it is asked to hold, and a fold has somewhere to
-  open into rather than being a crowd nobody can reach. **The rest** — every note outside
-  every drawn region — folds the same way and is dimmed. Nothing about a fold is kept: it is a
-  function of the zoom and of what the notes carry.
-- **Nothing selected draws one dimmed fold holding every note**, with one line in the chrome —
-  "Choose tags to draw them as sets." — and one quiet control beside it, "Start with the three
-  most used", which selects the three tags most notes carry.
+  where there is room, and it unfolds; zooming out refolds. **The room comes from the counts
+  themselves** — a set twice as carried is drawn twice the area, and every note is given the
+  same share of the paper — so a region sized by its own count has somewhere for a fold to open
+  into, and the slivers where several sets cross are what fold instead. **The rest** — every
+  note outside every drawn region — folds the same way and is dimmed. Nothing about a fold is
+  kept: it is a function of the zoom and of what the notes carry.
+- **Nothing selected draws the field's most-carried tags**, which is why there is no empty
+  state here to read past: the reading opens on an answer, and the rail is where a reader asks
+  for a different one.
 
 What a person does:
 
-- **Tags are chosen where they always were, in the rail**, and selecting one draws it. The
-  rail's order is the hue order is the drawing order, so there is nothing new to find.
+- **Tags are chosen where they always were, in the rail**, and selecting one puts it at the
+  front of what is drawn. The rail's order is the hue order is the drawing order, and the rail
+  shows the drawn sets in the hues the canvas draws them in, so there is nothing new to find
+  and no legend that can disagree with the figure.
 - **Tap opens a note, press opens the menu, a pointer resting on a mark previews it**, and
   choosing and sweeping are untouched. The one row the menu loses here is the fold: a
   subtree's notes are spread across the regions, so there is nothing in this reading to

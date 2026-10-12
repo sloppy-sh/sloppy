@@ -53,7 +53,7 @@
 	const marks = $derived(differenceMarks(difference));
 
 	/** The sets a drop could land in, read the way the real surface reads them. */
-	const drawn = $derived(arrangement === 'sets' ? drawnSetsOf(selection) : []);
+	const drawn = $derived(arrangement === 'sets' ? drawnSetsOf(selection, nodes) : []);
 
 	/** A drop in the first drawn set and outside every other one, which is the
 	 *  shape of every drop: the place's membership among the drawn tags. */

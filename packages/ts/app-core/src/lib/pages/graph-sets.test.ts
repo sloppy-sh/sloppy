@@ -353,14 +353,15 @@ describe('what the canvas says about the sets it is drawing', () => {
 		expect(screen()).not.toContain('Choose tags to draw them as sets.');
 	});
 
-	it('says how many of the chosen tags are drawn once there are more than four', async () => {
-		await inSets(['biology', 'method', 'seed', 'soil']);
-		expect(screen()).not.toContain('The first four are drawn.');
+	it('says how many of the chosen tags are drawn once there are more than it draws', async () => {
+		const eight = ['biology', 'method', 'seed', 'soil', 'question', 'claim', 'hunch', 'working'];
+		await inSets(eight);
+		expect(screen()).not.toContain('The first eight are drawn.');
 
-		tags.select(['biology', 'method', 'seed', 'soil', 'question'] as Tag[]);
+		tags.select([...eight, 'settled'] as Tag[]);
 		await settle();
 
-		expect(screen()).toContain('The first four are drawn.');
+		expect(screen()).toContain('The first eight are drawn.');
 	});
 
 	it('says none of that in the other readings', async () => {
@@ -377,7 +378,9 @@ describe('moving notes between the sets', () => {
 		document.body.querySelector<HTMLButtonElement>('[data-drop="1a"]')?.click();
 		await settle();
 
-		expect(written).toEqual([{ tags: ['method', 'biology'] }]);
+		// `method` is drawn too — it is a tag of this field, selected or not — so a
+		// drop in the first set alone takes it off with the rest.
+		expect(written).toEqual([{ tags: ['biology'] }]);
 		expect(bulk).toEqual([]);
 	});
 
@@ -390,7 +393,7 @@ describe('moving notes between the sets', () => {
 
 		expect(bulk).toEqual([
 			{ notes: [FIRST, SECOND], act: { act: 'tag', tags: ['biology'] } },
-			{ notes: [FIRST, SECOND], act: { act: 'untag', tags: ['seed'] } }
+			{ notes: [FIRST, SECOND], act: { act: 'untag', tags: ['seed', 'method'] } }
 		]);
 		expect(written).toEqual([]);
 	});
