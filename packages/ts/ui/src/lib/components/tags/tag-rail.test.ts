@@ -168,6 +168,34 @@ describe('the legend', () => {
 		expect(named('seed').getAttribute('aria-pressed')).toBe('false');
 	});
 
+	// DESIGN.md § Hue: where the drawing is the question, a tag is drawn whether
+	// or not it was selected, and the rail shows those hues rather than its own.
+	it('draws the hues it is handed, and still says what the reader selected', () => {
+		const slots = assignTagHueSlots(['seed', 'biology'] as Tag[]);
+		mounted = mount(TagRail, {
+			target,
+			props: {
+				tags: TAGS,
+				selected: ['biology'] as Tag[],
+				slots,
+				onselect: (next: Tag[]) => asked.push(next)
+			}
+		});
+		flushSync();
+
+		expect(painted(named('seed'))).toEqual({
+			'border-color': `var(--facet-${slots.get('seed' as Tag)})`
+		});
+		expect(named('seed').getAttribute('aria-pressed')).toBe('false');
+		expect(named('seed').textContent).toContain('208');
+		expect(named('biology').getAttribute('aria-pressed')).toBe('true');
+		expect(named('question').getAttribute('style')).toBeNull();
+
+		named('seed').click();
+
+		expect(asked).toEqual([['biology', 'seed']]);
+	});
+
 	// The chips say what they are by being read; the word is what is left for
 	// somebody who is not reading them, so it rides the rail rather than a row of
 	// its own.

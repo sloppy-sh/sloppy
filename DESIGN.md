@@ -1598,7 +1598,10 @@ nothing under it.
   places") — is one control, kept with the graph's name in all three.** It is the one act that
   has to be reachable from every view, so it never rides the canvas, which the outline puts
   away: it stands in the row over the canvas and in the column beside it, in the same place
-  whichever view is up, and says every way at once rather than only the way back.
+  whichever view is up, and says every way at once rather than only the way back. **It is
+  drawn to the room it is given**: where the head it stands in is too narrow for the words,
+  they give way to the icons, each still named for a reader who is not looking at it, and
+  never to a way that runs under what stands beside it or wraps below it.
 - **Two arrangements of the same parts, and the width the docks stand at decides which.**
   Over the canvas, where the graph is the whole screen: a pill anchored bottom-centre
   (`fixed`, safe-area inset) holds the destinations, a card at the top holds the graph you
@@ -2194,9 +2197,11 @@ What a person does:
   figure stands on rather than a place inside it, the tap zooms in a step instead, since that is
   the only thing that gives it room.
 - **Moving a note between sets is retagging, and it reaches every surface a tag reaches.** The
-  press menu on a mark carries one row per drawn set — "Into biology" where the note is outside
-  it, "Out of biology" where it is inside — and the bar over a chosen set carries the same rows
-  for everything chosen. **On a desk the mouse drags a mark into a region and drops it**, and a
+  press menu on a mark carries a row for each of the first four drawn sets — "Into biology"
+  where the note is outside it, "Out of biology" where it is inside, the selected sets leading
+  — and the bar over a chosen set carries the same rows for everything chosen. Four, because a
+  menu is read on a phone beside the note it is about, and the Tags row beneath it reaches every
+  tag there is. **On a desk the mouse drags a mark into a region and drops it**, and a
   mark that is part of the chosen set takes the set with it. A drop gives those notes the sets
   of the place they landed, among the drawn tags alone: into every drawn tag the point is
   inside, out of every drawn tag it is not, and a tag that is not drawn is left untouched. A

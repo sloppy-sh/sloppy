@@ -74,7 +74,11 @@
 	     and whatever the page puts beside that — so those stand together. -->
 	<div class={cn('flex gap-1', collapsed ? 'flex-col items-center' : 'items-center')}>
 		{#if deskNav.head && !collapsed}
-			<div class="flex min-w-0 flex-1 items-center">{@render deskNav.head({ collapsed })}</div>
+			<!-- Named, so what the page puts here can draw itself to the room left
+			     beside the toggle rather than over it. -->
+			<div class="@container/desk-nav-head flex min-w-0 flex-1 items-center">
+				{@render deskNav.head({ collapsed })}
+			</div>
 		{/if}
 		<button
 			type="button"

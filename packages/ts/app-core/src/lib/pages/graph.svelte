@@ -54,6 +54,7 @@
 	import {
 		comparingStates,
 		DEFAULT_BUDGET,
+		drawnSetSlots,
 		drawnSetsOf,
 		type GraphDifference,
 		type GraphHandle,
@@ -767,6 +768,14 @@
 	/** The tags the canvas draws as places: the selected ones lead and the field's
 	 *  own most-carried tags follow — DESIGN.md § "Sets — the tags as places". */
 	const drawnSets = $derived(inSets ? drawnSetsOf(selection, visible) : []);
+
+	/** The hues those are drawn in, which the rail is handed so the legend and
+	 *  the canvas cannot disagree — DESIGN.md § Hue. */
+	const drawnSlots = $derived(inSets ? drawnSetSlots(drawnSets) : undefined);
+
+	/** How many distinct tags the notes on the canvas carry, which is what the
+	 *  chrome weighs against what the canvas has room to draw. */
+	const tagsOnCanvas = $derived(inSets ? new Set(visible.flatMap((note) => note.tags)).size : 0);
 
 	// The sets draw where a note's tags put it and a difference draws where the
 	// note was, so one mark cannot answer both — DESIGN.md § "Sets — the tags as
@@ -1513,12 +1522,6 @@
 		else refused = says;
 	}
 
-	/** The three tags most of the notes on the canvas carry, which is where the
-	 *  sets start from nothing — `railTags` is already in that order. */
-	function startWithTheMostUsed(): void {
-		tags.select(railTags.slice(0, 3).map((one) => one.tag as TagName));
-	}
-
 	async function runAct(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
 		forgetLastAct();
 		await graphHistory.lineToWriteOn();
@@ -1675,11 +1678,14 @@
 		return items;
 	});
 
-	/** One row per drawn set; out of it only where every one of the notes is
-	 *  already inside. */
+	const SET_ROWS_MOST = 4;
+
+	/** A row for each of the first four drawn sets — the selected ones lead, and
+	 *  the Tags row covers the rest, so a phone's menu stays short. Out of a set
+	 *  only where every one of the notes is already inside. */
 	function setMoves(notes: readonly OwnedRef[]): CanvasMenuItem[] {
 		const held = notes.map((ref) => nodes.get(ref)).filter((note) => note !== undefined);
-		return drawnSets.map((tag) => {
+		return drawnSets.slice(0, SET_ROWS_MOST).map((tag) => {
 			const inside = held.length > 0 && held.every((note) => note.tags.includes(tag));
 			return {
 				label: `${inside ? 'Out of' : 'Into'} ${tag}`,
@@ -2447,14 +2453,16 @@
 		type="button"
 		aria-label={label}
 		aria-pressed={here}
-		title={wide ? undefined : label}
+		title={label}
 		onclick={() => prefs.set('seenAs', as)}
 		class="flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {wide
-			? 'flex-1 px-3'
+			? 'flex-1 px-3 @max-[17rem]/desk-nav-head:flex-none @max-[17rem]/desk-nav-head:px-2'
 			: 'px-2'} {here ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}"
 	>
 		<Icon class="size-4" />
-		{#if wide}<span>{label}</span>{/if}
+		<!-- 17rem is the room the three labels take; under it the control is the
+		     icons, each named by the word that gave way. -->
+		{#if wide}<span class="@max-[17rem]/desk-nav-head:hidden">{label}</span>{/if}
 	</button>
 {/snippet}
 
@@ -2734,10 +2742,7 @@
 			</div>
 		{/if}
 		{#if inSets && !pointing}
-			<SetsChrome
-				selected={selection.length}
-				onStart={railTags.length > 0 ? startWithTheMostUsed : undefined}
-			/>
+			<SetsChrome tags={tagsOnCanvas} />
 		{/if}
 		<DeskNavParts>
 			{#snippet head({ collapsed }: { collapsed: boolean })}
@@ -2956,6 +2961,7 @@
 										stacked
 										tags={railTags}
 										selected={selection}
+										slots={drawnSlots}
 										onselect={(next) => tags.select(next)}
 										order={prefs.current.tagOrder}
 										onorder={(next) => prefs.set('tagOrder', next)}
@@ -3143,7 +3149,12 @@
 					{/if}
 
 					{#if !desk.current && (railTags.length > 0 || selection.length > 0)}
-						<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
+						<TagRail
+							tags={railTags}
+							selected={selection}
+							slots={drawnSlots}
+							onselect={(next) => tags.select(next)}
+						/>
 					{/if}
 
 					{#if comparing}

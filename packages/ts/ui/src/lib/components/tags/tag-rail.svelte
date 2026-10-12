@@ -13,7 +13,7 @@
 	import ArrowDown10 from '@lucide/svelte/icons/arrow-down-1-0';
 	import ArrowDownAZ from '@lucide/svelte/icons/arrow-down-a-z';
 	import Search from '@lucide/svelte/icons/search';
-	import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
+	import { assignTagHueSlots, type Tag, type TagCount, type TagHueSlot } from '@sloppy/types';
 	import { tick } from 'svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { cn } from '$lib/utils.js';
@@ -25,7 +25,8 @@
 		onselect,
 		stacked = false,
 		order = 'count',
-		onorder
+		onorder,
+		slots
 	}: {
 		/** Every tag the reader has used, most-used first. */
 		tags: readonly TagCount[];
@@ -38,9 +39,13 @@
 		order?: TagOrder;
 		/** Absent is a column with no say in its order. */
 		onorder?: (order: TagOrder) => void;
+		/** The hues the canvas is drawing, where it draws tags the reader has not
+		 *  selected. Absent is the selection's own hues. */
+		slots?: ReadonlyMap<Tag, TagHueSlot>;
 	} = $props();
 
-	const slots = $derived(assignTagHueSlots(selected));
+	const hues = $derived(slots ?? assignTagHueSlots(selected));
+	const chosen = $derived(new Set(selected));
 	const counts = $derived(new Map(tags.map((entry) => [entry.tag, entry.notes])));
 
 	/** Chips past which scrolling the rail costs more than typing the word. */
@@ -62,12 +67,12 @@
 	const rest = $derived.by(() => {
 		const held = tags
 			.map((entry) => entry.tag)
-			.filter((tag) => !slots.has(tag) && (needle === '' || tag.includes(needle)));
+			.filter((tag) => !chosen.has(tag) && (needle === '' || tag.includes(needle)));
 		return stacked && order === 'name' ? [...held].sort((a, b) => a.localeCompare(b)) : held;
 	});
 	/** Selected first, in selection order, whatever the order of the rest: the
-	 *  canvas is drawing the selection's hues, so the legend holds them whatever
-	 *  is typed, and only the tail narrows. */
+	 *  selection is what the canvas was asked, so the legend holds it whatever is
+	 *  typed, and only the tail narrows. */
 	const shown = $derived([...selected, ...rest]);
 	const nothingMatched = $derived(needle !== '' && !shown.some((tag) => tag.includes(needle)));
 
@@ -101,7 +106,7 @@
 	}
 
 	async function toggle(tag: Tag, tapped: HTMLElement): Promise<void> {
-		const dropping = slots.has(tag);
+		const dropping = chosen.has(tag);
 		onselect(dropping ? selected.filter((held) => held !== tag) : [...selected, tag]);
 		if (dropping) return;
 		await tick();
@@ -205,13 +210,14 @@
 		{@attach scrollFade(stacked ? 'y' : 'x')}
 	>
 		{#each shown as tag (tag)}
-			{@const slot = slots.get(tag)}
+			{@const slot = hues.get(tag)}
+			{@const here = chosen.has(tag)}
 			<button
 				type="button"
-				aria-pressed={slot !== undefined}
+				aria-pressed={here}
 				onclick={(event) => void toggle(tag, event.currentTarget)}
 				style={slot === undefined ? undefined : `border-color: var(--facet-${slot})`}
-				class={cn(chip, slot === undefined ? quiet : 'text-foreground', stacked && wide)}
+				class={cn(chip, here ? 'text-foreground' : quiet, stacked && wide)}
 			>
 				{#if slot !== undefined}
 					<span
@@ -221,7 +227,7 @@
 					></span>
 				{/if}
 				<span class={cn(stacked && 'min-w-0 truncate')}>{tag}</span>
-				{#if slot === undefined}
+				{#if !here}
 					<span class={cn('text-xs text-muted-foreground', stacked && 'ms-auto')}
 						>{counts.get(tag)?.toLocaleString()}</span
 					>

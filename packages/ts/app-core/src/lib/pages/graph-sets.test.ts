@@ -163,6 +163,39 @@ function field(): HTMLElement {
 
 const screen = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
 
+/** A chip in the rail, which is the legend for what the canvas draws. */
+function chip(tag: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')].find(
+		(one) => (one.textContent ?? '').trim().split(/\s+/)[0] === tag
+	);
+	if (!found) throw new Error(`The rail has no chip for "${tag}"`);
+	return found;
+}
+
+/** The hue a chip is showing, where it is showing one. */
+const hue = (one: HTMLElement) =>
+	one.querySelector<HTMLElement>('span[aria-hidden="true"]')?.getAttribute('style') ?? undefined;
+
+/** Tags on a note, written before the page reads it: the chrome counts the tags
+ *  the NOTES carry, where the rail counts the graph's own. */
+function carrying(of: OwnedRef, ...tags: string[]): void {
+	held.set(of, { ...held.get(of)!, tags: tags as Tag[] });
+}
+
+/** Enough tags on one note that the canvas cannot draw them all: nine, beside
+ *  the three the other two notes carry. */
+const MANY = [
+	'claim',
+	'hunch',
+	'later',
+	'question',
+	'rough',
+	'settled',
+	'soil',
+	'spare',
+	'working'
+];
+
 function says(words: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find(
 		(one) => (one.textContent ?? '').replace(/\s+/g, ' ').trim() === words
@@ -170,6 +203,11 @@ function says(words: string): HTMLButtonElement {
 	if (!found) throw new Error(`Nothing on screen says "${words}"`);
 	return found;
 }
+
+/** The rows that move the note between sets, in the order the menu carries
+ *  them. */
+const moves = () =>
+	menuRows().filter((row) => row.startsWith('Into ') || row.startsWith('Out of '));
 
 const menuRows = () =>
 	[...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((row) =>
@@ -340,47 +378,80 @@ describe('choosing to see the notes as sets', () => {
 	});
 });
 
-describe('what the canvas says about the sets it is drawing', () => {
-	it('asks for tags where none are chosen, and starts with the most used', async () => {
-		await inSets();
+describe('the control the three readings stand in', () => {
+	it('gives the words up to the room the column’s head has, keeping their names', async () => {
+		await openOnTheDesk();
 
-		expect(screen()).toContain('Choose tags to draw them as sets.');
-
-		says('Start with the three most used').click();
-		await settle();
-
-		expect(tags.selected).toEqual(['biology', 'method', 'seed']);
-		expect(screen()).not.toContain('Choose tags to draw them as sets.');
+		const group = labelled('Sets').closest('[role="group"]');
+		const head = group?.parentElement;
+		expect(head?.className).toContain('@container/desk-nav-head');
+		for (const reading of ['Graph', 'Outline', 'Sets']) {
+			const segment = labelled(reading);
+			expect(segment.getAttribute('aria-label')).toBe(reading);
+			expect(segment.querySelector('span')?.className).toContain(
+				'@max-[17rem]/desk-nav-head:hidden'
+			);
+		}
 	});
 
-	it('says how many of the chosen tags are drawn once there are more than it draws', async () => {
-		const eight = ['biology', 'method', 'seed', 'soil', 'question', 'claim', 'hunch', 'working'];
-		await inSets(eight);
-		expect(screen()).not.toContain('The first eight are drawn.');
+	it('is the icons alone where it stands over the canvas', async () => {
+		await open();
 
-		tags.select([...eight, 'settled'] as Tag[]);
-		await settle();
+		expect(labelled('Sets').querySelector('span')).toBeNull();
+		expect(labelled('Sets').getAttribute('title')).toBe('Sets');
+	});
+});
 
-		expect(screen()).toContain('The first eight are drawn.');
+describe('what the canvas says about the sets it is drawing', () => {
+	it('says nothing at all where it draws every tag the notes carry', async () => {
+		await inSets();
+
+		expect(screen()).not.toContain('are drawn');
+	});
+
+	it('says how many are drawn where the notes carry more tags than it draws', async () => {
+		carrying(THIRD, ...MANY);
+		await inSets();
+
+		expect(screen()).toContain('Eight of the twelve tags are drawn. Select tags to choose which.');
 	});
 
 	it('says none of that in the other readings', async () => {
+		carrying(THIRD, ...MANY);
 		await open();
 
-		expect(screen()).not.toContain('Choose tags to draw them as sets.');
+		expect(screen()).not.toContain('are drawn');
+	});
+
+	it('shows the drawn sets in the rail in the hues the canvas draws them in', async () => {
+		await inSets();
+
+		// Nothing is selected, so `method` is drawn because the notes carry it.
+		expect(chip('method').getAttribute('aria-pressed')).toBe('false');
+		expect(hue(chip('method'))).toContain('--facet-');
+		// No note on the canvas carries `soil`, so nothing is drawn for it.
+		expect(hue(chip('soil'))).toBeUndefined();
+
+		labelled('Graph').click();
+		await settle();
+
+		expect(hue(chip('method'))).toBeUndefined();
 	});
 });
 
 describe('moving notes between the sets', () => {
 	it('writes one note’s whole set, leaving the tags it is not drawn by alone', async () => {
+		carrying(SECOND, 'seed', 'method', 'working');
+		carrying(THIRD, 'claim', 'hunch', 'later', 'question', 'rough', 'settled', 'soil');
 		await inSets(['biology', 'seed']);
 
 		document.body.querySelector<HTMLButtonElement>('[data-drop="1a"]')?.click();
 		await settle();
 
 		// `method` is drawn too — it is a tag of this field, selected or not — so a
-		// drop in the first set alone takes it off with the rest.
-		expect(written).toEqual([{ tags: ['biology'] }]);
+		// drop in the first set alone takes it off with the rest. `working` is past
+		// what the canvas draws, so the drop never reaches it.
+		expect(written).toEqual([{ tags: ['working', 'biology'] }]);
 		expect(bulk).toEqual([]);
 	});
 
@@ -407,6 +478,24 @@ describe('moving notes between the sets', () => {
 		await runRow('Out of biology');
 
 		expect(written).toEqual([{ tags: [] }]);
+	});
+
+	it('offers the sets the canvas draws without being asked for them', async () => {
+		await inSets();
+
+		await openMenu('1');
+
+		expect(menuRows()).toContain('Out of biology');
+		expect(menuRows()).toContain('Into method');
+	});
+
+	it('carries four of them at most, the selected sets first', async () => {
+		carrying(THIRD, ...MANY);
+		await inSets(['later', 'claim']);
+
+		await openMenu('1');
+
+		expect(moves()).toEqual(['Into later', 'Into claim', 'Out of biology', 'Into hunch']);
 	});
 
 	it('offers that menu the way in where the note is outside the set', async () => {
