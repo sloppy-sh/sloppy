@@ -152,30 +152,51 @@ export function membershipOf(
  * Where a membership stands when the figure draws no place for that exact
  * combination of sets: inside its LEADING set — the first of the ones it
  * carries in drawing order, which is the first the reader selected — in
- * whichever place of that set holds the most of its others, ties to the lowest
- * mask. Eight circles cannot cross in every way eight tags do, so the figure
- * has no place for every combination; what it never does is stand a mark
- * outside a set it carries while a reader is asking about that set. 0 only for
- * a note carrying no drawn tag at all, or one whose sets the figure draws no
- * place in.
+ * whichever place of that set still has room for a mark and holds the most of
+ * its others, ties to the lowest mask. `room` is how many marks each place has
+ * left; with none counted, or with every place of the leading set full, the
+ * place holding the most is the answer whatever room it has. Eight circles
+ * cannot cross in every way eight tags do, so the figure has no place for every
+ * combination; what it never does is stand a mark outside a set it carries
+ * while a reader is asking about that set. 0 only for a note carrying no drawn
+ * tag at all, or one whose sets the figure draws no place in.
  */
-export function regionFor(mask: number, drawn: ReadonlySet<number>): number {
+export function regionFor(
+  mask: number,
+  drawn: ReadonlySet<number>,
+  room?: ReadonlyMap<number, number>,
+): number {
   if (drawn.has(mask)) return mask;
   for (let bit = 1; bit <= mask; bit <<= 1) {
     if ((mask & bit) === 0) continue;
-    let found = 0;
-    let most = -1;
-    for (const place of drawn) {
-      if ((place & bit) === 0) continue;
-      const mine = setsIn(place & mask);
-      if (mine > most || (mine === most && place < found)) {
-        most = mine;
-        found = place;
-      }
-    }
+    const spare = holdsMost(mask, bit, drawn, room);
+    const found = spare !== 0 ? spare : holdsMost(mask, bit, drawn);
     if (found !== 0) return found;
   }
   return 0;
+}
+
+/** The place of `bit` holding the most of `mask` besides, ties to the lowest.
+ *  With `room`, only the places with a mark's worth left are looked at. 0 is
+ *  none of them. */
+function holdsMost(
+  mask: number,
+  bit: number,
+  drawn: ReadonlySet<number>,
+  room?: ReadonlyMap<number, number>,
+): number {
+  let found = 0;
+  let most = -1;
+  for (const place of drawn) {
+    if ((place & bit) === 0) continue;
+    if (room !== undefined && (room.get(place) ?? 0) <= 0) continue;
+    const mine = setsIn(place & mask);
+    if (mine > most || (mine === most && place < found)) {
+      most = mine;
+      found = place;
+    }
+  }
+  return found;
 }
 
 function setsIn(mask: number): number {
@@ -308,9 +329,9 @@ export function packSets(options: SetsPackOptions): SetsPacking {
         field.notes.some((note) => note.tags.includes(tags[bit])),
       );
     const own = bits.map((bit) => tags[bit]);
-    // The figure the counts draw, and then the same figure widened until its
-    // most crowded place has room for the notes standing there — the notes fall
-    // in the same places either way, so one pass settles it.
+    // The figure the counts draw, widened until its most crowded place has room
+    // for the notes its own tags name — which is the crowding to grow for, and
+    // not the standing below, where the room the growth bought is shared out.
     const ask = askOf(field.notes, own);
     const first = setsFigure(ask);
     const diagram = setsFigure(
@@ -342,7 +363,12 @@ export function packSets(options: SetsPackOptions): SetsPacking {
       box: diagram.box,
     });
 
-    const byRegion = standingIn(field.notes, own, diagram.regions);
+    const byRegion = standingIn(
+      field.notes,
+      own,
+      diagram.regions,
+      roomAtFloor(diagram),
+    );
 
     const crowds = diagram.regions
       .filter((region) => (byRegion.get(region.id)?.length ?? 0) > 0)
@@ -423,19 +449,38 @@ function liftMask(local: number, bits: readonly number[]): number {
   return mask;
 }
 
-/** Which notes stand in each region of a figure, by {@link regionFor}. */
+/**
+ * Which notes stand in each region of a figure, by {@link regionFor}. With
+ * `room` the places are shared out as they fill, in the order the marks are
+ * drawn in, and the notes the figure has an exact place for take theirs first.
+ * Without it every note stands where its own tags name, which is the crowding
+ * the figure's growth is measured against rather than the standing it draws.
+ */
 function standingIn(
   notes: readonly SetsNote[],
   drawn: readonly Tag[],
   regions: readonly SetsRegion[],
+  room?: ReadonlyMap<number, number>,
 ): Map<number, SetsNote[]> {
   const places = new Set(regions.map((region) => region.id));
+  const left = room === undefined ? undefined : new Map(room);
   const byRegion = new Map<number, SetsNote[]>();
-  for (const note of notes) {
-    const id = regionFor(membershipOf(note.tags, drawn), places);
+  const stand = (note: SetsNote, id: number) => {
     const held = byRegion.get(id);
     if (held === undefined) byRegion.set(id, [note]);
     else held.push(note);
+    const spare = left?.get(id) ?? 0;
+    if (spare > 0) left?.set(id, spare - 1);
+  };
+
+  const waiting: SetsNote[] = [];
+  for (const note of standingOrder(notes, drawn)) {
+    const mask = membershipOf(note.tags, drawn);
+    if (places.has(mask)) stand(note, mask);
+    else waiting.push(note);
+  }
+  for (const note of waiting) {
+    stand(note, regionFor(membershipOf(note.tags, drawn), places, left));
   }
   return byRegion;
 }
@@ -611,6 +656,40 @@ export function latticeIn(
   spacing: number,
   want: number,
 ): Point[] {
+  const found: Point[] = [];
+  if (want <= 0) return found;
+  walkLattice(region, diagram, spacing, (at) => {
+    found.push(at);
+    return found.length >= want;
+  });
+  return found;
+}
+
+/** How many marks a region's lattice has room for at `spacing`. */
+export function latticeRoom(
+  region: SetsRegion,
+  diagram: { shapes: readonly SetsShape[]; box: Bounds },
+  spacing: number,
+): number {
+  let room = 0;
+  walkLattice(region, diagram, spacing, () => {
+    room += 1;
+    return false;
+  });
+  return room;
+}
+
+/**
+ * Every place of a region's lattice, from its centre outward, offered to `take`
+ * until it says to stop. A place is one with room for the WHOLE of the widest
+ * mark and clear of the room every set's name is written in.
+ */
+function walkLattice(
+  region: SetsRegion,
+  diagram: { shapes: readonly SetsShape[]; box: Bounds },
+  spacing: number,
+  take: (at: Point) => boolean,
+): void {
   const basis = { x: spacing, y: spacing * (Math.sqrt(3) / 2) };
   const at = (q: number, r: number): Point => ({
     x: region.centre.x + q * basis.x + r * (basis.x / 2),
@@ -618,17 +697,13 @@ export function latticeIn(
   });
   const clear = standsClear(diagram.shapes, region.id);
   const names = diagram.shapes.map(nameRoom);
-  const stands = (point: Point): boolean =>
-    inBox(diagram.box, point) && clearOfNames(names, point) && clear(point);
+  const offer = (point: Point): boolean =>
+    inBox(diagram.box, point) &&
+    clearOfNames(names, point) &&
+    clear(point) &&
+    take(point);
 
-  const found: Point[] = [];
-  if (want <= 0) return found;
-  const take = (point: Point): boolean => {
-    if (stands(point)) found.push(point);
-    return found.length >= want;
-  };
-  if (take(at(0, 0))) return found;
-
+  if (offer(at(0, 0))) return;
   const rings =
     Math.ceil(
       Math.hypot(
@@ -641,13 +716,35 @@ export function latticeIn(
     let r = AROUND[4][1] * ring;
     for (const [dq, dr] of AROUND) {
       for (let step = 0; step < ring; step++) {
-        if (take(at(q, r))) return found;
+        if (offer(at(q, r))) return;
         q += dq;
         r += dr;
       }
     }
   }
-  return found;
+}
+
+const floors = new WeakMap<SetsDiagram, Map<number, number>>();
+
+/**
+ * How many marks each region of a figure has room for at the lattice's floor.
+ * The standing is shared out against the floor rather than against the spacing
+ * of the moment, so a reader's pinch repacks the marks without moving a note
+ * from one place to another. Held per figure, since walking every region's
+ * lattice is the dearest thing here and `setsFigure` hands the same diagram
+ * back for an ask it has already drawn.
+ */
+function roomAtFloor(diagram: SetsDiagram): ReadonlyMap<number, number> {
+  const taken = floors.get(diagram);
+  if (taken !== undefined) return taken;
+  const held = new Map(
+    diagram.regions.map((region) => [
+      region.id,
+      latticeRoom(region, diagram, SETS_STEP),
+    ]),
+  );
+  floors.set(diagram, held);
+  return held;
 }
 
 /**

@@ -2128,8 +2128,12 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
 - **Eight circles cannot cross in every way eight tags do**, so the figure has no exact place
   for every combination a field carries — and a note the figure has no place for stands inside
   its **leading** set, the first of its own tags in the drawing order, in whichever place
-  there holds the most of its others — a place that can be inside a set it does not carry as
-  well, where the figure draws no other. The drawing order puts the selected tags first, so
+  there has room for it and holds the most of its others — a place that can be inside a set it
+  does not carry as well, where the figure draws no other. **Room comes before the others**,
+  because a place a mark does not fit in is a fold no zoom opens: the places of a leading set
+  are filled as the marks are drawn, the notes the figure has an exact place for taking theirs
+  first, and only where every place of that set is full does a note fall to one of the slivers
+  the fit left narrower than a mark. The drawing order puts the selected tags first, so
   **selecting a tag always lights its notes inside its own circle**, which is where a reader
   who asked about it looks for them. **Enough sets at once and a small one is drawn wholly
   under the others**, and then no place in the figure is in it alone: its notes stand in a

@@ -20,6 +20,7 @@ import {
   askOf,
   foldStands,
   latticeIn,
+  latticeRoom,
   membershipOf,
   packSets,
   regionCapacity,
@@ -289,9 +290,12 @@ describe("packing a field", () => {
     for (const mark of marks) {
       if (mark.holds.length > 0) continue;
       const held = notes.find((entry) => entry.ref === mark.ref) as SetsNote;
-      expect(mark.region).toBe(
-        regionFor(membershipOf(held.tags, drawn.tags), places),
-      );
+      const carries = membershipOf(held.tags, drawn.tags);
+      // The exact place is the note's wherever the figure draws one; where it
+      // draws none, the note is somewhere inside its leading set.
+      const leading = carries & -carries;
+      if (places.has(carries)) expect(mark.region).toBe(carries);
+      else expect(mark.region & leading).toBe(leading);
       expect(
         regionAt(drew.shapes, {
           x: mark.x - drew.dx,
@@ -1073,50 +1077,56 @@ describe("two graphs carrying different tags", () => {
   });
 });
 
+const TWELVE = [
+  ...EVERY_TAG,
+  "method",
+  "claim",
+  "growing",
+  "chemistry",
+] as Tag[];
+
+/** Six hundred notes over twelve tags, each note carrying the ones a coin at
+ *  `share` gave it — four more tags than the figure draws places for. */
+const crowded = (share: number): SetsNote[] => {
+  const random = mulberry32(606);
+  return Array.from({ length: 600 }, (_unused, at) =>
+    note(
+      at,
+      TWELVE.filter(() => random() < share),
+      HOME,
+      `1a${at + 1}`,
+    ),
+  );
+};
+
+const corpusNotes = (total: number): SetsNote[] =>
+  makeCorpus({ total }).nodes.map((node) => ({
+    ref: node.ref,
+    graph: HOME,
+    tags: node.tags,
+    address: node.address,
+    created_at: node.created_at,
+  }));
+
+/** The fields this reading is measured on, each with the most of its notes that
+ *  may stand behind a fold at the lattice's floor — what the width bound and
+ *  the room the places are shared out by leave between them, measured. */
+const BENCH: [string, () => SetsNote[], number][] = [
+  ["six hundred notes", () => corpusNotes(600), 60],
+  ["two thousand four hundred notes", () => corpusNotes(2400), 260],
+  ["six hundred notes over twelve tags", () => crowded(0.25), 10],
+];
+
+const SELECTIONS: Tag[][] = [[], ["seed", "claim"] as Tag[]];
+
 // What the figure's growth is for: the room a crowded place is short of is room
 // the whole figure takes, so a fold is something a reader opens by zooming in
 // rather than one no zoom ever reaches — up to the width the figure is held to,
 // where a place still short of room keeps its fold. Held over the fields this
 // reading is measured on, at the lattice's floor.
 describe("the room a figure takes for its most crowded place", () => {
-  const TWELVE = [
-    ...EVERY_TAG,
-    "method",
-    "claim",
-    "growing",
-    "chemistry",
-  ] as Tag[];
-  /** Six hundred notes over twelve tags, each note carrying the ones a coin at
-   *  `share` gave it — four more tags than the figure draws places for. */
-  const crowded = (share: number): SetsNote[] => {
-    const random = mulberry32(606);
-    return Array.from({ length: 600 }, (_unused, at) =>
-      note(
-        at,
-        TWELVE.filter(() => random() < share),
-        HOME,
-        `1a${at + 1}`,
-      ),
-    );
-  };
-  const corpusNotes = (total: number): SetsNote[] =>
-    makeCorpus({ total }).nodes.map((node) => ({
-      ref: node.ref,
-      graph: HOME,
-      tags: node.tags,
-      address: node.address,
-      created_at: node.created_at,
-    }));
-  /** Each field, and the most of its notes that may stand behind a fold at the
-   *  floor — what the width bound leaves, measured. */
-  const fields: [string, () => SetsNote[], number][] = [
-    ["six hundred notes", () => corpusNotes(600), 160],
-    ["two thousand four hundred notes", () => corpusNotes(2400), 1140],
-    ["six hundred notes over twelve tags", () => crowded(0.25), 200],
-  ];
-
-  for (const [what, held, most] of fields) {
-    for (const selection of [[], ["seed", "claim"] as Tag[]]) {
+  for (const [what, held, most] of BENCH) {
+    for (const selection of SELECTIONS) {
       const asked = selection.length === 0 ? "nothing" : "two tags";
       it(`gives ${what} the room its crowd asks for, ${asked} selected`, () => {
         const notes = held();
@@ -1189,6 +1199,68 @@ describe("the room a figure takes for its most crowded place", () => {
           `fold in ${mark.region.toString(2)}`,
         ).toBeGreaterThanOrEqual(SETS_STEP / 2);
       }
+    }
+  });
+});
+
+// Where a note the figure draws no exact place for stands: inside its leading
+// set still, but in a place of that set with room for a mark at the floor, so a
+// whole combination is no longer stood in a sliver no zoom opens. The notes the
+// figure has an exact place for take theirs first, and no place is filled past
+// its room by the rest.
+describe("the room a standing is shared out against", () => {
+  const roomOf = (drawn: SetsDrawn) => {
+    const diagram = figure(drawn);
+    return new Map(
+      diagram.regions.map((region) => [
+        region.id,
+        latticeRoom(region, diagram, SETS_STEP),
+      ]),
+    );
+  };
+
+  for (const [what, held] of BENCH) {
+    for (const selection of SELECTIONS) {
+      const asked = selection.length === 0 ? "nothing" : "two tags";
+      it(`fills no place of ${what} past its room, ${asked} selected`, () => {
+        const notes = held();
+        const { drawn } = packed(notes, selection);
+        const room = roomOf(drawn);
+        const stood = new Map<number, number>();
+        const exactly = new Map<number, number>();
+        for (const note of notes) {
+          const stands = drawn.standing.get(note.ref) as { region: number };
+          stood.set(stands.region, (stood.get(stands.region) ?? 0) + 1);
+          const carries = membershipOf(note.tags, drawn.tags);
+          if (room.has(carries)) {
+            exactly.set(carries, (exactly.get(carries) ?? 0) + 1);
+          }
+          const leading = carries & -carries;
+          expect(stands.region & leading, `${note.address}`).toBe(leading);
+        }
+        expect([...stood.values()].reduce((sum, at) => sum + at, 0)).toBe(
+          notes.length,
+        );
+        for (const [region, many] of stood) {
+          // A place holds what it has room for, or the notes it is the exact
+          // place of — a count the fit can leave short of room at any width.
+          expect(many, `region ${region.toString(2)}`).toBeLessThanOrEqual(
+            Math.max(room.get(region) ?? 0, exactly.get(region) ?? 0),
+          );
+        }
+      });
+    }
+  }
+
+  it("shares the same room out the same way whatever order it is handed", () => {
+    for (const [what, held] of BENCH) {
+      const notes = held();
+      const first = packed(notes, SELECTIONS[1]);
+      const again = packed(shuffled(notes, 2026), SELECTIONS[1]);
+      expect(again.marks, what).toEqual(first.marks);
+      expect([...again.drawn.standing], what).toEqual([
+        ...first.drawn.standing,
+      ]);
     }
   });
 });
