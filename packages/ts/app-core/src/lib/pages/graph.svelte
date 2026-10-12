@@ -2459,10 +2459,14 @@
 			? 'flex-1 px-3 @max-[17rem]/desk-nav-head:flex-none @max-[17rem]/desk-nav-head:px-2'
 			: 'px-2'} {here ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}"
 	>
-		<Icon class="size-4" />
-		<!-- 17rem is the room the three labels take; under it the control is the
+		<!-- The words are what the control is read by, so they are the last thing
+		     to go: 17rem is the room the three take beside their icons and 11rem
+		     the room they take alone, and only under that is the control its
 		     icons, each named by the word that gave way. -->
-		{#if wide}<span class="@max-[17rem]/desk-nav-head:hidden">{label}</span>{/if}
+		<Icon
+			class="size-4 {wide ? '@max-[17rem]/desk-nav-head:@min-[11rem]/desk-nav-head:hidden' : ''}"
+		/>
+		{#if wide}<span class="@max-[11rem]/desk-nav-head:hidden">{label}</span>{/if}
 	</button>
 {/snippet}
 

@@ -7,15 +7,18 @@ import type { Address, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { DRAWN_SETS_MOST, drawnSetsOf } from "../contract.js";
 import { makeCorpus, mulberry32 } from "../corpus.test-support.js";
+import type { Bounds } from "../viewport.js";
 import {
   boxGap,
   lensArea,
   nameRoom,
   regionAt,
+  SETS_FIGURE_WIDEST,
   setsFigure,
 } from "./geometry.js";
 import {
   askOf,
+  foldStands,
   latticeIn,
   membershipOf,
   packSets,
@@ -312,16 +315,24 @@ describe("packing a field", () => {
   // Each set is as wide as the notes carrying its tag, so a field four times
   // the size draws every one of them wider and the figure with them.
   it("draws a bigger field a bigger figure", () => {
-    const few = packed(field(100, 11), selection);
-    const many = packed(field(400, 11), selection);
-    const across = (drawn: SetsDrawn) =>
-      drawn.fields[0].box.maxX - drawn.fields[0].box.minX;
+    const few = field(100, 11);
+    const many = field(400, 11);
+    const drew = (notes: readonly SetsNote[]) => {
+      const tags = drawnSetsOf(selection, notes);
+      return setsFigure(askOf(notes, tags));
+    };
+    const across = (at: { box: Bounds }) => at.box.maxX - at.box.minX;
 
-    expect(across(many.drawn)).toBeGreaterThan(across(few.drawn));
-    for (const [bit, set] of many.drawn.fields[0].sets.entries()) {
-      expect(set.shape.r, set.tag).toBeGreaterThan(
-        few.drawn.fields[0].sets[bit].shape.r,
-      );
+    expect(across(drew(many))).toBeGreaterThan(across(drew(few)));
+    for (const [bit, shape] of drew(many).shapes.entries()) {
+      expect(shape.r, `set ${bit}`).toBeGreaterThan(drew(few).shapes[bit].r);
+    }
+    // What is drawn is that figure, or a wider one where the room its most
+    // crowded place needs is more than its own counts drew.
+    for (const notes of [few, many]) {
+      expect(
+        across(packed(notes, selection).drawn.fields[0]),
+      ).toBeGreaterThanOrEqual(across(drew(notes)));
     }
   });
 
@@ -423,11 +434,15 @@ describe("packing a field", () => {
       ) as (typeof drew.regions)[number];
       if (mark.holds.length === 0) continue;
       expect(drawn.folds.has(mark.ref)).toBe(true);
-      expect(mark.x).toBe(region.centre.x + drawn.fields[0].dx);
-      expect(mark.y).toBe(region.centre.y + drawn.fields[0].dy);
-      expect(mark.holds.length + 1).toBeGreaterThan(
-        regionCapacity(region, SETS_STEP * 8),
-      );
+      // Either the region has no lattice room for everyone standing there, or
+      // the canvas's own bound on how many marks it draws has none.
+      const held = mark.holds.length + 1;
+      expect(
+        Math.min(
+          regionCapacity(region, SETS_STEP * 8),
+          latticeIn(region, drew, SETS_STEP * 8, held).length,
+        ),
+      ).toBeLessThan(held);
     }
   });
 
@@ -456,7 +471,7 @@ describe("packing a field", () => {
       most: 4,
       gutter: 900,
     });
-    const diagram = setsFigure(askOf(crowd, drawn.tags));
+    const diagram = figure(drawn);
     const { dx, dy } = drawn.fields[0];
     const crescent = diagram.regions.find(
       (at) => at.id === 0b01,
@@ -854,7 +869,7 @@ describe("the corpus the reading is measured on", () => {
   it("stands no mark of it under a set's name", () => {
     for (const selection of asked) {
       const { marks, drawn } = packed(notes, selection);
-      const diagram = setsFigure(askOf(notes, drawn.tags));
+      const diagram = figure(drawn);
       const { dx, dy } = drawn.fields[0];
       for (const mark of marks) {
         const region = diagram.regions.find(
@@ -1055,5 +1070,125 @@ describe("two graphs carrying different tags", () => {
     }
     expect(new Set(marks.map((mark) => mark.field)).size).toBe(2);
     expect(drawn.fields[1].dx).toBeGreaterThan(drawn.fields[0].dx);
+  });
+});
+
+// What the figure's growth is for: the room a crowded place is short of is room
+// the whole figure takes, so a fold is something a reader opens by zooming in
+// rather than one no zoom ever reaches — up to the width the figure is held to,
+// where a place still short of room keeps its fold. Held over the fields this
+// reading is measured on, at the lattice's floor.
+describe("the room a figure takes for its most crowded place", () => {
+  const TWELVE = [
+    ...EVERY_TAG,
+    "method",
+    "claim",
+    "growing",
+    "chemistry",
+  ] as Tag[];
+  /** Six hundred notes over twelve tags, each note carrying the ones a coin at
+   *  `share` gave it — four more tags than the figure draws places for. */
+  const crowded = (share: number): SetsNote[] => {
+    const random = mulberry32(606);
+    return Array.from({ length: 600 }, (_unused, at) =>
+      note(
+        at,
+        TWELVE.filter(() => random() < share),
+        HOME,
+        `1a${at + 1}`,
+      ),
+    );
+  };
+  const corpusNotes = (total: number): SetsNote[] =>
+    makeCorpus({ total }).nodes.map((node) => ({
+      ref: node.ref,
+      graph: HOME,
+      tags: node.tags,
+      address: node.address,
+      created_at: node.created_at,
+    }));
+  /** Each field, and the most of its notes that may stand behind a fold at the
+   *  floor — what the width bound leaves, measured. */
+  const fields: [string, () => SetsNote[], number][] = [
+    ["six hundred notes", () => corpusNotes(600), 160],
+    ["two thousand four hundred notes", () => corpusNotes(2400), 1140],
+    ["six hundred notes over twelve tags", () => crowded(0.25), 200],
+  ];
+
+  for (const [what, held, most] of fields) {
+    for (const selection of [[], ["seed", "claim"] as Tag[]]) {
+      const asked = selection.length === 0 ? "nothing" : "two tags";
+      it(`gives ${what} the room its crowd asks for, ${asked} selected`, () => {
+        const notes = held();
+        const { marks, drawn } = packed(notes, selection);
+        const figure0 = drawn.fields[0];
+        const across = Math.max(
+          figure0.box.maxX - figure0.box.minX,
+          figure0.box.maxY - figure0.box.minY,
+        );
+        const behind = marks.reduce(
+          (sum, mark) =>
+            sum + (mark.holds.length > 0 ? mark.holds.length + 1 : 0),
+          0,
+        );
+
+        // Every note is answered for, the figure is still one picture, and the
+        // notes left behind a fold are fewer than the figure's own counts drew.
+        expect(
+          marks.reduce((sum, mark) => sum + 1 + mark.holds.length, 0),
+        ).toBe(notes.length);
+        expect(across).toBeLessThanOrEqual(SETS_FIGURE_WIDEST);
+        expect(behind).toBeLessThanOrEqual(most);
+      });
+    }
+  }
+
+  // A fold stands where a mark stands, and never under the word that says which
+  // place a reader is looking at — not even in a sliver the lattice has no room
+  // in at all, where the fold is the only thing there is to draw.
+  it("stands a fold clear of every set's name in every place of a field", () => {
+    const notes = crowded(0.25);
+    const tags = drawnSetsOf([], notes);
+    const diagram = setsFigure(askOf(notes, tags));
+    let slivers = 0;
+    for (const region of diagram.regions) {
+      const stood = foldStands(region, diagram, SETS_STEP);
+      if (latticeIn(region, diagram, SETS_STEP, 1).length === 0) slivers += 1;
+      for (const shape of diagram.shapes) {
+        expect(
+          boxGap(nameRoom(shape), stood),
+          `region ${region.id.toString(2)}`,
+        ).toBeGreaterThanOrEqual(SETS_STEP / 2);
+      }
+    }
+    // Without a sliver the lattice refuses, the last resort is never reached
+    // and the rest of this would hold whether or not it worked.
+    expect(slivers).toBeGreaterThan(0);
+  });
+
+  it("stands every fold a zoomed-out field draws clear of the names", () => {
+    const notes = crowded(0.25);
+    const { marks, drawn } = packSets({
+      notes,
+      fields: [],
+      selection: [],
+      spacing: SETS_STEP * 8,
+      most: 4000,
+      gutter: 900,
+    });
+    const diagram = figure(drawn);
+    const { dx, dy } = drawn.fields[0];
+    const folded = marks.filter((mark) => mark.holds.length > 0);
+
+    expect(folded.length).toBeGreaterThan(0);
+    for (const mark of folded) {
+      const at = { x: mark.x - dx, y: mark.y - dy };
+      for (const shape of diagram.shapes) {
+        expect(
+          boxGap(nameRoom(shape), at),
+          `fold in ${mark.region.toString(2)}`,
+        ).toBeGreaterThanOrEqual(SETS_STEP / 2);
+      }
+    }
   });
 });

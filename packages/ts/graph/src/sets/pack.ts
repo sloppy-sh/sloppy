@@ -21,7 +21,10 @@ import {
   inShape,
   namePoint,
   nameRoom,
+  regionAt,
   type SetsAsk,
+  type SetsDiagram,
+  SETS_FIGURE_WIDEST,
   type SetsRegion,
   SETS_STEP,
   type SetsShape,
@@ -209,7 +212,51 @@ export function standingOrder<T extends SetsNote>(
 /** How many marks a region has room for at a spacing: its area over one
  *  lattice cell's. A region holding more notes than this folds. */
 export function regionCapacity(region: SetsRegion, spacing: number): number {
-  return Math.floor(region.area / (spacing * spacing * (Math.sqrt(3) / 2)));
+  return Math.floor(roomIn(region, spacing));
+}
+
+/** The same room before it is rounded down to whole marks, which is what the
+ *  growth below divides by: a region with less than one mark's room is short of
+ *  it by a factor rather than by everything. */
+function roomIn(region: SetsRegion, spacing: number): number {
+  return region.area / (spacing * spacing * (Math.sqrt(3) / 2));
+}
+
+/**
+ * How much of a region's area the lattice can stand marks in: the rim a whole
+ * mark keeps inside every outline, and the room the names take, cost about half
+ * of it over the fields `pack.test.ts` holds this reading to. The growth asks
+ * for area, so it asks for twice what the notes themselves need.
+ */
+const SETS_ROOM_LATTICED = 0.5;
+
+/**
+ * How much wider a figure is drawn so that its most crowded place has room for
+ * the notes standing there at the lattice's floor: the square root of the worst
+ * ratio of notes to room, since a uniform widening takes every area up with its
+ * square. Held to {@link SETS_FIGURE_WIDEST}, so a place the figure cannot be
+ * given room for without growing past what a reader sees at once keeps its
+ * fold; 1 is a figure already roomy enough, or already that wide.
+ */
+function growthFor(
+  diagram: SetsDiagram,
+  standing: ReadonlyMap<number, readonly SetsNote[]>,
+): number {
+  let worst = 1;
+  for (const region of diagram.regions) {
+    const notes = standing.get(region.id)?.length ?? 0;
+    if (notes === 0) continue;
+    const want = notes / (roomIn(region, SETS_STEP) * SETS_ROOM_LATTICED);
+    if (want > worst) worst = want;
+  }
+  const across = Math.max(
+    diagram.box.maxX - diagram.box.minX,
+    diagram.box.maxY - diagram.box.minY,
+  );
+  return Math.max(
+    1,
+    Math.min(Math.sqrt(worst), SETS_FIGURE_WIDEST / Math.max(across, 1)),
+  );
 }
 
 export interface SetsPackOptions {
@@ -261,7 +308,15 @@ export function packSets(options: SetsPackOptions): SetsPacking {
         field.notes.some((note) => note.tags.includes(tags[bit])),
       );
     const own = bits.map((bit) => tags[bit]);
-    const diagram = setsFigure(askOf(field.notes, own));
+    // The figure the counts draw, and then the same figure widened until its
+    // most crowded place has room for the notes standing there — the notes fall
+    // in the same places either way, so one pass settles it.
+    const ask = askOf(field.notes, own);
+    const first = setsFigure(ask);
+    const diagram = setsFigure(
+      ask,
+      growthFor(first, standingIn(field.notes, own, first.regions)),
+    );
     const reach = (diagram.box.maxX - diagram.box.minX) / 2;
     if (at > 0) middle += half + options.gutter + reach;
     half = reach;
@@ -287,14 +342,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
       box: diagram.box,
     });
 
-    const drawnRegions = new Set(diagram.regions.map((region) => region.id));
-    const byRegion = new Map<number, SetsNote[]>();
-    for (const note of field.notes) {
-      const id = regionFor(membershipOf(note.tags, own), drawnRegions);
-      const held = byRegion.get(id);
-      if (held === undefined) byRegion.set(id, [note]);
-      else held.push(note);
-    }
+    const byRegion = standingIn(field.notes, own, diagram.regions);
 
     const crowds = diagram.regions
       .filter((region) => (byRegion.get(region.id)?.length ?? 0) > 0)
@@ -331,9 +379,8 @@ export function packSets(options: SetsPackOptions): SetsPacking {
       if (places.length < notes.length) {
         const [first, ...rest] = notes;
         // A sliver with room for no whole mark at all still answers for its
-        // notes, and stands its fold at its deepest point.
-        const stood =
-          latticeIn(region, diagram, options.spacing, 1)[0] ?? region.centre;
+        // notes.
+        const stood = foldStands(region, diagram, options.spacing);
         marks.push({
           ref: first.ref,
           x: stood.x + dx,
@@ -374,6 +421,23 @@ function liftMask(local: number, bits: readonly number[]): number {
     if ((local & (1 << at)) !== 0) mask |= 1 << bit;
   }
   return mask;
+}
+
+/** Which notes stand in each region of a figure, by {@link regionFor}. */
+function standingIn(
+  notes: readonly SetsNote[],
+  drawn: readonly Tag[],
+  regions: readonly SetsRegion[],
+): Map<number, SetsNote[]> {
+  const places = new Set(regions.map((region) => region.id));
+  const byRegion = new Map<number, SetsNote[]>();
+  for (const note of notes) {
+    const id = regionFor(membershipOf(note.tags, drawn), places);
+    const held = byRegion.get(id);
+    if (held === undefined) byRegion.set(id, [note]);
+    else held.push(note);
+  }
+  return byRegion;
 }
 
 /**
@@ -512,6 +576,30 @@ function roomFor(shape: SetsShape, reach: number): SetsShape {
 }
 
 /**
+ * Whether a point stands inside a region with room for the WHOLE of the widest
+ * mark: inside every set the region is in, shrunk by the mark's reach, and
+ * outside every one it is not, grown by it.
+ */
+function standsClear(
+  shapes: readonly SetsShape[],
+  region: number,
+): (at: Point) => boolean {
+  const inside = shapes.map((shape) => roomFor(shape, -SETS_MARK_REACH));
+  const outside = shapes.map((shape) => roomFor(shape, SETS_MARK_REACH));
+  return (at) =>
+    shapes.every((_unused, bit) =>
+      (region & (1 << bit)) === 0
+        ? !inShape(outside[bit], at)
+        : inShape(inside[bit], at),
+    );
+}
+
+/** Whether a mark at this point is clear of every set's name. */
+function clearOfNames(names: readonly Bounds[], at: Point): boolean {
+  return names.every((room) => boxGap(room, at) >= SETS_MARK_REACH);
+}
+
+/**
  * Up to `want` points of a hexagonal lattice standing inside `region`, from its
  * centre outward, each with room for the WHOLE of the widest mark and clear of
  * the room every set's name is written in. Fewer than `want` is a region the
@@ -528,24 +616,10 @@ export function latticeIn(
     x: region.centre.x + q * basis.x + r * (basis.x / 2),
     y: region.centre.y + r * basis.y,
   });
-  const inside = diagram.shapes.map((shape) =>
-    roomFor(shape, -SETS_MARK_REACH),
-  );
-  const outside = diagram.shapes.map((shape) =>
-    roomFor(shape, SETS_MARK_REACH),
-  );
+  const clear = standsClear(diagram.shapes, region.id);
   const names = diagram.shapes.map(nameRoom);
-  // Inside every set the region is in and outside every one it is not, with
-  // room for the whole of the widest mark on the near side of each outline and
-  // of every name.
   const stands = (point: Point): boolean =>
-    inBox(diagram.box, point) &&
-    names.every((room) => boxGap(room, point) >= SETS_MARK_REACH) &&
-    diagram.shapes.every((_unused, bit) =>
-      (region.id & (1 << bit)) === 0
-        ? !inShape(outside[bit], point)
-        : inShape(inside[bit], point),
-    );
+    inBox(diagram.box, point) && clearOfNames(names, point) && clear(point);
 
   const found: Point[] = [];
   if (want <= 0) return found;
@@ -574,6 +648,106 @@ export function latticeIn(
     }
   }
   return found;
+}
+
+/**
+ * Where a region's fold stands: the lattice's own first place where there is
+ * one, and otherwise the point of the region nearest its deepest that keeps a
+ * whole mark clear of every set's name — and of the outlines too, where the
+ * region has room for that as well. A region narrower than a mark keeps its
+ * deepest point, pushed clear of the name standing over it, because the word
+ * that says which place a reader is looking at is never under a count.
+ */
+export function foldStands(
+  region: SetsRegion,
+  diagram: { shapes: readonly SetsShape[]; box: Bounds },
+  spacing: number,
+): Point {
+  const stood = latticeIn(region, diagram, spacing, 1);
+  if (stood.length > 0) return stood[0];
+
+  const names = diagram.shapes.map(nameRoom);
+  const clear = standsClear(diagram.shapes, region.id);
+  const tries: Point[] = [];
+  for (const run of region.cover) {
+    const y = (run.minY + run.maxY) / 2;
+    const xs = [Math.min(Math.max(region.centre.x, run.minX), run.maxX)];
+    for (const room of names) {
+      xs.push(room.minX - SETS_MARK_REACH, room.maxX + SETS_MARK_REACH);
+    }
+    for (const x of xs) {
+      if (x >= run.minX && x <= run.maxX) tries.push({ x, y });
+    }
+  }
+  const nearest = (ok: (at: Point) => boolean): Point | undefined => {
+    let found: Point | undefined;
+    let away = Number.POSITIVE_INFINITY;
+    for (const at of tries) {
+      if (regionAt(diagram.shapes, at) !== region.id || !ok(at)) continue;
+      const gap = Math.hypot(at.x - region.centre.x, at.y - region.centre.y);
+      if (gap < away) {
+        away = gap;
+        found = at;
+      }
+    }
+    return found;
+  };
+  return (
+    nearest((at) => clearOfNames(names, at) && clear(at)) ??
+    nearest((at) => clearOfNames(names, at)) ??
+    pushedOffNames(region.centre, diagram.shapes, names)
+  );
+}
+
+/**
+ * A point moved out of every name room it stands in, each time along the way
+ * out of the name itself, far enough for a whole mark to be clear of it.
+ */
+function pushedOffNames(
+  from: Point,
+  shapes: readonly SetsShape[],
+  names: readonly Bounds[],
+): Point {
+  let at = from;
+  for (let pass = 0; pass < names.length; pass++) {
+    const which = names.findIndex((room) => boxGap(room, at) < SETS_MARK_REACH);
+    if (which < 0) return at;
+    const word = namePoint(shapes[which]);
+    const dx = at.x - word.x;
+    const dy = at.y - word.y;
+    const away = Math.hypot(dx, dy);
+    at = pushedOut(
+      names[which],
+      at,
+      away > 1e-9 ? { x: dx / away, y: dy / away } : { x: 1, y: 0 },
+    );
+  }
+  return at;
+}
+
+/** A point carried along `way` until a whole mark on it is clear of `room`. */
+function pushedOut(room: Bounds, at: Point, way: Point): Point {
+  const edge = {
+    minX: room.minX - SETS_MARK_REACH,
+    maxX: room.maxX + SETS_MARK_REACH,
+    minY: room.minY - SETS_MARK_REACH,
+    maxY: room.maxY + SETS_MARK_REACH,
+  };
+  const tx =
+    way.x > 1e-9
+      ? (edge.maxX - at.x) / way.x
+      : way.x < -1e-9
+        ? (edge.minX - at.x) / way.x
+        : Number.POSITIVE_INFINITY;
+  const ty =
+    way.y > 1e-9
+      ? (edge.maxY - at.y) / way.y
+      : way.y < -1e-9
+        ? (edge.minY - at.y) / way.y
+        : Number.POSITIVE_INFINITY;
+  const out = Math.min(tx, ty);
+  if (!Number.isFinite(out)) return at;
+  return { x: at.x + way.x * (out + 1e-3), y: at.y + way.y * (out + 1e-3) };
 }
 
 /** A field's budget handed out among its regions, smallest ask first, so a

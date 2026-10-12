@@ -1599,9 +1599,12 @@ nothing under it.
   has to be reachable from every view, so it never rides the canvas, which the outline puts
   away: it stands in the row over the canvas and in the column beside it, in the same place
   whichever view is up, and says every way at once rather than only the way back. **It is
-  drawn to the room it is given**: where the head it stands in is too narrow for the words,
-  they give way to the icons, each still named for a reader who is not looking at it, and
-  never to a way that runs under what stands beside it or wraps below it.
+  drawn to the room it is given, and the words are the last thing it gives up**: where the
+  head it stands in is too narrow to carry the words beside their icons, the ICONS go and the
+  words stay, because the words are what the control is read by; only where the words
+  themselves will not fit does it fall to the icons, each still named for a reader who is not
+  looking at it. Never to a way that runs under what stands beside it or wraps below it — the
+  column beside the canvas is wide enough for the three words, and that is what it shows.
 - **Two arrangements of the same parts, and the width the docks stand at decides which.**
   Over the canvas, where the graph is the whole screen: a pill anchored bottom-centre
   (`fixed`, safe-area inset) holds the destinations, a card at the top holds the graph you
@@ -2165,12 +2168,20 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
 - **The count is bounded here as it is everywhere.** A region holding more notes than its area
   can show at this zoom folds into one mega-node, sized by count with the count written on it and
   standing at the nearest place in the region a whole mark has room — the same fold the genealogy
-  draws. A tap brings the canvas to that region, where there is room, and it unfolds; zooming out
+  draws, and never under the word that names a set, which is a place no mark is ever stood in.
+  A tap brings the canvas to that region, where there is room, and it unfolds; zooming out
   refolds. **The room comes from the counts themselves** — a set twice as carried is drawn twice
   the area, and every note is given the same share of the paper — so a region sized by its own
   count has somewhere for a fold to open into, and the slivers where several sets cross are what
-  fold instead. **The rest** — every note outside every drawn region — folds the same way and is
-  dimmed. Nothing about a fold is kept: it is a function of the zoom and of what the notes carry.
+  fold instead. **And the figure takes the room its most crowded place needs**: where some place
+  of it holds more notes than it can show at the closest the marks are ever drawn, the whole
+  figure is widened until it can — every disc and every region together, so the picture is the
+  same picture and every area stays in the ratio its count is in. **Up to a bound**, which is the
+  width a reader takes in at once on the narrowest canvas the product is drawn for: a place still
+  short of room at that width keeps its fold with its count, rather than taking the figure past
+  what anybody can see whole. **The rest** — every note outside every drawn region — folds the
+  same way and is dimmed. Nothing about a fold is kept: it is a function of the zoom and of what
+  the notes carry.
 - **Nothing selected draws the field's most-carried tags**, which is why there is no empty
   state here to read past: the reading opens on an answer, and the rail is where a reader asks
   for a different one.

@@ -385,7 +385,11 @@ describe('choosing to see the notes as sets', () => {
 });
 
 describe('the control the three readings stand in', () => {
-	it('gives the words up to the room the column’s head has, keeping their names', async () => {
+	// Measured against the compiled stylesheet at the column's 16rem: its head is
+	// 12rem there, where the three words take 10.5rem and their icons another
+	// 4rem — so the icons are what gives way, and the words stand clear of the
+	// toggle beside them.
+	it('keeps the words in the column’s head and gives up the icons instead', async () => {
 		await openOnTheDesk();
 
 		const group = labelled('Sets').closest('[role="group"]');
@@ -395,7 +399,10 @@ describe('the control the three readings stand in', () => {
 			const segment = labelled(reading);
 			expect(segment.getAttribute('aria-label')).toBe(reading);
 			expect(segment.querySelector('span')?.className).toContain(
-				'@max-[17rem]/desk-nav-head:hidden'
+				'@max-[11rem]/desk-nav-head:hidden'
+			);
+			expect(segment.querySelector('svg')?.getAttribute('class')).toContain(
+				'@max-[17rem]/desk-nav-head:@min-[11rem]/desk-nav-head:hidden'
 			);
 		}
 	});

@@ -11,7 +11,7 @@
 
 import { MARK_SCALE_MAX } from "@sloppy/types";
 import { LEAF_RADIUS } from "../model.js";
-import type { Bounds, Point } from "../viewport.js";
+import { type Bounds, MIN_SCALE, type Point } from "../viewport.js";
 
 /**
  * How far apart the lattice stands two marks at full zoom, in world units: the
@@ -41,7 +41,8 @@ export const SETS_NOTE_AREA = SETS_CELL * 3;
  */
 export const SETS_SET_LEAST = SETS_NOTE_AREA * 12;
 
-/** The least room the ring outside every set is given, in world units. */
+/** The least room the ring outside every set is given, in world units, before
+ *  the figure's own growth takes it up with everything else. */
 const OUTSIDE_LEAST = SETS_STEP * 3;
 
 /** The grid each region's extent, centre and cover are measured on. */
@@ -210,31 +211,71 @@ export function lensDistance(ra: number, rb: number, area: number): number {
   return lo;
 }
 
-/** The figure a field's own notes draw, held against the ask it was measured
- *  from: a zoom repacks the marks without moving a disc. */
-export function setsFigure(ask: SetsAsk): SetsDiagram {
+/**
+ * The figure a field's own notes draw, held against the ask it was measured
+ * from: a zoom repacks the marks without moving a disc.
+ *
+ * `grow` widens the whole figure by that factor — every disc, the ring round
+ * them and so every region's area by its square, the fit untouched. `pack.ts`
+ * is where the figure's most crowded place asks for it, held under
+ * {@link SETS_FIGURE_WIDEST}.
+ */
+export function setsFigure(ask: SetsAsk, grow = 1): SetsDiagram {
   const key = `${ask.counts.join(",")}|${ask.shared.join(",")}|${ask.outside}`;
-  const found = held.get(key);
-  if (found !== undefined) return found;
-  const made = measure(fitShapes(ask), ask.outside, setsUnitArea(ask.counts));
-  // Every write into a note is a new ask, so what is held has to be bounded.
-  if (held.size >= FIGURES_HELD) {
-    for (const stale of [...held.keys()].slice(
-      0,
-      held.size - FIGURES_HELD + 1,
-    )) {
-      held.delete(stale);
+  let found = held.get(key);
+  if (found === undefined) {
+    // Every write into a note is a new ask, so what is held has to be bounded.
+    if (held.size >= FIGURES_HELD) {
+      for (const stale of [...held.keys()].slice(
+        0,
+        held.size - FIGURES_HELD + 1,
+      )) {
+        held.delete(stale);
+      }
     }
+    found = { shapes: fitShapes(ask), drawn: new Map() };
+    held.set(key, found);
   }
-  held.set(key, made);
+  const taken = found.drawn.get(grow);
+  if (taken !== undefined) return taken;
+  const made = measure(
+    found.shapes.map((shape) => ({
+      ...shape,
+      cx: shape.cx * grow,
+      cy: shape.cy * grow,
+      r: shape.r * grow,
+    })),
+    ask.outside,
+    setsUnitArea(ask.counts) * grow * grow,
+    OUTSIDE_LEAST * grow,
+  );
+  found.drawn.set(grow, made);
   return made;
 }
+
+/**
+ * The widest a figure is drawn, in world units: what a phone's canvas shows
+ * with the viewport as far out as it goes — 400 CSS pixels less the room
+ * `Viewport.fit` keeps either side of what it frames — so the whole figure is
+ * one picture wherever it is read (DESIGN.md § Layout). A place still short of
+ * room at that width keeps a fold with its count rather than taking the figure
+ * past what a reader can see at once.
+ */
+export const SETS_FIGURE_WIDEST = Math.round((400 - 48 * 2) / MIN_SCALE);
 
 /** Room for every field a canvas draws at once, and for the ask each of them
  *  had before the last write. */
 const FIGURES_HELD = 16;
 
-const held = new Map<string, SetsDiagram>();
+/** One ask's fit, and the figure it was measured into at each growth it has
+ *  been asked for — two at the most: the figure as the counts drew it, and the
+ *  grown one its most crowded place asked for. */
+interface Fitted {
+  shapes: readonly SetsShape[];
+  drawn: Map<number, SetsDiagram>;
+}
+
+const held = new Map<string, Fitted>();
 
 /** Whether a point is inside one disc. */
 export function inShape(shape: SetsShape, at: Point): boolean {
@@ -571,8 +612,9 @@ function measure(
   shapes: readonly SetsShape[],
   outside: number,
   unit: number,
+  least: number,
 ): SetsDiagram {
-  const { box, margin } = boxAround(shapes, outside, unit);
+  const { box, margin } = boxAround(shapes, outside, unit, least);
   const stepX = (box.maxX - box.minX) / GRID;
   const stepY = (box.maxY - box.minY) / GRID;
   const centreOf = (gx: number, gy: number): Point => ({
@@ -721,16 +763,19 @@ function depthWithin(mask: Int32Array): Float32Array {
 /**
  * The figure's box, and how wide the ring round the discs came out: the notes
  * carrying none of the drawn tags are given the same room per note the sets
- * themselves are drawn at.
+ * themselves are drawn at, and `least` is the floor under that at this figure's
+ * scale — so a widened figure is the same figure, and every region's area is
+ * its own times the square of the widening.
  */
 function boxAround(
   shapes: readonly SetsShape[],
   outside: number,
   unit: number,
+  least: number,
 ): { box: Bounds; margin: number } {
   const want = unit * Math.max(outside, 0);
   if (shapes.length === 0) {
-    const half = Math.max(Math.sqrt(want) / 2, OUTSIDE_LEAST);
+    const half = Math.max(Math.sqrt(want) / 2, least);
     return {
       box: { minX: -half, maxX: half, minY: -half, maxY: half },
       margin: half,
@@ -744,7 +789,7 @@ function boxAround(
   // The ring's own area over the span it wraps: 4m² + 2m(w + h) = want.
   const span = maxX - minX + (maxY - minY);
   const grown = (-span + Math.sqrt(span * span + 4 * want)) / 4;
-  const margin = Math.max(grown, OUTSIDE_LEAST);
+  const margin = Math.max(grown, least);
   return {
     box: {
       minX: minX - margin,

@@ -2285,13 +2285,15 @@ describe("the sets reading", () => {
     for (const ref of [held, along]) {
       const at = model.graph.getNodeAttributes(ref);
       const stood = sets.scene.positionOf(at.index);
+      // A figure stands its marks tens of thousands of units out, where the
+      // scene's own float32 positions round in the third place.
       expect(stood.x, `${at.address} did not come along`).toBeCloseTo(
         at.x + (to.x - took.x),
-        3,
+        2,
       );
       expect(stood.y, `${at.address} did not come along`).toBeCloseTo(
         at.y + (to.y - took.y),
-        3,
+        2,
       );
     }
 
