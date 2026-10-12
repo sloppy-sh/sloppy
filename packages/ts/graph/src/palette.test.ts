@@ -12,6 +12,7 @@ import { TAG_HUE_SLOTS } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import {
   contrastRatio,
+  intoGamut,
   parseCssColor,
   toOklab,
   toSrgb8,
@@ -302,6 +303,33 @@ describe("a mark standing inside the drawn sets", () => {
       ),
     };
   };
+
+  // The band builds each stack from the stack below it rather than compositing
+  // every one from the paper up, so the floors above are measured on a band
+  // that has to be the same band: one wash laid per stack, in the same order,
+  // reaching the same colour.
+  it("lays every stack of washes the long way round too", () => {
+    const theme = themes[0];
+    const tokens = { ...theme, hues };
+    const paper = parseCssColor(theme.paper) as Oklch;
+    const washes = hues.map((hue) => intoGamut(parseCssColor(hue) as Oklch));
+    for (let sets = 1; sets <= DRAWN_SETS_MOST; sets++) {
+      const laid: Oklch[] = [];
+      for (let stack = 1; stack < 1 << sets; stack++) {
+        let under = paper;
+        for (let bit = 0; bit < sets; bit++) {
+          if ((stack & (1 << bit)) !== 0) {
+            under = over(washes[bit], under, SETS_TINT);
+          }
+        }
+        laid.push(under);
+      }
+      expect(
+        setsBand(tokens, paper, sets, SETS_TINT).slice(0, laid.length),
+        `${sets} washes`,
+      ).toEqual(laid);
+    }
+  });
 
   for (const theme of [...themes, ...generatedThemes()]) {
     it(`carries its meaning on every stack of washes on ${theme.name}`, () => {

@@ -198,21 +198,45 @@ export function setsBand(
   if (alpha <= 0) return [];
   const ink = parseCssColor(tokens.ink) ?? UNTHEMED_INK;
   const lit = alpha * SETS_LIT_SHARE;
-  const washes = Array.from({ length: Math.max(0, sets) }, (_unused, at) =>
-    parseCssColor(tokens.hues[at] ?? ""),
-  ).map((hue) => (hue === null ? null : intoGamut(hue)));
-  const grounds: Oklch[] = [];
-  const held: Oklch[] = [];
-  for (let stack = 0; stack < 1 << washes.length; stack++) {
-    let under = paper;
-    for (const [bit, hue] of washes.entries()) {
-      if ((stack & (1 << bit)) === 0 || hue === null) continue;
-      under = over(hue, under, alpha);
-    }
-    if (stack > 0) grounds.push(under);
-    held.push(over(ink, under, lit));
+  const stacked = washStacks(washesOf(tokens, sets), paper, alpha);
+  return [
+    ...stacked.slice(1),
+    ...stacked.map((under) => over(ink, under, lit)),
+  ];
+}
+
+/** The first `sets` hue tokens, in gamut, `null` where the theme has no such
+ *  token. */
+function washesOf(
+  tokens: PaletteTokens,
+  sets: number,
+): readonly (Oklch | null)[] {
+  return Array.from({ length: Math.max(0, sets) }, (_unused, at) => {
+    const hue = parseCssColor(tokens.hues[at] ?? "");
+    return hue === null ? null : intoGamut(hue);
+  });
+}
+
+/**
+ * Every stack of `washes` over `paper` at `alpha`, indexed by the bits of the
+ * washes it holds — index 0 the bare paper.
+ *
+ * Built from the stack without its highest wash, which holds only because the
+ * slots composite in ascending order: the highest is always the last one down.
+ */
+function washStacks(
+  washes: readonly (Oklch | null)[],
+  paper: Oklch,
+  alpha: number,
+): Oklch[] {
+  const stacked: Oklch[] = [paper];
+  for (let stack = 1; stack < 1 << washes.length; stack++) {
+    const top = 31 - Math.clz32(stack);
+    const hue = washes[top];
+    const under = stacked[stack ^ (1 << top)];
+    stacked.push(hue === null ? under : over(hue, under, alpha));
   }
-  return [...grounds, ...held];
+  return stacked;
 }
 
 /**
@@ -236,12 +260,9 @@ export function setsCeiling(
   const ink = parseCssColor(tokens.ink) ?? UNTHEMED_INK;
   const paper = parseCssColor(tokens.paper) ?? UNTHEMED_PAPER;
   const band = groundBand(paper, presence);
+  const washes = washesOf(tokens, sets);
   const holds = (alpha: number): boolean =>
-    band.every((under) =>
-      setsBand(tokens, under, sets, alpha).every(
-        (ground) => contrastRatio(ink, ground) >= LABEL_FLOOR,
-      ),
-    );
+    band.every((under) => letters(washes, ink, under, alpha));
   if (holds(SETS_TINT)) return SETS_TINT;
   let lo = 0;
   let hi = SETS_TINT;
@@ -251,6 +272,27 @@ export function setsCeiling(
     else hi = mid;
   }
   return lo;
+}
+
+/**
+ * Whether `ink` keeps {@link LABEL_FLOOR} over every ground the `washes` make
+ * over `paper` at `alpha` — each stack of them, and each stack under the ink a
+ * held mark lights its region with: what {@link setsBand} hands back, measured
+ * as it is built and stopped at the first ground that gives.
+ */
+function letters(
+  washes: readonly (Oklch | null)[],
+  ink: Oklch,
+  paper: Oklch,
+  alpha: number,
+): boolean {
+  const lit = alpha * SETS_LIT_SHARE;
+  const stacked = washStacks(washes, paper, alpha);
+  for (const [stack, under] of stacked.entries()) {
+    if (stack > 0 && contrastRatio(ink, under) < LABEL_FLOOR) return false;
+    if (contrastRatio(ink, over(ink, under, lit)) < LABEL_FLOOR) return false;
+  }
+  return true;
 }
 
 /** Strengths the ceiling is walked up in, before it refines the one that gave. */
