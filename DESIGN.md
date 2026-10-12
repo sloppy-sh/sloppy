@@ -2076,9 +2076,10 @@ up and the lift can be 0 in the panned case.
 ### Sets — the tags as places
 
 **A third reading of the same canvas, beside the graph and the outline: the field's own tags
-drawn as circles, with every note standing inside the ones it carries.** A note carrying two of
-them stands where the two overlap; one carrying none stands outside every circle. The question
-the rail asks is the shape of the field.
+drawn as circles, with every note standing inside a circle of a tag it carries.** A note
+carrying two of them stands where the two cross wherever the figure draws that place; one
+carrying none stands outside every circle. The question the rail asks is the shape of the
+field.
 
 **It is an arrangement of the same marks, never a second canvas.** Depth, provenance, the
 author's look, the orbit on a chosen mark and the lift on an open one are all drawn exactly as
@@ -2101,27 +2102,35 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   distance between two circles is the one at which the area they cover of each other is the
   notes the two tags share. **Two sets that share a note overlap, and that comes first**: a
   pair drawn clear of each other says the two sets have nothing in common, so the fit keeps
-  every sharing pair in a lens with room for a mark before it spends anything on the areas,
-  and two sets sharing nothing stay clear. A set every note of which carries another nests
-  inside it, with the crescent round it left for the notes it does not hold. **One share of the
-  paper serves the whole figure**, raised until the narrowest set in it is a disc with room for
-  its own name — never floored under one set alone, which would draw two counts the same width
-  and so draw a containment as one disc over another with every note of the wider set left
-  outside every set there is. **The figure is fitted, and fitted the same way everywhere**: the
-  targets come from the counts, the first placement is taken in one order the counts decide,
-  and a fixed budget of steps walks down what is left of the error. Nothing in it reads a clock
-  or a random number, so two devices holding the same notes draw the same figure to the last
-  digit.
+  every sharing pair in a lens with room for a mark before it spends anything on the areas.
+  **The cost falls on the pairs that share nothing**: there are only so many ways eight discs
+  can be laid, so two sets sharing nothing stay clear where the figure can keep them so and
+  are drawn crossing where keeping every sharing pair in a lens leaves nowhere else to put
+  them. On the 2,400-note corpus the reading is measured on, all twenty-one of the pairs that
+  share notes are drawn with a lens, and five of the seven that share none cross. So the
+  figure's promise runs one way: two sets that share notes always cross, and a crossing on its
+  own is not a count of what they share. A set every note of which carries another nests
+  inside it, with the crescent round it left for the notes it does not hold. **One share of
+  the paper serves the whole figure**, raised until the narrowest set in it is a disc with
+  room for its own name — never floored under one set alone, which would draw two counts the
+  same width and so draw a containment as one disc over another with every note of the wider
+  set left outside every set there is. **The figure is fitted, and fitted the same way
+  everywhere**: the targets come from the counts, the first placement is taken in one order
+  the counts decide, and a fixed budget of steps walks down what is left of the error. Nothing
+  in it reads a clock or a random number, so two devices holding the same notes draw the same
+  figure to the last digit.
 - **Eight circles cannot cross in every way eight tags do**, so the figure has no exact place
   for every combination a field carries — and a note the figure has no place for stands inside
-  its **leading** set, the first of its own tags in the drawing order, in whichever place there
-  holds the most of its others. The drawing order puts the selected tags first, so **selecting
-  a tag always lights its notes inside its own circle**, which is where a reader who asked
-  about it looks for them. **Enough sets at once and a small one is drawn wholly under the
-  others**, and then no place in the figure is in it alone: its notes stand in a place of it
-  all the same, which is inside a set they do not carry as well, because a covered disc has no
-  part of it that is only itself. **No note stands outside a set it carries while a reader is
-  asking about that set, and none stands nowhere.**
+  its **leading** set, the first of its own tags in the drawing order, in whichever place
+  there holds the most of its others — a place that can be inside a set it does not carry as
+  well, where the figure draws no other. The drawing order puts the selected tags first, so
+  **selecting a tag always lights its notes inside its own circle**, which is where a reader
+  who asked about it looks for them. **Enough sets at once and a small one is drawn wholly
+  under the others**, and then no place in the figure is in it alone: its notes stand in a
+  place of it all the same, a covered disc having no part of it that is only itself. **No note
+  stands outside its leading set, and none stands nowhere** — so a reader who selects one tag
+  finds every note carrying it inside that tag's circle, and one who selects several finds
+  each note inside the first of them it carries.
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
   tag's name in quiet ink just inside its outer edge.** Where regions overlap the fills
   overlap, and that is what says a note is in both. **The fills owe the marks their floors**

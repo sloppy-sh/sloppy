@@ -49,18 +49,22 @@ a host as news; one the host collapsed opens when the host drops it from `collap
 ## The reading
 
 `arrangement` picks which reading of the canvas is drawn, and leaving it off draws the
-genealogy. `'sets'` draws the first four selected tags as overlapping regions and stands
-every mark in the region of the ones it carries; the same marks, with the same depth,
-provenance, look, orbit and lift, and no lines between them. Changing it never remounts,
-and the viewport the genealogy was read at comes back on the way back. A region with more
-notes than it has room for at the current zoom folds to one mark a tap brings the canvas
-to, so zooming out refolds and zooming in opens up.
+genealogy. `'sets'` draws the tags a field's own notes carry as circles — `drawnSetsOf`
+names them, the selection first and then the most-carried of the rest, `DRAWN_SETS_MOST`
+of them at the most — each sized by the notes carrying it and placed so that two sets
+sharing notes overlap. Every mark stands inside a set it carries, in the region of its
+own tags wherever the figure has one; the same marks, with the same depth, provenance,
+look, orbit and lift, and no lines between them. Changing it never remounts, and the
+viewport the genealogy was read at comes back on the way back. A region with more notes
+than it has room for at the current zoom folds to one mark a tap brings the canvas to,
+so zooming out refolds and zooming in opens up.
 
 Moving a mark between regions IS retagging, so the renderer reports it and never writes:
 on a desk a mouse drags a mark (or the whole chosen set) into a region, and on release
-`onRetag({ notes, into, outOf })` names the drawn tags alone — a tag outside the figure is
-untouched, and a drop where the mark already stands reports nothing. The mark goes back to
-its place until the host's write comes back as new `nodes`. Pen and touch are unchanged.
+`onRetag({ notes, into, outOf })` names the drawn tags alone — a tag outside the figure
+is untouched, and a drop into the region a mark is standing in reports nothing, which is
+not always the region its own tags name. The mark goes back to its place until the
+host's write comes back as new `nodes`. Pen and touch are unchanged.
 
 ## Ink
 
@@ -76,6 +80,7 @@ through the handler that took its first event.
 
 `pnpm --filter @sloppy/graph bench` serves a 2,400-note graph and drives it with real
 pointer events; `?inline` measures the same thing without a worker. The panel and
-`window.__bench` carry the numbers. `?arrangement=sets&tags=seed,method` opens the sets
-reading on those tags of the corpus (`window.__carries()` lists them), and `?still`
-settles the field and measures nothing, for taking pictures of it.
+`window.__bench` carry the numbers. `?arrangement=sets` opens the sets reading on the
+corpus's own most-carried tags, and `&tags=seed,method` puts those two at the front of
+what is drawn (`window.__carries()` lists the corpus's tags). `?still` settles the field
+and measures nothing, for taking pictures of it.

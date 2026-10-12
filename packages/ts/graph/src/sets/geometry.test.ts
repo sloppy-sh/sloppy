@@ -302,7 +302,7 @@ describe("what the figure says about the counts", () => {
     }
   });
 
-  it("keeps two sets sharing nothing clear of each other", () => {
+  it("keeps two sets sharing nothing clear where no pair wants the room", () => {
     for (const [count, size] of [
       [2, 1],
       [2, 50],
