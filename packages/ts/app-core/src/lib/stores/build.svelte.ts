@@ -14,7 +14,7 @@
  * it is in, until somebody discards it.
  */
 
-import { emptySidecars, fromMarkdown, toMarkdown } from '@sloppy/vault';
+import { emptySidecars, toMarkdown } from '@sloppy/vault';
 import {
 	anchorsOf,
 	type Build,
@@ -42,7 +42,6 @@ import {
 	MOST_NEEDS,
 	MOST_NOTES_PER_TASK,
 	MOST_SESSIONS,
-	NODE_TITLE_MAX,
 	nowIso,
 	type OwnedRef,
 	splitOwnedRef,
@@ -76,7 +75,6 @@ import { seam } from '../seam.svelte.js';
 import { chat, type BuildHeard, type BuildSessionLive } from './chat.svelte.js';
 import { wordsFor } from './errors.js';
 import { graphHistory } from './history.svelte.js';
-import { nodes } from './nodes.svelte.js';
 import { troubleIn, whatHappened } from './what-happened.svelte.js';
 
 const NO_ASSISTANT = 'Sloppy needs an assistant installed on this device to build anything.';
@@ -88,9 +86,7 @@ const NO_PROJECT = 'There is no project open here to build in.';
 const NOTHING_KEPT =
 	'Keep a version of this folder first, so the build has something to grow from.';
 const UNSTARTED = 'Sloppy could not start that just now. Try again.';
-const UNKEPT = 'Sloppy could not keep the build just now. Try again.';
 const NOT_ANSWERED = 'That question is not one this build is waiting on.';
-const NOTHING_WRITTEN = 'Write the answer first.';
 const NOTHING_HANDED_ON = 'The assistant stopped without saying what it built.';
 const NOTHING_PLANNED = 'The assistant stopped without saying what the work is.';
 
@@ -181,6 +177,8 @@ class BuildStore {
 	/** The writes to the build this device holds, in the order they were asked
 	 *  for. */
 	#writes: Promise<void> = Promise.resolve();
+	/** The read-backs, in the order the graph in front of somebody changed. */
+	#picking: Promise<void> = Promise.resolve();
 
 	/** Whether the shell this runs in holds the lines and the copies a build
 	 *  works in, which is what keeps the act off a browser tab. */
@@ -246,6 +244,13 @@ class BuildStore {
 		});
 	}
 
+	/** How full one session's window is, as it last said — one that has handed
+	 *  off included, so a bar still stands where its turns are. `null` is a
+	 *  session that never said, which draws none. */
+	contextOf(conversation: Ulid): ContextUsage | null {
+		return this.#context.get(conversation) ?? null;
+	}
+
 	/** Every question this build has asked — the plan's and the tasks' — with
 	 *  how it was answered where it has been. */
 	get needs(): readonly WaitingNeed[] {
@@ -279,10 +284,20 @@ class BuildStore {
 	 * Somebody has opened this graph: the build this project has is read back and
 	 * picked up where it was left. Another project's build is not this one's, so
 	 * what was held is let go of.
+	 *
+	 * One at a time, and a graph already picked up is not picked up again: a
+	 * second pass over one build would open a second session for the phase it is
+	 * in.
 	 */
 	async opened(graph: OwnedRef): Promise<void> {
+		this.#picking = this.#picking.then(() => this.#pickUp(graph)).catch(() => {});
+		await this.#picking;
+	}
+
+	async #pickUp(graph: OwnedRef): Promise<void> {
 		const project = (await runtime.project().catch(() => undefined))?.root ?? null;
-		if (this.#of !== graph || this.#project !== project) this.clear();
+		if (this.#of === graph && this.#project === project) return;
+		this.clear();
 		this.#of = graph;
 		this.#project = project;
 		if (project === null) return;
@@ -359,36 +374,16 @@ class BuildStore {
 	}
 
 	/**
-	 * A question answered by writing: the note is the person's own, written under
-	 * the note the question is about with the ordinary act, and the build records
-	 * which note answered which question.
+	 * A question answered by the note somebody wrote for it: the note is theirs,
+	 * written where they write any note, and this records which note answered
+	 * which question — DESIGN.md § "A build".
 	 */
-	async answer(need: BuildSlug, words: string): Promise<boolean> {
+	async answer(need: BuildSlug, note: OwnedRef): Promise<boolean> {
 		const build = this.#held;
 		const asked = this.needs.find((one) => one.need.id === need);
 		if (!build || !asked) return this.#tell(NOT_ANSWERED);
-		const said = words.trim();
-		if (said === '') return this.#tell(NOTHING_WRITTEN);
-		const under = asked.need.about ?? build.about[0];
-		try {
-			const note = await nodes.create({
-				from: { relation: 'under', note: under },
-				title: asked.need.question.slice(0, NODE_TITLE_MAX)
-			});
-			const aside = emptySidecars(splitOwnedRef(note.ref).localId);
-			await api.createBlock({
-				node: note.ref,
-				content: fromMarkdown(`## ${asked.need.question}\n\n${said}`, aside)
-			});
-			await this.#keep({
-				...build,
-				answers: { ...build.answers, [need]: { note: note.ref } }
-			});
-			await this.#handedOn(asked, note.ref);
-		} catch (error) {
-			whatHappened.put('trouble', `the answer was not written: ${troubleIn(error)}`);
-			return this.#tell(wordsFor(error) ?? UNKEPT);
-		}
+		await this.#keep({ ...build, answers: { ...build.answers, [need]: { note } } });
+		await this.#handedOn(asked, note);
 		await this.#released(need);
 		return true;
 	}

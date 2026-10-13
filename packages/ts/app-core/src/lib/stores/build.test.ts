@@ -33,6 +33,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, resetApi } from '../api.js';
 import { initRuntime, type ChatAccess, type ChatAsked, type ChatLive } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
+import { theBuilds, type BuildFace } from '../components/build-face.svelte.js';
 import { builds, fillingUp } from './build.svelte.js';
 import { chat } from './chat.svelte.js';
 import { graphHistory } from './history.svelte.js';
@@ -203,6 +204,14 @@ function handoff(over: Partial<BuildHandoff> = {}): BuildHandoff {
 
 function call(act: string, args: unknown): SloppyToolCall {
 	return { call: `c${Math.random()}`, act, arguments: args } as SloppyToolCall;
+}
+
+/** The note somebody writes to answer a question, as the page writes one: under
+ *  the note the question is about, titled and worded by them. */
+async function wrote(under: OwnedRef, title: string, said: string): Promise<OwnedRef> {
+	const note = await api.createNode({ from: { relation: 'under', note: under }, title });
+	await api.createBlock({ node: note.ref, content: words(said) });
+	return note.ref;
 }
 
 /** A build with its plan in, ready for Go. */
@@ -482,19 +491,21 @@ describe('a question raised while the work runs', () => {
 		// Nothing starts for a task holding a question.
 		expect(of('implementer', 'reader')).toBe(first);
 
-		await builds.answer('units', 'Tokens, as the agent counts them.');
+		const answer = await wrote(
+			feature,
+			'In what unit is the budget counted?',
+			'Tokens, as the agent counts them.'
+		);
+		await builds.answer('units', answer);
 		await settled();
 
-		const written = await api.listNodes({ origin: feature });
-		const answer = written.find((one) => one.title.startsWith('In what unit'));
-		expect(answer?.parent).toBe(feature);
-		expect(builds.needs.find((one) => one.need.id === 'units')?.note).toBe(answer?.ref);
+		expect(builds.needs.find((one) => one.need.id === 'units')?.note).toBe(answer);
 		expect(builds.current?.tasks.reader.state).toBe('building');
 		const next = of('implementer', 'reader');
 		expect(next).not.toBe(first);
 		const told = stub.said.find((one) => one.of === next)?.said ?? '';
 		expect(told).toContain('In what unit');
-		expect(told).toContain(answer?.ref as string);
+		expect(told).toContain(answer);
 	});
 
 	it('is set aside as plainly as it is answered', async () => {
@@ -530,7 +541,7 @@ describe('a question raised while the work runs', () => {
 		expect(builds.current?.tasks.one.state).toBe('asking');
 		expect(builds.current?.tasks.two.state).toBe('waiting');
 
-		await builds.answer('units', 'Tokens, as the agent counts them.');
+		await builds.answer('units', await wrote(feature, 'What unit?', 'Tokens.'));
 		await settled();
 		await act(of('implementer', 'one'), call('hand_off', handoff()));
 		await act(of('reviewer', 'one'), call('review_build', { clean: true, findings: [] }));
@@ -843,7 +854,7 @@ describe('stopping and going on', () => {
 });
 
 describe('a question the plan asks', () => {
-	it('is answered by a note under the note it is about, before Go', async () => {
+	it('is answered by the note somebody wrote for it, and starts nothing before Go', async () => {
 		await planned(
 			plan({
 				needs: [
@@ -860,13 +871,14 @@ describe('a question the plan asks', () => {
 		expect(builds.needs).toHaveLength(1);
 		expect(builds.current?.state).toBe('answering');
 
-		await builds.answer('units', 'Tokens, as the agent counts them.');
-
-		const written = (await api.listNodes({ origin: feature })).find((one) =>
-			one.title.startsWith('In what unit')
+		const written = await wrote(
+			beside,
+			'In what unit is the budget counted?',
+			'Tokens, as the agent counts them.'
 		);
-		expect(written?.parent).toBe(beside);
-		expect(builds.needs[0].note).toBe(written?.ref);
+		await builds.answer('units', written);
+
+		expect(builds.needs[0].note).toBe(written);
 		// Answering starts nothing: Go is still the person's.
 		expect(builds.current?.state).toBe('answering');
 		expect(stub.asked.filter((one) => one.role === 'implementer')).toEqual([]);
@@ -888,14 +900,15 @@ describe('a question the plan asks', () => {
 			})
 		);
 
-		await builds.answer('units', 'Tokens, as the agent counts them.');
-		await builds.answer('ceiling', 'Eight thousand of them.');
+		const unit = await wrote(
+			beside,
+			'In what unit is the budget counted?',
+			'Tokens, as the agent counts them.'
+		);
+		const ceiling = await wrote(feature, 'What is the ceiling?', 'Eight thousand of them.');
+		await builds.answer('units', unit);
+		await builds.answer('ceiling', ceiling);
 		await settled();
-
-		const under = await api.listNodes({ origin: feature });
-		const unit = under.find((one) => one.title.startsWith('In what unit'))?.ref as OwnedRef;
-		const ceiling = under.find((one) => one.title.startsWith('What is the ceiling'))
-			?.ref as OwnedRef;
 		// A question about one note goes to the tasks built from it; one about the
 		// feature as a whole goes to all of them.
 		expect(builds.current?.plan?.tasks[0].notes).toEqual([beside, unit, ceiling]);
@@ -927,12 +940,12 @@ describe('a question the plan asks', () => {
 		);
 	});
 
-	it('is not answered with nothing, and not answered twice over', async () => {
+	it('is not answered where nothing asked it', async () => {
 		await planned(plan({ needs: [{ id: 'units', question: 'What unit?', why: 'Wrong sum.' }] }));
 
-		expect(await builds.answer('units', '   ')).toBe(false);
-		expect(builds.says).toBe('Write the answer first.');
-		expect(await builds.answer('nothing-asked-this', 'Words.')).toBe(false);
+		expect(await builds.answer('nothing-asked-this', beside)).toBe(false);
+		expect(builds.says).toBe('That question is not one this build is waiting on.');
+		expect(builds.needs[0].note).toBe(undefined);
 	});
 });
 
@@ -1144,5 +1157,104 @@ describe('discarding a build', () => {
 		expect(chat.threads.some((one) => one.id === id)).toBe(false);
 		expect((await kept.log(10)).commits).toHaveLength(theirs);
 		expect((await kept.status()).branch).toBe('main');
+	});
+});
+
+describe('the store under the names the card and the acts ask by', () => {
+	/** What a page holds; nothing here goes round it. */
+	const face: BuildFace = theBuilds;
+
+	it('begins, answers, goes, stops, carries on and discards one build', async () => {
+		expect(face.standing).toBe(null);
+		expect(face.busy).toBe(false);
+		expect(await face.taken('reads-a-plan')).toBe(false);
+
+		const beginning = face.begin([feature], 'reads-a-plan');
+		expect(face.busy).toBe(true);
+		expect(await beginning).toBe(true);
+		expect(face.busy).toBe(false);
+		await settled();
+
+		const id = builds.current?.id as Ulid;
+		expect(face.standing?.id).toBe(id);
+		expect(face.of(id)?.name).toBe('reads-a-plan');
+		expect(face.of('01ARZ3NDEKTSV4RRFFQ69G5FAV')).toBeUndefined();
+
+		await act(
+			of('planner'),
+			call(
+				'plan_build',
+				plan({ needs: [{ id: 'units', question: 'What unit?', why: 'Nothing says.' }] })
+			)
+		);
+
+		expect(face.standing?.state).toBe('answering');
+		expect(await face.reads('reader', beside)).toBe(true);
+		expect(face.standing?.plan?.tasks[0].notes).toContain(beside);
+		expect(await face.leaves('reader', beside)).toBe(true);
+		expect(face.standing?.plan?.tasks[0].notes).not.toContain(beside);
+
+		const written = await wrote(feature, 'What unit?', 'Tokens.');
+		expect(await face.answer('units', written)).toBe(true);
+		expect(face.standing?.answers.units?.note).toBe(written);
+
+		expect(await face.go()).toBe(true);
+		await settled();
+		expect(face.standing?.state).toBe('building');
+
+		const session = of('implementer', 'reader');
+		expect(face.contextOf(session)).toBe(null);
+		stub.tell(session, {
+			event: 'context',
+			usage: { total: 40, limit: 100, at: '2026-10-13T10:00:00.000Z', parts: [] }
+		});
+		await settled();
+		expect(face.contextOf(session)?.total).toBe(40);
+
+		expect(await face.stop()).toBe(true);
+		await settled();
+		expect(face.standing?.state).toBe('stopped');
+		// What a session said is still read beside its turns once it is let go of.
+		expect(face.contextOf(session)?.total).toBe(40);
+
+		expect(await face.carryOn()).toBe(true);
+		await settled();
+		expect(face.standing?.state).toBe('building');
+
+		expect(await face.discard()).toBe(true);
+		await settled();
+		expect(face.standing).toBe(null);
+		expect(face.says).toBe(null);
+	});
+
+	it('holds a name against the lines this folder has', async () => {
+		await graphHistory.startLine(buildLine('taken'));
+		await graphHistory.read();
+
+		expect(await face.taken('taken')).toBe(true);
+		expect(await face.taken('not-taken')).toBe(false);
+	});
+
+	it('says why an act did not land, in words', async () => {
+		stub.has = [];
+		await chat.lookForAgents();
+
+		expect(await face.begin([feature], 'reads-a-plan')).toBe(false);
+		expect(face.says).toBe('Sloppy needs an assistant installed on this device to build anything.');
+		expect(face.standing).toBe(null);
+		expect(face.reaches).toBe(false);
+	});
+
+	it('reads a build back where one was left, and picks it up once', async () => {
+		await planned();
+		const id = builds.current?.id as Ulid;
+		const opened = stub.asked.filter((one) => one.role === 'planner').length;
+
+		await builds.opened(graph);
+		await builds.opened(graph);
+		await settled();
+
+		expect(face.standing?.id).toBe(id);
+		expect(stub.asked.filter((one) => one.role === 'planner')).toHaveLength(opened);
 	});
 });

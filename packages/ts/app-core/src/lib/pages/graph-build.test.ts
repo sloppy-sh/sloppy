@@ -3,7 +3,7 @@
 // seam and the builds are both stand-ins.
 
 import 'fake-indexeddb/auto';
-import { DeviceThreads, MemoryFiles, MemoryHistory } from '@sloppy/local';
+import { DeviceThreads, MemoryBuilds, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import {
 	buildLine,
 	ulid,
@@ -16,7 +16,7 @@ import {
 import { GRAPH_FILE, graphFile, notePath, VAULT_FORMAT } from '@sloppy/vault';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildsHere } from '../components/build-face.svelte.js';
+import { buildsHere, theBuilds } from '../components/build-face.svelte.js';
 import { BuildsStandIn } from '../components/build-face.test-support.svelte.js';
 import { type ChatAccess, type ChatLive, initRuntime, updateRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
@@ -422,6 +422,7 @@ describe('naming the build before anything is kept', () => {
 
 	it('says in one line that it needs an assistant on this machine', async () => {
 		stub.agent = ['anthropic'];
+		builds.reaches = false;
 		await askedFor();
 
 		expect(screen()).toContain('and it is not on this machine');
@@ -784,5 +785,28 @@ describe('the build in the dock', () => {
 
 			expect(screen()).toContain(`There is nothing here called ${LINE}.`);
 		});
+	});
+});
+
+describe('what stands behind the card', () => {
+	/** The shell a build needs: one that holds the lines and the copies it works
+	 *  in. The stand-in every other test here offers is not one of those. */
+	class Holds extends Stub {
+		readonly builds = new MemoryBuilds(files);
+	}
+
+	it('is the store that runs the phases, which the page offers where a build can run', async () => {
+		updateRuntime({ chat: new Holds() });
+		seamSettledAgain();
+
+		await open();
+
+		expect(buildsHere.face).toBe(theBuilds);
+	});
+
+	it('is left to whatever else was offered where the shell holds none', async () => {
+		await open();
+
+		expect(buildsHere.face).toBe(builds);
 	});
 });

@@ -26,7 +26,7 @@
 		/** Why the last try did not land, in words for the person. */
 		says?: string | null;
 		/** Whether something here is already called this. */
-		taken: (name: string) => boolean;
+		taken: (name: string) => Promise<boolean>;
 		onName: (name: string) => void;
 	} = $props();
 
@@ -40,13 +40,13 @@
 		}
 	});
 
-	function name(): void {
+	async function name(): Promise<void> {
 		const held = buildNameFrom(typed);
 		if (held === undefined) {
 			refused = BUILD_NAME_NEEDS;
 			return;
 		}
-		if (taken(held)) {
+		if (await taken(held)) {
 			refused = `A line of work is already called ${held}. Give the build another name.`;
 			return;
 		}
@@ -68,7 +68,7 @@
 				class="flex flex-col gap-3"
 				onsubmit={(event) => {
 					event.preventDefault();
-					name();
+					void name();
 				}}
 			>
 				<Input

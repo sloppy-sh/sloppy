@@ -4103,7 +4103,8 @@ and `tools.rs` serving what `advertisedBuildTools` answered; `build.ts` beside t
 `chat.ts` is its half of `BuildAccess`. `stores/build.svelte.ts` in `@sloppy/app-core` runs the
 phases and `build-acts.ts` beside `chat-acts.ts` serves the four acts, over `builds.ts` in
 `@sloppy/local` beside `threads.ts`. The card, the result and the acts that start a build are
-app-core's components. `MemoryBuilds` in `@sloppy/local` is `BuildAccess` over nothing, so a
+app-core's components, and `BuildFace` beside them is the whole of what those ask of a build:
+a page offers the store there, so a surface with nothing offered to it cannot build. `MemoryBuilds` in `@sloppy/local` is `BuildAccess` over nothing, so a
 store's tests need no repository on a disk.
 
 ## The vault's history

@@ -59,8 +59,8 @@ export class BuildsStandIn implements BuildFace {
 		return this.#held?.id === id ? this.#held : undefined;
 	}
 
-	taken(name: BuildName): boolean {
-		return this.lines.has(buildLine(name));
+	taken(name: BuildName): Promise<boolean> {
+		return Promise.resolve(this.lines.has(buildLine(name)));
 	}
 
 	/** A build as the store would have written one, for a card to be read. */

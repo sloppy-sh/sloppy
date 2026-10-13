@@ -88,8 +88,7 @@
 		type StoreRef,
 		type Tag as TagName,
 		type BuildSlug,
-		type Ulid,
-		chatAgentReach
+		type Ulid
 	} from '@sloppy/types';
 	import {
 		AppearanceModal,
@@ -143,7 +142,7 @@
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import BuildCard from '../components/build-card.svelte';
-	import { buildsHere } from '../components/build-face.svelte.js';
+	import { buildsHere, theBuilds } from '../components/build-face.svelte.js';
 	import BuildName from '../components/build-name.svelte';
 	import {
 		type BuildBrought,
@@ -167,6 +166,7 @@
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
 	import { openHere as askForOne, saveHere, savesFiles } from '../save-file.js';
+	import { builds } from '../stores/build.svelte.js';
 	import { canvasInk } from '../stores/canvas-ink.svelte.js';
 	import { chat } from '../stores/chat.svelte.js';
 	import { codeDrift } from '../stores/code-drift.svelte.js';
@@ -538,6 +538,20 @@
 	 *  been asked it. */
 	$effect(() => {
 		chat.forget(graphs.current);
+	});
+
+	/** The build on the project this graph is about, read back whenever the graph
+	 *  in front of somebody changes: the act is not offered while one stands, so
+	 *  it is asked before anybody reaches for it. */
+	$effect(() => {
+		void builds.opened(graphs.current);
+	});
+
+	/** And the store put in front of the card and the acts, while the shell this
+	 *  runs in holds the lines and the copies a build works in. */
+	$effect(() => {
+		if (!builds.reaches) return;
+		return buildsHere.offers(theBuilds);
 	});
 
 	/**
@@ -2078,8 +2092,6 @@
 	/** Whether a build is put in front of anybody here. One stands at a time, so
 	 *  the act is not offered while one does — DESIGN.md § "A build". */
 	const offersBuild = $derived(offersChat && buildsHere.face !== null && theBuild === null);
-	/** Whether the assistant this would run on is a program on this machine. */
-	const buildRuns = $derived(chat.agent !== undefined && chatAgentReach(chat.agent) === 'program');
 	/** The version a line stands at. The build's own was opened and written to
 	 *  while it ran, so the lines are read again before one of its versions is
 	 *  taken. */
@@ -3800,10 +3812,10 @@
 <BuildName
 	bind:open={buildNaming}
 	count={buildAbout.length}
-	reaches={buildRuns}
+	reaches={buildsHere.face?.reaches ?? false}
 	busy={buildsHere.face?.busy ?? false}
 	says={buildSays}
-	taken={(name) => buildsHere.face?.taken(name) ?? false}
+	taken={async (name) => (await buildsHere.face?.taken(name)) ?? false}
 	onName={(name) => void nameTheBuild(name)}
 />
 
