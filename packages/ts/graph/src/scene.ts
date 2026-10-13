@@ -2584,9 +2584,9 @@ export class GraphScene {
     reserved: readonly Bounds[],
   ): Bounds[] {
     const held = this.labelSlots;
-    // Placed biggest first, and a label that would land on one already placed is
-    // dropped for this frame rather than overprinted. It keeps its slot, so the
-    // next pan brings it back without paying to rasterise it again.
+    // Placed biggest first. A caption keeps its slot through a frame that finds
+    // no place for it, so the next pan brings it back without paying to
+    // rasterise it again.
     const fill = this.options.palette.ink;
     const placed: Bounds[] = [...reserved];
     for (const mark of wanted) {
@@ -2597,7 +2597,7 @@ export class GraphScene {
         this.positions[mark.index * 2],
         this.positions[mark.index * 2 + 1],
       );
-      const left = screen.x + mark.radius * this.viewport.scale + LABEL_GAP;
+      const rim = mark.radius * this.viewport.scale;
       // A note with no address draws its title alone, where the address would
       // have started, rather than one gap along from an empty caption.
       const captioned = slot.address.text !== "";
@@ -2611,27 +2611,70 @@ export class GraphScene {
         titled ? slot.title.height : 0,
       );
 
-      const box = {
-        minX: left,
-        maxX: left + width,
-        minY: screen.y - high / 2,
-        maxY: screen.y + high / 2,
-      };
-      if (overlaps(placed, box)) {
+      const place = this.captionPlace(placed, screen, rim, width, high);
+      // The address is the half a person cites, so it is the half offered a
+      // place of its own where the whole caption finds none.
+      const shorter =
+        place === null && captioned && titled
+          ? this.captionPlace(
+              placed,
+              screen,
+              rim,
+              slot.address.width,
+              slot.address.height,
+            )
+          : null;
+      const taking = place ?? shorter;
+      if (taking === null) {
         slot.address.visible = false;
         slot.title.visible = false;
         continue;
       }
-      placed.push(box);
+      placed.push(taking.box);
 
-      slot.address.position.set(left, screen.y);
+      slot.address.position.set(taking.left, taking.y);
       slot.address.tint = fill;
       slot.address.visible = captioned;
-      slot.title.position.set(left + indent, screen.y);
+      slot.title.position.set(taking.left + indent, taking.y);
       slot.title.tint = fill;
-      slot.title.visible = titled;
+      slot.title.visible = titled && place !== null;
     }
     return placed;
+  }
+
+  /**
+   * The place a caption takes about its mark: right of it, left of it, above it
+   * centred, below it centred — the first of the four standing clear of
+   * everything already written and whole on screen, and null where none does.
+   * DESIGN.md § "The canvas".
+   */
+  private captionPlace(
+    placed: readonly Bounds[],
+    at: Point,
+    rim: number,
+    width: number,
+    high: number,
+  ): { left: number; y: number; box: Bounds } | null {
+    const clear = rim + LABEL_GAP;
+    const places: [number, number][] = [
+      [at.x + clear, at.y],
+      [at.x - clear - width, at.y],
+      [at.x - width / 2, at.y - clear - high / 2],
+      [at.x - width / 2, at.y + clear + high / 2],
+    ];
+    for (const [left, y] of places) {
+      const box = {
+        minX: left,
+        maxX: left + width,
+        minY: y - high / 2,
+        maxY: y + high / 2,
+      };
+      if (box.minX < 0 || box.maxX > this.width) continue;
+      if (box.minY < 0 || box.maxY > this.height) continue;
+      if (overlaps(placed, box)) continue;
+      return { left, y, box };
+    }
+    return null;
   }
 }
 

@@ -3,7 +3,7 @@
 // collision set, so no two of them overprint. DESIGN.md § "Sets — the tags as
 // places" and § "The canvas".
 
-import type { OwnedRef, Tag } from "@sloppy/types";
+import type { Address, NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it, vi } from "vitest";
 import type { DrawnNode, GraphField } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
@@ -24,6 +24,7 @@ vi.mock("pixi.js", async () => {
 
 const { GraphScene } = await import("./scene.js");
 
+const OWNER = "did:syr:someone";
 const corpus = makeCorpus({ total: 600 });
 const NOTEBOOKS = [
   { ulid: "01LETTERINGTHESIS000000000", title: "the thesis" },
@@ -211,6 +212,148 @@ describe("the words on the canvas", () => {
         expect(said, `${tag} at ${step}x`).toContain(tag);
       }
     }
+    scene.destroy();
+  });
+});
+
+/**
+ * A field whose marks stand exactly where the test puts them, read at 1:1 so a
+ * world unit is a screen pixel and a caption's place can be named outright. The
+ * blockers are mega-nodes, which stands them ahead of the leaf in the drawing
+ * order, so each one has written its own caption before the leaf asks for a
+ * place.
+ */
+interface Standing {
+  title: string;
+  at: { x: number; y: number };
+  folded?: number;
+}
+
+async function standing(marks: readonly Standing[]) {
+  const entries: DrawnNode[] = marks.map((mark, at) => {
+    const folded = mark.folded ?? 0;
+    const ref = `${OWNER}/01PLACES${String(at).padStart(18, "0")}` as OwnedRef;
+    return {
+      node: {
+        ref,
+        created_by: OWNER,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+        address: (at === marks.length - 1 ? "9z" : `1a${at + 1}`) as Address,
+        depth: 1,
+        origin: ref,
+        title: mark.title,
+        tags: [],
+        links: [],
+        published: false,
+      } as NodeView,
+      collapsed: folded > 0,
+      folded,
+      tags: [],
+    };
+  });
+
+  const scene = await GraphScene.create({} as HTMLCanvasElement, {
+    fonts: { ui: "ui", address: "mono" },
+    palette,
+    resolution: 2,
+  });
+  const app = FakeApplication.latest as FakeApplication;
+  scene.setModel(buildModel(entries, { selection: [], palette }), false);
+  scene.viewport.lookAt({ x: 0, y: 0, scale: 1 });
+  const places = new Float32Array(entries.length * 2);
+  for (const [at, entry] of entries.entries()) {
+    const index = scene.indexOf(entry.node.ref);
+    if (index === undefined) throw new Error("the model dropped a mark");
+    places[index * 2] = marks[at].at.x;
+    places[index * 2 + 1] = marks[at].at.y;
+  }
+  scene.setPositions(places);
+  for (let frame = 0; frame < 4; frame++) {
+    scene.invalidate();
+    app.tick();
+  }
+  return { scene, app };
+}
+
+/** The box the words `of` fill, or null where they are not drawn. */
+function boxOf(app: FakeApplication, of: string): Lettering | null {
+  return lettering(app).find((one) => one.words === of) ?? null;
+}
+
+/** Which of the four places about `at` a box of words took. */
+function placeOf(
+  box: Lettering | null,
+  at: { x: number; y: number },
+): "right" | "left" | "above" | "below" | "nowhere" {
+  if (box === null) return "nowhere";
+  if (box.minY > at.y) return "below";
+  if (box.maxY < at.y) return "above";
+  return box.minX > at.x ? "right" : "left";
+}
+
+// Every place below is worked out against the fake's own lettering — seven
+// pixels a glyph, one line 1.2 of the font size — so the blockers land on the
+// exact box the leaf's caption would otherwise take.
+describe("where a caption stands when its first place is taken", () => {
+  const LEAF = { x: 195, y: 370 };
+  const NAME = "a title twenty-two chr";
+  /** A blocker whose own caption is written to its right, 118px of it. */
+  const blocking = (x: number, y: number): Standing => ({
+    title: "ten charac",
+    folded: 3,
+    at: { x, y },
+  });
+  /** The leaf's caption runs to 174px, so its right place ends at 384 and its
+   *  left place starts at 6 — both on screen, which is what makes these about
+   *  collision rather than about the edges. */
+  const leaf: Standing = { title: NAME, at: LEAF };
+
+  it("writes a caption on the left when the right is taken", async () => {
+    const { scene, app } = await standing([blocking(190, 370), leaf]);
+    expect(placeOf(boxOf(app, NAME), LEAF)).toBe("left");
+    expect(overprints(lettering(app))).toEqual([]);
+    scene.destroy();
+  });
+
+  it("writes it above when both sides are taken", async () => {
+    const { scene, app } = await standing([
+      blocking(190, 370),
+      blocking(39.44, 370),
+      leaf,
+    ]);
+    expect(placeOf(boxOf(app, NAME), LEAF)).toBe("above");
+    expect(overprints(lettering(app))).toEqual([]);
+    scene.destroy();
+  });
+
+  // The address is what a person cites, so it is the half that survives a frame
+  // with no room for both.
+  it("writes the address alone where the whole caption fits nowhere", async () => {
+    const { scene, app } = await standing([
+      blocking(190, 370),
+      blocking(39.44, 370),
+      blocking(182.44, 347.8),
+      blocking(182.44, 392.2),
+      leaf,
+    ]);
+    expect(boxOf(app, NAME)).toBeNull();
+    expect(placeOf(boxOf(app, "9z"), LEAF)).toBe("above");
+    expect(overprints(lettering(app))).toEqual([]);
+    scene.destroy();
+  });
+
+  it("drops a caption that fits nowhere at all", async () => {
+    const { scene, app } = await standing([
+      blocking(190, 370),
+      blocking(39.44, 370),
+      blocking(162.44, 347.8),
+      blocking(162.44, 392.2),
+      leaf,
+    ]);
+    expect(boxOf(app, NAME)).toBeNull();
+    expect(boxOf(app, "9z")).toBeNull();
+    expect(overprints(lettering(app))).toEqual([]);
     scene.destroy();
   });
 });

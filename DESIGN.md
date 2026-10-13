@@ -2145,6 +2145,13 @@ up and the lift can be 0 in the panned case.
   draws as one mega-node sized by descendant count; a tag selection lights the notes that
   carry it and dims the rest along with the genealogical edges. **Neither mode ever draws
   more than a bounded node count** — legibility and frame time are the same constraint here (PRODUCT.md principle 7).
+- **The mark never moves to make room for words; the caption does.** Where a mark stands is
+  what a reader reads in both arrangements, so a caption whose usual place beside it is taken
+  looks for another: right of the mark, then left of it, then centred above, then centred
+  below, and then the address alone — what a person cites — at those same four places. Only a
+  mark with no room at any of them goes unlettered for the frame. Every place is held clear of
+  the words already written and whole inside the screen, so no caption is ever read over other
+  words or half off an edge.
 - **The page is the ground; the field is a box inside it.** A picture reaches every edge of
   the page — behind the chrome at the head, under the bar at the foot — while the field the
   marks are drawn in is held off that chrome by the room the chrome says it takes. So no mark
@@ -2235,8 +2242,9 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   tag's name in quiet ink just inside its outer edge.** The words the canvas writes keep off
   each other: a name whose place is taken steps along the room kept for it to the nearest clear
   one and, where the room holds none, just outside the outline — moved, never dropped — and a
-  caption that would land on anything is left out for the frame. A screen too crowded for every
-  name to find a clear place is the one case two can still touch. Where regions overlap the fills overlap, and that is what says a note is in both.
+  caption whose place is taken tries the others its mark has (§ "The canvas") before it is left
+  out for the frame. A screen too crowded for every name to find a clear place is the one case
+  two can still touch. Where regions overlap the fills overlap, and that is what says a note is in both.
   **The fills owe the marks their floors** (§ "Contrast is measured, not assumed"): a mark
   standing on a tinted region keeps **3:1 against the surface it actually lands on** and a
   dimmed one keeps **1.6:1**, and the ink the canvas letters the names and the captions in keeps
