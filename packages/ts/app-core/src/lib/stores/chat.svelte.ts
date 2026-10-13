@@ -21,6 +21,8 @@
 
 import { attachedAt, type Files } from '@sloppy/local';
 import {
+	type BuildRole,
+	type BuildToolCall,
 	CHAT_ASKED_MAX,
 	CHAT_ATTACHED_NAME_MAX,
 	CHAT_ATTACHMENT_MAX,
@@ -42,6 +44,7 @@ import {
 	type ChatToolName,
 	chatToolWrites,
 	type ChatTurn,
+	toolsForRole,
 	type ContextUsage,
 	contextTogether,
 	isChatToolCall,
@@ -101,6 +104,10 @@ const PLACE_UNREAD = 'That place cannot be read from here.';
 const NO_NOTES_THERE = 'There are no notes in that place. Read its files with your own tools.';
 const NOT_IN_A_CHAT =
 	'That act belongs to a build. Here there is only this conversation and these notes.';
+const NOT_THIS_SESSION =
+	'That act is not one this session does. The acts you were given are the whole of what you can call here.';
+const NO_BUILD_WORK =
+	'The copy of the project you are working in cannot be read from here, so there is nothing to act on.';
 
 /** A reading act asked for a place it cannot have. The agent reads these
  *  words and acts on them, so one is answered rather than thrown past the
@@ -147,8 +154,13 @@ function saidOf(turn: ChatTurn): string {
 	return turn.blocks.flatMap((block) => (block.kind === 'said' ? [block.said] : [])).join('\n');
 }
 
-function agentTurn(): ChatTurn {
-	return { from: 'agent', blocks: [], at: new Date().toISOString() };
+function agentTurn(conversation?: Ulid): ChatTurn {
+	return {
+		from: 'agent',
+		blocks: [],
+		at: new Date().toISOString(),
+		...(conversation === undefined ? {} : { conversation })
+	};
 }
 
 /** What the agent is told about what was put in front of it, which is where to
@@ -182,6 +194,64 @@ function liveAgain(thread: ChatThread): ChatThread {
 	return held;
 }
 
+/** Whose turn a block is arriving into: the thread's own conversation, which
+ *  names none, or one of a build's sessions, which names its own. */
+interface Writing {
+	writingTurn: ChatTurn | null;
+	conversation?: Ulid;
+}
+
+/** What a build asks for one of its sessions: which build — and so which
+ *  thread — which conversation of it, what it is FOR, the folder it works in
+ *  and what it is told before anything is said. */
+export interface BuildAsked {
+	build: Ulid;
+	conversation: Ulid;
+	role: BuildRole;
+	cwd: string;
+	brief: string;
+}
+
+/** What one of a build's sessions tells the store running the build. What it
+ *  SAID is on the thread; these are what a build acts on. */
+export type BuildHeard =
+	| { heard: 'context'; usage: ContextUsage }
+	| { heard: 'ended'; spent?: ChatSpend }
+	/** The conversation is over, whichever way it ended. `said` is why it could
+	 *  not go on, in words for the person; absent is one that simply ended. */
+	| { heard: 'over'; said?: string };
+
+/** One of a build's sessions, as the build holds it. */
+export interface BuildSessionLive {
+	say(said: string): Promise<void>;
+	/** Ask the agent how full its window is; the answer arrives at `heard`.
+	 *  An agent this shell cannot ask is not a failure. */
+	askContext(): Promise<void>;
+	close(): Promise<void>;
+}
+
+/** One conversation of a build, on the build's own thread. A build runs several
+ *  at once, so what a chat keeps on its thread — the handle, the turn being
+ *  written into — each of these keeps for itself. */
+class Session {
+	handle: ChatLive | null = null;
+	/** The agent's turn this conversation is writing into; `null` is one not
+	 *  writing. It is the turn ITSELF rather than where it stands, because
+	 *  another conversation's turn lands between them. */
+	writingTurn: ChatTurn | null = null;
+	/** An event that lands after this session was let go of is not an event
+	 *  about whatever was opened in its place. */
+	epoch = 0;
+
+	constructor(
+		readonly conversation: Ulid,
+		readonly role: BuildRole,
+		readonly cwd: string,
+		readonly serve: (call: BuildToolCall) => Promise<ChatActDone>,
+		readonly heard: (what: BuildHeard) => void
+	) {}
+}
+
 /**
  * One thread's conversation and everything arriving in it. A thread read again
  * is read off its own record, so a thread answering while somebody is
@@ -202,8 +272,12 @@ class Live {
 	context = $state.raw<ContextUsage | null>(null);
 	standing = $state(false);
 	running = $state(false);
-	/** Whether the turn at the end is the agent's and still being written into. */
-	writing = false;
+	/** The agent's turn this thread's own conversation is writing into; `null`
+	 *  is one not writing. */
+	writingTurn: ChatTurn | null = null;
+	/** The sessions a build is running on this thread, by conversation. EMPTY
+	 *  is every chat, and a build whose sessions are all over. */
+	readonly sessions = new SvelteMap<Ulid, Session>();
 	keeping = $state.raw<ChatKeeping | null>(null);
 	keepSettling = $state(false);
 	stopping = $state(false);
@@ -697,6 +771,9 @@ class ChatStore {
 		const said = words.trim();
 		const attached = this.attached;
 		if (!access || (said === '' && attached.length === 0) || this.running) return;
+		// A build is read, answered and stopped; there is no conversation on its
+		// thread for anybody to type into.
+		if (this.#current?.kind === 'build') return;
 		whatHappened.put(
 			'turn',
 			attached.length === 0
@@ -716,7 +793,7 @@ class ChatStore {
 		live.says = null;
 		live.failed = null;
 		live.running = true;
-		live.writing = false;
+		live.writingTurn = null;
 		live.attached = [];
 		const blocks: ChatBlock[] = [
 			...(said === '' ? [] : [{ kind: 'said' as const, said }]),
@@ -930,13 +1007,237 @@ class ChatStore {
 
 	clear(): void {
 		void this.#unwrittenGoes(this.#letThreadGo());
-		for (const live of [...this.#live.values()]) this.#leave(live);
+		for (const live of [...this.#live.values()]) {
+			this.#letBuildGo(live);
+			this.#leave(live);
+		}
 		this.#threads = [];
 		chatDraft.clear();
 		this.#of = null;
 		this.#project = null;
 		this.#agents = null;
 		this.#trouble = null;
+	}
+
+	/**
+	 * The thread a build stands in, made where this device holds none. **The
+	 *  build's id is the thread's**, so the dock lists it beside the chats and
+	 * every session's turns land on it; `kind` is what tells the two apart.
+	 */
+	async buildThread(asked: {
+		build: Ulid;
+		name: string;
+		graph: OwnedRef;
+		project: string;
+	}): Promise<void> {
+		if (await this.#threadRead(asked.build)) return;
+		const at = new Date().toISOString();
+		await this.#keep({
+			id: asked.build,
+			kind: 'build',
+			build: asked.build,
+			name: asked.name,
+			graph: asked.graph,
+			project: asked.project,
+			created_at: at,
+			updated_at: at,
+			places: [],
+			turns: []
+		});
+	}
+
+	/**
+	 * One session of a build, opened on the build's thread: the conversation
+	 * standing under `asked.conversation` is ended and every other one of the
+	 * build's is left running.
+	 *
+	 * `serve` is the build's own four acts — the chat's acts are served here,
+	 * against the copy the session works in — and `heard` is what the build
+	 * acts on. REJECTS in words for the person.
+	 */
+	async openBuild(
+		asked: BuildAsked,
+		serve: (call: BuildToolCall) => Promise<ChatActDone>,
+		heard: (what: BuildHeard) => void
+	): Promise<BuildSessionLive> {
+		const access = seam().chat();
+		if (!access) throw new Error(UNSTARTED);
+		const thread = await this.#threadRead(asked.build);
+		if (!thread) throw new Error(NO_SUCH_THREAD);
+		const live = this.#liveFor(thread);
+		const held = live.sessions.get(asked.conversation);
+		if (held) this.#letSessionGoIn(live, held);
+		const session = new Session(asked.conversation, asked.role, asked.cwd, serve, heard);
+		live.sessions.set(asked.conversation, session);
+		const epoch = session.epoch;
+		const agent = this.agent;
+		const model = this.model;
+		const handle = await access.open(
+			{
+				...(agent === undefined ? {} : { agent }),
+				...(model === undefined ? {} : { model }),
+				thread: { id: thread.id, places: [] },
+				conversation: asked.conversation,
+				role: asked.role,
+				cwd: asked.cwd,
+				brief: asked.brief,
+				reachesWeb: prefs.current.chatReachesWeb
+			},
+			(event) => this.#heardIn(live, session, epoch, event),
+			(call) => this.#serveIn(live, session, call)
+		);
+		if (epoch !== session.epoch) {
+			void handle.close().catch(() => {});
+			throw new Error(UNSTARTED);
+		}
+		session.handle = handle;
+		return {
+			say: async (said: string) => {
+				if (epoch !== session.epoch) return;
+				live.turns = [
+					...live.turns,
+					{
+						from: 'person',
+						blocks: [{ kind: 'said', said }],
+						at: new Date().toISOString(),
+						conversation: asked.conversation
+					}
+				];
+				await this.#keepFor(live, { turns: [...live.turns] });
+				await handle.say(said);
+			},
+			askContext: async () => {
+				if (epoch !== session.epoch) return;
+				await handle.context?.('summary').catch(() => {});
+			},
+			close: async () => {
+				if (epoch !== session.epoch) return;
+				this.#letSessionGoIn(live, session);
+				await handle.close().catch(() => {});
+			}
+		};
+	}
+
+	/** A build's thread gone, with every session of it: what it said goes with
+	 *  it, and nothing of the person's is touched. */
+	async buildGone(build: Ulid): Promise<void> {
+		const live = this.#live.get(build);
+		if (live) {
+			this.#letBuildGo(live);
+			if (!live.standing) this.#live.delete(build);
+		}
+		const reading = this.#current?.id === build;
+		this.#threads = this.#threads.filter((one) => one.id !== build);
+		await this.#threadGoes(build);
+		if (reading) await this.#readNext();
+	}
+
+	/** The thread this device holds under that id: the one in hand, else the one
+	 *  it keeps. A build's thread is written before its first session opens, so
+	 *  a run that has not listed the threads yet still finds it. */
+	async #threadRead(id: Ulid): Promise<ChatThread | undefined> {
+		const held = this.#threads.find((one) => one.id === id) ?? this.#live.get(id)?.thread;
+		if (held) return held;
+		try {
+			return await runtime.threads()?.read(id);
+		} catch {
+			return undefined;
+		}
+	}
+
+	/** Every session of a build on this thread let go of, and the build TOLD, so
+	 *  what it was running is stopped rather than lost. */
+	#letBuildGo(live: Live): void {
+		for (const session of [...live.sessions.values()]) {
+			const handle = session.handle;
+			session.heard({ heard: 'over' });
+			this.#letSessionGoIn(live, session);
+			if (handle) void handle.close().catch(() => {});
+		}
+	}
+
+	/** One session off the thread. Synchronous to the last line, so a caller
+	 *  reading `sessions` straight after reads one without it. */
+	#letSessionGoIn(live: Live, session: Session): void {
+		session.epoch += 1;
+		session.handle = null;
+		session.writingTurn = null;
+		live.sessions.delete(session.conversation);
+	}
+
+	#heardIn(live: Live, session: Session, epoch: number, event: ChatEvent): void {
+		if (epoch !== session.epoch) return;
+		switch (event.event) {
+			case 'started':
+				whatHappened.put('turn', `a build session opened with ${event.tools.length} tools`);
+				break;
+			case 'block':
+				this.#block(live, session, event.at, event.block);
+				break;
+			case 'context':
+				session.heard({ heard: 'context', usage: event.usage });
+				break;
+			case 'ended':
+				session.writingTurn = null;
+				live.turns = live.turns.slice(-MAX_TURNS_PER_SESSION);
+				void this.#keepFor(live, { turns: [...live.turns] });
+				session.heard({
+					heard: 'ended',
+					...(event.spent === undefined ? {} : { spent: event.spent })
+				});
+				break;
+			case 'over': {
+				const said = event.said;
+				whatHappened.put(
+					said === undefined ? 'turn' : 'trouble',
+					said === undefined ? 'a build session is over' : 'a build session could not go on'
+				);
+				void this.#keepFor(live, { turns: [...live.turns] });
+				this.#letSessionGoIn(live, session);
+				session.heard({ heard: 'over', ...(said === undefined ? {} : { said }) });
+				break;
+			}
+		}
+	}
+
+	/** One act of a build's session, done and answered to the agent. */
+	async #serveIn(live: Live, session: Session, call: SloppyToolCall): Promise<ChatToolAnswer> {
+		const done = await this.#actIn(session, call);
+		live.done.set(call.call, done);
+		return { said: done.said, ...(done.trouble === undefined ? {} : { trouble: done.trouble }) };
+	}
+
+	async #actIn(session: Session, call: SloppyToolCall): Promise<ChatActDone> {
+		if (!toolsForRole(session.role).includes(call.act))
+			return { said: NOT_THIS_SESSION, trouble: true };
+		whatHappened.put('act', `${doingIn(call.act)} began`, call.call);
+		try {
+			const done = isChatToolCall(call)
+				? await serveChatCall(this.#buildFiles(session), call)
+				: await session.serve(call);
+			whatHappened.put(
+				done.trouble === true ? 'trouble' : 'act',
+				`${doingIn(call.act)} ${cameTo(done)}`,
+				call.call
+			);
+			return done;
+		} catch (error) {
+			whatHappened.put(
+				'trouble',
+				`${doingIn(call.act)} did not answer: ${troubleIn(error)}`,
+				call.call
+			);
+			if (error instanceof PlaceRefused) return { said: error.message, trouble: true };
+			throw error;
+		}
+	}
+
+	/** Where a build session's acts land: the copy of the project it works in,
+	 *  and never the folder in front of the person. */
+	#buildFiles(session: Session): Files {
+		const files = seam().chat()?.builds?.files(session.cwd);
+		if (!files) throw new PlaceRefused(NO_BUILD_WORK);
+		return files;
 	}
 
 	/** The record of the thread in front of somebody. */
@@ -972,15 +1273,18 @@ class ChatStore {
 	 * and left behind holds nothing of this run.
 	 */
 	#leave(live: Live): void {
-		if (!prefs.current.chatInBackground) this.#letSessionGo(live);
-		if (!live.standing) this.#live.delete(live.thread.id);
+		if (!prefs.current.chatInBackground) {
+			this.#letSessionGo(live);
+			this.#letBuildGo(live);
+		}
+		if (!live.standing && live.sessions.size === 0) this.#live.delete(live.thread.id);
 	}
 
 	/** A thread nobody is reading that has nothing left to answer: its
 	 *  conversation let go of, and its record with it. */
 	#letGoOutOfSight(live: Live): void {
 		this.#letSessionGo(live);
-		this.#live.delete(live.thread.id);
+		if (live.sessions.size === 0) this.#live.delete(live.thread.id);
 	}
 
 	/** Whether the thread in front of somebody holds them there: it is being
@@ -1177,7 +1481,7 @@ class ChatStore {
 		live.handle = null;
 		live.standing = false;
 		live.running = false;
-		live.writing = false;
+		live.writingTurn = null;
 		live.keeping = null;
 		live.keepSettling = false;
 		this.#letAttachedGo(live);
@@ -1245,7 +1549,8 @@ class ChatStore {
 				break;
 			}
 			case 'block':
-				this.#block(live, event.at, event.block);
+				live.answered = true;
+				this.#block(live, live, event.at, event.block);
 				break;
 			case 'context':
 				live.context = contextTogether(live.context ?? undefined, event.usage);
@@ -1256,7 +1561,7 @@ class ChatStore {
 					event.stopped === true ? 'the turn was stopped' : 'the turn ended'
 				);
 				live.running = false;
-				live.writing = false;
+				live.writingTurn = null;
 				if (event.spent !== undefined) {
 					live.spentTurn = event.spent;
 					live.spentSession = spentTogether(live.spentSession, event.spent);
@@ -1289,7 +1594,7 @@ class ChatStore {
 				live.handle = null;
 				live.standing = false;
 				live.running = false;
-				live.writing = false;
+				live.writingTurn = null;
 				live.openedWith = undefined;
 				live.openedAs = undefined;
 				live.answered = false;
@@ -1301,16 +1606,26 @@ class ChatStore {
 		}
 	}
 
-	/** A block already at this place in the turn underway is that block grown. */
-	#block(live: Live, at: number, block: ChatBlock): void {
-		live.answered = true;
-		const turns = live.writing ? [...live.turns] : [...live.turns, agentTurn()];
-		live.writing = true;
-		const turn = turns[turns.length - 1];
+	/**
+	 * A block already at this place in the turn underway is that block grown.
+	 * `into` is whose turn that is — the thread's own conversation, or one of a
+	 * build's sessions, which is why the turn is held rather than its place: a
+	 * build runs several at once and each one's turn stays its own.
+	 */
+	#block(live: Live, into: Writing, at: number, block: ChatBlock): void {
+		const turns = [...live.turns];
+		let where = into.writingTurn === null ? -1 : turns.indexOf(into.writingTurn);
+		if (where < 0) {
+			where = turns.length;
+			turns.push(agentTurn(into.conversation));
+		}
+		const turn = turns[where];
 		const blocks = [...turn.blocks];
 		if (at < blocks.length) blocks[at] = block;
 		else blocks.push(block);
-		turns[turns.length - 1] = { ...turn, blocks };
+		const grown = { ...turn, blocks };
+		turns[where] = grown;
+		into.writingTurn = grown;
 		live.turns = turns;
 	}
 

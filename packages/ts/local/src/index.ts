@@ -18,5 +18,6 @@ export * from "./memory-builds.js";
 export * from "./git-defaults.js";
 export * from "./ai-keys.js";
 export * from "./threads.js";
+export * from "./builds.js";
 export * from "./credentials.js";
 export * from "./api.js";

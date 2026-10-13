@@ -12,6 +12,7 @@
 import { setHost } from '@sloppy/client';
 import type {
 	AiKeysAccess,
+	BuildsAccess,
 	Commit,
 	Credential,
 	CredentialsAccess,
@@ -600,6 +601,12 @@ export interface AppRuntime {
 	 *  them is put in front of anybody. `ThreadsAccess` in `@sloppy/local`
 	 *  declares every act. */
 	threads?: ThreadsAccess;
+	/** The builds this device holds — a shell that defines it also defines
+	 *  {@link ChatAccess.builds}. Absent → nothing here keeps a build, so a
+	 *  build lasts as long as the page running it and none is picked up after
+	 *  the app has been closed. `BuildsAccess` in `@sloppy/local` declares
+	 *  every act. */
+	builds?: BuildsAccess;
 	/**
 	 * The files for a place a thread may read, rooted at `root` — what a store
 	 * serving that place's note acts is handed, exactly as
@@ -742,6 +749,7 @@ export const runtime = {
 	aiKeys: (): AiKeysAccess | undefined => current.aiKeys,
 	chat: (): ChatAccess | undefined => current.chat,
 	threads: (): ThreadsAccess | undefined => current.threads,
+	builds: (): BuildsAccess | undefined => current.builds,
 	placeFiles: (): AppRuntime['placeFiles'] => current.placeFiles,
 	askPlace: (): AppRuntime['askPlace'] => current.askPlace,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
