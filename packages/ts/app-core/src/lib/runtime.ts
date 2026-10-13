@@ -12,6 +12,7 @@
 import { setHost } from '@sloppy/client';
 import type {
 	AiKeysAccess,
+	Commit,
 	Credential,
 	CredentialsAccess,
 	Files,
@@ -21,6 +22,8 @@ import type {
 	ThreadsAccess
 } from '@sloppy/local';
 import type {
+	BuildRole,
+	BuildStanding,
 	ChatAgent,
 	ChatEvent,
 	ChatThread,
@@ -191,6 +194,78 @@ export interface DraftAccess {
 	history(draft: StandingDraft): History;
 }
 
+/**
+ * A build's lines and checkouts on this device — docs/ARCHITECTURE.md
+ * § "Building from the notes".
+ *
+ * **The line is a real branch of the project's own repository**, so what is
+ * standing is read out of the repository rather than out of what a run
+ * remembers, and a build is still there after the app has been closed and
+ * opened again. Nothing here touches the folder in front of the person or any
+ * line of theirs.
+ *
+ * **Bringing a line in is NOT here, and deliberately.** A build's line is an
+ * ordinary line of the folder's, so taking it in is `History.merge` on the
+ * folder — the merge that settles notes note by note and refuses a conflict in
+ * the code — and putting a second merge on this seam would make a build a
+ * second history.
+ *
+ * **The checkouts are named by the build's id**, under the app's own private
+ * data, so every act but {@link BuildAccess.start} and
+ * {@link BuildAccess.standing} takes that id alone.
+ *
+ * Every act REJECTS with words for the person in its message.
+ */
+export interface BuildAccess {
+	/**
+	 * The line the build `id` writes on and the checkout it is worked on in:
+	 * the line opened at `from` where there is none, and the one standing where
+	 * there is, so asking twice answers the same line rather than making a
+	 * second. `root` is the folder the project is in and `name` what the person
+	 * called the build, which is what the line is named after.
+	 */
+	start(
+		root: string,
+		id: Ulid,
+		name: string,
+		from: string
+	): Promise<{ line: string; path: string }>;
+	/** The checkout one task works in, on a branch of the line nobody is shown.
+	 *  Asking again for a task that has one answers that one. */
+	taskCheckout(id: Ulid, task: string): Promise<string>;
+	/**
+	 * What is in that checkout, kept as one version. **It stages the whole
+	 * checkout, the code and the notes**, because the checkout is the build's
+	 * own and the code is the point; the rule that a commit stages only the
+	 * notes is the person's folder's.
+	 *
+	 * `undefined` is a checkout holding nothing that is not already kept, which
+	 * is not a failure.
+	 */
+	commit(path: string, message: string): Promise<Commit | undefined>;
+	/**
+	 * The task's branch merged into the line, in the line's own checkout.
+	 * `merged` true is a merge that is done and committed.
+	 *
+	 * `conflicts` is every path left in two versions, as files in the line's
+	 * checkout, for a session to settle there — nothing here settles one, and
+	 * the merge is finished by committing that checkout.
+	 */
+	mergeTask(id: Ulid, task: string): Promise<{ merged: boolean; conflicts: string[] }>;
+	/** The task's checkout and its branch gone, with nothing of either left
+	 *  behind. What it merged into the line stays. A task that is not there is
+	 *  not a failure. */
+	finishTask(id: Ulid, task: string): Promise<void>;
+	/** Everything of the build gone: its tasks' checkouts and branches, the
+	 *  line's checkout and the line itself. Nothing of it is recoverable, and
+	 *  the person's own folder and lines are untouched. A build that is not
+	 *  there is not a failure. */
+	discard(id: Ulid): Promise<void>;
+	/** Every build standing in the repository at `root`. An EMPTY list is none,
+	 *  and is not a failure. */
+	standing(root: string): Promise<BuildStanding[]>;
+}
+
 /** What {@link ChatAccess.open} is asked for. */
 export interface ChatAsked {
 	/** Which agent is to do it. **Absent is whichever one this device has**,
@@ -213,6 +288,21 @@ export interface ChatAsked {
 	 * `started` event's `session` is what says which one answered.
 	 */
 	thread: Pick<ChatThread, 'id' | 'session' | 'places'>;
+	/**
+	 * What this session is FOR. It decides which tools of the agent's own it is
+	 * allowed and barred, and which of Sloppy's acts it is served — by a table
+	 * the shell keeps, because those tool names are one program's dialect and
+	 * no shape here carries them. `toolsForRole` in `@sloppy/types` is the
+	 * acts' half of that table.
+	 *
+	 * **Absent is the chat**: today's pair of reading tools, and the chat's own
+	 * brief.
+	 */
+	role?: BuildRole;
+	/** The folder the session runs in, as the platform spells one. **Absent is
+	 *  the thread's draft**, which is where a chat works; a build names the
+	 *  checkout its task or its line is worked on in. */
+	cwd?: string;
 	/** Whether the agent may read the web while it answers. **Absent is that
 	 *  it may.** Fixed for the session: a change reaches the next one opened. */
 	reachesWeb?: boolean;
@@ -344,6 +434,10 @@ export interface ChatAccess {
 	 *  Absent → this shell keeps no draft, so nothing about one is put in front
 	 *  of anybody. */
 	drafts?: DraftAccess;
+	/** The lines and checkouts a build works in — {@link BuildAccess} declares
+	 *  every act. Absent → this shell cannot open a line of work for a build,
+	 *  so nothing about building is put in front of anybody. */
+	builds?: BuildAccess;
 }
 
 export interface AppRuntime {

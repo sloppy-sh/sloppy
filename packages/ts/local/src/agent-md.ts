@@ -345,6 +345,41 @@ all**: hand your writing back to whatever asked for it, and that rule is applied
 side. A tool that writes into \`notes/\` itself is held to none of this, and what it lands
 on is somebody's writing nothing can give back.
 
+## When asked to build
+
+Sloppy runs a build as several sessions, each with one job, and the brief you were started
+with says which of them you are. **Stay in the folder you were started in.** It is a
+checkout of this project made for the build: the person's own folder is somewhere else and
+is not yours to touch, nothing here is pushed anywhere, and the line your work goes on is
+brought in when the person asks for it and not by you.
+
+- **Reading.** Read the notes you were given, what sprang from them, what they cite and the
+  code they point at, and answer with \`plan_build\`: the tasks, what each is for in a
+  paragraph, the places each writes, the exact notes each is built from, the questions the
+  notes do not answer, where two notes or a note and the code disagree, and the commands
+  this project runs. That call is the whole of your answer — nothing written in prose is
+  read.
+- **Building.** Write the code the task is for, in the places the task named and nowhere
+  else. Run the project's checks. Write what you decided into the notes with the acts
+  above — a reason only from a source you name, exactly as everywhere else here.
+- **Reading what was built.** Read the work against what the task was for, run the checks,
+  and answer with \`review_build\`. Clean with nothing found is the right answer for work
+  that is right; invent nothing to look thorough.
+- **Settling a merge.** Two tasks wrote the same place. You are given both their paragraphs:
+  settle each file by what each side was FOR, and run the checks on the result.
+
+**Ask rather than guess.** Where the notes do not say something the work has to get right,
+call \`need\`: the question goes in front of the person, and they answer it by writing a
+note. A guess written into working code is the one thing no later reader can tell from a
+decision.
+
+**End with \`done\`.** It is the only thing that reaches the next session — what you built,
+the files, every check and what it said, the notes you wrote, and what you left undone. What
+is not in it is lost, and nothing of your conversation travels.
+
+**\`checked\` and \`read_against\` stay the person's**, in a build as anywhere: building is
+not somebody reading a note against the code, and nothing you do here writes either.
+
 ## Never write
 
 - **A "west" or a "Why" you cannot name a source for.** What was decided against, and the

@@ -14,6 +14,7 @@ export * from "./agent-md.js";
 export * from "./graph.js";
 export * from "./history.js";
 export * from "./memory-history.js";
+export * from "./memory-builds.js";
 export * from "./git-defaults.js";
 export * from "./ai-keys.js";
 export * from "./threads.js";

@@ -614,34 +614,32 @@ export function chatToolWrites(act: ChatToolName): boolean {
   return CHAT_TOOL_SPECS[act].writes;
 }
 
-/** One act as an agent is shown it. */
-export interface AdvertisedTool {
-  name: ChatToolName;
+/** One act as an agent is shown it. A build's acts are named on this too, which
+ *  is what the parameter is for — `build.ts`. */
+export interface AdvertisedTool<Name extends string = ChatToolName> {
+  name: Name;
   description: string;
   /** JSON Schema for the call's arguments, derived from the act's own schema
    *  and looser than it — see {@link ChatToolSpec.arguments}. */
   arguments: Record<string, unknown>;
 }
 
-/**
- * Every act, as the endpoint serving them advertises them. One function so
- * that what an agent is shown and what its calls are parsed against cannot be
- * two different things.
- */
+/** One act as the endpoint serving it advertises it, composed from the act's
+ *  own spec so that what an agent is shown and what its calls are parsed
+ *  against cannot be two different things. */
+export function advertisedAs<Name extends string>(
+  name: Name,
+  spec: ChatToolSpec,
+): AdvertisedTool<Name> {
+  const { $schema, ...shape } = z.toJSONSchema(spec.arguments, {
+    io: "input",
+  }) as Record<string, unknown>;
+  return { name, description: spec.description, arguments: shape };
+}
+
+/** Every act of the chat's, as the endpoint serving them advertises them. */
 export function advertisedChatTools(): AdvertisedTool[] {
-  return CHAT_TOOLS.map((name) => {
-    const { $schema, ...shape } = z.toJSONSchema(
-      CHAT_TOOL_SPECS[name].arguments,
-      {
-        io: "input",
-      },
-    ) as Record<string, unknown>;
-    return {
-      name,
-      description: CHAT_TOOL_SPECS[name].description,
-      arguments: shape,
-    };
-  });
+  return CHAT_TOOLS.map((name) => advertisedAs(name, CHAT_TOOL_SPECS[name]));
 }
 
 /** One note as a listing gives it. `about` is the places in the code it
@@ -1342,6 +1340,11 @@ export function contextTogether(
   };
 }
 
+/** What stands in the dock as a thread: a conversation, or a build. The turns,
+ *  the spend and the window are drawn the same way for both. */
+export const CHAT_THREAD_KINDS = ["chat", "build"] as const;
+export type ChatThreadKind = (typeof CHAT_THREAD_KINDS)[number];
+
 /**
  * One chat, kept on this device until somebody deletes it. `id` is the thread
  * everywhere: the draft it writes into is this id's and so is the session the
@@ -1360,6 +1363,12 @@ export function contextTogether(
  */
 export const ChatThreadSchema = z.object({
   id: UlidSchema,
+  /** **Absent is a chat**, which is every thread written before a build could
+   *  stand in the dock as one. */
+  kind: z.enum(CHAT_THREAD_KINDS).optional(),
+  /** The build this thread is of. **Absent is a chat**, and a thread of kind
+   *  `build` carries one. */
+  build: UlidSchema.optional(),
   name: z.string().min(1).max(CHAT_THREAD_NAME_MAX),
   graph: OwnedRefSchema,
   project: z.string().min(1).max(DRAFT_PATH_MAX),
