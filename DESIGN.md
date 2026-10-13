@@ -1343,6 +1343,84 @@ is a **thread** wherever a person reads one, and the dock it is read in is the *
 asking how much room is left already calls it, and `tokensSaid` is the one place it is
 written.
 
+## A build
+
+A note says what a piece of the project is for. **Build** is the act that has assistants write
+the code that answers it, and the whole surface is one **card** — read, answered, and read
+again as the work happens — standing at the head of its own thread in the chat dock, with the
+sessions' turns and acts drawn under it the way a chat's always are.
+
+**The act stands where the note is.** On a note's menu, at the head of the reading panel, in
+the palette, and as **Build these** on the bar of a chosen set. It is offered on a project's
+container and nowhere else. Where this device has no assistant it can run, the act is still
+there and says in one line that it needs one installed here — an act that vanishes teaches
+nobody why.
+
+**One card, never a wizard.** It is read top to bottom and it changes under the reader rather
+than advancing them through steps: while the plan is being read it says so and holds nothing
+to act on; once the plan is there it holds the tasks, the questions and the disagreements, and
+**Go**; while the work runs each task is a row saying where it has got to; at the end it is
+what was built. There is no back, no next, and nothing to dismiss before the next thing can be
+read.
+
+**A task is read as what it is FOR.** Its row is the title, the paragraph saying what the
+project will do differently, the notes it is built from — each one a tap away, as a note is
+anywhere — and the places it will write. **Before Go the notes are the reader's**: adding one
+and taking one off is how somebody says what a task should read, and it is the only
+curation this surface asks of them. Nobody assembles a prompt.
+
+**A question is answered by writing a note.** Where the notes do not say something the work
+has to get right, the card asks — the question, what it is about, and why it cannot be built
+without it — and answering it is writing the note, in the person's own folder, with the
+ordinary act and in their own words. Setting the question aside is the other answer and is
+said plainly. **Nothing is answered into a field on the card**: an answer worth having is one
+the next reader of the project can cite.
+
+**A disagreement is reported and never settled here.** Where two notes, or a note and the
+code, say different things, the card says which notes and what each says. Settling it is
+writing in the notes, which is where that reasoning lives.
+
+**Each session carries its own context bar**, drawn exactly as § "The context as a bar" draws
+one, where that session's turns are. It is per session and not per build, because the thing a
+reader wants to know is whether the session writing this task has room — and a build's whole
+shape is that no session works degraded.
+
+**What was built is read where the person reads code.** The card names the files and says what
+each check said; the notes written or changed open as the ordinary difference between two
+states (§ "A difference between two states"), the folder on one side and the line's tip on the
+other. **There is no diff viewer here.** A person reads code in the tool they write it in, and
+a second, worse one inside this card would be the only thing on this surface that is not about
+the notes.
+
+**The merges are listed plainly**: each task into the line, whether it settled by itself and
+what it took to settle where it did not, and then the line into the person's own — theirs to
+take, and listed as not taken until they do.
+
+**Three acts at the end, and none of them is red.** **Work on this version** puts the person
+on the line to run what was built; **Bring it in** merges it into their own, with the notes
+settled note by note and a conflict in the code refused in the words that say where to settle
+it; **Discard** takes the line and everything of the build and says what that costs in words
+rather than in colour. **Stop** is there throughout, in the quiet ink, and a stopped build
+keeps everything that landed and offers **Continue**. A build is still there tomorrow and
+reads the same then.
+
+**A task nobody could settle is said, not hidden.** Two rounds of reading and a blocking
+finding still standing is a task marked contested: what was found, what it was for, and the
+decision is the person's — leave it, bring in the rest, or discard.
+
+**Phone first, and the shape falls out of that.** On a phone the card is the dock, one column
+of rows, with the acts in a bar pinned to the bottom clearing the system nav (§ "The four
+inset vars"); given room it stands beside the graph where the chat already does. Nothing here
+exists only on the desk.
+
+**The words are build, task, needs, plan, line, version, bring in, work on this version,
+discard, stop, continue, check, and — for what one session handed to the next — what it handed
+on.** Never worktree, never checkout, never branch — the history surfaces say branch because a
+branch is what somebody is looking at there, and this is not one of those surfaces — and never
+a session id, a token, a prompt, a context window or the name of anything a session is served
+over. AI.md § "User-Facing Copy Names the Outcome" is the rule; § "The context as a bar" keeps
+its own words, "tokens" included, because that is the unit the bar is read in.
+
 ## The context as a bar
 
 An assistant answers out of a window it can hold only so much in, and somebody who cannot

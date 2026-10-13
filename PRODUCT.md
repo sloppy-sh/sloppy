@@ -44,6 +44,15 @@ One person thinking, the people they let read over their shoulder, and the ones 
   note of theirs says what it is part of, what it is made of, what it is like and what was
   chosen instead.
 
+  On the day a note of theirs is what they want to exist, they press **Build** — and what
+  happens next is read out of the notes rather than typed into a prompt. They are shown the
+  pieces the work splits into, which notes each is built from, and the questions the notes do
+  not answer; each of those they answer by writing a note, in their own words, where the next
+  reader finds it. The work runs on a line of its own, nothing of theirs is touched until they
+  say so, and at the end they are shown what was built, what was checked and what it said, and
+  asked the one question that is theirs: bring it in, or not. They never assemble a context,
+  and they are never asked to approve work they have not read.
+
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the hosted, self-hosted and
 fully-local modes that serve all five.
 
@@ -75,7 +84,10 @@ writes down what they want built, as exactly as they can say it, and the code gr
 what they wrote. Either half may be written by them or by whatever they set to work beside
 them, and neither half is the senior one. So a note is not a record of a decision already
 taken — it is the thing the code is answerable to, and an earlier version of the project is
-somewhere they can write from rather than only look at.
+somewhere they can write from rather than only look at. Pressing **Build** on a note is how
+the code grows out of it: the work is planned from what the notes say, what the notes do not
+say is asked before anything is written, and what was built comes back for the person to bring
+in or not.
 
 **Nothing a person deletes is gone the moment they delete it.** A note they take away goes
 to the bin with everything that sprang from it, is listed where they can see it, and comes

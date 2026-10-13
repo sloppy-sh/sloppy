@@ -3942,6 +3942,141 @@ vocabulary of its own — and everything above is already that shape: the format
 `AGENT.md`, the writing rule is `writeOnto`'s, and the acts are `CHAT_TOOL_SPECS` rather
 than anything this shell invented.
 
+## Building from the notes
+
+**The notes come first and the code grows out of them (AI.md § Project), and this is the act
+that runs in that direction.** A note in a project's container says what a piece of the
+project is FOR; **Build** takes one of them, or a chosen set, and has assistants write the
+code that answers it. `.sloppy/AGENT.md` already tells an agent to look first for the note
+saying what a thing is for and to ask for one where none says it — this is that sentence with
+the machinery under it, and it is why the plan a build starts from is read out of the notes
+rather than typed into a prompt.
+
+**A build is a LINE of work, not a draft.** A container sits inside the project's own
+repository (§ "A project's container"), where a line is a real branch, taking one in is a
+real merge of the whole tree, and a conflict in the notes is settled note by note while one
+in the code is refused and left where the person writes code (§ "The vault's history"). That
+is exactly what a build needs, so it reuses it rather than growing a second vocabulary. The
+build's line is `build/<name>` — `BUILD_LINE_PREFIX` and `buildLine` in `@sloppy/types` — it
+stands in the history picture like any other line, **Work on this version** puts the person
+on it to run what was built, and **Bring it in** is `History.merge` on their folder, with the
+notes settled note by note and a code conflict refused in the words that already say where to
+settle it. A chat still works on a draft and nothing about drafts changes.
+
+**The line forks from the version the person last kept.** Pressing Go keeps a version first —
+the same ask the history already makes before it moves the folder — and declining it stops the
+build before anything starts. Nothing a build does reaches the person's own line or folder
+until they bring it in.
+
+**The work happens in checkouts of the build's own, under the app's private data.** One for
+the line, and one per task on a branch of the line nobody is shown: `buildTaskBranch` spells
+it `sloppy/build/<id>/<task>`, and the history leaves those out of the lines it lists and
+refuses every act that takes a branch by name over one, exactly as it does for a draft's
+(§ "Asking a tool to write the notes"). The checkouts are named by the build's id, so every
+act but starting one and listing what stands takes that id alone. `BuildAccess` in
+`@sloppy/app-core` is the whole of what a page may ask of the platform — the line and its
+checkout, a task's checkout, a version kept, a task merged into the line, a task finished
+with, the build discarded, and what is standing. **What is standing is read out of the
+repository**, not out of what a run remembers, so a build is still there after the app has
+been closed and opened again.
+
+**A commit a build makes stages the whole checkout, code and notes, and that is the one place
+the notes-only rule does not hold.** A commit Sloppy makes in the person's folder stages only
+paths under the vault prefix, because the code beside those notes is theirs and a commit of
+ours must not carry it. A build's checkout is the build's own and the code in it is the point,
+so there is nothing there to hold back. Commits are by the configured git user like every
+other commit this app makes, their messages written as the author, and **nothing in one names
+an assistant** (AI.md § "Commits & AI Attribution" is the product's rule here too).
+
+**The phases are Sloppy's and deterministic; the thinking is the assistants'.** Each is one
+session with one role, and a role is what decides the acts it is served — `BUILD_ROLES` and
+`toolsForRole` in `@sloppy/types`.
+
+1. **Reading** — a `planner`. It reads the chosen notes, what sprang from them, what they
+   cite and the code their anchors point at, and answers through `plan_build`: the tasks,
+   each with its effect in a paragraph, the places it writes and the exact notes it needs;
+   the needs, which are what the notes do not say; the disputes, where two notes or a note
+   and the code disagree; and the checks, the commands the project runs, read off the
+   repository. `BuildPlan` is that shape, and **prose is not read** — a session that answers
+   in words has not answered.
+2. **Answering** — the person. The plan stands as a card; each need is answered by writing a
+   note under the feature, in their own folder and by the ordinary act, or is dropped
+   (`BuildAnswer`). A task's notes are theirs to add to and take from. Then Go. Where the
+   plan asks nothing, Go is the first thing offered.
+3. **Building** — an `implementer` per task, in that task's checkout, up to
+   `BUILD_TASKS_AT_ONCE` at once and behind whatever its `after` names. It is given the
+   task's paragraph, its notes IN FULL, their anchors and the rules, and it may read the
+   project, search the notes, read the web where the person allows it, write code, run the
+   checks, and write notes with the chat's own writing acts. It may raise a `need`, which
+   pauses the task and puts the question on the card. It ends with `done`.
+4. **Reviewing** — a `reviewer` per task. It reads what was written against the task's
+   effect and its notes, runs the checks, and answers through `review_build`: `clean` as a
+   boolean, and a finding per thing with a place and a severity. `clean` false sends the task
+   to a fresh implementer with the hand-off and the findings in hand; past
+   `BUILD_ROUNDS_MOST` the task is contested and the person decides.
+5. **Merging** — git's merge, in the line's own checkout, task by task. Where it conflicts, a
+   `merger` session settles the files with both tasks' paragraphs in hand and runs the checks
+   on the result. Then the checks run once more on the line, and what they said is the
+   build's `checked`.
+6. **The result** — the card as the end state, and three acts: **Work on this version**,
+   **Bring it in**, **Discard**. DESIGN.md § "A build" is the surface.
+
+**The hand-off is the only thing that passes between sessions.** `BuildHandoff` — what was
+built, the files, the checks and what they said, the notes written, what was left undone, and
+whether it is finished — is what a fresh session is given, and **no transcript travels**. That
+is what keeps every context small and makes a session replaceable: one whose window fills past
+a threshold short of where its assistant would make room is asked to hand off now and is
+replaced by a fresh one continuing from the hand-off, so nothing works degraded. It is also
+what makes a build survive the app closing, since what was mid-session is picked up from the
+last hand-off and never from anything a process held.
+
+**Sub-agents of the assistant's own are not allowed.** Sloppy is the orchestrator: a session
+that spawns its own has a context nobody here can see or bound, and the whole of this design
+is that every context is composed for one job.
+
+**What a role may do is a table, and the table is the SHELL's.** `ChatAsked.role` carries
+which role is opening a session and `ChatAsked.cwd` the checkout it runs in; the shell turns
+the role into the tools of the agent's own it is allowed and barred — reading for a planner,
+reading plus the checks for a reviewer, reading plus writing and running for an implementer
+and a merger, and never `Task` for any of them — beside `tools_for` in `chat.rs`, because
+those names are one program's dialect and no shape here carries them. The acts' half of the
+table is `toolsForRole`: the chat's reading acts for every role, its writing acts for an
+implementer alone, and `plan_build`, `need`, `done` and `review_build` by role.
+`advertisedBuildTools(role)` is what the endpoint serves, so what a session is shown and what
+its calls are parsed against cannot be two different things.
+
+**The build runs on the agent the person chose for the chat, where that agent is a program on
+this machine.** The contract is the role and the act set, never the vendor, so a second
+program agent is a row in the shell's table and a key-driven loop is a later wave — exactly
+what `chatAgentReach` already says. Where no agent on this device is a program, the Build act
+says in one line that it needs an assistant installed here.
+
+**A build persists as one JSON; its sessions do not.** `builds/<id>.json` under the app's own
+private data, beside the threads, because a build is where somebody got to and not something a
+peer reads — `Build` in `@sloppy/types` is the shape, and a file that does not parse is left
+out of the listing rather than thrown on, as a thread's is. What is kept is the plan, the
+answers, each task's state and hand-offs and review and rounds, the merges and the line's
+checks. What is not kept is the sessions: they are replaceable by construction.
+
+**A build stands in the chat dock as a thread of its own kind.** `ChatThread.kind` is `build`
+and `ChatThread.build` names it — absent is a chat, which is every thread written before this
+— so the card stands at the head and the sessions' turns and acts are drawn under it by the
+machinery the chat already has, and `prefs.chatInBackground` governs a build exactly as it
+governs a chat.
+
+**Native only, for the reason a chat is** (§ "Asking a tool to write the notes"): a browser
+tab cannot run a program on somebody's machine, and the hosted API must never run one on a
+server. `ChatAccess.builds` is absent everywhere but the native shell.
+
+**Where the work lands.** `build.rs` in the native shell holds the lines, the checkouts, the
+commits and the merges, with `chat.rs` carrying the role and the checkout through to a session
+and `tools.rs` serving what `advertisedBuildTools` answered; `build.ts` beside the shell's
+`chat.ts` is its half of `BuildAccess`. `stores/build.svelte.ts` in `@sloppy/app-core` runs the
+phases and `build-acts.ts` beside `chat-acts.ts` serves the four acts, over `builds.ts` in
+`@sloppy/local` beside `threads.ts`. The card, the result and the acts that start a build are
+app-core's components. `MemoryBuilds` in `@sloppy/local` is `BuildAccess` over nothing, so a
+store's tests need no repository on a disk.
+
 ## The vault's history
 
 **The folder is a git repository, and that is the whole of the history.** A folder of
@@ -3973,7 +4108,9 @@ person picked, or the draft copy it is inside (§ "Asking a tool to write the no
 search can never wander into whatever is above that, and takes the vault root's path relative
 to that repository's workdir as a prefix. `status`, `log`, `readAt` and the staging a commit does
 are all read and written under the prefix — so a listing shows the notes changing and never
-the person's code, and **a commit Sloppy makes stages only paths under the prefix**. The lines
+the person's code, and **a commit Sloppy makes stages only paths under the prefix**. The one
+exception is a build's own checkout, which is staged whole because the code in it is the
+build's rather than the person's (§ "Building from the notes"). The lines
 the folder keeps out move with it too: `<prefix>/.sloppy/bin.json`, `<prefix>/.sloppy/bin/`,
 the identities, the signing keys and the saved identity copy. **The commands still take the
 VAULT root**, and `History` in `@sloppy/local` is unchanged: its paths are from the vault root
