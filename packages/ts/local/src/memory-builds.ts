@@ -9,6 +9,7 @@ import {
   nowIso,
   type Ulid,
 } from "@sloppy/types";
+import { type Files, MemoryFiles } from "./files.js";
 import { type Commit, HistoryError } from "./history.js";
 
 /** What a build holds here: the line as a name, the checkouts as paths. */
@@ -39,6 +40,10 @@ export class MemoryBuilds {
   private readonly told = new Map<string, string[]>();
   private readonly empty = new Set<string>();
 
+  /** `over` is what the checkouts are rooted in, so a test can hand the same
+   *  files it reads the written notes back out of. */
+  constructor(private readonly over: Files = new MemoryFiles()) {}
+
   async start(
     root: string,
     id: Ulid,
@@ -65,6 +70,10 @@ export class MemoryBuilds {
     const path = `${build.root}/builds/${id}/${task}`;
     build.tasks.set(task, path);
     return path;
+  }
+
+  files(path: string): Files {
+    return this.over.at(path);
   }
 
   async commit(path: string, message: string): Promise<Commit | undefined> {

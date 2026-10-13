@@ -863,6 +863,18 @@ export const ChatTurnSchema = z.object({
   from: z.enum(CHAT_SPEAKERS),
   blocks: z.array(ChatBlockSchema).max(MAX_BLOCKS_PER_TURN),
   at: TimestampSchema,
+  /**
+   * Which of the thread's conversations this turn was said in — Sloppy's own
+   * id for one, minted where it is opened, and never what the agent calls its
+   * own ({@link ChatThreadSchema}'s `session`).
+   *
+   * **Absent is a thread that runs one conversation**, which is every chat and
+   * every turn written before a thread could run more than one. A build runs
+   * one per phase and one per task, several at once, so everything drawn per
+   * conversation — its turns, its spend, how full its window is — is grouped
+   * by this.
+   */
+  conversation: UlidSchema.optional(),
 });
 export type ChatTurn = z.infer<typeof ChatTurnSchema>;
 

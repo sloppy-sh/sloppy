@@ -9,6 +9,7 @@ import {
   advertisedAs,
   CHAT_TOOL_SPECS,
   CHAT_TOOLS,
+  ChatSpendSchema,
   type ChatToolName,
   type ChatToolSpec,
   chatToolWrites,
@@ -106,6 +107,11 @@ export const MOST_FINDINGS = 64;
 /** More hand-offs than one task's sessions leave behind. Past this the task is
  *  not handing on, it is looping. */
 export const MOST_HANDOFFS = 16;
+
+/** More sessions than a build at every other bound here could spend: a task
+ *  spends one per hand-off and one per round of reading, and a merge that will
+ *  not settle spends another. */
+export const MOST_SESSIONS = 512;
 
 /** An id a session names so that something else can point at it: a task named
  *  in another's `after`, a need an answer is written against. */
@@ -223,6 +229,12 @@ export type BuildTask = z.infer<typeof BuildTaskSchema>;
  * already holds is kept under another, so one answer can never reach two
  * questions. **Absent `about` is a question about the feature as a whole**
  * rather than about one note.
+ *
+ * **Where a need stands is what says who is waiting on it.** One the reading
+ * session asked stands on the plan; one raised while a task runs stands on
+ * that task ({@link BuildTaskRunSchema}'s `needs`), which is the only thing
+ * that holds the task once the app has been closed and opened again.
+ * {@link BuildSchema}'s `answers` is keyed by this id over both.
  */
 export const BuildNeedSchema = z.object({
   id: BuildSlugSchema.describe("A short name for this question, like 'units'."),
@@ -285,6 +297,9 @@ export type BuildDispute = z.infer<typeof BuildDisputeSchema>;
  * An EMPTY `needs` is a plan with nothing to ask, where Go is the first thing
  * offered; an EMPTY `disputes` is an account that agrees with itself. An EMPTY
  * `checks` is a project that names no command, and nothing is run.
+ *
+ * **`needs` is what the READING session asked, and it does not grow**: a
+ * question raised once the work is running is held on the task that raised it.
  */
 export const BuildPlanSchema = z.object({
   tasks: z
@@ -507,7 +522,7 @@ export const BUILD_TOOL_SPECS: Record<BuildToolName, ChatToolSpec> = {
   },
   review_build: {
     description:
-      "Answer with what you found reading the task against what it was for: whether it is clean, and a finding per thing that is wrong, each with its place and whether it blocks. Run the checks first. Nothing clean with no findings is the right answer for work that is right.",
+      "Answer with what you found reading the task against what it was for: whether it is clean, and a finding per thing that is wrong, each with its place and whether it blocks. Run the checks first. Clean with nothing found is the right answer for work that is right, so do not invent a finding to look thorough.",
     label: "Reading what was built",
     arguments: BuildReviewSchema,
     writes: false,
@@ -562,6 +577,10 @@ export function advertisedBuildTools(
  * `stopped` is one the person stopped, which keeps what landed and offers to go
  * on; `contested` is one whose task a review could not settle, which is theirs
  * to decide; `discarded` is one whose line and checkouts are gone.
+ *
+ * **A question raised mid-task holds that TASK and not the build**, which goes
+ * on `building` while the others run — `asking` in
+ * {@link BUILD_TASK_STATES} is where it is held.
  */
 export const BUILD_STATES = [
   "reading",
@@ -578,14 +597,17 @@ export type BuildState = (typeof BUILD_STATES)[number];
 
 /**
  * Where one task has got to. `waiting` is one that has not started — behind
- * {@link BUILD_TASKS_AT_ONCE}, or behind a task in its `after`; `built` is one
- * a review came back clean on, which is waiting to go into the line; `merged`
- * is one that is in it; `contested` is one still blocked after
+ * {@link BUILD_TASKS_AT_ONCE}, or behind a task in its `after`; `asking` is one
+ * held on a question it raised, which the person releases by answering it or by
+ * setting it aside;
+ * `built` is one a review came back clean on, which is waiting to go into the
+ * line; `merged` is one that is in it; `contested` is one still blocked after
  * {@link BUILD_ROUNDS_MOST} rounds.
  */
 export const BUILD_TASK_STATES = [
   "waiting",
   "building",
+  "asking",
   "reviewing",
   "built",
   "contested",
@@ -618,10 +640,41 @@ export const BuildTaskRunSchema = z.object({
   handoffs: z
     .array(BuildHandoffSchema)
     .max(MOST_HANDOFFS, `A task holds at most ${MOST_HANDOFFS} hand-offs.`),
+  /** The questions this task's sessions raised, in the order they asked. Each
+   *  stands on the card beside the plan's and is answered the same way, and
+   *  the task is `asking` while one of them has no entry in
+   *  {@link BuildSchema}'s `answers`. An EMPTY list is a task that asked
+   *  nothing. */
+  needs: z
+    .array(BuildNeedSchema)
+    .max(MOST_NEEDS, `A task asks at most ${MOST_NEEDS} questions.`),
   review: BuildReviewSchema.optional(),
   rounds: z.int().min(0).max(BUILD_ROUNDS_MOST),
 });
 export type BuildTaskRun = z.infer<typeof BuildTaskRunSchema>;
+
+/**
+ * One session the build ran, as the build keeps it. A build runs several at
+ * once — the planner, an implementer and a reviewer per task up to
+ * {@link BUILD_TASKS_AT_ONCE}, the merger — so a thread that is a build holds
+ * more than one live conversation and every turn says which it was said in.
+ *
+ * `conversation` is that id, which `ChatTurn` carries and `ChatAsked` opens
+ * by, so what a session SAID is read off the thread and what it was FOR is
+ * read here. **Absent `task` is a session of the build as a whole**, which is
+ * the planner's and the merger's. **Absent `spent` is a session nothing was
+ * said about**, which is not a free one.
+ *
+ * What is kept is this row and never the session: none is ever picked up, and
+ * a fresh one starts from the last hand-off.
+ */
+export const BuildSessionSchema = z.object({
+  conversation: UlidSchema,
+  role: z.enum(BUILD_ROLES),
+  task: BuildSlugSchema.optional(),
+  spent: ChatSpendSchema.optional(),
+});
+export type BuildSession = z.infer<typeof BuildSessionSchema>;
 
 /** One task gone into the line. `settled` false with an EMPTY `conflicts` is a
  *  merge nothing has run yet; paths are from the root of what the history
@@ -645,10 +698,12 @@ export type BuildMerge = z.infer<typeof BuildMergeSchema>;
  * history spells one, and `from` the version that line forked at.
  *
  * **Absent `plan` is a build whose reading session has not answered yet.**
- * `answers` is keyed by a need's id and holds only the ones the person has
- * acted on; `tasks` is keyed by a task's id and holds one entry per task in the
- * plan. **Absent `checked` is a line whose checks have not been run**, which is
- * not the same as a line whose checks found nothing.
+ * `answers` is keyed by a need's id — the plan's questions and the tasks' alike
+ * — and holds only the ones the person has acted on; `tasks` is keyed by a
+ * task's id and holds one entry per task in the plan; `sessions` is every
+ * session the build has run, oldest first. **Absent `checked` is a line whose
+ * checks have not been run**, which is not the same as a line whose checks
+ * found nothing.
  */
 export const BuildSchema = z.object({
   id: UlidSchema,
@@ -668,6 +723,9 @@ export const BuildSchema = z.object({
   plan: BuildPlanSchema.optional(),
   answers: z.record(BuildSlugSchema, BuildAnswerSchema),
   tasks: z.record(BuildSlugSchema, BuildTaskRunSchema),
+  sessions: z
+    .array(BuildSessionSchema)
+    .max(MOST_SESSIONS, `A build runs at most ${MOST_SESSIONS} sessions.`),
   merges: z
     .array(BuildMergeSchema)
     .max(MOST_TASKS, `A build holds at most ${MOST_TASKS} merges.`),

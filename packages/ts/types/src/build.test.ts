@@ -215,6 +215,15 @@ describe("what a role is advertised", () => {
     }
   });
 
+  it("tells a reviewer that clean with nothing found is an answer", () => {
+    const reading = advertisedBuildTools("reviewer").find(
+      (tool) => tool.name === "review_build",
+    );
+    expect(reading?.description).toContain(
+      "Clean with nothing found is the right answer",
+    );
+  });
+
   it("describes the plan it asks for", () => {
     const planning = advertisedBuildTools("planner").find(
       (tool) => tool.name === "plan_build",
@@ -276,9 +285,14 @@ describe("the build a device keeps", () => {
             finished: true,
           },
         ],
+        needs: [],
         rounds: 0,
       },
     },
+    sessions: [
+      { conversation: ulid(), role: "planner" as const },
+      { conversation: ulid(), role: "implementer" as const, task: "reader" },
+    ],
     merges: [{ task: "reader", settled: false, conflicts: [] }],
     created: "2026-10-13T10:00:00.000Z",
   };
@@ -303,6 +317,40 @@ describe("the build a device keeps", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("holds a question a task raised on that task, and the task on it", () => {
+    const held = BuildSchema.parse({
+      ...build,
+      tasks: {
+        reader: {
+          ...build.tasks.reader,
+          state: "asking",
+          needs: [
+            {
+              id: "ends",
+              about: note(),
+              question: "What ends a section with no closer?",
+              why: "The reader cannot split the file without it.",
+            },
+          ],
+        },
+      },
+    });
+    expect(held.tasks.reader?.state).toBe("asking");
+    expect(held.tasks.reader?.needs[0]?.id).toBe("ends");
+    expect(held.plan?.needs.map((need) => need.id)).toEqual(["units"]);
+  });
+
+  it("keeps a row per session, saying which conversation it was", () => {
+    const kept = BuildSchema.parse(build).sessions;
+    expect(kept.map((session) => session.role)).toEqual([
+      "planner",
+      "implementer",
+    ]);
+    expect(kept[0]?.task).toBeUndefined();
+    expect(kept[1]?.task).toBe("reader");
+    expect(new Set(kept.map((session) => session.conversation)).size).toBe(2);
   });
 
   it("refuses a state nothing reads and a build about nothing", () => {

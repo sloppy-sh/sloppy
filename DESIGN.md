@@ -1376,6 +1376,11 @@ ordinary act and in their own words. Setting the question aside is the other ans
 said plainly. **Nothing is answered into a field on the card**: an answer worth having is one
 the next reader of the project can cite.
 
+**A question raised while the work runs reads the same way, and says who is waiting.** It
+stands with the plan's, and the task that asked it says it is held until the question is
+answered — the other tasks go on, and a build still holding a question tomorrow says which
+task it is holding.
+
 **A disagreement is reported and never settled here.** Where two notes, or a note and the
 code, say different things, the card says which notes and what each says. Settling it is
 writing in the notes, which is where that reasoning lives.

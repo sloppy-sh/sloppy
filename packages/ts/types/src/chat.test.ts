@@ -725,6 +725,30 @@ describe("a turn", () => {
 
     expect(turnFits(turn)).toBe(false);
   });
+
+  it("says which of the thread's conversations it was said in, or none", () => {
+    const conversation = "01M3E2FRSQAYC42VD7G7A1FQ8R";
+    expect(
+      ChatTurnSchema.parse({
+        from: "agent",
+        blocks: [said],
+        at: NOW,
+        conversation,
+      }).conversation,
+    ).toBe(conversation);
+    expect(
+      ChatTurnSchema.parse({ from: "person", blocks: [said], at: NOW })
+        .conversation,
+    ).toBeUndefined();
+    expect(
+      ChatTurnSchema.safeParse({
+        from: "person",
+        blocks: [said],
+        at: NOW,
+        conversation: "not-a-ulid",
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("what a page is told", () => {

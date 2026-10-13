@@ -234,6 +234,18 @@ export interface BuildAccess {
 	 *  Asking again for a task that has one answers that one. */
 	taskCheckout(id: Ulid, task: string): Promise<string>;
 	/**
+	 * What is in a checkout, rooted where the session works — what a store
+	 * serving a build session's note acts is handed, exactly as
+	 * {@link DraftAccess.files} answers for a draft. `path` is a checkout this
+	 * seam answered with: the line's from {@link BuildAccess.start}, or a
+	 * task's from {@link BuildAccess.taskCheckout}.
+	 *
+	 * **This is where an implementer's notes land**, so a build's writing never
+	 * reaches the folder in front of the person, any line of theirs, or the
+	 * places {@link AppRuntime.placeFiles} serves.
+	 */
+	files(path: string): Files;
+	/**
 	 * What is in that checkout, kept as one version. **It stages the whole
 	 * checkout, the code and the notes**, because the checkout is the build's
 	 * own and the code is the point; the rule that a commit stages only the
@@ -288,6 +300,20 @@ export interface ChatAsked {
 	 * `started` event's `session` is what says which one answered.
 	 */
 	thread: Pick<ChatThread, 'id' | 'session' | 'places'>;
+	/**
+	 * Which of the thread's conversations this is, and so what this call
+	 * replaces: the conversation standing under this id for this thread is
+	 * ended and every other one of the thread's is left standing. Every turn
+	 * said into it carries it (`ChatTurn.conversation`), which is what tells a
+	 * page which turns and which window belong to which session.
+	 *
+	 * **Absent is the thread's one conversation**, which is a chat's. A build
+	 * runs one per phase and one per task, up to `BUILD_TASKS_AT_ONCE` at once,
+	 * so each of those names its own. `thread.session` beside this is what the
+	 * AGENT calls the conversation to pick up, and the two are never read for
+	 * each other.
+	 */
+	conversation?: Ulid;
 	/**
 	 * What this session is FOR. It decides which tools of the agent's own it is
 	 * allowed and barred, and which of Sloppy's acts it is served — by a table
@@ -354,12 +380,15 @@ export interface ChatLive {
  * agent is doing, is asked to do Sloppy's own acts when the agent calls one,
  * and answers for the person when one of those acts would write.
  *
- * **One live conversation per THREAD, and {@link ChatAccess.open} replaces that
- * thread's.** What is opened is the thread's: its draft, its places, and the
- * conversation picked up where there is one. So opening one again for the same
- * thread ends the one that stood there, and leaves every other thread's
- * standing; **`over` is one conversation's end** — whichever way it ended and
- * whether or not anything went wrong — and says nothing about any other.
+ * **One live conversation per thread and {@link ChatAsked.conversation}, and
+ * {@link ChatAccess.open} replaces that one.** What is opened is the thread's:
+ * its draft, its places, and the conversation picked up where there is one. A
+ * chat names no conversation and runs one, so opening one again for the same
+ * thread ends the one that stood there; a build names one per session and runs
+ * several at once, so opening one ends only what stood under that id. Every
+ * other conversation, of this thread and of every other, is left standing;
+ * **`over` is one conversation's end** — whichever way it ended and whether or
+ * not anything went wrong — and says nothing about any other.
  *
  * **How many stand at once is the STORE's rule, never this seam's.** A shell
  * holds whatever it is asked to hold, and `stores/chat.svelte.ts` is the one
@@ -401,7 +430,10 @@ export interface ChatLive {
  * them is written over rather than offered. Where the session works in a draft,
  * that store is rooted at {@link DraftAccess.files} — the draft's copy of the
  * project — and the container's own data is carried into the copy, so the
- * writing a draft carries is by the same writer the folder's is.
+ * writing a draft carries is by the same writer the folder's is. Where the
+ * session is a build's, it is rooted at {@link BuildAccess.files} for the
+ * checkout {@link ChatAsked.cwd} names, so an implementer's notes land on the
+ * build's line and nothing of the person's moves.
  */
 export interface ChatAccess {
 	/** The agents this device can reach. An EMPTY list is a device with none,

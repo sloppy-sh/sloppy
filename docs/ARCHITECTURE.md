@@ -3975,10 +3975,10 @@ refuses every act that takes a branch by name over one, exactly as it does for a
 (§ "Asking a tool to write the notes"). The checkouts are named by the build's id, so every
 act but starting one and listing what stands takes that id alone. `BuildAccess` in
 `@sloppy/app-core` is the whole of what a page may ask of the platform — the line and its
-checkout, a task's checkout, a version kept, a task merged into the line, a task finished
-with, the build discarded, and what is standing. **What is standing is read out of the
-repository**, not out of what a run remembers, so a build is still there after the app has
-been closed and opened again.
+checkout, a task's checkout, the files in one of them, a version kept, a task merged into the
+line, a task finished with, the build discarded, and what is standing. **What is standing is
+read out of the repository**, not out of what a run remembers, so a build is still there
+after the app has been closed and opened again.
 
 **A commit a build makes stages the whole checkout, code and notes, and that is the one place
 the notes-only rule does not hold.** A commit Sloppy makes in the person's folder stages only
@@ -4007,8 +4007,13 @@ session with one role, and a role is what decides the acts it is served — `BUI
    `BUILD_TASKS_AT_ONCE` at once and behind whatever its `after` names. It is given the
    task's paragraph, its notes IN FULL, their anchors and the rules, and it may read the
    project, search the notes, read the web where the person allows it, write code, run the
-   checks, and write notes with the chat's own writing acts. It may raise a `need`, which
-   pauses the task and puts the question on the card. It ends with `done`.
+   checks, and write notes with the chat's own writing acts — which land in that task's own
+   checkout, because the store serving them is rooted at `BuildAccess.files` for the path the
+   session runs in and at nothing of the person's. It may raise a `need`, which holds the task
+   (`asking`) and puts the question on the card beside the plan's; the question is kept on
+   that task (`BuildTaskRun.needs`), so what is waiting on an answer survives the app closing,
+   and it is answered by the same note the plan's questions are. The other tasks go on. It
+   ends with `done`.
 4. **Reviewing** — a `reviewer` per task. It reads what was written against the task's
    effect and its notes, runs the checks, and answers through `review_build`: `clean` as a
    boolean, and a finding per thing with a place and a severity. `clean` false sends the task
@@ -4020,6 +4025,16 @@ session with one role, and a role is what decides the acts it is served — `BUI
    build's `checked`.
 6. **The result** — the card as the end state, and three acts: **Work on this version**,
    **Bring it in**, **Discard**. DESIGN.md § "A build" is the surface.
+
+**A build runs several conversations at once, and each one is named.** The planner, an
+implementer and a reviewer per task up to `BUILD_TASKS_AT_ONCE`, and the merger are each a
+session of their own, so the thread a build stands in holds more than one live conversation —
+which is why `ChatAsked.conversation` is what `ChatAccess.open` replaces, rather than the
+thread: a build names one per session and opening one ends only what stood under that id,
+while a chat names none and runs one exactly as it did. Every turn carries the same id
+(`ChatTurn.conversation`), so the transcript under the card is read as the sessions it came
+from and each gets the context bar DESIGN.md § "A build" asks for. `BuildSession` is the row
+a build keeps per session — which conversation, which role, which task, what it spent.
 
 **The hand-off is the only thing that passes between sessions.** `BuildHandoff` — what was
 built, the files, the checks and what they said, the notes written, what was left undone, and
@@ -4051,12 +4066,14 @@ program agent is a row in the shell's table and a key-driven loop is a later wav
 what `chatAgentReach` already says. Where no agent on this device is a program, the Build act
 says in one line that it needs an assistant installed here.
 
-**A build persists as one JSON; its sessions do not.** `builds/<id>.json` under the app's own
+**A build persists as one JSON; no session of it does.** `builds/<id>.json` under the app's own
 private data, beside the threads, because a build is where somebody got to and not something a
 peer reads — `Build` in `@sloppy/types` is the shape, and a file that does not parse is left
 out of the listing rather than thrown on, as a thread's is. What is kept is the plan, the
-answers, each task's state and hand-offs and review and rounds, the merges and the line's
-checks. What is not kept is the sessions: they are replaceable by construction.
+answers, each task's state and hand-offs and the questions it raised and its review and
+rounds, the merges, the line's checks, and the row per session the card is read by. What is
+NOT kept is any session itself: none is ever picked up, and a fresh one starts from the last
+hand-off, which is what makes them replaceable.
 
 **A build stands in the chat dock as a thread of its own kind.** `ChatThread.kind` is `build`
 and `ChatThread.build` names it — absent is a chat, which is every thread written before this
