@@ -1024,7 +1024,7 @@ class BuildStore {
 				answer = await builds.mergeTask(build.id, task.id);
 			} catch (error) {
 				whatHappened.put('trouble', `a task was not brought in: ${troubleIn(error)}`);
-				this.#tell(wordsFor(error) ?? UNSTARTED);
+				await this.#stopped(wordsFor(error) ?? UNSTARTED);
 				return;
 			}
 			if (answer.merged) {

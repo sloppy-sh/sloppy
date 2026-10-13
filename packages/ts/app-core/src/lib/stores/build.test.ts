@@ -788,6 +788,28 @@ describe('stopping and going on', () => {
 		expect(builds.sessions).toEqual([]);
 	});
 
+	it('stops the build where a task would not come into the line, and brings it in on Continue', async () => {
+		await going();
+		await act(of('implementer', 'reader'), call('hand_off', handoff()));
+		const id = builds.current?.id as Ulid;
+		await stub.builds.finishTask(id, 'reader');
+
+		await act(of('reviewer', 'reader'), call('review_build', { clean: true, findings: [] }));
+
+		expect(builds.current?.state).toBe('stopped');
+		expect(builds.says).toContain('not here any more');
+		expect(builds.sessions).toEqual([]);
+		expect(builds.current?.merges).toEqual([]);
+
+		await stub.builds.taskCheckout(id, 'reader');
+		await builds.goOn();
+		await settled();
+
+		expect(builds.current?.tasks.reader.state).toBe('merged');
+		expect(builds.current?.merges).toEqual([{ task: 'reader', settled: true, conflicts: [] }]);
+		expect(builds.current?.state).toBe('merging');
+	});
+
 	it('stops the build where a session could not go on, and says why', async () => {
 		await going();
 
