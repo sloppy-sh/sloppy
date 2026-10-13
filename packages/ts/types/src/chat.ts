@@ -272,8 +272,8 @@ export type ChatToolName = (typeof CHAT_TOOLS)[number];
  */
 export const BUILD_TOOLS = [
   "plan_build",
-  "need",
-  "done",
+  "raise_need",
+  "hand_off",
   "review_build",
 ] as const;
 export type BuildToolName = (typeof BUILD_TOOLS)[number];
@@ -1417,6 +1417,9 @@ export const ChatThreadSchema = z.object({
   archived_at: TimestampSchema.optional(),
   agent: z.enum(CHAT_AGENTS).optional(),
   model: z.string().max(CHAT_MODEL_MAX).optional(),
+  /** The one conversation a chat picks up again. A BUILD thread leaves it
+   *  absent and never picks a conversation up: each of its sessions is a
+   *  `BuildSession` of its own, and a fresh session reads the hand-off. */
   session: ChatSessionIdSchema.optional(),
   places: z.array(ChatPlaceSchema).max(MOST_PLACES),
   turns: z.array(ChatTurnSchema).max(MAX_TURNS_PER_SESSION),

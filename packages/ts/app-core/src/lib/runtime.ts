@@ -225,7 +225,12 @@ export interface BuildAccess {
 	 * second. `root` is the folder the project is in and `name` what the build is
 	 * called, which is what the line is named after: a page makes one out of what
 	 * the person typed with `buildNameFrom` and asks for another where that comes
-	 * to nothing, so nothing here is ever refused over a name.
+	 * to nothing. **A line called `build/<name>` that stands and is not this
+	 * build's — nothing under the build's own ref names it — is REFUSED**, with
+	 * "A line of work is already called <name>. Give the build another name.",
+	 * which is why a page holds the name against {@link BuildAccess.standing}
+	 * and the history's lines BEFORE it keeps a version: the keep is the one act
+	 * before a build that cannot be taken back.
 	 */
 	start(
 		root: string,
@@ -271,6 +276,11 @@ export interface BuildAccess {
 	 *  behind. What it merged into the line stays. A task that is not there is
 	 *  not a failure. */
 	finishTask(id: Ulid, task: string): Promise<void>;
+	/** The line's checkout gone, once the build is built or stopped, so the
+	 *  person's own folder can work on the line without two checkouts holding
+	 *  one ref. The line and its versions stay; a build with no checkout left
+	 *  is not a failure. */
+	finish(id: Ulid): Promise<void>;
 	/** Everything of the build gone: its tasks' checkouts and branches, the
 	 *  line's checkout and the line itself. Nothing of it is recoverable, and
 	 *  the person's own folder and lines are untouched. A build that is not
@@ -332,6 +342,16 @@ export interface ChatAsked {
 	 *  the thread's draft**, which is where a chat works; a build names the
 	 *  checkout its task or its line is worked on in. */
 	cwd?: string;
+	/**
+	 * What the session is told before the first thing said, where a role is
+	 * named: the page composes it — the task's paragraph, its notes WHOLE, their
+	 * anchors, the rules and how the acts are called — and the shell passes it
+	 * through in place of the chat's own. **Absent is the chat's own brief**,
+	 * which the shell composes from the thread's places; a role with no brief is
+	 * refused by the shell in words, since a build session told nothing would
+	 * guess.
+	 */
+	brief?: string;
 	/** Whether the agent may read the web while it answers. **Absent is that
 	 *  it may.** Fixed for the session: a change reaches the next one opened. */
 	reachesWeb?: boolean;

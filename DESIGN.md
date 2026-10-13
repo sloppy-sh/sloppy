@@ -1425,7 +1425,7 @@ of rows, with the acts in a bar pinned to the bottom clearing the system nav (§
 inset vars"); given room it stands beside the graph where the chat already does. Nothing here
 exists only on the desk.
 
-**The words are build, task, needs, plan, line, version, bring in, work on this version,
+**The words are build, task, needs (the plan's heading; each one of them is a question), plan, line, version, bring in, work on this version,
 discard, stop, continue, check, and — for what one session handed to the next — what it handed
 on.** Never worktree, never checkout, never branch — the history surfaces say branch because a
 branch is what somebody is looking at there, and this is not one of those surfaces — and never

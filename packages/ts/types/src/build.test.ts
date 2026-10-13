@@ -181,15 +181,15 @@ describe("which acts a role is handed", () => {
 
   it("gives each role its own acts and no other role's", () => {
     expect(toolsForRole("planner")).toContain("plan_build");
-    expect(toolsForRole("planner")).toContain("need");
-    expect(toolsForRole("planner")).not.toContain("done");
-    expect(toolsForRole("implementer")).toContain("done");
+    expect(toolsForRole("planner")).toContain("raise_need");
+    expect(toolsForRole("planner")).not.toContain("hand_off");
+    expect(toolsForRole("implementer")).toContain("hand_off");
     expect(toolsForRole("implementer")).not.toContain("plan_build");
     expect(toolsForRole("implementer")).not.toContain("review_build");
     expect(toolsForRole("reviewer")).toContain("review_build");
-    expect(toolsForRole("reviewer")).not.toContain("done");
-    expect(toolsForRole("merger")).toContain("done");
-    expect(toolsForRole("merger")).not.toContain("need");
+    expect(toolsForRole("reviewer")).not.toContain("hand_off");
+    expect(toolsForRole("merger")).toContain("hand_off");
+    expect(toolsForRole("merger")).not.toContain("raise_need");
     expect(toolsForRole("merger")).not.toContain("review_build");
   });
 
@@ -450,7 +450,7 @@ describe("the build a device keeps", () => {
   });
 
   it("refuses a state nothing reads and a build about nothing", () => {
-    expect(BuildSchema.safeParse({ ...build, state: "done" }).success).toBe(
+    expect(BuildSchema.safeParse({ ...build, state: "hand_off" }).success).toBe(
       false,
     );
     expect(BuildSchema.safeParse({ ...build, about: [] }).success).toBe(false);

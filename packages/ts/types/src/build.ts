@@ -546,14 +546,14 @@ export const BUILD_TOOL_SPECS: Record<BuildToolName, ChatToolSpec> = {
     arguments: BuildPlanSchema,
     writes: false,
   },
-  need: {
+  raise_need: {
     description:
       "Ask the person something the notes do not say and the build cannot be right without. It goes on the build's card and is answered by a note they write, so ask for what belongs in a note rather than for a preference, and ask rather than guessing. Asking pauses what you are doing.",
     label: "Asking what the notes do not say",
     arguments: BuildNeedSchema,
     writes: false,
   },
-  done: {
+  hand_off: {
     description:
       "End with what you built: one summary, the files you wrote, every check you ran and what it said, the notes you wrote, and what you left undone. The next session is given this and nothing else of yours, so what is not here is lost.",
     label: "Handing on what it built",
@@ -570,10 +570,10 @@ export const BUILD_TOOL_SPECS: Record<BuildToolName, ChatToolSpec> = {
 };
 
 const ROLE_ACTS: Record<BuildRole, readonly BuildToolName[]> = {
-  planner: ["plan_build", "need"],
-  implementer: ["need", "done"],
+  planner: ["plan_build", "raise_need"],
+  implementer: ["raise_need", "hand_off"],
   reviewer: ["review_build"],
-  merger: ["done"],
+  merger: ["hand_off"],
 };
 
 /** Every act Sloppy serves, by name: the chat's and a build's in one lookup,
@@ -627,12 +627,12 @@ export const BuildToolCallSchema = z.discriminatedUnion("act", [
   }),
   z.object({
     call: ChatCallIdSchema,
-    act: z.literal("need"),
+    act: z.literal("raise_need"),
     arguments: BuildNeedSchema,
   }),
   z.object({
     call: ChatCallIdSchema,
-    act: z.literal("done"),
+    act: z.literal("hand_off"),
     arguments: BuildHandoffSchema,
   }),
   z.object({

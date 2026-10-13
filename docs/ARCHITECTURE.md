@@ -4016,11 +4016,11 @@ session with one role, and a role is what decides the acts it is served — `BUI
    project, search the notes, read the web where the person allows it, write code, run the
    checks, and write notes with the chat's own writing acts — which land in that task's own
    checkout, because the store serving them is rooted at `BuildAccess.files` for the path the
-   session runs in and at nothing of the person's. It may raise a `need`, which holds the task
+   session runs in and at nothing of the person's. It may raise a `raise_need`, which holds the task
    (`asking`) and puts the question on the card beside the plan's; the question is kept on
    that task (`BuildTaskRun.needs`), so what is waiting on an answer survives the app closing,
    and it is answered by the same note the plan's questions are. The other tasks go on. It
-   ends with `done`.
+   ends with `hand_off`.
 4. **Reviewing** — a `reviewer` per task. It reads what was written against the task's
    effect and its notes, runs the checks, and answers through `review_build`: `clean` as a
    boolean, and a finding per thing with a place and a severity. `clean` false sends the task
@@ -4063,7 +4063,7 @@ reading plus the checks for a reviewer, reading plus writing and running for an 
 and a merger, and never `Task` for any of them — beside `tools_for` in `chat.rs`, because
 those names are one program's dialect and no shape here carries them. The acts' half of the
 table is `toolsForRole`: the chat's reading acts for every role, its writing acts for an
-implementer alone, and `plan_build`, `need`, `done` and `review_build` by role.
+implementer alone, and `plan_build`, `raise_need`, `hand_off` and `review_build` by role.
 `advertisedBuildTools(role)` is what the endpoint serves, so what a session is shown and what
 its calls are parsed against cannot be two different things. A call of any of them arrives as
 `SloppyToolCall` — one union over `act`, the chat's arms and a build's together — which is
@@ -4078,7 +4078,7 @@ program agent is a row in the shell's table and a key-driven loop is a later wav
 what `chatAgentReach` already says. Where no agent on this device is a program, the Build act
 says in one line that it needs an assistant installed here.
 
-**A build persists as one JSON; no session of it does.** `builds/<id>.json` under the app's own
+**One build stands on a project at a time**, and Build is not offered while one does: a second line of work growing out of the same notes at once is two answers to one question, and `standing` answering one is what the page reads. **A build persists as one JSON; no session of it does.** `builds/<id>.json` under the app's own
 private data, beside the threads, because a build is where somebody got to and not something a
 peer reads — `Build` in `@sloppy/types` is the shape, and a file that does not parse is left
 out of the listing rather than thrown on, as a thread's is. What is kept is the plan, the

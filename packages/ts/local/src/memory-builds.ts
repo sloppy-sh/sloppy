@@ -16,6 +16,8 @@ import { type Commit, HistoryError } from "./history.js";
 interface Held {
   root: string;
   line: string;
+  /** Whether the line's checkout has been given up; the line stays. */
+  finished?: boolean;
   path: string;
   from: string;
   tasks: Map<string, string>;
@@ -104,6 +106,12 @@ export class MemoryBuilds {
   async finishTask(id: Ulid, task: string): Promise<void> {
     this.build(id).tasks.delete(task);
     this.told.delete(`${id}/${task}`);
+  }
+
+  async finish(id: Ulid): Promise<void> {
+    const build = this.held.get(id);
+    if (build === undefined) return;
+    build.finished = true;
   }
 
   async discard(id: Ulid): Promise<void> {

@@ -349,7 +349,7 @@ on is somebody's writing nothing can give back.
 
 Sloppy runs a build as several sessions, each with one job, and the brief you were started
 with says which of them you are. **Stay in the folder you were started in.** It is a
-checkout of this project made for the build: the person's own folder is somewhere else and
+copy of this project made for the build: the person's own folder is somewhere else and
 is not yours to touch, nothing here is pushed anywhere, and the line your work goes on is
 brought in when the person asks for it and not by you.
 
@@ -369,11 +369,11 @@ brought in when the person asks for it and not by you.
   settle each file by what each side was FOR, and run the checks on the result.
 
 **Ask rather than guess.** Where the notes do not say something the work has to get right,
-call \`need\`: the question goes in front of the person, and they answer it by writing a
+call \`raise_need\`: the question goes in front of the person, and they answer it by writing a
 note. A guess written into working code is the one thing no later reader can tell from a
 decision.
 
-**End with \`done\`.** It is the only thing that reaches the next session — what you built,
+**End with \`hand_off\`.** It is the only thing that reaches the next session — what you built,
 the files, every check and what it said, the notes you wrote, and what you left undone. What
 is not in it is lost, and nothing of your conversation travels.
 
