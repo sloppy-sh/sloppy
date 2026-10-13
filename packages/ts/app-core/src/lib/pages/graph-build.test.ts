@@ -3,18 +3,28 @@
 // seam and the builds are both stand-ins.
 
 import 'fake-indexeddb/auto';
-import { DeviceThreads, MemoryFiles } from '@sloppy/local';
-import { buildLine, ulid, type ChatAgent, type NodeView, type OwnedRef } from '@sloppy/types';
+import { DeviceThreads, MemoryFiles, MemoryHistory } from '@sloppy/local';
+import {
+	buildLine,
+	ulid,
+	type BuildHandoff,
+	type BuildTask,
+	type ChatAgent,
+	type NodeView,
+	type OwnedRef
+} from '@sloppy/types';
+import { GRAPH_FILE, graphFile, notePath, VAULT_FORMAT } from '@sloppy/vault';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildsHere } from '../components/build-face.svelte.js';
 import { BuildsStandIn } from '../components/build-face.test-support.svelte.js';
-import { type ChatAccess, type ChatLive, initRuntime } from '../runtime.js';
+import { type ChatAccess, type ChatLive, initRuntime, updateRuntime } from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { canvasInk } from '../stores/canvas-ink.svelte.js';
 import { chat } from '../stores/chat.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
+import { graphHistory } from '../stores/history.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { offers } from '../stores/offers.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
@@ -584,5 +594,131 @@ describe('the build in the dock', () => {
 		expect(wrote()).toBe(2);
 		expect(screen()).toContain('Where the reader goes');
 		expect(builds.answered).toEqual([]);
+	});
+	describe('bringing the line into the reader’s own', () => {
+		const LINE = buildLine('the-reader');
+		const NOTE = notePath(ulid());
+		const TASK: BuildTask = {
+			id: 'reader',
+			title: 'Read the notes first',
+			effect: 'It reads the note saying what the thing is for.',
+			paths: ['src/parser.ts'],
+			notes: [PARSER]
+		};
+		const HANDOFF: BuildHandoff = {
+			summary: 'The reader reads the note first.',
+			files: ['src/parser.ts'],
+			checks: [],
+			notes: [PARSER],
+			undone: '',
+			finished: true
+		};
+
+		let kept: MemoryHistory;
+
+		const wrote = (said: string) => new TextEncoder().encode(`${said}\n`);
+
+		/** The build built, with its line standing and the reader on their own. */
+		async function finished(): Promise<void> {
+			await started();
+			const held = builds.standing;
+			if (!held) throw new Error('no build');
+			builds.put({
+				...held,
+				state: 'built',
+				plan: { tasks: [TASK], needs: [], disputes: [], checks: [] },
+				tasks: { reader: { state: 'merged', handoffs: [HANDOFF], needs: [], rounds: 0 } },
+				merges: [{ task: 'reader', settled: true, conflicts: [] }]
+			});
+			await settle();
+			kept = new MemoryHistory(files, { branch: 'main', author: 'Ada' });
+			updateRuntime({ history: () => kept });
+		}
+
+		/** The build’s line, with one note written on it since the fork. */
+		async function theLine(): Promise<void> {
+			// The folder is a graph's, so a state of it reads as one — which is what
+			// a note left in two versions is named out of.
+			await files.write(
+				GRAPH_FILE,
+				graphFile({ format: VAULT_FORMAT, graph: ulid(), name: 'My graph', owner: DID })
+			);
+			await files.write(NOTE, wrote('What the notes said at the fork'));
+			await kept.commit('A first version');
+			await kept.branch(LINE);
+			await kept.switch(LINE);
+			await files.write(NOTE, wrote('What the build wrote'));
+			await kept.commit('What the build wrote');
+			await kept.switch('main');
+		}
+
+		afterEach(() => {
+			graphHistory.clear();
+			updateRuntime({ history: undefined });
+		});
+
+		it('brings it in, and says so where nothing was in two versions', async () => {
+			await finished();
+			await theLine();
+
+			pressed('Bring it in');
+			await settle();
+
+			expect(
+				document.body.querySelector('[data-build-merge="line"]')?.textContent?.replace(/\s+/g, ' ')
+			).toContain('brought in');
+		});
+
+		// The merge leaves the notes both sides wrote in for somebody to choose
+		// between, and refuses nothing — so the card has to say so itself.
+		it('says what is in two versions, and opens where they are settled', async () => {
+			await finished();
+			await theLine();
+			await files.write(NOTE, wrote('What the reader wrote'));
+			await kept.commit('What the reader wrote');
+
+			pressed('Bring it in');
+			await settle();
+
+			expect(screen()).toContain(
+				'One note is in two versions: the build and you both wrote in it.'
+			);
+			expect(screen()).toContain(
+				'Choose what it says, then keep a version to finish bringing it in.'
+			);
+			expect(screen()).toContain(`Bringing in ${LINE}`);
+			expect(
+				document.body.querySelector('[data-build-merge="line"]')?.textContent?.replace(/\s+/g, ' ')
+			).toContain('part way in, with notes in two versions');
+		});
+
+		// Pressing it again is not a second merge: the one underway is where the
+		// reader is sent, rather than refused in the history’s own words.
+		it('sends the reader back to settle them rather than refusing', async () => {
+			await finished();
+			await theLine();
+			await files.write(NOTE, wrote('What the reader wrote'));
+			await kept.commit('What the reader wrote');
+			pressed('Bring it in');
+			await settle();
+
+			pressed('Bring it in');
+			await settle();
+
+			expect(screen()).not.toContain('Finish the merge you are in the middle of first.');
+			expect(screen()).toContain('One note is in two versions');
+		});
+
+		it('says why where the bring-in was refused before anything moved', async () => {
+			await finished();
+
+			pressed('Bring it in');
+			await settle();
+
+			expect(screen()).toContain(`There is nothing here called ${LINE}.`);
+			expect(
+				document.body.querySelector('[data-build-merge="line"]')?.textContent?.replace(/\s+/g, ' ')
+			).toContain('yours to take');
+		});
 	});
 });

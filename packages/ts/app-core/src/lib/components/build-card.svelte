@@ -6,6 +6,7 @@
 	import { ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import {
+		type BuildBrought,
 		buildSaid,
 		DISCARD_COSTS,
 		over,
@@ -23,7 +24,7 @@
 		busy = false,
 		writing = false,
 		says = null,
-		taken = false,
+		brought = 'open',
 		contextOf,
 		nameOf,
 		onGo,
@@ -46,8 +47,8 @@
 		writing?: boolean;
 		/** Why the last act did not land, in words for the person. */
 		says?: string | null;
-		/** Whether the line has been brought into the reader's own. */
-		taken?: boolean;
+		/** How far the line has got into the reader's own. */
+		brought?: BuildBrought;
 		/** How full a session's window is, as it last said. */
 		contextOf: (conversation: Ulid) => ContextUsage | null;
 		/** A note as somebody cites it, and nothing for one not in hand. */
@@ -181,7 +182,7 @@
 	{/if}
 
 	{#if ended}
-		<BuildResult {build} {taken} {nameOf} {onOpen} {onNotes} />
+		<BuildResult {build} {brought} {nameOf} {onOpen} {onNotes} />
 	{/if}
 
 	<!-- Pinned to the foot of the dock it scrolls in, which on a phone is the

@@ -145,7 +145,12 @@
 	import BuildCard from '../components/build-card.svelte';
 	import { buildsHere } from '../components/build-face.svelte.js';
 	import BuildName from '../components/build-name.svelte';
-	import { citedAs, notesOnTheCanvas } from '../components/build-said.js';
+	import {
+		type BuildBrought,
+		citedAs,
+		notesOnTheCanvas,
+		settleTheNotes
+	} from '../components/build-said.js';
 	import ChatPanel from '../components/chat-panel.svelte';
 	import EdgeSheet from '../components/edge-sheet.svelte';
 	import { Moving } from '../components/moving.svelte.js';
@@ -2088,6 +2093,14 @@
 	let buildSays = $state<string | null>(null);
 	/** Whether the line has been brought into the reader's own from here. */
 	let buildTook = $state(false);
+	/** How far the build's line has got into the reader's own: part way, while a
+	 *  bring-in of it has left notes for the reader to choose between. */
+	const buildBrought = $derived.by<BuildBrought>(() => {
+		if (buildTook) return 'in';
+		const line = theBuild?.line;
+		if (line === undefined || graphHistory.taking !== line) return 'open';
+		return graphHistory.inTwoVersions.length > 0 ? 'settling' : 'open';
+	});
 	/** The task the note being found is for. */
 	let findingFor = $state.raw<BuildSlug | null>(null);
 	const buildMoving = new Moving();
@@ -2148,8 +2161,26 @@
 		const line = theBuild?.line;
 		if (line === undefined) return;
 		buildSays = null;
-		if (await graphHistory.bringIn(line)) buildTook = true;
-		else buildSays = graphHistory.says;
+		// The rows for choosing between two versions of a note stand on the history
+		// surface alone, which is where the column beside the graph sends somebody.
+		if (buildBrought === 'settling') {
+			buildSays = settleTheNotes(graphHistory.inTwoVersions.length);
+			showingHistory = true;
+			return;
+		}
+		if (await graphHistory.bringIn(line)) {
+			buildTook = true;
+			return;
+		}
+		// A bring-in refused before the folder was touched says why itself; one that
+		// has begun and left notes in two versions refuses nothing, so the words
+		// are this surface's to give.
+		const left = graphHistory.taking === line ? graphHistory.inTwoVersions.length : 0;
+		if (left === 0) buildSays = graphHistory.says;
+		else {
+			buildSays = settleTheNotes(left);
+			showingHistory = true;
+		}
 	}
 
 	function workOnTheBuild(): void {
@@ -3707,7 +3738,7 @@
 					busy={buildsHere.face?.busy ?? false}
 					writing={creating}
 					says={buildSays ?? buildsHere.face?.says ?? null}
-					taken={buildTook}
+					brought={buildBrought}
 					contextOf={(conversation) => buildsHere.face?.contextOf(conversation) ?? null}
 					nameOf={nameOfNote}
 					onGo={() => void goBuilding()}

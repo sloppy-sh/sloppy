@@ -464,11 +464,21 @@ describe('what was built', () => {
 	});
 
 	it('says the line is in once it has been brought in', () => {
-		show(built({}), { taken: true });
+		show(built({}), { brought: 'in' });
 
 		expect(
 			document.body.querySelector('[data-build-merge="line"]')?.textContent?.replace(/\s+/g, ' ')
 		).toContain('brought in');
+	});
+
+	// A bring-in that left notes in two versions is not silence and is not
+	// "yours to take" either: the row says where it got to.
+	it('says the line is part way in while notes are in two versions', () => {
+		show(built({}), { brought: 'settling' });
+
+		expect(
+			document.body.querySelector('[data-build-merge="line"]')?.textContent?.replace(/\s+/g, ' ')
+		).toContain('the-reader into your own — part way in, with notes in two versions');
 	});
 
 	it('offers the three acts, and no Go', () => {

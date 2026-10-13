@@ -4,18 +4,25 @@
 	// DESIGN.md § "A build". There is no diff viewer here, deliberately.
 	import type { Build, OwnedRef } from '@sloppy/types';
 	import { Button } from '@sloppy/ui/button';
-	import { checkSaid, filesOf, notesOf, tasksOf } from './build-said.js';
+	import {
+		type BuildBrought,
+		broughtSaid,
+		checkSaid,
+		filesOf,
+		notesOf,
+		tasksOf
+	} from './build-said.js';
 
 	let {
 		build,
-		taken = false,
+		brought = 'open',
 		nameOf,
 		onOpen,
 		onNotes
 	}: {
 		build: Build;
-		/** Whether the line has been brought into the reader's own. */
-		taken?: boolean;
+		/** How far the line has got into the reader's own. */
+		brought?: BuildBrought;
 		nameOf: (note: OwnedRef) => string | undefined;
 		onOpen: (note: OwnedRef) => void;
 		/** The build's notes set against the folder's. Absent where the line's
@@ -127,7 +134,7 @@
 				</li>
 			{/each}
 			<li class="text-xs break-words" data-build-merge="line">
-				{build.name} into your own — {taken ? 'brought in' : 'yours to take'}
+				{build.name} into your own — {broughtSaid(brought)}
 			</li>
 		</ul>
 	</div>

@@ -204,6 +204,29 @@ export function checkSaid(check: BuildCheck): string {
 	return check.passed ? 'Nothing to fix' : 'Something to fix';
 }
 
+/** How far the build's line has got into the reader's own. `settling` is a
+ *  bring-in part way through: the build and the reader both wrote in some of
+ *  the same notes, and those are the reader's to choose between. */
+export type BuildBrought = 'open' | 'settling' | 'in';
+
+const BROUGHT_SAID: Record<BuildBrought, string> = {
+	open: 'yours to take',
+	settling: 'part way in, with notes in two versions',
+	in: 'brought in'
+};
+
+export function broughtSaid(brought: BuildBrought): string {
+	return BROUGHT_SAID[brought];
+}
+
+/** What a bring-in that left notes in two versions asks for next, where the
+ *  history itself says nothing because nothing was refused. */
+export function settleTheNotes(left: number): string {
+	return left === 1
+		? 'One note is in two versions: the build and you both wrote in it. Choose what it says, then keep a version to finish bringing it in.'
+		: `${left.toLocaleString()} notes are in two versions: the build and you both wrote in them. Choose what each one says, then keep a version to finish bringing it in.`;
+}
+
 /** The build's notes set against the folder's, as the canvas draws any two
  *  states — named the way every other comparison names its two sides. A note
  *  that only moved is not `changed`: the move is drawn on its lines. */
