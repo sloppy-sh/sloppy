@@ -35,6 +35,8 @@ import {
 	type BuildTaskRun,
 	type BuildTaskState,
 	buildLine,
+	CHAT_AGENTS,
+	chatAgentName,
 	chatAgentReach,
 	type ContextUsage,
 	contextTogether,
@@ -77,7 +79,12 @@ import { wordsFor } from './errors.js';
 import { graphHistory } from './history.svelte.js';
 import { troubleIn, whatHappened } from './what-happened.svelte.js';
 
-const NO_ASSISTANT = 'Sloppy needs an assistant installed on this device to build anything.';
+/** The programs Sloppy can have build, as somebody with none of them reads it. */
+const PROGRAMS = CHAT_AGENTS.filter((agent) => chatAgentReach(agent) === 'program')
+	.map(chatAgentName)
+	.join(' or ');
+
+const NO_ASSISTANT = `Sloppy asks ${PROGRAMS} to build, and it is not on this machine. Install it, then look again.`;
 const WRONG_ASSISTANT =
 	'A build runs on an assistant installed on this device. Choose one of those for the chat, then build.';
 const UNTOLD = 'Sloppy could not tell what this device can build with. Try again.';

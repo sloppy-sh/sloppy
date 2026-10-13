@@ -2090,8 +2090,15 @@
 	/** The build standing on this project, which is at most one. */
 	const theBuild = $derived(buildsHere.face?.standing ?? null);
 	/** Whether a build is put in front of anybody here. One stands at a time, so
-	 *  the act is not offered while one does — DESIGN.md § "A build". */
-	const offersBuild = $derived(offersChat && buildsHere.face !== null && theBuild === null);
+	 *  the act is not offered while one does; an assistant is NOT part of this —
+	 *  where none is here the act stands and says what it needs, because an act
+	 *  that vanishes teaches nobody why — DESIGN.md § "A build". */
+	const offersBuild = $derived(
+		projectFiles !== undefined &&
+			prefs.current.aiOffered &&
+			buildsHere.face !== null &&
+			theBuild === null
+	);
 	/** The version a line stands at. The build's own was opened and written to
 	 *  while it ran, so the lines are read again before one of its versions is
 	 *  taken. */
@@ -3812,7 +3819,7 @@
 <BuildName
 	bind:open={buildNaming}
 	count={buildAbout.length}
-	reaches={buildsHere.face?.reaches ?? false}
+	assistantSays={buildsHere.face?.assistantSays ?? null}
 	busy={buildsHere.face?.busy ?? false}
 	says={buildSays}
 	taken={async (name) => (await buildsHere.face?.taken(name)) ?? false}

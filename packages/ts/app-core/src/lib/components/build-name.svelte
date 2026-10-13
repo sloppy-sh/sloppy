@@ -6,12 +6,11 @@
 	import { ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
-	import { NEEDS_A_PROGRAM } from './build-said.js';
 
 	let {
 		open = $bindable(false),
 		count,
-		reaches = true,
+		assistantSays = null,
 		busy = false,
 		says = null,
 		taken,
@@ -20,8 +19,9 @@
 		open?: boolean;
 		/** How many notes it would be built from. */
 		count: number;
-		/** Whether an assistant this machine can run is here. */
-		reaches?: boolean;
+		/** Why no build can run here, in words for the person. `null` is a device
+		 *  one can run on. */
+		assistantSays?: string | null;
 		busy?: boolean;
 		/** Why the last try did not land, in words for the person. */
 		says?: string | null;
@@ -58,12 +58,11 @@
 <ResponsiveModal
 	bind:open
 	title={count === 1 ? 'Build this' : `Build these ${count} notes`}
-	description={reaches
-		? 'Assistants read what these notes say the project is for and write the code that answers them. Nothing of yours changes until you bring it in.'
-		: NEEDS_A_PROGRAM}
+	description={assistantSays ??
+		'Assistants read what these notes say the project is for and write the code that answers them. Nothing of yours changes until you bring it in.'}
 >
 	<div class="flex flex-col gap-3 px-2 pt-4">
-		{#if reaches}
+		{#if assistantSays === null}
 			<form
 				class="flex flex-col gap-3"
 				onsubmit={(event) => {

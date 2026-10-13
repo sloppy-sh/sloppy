@@ -16,21 +16,10 @@ import {
 	type BuildTask,
 	type BuildTaskRun,
 	type BuildTaskState,
-	CHAT_AGENTS,
-	chatAgentName,
-	chatAgentReach,
 	type NodeView,
 	type OwnedRef
 } from '@sloppy/types';
 import type { DifferenceBetween } from '../stores/history.svelte.js';
-
-/** The programs Sloppy can have build, as somebody with none of them reads it. */
-const PROGRAMS = CHAT_AGENTS.filter((agent) => chatAgentReach(agent) === 'program')
-	.map(chatAgentName)
-	.join(' or ');
-
-/** What the act says where this machine has no assistant it can run. */
-export const NEEDS_A_PROGRAM = `Sloppy asks ${PROGRAMS} to build, and it is not on this machine. Install it, then look again.`;
 
 /** What discarding a build costs, which is what the one question says. */
 export const DISCARD_COSTS =

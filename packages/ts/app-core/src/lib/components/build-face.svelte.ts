@@ -9,8 +9,10 @@ import type { Build, BuildName, BuildSlug, ContextUsage, OwnedRef, Ulid } from '
 import { builds } from '../stores/build.svelte.js';
 
 export interface BuildFace {
-	/** Whether a build can run on the assistant this device is set to. */
-	readonly reaches: boolean;
+	/** Why a build cannot run on the assistant this device is set to, in words
+	 *  for the person. `null` is a device that can — and a device that has not
+	 *  said what it has, which is not a device with none. */
+	readonly assistantSays: string | null;
 	/** The build standing on this project. `null` is a project with none, which
 	 *  is where a build is offered. */
 	readonly standing: Build | null;
@@ -72,10 +74,8 @@ export const buildsHere = new BuildsHere();
 class TheBuilds implements BuildFace {
 	#acting = $state(0);
 
-	/** A device that has not said what assistants it has is not a device with
-	 *  none, so the act stands and a refusal says what was found. */
-	get reaches(): boolean {
-		return builds.assistantHere !== false;
+	get assistantSays(): string | null {
+		return builds.assistantHere === false ? builds.assistantSays : null;
 	}
 
 	get standing(): Build | null {

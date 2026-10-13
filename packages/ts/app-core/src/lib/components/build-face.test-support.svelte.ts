@@ -22,7 +22,8 @@ import type { BuildFace } from './build-face.svelte.js';
 const WHEN = '2026-10-13T00:00:00.000Z';
 
 export class BuildsStandIn implements BuildFace {
-	reaches = true;
+	/** Why nothing here can build, which the act says and nothing hides. */
+	assistantSays: string | null = null;
 	busy = false;
 	/** What is already called something here, which a name is held against. */
 	readonly lines = new SvelteSet<string>();

@@ -320,6 +320,23 @@ describe('where the act to build stands', () => {
 		expect(await inThePalette()).toContain('Build this');
 	});
 
+	it('stands where there is no assistant to run it, so nothing vanishes', async () => {
+		// The words themselves are the store's (`stores/build.test.ts`); what is
+		// asked here is that the act stays and carries them.
+		stub.agent = [];
+		builds.assistantSays = 'Nothing on this device can build.';
+		await open();
+		await markMenu('1');
+
+		expect(offeredInMenu()).toContain('Build this');
+
+		menuItem('Build this').click();
+		await settle();
+
+		expect(screen()).toContain('Nothing on this device can build.');
+		expect(offered('Start the build')).toBe(false);
+	});
+
 	it('is nowhere on a graph that is nobody’s project', async () => {
 		serving = undefined;
 		await open();
@@ -420,12 +437,11 @@ describe('naming the build before anything is kept', () => {
 		expect(builds.standing).toBeNull();
 	});
 
-	it('says in one line that it needs an assistant on this machine', async () => {
-		stub.agent = ['anthropic'];
-		builds.reaches = false;
+	it('asks for nothing where a build cannot run here, and says why instead', async () => {
+		builds.assistantSays = 'Nothing on this device can build.';
 		await askedFor();
 
-		expect(screen()).toContain('and it is not on this machine');
+		expect(screen()).toContain('Nothing on this device can build.');
 		expect(offered('Start the build')).toBe(false);
 	});
 

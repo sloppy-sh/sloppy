@@ -1061,7 +1061,7 @@ describe('a device with no assistant to build with', () => {
 		expect(builds.offered).toBe(true);
 		expect(builds.assistantHere).toBe(false);
 		expect(await builds.start([feature], 'reads-a-plan')).toBe(false);
-		expect(builds.says).toContain('installed on this device');
+		expect(builds.says).toContain('and it is not on this machine');
 		expect(builds.current).toBe(null);
 		// Nothing was minted, no session opened, and no version kept.
 		expect(stub.asked).toEqual([]);
@@ -1075,7 +1075,10 @@ describe('a device with no assistant to build with', () => {
 
 		expect(builds.assistantHere).toBe(false);
 		expect(await builds.start([feature], 'reads-a-plan')).toBe(false);
-		expect(builds.says).toContain('installed on this device');
+		// Somebody who HAS the program is never told to install it.
+		expect(builds.says).toBe(
+			'A build runs on an assistant installed on this device. Choose one of those for the chat, then build.'
+		);
 		expect(builds.current).toBe(null);
 		expect(stub.asked).toEqual([]);
 
@@ -1240,9 +1243,31 @@ describe('the store under the names the card and the acts ask by', () => {
 		await chat.lookForAgents();
 
 		expect(await face.begin([feature], 'reads-a-plan')).toBe(false);
-		expect(face.says).toBe('Sloppy needs an assistant installed on this device to build anything.');
+		expect(face.says).toContain('and it is not on this machine');
 		expect(face.standing).toBe(null);
-		expect(face.reaches).toBe(false);
+	});
+
+	it('carries the one line the act stands with, and nothing where it can build', async () => {
+		stub.has = [];
+		await chat.lookForAgents();
+		expect(face.assistantSays).toContain('and it is not on this machine');
+
+		stub.has = ['claude_code', 'anthropic'];
+		await chat.lookForAgents();
+		chat.pick('anthropic', undefined);
+		expect(face.assistantSays).toBe(
+			'A build runs on an assistant installed on this device. Choose one of those for the chat, then build.'
+		);
+
+		chat.pick('claude_code', undefined);
+		expect(face.assistantSays).toBe(null);
+
+		// A device that has not said what it has is not a device with none, so
+		// the name is still asked for and the try is what answers.
+		stub.untold = true;
+		chat.clear();
+		await chat.lookForAgents();
+		expect(face.assistantSays).toBe(null);
 	});
 
 	it('reads a build back where one was left, and picks it up once', async () => {
