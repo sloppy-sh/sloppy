@@ -2142,10 +2142,11 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   finds every note carrying it inside that tag's circle, and one who selects several finds
   each note inside the first of them it carries.
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
-  tag's name in quiet ink just inside its outer edge.** No two words the canvas writes are
-  written over each other, so a name whose place is taken steps along the room kept for it to
-  the nearest clear one and, where the room holds none, just outside the outline — moved, never
-  dropped. Where regions overlap the fills overlap, and that is what says a note is in both.
+  tag's name in quiet ink just inside its outer edge.** The words the canvas writes keep off
+  each other: a name whose place is taken steps along the room kept for it to the nearest clear
+  one and, where the room holds none, just outside the outline — moved, never dropped — and a
+  caption that would land on anything is left out for the frame. A screen too crowded for every
+  name to find a clear place is the one case two can still touch. Where regions overlap the fills overlap, and that is what says a note is in both.
   **The fills owe the marks their floors** (§ "Contrast is measured, not assumed"): a mark
   standing on a tinted region keeps **3:1 against the surface it actually lands on** and a
   dimmed one keeps **1.6:1**, and the ink the canvas letters the names and the captions in keeps
