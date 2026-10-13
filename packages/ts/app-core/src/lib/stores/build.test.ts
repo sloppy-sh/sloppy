@@ -758,6 +758,24 @@ describe('stopping and going on', () => {
 		expect(of('implementer', 'reader')).not.toBe(first);
 	});
 
+	it('lets the line’s copy go when it stops, and takes it back on Continue', async () => {
+		await going();
+		const id = builds.current?.id as Ulid;
+
+		await builds.stop();
+		await settled();
+
+		expect(stub.builds.gaveUpTheLine(id)).toBe(true);
+
+		await builds.goOn();
+		await settled();
+		await act(of('implementer', 'reader'), call('hand_off', handoff()));
+		await act(of('reviewer', 'reader'), call('review_build', { clean: true, findings: [] }));
+		await settled();
+
+		expect(stub.builds.gaveUpTheLine(id)).toBe(false);
+	});
+
 	it('stops a build whose reading session died, and reads again on Continue', async () => {
 		await builds.start([feature], 'reads-a-plan');
 		await settled();

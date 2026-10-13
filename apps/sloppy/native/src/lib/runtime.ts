@@ -7,6 +7,7 @@
 import { initRuntime, resetApi, session, type KnownFolder, type OpenTabs } from '@sloppy/app-core';
 import {
 	containerOf,
+	DeviceBuilds,
 	DeviceCredentials,
 	DeviceGitDefaults,
 	DeviceThreads,
@@ -327,6 +328,7 @@ export function initNativeRuntime(): void {
 					credentials: new DeviceCredentials(device),
 					aiKeys: deviceAiKeys(device),
 					threads: new DeviceThreads(device),
+					builds: new DeviceBuilds(device),
 					placeFiles: (root: string) => (picked(root) ? device.at(root) : undefined),
 					askPlace: () => askPlace(device),
 					// A graph on this device holds no address of anybody else's, so

@@ -449,6 +449,7 @@ class BuildStore {
 		whatHappened.put('turn', 'a build was stopped');
 		await this.#allSessionsGo();
 		await this.#keep({ ...build, state: 'stopped' });
+		await this.#lineGivenUp(build.id);
 	}
 
 	/** Continue: the phase the build is in is read off what it holds, and the
@@ -804,11 +805,7 @@ class BuildStore {
 		if (settling === undefined) {
 			const checked = { ...build, checked: [...handoff.checks] };
 			await this.#keep({ ...checked, state: this.#phaseNow(checked) });
-			try {
-				await builds.finish(build.id);
-			} catch (error) {
-				whatHappened.put('trouble', `the build's copy was not given up: ${troubleIn(error)}`);
-			}
+			await this.#lineGivenUp(build.id);
 			return;
 		}
 		const path = await this.#linePath();
@@ -918,8 +915,20 @@ class BuildStore {
 		if (!build) return;
 		if (said !== undefined) this.#tell(said);
 		await this.#allSessionsGo();
-		if (RUNNING.includes(build.state))
-			await this.#keep({ ...(this.#held ?? build), state: 'stopped' });
+		if (!RUNNING.includes(build.state)) return;
+		await this.#keep({ ...(this.#held ?? build), state: 'stopped' });
+		await this.#lineGivenUp(build.id);
+	}
+
+	/** The line's copy let go of, so the person can work on the line in their
+	 *  own folder. {@link goOn} asks for it again, and a line that stands
+	 *  answers the same copy rather than a second. */
+	async #lineGivenUp(id: Ulid): Promise<void> {
+		try {
+			await seam().chat()?.builds?.finish(id);
+		} catch (error) {
+			whatHappened.put('trouble', `the build's copy was not given up: ${troubleIn(error)}`);
+		}
 	}
 
 	/** One pass at what the build needs next. Every state change calls it, and
