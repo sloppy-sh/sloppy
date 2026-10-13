@@ -53,7 +53,10 @@ export class MemoryBuilds {
     from: string,
   ): Promise<{ line: string; path: string }> {
     const standing = this.held.get(id);
-    if (standing) return { line: standing.line, path: standing.path };
+    if (standing) {
+      standing.finished = false;
+      return { line: standing.line, path: standing.path };
+    }
     const build: Held = {
       root,
       line: buildLine(name),
@@ -146,6 +149,11 @@ export class MemoryBuilds {
    *  nothing unkept does. */
   nothingToKeep(path: string): void {
     this.empty.add(path);
+  }
+
+  /** Whether the line's copy has been let go of, which `start` takes back. */
+  gaveUpTheLine(id: Ulid): boolean {
+    return this.held.get(id)?.finished === true;
   }
 
   private build(id: Ulid): Held {

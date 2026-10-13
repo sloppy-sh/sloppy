@@ -1,3 +1,4 @@
+mod build;
 mod chat;
 mod draft;
 mod history;
@@ -70,6 +71,14 @@ pub(crate) fn commands<R: Runtime>(
         draft::draft_standing,
         draft::draft_start,
         draft::draft_discard,
+        build::build_standing,
+        build::build_start,
+        build::build_task_checkout,
+        build::build_commit,
+        build::build_merge_task,
+        build::build_finish_task,
+        build::build_finish,
+        build::build_discard,
     ]
 }
 

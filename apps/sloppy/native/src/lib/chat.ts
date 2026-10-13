@@ -15,8 +15,10 @@ import {
 	type ChatLive
 } from '@sloppy/app-core';
 import {
+	advertisedBuildTools,
 	advertisedChatTools,
 	type AdvertisedTool,
+	type BuildRole,
 	CHAT_AGENTS,
 	CHAT_ASKED_MAX,
 	type ChatAgent,
@@ -29,6 +31,7 @@ import {
 	ChatToolAnswerSchema,
 	type SloppyToolCall,
 	SloppyToolCallSchema,
+	type SloppyToolName,
 	ulid
 } from '@sloppy/types';
 import { type AiKeysAccess, chatBrief } from '@sloppy/local';
@@ -36,6 +39,7 @@ import { withCarried } from '@sloppy/app-core';
 import { Refusal } from '@sloppy/ui';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { AgentStream } from './chat-stream';
+import type { BuildAccess } from './build';
 import type { DraftAccess } from './draft';
 import type { Invoke } from './files';
 
@@ -55,6 +59,7 @@ const NO_PROJECT = 'Open the project these notes are about first.';
 const NO_CHAT = 'That chat is over. Start another one.';
 const ANSWERING = 'Wait for the answer, or stop it, before saying the next thing.';
 const SAY_SOMETHING = 'Say what you want written about.';
+const NOTHING_TO_GO_ON = 'Sloppy could not start that part of the build. Try again.';
 const TOO_MUCH = 'That is too long to send in one go. Shorten it and try again.';
 const DIDNT_WORK = 'That did not work. Try again.';
 
@@ -117,12 +122,16 @@ interface Turn extends Settling {
  *  pick up can be opened again as a new one. */
 interface Opening {
 	agent: ChatAgent;
-	root: string;
-	/** Which of the person's threads this session is for, which is what every
-	 *  later act is keyed by. */
+	/** The folder the session runs in: the thread's draft, or the copy a build's
+	 *  task or line is worked on in. */
+	cwd: string;
+	/** Which conversation this session is, as this shell keys it, which is what
+	 *  every later act names. */
 	thread: string;
-	tools: AdvertisedTool[];
+	tools: AdvertisedTool<SloppyToolName>[];
 	brief: string;
+	/** What the session is for. Absent is the chat. */
+	role?: BuildRole;
 	places: string[];
 	resume: boolean;
 	/** Whether the agent may read the web while it answers. */
@@ -171,7 +180,9 @@ class Session {
 	reading = false;
 
 	constructor(
-		readonly thread: string,
+		/** Which conversation this is, as this shell keys it: the thread's own id
+		 *  for a chat, and one the page named for a build's. */
+		readonly conversation: string,
 		readonly hear: (event: ChatEvent) => void,
 		readonly serve: Serving
 	) {}
@@ -222,7 +233,8 @@ class Session {
 }
 
 class TauriChat implements ChatAccess {
-	/** The session standing for each thread, by that thread's id. How many of
+	/** The session standing for each conversation, by what the page named it —
+	 *  a chat's thread, or one of the several a build runs at once. How many of
 	 *  them stand at once is the page's rule — `ChatAccess` in
 	 *  `@sloppy/app-core` — so this holds whatever it is asked to hold. */
 	private readonly held = new Map<string, Session>();
@@ -230,6 +242,7 @@ class TauriChat implements ChatAccess {
 	constructor(
 		private readonly here: () => Promise<string | undefined>,
 		readonly drafts: DraftAccess | undefined,
+		readonly builds: BuildAccess | undefined,
 		private readonly call: Invoke,
 		private readonly telling: () => Telling,
 		private readonly keys: AiKeysAccess | undefined
@@ -249,24 +262,25 @@ class TauriChat implements ChatAccess {
 		serve: Serving
 	): Promise<ChatLive> {
 		const agent = await this.agentFor(asked.agent);
-		// A chat is about a project, so there being none is refused before a copy
-		// is taken — and the agent works in the copy, never in the folder itself.
-		const here = await this.project();
-		const root = (await this.drafts?.start(asked.thread.id))?.root ?? here;
-		const of = asked.thread.id;
+		// A build session is told what it is for by the page, and one told
+		// nothing would guess at the work.
+		if (asked.role !== undefined && asked.brief === undefined) throw refuse(NOTHING_TO_GO_ON);
+		const cwd = asked.cwd ?? (await this.inTheDraft(asked.thread.id));
+		const of = asked.conversation ?? asked.thread.id;
 		this.replaces(of);
 		const session = new Session(of, hear, serve);
 		if (asked.carried !== undefined) session.carried = asked.carried;
 		this.held.set(of, session);
 		await this.starts(session, {
 			agent,
-			root,
+			cwd,
 			thread: of,
-			tools: advertisedChatTools(),
-			brief: chatBrief(asked.thread.places),
+			tools: asked.role === undefined ? advertisedChatTools() : advertisedBuildTools(asked.role),
+			brief: asked.brief ?? chatBrief(asked.thread.places),
 			places: asked.thread.places.map((place) => place.root),
 			resume: asked.thread.session !== undefined,
 			web: asked.reachesWeb ?? true,
+			...(asked.role === undefined ? {} : { role: asked.role }),
 			...(asked.model === undefined ? {} : { model: asked.model }),
 			...(asked.thread.session === undefined ? {} : { session: asked.thread.session })
 		}).catch((reason) => {
@@ -282,6 +296,14 @@ class TauriChat implements ChatAccess {
 			close: () => this.closes(of),
 			context: (detail) => this.asks(of, detail)
 		};
+	}
+
+	/** The draft the thread works in, which is where a chat's session runs. */
+	private async inTheDraft(thread: string): Promise<string> {
+		// A chat is about a project, so there being none is refused before a copy
+		// is taken — and the agent works in the copy, never in the folder itself.
+		const here = await this.project();
+		return (await this.drafts?.start(thread))?.root ?? here;
 	}
 
 	/**
@@ -393,7 +415,7 @@ class TauriChat implements ChatAccess {
 					if (event.event === 'started') {
 						session.introduced = true;
 						session.firstAsked = undefined;
-						void this.asks(session.thread, 'summary');
+						void this.asks(session.conversation, 'summary');
 					}
 					session.tell(event);
 				}
@@ -404,7 +426,7 @@ class TauriChat implements ChatAccess {
 				if (session.reading) session.reading = false;
 				else if (session.turn) {
 					session.ends(heard.spent);
-					void this.asks(session.thread, 'summary');
+					void this.asks(session.conversation, 'summary');
 				}
 				return;
 			}
@@ -430,7 +452,7 @@ class TauriChat implements ChatAccess {
 			opening === undefined ||
 			!opening.resume ||
 			session.introduced ||
-			this.held.get(session.thread) !== session ||
+			this.held.get(session.conversation) !== session ||
 			session.gone
 		)
 			return false;
@@ -442,7 +464,7 @@ class TauriChat implements ChatAccess {
 				const asked = session.firstAsked;
 				if (asked === undefined || session.gone) return;
 				const line = JSON.stringify(aTurn(withCarried(session.carried ?? '', asked)));
-				return this.call<void>(SAY, { thread: session.thread, line });
+				return this.call<void>(SAY, { thread: session.conversation, line });
 			})
 			.catch((reason) => {
 				session.letGo(said(reason));
@@ -455,7 +477,7 @@ class TauriChat implements ChatAccess {
 	 *  the next turn to end asks again. */
 	private async asksInWords(session: Session): Promise<void> {
 		if (
-			this.held.get(session.thread) !== session ||
+			this.held.get(session.conversation) !== session ||
 			session.gone ||
 			session.turn ||
 			session.reading
@@ -464,7 +486,7 @@ class TauriChat implements ChatAccess {
 		session.reading = true;
 		session.stream.turned();
 		await this.call<void>(SAY, {
-			thread: session.thread,
+			thread: session.conversation,
 			line: JSON.stringify(aTurn(THE_WINDOW_IN_WORDS))
 		}).catch(() => {
 			session.reading = false;
@@ -515,7 +537,7 @@ class TauriChat implements ChatAccess {
 			? held.data
 			: { said: held.error.issues[0]?.message ?? DIDNT_ANSWER, trouble: true };
 		await this.call<void>(ANSWER, {
-			thread: session.thread,
+			thread: session.conversation,
 			call,
 			said: said.said,
 			trouble: said.trouble ?? false
@@ -580,14 +602,16 @@ function aboutTheWindow(id: string, detail: 'summary' | 'full'): unknown {
 
 const THE_WINDOW_IN_WORDS = '/context';
 
-/** `here` is the folder holding the code the notes are about, and `drafts` is
- *  where the copy of it the agent is started in comes from. */
+/** `here` is the folder holding the code the notes are about, `drafts` is where
+ *  the copy of it a chat is started in comes from, and `builds` is where a
+ *  build's line and its copies come from. */
 export function tauriChat(
 	here: () => Promise<string | undefined>,
 	drafts?: DraftAccess,
+	builds?: BuildAccess,
 	call: Invoke = invoke,
 	telling: () => Telling = () => new Channel<Told>(),
 	keys?: AiKeysAccess
 ): ChatAccess {
-	return new TauriChat(here, drafts, call, telling, keys);
+	return new TauriChat(here, drafts, builds, call, telling, keys);
 }

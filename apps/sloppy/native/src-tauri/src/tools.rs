@@ -43,8 +43,9 @@ const BODY_MAX: usize = 1024 * 1024;
 
 const UNANSWERED: &str = "Nobody answered that. Ask again.";
 
-/// One act as the agent is shown it — what `advertisedChatTools` in
-/// `@sloppy/types` answered, handed over when the session opened.
+/// One act as the agent is shown it — what `advertisedChatTools` or, for a
+/// build session, `advertisedBuildTools` in `@sloppy/types` answered, handed
+/// over when the session opened.
 #[derive(Clone, Deserialize)]
 pub struct Advertised {
     pub name: String,

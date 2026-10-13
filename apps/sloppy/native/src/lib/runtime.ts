@@ -7,6 +7,7 @@
 import { initRuntime, resetApi, session, type KnownFolder, type OpenTabs } from '@sloppy/app-core';
 import {
 	containerOf,
+	DeviceBuilds,
 	DeviceCredentials,
 	DeviceGitDefaults,
 	DeviceThreads,
@@ -22,6 +23,7 @@ import { ulid } from '@sloppy/types';
 import { Refusal } from '@sloppy/ui';
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { tauriBuilds } from './build';
 import { tauriChat } from './chat';
 import { SIGN_IN_CALLBACK } from './deep-link';
 import { tauriDrafts } from './draft';
@@ -326,6 +328,7 @@ export function initNativeRuntime(): void {
 					credentials: new DeviceCredentials(device),
 					aiKeys: deviceAiKeys(device),
 					threads: new DeviceThreads(device),
+					builds: new DeviceBuilds(device),
 					placeFiles: (root: string) => (picked(root) ? device.at(root) : undefined),
 					askPlace: () => askPlace(device),
 					// A graph on this device holds no address of anybody else's, so
@@ -377,7 +380,8 @@ export function initNativeRuntime(): void {
 					project: () => projectHere(device),
 					chat: tauriChat(
 						async () => (await projectHere(device))?.root,
-						tauriDrafts(() => vaultRoot, device)
+						tauriDrafts(() => vaultRoot, device),
+						tauriBuilds(() => vaultRoot, device)
 					)
 				}
 			: {})

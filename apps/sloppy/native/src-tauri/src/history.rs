@@ -357,6 +357,19 @@ impl Kept {
         &self.repo
     }
 
+    /// What reads the merge a checkout is in the middle of, which git keeps
+    /// per checkout.
+    pub(crate) fn repo_mut(&mut self) -> &mut Repository {
+        &mut self.repo
+    }
+
+    /// The vault's path inside the working folder, which is the same path
+    /// inside a copy of that folder — `build.rs` reaches a checkout's notes
+    /// by it.
+    pub(crate) fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
     /// Whether the history holds more than the vault — the project's own code
     /// beside its notes, on the same branches and in the same commits.
     pub(crate) fn keeps_more_than_the_vault(&self) -> bool {
@@ -587,7 +600,7 @@ fn line_names(name: &str, line: &str) -> bool {
 /// What an exclude cannot do: a folder that was a repository before the app
 /// opened it can already be tracking these, and nothing untracks a file by
 /// ignoring it. The files stay where they are; only the history lets go.
-fn let_go(kept: &Kept, index: &mut Index) -> Result<(), HistoryError> {
+pub(crate) fn let_go(kept: &Kept, index: &mut Index) -> Result<(), HistoryError> {
     let held: Vec<PathBuf> = index
         .iter()
         .filter_map(|entry| String::from_utf8(entry.path).ok())
@@ -642,7 +655,7 @@ fn against(repo: &Repository, branch: &str) -> Option<(usize, usize, String)> {
 }
 
 /// The commit the folder is in the middle of merging in, where it is.
-fn merging(repo: &mut Repository) -> Result<Option<Oid>, HistoryError> {
+pub(crate) fn merging(repo: &mut Repository) -> Result<Option<Oid>, HistoryError> {
     let mut found = None;
     match repo.mergehead_foreach(|id| {
         found = Some(*id);
@@ -798,7 +811,7 @@ fn moment(seconds: i64) -> String {
         .to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-fn view(repo: &Repository, commit: &git2::Commit<'_>, trust: &Trust) -> Commit {
+pub(crate) fn view(repo: &Repository, commit: &git2::Commit<'_>, trust: &Trust) -> Commit {
     let by = commit.author();
     Commit {
         signature: crate::signing::signature_of(repo, commit.id(), trust),
@@ -886,7 +899,7 @@ fn still_in_two(kept: &Kept) -> Result<Vec<String>, HistoryError> {
 /// What a conflict is about, as the repository spells it: whichever of the
 /// three sides is there, since any one of them may be the side that took the
 /// file away.
-fn conflicted_path(found: &IndexConflict) -> Option<String> {
+pub(crate) fn conflicted_path(found: &IndexConflict) -> Option<String> {
     found
         .our
         .as_ref()
@@ -1210,7 +1223,7 @@ fn the_vault_alone(
 /// A signature that cannot be made here — a program this machine has not got, a
 /// key it cannot open — leaves the commit unsigned rather than losing what
 /// somebody wrote, and a listing says which commits carry one.
-fn record(
+pub(crate) fn record(
     kept: &Kept,
     root: &Path,
     data: &Path,
@@ -1541,7 +1554,7 @@ pub(crate) fn lay(kept: &Kept, onto: Oid, over: WritesOver) -> Result<(), Histor
 }
 
 /// The commit a local branch is at, and nothing where there is no such branch.
-fn branch_head(repo: &Repository, name: &str) -> Option<Oid> {
+pub(crate) fn branch_head(repo: &Repository, name: &str) -> Option<Oid> {
     repo.find_branch(name, BranchType::Local)
         .ok()
         .and_then(|branch| branch.get().target())
