@@ -78,9 +78,14 @@ class Stub implements ChatAccess {
 	closed: string[] = [];
 	readonly standing = new Map<string, Carried>();
 	readonly builds = new MemoryBuilds(folder());
+	/** What this device says it can run. A test makes it a device with nothing
+	 *  it can start, or one that does not answer at all. */
+	has: ChatAgent[] = ['claude_code'];
+	untold = false;
 
 	agents(): Promise<ChatAgent[]> {
-		return Promise.resolve(['claude_code']);
+		if (this.untold) return Promise.reject(new Error('nothing answered'));
+		return Promise.resolve([...this.has]);
 	}
 
 	open(
@@ -506,6 +511,28 @@ describe('a question raised while the work runs', () => {
 		);
 	});
 
+	it('leaves the task behind it waiting, and builds it once the question is answered', async () => {
+		await going(plan({ tasks: [task('one'), task('two', { after: ['one'] })] }));
+		const first = of('implementer', 'one');
+
+		await act(
+			first,
+			call('raise_need', { id: 'units', question: 'What unit?', why: 'Wrong sum.' })
+		);
+		await act(first, call('hand_off', handoff({ finished: false, summary: 'Waiting on it.' })));
+
+		expect(builds.sessions).toEqual([]);
+		expect(builds.current?.tasks.one.state).toBe('asking');
+		expect(builds.current?.tasks.two.state).toBe('waiting');
+
+		await builds.answer('units', 'Tokens, as the agent counts them.');
+		await settled();
+		await act(of('implementer', 'one'), call('hand_off', handoff()));
+		await act(of('reviewer', 'one'), call('review_build', { clean: true, findings: [] }));
+
+		expect(builds.current?.tasks.two.state).toBe('building');
+	});
+
 	it('keeps a second question under another id, so one answer reaches one question', async () => {
 		await going();
 		const first = of('implementer', 'reader');
@@ -552,6 +579,36 @@ describe('a task a review will not pass', () => {
 		expect(builds.current?.merges).toEqual([]);
 	});
 
+	it('brings the tasks that passed into the line, so there is a rest to bring in', async () => {
+		await going(plan({ tasks: [task('one'), task('two')] }));
+
+		for (let round = 0; round <= BUILD_ROUNDS_MOST; round += 1) {
+			await act(of('implementer', 'one'), call('hand_off', handoff({ files: ['src/one.ts'] })));
+			await act(
+				of('reviewer', 'one'),
+				call('review_build', {
+					clean: false,
+					findings: [{ file: 'src/one.ts', severity: 'blocking', what: 'No.', why: 'Stops.' }]
+				})
+			);
+		}
+		expect(builds.current?.tasks.one.state).toBe('contested');
+
+		await act(of('implementer', 'two'), call('hand_off', handoff({ files: ['src/two.ts'] })));
+		await act(of('reviewer', 'two'), call('review_build', { clean: true, findings: [] }));
+
+		expect(builds.current?.tasks.two.state).toBe('merged');
+		expect(builds.current?.merges).toEqual([{ task: 'two', settled: true, conflicts: [] }]);
+		expect(builds.current?.state).toBe('merging');
+
+		await act(of('merger'), call('hand_off', handoff()));
+
+		// What passed is on the line and checked, and the contested task is still
+		// what the build is standing on.
+		expect(builds.current?.checked).toEqual([{ command: 'pnpm check', passed: true, said: '' }]);
+		expect(builds.current?.state).toBe('contested');
+	});
+
 	it('contests a task waiting on a contested one rather than leaving it waiting', async () => {
 		await going(plan({ tasks: [task('one'), task('two', { after: ['one'] })] }));
 
@@ -568,6 +625,38 @@ describe('a task a review will not pass', () => {
 
 		expect(builds.current?.tasks.two.state).toBe('contested');
 		expect(builds.current?.state).toBe('contested');
+	});
+
+	it('contests tasks waiting on each other, which is a plan nobody can carry out', async () => {
+		await going(
+			plan({ tasks: [task('one', { after: ['two'] }), task('two', { after: ['one'] })] })
+		);
+
+		expect(builds.current?.tasks.one.state).toBe('contested');
+		expect(builds.current?.tasks.two.state).toBe('contested');
+		expect(builds.current?.state).toBe('contested');
+	});
+
+	it('contests the whole chain behind a task nobody could settle', async () => {
+		await going(
+			plan({
+				tasks: [task('three', { after: ['two'] }), task('two', { after: ['one'] }), task('one')]
+			})
+		);
+
+		for (let round = 0; round <= BUILD_ROUNDS_MOST; round += 1) {
+			await act(of('implementer', 'one'), call('hand_off', handoff()));
+			await act(
+				of('reviewer', 'one'),
+				call('review_build', {
+					clean: false,
+					findings: [{ file: 'src/one.ts', severity: 'blocking', what: 'No.', why: 'Stops.' }]
+				})
+			);
+		}
+
+		expect(builds.current?.tasks.two.state).toBe('contested');
+		expect(builds.current?.tasks.three.state).toBe('contested');
 	});
 });
 
@@ -682,6 +771,18 @@ describe('stopping and going on', () => {
 		expect(of('planner')).not.toBe(first);
 	});
 
+	it('stops the build where a task’s copy will not open, and says what happened', async () => {
+		await going();
+		const first = of('implementer', 'reader');
+		await stub.builds.discard(builds.current?.id as Ulid);
+
+		await act(first, call('hand_off', handoff({ finished: false })));
+
+		expect(builds.current?.state).toBe('stopped');
+		expect(builds.says).toContain('not here any more');
+		expect(builds.sessions).toEqual([]);
+	});
+
 	it('stops the build where a session could not go on, and says why', async () => {
 		await going();
 
@@ -780,6 +881,88 @@ describe('the notes a task is built from', () => {
 
 		expect(await builds.addNote('reader', beside)).toBe(false);
 		expect(await builds.takeNote('reader', feature)).toBe(false);
+	});
+});
+
+describe('a session that answers in words instead of an act', () => {
+	it('asks the reading session for the act it was given, then stops the build', async () => {
+		await builds.start([feature], 'reads-a-plan');
+		await settled();
+		const planner = of('planner');
+
+		stub.tell(planner, { event: 'ended' });
+		await settled();
+
+		const asked = stub.said.filter((one) => one.of === planner);
+		expect(asked[asked.length - 1].said).toContain('`plan_build`');
+		// A planner was never served a hand-off, so it is never asked for one.
+		expect(asked.some((one) => one.said.includes('`hand_off`'))).toBe(false);
+
+		stub.tell(planner, { event: 'ended' });
+		await settled();
+
+		expect(builds.current?.state).toBe('stopped');
+		expect(builds.says).toBe('The assistant stopped without saying what the work is.');
+		expect(builds.sessions).toEqual([]);
+
+		await builds.goOn();
+		await settled();
+
+		expect(builds.current?.state).toBe('reading');
+		expect(of('planner')).not.toBe(planner);
+	});
+
+	it('asks a session reading one task for `review_build`', async () => {
+		await going();
+		await act(of('implementer', 'reader'), call('hand_off', handoff()));
+		const reviewer = of('reviewer', 'reader');
+
+		stub.tell(reviewer, { event: 'ended' });
+		await settled();
+
+		const asked = stub.said.filter((one) => one.of === reviewer);
+		expect(asked[asked.length - 1].said).toContain('`review_build`');
+		expect(asked.some((one) => one.said.includes('`hand_off`'))).toBe(false);
+	});
+
+	it('contests the task where a session building it answers nothing twice over', async () => {
+		await going();
+		const first = of('implementer', 'reader');
+
+		stub.tell(first, { event: 'ended' });
+		await settled();
+		stub.tell(first, { event: 'ended' });
+		await settled();
+
+		expect(builds.current?.tasks.reader.state).toBe('contested');
+		expect(builds.says).toBe('The assistant stopped without saying what it built.');
+	});
+});
+
+describe('a device with no assistant to build with', () => {
+	it('keeps the act and says it needs one installed here', async () => {
+		stub.has = ['anthropic'];
+		await chat.lookForAgents();
+
+		// DESIGN.md § "A build": an act that vanishes teaches nobody why.
+		expect(builds.offered).toBe(true);
+		expect(builds.assistantHere).toBe(false);
+		expect(await builds.start([feature], 'reads-a-plan')).toBe(false);
+		expect(builds.says).toContain('installed on this device');
+		expect(builds.current).toBe(null);
+		// Nothing was minted, no session opened, and no version kept.
+		expect(stub.asked).toEqual([]);
+		expect((await kept.log(10)).commits).toHaveLength(1);
+	});
+
+	it('is told apart from a device that did not say what it has', async () => {
+		stub.untold = true;
+		await chat.lookForAgents();
+
+		expect(builds.assistantHere).toBeUndefined();
+		expect(await builds.start([feature], 'reads-a-plan')).toBe(false);
+		expect(builds.says).not.toContain('installed');
+		expect(builds.current).toBe(null);
 	});
 });
 

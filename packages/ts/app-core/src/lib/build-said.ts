@@ -10,7 +10,13 @@
  * docs/ARCHITECTURE.md § "Building from the notes".
  */
 
-import { type BuildHandoff, type BuildReview, CHAT_ASKED_MAX, type OwnedRef } from '@sloppy/types';
+import {
+	type BuildHandoff,
+	type BuildReview,
+	type BuildRole,
+	CHAT_ASKED_MAX,
+	type OwnedRef
+} from '@sloppy/types';
 
 /** One question the person has answered, as the session that asked it is told.
  *  **Absent `note` is a question they set aside**, which is built without. */
@@ -23,6 +29,23 @@ export interface NeedAnswered {
  *  and a fresh one goes on from what it wrote. */
 export const HAND_OFF_NOW =
 	'Stop where you are and call `hand_off` now, with `finished` false unless you are actually done. Say in it exactly what the next session has to pick up, because it will be given this and nothing else of yours.';
+
+/**
+ * The turn a session that has to answer NOW is sent — its window is filling, or
+ * it ended a turn having said nothing at all. **It names the act that role was
+ * served**: `toolsForRole` gives a planner and a reviewer no `hand_off`, so
+ * asking either for one is asking for what it cannot call.
+ */
+export function answerNow(role: BuildRole): string {
+	switch (role) {
+		case 'planner':
+			return 'Stop where you are and call `plan_build` now, with the tasks you can already name and everything you still do not know as a need. Words on their own are not read here.';
+		case 'reviewer':
+			return 'Stop where you are and call `review_build` now, with what you have found so far and `clean` false unless what you read is right.';
+		default:
+			return HAND_OFF_NOW;
+	}
+}
 
 /** The turn that starts the reading session on the plan. */
 export function planningSaid(): string {

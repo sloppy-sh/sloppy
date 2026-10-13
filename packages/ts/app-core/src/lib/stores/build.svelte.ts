@@ -35,6 +35,7 @@ import {
 	type BuildTaskRun,
 	type BuildTaskState,
 	buildLine,
+	chatAgentReach,
 	type ContextUsage,
 	contextTogether,
 	MOST_HANDOFFS,
@@ -60,10 +61,10 @@ import {
 	type BriefOf
 } from '../build-brief.js';
 import {
+	answerNow,
 	buildingSaid,
 	checkingSaid,
 	fixingSaid,
-	HAND_OFF_NOW,
 	mergingSaid,
 	planningSaid,
 	reviewingSaid,
@@ -78,6 +79,7 @@ import { nodes } from './nodes.svelte.js';
 import { troubleIn, whatHappened } from './what-happened.svelte.js';
 
 const NO_ASSISTANT = 'Sloppy needs an assistant installed on this device to build anything.';
+const UNTOLD = 'Sloppy could not tell what this device can build with. Try again.';
 const ONE_AT_A_TIME = 'There is already a build on this project. Read it, or discard it first.';
 const NO_PROJECT = 'There is no project open here to build in.';
 const NOTHING_KEPT =
@@ -87,6 +89,7 @@ const UNKEPT = 'Sloppy could not keep the build just now. Try again.';
 const NOT_ANSWERED = 'That question is not one this build is waiting on.';
 const NOTHING_WRITTEN = 'Write the answer first.';
 const NOTHING_HANDED_ON = 'The assistant stopped without saying what it built.';
+const NOTHING_PLANNED = 'The assistant stopped without saying what the work is.';
 
 /** What a version kept for a build is called where somebody reads their own
  *  history. It names what it was for and nothing about who asked. */
@@ -176,9 +179,23 @@ class BuildStore {
 	 *  for. */
 	#writes: Promise<void> = Promise.resolve();
 
-	/** Whether this device can build at all. */
+	/** Whether the shell this runs in holds the lines and the copies a build
+	 *  works in, which is what keeps the act off a browser tab. */
 	get reaches(): boolean {
 		return seam().chat()?.builds !== undefined;
+	}
+
+	/**
+	 * Whether an assistant this device can RUN is here to build with — a program
+	 * on this machine, which is what every session of a build is. `undefined` is
+	 * a device that has not said what it has or could not say: that is not a
+	 * device with none, and telling somebody to install what they already have
+	 * is worse than saying nothing.
+	 */
+	get assistantHere(): boolean | undefined {
+		const held = chat.agents;
+		if (!Array.isArray(held)) return undefined;
+		return held.some((one) => chatAgentReach(one) === 'program');
 	}
 
 	/** The build standing on this project, whatever state it is in. `null` is a
@@ -187,8 +204,13 @@ class BuildStore {
 		return this.#held;
 	}
 
-	/** Whether a build can be started here, which is a project with none
-	 *  standing. */
+	/**
+	 * Whether the act stands in front of somebody: a project with no build on it,
+	 * on a device whose shell can run one. **An assistant is not part of this** —
+	 * the act stays where the note is and says it needs one installed here, since
+	 * an act that vanishes teaches nobody why (DESIGN.md § "A build").
+	 * {@link assistantHere} is what says so.
+	 */
 	get offered(): boolean {
 		return this.reaches && this.#held === null;
 	}
@@ -288,8 +310,12 @@ class BuildStore {
 	 * that is Go's.
 	 */
 	async start(about: readonly OwnedRef[], name: BuildName): Promise<boolean> {
-		if (!this.reaches) return this.#tell(NO_ASSISTANT);
+		if (!this.reaches) return false;
 		if (this.#held) return this.#tell(ONE_AT_A_TIME);
+		if (chat.agents === null) await chat.lookForAgents();
+		const here = this.assistantHere;
+		if (here === false) return this.#tell(NO_ASSISTANT);
+		if (here === undefined) return this.#tell(UNTOLD);
 		const graph = this.#of;
 		const project = this.#project;
 		if (graph === null || project === null || project === '') return this.#tell(NO_PROJECT);
@@ -386,7 +412,7 @@ class BuildStore {
 		const build = this.#held;
 		const builds = seam().chat()?.builds;
 		if (!build?.plan || build.state !== 'answering') return false;
-		if (!builds) return this.#tell(NO_ASSISTANT);
+		if (!builds) return this.#tell(UNSTARTED);
 		this.#says = null;
 		await graphHistory.keep(KEPT_FOR_A_BUILD);
 		const from = await graphHistory.versionNow();
@@ -469,10 +495,14 @@ class BuildStore {
 			return runs.every((run) => run.state === 'reviewing' || SETTLED.includes(run.state))
 				? 'reviewing'
 				: 'building';
+		// Every task has settled. What passed goes into the line BEFORE a contested
+		// one is reported, because the person offered "bring in the rest" has to
+		// have a rest to bring (DESIGN.md § "A build").
+		if (runs.some((run) => run.state === 'built')) return 'merging';
+		const brought = runs.some((run) => run.state === 'merged');
+		if (brought && build.checked === undefined) return 'merging';
 		if (runs.some((run) => run.state === 'contested')) return 'contested';
-		return build.checked === undefined || runs.some((run) => run.state === 'built')
-			? 'merging'
-			: 'built';
+		return 'built';
 	}
 
 	/** The sessions a build in one of the running phases needs, opened again. */
@@ -524,7 +554,8 @@ class BuildStore {
 		try {
 			cwd = await builds.taskCheckout(build.id, task.id);
 		} catch (error) {
-			this.#tell(wordsFor(error) ?? UNSTARTED);
+			whatHappened.put('trouble', `a task's copy did not open: ${troubleIn(error)}`);
+			await this.#stopped(wordsFor(error) ?? UNSTARTED);
 			return;
 		}
 		await this.#taskNow(task.id, { state: 'building' });
@@ -549,7 +580,8 @@ class BuildStore {
 		try {
 			cwd = await builds.taskCheckout(build.id, task.id);
 		} catch (error) {
-			this.#tell(wordsFor(error) ?? UNSTARTED);
+			whatHappened.put('trouble', `a task's copy did not open: ${troubleIn(error)}`);
+			await this.#stopped(wordsFor(error) ?? UNSTARTED);
 			return;
 		}
 		await this.#open(
@@ -569,7 +601,10 @@ class BuildStore {
 		const build = this.#held;
 		if (!build?.plan) return;
 		const path = await this.#linePath();
-		if (path === null) return;
+		if (path === null) {
+			await this.#stopped(this.#says ?? UNSTARTED);
+			return;
+		}
 		const notes = settling === undefined ? build.about : (this.#taskOf(settling)?.notes ?? []);
 		await this.#open(
 			{
@@ -756,7 +791,8 @@ class BuildStore {
 		if (!build || !builds) return;
 		const settling = running.settling;
 		if (settling === undefined) {
-			await this.#keep({ ...build, checked: [...handoff.checks], state: 'built' });
+			const checked = { ...build, checked: [...handoff.checks] };
+			await this.#keep({ ...checked, state: this.#phaseNow(checked) });
 			try {
 				await builds.finish(build.id);
 			} catch (error) {
@@ -803,7 +839,7 @@ class BuildStore {
 				this.#context.set(conversation, usage);
 				if (!running.asked && !running.over && fillingUp(usage)) {
 					running.asked = true;
-					void running.live.say(HAND_OFF_NOW).catch(() => {
+					void running.live.say(answerNow(running.role)).catch(() => {
 						running.wanted = true;
 					});
 				}
@@ -834,7 +870,7 @@ class BuildStore {
 		if (running.wanted) {
 			running.wanted = false;
 			try {
-				await running.live.say(HAND_OFF_NOW);
+				await running.live.say(answerNow(running.role));
 				return;
 			} catch {
 				// Nothing to say it into any more; the next turn's end asks again.
@@ -847,13 +883,18 @@ class BuildStore {
 			if (running.task !== undefined) {
 				await this.#taskNow(running.task, { state: 'contested' });
 				this.#tell(NOTHING_HANDED_ON);
+				await this.#advance();
+				return;
 			}
-			await this.#advance();
+			// Nothing else carries the phase a planner or a merger was opened for,
+			// so the build stops with what landed and Continue is there — rather
+			// than a card that says it is reading and nothing running.
+			await this.#stopped(running.role === 'planner' ? NOTHING_PLANNED : NOTHING_HANDED_ON);
 			return;
 		}
 		running.nudged = true;
 		try {
-			await running.live.say(HAND_OFF_NOW);
+			await running.live.say(answerNow(running.role));
 		} catch {
 			running.wanted = true;
 		}
@@ -890,6 +931,7 @@ class BuildStore {
 		await this.#contestTheBlocked();
 		for (const want of ['reviewing', 'building', 'waiting'] as const) {
 			for (const task of this.#held?.plan?.tasks ?? []) {
+				if (!this.#goingOn()) return;
 				const run = this.#held?.tasks[task.id];
 				if (run?.state !== want) continue;
 				if (this.#sessionFor(task.id) || this.#underway() >= BUILD_TASKS_AT_ONCE) continue;
@@ -902,34 +944,59 @@ class BuildStore {
 	}
 
 	/** A task waiting on one nobody could settle cannot be built, so it is said
-	 *  rather than left waiting for something that will never come. */
+	 *  rather than left waiting for something that will never come — and so is
+	 *  the one waiting on THAT, however deep the chain runs. */
 	async #contestTheBlocked(): Promise<void> {
-		for (const task of this.#held?.plan?.tasks ?? []) {
-			const run = this.#held?.tasks[task.id];
-			if (run?.state !== 'waiting') continue;
-			const blocked = (task.after ?? []).some(
-				(one) => this.#held?.tasks[one]?.state === 'contested'
-			);
-			if (blocked) await this.#taskNow(task.id, { state: 'contested' });
+		for (;;) {
+			let any = false;
+			for (const task of this.#held?.plan?.tasks ?? []) {
+				if (this.#held?.tasks[task.id]?.state !== 'waiting') continue;
+				const blocked = (task.after ?? []).some(
+					(one) => this.#held?.tasks[one]?.state === 'contested'
+				);
+				if (!blocked) continue;
+				await this.#taskNow(task.id, { state: 'contested' });
+				any = true;
+			}
+			if (!any) return;
 		}
 	}
 
 	/** Where the whole build has got to, once nothing more is running. */
 	async #settle(): Promise<void> {
 		const build = this.#held;
-		if (!build?.plan) return;
-		const runs = build.plan.tasks.map((task) => build.tasks[task.id]);
-		if (this.#running.size === 0 && runs.some((run) => run?.state === 'waiting')) {
-			// Nothing is running and nothing can start: the tasks are waiting on
-			// each other, which is a plan nobody here can carry out.
-			for (const task of build.plan.tasks)
-				if (build.tasks[task.id]?.state === 'waiting')
-					await this.#taskNow(task.id, { state: 'contested' });
-		}
+		if (!build?.plan || !this.#goingOn()) return;
+		if (this.#running.size === 0)
+			for (const task of this.#goingNowhere(build))
+				await this.#taskNow(task, { state: 'contested' });
 		const held = this.#held;
-		if (!held) return;
+		if (!held || !this.#goingOn()) return;
 		const state = this.#phaseNow(held);
 		if (state !== held.state) await this.#keep({ ...held, state });
+	}
+
+	/**
+	 * The tasks waiting for something that will never come: every task they wait
+	 * on is itself waiting, which is a plan with a ring in it. **One waiting on a
+	 * task being built, read or held on a question is not one of these** — that
+	 * answer is still coming, and the task behind it goes on afterwards.
+	 */
+	#goingNowhere(build: Build): BuildSlug[] {
+		const waiting = (build.plan?.tasks ?? []).filter(
+			(task) => build.tasks[task.id]?.state === 'waiting'
+		);
+		const alsoWaiting = (id: BuildSlug) => waiting.some((task) => task.id === id);
+		let coming: BuildSlug[] = [];
+		for (;;) {
+			const next = waiting
+				.filter((task) =>
+					(task.after ?? []).every((one) => !alsoWaiting(one) || coming.includes(one))
+				)
+				.map((task) => task.id);
+			if (next.length === coming.length)
+				return waiting.map((task) => task.id).filter((one) => !next.includes(one));
+			coming = next;
+		}
 	}
 
 	/** The tasks into the line, one at a time, and the line's checks once they
@@ -975,6 +1042,14 @@ class BuildStore {
 			const run = this.#held?.tasks[one];
 			return run === undefined || run.state === 'built' || run.state === 'merged';
 		});
+	}
+
+	/** Whether the build is still in a phase that runs sessions. A session that
+	 *  could not be opened stops it mid-pass, and nothing after that opens a
+	 *  second one or reads a phase off a build nobody is running. */
+	#goingOn(): boolean {
+		const state = this.#held?.state;
+		return state !== undefined && RUNNING.includes(state);
 	}
 
 	/** How many tasks are being worked on now, which is what
