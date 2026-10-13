@@ -10,9 +10,13 @@
 //! other dialect costs this file nothing.
 //!
 //! The program, its options and the endpoint it is pointed at are this file's.
-//! What a caller hands over is a folder somebody picked, the acts the webview
-//! will serve, and words; the words reach the agent on its own input rather
-//! than as an argument.
+//! What a caller hands over is the folder the session runs in, the acts the
+//! webview will serve, and words; the words reach the agent on its own input
+//! rather than as an argument.
+//!
+//! **What a session may do is a table here, by what it is for** — `tools_for` —
+//! because the tool names are one program's dialect and no shape the page
+//! carries names them: docs/ARCHITECTURE.md § "Building from the notes".
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -61,23 +65,69 @@ const AGENTS: &[Agent] = &[Agent {
     ],
 }];
 
-/// The tools of the agent's own it may use and the ones it may not: the ones
-/// that read, the web only where the person allows it, and never anything that
-/// writes a file or runs a program.
-fn tools_for(web: bool) -> [(&'static str, String); 2] {
-    let reading = if web {
-        "Read,Grep,Glob,WebFetch,WebSearch"
-    } else {
-        "Read,Grep,Glob"
-    };
-    let barred = if web {
-        "Bash,Edit,NotebookEdit,Task,Write"
-    } else {
-        "Bash,Edit,NotebookEdit,Task,WebFetch,WebSearch,Write"
-    };
+/// What a session is FOR, as `BuildRole` in `@sloppy/types` spells one.
+/// Nothing but the table below reads it: the roles are the build's and the tool
+/// names are one program's dialect, so no shape either side carries both.
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    Planner,
+    Implementer,
+    Reviewer,
+    Merger,
+}
+
+/// Every tool of the agent's own this app has an opinion about, so one it does
+/// not name is one no session is given.
+const EVERY_TOOL: [&str; 10] = [
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "NotebookEdit",
+    "Read",
+    "Task",
+    "WebFetch",
+    "WebSearch",
+    "Write",
+];
+
+const WEB_TOOLS: [&str; 2] = ["WebFetch", "WebSearch"];
+
+/// What a session may do, by what it is for — docs/ARCHITECTURE.md § "Building
+/// from the notes". Reading for the chat and for a planner, the checks as well
+/// for a reviewer, and writing and running for an implementer and a merger.
+///
+/// **`Task` is in none of them.** Sloppy is the orchestrator, and a session
+/// that starts sessions of its own has a context nobody here can see or bound.
+fn allowed(role: Option<Role>) -> &'static [&'static str] {
+    const READING: &[&str] = &["Read", "Grep", "Glob"];
+    const CHECKING: &[&str] = &["Read", "Grep", "Glob", "Bash"];
+    const WRITING: &[&str] = &["Read", "Grep", "Glob", "Bash", "Edit", "Write"];
+    match role {
+        None | Some(Role::Planner) => READING,
+        Some(Role::Reviewer) => CHECKING,
+        Some(Role::Implementer | Role::Merger) => WRITING,
+    }
+}
+
+/// The tools of the agent's own this session may use and the ones it may not.
+/// The web is the person's allowance rather than the role's, so it is the one
+/// axis beside the table.
+fn tools_for(role: Option<Role>, web: bool) -> [(&'static str, String); 2] {
+    let held: Vec<&str> = allowed(role)
+        .iter()
+        .copied()
+        .chain(WEB_TOOLS.into_iter().filter(|_| web))
+        .collect();
+    let barred: Vec<&str> = EVERY_TOOL
+        .iter()
+        .copied()
+        .filter(|one| !held.contains(one))
+        .collect();
     [
-        ("--allowedTools", reading.to_owned()),
-        ("--disallowedTools", barred.to_owned()),
+        ("--allowedTools", held.join(",")),
+        ("--disallowedTools", barred.join(",")),
     ]
 }
 
@@ -152,8 +202,8 @@ pub enum Heard {
     },
 }
 
-/// The sessions this device has underway, one per thread, each held so that
-/// ending it reaches the program, everything that program started, and the
+/// The sessions this device has underway, one per conversation, each held so
+/// that ending it reaches the program, everything that program started, and the
 /// endpoint it was calling. **How many stand at once is the page's rule** —
 /// `ChatAccess` in `@sloppy/app-core` — so this holds whatever it is handed and
 /// ends only what it is asked to.
@@ -182,8 +232,8 @@ struct Ended {
 }
 
 impl Chat {
-    /// Hand over a started session for `thread`, ending the one that stood for
-    /// that thread and leaving every other thread's standing.
+    /// Hand over a started session for `thread`, ending the one that stood
+    /// under that name and leaving every other one standing.
     fn holds(&self, thread: String, session: Session) {
         let standing = self.0.lock().unwrap().insert(thread, session);
         if let Some(child) = standing.and_then(|mut standing| standing.child.take()) {
@@ -298,12 +348,15 @@ fn marked() -> u64 {
 
 /// What a session is opened with, beside where it runs.
 struct Opening<'a> {
-    /// Which of the person's threads this session is for, as `@sloppy/types`
-    /// spells a thread's id. It is what every later act is keyed by, and is
-    /// never said to the agent.
+    /// Which conversation this session is, as the page keys it: a chat's
+    /// thread, or one of the several a build runs at once. It is what every
+    /// later act names, and is never said to the agent.
     thread: &'a str,
     tools: &'a [Advertised],
     brief: &'a str,
+    /// What the session is for, which decides the tools of the agent's own it
+    /// is given. Absent is the chat.
+    role: Option<Role>,
     /// Absent is whatever the agent would answer with on its own.
     model: Option<&'a str>,
     /// Which conversation this is. Absent is one this app names itself, which
@@ -393,7 +446,7 @@ fn start(
 ) -> Result<Child, ChatError> {
     let mut how = Command::new(program);
     how.args(args);
-    for (flag, tools) in tools_for(with.web) {
+    for (flag, tools) in tools_for(with.role, with.web) {
         how.arg(flag).arg(tools);
     }
     match with.session.filter(|_| with.resume) {
@@ -477,13 +530,17 @@ pub async fn chat_agents() -> Vec<&'static str> {
 #[serde(rename_all = "camelCase")]
 pub struct Asked {
     pub agent: String,
-    /// Which of the person's threads this session is for. One session stands
-    /// per thread, and this is what `chat_say`, `chat_answer` and `chat_close`
-    /// name.
+    /// Which conversation this session is, as the page keys it. One session
+    /// stands per conversation, and this is what `chat_say`, `chat_answer` and
+    /// `chat_close` name.
     pub thread: String,
-    pub root: String,
+    /// The folder the session runs in: a chat's draft of the project, or the
+    /// copy a build's task or line is worked on in.
+    pub cwd: String,
     pub tools: Vec<Advertised>,
     pub brief: String,
+    /// What the session is for. Absent is the chat.
+    pub role: Option<Role>,
     pub model: Option<String>,
     /// The conversation to open as, or to pick up where `resume`. Absent is a
     /// chat nobody has opened before, which this app names itself.
@@ -503,14 +560,15 @@ fn reaches_web() -> bool {
     true
 }
 
-/// Start a session for `thread`, ending the one that stood for it and leaving
-/// every other thread's standing. `tools` are the acts the webview
-/// will serve, as `advertisedChatTools` in `@sloppy/types` answered; `brief` is
-/// what the agent is told before it hears the person, which is `chatBrief` in
-/// `@sloppy/local` and without which it does not know it is in Sloppy at all;
-/// `model` absent is whatever the agent would answer with on its own; `places`
-/// are the folders this chat reads besides its own project, and a session is
-/// refused rather than started where this app may not reach one of them.
+/// Start a session for `thread`, ending the one that stood under that name and
+/// leaving every other one standing. `tools` are the acts the webview will
+/// serve, as `advertisedChatTools` or `advertisedBuildTools` in `@sloppy/types`
+/// answered; `brief` is what the agent is told before it hears the person,
+/// without which it does not know it is in Sloppy at all; `role` absent is the
+/// chat; `model` absent is whatever the agent would answer with on its own;
+/// `places` are the folders this session reads besides the folder it runs in,
+/// and a session is refused rather than started where this app may not reach
+/// one of them.
 #[tauri::command]
 pub async fn chat_open(
     folders: State<'_, Folders>,
@@ -521,9 +579,10 @@ pub async fn chat_open(
     let Asked {
         agent,
         thread,
-        root,
+        cwd,
         tools,
         brief,
+        role,
         model,
         session,
         resume,
@@ -534,7 +593,7 @@ pub async fn chat_open(
         .iter()
         .find(|one| one.id == agent)
         .ok_or_else(|| ChatError::new(NO_PROGRAM))?;
-    let at = folders.opened(&root)?.to_path_buf();
+    let at = folders.opened(&cwd)?.to_path_buf();
     let places = places_in(&folders, &places)?;
     let chat = chat.inner().clone();
     let telling: Arc<dyn Fn(Heard) + Send + Sync> = Arc::new(move |message| {
@@ -546,6 +605,7 @@ pub async fn chat_open(
             thread: &thread,
             tools: &tools,
             brief: &brief,
+            role,
             model: model.as_deref(),
             session: session.as_deref(),
             resume,
@@ -558,7 +618,7 @@ pub async fn chat_open(
     .map_err(|_| ChatError::new(DIDNT_START))?
 }
 
-/// One line onto this thread's agent's own input, with the newline this side's.
+/// One line onto that session's own input, with the newline this side's.
 /// What a line SAYS is the agent's own dialect, which `chat.ts` in this shell
 /// spells.
 #[tauri::command]
@@ -585,9 +645,9 @@ pub fn chat_answer(
     )
 }
 
-/// End this thread's session, leaving every other thread's standing. It is over
-/// once `Heard::Over` reaches the page, which is what a caller waiting on the
-/// end waits for.
+/// End that conversation's session, leaving every other one standing. It is
+/// over once `Heard::Over` reaches the page, which is what a caller waiting on
+/// the end waits for.
 ///
 /// **Not the end of a TURN.** A person who stops the turn underway keeps the
 /// session, and that end is said to the agent on its own input like everything
@@ -616,6 +676,7 @@ mod tests {
             thread: THREAD,
             tools: &[],
             brief: "",
+            role: None,
             model: None,
             session: None,
             resume: false,
@@ -1003,6 +1064,93 @@ mod tests {
             assert!(!barred.split(',').any(|one| one == reads), "{barred}");
             assert!(barred.contains("Bash") && barred.contains("Write"));
         }
+    }
+
+    /// What a session may do is what it is FOR: a planner reads, a reviewer
+    /// runs the project's checks as well, an implementer and a merger write and
+    /// run, and none of them starts sessions of its own.
+    #[cfg(unix)]
+    #[test]
+    fn the_tools_a_session_is_given_are_the_ones_its_role_is_for() {
+        for (role, reaches, kept_out) in [
+            (None, vec![], vec!["Bash", "Edit", "Write", "Task"]),
+            (
+                Some(Role::Planner),
+                vec![],
+                vec!["Bash", "Edit", "Write", "Task"],
+            ),
+            (
+                Some(Role::Reviewer),
+                vec!["Bash"],
+                vec!["Edit", "Write", "Task"],
+            ),
+            (
+                Some(Role::Implementer),
+                vec!["Bash", "Edit", "Write"],
+                vec!["Task", "NotebookEdit"],
+            ),
+            (
+                Some(Role::Merger),
+                vec!["Bash", "Edit", "Write"],
+                vec!["Task", "NotebookEdit"],
+            ),
+        ] {
+            let at = scratch("role");
+            let program = echoing(&at);
+            let thread = Thread::default();
+            let with = Opening { role, ..nothing() };
+
+            open(&STUB, &program, &at, with, thread.sink(), Chat::default()).expect("a session");
+
+            waits("the end", || thread.overs().len() == 1);
+            let lines = thread.lines();
+            let allowed = after(&lines, "--allowedTools").expect("the tools it may use");
+            let barred = after(&lines, "--disallowedTools").expect("the tools kept from it");
+            let holds = |held: &str, one: &str| held.split(',').any(|name| name == one);
+            for one in ["Read", "Grep", "Glob"] {
+                assert!(holds(&allowed, one), "{allowed}");
+            }
+            for one in reaches {
+                assert!(holds(&allowed, one), "{allowed}");
+                assert!(!holds(&barred, one), "{barred}");
+            }
+            for one in kept_out {
+                assert!(holds(&barred, one), "{barred}");
+                assert!(!holds(&allowed, one), "{allowed}");
+            }
+            // Every tool this app has an opinion about is on one side or the
+            // other, so a role is never handed one by its being left out.
+            assert_eq!(
+                allowed.split(',').chain(barred.split(',')).count(),
+                EVERY_TOOL.len(),
+                "{allowed} / {barred}"
+            );
+        }
+    }
+
+    /// A session runs in the folder it was given and nowhere else: a chat's
+    /// draft of the project, or the copy a build's task or line is worked on in.
+    #[cfg(unix)]
+    #[test]
+    fn a_session_runs_in_the_folder_it_was_given() {
+        let at = scratch("cwd");
+        let elsewhere = scratch("cwd-elsewhere");
+        let program = stub(&elsewhere, "agent", "pwd");
+        let thread = Thread::default();
+
+        open(
+            &STUB,
+            &program,
+            &at,
+            nothing(),
+            thread.sink(),
+            Chat::default(),
+        )
+        .expect("a session");
+
+        waits("the end", || thread.overs().len() == 1);
+        let here = fs::canonicalize(&at).expect("where it ran");
+        assert_eq!(thread.lines(), [here.to_string_lossy()]);
     }
 
     /// Reopening a thread hands the agent the conversation it already holds,

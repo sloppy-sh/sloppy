@@ -10,7 +10,8 @@ import {
 	type ChatToolAnswer,
 	type SloppyToolCall,
 	type ContextUsage,
-	type StandingDraft
+	type StandingDraft,
+	toolsForRole
 } from '@sloppy/types';
 import { Refusal } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,12 +56,13 @@ let here: string[];
 type Opened = {
 	agent: string;
 	thread: string;
-	root: string;
+	cwd: string;
 	tools: { name: string }[];
 	brief: string;
 	places: string[];
 	resume: boolean;
 	web: boolean;
+	role?: string;
 	model?: string;
 	session?: string;
 };
@@ -208,7 +210,7 @@ function drafts(): DraftAccess {
 }
 
 function chat(): ChatAccess {
-	return tauriChat(project, drafts(), call, () => ({ onmessage: () => {} }));
+	return tauriChat(project, drafts(), undefined, call, () => ({ onmessage: () => {} }));
 }
 
 /** A session open and saying nothing yet, with the handle it answered with and
@@ -404,15 +406,14 @@ describe('the agents this device can reach', () => {
 			forget: async () => {}
 		};
 
-		expect(await tauriChat(project, drafts(), call, () => channel, keys).agents()).toEqual([
-			'claude_code',
-			'deepseek'
-		]);
+		expect(
+			await tauriChat(project, drafts(), undefined, call, () => channel, keys).agents()
+		).toEqual(['claude_code', 'deepseek']);
 
 		here = [];
-		expect(await tauriChat(project, drafts(), call, () => channel, keys).agents()).toEqual([
-			'deepseek'
-		]);
+		expect(
+			await tauriChat(project, drafts(), undefined, call, () => channel, keys).agents()
+		).toEqual(['deepseek']);
 	});
 
 	it('says what to install where a chat is opened anyway', async () => {
@@ -437,7 +438,7 @@ describe('a session', () => {
 		await opened();
 
 		expect(opens[0].agent).toBe('claude_code');
-		expect(opens[0].root).toBe(standing[0].root);
+		expect(opens[0].cwd).toBe(standing[0].root);
 		expect(opens[0].tools.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
 	});
 
@@ -445,6 +446,7 @@ describe('a session', () => {
 		const access = tauriChat(
 			async () => undefined,
 			drafts(),
+			undefined,
 			call,
 			() => channel
 		);
@@ -456,11 +458,11 @@ describe('a session', () => {
 	});
 
 	it('starts the agent in the project itself where this shell keeps no draft', async () => {
-		const access = tauriChat(project, undefined, call, () => ({ onmessage: () => {} }));
+		const access = tauriChat(project, undefined, undefined, call, () => ({ onmessage: () => {} }));
 
 		await access.open(asking(), () => {}, serve);
 
-		expect(opens[0].root).toBe(PROJECT);
+		expect(opens[0].cwd).toBe(PROJECT);
 	});
 
 	it("says what somebody typed onto the agent's own input", async () => {
@@ -1037,7 +1039,7 @@ describe('the draft a chat works in', () => {
 		await opened();
 
 		expect(started).toEqual([]);
-		expect(opens[0].root).toBe(`${COPIES}/${THREAD}`);
+		expect(opens[0].cwd).toBe(`${COPIES}/${THREAD}`);
 	});
 
 	it('takes one copy where a page and a session ask for it at once', async () => {
@@ -1101,7 +1103,7 @@ describe('the draft a chat works in', () => {
 		await access.open(asking({ thread: { id: SECOND, places: [] } }), () => {}, serve);
 
 		expect((await access.drafts?.standing())?.map((one) => one.id)).toEqual([THREAD, SECOND]);
-		expect(opens.map((one) => one.root)).toEqual([`${COPIES}/${THREAD}`, `${COPIES}/${SECOND}`]);
+		expect(opens.map((one) => one.cwd)).toEqual([`${COPIES}/${THREAD}`, `${COPIES}/${SECOND}`]);
 	});
 });
 
@@ -1533,5 +1535,62 @@ describe('what the agent is told before it hears anybody', () => {
 
 		await chat().open(asking(), () => {}, serve);
 		expect(opens[1].model).toBeUndefined();
+	});
+});
+
+describe('a session a build opens', () => {
+	/** The copy a task is worked on in, as `build_task_checkout` answers it. */
+	const COPY = '/data/builds/01JAPART000000000000000000/reader';
+	const CONVERSATION = '01JAPART00000000000000000C';
+	/** What the page composed for that task, which is what a build session is
+	 *  told in place of the chat's own brief. */
+	const BRIEF = 'You are building the reader. The note it is for says: a reader.';
+
+	const building = (more: Partial<ChatAsked> = {}): ChatAsked =>
+		asking({
+			conversation: CONVERSATION,
+			role: 'implementer',
+			cwd: COPY,
+			brief: BRIEF,
+			...more
+		});
+
+	it('runs in the copy it was given, and takes no draft of the notes', async () => {
+		await chat().open(building(), () => {}, serve);
+
+		expect(opens[0].cwd).toBe(COPY);
+		expect(started).toEqual([]);
+	});
+
+	it('is served the acts its role is for, and told what the page composed', async () => {
+		await chat().open(building({ role: 'planner' }), () => {}, serve);
+
+		expect(opens[0].role).toBe('planner');
+		expect(opens[0].tools.map((tool) => tool.name)).toEqual([...toolsForRole('planner')]);
+		expect(opens[0].brief).toBe(BRIEF);
+	});
+
+	it('stands beside the thread’s own, and only its own is replaced', async () => {
+		const access = chat();
+		const chatting: ChatEvent[] = [];
+		const heard: ChatEvent[] = [];
+		await access.open(asking(), (event) => chatting.push(event), serve);
+		await access.open(building(), (event) => heard.push(event), serve);
+
+		await access.open(building(), (event) => heard.push(event), serve);
+
+		expect(heard.at(-1)).toEqual({ event: 'over' });
+		expect(chatting).toEqual([]);
+		expect(opens.map((held) => held.thread)).toEqual([THREAD, CONVERSATION, CONVERSATION]);
+	});
+
+	it('is refused where the page said what it is for and not what it is to do', async () => {
+		const asked = building();
+		delete asked.brief;
+
+		await expect(chat().open(asked, () => {}, serve)).rejects.toThrow(
+			'Sloppy could not start that part of the build.'
+		);
+		expect(opens).toEqual([]);
 	});
 });

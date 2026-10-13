@@ -103,7 +103,7 @@ fn prefix_of(repo: &Repository, vault: &Path) -> String {
 
 /// The same vault inside the copy: the copy's own root, and then wherever the
 /// notes sit inside it.
-fn vault_in(worktree: &Path, prefix: &str) -> PathBuf {
+pub(crate) fn vault_in(worktree: &Path, prefix: &str) -> PathBuf {
     if prefix.is_empty() {
         worktree.to_path_buf()
     } else {

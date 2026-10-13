@@ -198,6 +198,9 @@ impl AsRef<Path> for Opened {
 /// Where the drafts sit inside this app's own data.
 const DRAFTS_DIR: &str = "drafts";
 
+/// Where the builds' copies sit inside this app's own data.
+const BUILDS_DIR: &str = "builds";
+
 /// The folders this app may reach: its own private data, and every folder a
 /// person has picked. A pick is written down, so a graph opened yesterday opens
 /// today without anybody being asked again.
@@ -232,6 +235,12 @@ impl Folders {
     /// them back, and this is what makes each one its own boundary.
     pub fn drafts_path(&self) -> PathBuf {
         self.data.join(DRAFTS_DIR)
+    }
+
+    /// Where a build's copies of a folder go — `build.rs` makes them and reads
+    /// them back: one for the line, one per task, under the build's own id.
+    pub fn builds_path(&self) -> PathBuf {
+        self.data.join(BUILDS_DIR)
     }
 
     /// Every folder somebody picked, as they are written down.
@@ -319,6 +328,7 @@ impl Folders {
             .filter(|folder| at.starts_with(folder))
             .cloned()
             .chain(self.drafted(at))
+            .chain(self.built(at))
             .max_by_key(|folder| folder.as_os_str().len())
     }
 
@@ -329,6 +339,17 @@ impl Folders {
         let drafts = self.drafts_path();
         let id = at.strip_prefix(&drafts).ok()?.components().next()?;
         Some(drafts.join(id))
+    }
+
+    /// The build copy a path is inside: a build keeps one for its line and one
+    /// per task, so the copy is `builds/<id>/<which>` and each is bounded at
+    /// itself the way a draft's is.
+    fn built(&self, at: &Path) -> Option<PathBuf> {
+        let builds = self.builds_path();
+        let mut held = at.strip_prefix(&builds).ok()?.components();
+        let id = held.next()?;
+        let which = held.next()?;
+        Some(builds.join(id).join(which))
     }
 
     /// Where a file the page named lands, refused where it would leave the
@@ -827,6 +848,29 @@ mod tests {
         fs::create_dir_all(two.join(".sloppy")).expect("another");
 
         for copy in [&one, &two] {
+            let notes = copy.join(".sloppy");
+            assert_eq!(
+                held.opened(&notes.to_string_lossy())
+                    .expect("the notes in the copy")
+                    .within(),
+                copy.as_path()
+            );
+        }
+    }
+
+    /// A build keeps a copy for its line and one per task, each a checkout of
+    /// its own: a history command inside one is bounded there, and never at the
+    /// folder holding the build's copies.
+    #[test]
+    fn each_copy_a_build_works_in_is_bounded_at_itself() {
+        let held = folders(&scratch("builds"));
+        let build = held.builds_path().join("01JAPART000000000000000000");
+        let line = build.join("line");
+        let task = build.join("task-reader");
+        fs::create_dir_all(line.join(".sloppy")).expect("the line's copy");
+        fs::create_dir_all(task.join(".sloppy")).expect("the task's copy");
+
+        for copy in [&line, &task] {
             let notes = copy.join(".sloppy");
             assert_eq!(
                 held.opened(&notes.to_string_lossy())
