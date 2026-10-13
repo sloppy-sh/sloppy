@@ -61,13 +61,12 @@
 		onOpen: (note: OwnedRef) => void;
 		onStop: () => void;
 		onCarryOn: () => void;
-		/** Put the reader on the line to run what was built. Absent where the
-		 *  line's version is not in hand. */
-		onWorkOn?: () => void;
+		/** Put the reader on the line to run what was built. */
+		onWorkOn: () => void;
 		onBringIn: () => void;
 		onDiscard: () => void;
 		/** The build's notes set against the reader's own. */
-		onNotes?: () => void;
+		onNotes: () => void;
 	} = $props();
 
 	const tasks = $derived(tasksOf(build));
@@ -202,11 +201,9 @@
 		<footer
 			class="sticky bottom-0 -mx-3 -mb-3 flex flex-col gap-2 bg-background/95 px-3 py-3 backdrop-blur"
 		>
-			{#if onWorkOn}
-				<Button variant="outline" class="h-control" disabled={busy} onclick={onWorkOn}>
-					Work on this version
-				</Button>
-			{/if}
+			<Button variant="outline" class="h-control" disabled={busy} onclick={onWorkOn}>
+				Work on this version
+			</Button>
 			<Button class="h-control" disabled={busy} onclick={onBringIn}>Bring it in</Button>
 			<Button variant="ghost" class="h-control" disabled={busy} onclick={() => (asking = true)}>
 				Discard

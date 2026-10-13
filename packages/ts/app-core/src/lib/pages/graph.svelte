@@ -148,7 +148,9 @@
 	import {
 		type BuildBrought,
 		citedAs,
+		noLineHere,
 		notesOnTheCanvas,
+		over,
 		settleTheNotes
 	} from '../components/build-said.js';
 	import ChatPanel from '../components/chat-panel.svelte';
@@ -2078,12 +2080,24 @@
 	const offersBuild = $derived(offersChat && buildsHere.face !== null && theBuild === null);
 	/** Whether the assistant this would run on is a program on this machine. */
 	const buildRuns = $derived(chat.agent !== undefined && chatAgentReach(chat.agent) === 'program');
-	/** The version the build's line stands at, for the acts that take one. */
-	const buildTip = $derived.by(() => {
-		const line = theBuild?.line;
-		return line === undefined
-			? undefined
-			: graphHistory.lines.find((one) => one.name === line)?.head;
+	/** The version a line stands at. The build's own was opened and written to
+	 *  while it ran, so the lines are read again before one of its versions is
+	 *  taken. */
+	async function tipOf(line: string): Promise<string | undefined> {
+		await graphHistory.read();
+		return graphHistory.lines.find((one) => one.name === line)?.head;
+	}
+
+	/** A build that has ended reads against the folder's lines, and nothing else
+	 *  reads them where there is no column to open — a phone has none. */
+	let linesReadAt: string | null = null;
+	$effect(() => {
+		const held = theBuild;
+		if (!held || !over(held.state)) return;
+		const now = `${held.id}:${held.state}`;
+		if (linesReadAt === now) return;
+		linesReadAt = now;
+		void graphHistory.read();
 	});
 
 	/** The notes a build is being named for. */
@@ -2115,11 +2129,24 @@
 	async function nameTheBuild(name: string): Promise<void> {
 		const face = buildsHere.face;
 		if (!face) return;
-		if (await face.begin(buildAbout, name)) {
-			buildNaming = false;
-			buildTook = false;
-			chatting = true;
-		} else buildSays = face.says;
+		if (!(await face.begin(buildAbout, name))) {
+			buildSays = face.says;
+			return;
+		}
+		buildNaming = false;
+		buildTook = false;
+		chatting = true;
+		await openTheBuildThread(face.standing?.id);
+	}
+
+	/** The thread a build stands in is written as it begins, so the threads are
+	 *  read again and that one put in front of the reader — otherwise the dock
+	 *  opens on the chat last read. */
+	async function openTheBuildThread(build: Ulid | undefined): Promise<void> {
+		if (build === undefined) return;
+		await chat.opened(graphs.current);
+		const thread = chat.threads.find((one) => one.kind === 'build' && one.build === build);
+		if (thread) await chat.openThread(thread.id);
 	}
 
 	/** Pressing Go keeps a version first, in the words the history already asks
@@ -2183,11 +2210,16 @@
 		}
 	}
 
-	function workOnTheBuild(): void {
-		const tip = buildTip;
-		if (tip === undefined) return;
+	async function workOnTheBuild(): Promise<void> {
+		const line = theBuild?.line;
+		if (line === undefined) return;
 		buildSays = null;
-		void buildMoving.leaveFor({
+		const tip = await tipOf(line);
+		if (tip === undefined) {
+			buildSays = noLineHere(line);
+			return;
+		}
+		await buildMoving.leaveFor({
 			carries: true,
 			go: (carrying) => graphHistory.standOn(tip, carrying)
 		});
@@ -2203,8 +2235,14 @@
 	/** The build's notes against the reader's own, drawn on the canvas as any two
 	 *  states are. */
 	async function showBuildNotes(): Promise<void> {
-		const tip = buildTip;
-		if (tip === undefined) return;
+		const line = theBuild?.line;
+		if (line === undefined) return;
+		buildSays = null;
+		const tip = await tipOf(line);
+		if (tip === undefined) {
+			buildSays = noLineHere(line);
+			return;
+		}
 		const held = await graphHistory.between(undefined, tip);
 		if (!held) return;
 		const shown = notesOnTheCanvas(held);
@@ -3749,10 +3787,10 @@
 					onOpen={(note) => show(note)}
 					onStop={() => void buildsHere.face?.stop()}
 					onCarryOn={() => void buildsHere.face?.carryOn()}
-					onWorkOn={buildTip === undefined ? undefined : workOnTheBuild}
+					onWorkOn={() => void workOnTheBuild()}
 					onBringIn={() => void bringTheBuildIn()}
 					onDiscard={() => void discardTheBuild()}
-					onNotes={buildTip === undefined ? undefined : () => void showBuildNotes()}
+					onNotes={() => void showBuildNotes()}
 				/>
 			{/if}
 		{/snippet}

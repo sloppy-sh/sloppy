@@ -159,6 +159,16 @@ function pressed(words: string): void {
 const offered = (words: string): boolean =>
 	[...document.body.querySelectorAll('button')].some((one) => one.textContent?.trim() === words);
 
+function typeName(said: string): void {
+	const field = document.body.querySelector<HTMLInputElement>(
+		'input[aria-label="What to call this build"]'
+	);
+	if (!field) throw new Error('Nothing asks what to call the build');
+	field.value = said;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+}
+
 let api: FakeApi;
 let files: MemoryFiles;
 let serving: MemoryFiles | undefined;
@@ -371,16 +381,6 @@ describe('naming the build before anything is kept', () => {
 		await settle();
 	}
 
-	function typeName(said: string): void {
-		const field = document.body.querySelector<HTMLInputElement>(
-			'input[aria-label="What to call this build"]'
-		);
-		if (!field) throw new Error('Nothing asks what to call the build');
-		field.value = said;
-		field.dispatchEvent(new Event('input', { bubbles: true }));
-		flushSync();
-	}
-
 	it('asks for a name, and starts the build on the note it was asked from', async () => {
 		await askedFor();
 		typeName('The reader');
@@ -444,18 +444,25 @@ describe('naming the build before anything is kept', () => {
 });
 
 describe('the build in the dock', () => {
-	/** A build standing, with the thread it stands in, and the dock open on it. */
+	/** A build begun the way a person begins one: the act on the note, the name,
+	 *  Start the build. Nothing else is pressed. */
 	async function started(): Promise<void> {
 		await open();
-		await builds.begin([PARSER], 'the-reader');
-		const held = builds.standing;
-		if (!held) throw new Error('no build');
+		await markMenu('1');
+		menuItem('Build this').click();
+		await settle();
+		typeName('The reader');
+		pressed('Start the build');
+		await settle();
+	}
+
+	/** A chat read before the build was begun, so the dock has somewhere else it
+	 *  would open. */
+	async function aChatRead(): Promise<void> {
 		const when = new Date().toISOString();
 		await new DeviceThreads(files).write({
 			id: ulid(),
-			kind: 'build',
-			build: held.id,
-			name: held.name,
+			name: 'About the parser',
 			graph: graphs.current,
 			project: PROJECT,
 			created_at: when,
@@ -469,7 +476,7 @@ describe('the build in the dock', () => {
 		await settle();
 	}
 
-	it('stands as the card at the head of its own thread', async () => {
+	it('stands as the card at the head of its own thread, from the press', async () => {
 		await started();
 
 		const card = document.body.querySelector('[data-build-card]');
@@ -478,6 +485,23 @@ describe('the build in the dock', () => {
 		expect(card?.querySelector('[data-build-state="reading"]')?.textContent).toContain(
 			'Reading your notes'
 		);
+	});
+
+	// The press is what opens the dock, so what it opens on is the build — not
+	// whichever chat the reader was last in.
+	it('opens on the build where a chat was already being read', async () => {
+		await open();
+		await aChatRead();
+		expect(document.body.querySelector('[data-build-card]')).toBeNull();
+
+		await markMenu('1');
+		menuItem('Build this').click();
+		await settle();
+		typeName('The reader');
+		pressed('Start the build');
+		await settle();
+
+		expect(document.body.querySelector('[data-build-card]')?.textContent).toContain('the-reader');
 	});
 
 	it('says where it has got to beside it in the list of threads', async () => {
@@ -595,7 +619,7 @@ describe('the build in the dock', () => {
 		expect(screen()).toContain('Where the reader goes');
 		expect(builds.answered).toEqual([]);
 	});
-	describe('bringing the line into the reader’s own', () => {
+	describe('the line the build wrote', () => {
 		const LINE = buildLine('the-reader');
 		const NOTE = notePath(ulid());
 		const TASK: BuildTask = {
@@ -617,6 +641,8 @@ describe('the build in the dock', () => {
 		let kept: MemoryHistory;
 
 		const wrote = (said: string) => new TextEncoder().encode(`${said}\n`);
+		const said = async (path: string): Promise<string> =>
+			new TextDecoder().decode((await files.read(path)) ?? new Uint8Array());
 
 		/** The build built, with its line standing and the reader on their own. */
 		async function finished(): Promise<void> {
@@ -719,6 +745,44 @@ describe('the build in the dock', () => {
 			expect(
 				document.body.querySelector('[data-build-merge="line"]')?.textContent?.replace(/\s+/g, ' ')
 			).toContain('yours to take');
+		});
+
+		// The line is opened and written to while the build runs, and on a phone
+		// there is no column of versions for a reader to have opened.
+		it('stands the reader on the version the line is at, with the lines unread', async () => {
+			await finished();
+			await theLine();
+
+			pressed('Work on this version');
+			await settle();
+
+			expect(await said(NOTE)).toContain('What the build wrote');
+		});
+
+		// The tasks go into the line after the card was first drawn, so the head
+		// the act takes is the one the line stands at when it is pressed.
+		it('takes the version the line stands at now, not the one last read', async () => {
+			await finished();
+			await theLine();
+			await graphHistory.read();
+			await kept.switch(LINE);
+			await files.write(NOTE, wrote('What the merges put in'));
+			await kept.commit('What the merges put in');
+			await kept.switch('main');
+
+			pressed('Work on this version');
+			await settle();
+
+			expect(await said(NOTE)).toContain('What the merges put in');
+		});
+
+		it('says why where there is no such line to work on', async () => {
+			await finished();
+
+			pressed('Work on this version');
+			await settle();
+
+			expect(screen()).toContain(`There is nothing here called ${LINE}.`);
 		});
 	});
 });

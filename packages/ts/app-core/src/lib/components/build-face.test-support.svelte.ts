@@ -15,6 +15,7 @@ import {
 	type Ulid
 } from '@sloppy/types';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+import { runtime } from '../runtime.js';
 import type { BuildFace } from './build-face.svelte.js';
 
 /** Fixed, so a suite's expectations never turn on the clock. */
@@ -67,15 +68,19 @@ export class BuildsStandIn implements BuildFace {
 		this.#held = build;
 	}
 
-	begin(about: readonly OwnedRef[], name: BuildName): Promise<boolean> {
+	/** A build begins and the thread it stands in is written, as the store that
+	 *  runs the phases does both — docs/ARCHITECTURE.md § "Building from the
+	 *  notes". */
+	async begin(about: readonly OwnedRef[], name: BuildName): Promise<boolean> {
 		this.began.push({ about, name });
 		if (this.refuses !== null) {
 			this.#says = this.refuses;
-			return Promise.resolve(false);
+			return false;
 		}
 		this.#says = null;
+		const id = ulid();
 		this.#held = {
-			id: ulid(),
+			id,
 			graph: this.graph,
 			project: this.project,
 			about: [...about],
@@ -90,7 +95,19 @@ export class BuildsStandIn implements BuildFace {
 			created: WHEN
 		};
 		this.lines.add(buildLine(name));
-		return Promise.resolve(true);
+		await runtime.threads()?.write({
+			id: ulid(),
+			kind: 'build',
+			build: id,
+			name,
+			graph: this.graph,
+			project: this.project,
+			created_at: WHEN,
+			updated_at: WHEN,
+			places: [],
+			turns: []
+		});
+		return true;
 	}
 
 	go(): Promise<boolean> {

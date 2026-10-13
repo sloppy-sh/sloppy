@@ -219,6 +219,12 @@ export function broughtSaid(brought: BuildBrought): string {
 	return BROUGHT_SAID[brought];
 }
 
+/** What the acts that take the line's version say where the folder keeps no
+ *  such line, so nothing of the build is there to stand on or read against. */
+export function noLineHere(line: string): string {
+	return `There is nothing here called ${line}.`;
+}
+
 /** What a bring-in that left notes in two versions asks for next, where the
  *  history itself says nothing because nothing was refused. */
 export function settleTheNotes(left: number): string {

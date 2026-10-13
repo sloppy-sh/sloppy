@@ -25,9 +25,8 @@
 		brought?: BuildBrought;
 		nameOf: (note: OwnedRef) => string | undefined;
 		onOpen: (note: OwnedRef) => void;
-		/** The build's notes set against the folder's. Absent where the line's
-		 *  version is not in hand. */
-		onNotes?: () => void;
+		/** The build's notes set against the folder's. */
+		onNotes: () => void;
 	} = $props();
 
 	const built = $derived(tasksOf(build).filter((one) => one.last !== undefined));
@@ -112,11 +111,9 @@
 					</li>
 				{/each}
 			</ul>
-			{#if onNotes}
-				<Button variant="ghost" class="mt-1 h-9 px-2 text-xs" onclick={onNotes}>
-					See them against your own
-				</Button>
-			{/if}
+			<Button variant="ghost" class="mt-1 h-9 px-2 text-xs" onclick={onNotes}>
+				See them against your own
+			</Button>
 		</div>
 	{/if}
 

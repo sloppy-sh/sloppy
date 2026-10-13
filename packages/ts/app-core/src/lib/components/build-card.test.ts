@@ -512,14 +512,6 @@ describe('what was built', () => {
 		expect(asked.discarded).toBe(1);
 	});
 
-	it('offers nothing to work on where the line’s version is not in hand', () => {
-		show(built(), { onWorkOn: undefined, onNotes: undefined });
-
-		expect(offered('Work on this version')).toBe(false);
-		expect(offered('See them against your own')).toBe(false);
-		expect(offered('Bring it in')).toBe(true);
-	});
-
 	it('says why the last act did not land, in the words it was refused in', () => {
 		show(built(), { says: 'Settle the notes that are in two versions first.' });
 
