@@ -260,6 +260,8 @@ export class FakeTilingSprite extends FakeContainer {
 /** A face 7 CSS pixels to the character, so what a layout holds clear of these
  *  words is held clear of a box that grows with them. */
 const FAKE_GLYPH = 7;
+/** What a line of that face fills, as a multiple of its size. */
+const FAKE_LINE = 1.2;
 
 export class FakeText extends FakeContainer {
   text = "";
@@ -267,14 +269,30 @@ export class FakeText extends FakeContainer {
   tint = 0;
   alpha = 1;
   resolution = 1;
-  readonly anchor = { set: () => {} };
-  constructor(options: { text: string; resolution?: number }) {
+  readonly fontSize: number;
+  anchorX = 0;
+  anchorY = 0;
+  readonly anchor = {
+    set: (x: number, y: number) => {
+      this.anchorX = x;
+      this.anchorY = y;
+    },
+  };
+  constructor(options: {
+    text: string;
+    resolution?: number;
+    style?: { fontSize?: number };
+  }) {
     super();
     this.text = options.text;
     this.resolution = options.resolution ?? 1;
+    this.fontSize = options.style?.fontSize ?? 12;
   }
   get width(): number {
     return this.text.length * FAKE_GLYPH;
+  }
+  get height(): number {
+    return this.fontSize * FAKE_LINE;
   }
 }
 

@@ -2142,17 +2142,19 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   finds every note carrying it inside that tag's circle, and one who selects several finds
   each note inside the first of them it carries.
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
-  tag's name in quiet ink just inside its outer edge.** Where regions overlap the fills
-  overlap, and that is what says a note is in both. **The fills owe the marks their floors**
-  (§ "Contrast is measured, not assumed"): a mark standing on a tinted region keeps **3:1
-  against the surface it actually lands on** and a dimmed one keeps **1.6:1**, and the ink the
-  canvas letters the names and the captions in keeps the **4.5:1** small text owes — over the
-  paper, under every stack of washes the figure can draw, and over a wallpaper at its own
-  strongest. All of it measured over every look the collection dresses rather than assumed.
-  Where one of those fails it is the fill alpha that comes down, never the floor and never
-  the wallpaper's ceiling, which is the picture's own: a reader who put a picture up did not
-  ask for a quieter one by selecting a tag, and a region with no room left for a wash is its
-  hairline alone.
+  tag's name in quiet ink just inside its outer edge.** No two words the canvas writes are
+  written over each other, so a name whose place is taken steps along the room kept for it to
+  the nearest clear one and, where the room holds none, just outside the outline — moved, never
+  dropped. Where regions overlap the fills overlap, and that is what says a note is in both.
+  **The fills owe the marks their floors** (§ "Contrast is measured, not assumed"): a mark
+  standing on a tinted region keeps **3:1 against the surface it actually lands on** and a
+  dimmed one keeps **1.6:1**, and the ink the canvas letters the names and the captions in keeps
+  the **4.5:1** small text owes — over the paper, under every stack of washes the figure can
+  draw, and over a wallpaper at its own strongest. All of it measured over every look the
+  collection dresses rather than assumed. Where one of those fails it is the fill alpha that
+  comes down, never the floor and never the wallpaper's ceiling, which is the picture's own: a
+  reader who put a picture up did not ask for a quieter one by selecting a tag, and a region
+  with no room left for a wash is its hairline alone.
 - **No genealogical edges are drawn here, and no edge looks** (§ Edges). A line between two
   notes says nothing about which sets they are in, and the address and title beside a mark are
   drawn as they are on the genealogy.

@@ -1200,8 +1200,9 @@ export class GraphScene {
     if (this.positionsDirty || scaleMoved) this.drawDifference();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();
     if (this.positionsDirty || scaleMoved) this.drawCodeMoved();
-    if (this.positionsDirty || scaleMoved) this.layoutLabels();
-    if (this.positionsDirty || scaleMoved) this.layoutFieldNames();
+    if (this.positionsDirty || scaleMoved) {
+      this.layoutLabels(this.layoutFieldNames());
+    }
 
     this.world.position.set(this.viewport.x, this.viewport.y);
     this.world.scale.set(this.viewport.scale);
@@ -2083,11 +2084,11 @@ export class GraphScene {
 
   /**
    * Each drawn set's name, just inside its own outline and held there: a reader
-   * zoomed into one lens still reads which sets they are in. Answers the boxes
-   * the names took, which the captions are placed around.
+   * zoomed into one lens still reads which sets they are in. Answers every box
+   * taken so far, which the captions are placed around.
    */
-  private layoutSetsNames(): number[] {
-    const placed: number[] = [];
+  private layoutSetsNames(reserved: readonly Bounds[]): Bounds[] {
+    const placed: Bounds[] = [...reserved];
     const named = (this.sets?.fields ?? [])
       .flatMap((field) => field.sets.map((set) => ({ field, set })))
       .slice(0, this.setsNamePool.length);
@@ -2127,30 +2128,84 @@ export class GraphScene {
         room.maxX + entry.field.dx,
         room.maxY + entry.field.dy,
       );
+      const high = text.height;
       const kept =
         Math.min(roomTo.x, this.width) - Math.max(roomFrom.x, 0) >=
           text.width &&
-        Math.min(roomTo.y, this.height) - Math.max(roomFrom.y, 0) >=
-          SETS_NAME_SIZE;
+        Math.min(roomTo.y, this.height) - Math.max(roomFrom.y, 0) >= high;
       const hold = kept ? { from: roomFrom, to: roomTo } : { from, to };
       const edgeX = text.width / 2 + (kept ? 0 : SETS_NAME_GAP);
-      const edgeY = SETS_NAME_SIZE / 2 + (kept ? 0 : SETS_NAME_GAP);
-      const x = within(
-        where.x,
-        Math.max(hold.from.x, 0) + edgeX,
-        Math.min(hold.to.x, this.width) - edgeX,
+      const edgeY = high / 2 + (kept ? 0 : SETS_NAME_GAP);
+      const heldIn = {
+        minX: Math.max(hold.from.x, 0) + edgeX,
+        maxX: Math.min(hold.to.x, this.width) - edgeX,
+        minY: Math.max(hold.from.y, 0) + edgeY,
+        maxY: Math.min(hold.to.y, this.height) - edgeY,
+      };
+      const stood = this.standName(
+        placed,
+        {
+          x: within(where.x, heldIn.minX, heldIn.maxX),
+          y: within(where.y, heldIn.minY, heldIn.maxY),
+        },
+        heldIn,
+        { minX: from.x, minY: from.y, maxX: to.x, maxY: to.y },
+        text.width,
+        high,
       );
-      const y = within(
-        where.y,
-        Math.max(hold.from.y, 0) + edgeY,
-        Math.min(hold.to.y, this.height) - edgeY,
-      );
-      text.position.set(x, y);
+      text.position.set(stood.x, stood.y);
       text.tint = this.options.palette.ink;
       text.visible = true;
-      placed.push(x - text.width / 2, y, text.width);
+      placed.push(centredBox(stood.x, stood.y, text.width, high));
     }
     return placed;
+  }
+
+  /**
+   * Where a set's name stands once everything already written is accounted for.
+   * Its own place where that is clear; failing that the nearest clear place
+   * along the room it is held in; failing that just outside its outline on the
+   * far side from what is in the way. A name is never dropped, so the last of
+   * those stands whether or not it came out clear.
+   */
+  private standName(
+    placed: readonly Bounds[],
+    want: Point,
+    heldIn: Bounds,
+    outline: Bounds,
+    width: number,
+    high: number,
+  ): Point {
+    const inRoom = nearestClear(placed, want, heldIn, width, high);
+    if (inRoom !== null) return inRoom;
+
+    const inTheWay = taken(placed, centredBox(want.x, want.y, width, high));
+    const under =
+      inTheWay === null || (inTheWay.minY + inTheWay.maxY) / 2 < want.y;
+    const screen = {
+      minX: width / 2,
+      maxX: this.width - width / 2,
+      minY: high / 2,
+      maxY: this.height - high / 2,
+    };
+    for (const side of under ? [1, -1] : [-1, 1]) {
+      const y = within(
+        side === 1
+          ? outline.maxY + SETS_NAME_GAP + high / 2
+          : outline.minY - SETS_NAME_GAP - high / 2,
+        screen.minY,
+        screen.maxY,
+      );
+      const outside = nearestClear(
+        placed,
+        { x: within(want.x, screen.minX, screen.maxX), y },
+        { ...screen, minY: y, maxY: y },
+        width,
+        high,
+      );
+      if (outside !== null) return outside;
+    }
+    return want;
   }
 
   /**
@@ -2318,12 +2373,12 @@ export class GraphScene {
    * slots are written in any one frame — whether they changed hands or the mark
    * holding one was given an address, retitled or folded under.
    */
-  private layoutLabels(): void {
+  private layoutLabels(reserved: readonly Bounds[]): void {
     const view = visibleBounds(this.viewport, this.width, this.height, 80);
-    // The set names are placed first: a name is the only thing on the canvas
-    // that says in words which place is which tag, so a caption gives way to
-    // one rather than overprinting it.
-    const named = this.layoutSetsNames();
+    // The set names are placed before the marks' own words: a name is the only
+    // thing on the canvas that says in words which place is which tag, so a
+    // caption gives way to one rather than overprinting it.
+    const named = this.layoutSetsNames(reserved);
     const held = this.labelSlots;
     const enter = LABEL_MIN_RADIUS / this.viewport.scale;
     const leave = enter * LABEL_HYSTERESIS;
@@ -2387,7 +2442,7 @@ export class GraphScene {
    * rules a mark's caption is held to, so a field of labelled lines is never a
    * wall of text. DESIGN.md § Edges, "A look a person set".
    */
-  private layoutEdgeLabels(placed: number[]): void {
+  private layoutEdgeLabels(placed: Bounds[]): void {
     const held = this.edgeLabelSlots;
     const enter = EDGE_LABEL_MIN_SPAN;
     const leave = enter * LABEL_HYSTERESIS;
@@ -2464,12 +2519,12 @@ export class GraphScene {
         entry.ends[1],
         text.width,
       );
-      const left = where.x - text.width / 2;
-      if (overlaps(placed, left, where.y, text.width)) {
+      const box = centredBox(where.x, where.y, text.width, text.height);
+      if (overlaps(placed, box)) {
         text.visible = false;
         continue;
       }
-      placed.push(left, where.y, text.width);
+      placed.push(box);
       text.position.set(where.x, where.y);
       text.tint = this.options.palette.ink;
       text.alpha = this.lineInk(
@@ -2486,7 +2541,8 @@ export class GraphScene {
    * screen while the reader is inside that field, gone once the field is not.
    * DESIGN.md § "Several graphs on one canvas".
    */
-  private layoutFieldNames(): void {
+  private layoutFieldNames(): Bounds[] {
+    const placed: Bounds[] = [];
     for (const [at, text] of this.fieldPool.entries()) {
       const field = this.fieldNames[at];
       if (field === undefined || text.text === "") {
@@ -2505,27 +2561,34 @@ export class GraphScene {
       const lowest = Math.max(edge, left);
       const highest = Math.min(this.width - edge, right);
       const where = this.viewport.toScreen(field.x, field.y);
-      text.position.set(
-        highest < lowest ? (left + right) / 2 : clamp(where.x, lowest, highest),
-        Math.max(where.y, FIELD_NAME_SIZE + FIELD_NAME_GAP),
-      );
+      const x =
+        highest < lowest ? (left + right) / 2 : clamp(where.x, lowest, highest);
+      const y = Math.max(where.y, FIELD_NAME_SIZE + FIELD_NAME_GAP);
+      text.position.set(x, y);
       text.tint = this.options.palette.ink;
       text.visible = true;
+      placed.push({
+        minX: x - text.width / 2,
+        maxX: x + text.width / 2,
+        minY: y - text.height,
+        maxY: y,
+      });
     }
+    return placed;
   }
 
   /** Answers the boxes it took, so whatever is written next keeps clear of
    *  them. */
   private placeMarkLabels(
     wanted: readonly Mark[],
-    reserved: readonly number[],
-  ): number[] {
+    reserved: readonly Bounds[],
+  ): Bounds[] {
     const held = this.labelSlots;
     // Placed biggest first, and a label that would land on one already placed is
     // dropped for this frame rather than overprinted. It keeps its slot, so the
     // next pan brings it back without paying to rasterise it again.
     const fill = this.options.palette.ink;
-    const placed: number[] = [...reserved];
+    const placed: Bounds[] = [...reserved];
     for (const mark of wanted) {
       const at = held.get(mark.ref);
       if (at === undefined) continue;
@@ -2543,13 +2606,23 @@ export class GraphScene {
       const width =
         (captioned ? slot.address.width : 0) +
         (titled ? (captioned ? LABEL_GAP : 0) + slot.title.width : 0);
+      const high = Math.max(
+        captioned ? slot.address.height : 0,
+        titled ? slot.title.height : 0,
+      );
 
-      if (overlaps(placed, left, screen.y, width)) {
+      const box = {
+        minX: left,
+        maxX: left + width,
+        minY: screen.y - high / 2,
+        maxY: screen.y + high / 2,
+      };
+      if (overlaps(placed, box)) {
         slot.address.visible = false;
         slot.title.visible = false;
         continue;
       }
-      placed.push(left, screen.y, width);
+      placed.push(box);
 
       slot.address.position.set(left, screen.y);
       slot.address.tint = fill;
@@ -2574,20 +2647,68 @@ function within(want: number, low: number, high: number): number {
   return high < low ? (low + high) / 2 : clamp(want, low, high);
 }
 
-/** `placed` is a flat `[left, midY, width, …]`; boxes are one line tall. */
-function overlaps(
-  placed: readonly number[],
-  left: number,
-  midY: number,
+/** The box `width` x `high` centred on a point, which is how a name and a
+ *  line's caption are anchored. */
+function centredBox(x: number, y: number, width: number, high: number): Bounds {
+  return {
+    minX: x - width / 2,
+    maxX: x + width / 2,
+    minY: y - high / 2,
+    maxY: y + high / 2,
+  };
+}
+
+/** The first box already written that `box` lands on. */
+function taken(placed: readonly Bounds[], box: Bounds): Bounds | null {
+  for (const one of placed) {
+    if (box.maxX <= one.minX || one.maxX <= box.minX) continue;
+    if (box.maxY <= one.minY || one.maxY <= box.minY) continue;
+    return one;
+  }
+  return null;
+}
+
+function overlaps(placed: readonly Bounds[], box: Bounds): boolean {
+  return taken(placed, box) !== null;
+}
+
+/** How far a box of words steps looking for room, in its own lines across and
+ *  half-widths along. */
+const CLEAR_STEPS = 4;
+
+/** The clear place nearest `want` for a `width` x `high` box whose centre is
+ *  held inside `hold`, or `null` where that room holds no clear place. */
+function nearestClear(
+  placed: readonly Bounds[],
+  want: Point,
+  hold: Bounds,
   width: number,
-): boolean {
-  for (let at = 0; at < placed.length; at += 3) {
-    if (Math.abs(placed[at + 1] - midY) >= LABEL_LINE) continue;
-    if (left < placed[at] + placed[at + 2] && placed[at] < left + width) {
-      return true;
+  high: number,
+): Point | null {
+  if (!overlaps(placed, centredBox(want.x, want.y, width, high))) return want;
+  const tries: Point[] = [];
+  for (let down = 0; down <= CLEAR_STEPS; down++) {
+    for (let along = 0; along <= CLEAR_STEPS; along++) {
+      if (down === 0 && along === 0) continue;
+      for (const dy of down === 0 ? [0] : [-1, 1]) {
+        for (const dx of along === 0 ? [0] : [-1, 1]) {
+          tries.push({
+            x: within(want.x + dx * along * (width / 2), hold.minX, hold.maxX),
+            y: within(want.y + dy * down * high, hold.minY, hold.maxY),
+          });
+        }
+      }
     }
   }
-  return false;
+  tries.sort(
+    (a, b) =>
+      Math.hypot(a.x - want.x, a.y - want.y) -
+      Math.hypot(b.x - want.x, b.y - want.y),
+  );
+  for (const at of tries) {
+    if (!overlaps(placed, centredBox(at.x, at.y, width, high))) return at;
+  }
+  return null;
 }
 
 function shorten(text: string, limit: number): string {

@@ -8,7 +8,12 @@
 //
 // `pnpm --filter @sloppy/graph bench`, then read the panel or `window.__bench`.
 
-import { PICTURE_TURN_MIN, type NodeView, type Tag } from "@sloppy/types";
+import {
+  PICTURE_TURN_MIN,
+  type NodeView,
+  type OwnedRef,
+  type Tag,
+} from "@sloppy/types";
 import LayoutWorker from "../src/layout-worker.ts?worker";
 import {
   type Corpus,
@@ -18,6 +23,7 @@ import {
 import type {
   GraphArrangement,
   GraphDifference,
+  GraphField,
   GraphPictures,
   GraphWallpaper,
 } from "../src/contract.js";
@@ -77,6 +83,35 @@ const built = (total: number): Corpus =>
   );
 
 let corpus = built(notes);
+/**
+ * `?graphs=2` reads the corpus as two notebooks side by side, so the names each
+ * field carries are drawn — DESIGN.md § "Several graphs on one canvas". One is
+ * the default: a canvas with nothing to tell apart asks no such question.
+ */
+const NOTEBOOKS = [
+  { ulid: "01BENCHNOTEBOOKTHESIS00000", title: "the thesis" },
+  { ulid: "01BENCHNOTEBOOKGARDEN00000", title: "the garden" },
+] as const;
+const fields: GraphField[] | undefined = (() => {
+  if (asked.get("graphs") !== "2") return undefined;
+  const nodes = corpus.nodes.map((node, at) => ({
+    ...node,
+    graph:
+      `${node.created_by}/${NOTEBOOKS[at % NOTEBOOKS.length].ulid}` as OwnedRef,
+  }));
+  corpus = { ...corpus, nodes };
+  const named = new Map<string, GraphField>();
+  for (const [at, node] of nodes.entries()) {
+    const ref = node.graph as OwnedRef;
+    if (!named.has(ref)) {
+      named.set(ref, {
+        ref,
+        title: NOTEBOOKS[at % NOTEBOOKS.length].title,
+      });
+    }
+  }
+  return [...named.values()];
+})();
 /**
  * `?arrangement=sets` reads the corpus as the tags-as-places figure rather than
  * as the genealogy — the corpus's own tags draw, and `?tags=a,b,c` names the ones
@@ -199,6 +234,7 @@ let comparing: ReturnType<typeof compared> | null = null;
 const props = (): GraphMountOptions => ({
   arrangement,
   nodes: comparing ? comparing.region : pictured ? withPictures : corpus.nodes,
+  fields,
   difference: comparing?.difference,
   collapsed,
   selection,
