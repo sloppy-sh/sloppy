@@ -65,7 +65,11 @@ export function buildingSaid(of: {
 }
 
 /** And the turn that starts a session on what a review found. */
-export function fixingSaid(review: BuildReview, handoff: BuildHandoff | undefined): string {
+export function fixingSaid(
+	review: BuildReview,
+	handoff: BuildHandoff | undefined,
+	answered: readonly NeedAnswered[] = []
+): string {
 	const blocking = review.findings.filter((one) => one.severity === 'blocking');
 	const said = [
 		'The piece your brief names was built and read, and it was not right yet. Fix what blocks, then hand off.'
@@ -86,6 +90,7 @@ export function fixingSaid(review: BuildReview, handoff: BuildHandoff | undefine
 			'Worth knowing, and worth nobody a second round — fix one only where it is a line:',
 			...advisory.map((one) => `- ${one.file} — ${one.what}`)
 		);
+	if (answered.length > 0) said.push('', answeredSaid(answered));
 	return within(said.join('\n'));
 }
 
@@ -133,10 +138,12 @@ export function handoffSaid(handoff: BuildHandoff): string {
 	return said.join('\n');
 }
 
-/** The questions a session asked, as it is told they are answered. */
+/** The questions this build asked and the person answered, as a session on one
+ *  task is told them — its own and the plan's alike, since a session is not
+ *  the one that asked most of them. */
 export function answeredSaid(answered: readonly NeedAnswered[]): string {
 	return [
-		'What you asked has been answered:',
+		'What this build asked, and what the person answered:',
 		...answered.map((one) =>
 			one.note === undefined
 				? `- ${one.question} — set aside. Build without it.`

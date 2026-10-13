@@ -40,6 +40,7 @@ import {
 	contextTogether,
 	MOST_HANDOFFS,
 	MOST_NEEDS,
+	MOST_NOTES_PER_TASK,
 	MOST_SESSIONS,
 	NODE_TITLE_MAX,
 	nowIso,
@@ -79,6 +80,8 @@ import { nodes } from './nodes.svelte.js';
 import { troubleIn, whatHappened } from './what-happened.svelte.js';
 
 const NO_ASSISTANT = 'Sloppy needs an assistant installed on this device to build anything.';
+const WRONG_ASSISTANT =
+	'A build runs on an assistant installed on this device. Choose one of those for the chat, then build.';
 const UNTOLD = 'Sloppy could not tell what this device can build with. Try again.';
 const ONE_AT_A_TIME = 'There is already a build on this project. Read it, or discard it first.';
 const NO_PROJECT = 'There is no project open here to build in.';
@@ -186,16 +189,26 @@ class BuildStore {
 	}
 
 	/**
-	 * Whether an assistant this device can RUN is here to build with — a program
-	 * on this machine, which is what every session of a build is. `undefined` is
-	 * a device that has not said what it has or could not say: that is not a
-	 * device with none, and telling somebody to install what they already have
-	 * is worse than saying nothing.
+	 * Whether a build can run here: **the agent the chat is set to** is a program
+	 * on this machine, which is what every session of a build is opened on.
+	 * `undefined` is a device that has not said what it has or could not say:
+	 * that is not a device with none, and telling somebody to install what they
+	 * already have is worse than saying nothing.
 	 */
 	get assistantHere(): boolean | undefined {
 		const held = chat.agents;
 		if (!Array.isArray(held)) return undefined;
-		return held.some((one) => chatAgentReach(one) === 'program');
+		const agent = chat.agent;
+		return agent !== undefined && chatAgentReach(agent) === 'program';
+	}
+
+	/** The one line to put beside the act where a build cannot run on what this
+	 *  device is set to, and `null` where it can. */
+	get assistantSays(): string | null {
+		const held = chat.agents;
+		if (!Array.isArray(held)) return UNTOLD;
+		if (this.assistantHere === true) return null;
+		return held.some((one) => chatAgentReach(one) === 'program') ? WRONG_ASSISTANT : NO_ASSISTANT;
 	}
 
 	/** The build standing on this project, whatever state it is in. `null` is a
@@ -207,9 +220,9 @@ class BuildStore {
 	/**
 	 * Whether the act stands in front of somebody: a project with no build on it,
 	 * on a device whose shell can run one. **An assistant is not part of this** —
-	 * the act stays where the note is and says it needs one installed here, since
-	 * an act that vanishes teaches nobody why (DESIGN.md § "A build").
-	 * {@link assistantHere} is what says so.
+	 * the act stays where the note is and says what it needs, since an act that
+	 * vanishes teaches nobody why (DESIGN.md § "A build"). {@link assistantSays}
+	 * is the line it says it in.
 	 */
 	get offered(): boolean {
 		return this.reaches && this.#held === null;
@@ -313,9 +326,8 @@ class BuildStore {
 		if (!this.reaches) return false;
 		if (this.#held) return this.#tell(ONE_AT_A_TIME);
 		if (chat.agents === null) await chat.lookForAgents();
-		const here = this.assistantHere;
-		if (here === false) return this.#tell(NO_ASSISTANT);
-		if (here === undefined) return this.#tell(UNTOLD);
+		const trouble = this.assistantSays;
+		if (trouble !== null) return this.#tell(trouble);
 		const graph = this.#of;
 		const project = this.#project;
 		if (graph === null || project === null || project === '') return this.#tell(NO_PROJECT);
@@ -372,6 +384,7 @@ class BuildStore {
 				...build,
 				answers: { ...build.answers, [need]: { note: note.ref } }
 			});
+			await this.#handedOn(asked, note.ref);
 		} catch (error) {
 			whatHappened.put('trouble', `the answer was not written: ${troubleIn(error)}`);
 			return this.#tell(wordsFor(error) ?? UNKEPT);
@@ -543,13 +556,11 @@ class BuildStore {
 		const run = build.tasks[task.id];
 		if (!run) return;
 		const last = run.handoffs[run.handoffs.length - 1];
+		const answered = this.#answeredIn(task, run);
 		const said =
 			run.review !== undefined && !run.review.clean
-				? fixingSaid(run.review, last)
-				: buildingSaid({
-						...(last === undefined ? {} : { handoff: last }),
-						answered: this.#answeredIn(run)
-					});
+				? fixingSaid(run.review, last, answered)
+				: buildingSaid({ ...(last === undefined ? {} : { handoff: last }), answered });
 		let cwd: string;
 		try {
 			cwd = await builds.taskCheckout(build.id, task.id);
@@ -645,7 +656,7 @@ class BuildStore {
 			);
 		} catch (error) {
 			whatHappened.put('trouble', `a build session would not start: ${troubleIn(error)}`);
-			this.#tell(wordsFor(error) ?? UNSTARTED);
+			await this.#stopped(wordsFor(error) ?? UNSTARTED);
 			return;
 		}
 		this.#running.set(conversation, {
@@ -668,7 +679,7 @@ class BuildStore {
 			await live.say(said);
 		} catch (error) {
 			whatHappened.put('trouble', `a build session was not told: ${troubleIn(error)}`);
-			this.#tell(wordsFor(error) ?? UNSTARTED);
+			await this.#stopped(wordsFor(error) ?? UNSTARTED);
 		}
 	}
 
@@ -1078,15 +1089,47 @@ class BuildStore {
 		await this.#advance();
 	}
 
-	/** What a task's sessions are told of the questions they asked. */
-	#answeredIn(run: BuildTaskRun): NeedAnswered[] {
+	/**
+	 * What a task's sessions are told of the questions this build has asked and
+	 * the person has answered: the ones the task itself raised, and the ones the
+	 * plan asked about a note the task is built from or about the feature as a
+	 * whole. A question answered for the whole build is one every task it bears
+	 * on has to be told, or it guesses the thing that was just written down.
+	 */
+	#answeredIn(task: BuildTask, run: BuildTaskRun): NeedAnswered[] {
 		const build = this.#held;
 		if (!build) return [];
-		return run.needs.flatMap((need) => {
+		const asked = [
+			...(build.plan?.needs ?? []).filter(
+				(need) => need.about === undefined || task.notes.includes(need.about)
+			),
+			...run.needs
+		];
+		return asked.flatMap((need) => {
 			const held = build.answers[need.id];
 			if (!held || (held.note === undefined && held.dropped !== true)) return [];
 			return [{ question: need.question, ...(held.note === undefined ? {} : { note: held.note }) }];
 		});
+	}
+
+	/**
+	 * The note that answered a question the PLAN asked, added to the notes of
+	 * every task it bears on, so the session reads it whole among its own rather
+	 * than being sent to find it. The person may still take it off before Go,
+	 * which is the curation the card already offers them.
+	 */
+	async #handedOn(asked: WaitingNeed, note: OwnedRef): Promise<void> {
+		const build = this.#held;
+		if (!build?.plan || asked.task !== undefined || build.state !== 'answering') return;
+		const about = asked.need.about;
+		const tasks = build.plan.tasks.map((one) =>
+			(about === undefined || one.notes.includes(about)) &&
+			!one.notes.includes(note) &&
+			one.notes.length < MOST_NOTES_PER_TASK
+				? { ...one, notes: [...one.notes, note] }
+				: one
+		);
+		await this.#keep({ ...build, plan: { ...build.plan, tasks } });
 	}
 
 	async #notesNow(

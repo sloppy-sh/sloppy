@@ -28,6 +28,7 @@ import {
 	type SloppyToolCall,
 	type Ulid
 } from '@sloppy/types';
+import { Refusal } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, resetApi } from '../api.js';
 import { initRuntime, type ChatAccess, type ChatAsked, type ChatLive } from '../runtime.js';
@@ -82,6 +83,9 @@ class Stub implements ChatAccess {
 	 *  it can start, or one that does not answer at all. */
 	has: ChatAgent[] = ['claude_code'];
 	untold = false;
+	/** Words this device rejects the next session with, as a shell with nothing
+	 *  to run it does. */
+	refuse: string | null = null;
 
 	agents(): Promise<ChatAgent[]> {
 		if (this.untold) return Promise.reject(new Error('nothing answered'));
@@ -93,6 +97,7 @@ class Stub implements ChatAccess {
 		hear: (event: ChatEvent) => void,
 		serve: (call: SloppyToolCall) => Promise<ChatToolAnswer>
 	): Promise<ChatLive> {
+		if (this.refuse !== null) return Promise.reject(new Refusal(this.refuse));
 		this.asked.push(asked);
 		const of = asked.conversation ?? asked.thread.id;
 		this.standing.set(of, { hear, serve });
@@ -827,6 +832,61 @@ describe('a question the plan asks', () => {
 		expect(stub.asked.filter((one) => one.role === 'implementer')).toEqual([]);
 	});
 
+	it('is handed to every task it bears on, and named in the turn that starts one', async () => {
+		await planned(
+			plan({
+				tasks: [task('reader', { notes: [beside] }), task('writer')],
+				needs: [
+					{
+						id: 'units',
+						about: beside,
+						question: 'In what unit is the budget counted?',
+						why: 'The sum is wrong otherwise.'
+					},
+					{ id: 'ceiling', question: 'What is the ceiling?', why: 'Nothing says.' }
+				]
+			})
+		);
+
+		await builds.answer('units', 'Tokens, as the agent counts them.');
+		await builds.answer('ceiling', 'Eight thousand of them.');
+		await settled();
+
+		const under = await api.listNodes({ origin: feature });
+		const unit = under.find((one) => one.title.startsWith('In what unit'))?.ref as OwnedRef;
+		const ceiling = under.find((one) => one.title.startsWith('What is the ceiling'))
+			?.ref as OwnedRef;
+		// A question about one note goes to the tasks built from it; one about the
+		// feature as a whole goes to all of them.
+		expect(builds.current?.plan?.tasks[0].notes).toEqual([beside, unit, ceiling]);
+		expect(builds.current?.plan?.tasks[1].notes).toEqual([feature, ceiling]);
+
+		await builds.go();
+		await settled();
+
+		const brief =
+			stub.asked.find((one) => one.role === 'implementer' && one.cwd?.endsWith('/reader'))?.brief ??
+			'';
+		expect(brief).toContain('Tokens, as the agent counts them.');
+		expect(brief).toContain('Eight thousand of them.');
+		const told = stub.said.find((one) => one.of === of('implementer', 'reader'))?.said ?? '';
+		expect(told).toContain('In what unit');
+		expect(told).toContain(unit);
+	});
+
+	it('is set aside where the person drops it, and the tasks are told so', async () => {
+		await planned(plan({ needs: [{ id: 'units', question: 'What unit?', why: 'Wrong sum.' }] }));
+
+		await builds.drop('units');
+		await builds.go();
+		await settled();
+
+		expect(builds.current?.plan?.tasks[0].notes).toEqual([feature]);
+		expect(stub.said.find((one) => one.of === of('implementer', 'reader'))?.said).toContain(
+			'set aside'
+		);
+	});
+
 	it('is not answered with nothing, and not answered twice over', async () => {
 		await planned(plan({ needs: [{ id: 'units', question: 'What unit?', why: 'Wrong sum.' }] }));
 
@@ -955,6 +1015,27 @@ describe('a device with no assistant to build with', () => {
 		expect((await kept.log(10)).commits).toHaveLength(1);
 	});
 
+	it('refuses one whose chat is set to an assistant it cannot run', async () => {
+		stub.has = ['claude_code', 'anthropic'];
+		await chat.lookForAgents();
+		chat.pick('anthropic', undefined);
+
+		expect(builds.assistantHere).toBe(false);
+		expect(await builds.start([feature], 'reads-a-plan')).toBe(false);
+		expect(builds.says).toContain('installed on this device');
+		expect(builds.current).toBe(null);
+		expect(stub.asked).toEqual([]);
+
+		chat.pick('claude_code', undefined);
+
+		expect(builds.assistantHere).toBe(true);
+		expect(builds.assistantSays).toBe(null);
+		expect(await builds.start([feature], 'reads-a-plan')).toBe(true);
+		await settled();
+
+		expect(stub.asked[0].agent).toBe('claude_code');
+	});
+
 	it('is told apart from a device that did not say what it has', async () => {
 		stub.untold = true;
 		await chat.lookForAgents();
@@ -963,6 +1044,47 @@ describe('a device with no assistant to build with', () => {
 		expect(await builds.start([feature], 'reads-a-plan')).toBe(false);
 		expect(builds.says).not.toContain('installed');
 		expect(builds.current).toBe(null);
+	});
+});
+
+describe('a session that will not start at all', () => {
+	it('stops the build with what the device said, and Continue opens it again', async () => {
+		stub.refuse = 'The assistant is not signed in.';
+
+		// The build is minted, so the card is there to read — and it is stopped
+		// rather than standing in a phase with nothing running.
+		expect(await builds.start([feature], 'reads-a-plan')).toBe(true);
+		await settled();
+
+		expect(builds.current?.state).toBe('stopped');
+		expect(builds.says).toBe('The assistant is not signed in.');
+		expect(builds.sessions).toEqual([]);
+
+		stub.refuse = null;
+		await builds.goOn();
+		await settled();
+
+		expect(builds.current?.state).toBe('reading');
+		expect(stub.asked.filter((one) => one.role === 'planner')).toHaveLength(1);
+	});
+
+	it('stops one mid-run where a task’s session will not open', async () => {
+		await planned();
+		stub.refuse = 'The assistant is not signed in.';
+
+		await builds.go();
+		await settled();
+
+		expect(builds.current?.state).toBe('stopped');
+		expect(builds.says).toBe('The assistant is not signed in.');
+		expect(builds.sessions).toEqual([]);
+
+		stub.refuse = null;
+		await builds.goOn();
+		await settled();
+
+		expect(builds.current?.state).toBe('building');
+		expect(of('implementer', 'reader')).toBeTruthy();
 	});
 });
 
