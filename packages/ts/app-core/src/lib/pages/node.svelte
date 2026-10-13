@@ -15,6 +15,7 @@
 	import Minimize2 from '@lucide/svelte/icons/minimize-2';
 	import Files from '@lucide/svelte/icons/files';
 	import Globe from '@lucide/svelte/icons/globe';
+	import Hammer from '@lucide/svelte/icons/hammer';
 	import Hash from '@lucide/svelte/icons/hash';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
@@ -142,6 +143,7 @@
 		onOpen,
 		onOpenAlso,
 		onLinkOnGraph,
+		onBuild,
 		onDeleted,
 		onBack = null,
 		onClose,
@@ -189,6 +191,9 @@
 		onOpenAlso?: (ref: OwnedRef) => void;
 		/** Hand the choice of what to link to over to the graph. */
 		onLinkOnGraph: () => void;
+		/** Have assistants build what this note says the project is for —
+		 *  DESIGN.md § "A build". Absent wherever a build is not offered. */
+		onBuild?: (() => void) | undefined;
 		/** This note is gone, and the branch under it with it. `above` is the note
 		 *  it grew out of, for the tab it stood in. */
 		onDeleted: (ref: OwnedRef, above: OwnedRef | null) => void;
@@ -1430,6 +1435,7 @@
 		// Saying a note still holds is the reader's own to take at any time; the
 		// line under the title offers it only once the code has moved.
 		...(mayConfirm ? [{ label: 'Still true', icon: Check, onSelect: () => void stillTrue() }] : []),
+		...(onBuild ? [{ label: 'Build this', icon: Hammer, onSelect: onBuild }] : []),
 		// The address is read up with the title, so from far enough down a note it
 		// is off screen — and it is the thing a person cites.
 		...(node?.address

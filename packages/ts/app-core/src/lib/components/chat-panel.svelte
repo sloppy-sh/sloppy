@@ -15,7 +15,8 @@
 		chatAgentName,
 		chatAgentReach,
 		chatModels,
-		type OwnedRef
+		type OwnedRef,
+		type Ulid
 	} from '@sloppy/types';
 	import { scrollFade, SideDock } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
@@ -23,6 +24,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { Textarea } from '@sloppy/ui/textarea';
+	import type { Snippet } from 'svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { readCall, spentSaid } from '../chat-said.js';
 	import {
@@ -37,6 +39,8 @@
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { offers } from '../stores/offers.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
+	import { buildsHere } from './build-face.svelte.js';
+	import BuildSessions from './build-sessions.svelte';
 	import { askedShown } from './chat-card.js';
 	import ChatPlaces from './chat-places.svelte';
 	import ChatThread from './chat-thread.svelte';
@@ -49,7 +53,8 @@
 	let {
 		open = $bindable(false),
 		onOpen,
-		onShowDraft
+		onShowDraft,
+		card
 	}: {
 		open?: boolean;
 		/** Read a note an act left, at the offered change where it left one. */
@@ -57,6 +62,9 @@
 		/** A draft and the folder set against each other on the canvas, and `null`
 		 *  to put the graph as it stands back. Absent draws neither. */
 		onShowDraft?: (shown: DraftOnTheCanvas | null) => void;
+		/** The card a build thread stands behind — DESIGN.md § "A build". The
+		 *  acts on it are the page's, so the page draws it. */
+		card?: Snippet<[Ulid]>;
 	} = $props();
 
 	/** The programs Sloppy knows how to ask, as somebody with none of them reads it. */
@@ -140,6 +148,14 @@
 		typedModel = '';
 	}
 	const answering = $derived(chat.answeringWith);
+
+	/** The build this thread stands for, and `null` for a chat — DESIGN.md
+	 *  § "A build". */
+	const building = $derived.by(() => {
+		const held = chat.current;
+		if (held?.kind !== 'build' || held.build === undefined) return null;
+		return buildsHere.face?.of(held.build) ?? null;
+	});
 
 	const standing = $derived(chatDraft.standing);
 	const holds = $derived(chatDraft.counts ? draftHolds(chatDraft.counts) : '');
@@ -353,6 +369,24 @@
 				>
 					Look again
 				</Button>
+			{:else if building}
+				<div
+					bind:this={thread}
+					onscroll={onScrolled}
+					class="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto scroll-fade-y [--scroll-fade:1rem]"
+					{@attach scrollFade('y')}
+				>
+					{@render card?.(building.id)}
+					<BuildSessions
+						build={building}
+						turns={chat.turns}
+						contextOf={(conversation) => buildsHere.face?.contextOf(conversation) ?? null}
+						onOpen={(note) => void read(note)}
+					/>
+					{#if chat.trouble}
+						<p class="px-1 text-sm text-destructive" role="alert">{chat.trouble}</p>
+					{/if}
+				</div>
 			{:else}
 				<div
 					bind:this={thread}

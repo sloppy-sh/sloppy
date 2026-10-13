@@ -3,7 +3,7 @@
 	// and what can be done to this one — DESIGN.md § Layout.
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
-	import { CHAT_THREAD_NAME_MAX, type Ulid } from '@sloppy/types';
+	import { CHAT_THREAD_NAME_MAX, type ChatThread, type Ulid } from '@sloppy/types';
 	import { ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
@@ -12,6 +12,8 @@
 	import { draftHolds } from '../draft-said.js';
 	import { chat, type DraftOnDelete } from '../stores/chat.svelte.js';
 	import { chatDraft } from '../stores/chat-draft.svelte.js';
+	import { buildsHere } from './build-face.svelte.js';
+	import { buildShort } from './build-said.js';
 
 	let {
 		/** Read the draft of the thread in front of somebody, which is where a
@@ -101,6 +103,13 @@
 	function putBackThis(): void {
 		const id = thread?.id;
 		if (id !== undefined) void chat.putBack(id);
+	}
+
+	/** Where a build thread has got to, and nothing for a chat. */
+	function stateOf(one: ChatThread): string | undefined {
+		if (one.kind !== 'build' || one.build === undefined) return undefined;
+		const held = buildsHere.face?.of(one.build);
+		return held && buildShort(held.state);
 	}
 
 	function readTheDraft(): void {
@@ -195,7 +204,10 @@
 							{#each live as one (one.id)}
 								<DropdownMenu.RadioItem class="min-h-control" value={one.id}>
 									<span class="block min-w-0 flex-1 truncate">{one.name}</span>
-									{#if chat.answeringAway(one.id)}
+									{@const state = stateOf(one)}
+									{#if state}
+										<span class="shrink-0 text-xs text-muted-foreground">{state}</span>
+									{:else if chat.answeringAway(one.id)}
 										<span
 											class="shrink-0 text-xs text-muted-foreground"
 											aria-label={`${one.name} is still answering`}

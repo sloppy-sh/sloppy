@@ -8,11 +8,32 @@ import ChosenBar from './chosen-bar.svelte';
 
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
+let built: number;
 
 const bar = () => target.firstElementChild as HTMLElement;
 
+const acts = (): string[] =>
+	[...target.querySelectorAll('button')].map((one) => one.textContent?.trim() ?? '');
+
+function show(props: Record<string, unknown>): void {
+	if (mounted) unmount(mounted, { outro: false });
+	mounted = mount(ChosenBar, {
+		target,
+		props: {
+			count: 2,
+			onTags: () => undefined,
+			onLook: () => undefined,
+			onDelete: () => undefined,
+			onDone: () => undefined,
+			...props
+		}
+	});
+	flushSync();
+}
+
 beforeEach(() => {
 	stubResizeObserver();
+	built = 0;
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	mounted = mount(ChosenBar, {
@@ -42,4 +63,25 @@ it('stands between the chrome beside the graph and whatever is docked', () => {
 
 	expect(style.getPropertyValue('inset-inline-start')).toBe('var(--app-chrome-inset-start, 0px)');
 	expect(style.getPropertyValue('right')).toBe('var(--reading-dock-inset-right, 0px)');
+});
+
+// DESIGN.md § "A build": Build these stands on the bar of a chosen set, and
+// nowhere a build is not offered.
+it('offers building the chosen notes where a build is offered', () => {
+	show({ onBuild: () => (built += 1) });
+
+	expect(acts()).toContain('Build these');
+
+	const row = [...target.querySelectorAll('button')].find(
+		(one) => one.textContent?.trim() === 'Build these'
+	);
+	(row as HTMLButtonElement).click();
+	flushSync();
+	expect(built).toBe(1);
+});
+
+it('offers nothing to build where a build is not offered', () => {
+	show({});
+
+	expect(acts()).not.toContain('Build these');
 });

@@ -36,6 +36,7 @@
 	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
 	import Globe from '@lucide/svelte/icons/globe';
+	import Hammer from '@lucide/svelte/icons/hammer';
 	import Hash from '@lucide/svelte/icons/hash';
 	import HistoryIcon from '@lucide/svelte/icons/history';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
@@ -85,7 +86,10 @@
 		type NodeView,
 		type PullView,
 		type StoreRef,
-		type Tag as TagName
+		type Tag as TagName,
+		type BuildSlug,
+		type Ulid,
+		chatAgentReach
 	} from '@sloppy/types';
 	import {
 		AppearanceModal,
@@ -138,8 +142,14 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import BuildCard from '../components/build-card.svelte';
+	import { buildsHere } from '../components/build-face.svelte.js';
+	import BuildName from '../components/build-name.svelte';
+	import { citedAs, notesOnTheCanvas } from '../components/build-said.js';
 	import ChatPanel from '../components/chat-panel.svelte';
 	import EdgeSheet from '../components/edge-sheet.svelte';
+	import { Moving } from '../components/moving.svelte.js';
+	import BeforeMoving from '../components/before-moving.svelte';
 	import OpenHere from '../components/open-here.svelte';
 	import PersonSurface from '../components/person-surface.svelte';
 	import SetsChrome from '../components/sets-chrome.svelte';
@@ -891,8 +901,19 @@
 		}));
 	});
 
+	// A note is found FOR a task only while the surface asking for it is open.
+	$effect(() => {
+		if (!finding) findingFor = null;
+	});
+
 	function openFound(ref: OwnedRef): void {
 		finding = false;
+		const task = findingFor;
+		if (task !== null) {
+			findingFor = null;
+			void buildsHere.face?.reads(task, ref);
+			return;
+		}
 		show(ref);
 	}
 
@@ -1666,6 +1687,15 @@
 								onSelect: openPublish
 							}
 						]),
+				...(offersBuild
+					? [
+							{
+								label: picked.size === 1 ? 'Build this' : `Build these ${picked.size}`,
+								icon: Hammer,
+								onSelect: () => startBuild([...picked])
+							}
+						]
+					: []),
 				{
 					label: picked.size === 1 ? 'Delete it' : `Delete these ${picked.size}`,
 					icon: Trash2,
@@ -1726,6 +1756,9 @@
 				icon: FoldVertical,
 				onSelect: () => folded.add(on)
 			});
+		}
+		if (offersBuild) {
+			items.push({ label: 'Build this', icon: Hammer, onSelect: () => startBuild([on]) });
 		}
 		items.push(
 			{ label: 'Choose this and others', icon: ListChecks, onSelect: () => chooseAlso(on) },
@@ -1817,6 +1850,9 @@
 		try {
 			const written = await job.trip.note;
 			writing = null;
+			const need = answeringFor;
+			answeringFor = null;
+			if (need !== null) void buildsHere.face?.answer(need, written.ref);
 			show(written.ref, {
 				from: job.from,
 				shape: job.shape,
@@ -2027,6 +2063,127 @@
 	 *  project to chat about, and an assistant the person asked for. */
 	const offersChat = $derived(projectFiles !== undefined && chat.offered);
 
+	/** The build standing on this project, which is at most one. */
+	const theBuild = $derived(buildsHere.face?.standing ?? null);
+	/** Whether a build is put in front of anybody here. One stands at a time, so
+	 *  the act is not offered while one does — DESIGN.md § "A build". */
+	const offersBuild = $derived(offersChat && buildsHere.face !== null && theBuild === null);
+	/** Whether the assistant this would run on is a program on this machine. */
+	const buildRuns = $derived(chat.agent !== undefined && chatAgentReach(chat.agent) === 'program');
+	/** The version the build's line stands at, for the acts that take one. */
+	const buildTip = $derived.by(() => {
+		const line = theBuild?.line;
+		return line === undefined
+			? undefined
+			: graphHistory.lines.find((one) => one.name === line)?.head;
+	});
+
+	/** The notes a build is being named for. */
+	let buildAbout = $state.raw<readonly OwnedRef[]>([]);
+	let buildNaming = $state(false);
+	/** Why the last build act did not land, in words for the person. */
+	let buildSays = $state<string | null>(null);
+	/** Whether the line has been brought into the reader's own from here. */
+	let buildTook = $state(false);
+	/** The question the note being written answers. */
+	let answeringFor: BuildSlug | null = null;
+	/** The task the note being found is for. */
+	let findingFor = $state.raw<BuildSlug | null>(null);
+	const buildMoving = new Moving();
+
+	function startBuild(about: readonly OwnedRef[]): void {
+		if (about.length === 0) return;
+		buildAbout = about;
+		buildSays = null;
+		buildNaming = true;
+	}
+
+	async function nameTheBuild(name: string): Promise<void> {
+		const face = buildsHere.face;
+		if (!face) return;
+		if (await face.begin(buildAbout, name)) {
+			buildNaming = false;
+			buildTook = false;
+			chatting = true;
+		} else buildSays = face.says;
+	}
+
+	/** Pressing Go keeps a version first, in the words the history already asks
+	 *  it in. */
+	async function goBuilding(): Promise<void> {
+		const face = buildsHere.face;
+		if (!face) return;
+		buildSays = null;
+		await buildMoving.leaveFor({ carries: false, go: () => face.go() });
+	}
+
+	/** A question answered by writing a note, under the note it is about where it
+	 *  names one and under the feature where it does not. */
+	function answerNeed(need: BuildSlug): void {
+		const held = theBuild;
+		if (!held) return;
+		const question = [
+			...(held.plan?.needs ?? []),
+			...Object.values(held.tasks).flatMap((run) => run.needs)
+		].find((one) => one.id === need);
+		const under = question?.about ?? held.about[0];
+		answeringFor = need;
+		// Beside the graph the note and the dock both stand; narrower than that,
+		// the writing surface is what was asked for.
+		if (!desk.current) chatting = false;
+		void startWriting({ from: { relation: 'under', note: under } }, under, null);
+	}
+
+	function nameOfNote(note: OwnedRef): string | undefined {
+		const held = nodes.get(note);
+		return held && citedAs(held);
+	}
+
+	function findNoteFor(task: BuildSlug): void {
+		findingFor = task;
+		finding = true;
+	}
+
+	async function bringTheBuildIn(): Promise<void> {
+		const line = theBuild?.line;
+		if (line === undefined) return;
+		buildSays = null;
+		if (await graphHistory.bringIn(line)) buildTook = true;
+		else buildSays = graphHistory.says;
+	}
+
+	function workOnTheBuild(): void {
+		const tip = buildTip;
+		if (tip === undefined) return;
+		buildSays = null;
+		void buildMoving.leaveFor({
+			carries: true,
+			go: (carrying) => graphHistory.standOn(tip, carrying)
+		});
+	}
+
+	async function discardTheBuild(): Promise<void> {
+		const face = buildsHere.face;
+		if (!face) return;
+		buildSays = null;
+		if (!(await face.discard())) buildSays = face.says;
+	}
+
+	/** The build's notes against the reader's own, drawn on the canvas as any two
+	 *  states are. */
+	async function showBuildNotes(): Promise<void> {
+		const tip = buildTip;
+		if (tip === undefined) return;
+		const held = await graphHistory.between(undefined, tip);
+		if (!held) return;
+		const shown = notesOnTheCanvas(held);
+		if (!comparingStates(shown.difference)) return;
+		const notes = await graphHistory.notesAt(tip);
+		stopActing();
+		asWas = { commit: tip, message: shown.says, notes };
+		comparing = shown;
+	}
+
 	/** Put a version on the graph as it was, from wherever somebody asked. */
 	async function readTheVersion(commit: string): Promise<void> {
 		stopActing();
@@ -2157,6 +2314,30 @@
 						group: 'Graph',
 						where: ['palette', 'column', 'more'] as const,
 						run: startChat
+					}
+				]
+			: []),
+		...(offersBuild && open !== null
+			? [
+					{
+						id: 'build-this',
+						label: 'Build this',
+						icon: Hammer,
+						group: 'Write',
+						where: ['palette'] as const,
+						run: () => startBuild(open === null ? [] : [open])
+					}
+				]
+			: []),
+		...(offersBuild && picked.size > 0
+			? [
+					{
+						id: 'build-these',
+						label: picked.size === 1 ? 'Build this' : `Build these ${picked.size}`,
+						icon: Hammer,
+						group: 'Write',
+						where: ['palette'] as const,
+						run: () => startBuild([...picked])
 					}
 				]
 			: []),
@@ -3200,6 +3381,7 @@
 			onTags={() => openTags(null)}
 			onLook={() => openLook(null)}
 			onPublish={session.onDevice ? undefined : openPublish}
+			onBuild={offersBuild ? () => startBuild([...picked]) : undefined}
 			onDelete={() => askToDelete(null)}
 			onDone={stopChoosing}
 		/>
@@ -3516,8 +3698,46 @@
 			asWas = drawn && { commit: drawn.at, message: drawn.says, notes: [...drawn.notes] };
 			comparing = drawn && { says: drawn.says, difference: drawn.difference };
 		}}
-	/>
+	>
+		{#snippet card(id: Ulid)}
+			{@const held = buildsHere.face?.of(id)}
+			{#if held}
+				<BuildCard
+					build={held}
+					busy={buildsHere.face?.busy ?? false}
+					says={buildSays ?? buildsHere.face?.says ?? null}
+					taken={buildTook}
+					contextOf={(conversation) => buildsHere.face?.contextOf(conversation) ?? null}
+					nameOf={nameOfNote}
+					onGo={() => void goBuilding()}
+					onAnswer={answerNeed}
+					onDrop={(need) => void buildsHere.face?.drop(need)}
+					onAddNote={findNoteFor}
+					onRemoveNote={(task, note) => void buildsHere.face?.leaves(task, note)}
+					onOpen={(note) => show(note)}
+					onStop={() => void buildsHere.face?.stop()}
+					onCarryOn={() => void buildsHere.face?.carryOn()}
+					onWorkOn={buildTip === undefined ? undefined : workOnTheBuild}
+					onBringIn={() => void bringTheBuildIn()}
+					onDiscard={() => void discardTheBuild()}
+					onNotes={buildTip === undefined ? undefined : () => void showBuildNotes()}
+				/>
+			{/if}
+		{/snippet}
+	</ChatPanel>
 {/if}
+
+<BuildName
+	bind:open={buildNaming}
+	count={buildAbout.length}
+	reaches={buildRuns}
+	busy={buildsHere.face?.busy ?? false}
+	says={buildSays}
+	taken={(name) => buildsHere.face?.taken(name) ?? false}
+	onName={(name) => void nameTheBuild(name)}
+/>
+
+<BeforeMoving moving={buildMoving} />
 
 {#if lineAt}
 	{#key opening}
@@ -3633,6 +3853,7 @@
 			onOpen={show}
 			onOpenAlso={showAlso}
 			onLinkOnGraph={() => pointFrom(open)}
+			onBuild={offersBuild && open !== null ? () => startBuild([open]) : undefined}
 			onDeleted={(of, above) => closeGone([of], above)}
 			onBack={wayBack === null ? null : walkBack}
 			onClose={hide}

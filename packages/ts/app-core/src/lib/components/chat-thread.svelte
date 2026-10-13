@@ -61,7 +61,9 @@
 		keeping?: { at: number; card?: Card } | null;
 		/** Whether that keep is being written and has not landed yet. */
 		settling?: boolean;
-		onKeep: (at: number, said: string) => void;
+		/** Absent where nothing is kept as a note off an answer, which is a
+		 *  build's sessions — DESIGN.md § "A build". */
+		onKeep?: (at: number, said: string) => void;
 		onKept?: (allowed: boolean) => void;
 		/** Read a note an act left. */
 		onOpen: (note: OwnedRef) => void;
@@ -256,7 +258,7 @@
 						{/if}
 					{/each}
 
-					{#if answer.trim() !== '' && !(live && index === drawn.length - 1)}
+					{#if onKeep && answer.trim() !== '' && !(live && index === drawn.length - 1)}
 						{#if came}
 							{@render outcome(actOutcome(came), onlyNoteOf(came))}
 						{/if}
@@ -289,7 +291,7 @@
 									variant="ghost"
 									class="h-9 px-2 text-xs text-muted-foreground"
 									disabled={busy}
-									onclick={() => onKeep(index, answer)}
+									onclick={() => onKeep?.(index, answer)}
 								>
 									Keep as a note
 								</Button>

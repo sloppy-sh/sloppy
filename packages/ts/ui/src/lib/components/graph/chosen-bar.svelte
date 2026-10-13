@@ -3,6 +3,7 @@
 	// bottom, above the nav pill and the system bar under it.
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import Globe from '@lucide/svelte/icons/globe';
+	import Hammer from '@lucide/svelte/icons/hammer';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -14,6 +15,7 @@
 		onTags,
 		onLook,
 		onPublish,
+		onBuild,
 		onDelete,
 		onDone
 	}: {
@@ -28,6 +30,9 @@
 		onTags: () => void;
 		onLook: () => void;
 		onPublish?: (() => void) | undefined;
+		/** Have assistants build what these notes say the project is for —
+		 *  DESIGN.md § "A build". Absent wherever a build is not offered. */
+		onBuild?: (() => void) | undefined;
 		onDelete: () => void;
 		onDone: () => void;
 	} = $props();
@@ -42,6 +47,7 @@
 		{ label: 'Tags', icon: Tag, onSelect: onTags },
 		{ label: 'Look', icon: CircleDashed, onSelect: onLook },
 		...(onPublish ? [{ label: 'Publish', icon: Globe, onSelect: onPublish }] : []),
+		...(onBuild ? [{ label: 'Build these', icon: Hammer, onSelect: onBuild }] : []),
 		{ label: 'Delete', icon: Trash2, onSelect: onDelete, destructive: true }
 	]);
 
@@ -103,7 +109,7 @@
 		{/if}
 
 		{#if count > 0}
-			<div class="grid gap-1 {acts.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}">
+			<div class="grid gap-1 {acts.length % 4 === 0 ? 'grid-cols-4' : 'grid-cols-3'}">
 				{#each acts as act (act.label)}
 					<Button
 						variant="ghost"
