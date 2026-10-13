@@ -27,8 +27,8 @@ import {
 	type ChatSpend,
 	type ChatToolAnswer,
 	ChatToolAnswerSchema,
-	type ChatToolCall,
-	ChatToolCallSchema,
+	type SloppyToolCall,
+	SloppyToolCallSchema,
 	ulid
 } from '@sloppy/types';
 import { type AiKeysAccess, chatBrief } from '@sloppy/local';
@@ -77,7 +77,7 @@ export interface Telling {
 
 /** The page doing one of Sloppy's own acts and answering for it, as
  *  `ChatAccess.open` hands it over. */
-type Serving = (call: ChatToolCall) => Promise<ChatToolAnswer>;
+type Serving = (call: SloppyToolCall) => Promise<ChatToolAnswer>;
 
 /** A rejection whose message is already the words a person reads. */
 function refuse(said: string): Error {
@@ -482,7 +482,7 @@ class TauriChat implements ChatAccess {
 		session: Session,
 		one: { call: string; act: string; arguments: unknown }
 	): Promise<void> {
-		const held = ChatToolCallSchema.safeParse({
+		const held = SloppyToolCallSchema.safeParse({
 			call: one.call,
 			act: one.act,
 			arguments: one.arguments

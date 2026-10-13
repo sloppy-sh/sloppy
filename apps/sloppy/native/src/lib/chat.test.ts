@@ -8,7 +8,7 @@ import {
 	type ChatEvent,
 	type ToolResultBlock,
 	type ChatToolAnswer,
-	type ChatToolCall,
+	type SloppyToolCall,
 	type ContextUsage,
 	type StandingDraft
 } from '@sloppy/types';
@@ -89,10 +89,10 @@ let headsAt: string[];
 /** Every call that reached the page's act, and what that act answers with —
  *  the acts themselves are `chat-acts.ts` in `@sloppy/app-core`, so what is
  *  stood in for here is only the handing over. */
-let served: ChatToolCall[];
-let serving: (call: ChatToolCall) => Promise<ChatToolAnswer>;
+let served: SloppyToolCall[];
+let serving: (call: SloppyToolCall) => Promise<ChatToolAnswer>;
 
-const serve = async (call: ChatToolCall): Promise<ChatToolAnswer> => {
+const serve = async (call: SloppyToolCall): Promise<ChatToolAnswer> => {
 	served.push(call);
 	return await serving(call);
 };

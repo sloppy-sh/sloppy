@@ -2,23 +2,27 @@ import { describe, expect, it } from "vitest";
 import {
   advertisedBuildTools,
   BUILD_LINE_PREFIX,
+  BUILD_NAME_MAX,
   BUILD_ROLES,
   BUILD_ROUNDS_MOST,
   BUILD_TASK_BRANCH_PREFIX,
   BUILD_TOOL_SPECS,
-  BUILD_TOOLS,
   buildLine,
   BuildHandoffSchema,
+  BuildNameSchema,
+  buildNameFrom,
   BuildPlanSchema,
   BuildReviewSchema,
   BuildSchema,
   BuildStandingSchema,
   buildTaskBranch,
   buildTaskIn,
+  BuildToolCallSchema,
   MOST_TASKS,
+  SloppyToolCallSchema,
   toolsForRole,
 } from "./build.js";
-import { CHAT_TOOLS, chatToolWrites } from "./chat.js";
+import { BUILD_TOOLS, CHAT_TOOLS, chatToolWrites } from "./chat.js";
 import { ulid } from "./codecs.js";
 
 const note = () => `did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/${ulid()}`;
@@ -230,6 +234,98 @@ describe("what a role is advertised", () => {
     );
     expect(planning?.arguments).toHaveProperty("properties.tasks");
     expect(planning?.arguments).toHaveProperty("properties.checks");
+  });
+});
+
+describe("a call of one of a build's acts", () => {
+  const call = "call_1";
+
+  it("names an arm for every act a build adds", () => {
+    const armed = BuildToolCallSchema.options.map(
+      (arm) => arm.shape.act.value as string,
+    );
+
+    expect(armed.sort()).toEqual([...BUILD_TOOLS].sort());
+  });
+
+  it("is parsed by the one union a seam serves calls through", () => {
+    const asked = { call, act: "plan_build", arguments: plan };
+    expect(SloppyToolCallSchema.parse(asked)).toEqual(asked);
+
+    const reading = { call, act: "list_notes", arguments: {} };
+    expect(SloppyToolCallSchema.safeParse(reading).success).toBe(true);
+  });
+
+  it("refuses one in the words of its own shape", () => {
+    const refused = SloppyToolCallSchema.safeParse({
+      call,
+      act: "review_build",
+      arguments: { clean: "yes", findings: [] },
+    });
+
+    expect(refused.success).toBe(false);
+    expect(refused.error?.issues[0]?.path).toEqual(["arguments", "clean"]);
+  });
+});
+
+describe("what a build is called", () => {
+  it("takes a name a line of git's can carry", () => {
+    expect(BuildNameSchema.parse("lines-by-the-line")).toBe(
+      "lines-by-the-line",
+    );
+    expect(BuildNameSchema.safeParse("a".repeat(BUILD_NAME_MAX)).success).toBe(
+      true,
+    );
+    for (const said of [
+      "lines by the line",
+      "Lines",
+      "-lines",
+      "lines..line",
+      "lines~line",
+      "lines:line",
+      "lines?line",
+      "lines.lock",
+      "",
+      "a".repeat(BUILD_NAME_MAX + 1),
+    ]) {
+      expect(BuildNameSchema.safeParse(said).success).toBe(false);
+    }
+  });
+
+  it("says in words what a name may be", () => {
+    const refused = BuildNameSchema.safeParse("Lines by the line");
+    expect(refused.error?.issues[0]?.message).toContain("lowercase letters");
+  });
+
+  it("makes a name out of what a person typed", () => {
+    expect(buildNameFrom("Lines by the line")).toBe("lines-by-the-line");
+    expect(buildNameFrom("  the reader's own words!  ")).toBe(
+      "the-reader-s-own-words",
+    );
+    expect(buildNameFrom("Sets — the tags as places")).toBe(
+      "sets-the-tags-as-places",
+    );
+  });
+
+  it("makes one the line can be named after, whatever was typed", () => {
+    for (const said of [
+      "Lines by the line",
+      "..lines..",
+      "~lines:line?",
+      "a".repeat(BUILD_NAME_MAX * 2),
+      "the reader's own words",
+    ]) {
+      const name = buildNameFrom(said);
+      expect(name).toBeDefined();
+      expect(BuildNameSchema.safeParse(name).success).toBe(true);
+      expect(buildLine(name as string)).toBe(`${BUILD_LINE_PREFIX}${name}`);
+    }
+  });
+
+  it("makes none where nothing typed could be one", () => {
+    for (const said of ["", "   ", "...", "—", "???"]) {
+      expect(buildNameFrom(said)).toBeUndefined();
+    }
   });
 });
 

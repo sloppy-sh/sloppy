@@ -7,7 +7,6 @@
 
 import {
 	CHAT_BLOCK_KINDS,
-	CHAT_TOOL_SPECS,
 	type ChatActDone,
 	type ChatBlock,
 	type ChatBlockKind,
@@ -22,7 +21,9 @@ import {
 	type ChatTurn,
 	type OwnedRef,
 	type ToolCallBlock,
-	CHAT_ASKED_MAX
+	CHAT_ASKED_MAX,
+	isChatTool,
+	SLOPPY_TOOL_SPECS
 } from '@sloppy/types';
 
 /** Past this a line in the thread is something to scroll rather than read. */
@@ -132,7 +133,9 @@ export function toolLine(block: ToolCallBlock): ToolLine {
 		const subject = firstString(block.arguments);
 		return { doing: block.tool, ...(subject === undefined ? {} : { subject }) };
 	}
-	const doing = CHAT_TOOL_SPECS[block.act].label;
+	const doing = SLOPPY_TOOL_SPECS[block.act].label;
+	// A build's acts name no note, so there is nothing of one to draw beside it.
+	if (!isChatTool(block.act)) return { doing };
 	const held = readCall(block.call, block.act, block.arguments);
 	if (!held) return { doing };
 	switch (held.act) {

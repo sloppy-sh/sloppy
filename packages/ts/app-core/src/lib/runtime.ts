@@ -22,15 +22,16 @@ import type {
 	ThreadsAccess
 } from '@sloppy/local';
 import type {
+	BuildName,
 	BuildRole,
 	BuildStanding,
 	ChatAgent,
 	ChatEvent,
 	ChatThread,
 	ChatToolAnswer,
-	ChatToolCall,
 	DidSyr,
 	OwnedRef,
+	SloppyToolCall,
 	StandingDraft,
 	Ulid
 } from '@sloppy/types';
@@ -221,13 +222,15 @@ export interface BuildAccess {
 	 * The line the build `id` writes on and the checkout it is worked on in:
 	 * the line opened at `from` where there is none, and the one standing where
 	 * there is, so asking twice answers the same line rather than making a
-	 * second. `root` is the folder the project is in and `name` what the person
-	 * called the build, which is what the line is named after.
+	 * second. `root` is the folder the project is in and `name` what the build is
+	 * called, which is what the line is named after: a page makes one out of what
+	 * the person typed with `buildNameFrom` and asks for another where that comes
+	 * to nothing, so nothing here is ever refused over a name.
 	 */
 	start(
 		root: string,
 		id: Ulid,
-		name: string,
+		name: BuildName,
 		from: string
 	): Promise<{ line: string; path: string }>;
 	/** The checkout one task works in, on a branch of the line nobody is shown.
@@ -440,16 +443,19 @@ export interface ChatAccess {
 	 *  and the offer says so rather than failing when somebody takes it. */
 	agents(): Promise<ChatAgent[]>;
 	/**
-	 * Start a conversation for `asked.thread`, ending the one that stood for
-	 * that thread and leaving every other thread's alone. It resolves with the
-	 * handle once the conversation is ready to be said into; `started` reaches
-	 * `hear` when the agent has said what it is and what tools it has, which is
-	 * after the first turn begins.
+	 * Start a conversation for `asked.thread` and {@link ChatAsked.conversation},
+	 * ending the one that stood under that pair and leaving every other
+	 * conversation standing, this thread's and every other thread's. It resolves
+	 * with the handle once the conversation is ready to be said into; `started`
+	 * reaches `hear` when the agent has said what it is and what tools it has,
+	 * which is after the first turn begins.
 	 *
 	 * **A device with no agent REJECTS**, with words for the person in its
 	 * message, which are the ones the surface shows.
 	 *
-	 * `serve` is the page doing one of Sloppy's own acts and answering for it.
+	 * `serve` is the page doing one of Sloppy's own acts and answering for it —
+	 * every act, the chat's and a build's alike, which is why it takes
+	 * `SloppyToolCall` and not the chat's half of it.
 	 * It is asked once per call, and what it resolves with is what the agent
 	 * reads; it REJECTS where the act could not be done, and the shell tells
 	 * the agent so in the words of the rejection rather than leaving it
@@ -460,7 +466,7 @@ export interface ChatAccess {
 	open(
 		asked: ChatAsked,
 		hear: (event: ChatEvent) => void,
-		serve: (call: ChatToolCall) => Promise<ChatToolAnswer>
+		serve: (call: SloppyToolCall) => Promise<ChatToolAnswer>
 	): Promise<ChatLive>;
 	/** The draft a session works in — {@link DraftAccess} declares every act.
 	 *  Absent → this shell keeps no draft, so nothing about one is put in front

@@ -31,6 +31,20 @@ use crate::vault::{settled, FileError, Folders, Opened};
 /// What a folder the app makes a repository is on.
 const DEFAULT_BRANCH: &str = "main";
 
+/// What a build's task branches are called before the build's own ulid —
+/// `BUILD_TASK_BRANCH_PREFIX` in `@sloppy/types`, the one spelling, which
+/// `build.rs` takes from here.
+pub const BUILD_TASK_PREFIX: &str = "sloppy/build/";
+
+/// A branch this app made for work of its own rather than one of the folder's
+/// lines: a draft's notes, or one of a build's tasks. Nothing here lists one and
+/// no act here reaches one by name, so nobody is shown a name of ours and
+/// nobody is put on a tree another checkout is holding. A build's LINE is not
+/// one of these — it is shown and worked on like any line.
+pub fn of_our_own(name: &str) -> bool {
+    of_a_draft(name) || name.starts_with(BUILD_TASK_PREFIX)
+}
+
 /// What `graph.json` is called — `GRAPH_FILE` in `@sloppy/vault`.
 const GRAPH_FILE: &str = "graph.json";
 
@@ -1096,7 +1110,7 @@ fn names_at(repo: &Repository) -> Result<BTreeMap<Oid, Vec<String>>, HistoryErro
             if kind == BranchType::Remote && name.ends_with("/HEAD") {
                 continue;
             }
-            if kind == BranchType::Local && of_a_draft(name) {
+            if kind == BranchType::Local && of_our_own(name) {
                 continue;
             }
             held.entry(head).or_default().push(name.to_owned());
@@ -1233,7 +1247,7 @@ pub fn branches(vault: &Opened) -> Result<Vec<Branch>, HistoryError> {
         let (Some(name), Some(head)) = (branch.name()?, branch.get().target()) else {
             continue;
         };
-        if of_a_draft(name) {
+        if of_our_own(name) {
             continue;
         }
         let mut one = Branch::here(name, head, branch.is_head());
@@ -1260,7 +1274,7 @@ pub fn branches(vault: &Opened) -> Result<Vec<Branch>, HistoryError> {
 }
 
 pub fn branch(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
-    if of_a_draft(name) {
+    if of_our_own(name) {
         return Err(wont_work(name));
     }
     let kept = at(vault)?;
@@ -1280,7 +1294,7 @@ pub fn branch(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
 /// A branch at a commit somewhere back in the history. The folder stays where
 /// it is.
 pub fn branch_at(vault: &Opened, name: &str, commit: &str) -> Result<Branch, HistoryError> {
-    if of_a_draft(name) {
+    if of_our_own(name) {
         return Err(wont_work(name));
     }
     let kept = at(vault)?;
@@ -1299,7 +1313,7 @@ pub fn branch_at(vault: &Opened, name: &str, commit: &str) -> Result<Branch, His
 }
 
 pub fn delete_branch(vault: &Opened, name: &str) -> Result<(), HistoryError> {
-    if of_a_draft(name) {
+    if of_our_own(name) {
         return Err(no_branch(name));
     }
     let kept = at(vault)?;
@@ -1534,7 +1548,7 @@ fn branch_head(repo: &Repository, name: &str) -> Option<Oid> {
 }
 
 pub fn switch_to(vault: &Opened, name: &str) -> Result<(), HistoryError> {
-    if of_a_draft(name) {
+    if of_our_own(name) {
         return Err(no_branch(name));
     }
     let mut kept = at(vault)?;
@@ -1597,7 +1611,7 @@ pub fn stand_on(vault: &Opened, commit: &str, carrying: bool) -> Result<(), Hist
 /// A line starting where the folder stands, with the folder moved onto it and
 /// not a file touched, so it is taken while the folder holds unkept writing.
 pub fn line_here(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
-    if of_a_draft(name) {
+    if of_our_own(name) {
         return Err(wont_work(name));
     }
     let mut kept = at(vault)?;
@@ -1621,10 +1635,10 @@ pub fn line_here(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
 /// A line called something else, with the folder on it under the new name where
 /// it was on it.
 pub fn rename_line(vault: &Opened, from: &str, to: &str) -> Result<Branch, HistoryError> {
-    if of_a_draft(from) {
+    if of_our_own(from) {
         return Err(no_branch(from));
     }
-    if of_a_draft(to) {
+    if of_our_own(to) {
         return Err(wont_work(to));
     }
     let kept = at(vault)?;
@@ -1696,7 +1710,7 @@ fn one_version_each(kept: &Kept, index: &Index) -> Result<Vec<String>, HistoryEr
 }
 
 pub fn merge_in(vault: &Opened, data: &Path, name: &str) -> Result<Merged, HistoryError> {
-    if of_a_draft(name) {
+    if of_our_own(name) {
         return Err(no_branch(name));
     }
     let mut kept = at(vault)?;
@@ -2819,6 +2833,57 @@ pub(crate) mod tests {
         assert_eq!(read(&root, ".sloppy/bin.json"), r#"{"spent":["1a","1b"]}"#);
         assert_eq!(read(&root, ".sloppy/bin/note.md"), "still in the bin");
         assert_eq!(read(&root, "identity.key"), "the seed this device holds");
+    }
+
+    /// A build's task branch is this app's own, so the history neither lists it
+    /// nor takes it by name; the build's LINE is a line like any other.
+    #[test]
+    fn the_folder_neither_shows_a_build_s_task_branch_nor_acts_on_it() {
+        let root = vault();
+        let first = made(&root, "A graph");
+        let data = private_for(&root);
+        let task = format!("{BUILD_TASK_PREFIX}01JABUILD00000000000000000/reader");
+        let line = "build/lines-by-the-line";
+        branch(&root, line).expect("the build's line");
+        {
+            let kept = at(&root).expect("the repository");
+            let head = kept
+                .repo()
+                .find_commit(first.id.parse().expect("the id"))
+                .expect("the version");
+            kept.repo()
+                .branch(&task, &head, false)
+                .expect("the task's branch");
+        }
+
+        let listed: Vec<String> = branches(&root)
+            .expect("the lines")
+            .into_iter()
+            .map(|one| one.name)
+            .collect();
+        assert!(listed.contains(&line.to_owned()));
+        assert!(!listed.contains(&task));
+
+        let drawn = graph(&root, &data, 20, None).expect("the picture");
+        assert!(drawn.commits.iter().all(|one| !one.refs.contains(&task)));
+
+        assert!(switch_to(&root, &task).is_err());
+        assert!(merge_in(&root, &data, &task).is_err());
+        assert!(delete_branch(&root, &task).is_err());
+        assert!(line_here(&root, &task).is_err());
+        assert!(rename_line(&root, &task, "mine").is_err());
+        assert!(rename_line(&root, line, &task).is_err());
+        let another = format!("{BUILD_TASK_PREFIX}01JABUILD00000000000000001/writer");
+        assert!(branch(&root, &another).is_err());
+        assert!(branch_at(&root, &another, &first.id).is_err());
+        assert!(at(&root)
+            .expect("the repository")
+            .repo()
+            .find_branch(&another, BranchType::Local)
+            .is_err());
+
+        // And the line is still a line: taken by name like any other.
+        assert!(switch_to(&root, line).is_ok());
     }
 
     /// A line opens where the folder stands without a file moving, which is what

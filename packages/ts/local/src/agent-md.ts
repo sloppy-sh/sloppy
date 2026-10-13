@@ -398,8 +398,10 @@ not somebody reading a note against the code, and nothing you do here writes eit
   it says, and a tag naming the system it is about is wanted for exactly that reason.
 - **A second note about a file that already has one.** Offer a change to the note that
   is there instead.
-- **Anything in the code.** Sloppy reads this project and never writes in it; the only
-  files to write are the ones in this folder.
+- **Anything in the code, unless a build asked you.** Sloppy reads this project and never
+  writes in it, so outside a build the only files to write are the ones in this folder. In a
+  build the code is the point — the folder you were started in is the build's own copy of
+  the project, and the person's own folder is still not yours to touch.
 - **A \`ref\` twice, or a new one on a note that has one.** A ref is the note for as long
   as it exists, and somebody's link elsewhere is holding it.
 

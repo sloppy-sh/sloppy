@@ -3963,6 +3963,11 @@ on it to run what was built, and **Bring it in** is `History.merge` on their fol
 notes settled note by note and a code conflict refused in the words that already say where to
 settle it. A chat still works on a draft and nothing about drafts changes.
 
+**The name is a line's name, so it is held to one.** `BuildNameSchema` is what a build may be
+called and `buildNameFrom` the one place what somebody typed becomes one, so two surfaces
+cannot make two names of the same words; where nothing in what they typed can be a name they
+are asked for another, before anything is kept and before a line is opened.
+
 **The line forks from the version the person last kept.** Pressing Go keeps a version first —
 the same ask the history already makes before it moves the folder — and declining it stops the
 build before anything starts. Nothing a build does reaches the person's own line or folder
@@ -3972,7 +3977,9 @@ until they bring it in.
 the line, and one per task on a branch of the line nobody is shown: `buildTaskBranch` spells
 it `sloppy/build/<id>/<task>`, and the history leaves those out of the lines it lists and
 refuses every act that takes a branch by name over one, exactly as it does for a draft's
-(§ "Asking a tool to write the notes"). The checkouts are named by the build's id, so every
+(§ "Asking a tool to write the notes"). **One predicate holds that**, `of_our_own` in
+`history.rs`, which every listing and every act by name goes through; `build.rs` spells the
+prefix from there. The checkouts are named by the build's id, so every
 act but starting one and listing what stands takes that id alone. `BuildAccess` in
 `@sloppy/app-core` is the whole of what a page may ask of the platform — the line and its
 checkout, a task's checkout, the files in one of them, a version kept, a task merged into the
@@ -4058,7 +4065,12 @@ those names are one program's dialect and no shape here carries them. The acts' 
 table is `toolsForRole`: the chat's reading acts for every role, its writing acts for an
 implementer alone, and `plan_build`, `need`, `done` and `review_build` by role.
 `advertisedBuildTools(role)` is what the endpoint serves, so what a session is shown and what
-its calls are parsed against cannot be two different things.
+its calls are parsed against cannot be two different things. A call of any of them arrives as
+`SloppyToolCall` — one union over `act`, the chat's arms and a build's together — which is
+what `ChatAccess.open`'s `serve` takes and what the shell parses an arriving call against, so
+a build's acts reach a page through the door the chat's already use, a call that does not fit
+is refused in the words of its own shape, and a row for one is drawn from
+`SLOPPY_TOOL_SPECS` rather than by the name it arrived under.
 
 **The build runs on the agent the person chose for the chat, where that agent is a program on
 this machine.** The contract is the role and the act set, never the vendor, so a second

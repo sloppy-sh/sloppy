@@ -13,8 +13,8 @@
 		type ChatCallId,
 		type ChatCard as Card,
 		type ChatTurn,
-		chatToolWrites,
 		type OwnedRef,
+		sloppyToolWrites,
 		type ToolCallBlock
 	} from '@sloppy/types';
 	import { ResponsiveModal } from '@sloppy/ui';
@@ -129,7 +129,7 @@
 
 	function iconFor(call: ToolCallBlock) {
 		if (call.act === undefined) return Wrench;
-		return chatToolWrites(call.act) ? NotebookPen : BookOpen;
+		return sloppyToolWrites(call.act) ? NotebookPen : BookOpen;
 	}
 
 	/** A note as somebody cites it: the address they navigate by, then what it

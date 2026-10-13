@@ -1356,6 +1356,13 @@ container and nowhere else. Where this device has no assistant it can run, the a
 there and says in one line that it needs one installed here — an act that vanishes teaches
 nobody why.
 
+**A build is named before it starts, and the name is the reader's.** What they type is theirs
+to word, and the line it writes on takes that name, so the build and the line a person later
+works on are never two names for one thing. Where there is nothing in what they typed that
+could be a name, they are asked for one in a line saying what to put in it — and that ask
+comes before a version of their folder is kept, so a build that never starts has cost them
+nothing.
+
 **One card, never a wizard.** It is read top to bottom and it changes under the reader rather
 than advancing them through steps: while the plan is being read it says so and holds nothing
 to act on; once the plan is there it holds the tasks, the questions and the disagreements, and

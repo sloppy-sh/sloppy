@@ -44,11 +44,13 @@ import {
 	type ChatTurn,
 	type ContextUsage,
 	contextTogether,
+	isChatToolCall,
 	MAX_TURNS_PER_SESSION,
 	MOST_ATTACHED_PER_TURN,
 	MOST_PLACES,
 	type OwnedRef,
 	placeNamed,
+	type SloppyToolCall,
 	spentTogether,
 	type StandingDraft,
 	threadNameFrom,
@@ -97,6 +99,8 @@ const NO_PLACE =
 	'There is no place here by that name. Name one you were given, or leave it out to read this project.';
 const PLACE_UNREAD = 'That place cannot be read from here.';
 const NO_NOTES_THERE = 'There are no notes in that place. Read its files with your own tools.';
+const NOT_IN_A_CHAT =
+	'That act belongs to a build. Here there is only this conversation and these notes.';
 
 /** A reading act asked for a place it cannot have. The agent reads these
  *  words and acts on them, so one is answered rather than thrown past the
@@ -1372,7 +1376,8 @@ class ChatStore {
 	/** One of Sloppy's own acts, done here and answered to the agent. What the
 	 *  act lays out for the PERSON is held here; the agent reads `said` and
 	 *  nothing else. */
-	async #serve(live: Live, call: ChatToolCall): Promise<ChatToolAnswer> {
+	async #serve(live: Live, call: SloppyToolCall): Promise<ChatToolAnswer> {
+		if (!isChatToolCall(call)) return { said: NOT_IN_A_CHAT, trouble: true };
 		const done = await this.#act(live, call);
 		live.done.set(call.call, done);
 		return { said: done.said, ...(done.trouble === undefined ? {} : { trouble: done.trouble }) };

@@ -263,6 +263,32 @@ export const CHAT_TOOLS = [
 ] as const;
 export type ChatToolName = (typeof CHAT_TOOLS)[number];
 
+/**
+ * The acts a BUILD adds to those, named here beside them because a call
+ * arriving and a row of the thread are read against the whole set before
+ * anything of a build is reached. What each one IS — its words to an agent, the
+ * shape of its arguments and which role may call it — is `build.ts`:
+ * {@link BUILD_TOOL_SPECS}, {@link BuildToolCallSchema} and `toolsForRole`.
+ */
+export const BUILD_TOOLS = [
+  "plan_build",
+  "need",
+  "done",
+  "review_build",
+] as const;
+export type BuildToolName = (typeof BUILD_TOOLS)[number];
+
+/** Every act Sloppy serves, whichever surface it is served from. A call
+ *  arrives as one of these or as a tool of the agent's own. */
+export const SLOPPY_TOOLS = [...CHAT_TOOLS, ...BUILD_TOOLS] as const;
+export type SloppyToolName = (typeof SLOPPY_TOOLS)[number];
+
+/** Whether an act is one of the chat's own, which is what a surface asks
+ *  before it reads a call's arguments against {@link ChatToolCallSchema}. */
+export function isChatTool(act: SloppyToolName): act is ChatToolName {
+  return (CHAT_TOOLS as readonly string[]).includes(act);
+}
+
 /** Past this a listing is something the agent skims rather than reads. */
 export const MOST_NOTES_LISTED = 200;
 
@@ -795,10 +821,11 @@ export const ToolCallBlockSchema = z.object({
   /** The name the call arrived under, which is the agent's spelling of it and
    *  never Sloppy's. Shown only where {@link ToolCallBlock.act} is absent. */
   tool: z.string().min(1).max(CHAT_TOOL_NAME_MAX),
-  /** Which of Sloppy's own acts this is. **Absent is a tool of the agent's
-   *  own** — reading a file, searching the code — which is drawn by name and
-   *  is never behind the person's answer, because nothing of ours runs. */
-  act: z.enum(CHAT_TOOLS).optional(),
+  /** Which of Sloppy's own acts this is, the chat's and a build's alike
+   *  ({@link SLOPPY_TOOLS}). **Absent is a tool of the agent's own** — reading
+   *  a file, searching the code — which is drawn by name and is never behind
+   *  the person's answer, because nothing of ours runs. */
+  act: z.enum(SLOPPY_TOOLS).optional(),
   /** Carried untouched, the way a document element's `attrs` is: the page
    *  parses them against the act's own schema before doing anything, and draws
    *  nothing it has not read. **Absent is a call with none.** Bounded by
@@ -895,8 +922,9 @@ export const ChatSessionSchema = z.object({
 });
 export type ChatSession = z.infer<typeof ChatSessionSchema>;
 
-/** A call of one of Sloppy's own acts, arguments already parsed, as the page
- *  is handed it. */
+/** A call of one of the CHAT's acts, arguments already parsed, as the page is
+ *  handed it. `SloppyToolCallSchema` in `build.ts` is every act a call may
+ *  arrive as, which is what a seam serving one parses against. */
 export const ChatToolCallSchema = z.discriminatedUnion("act", [
   z.object({
     call: ChatCallIdSchema,

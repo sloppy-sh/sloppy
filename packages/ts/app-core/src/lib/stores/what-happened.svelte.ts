@@ -10,7 +10,7 @@
  * carry one of them is a bug rather than a detail.
  */
 
-import { CHAT_TOOL_SPECS, CHAT_TOOLS, type ChatToolName } from '@sloppy/types';
+import { SLOPPY_TOOL_SPECS, SLOPPY_TOOLS, type SloppyToolName } from '@sloppy/types';
 import { wordsFor } from './errors.js';
 import { prefs } from './prefs.svelte.js';
 
@@ -47,15 +47,15 @@ export function troubleIn(reason: unknown): string {
 	return (wordsFor(reason) ?? UNSAYABLE).slice(0, MOST_SAID);
 }
 
-function isAct(act: string): act is ChatToolName {
-	return CHAT_TOOLS.some((one) => one === act);
+function isAct(act: string): act is SloppyToolName {
+	return SLOPPY_TOOLS.some((one) => one === act);
 }
 
 /** What an act is called in the words a person reads it by, never the name it
  *  goes by on the wire. */
 export function doingIn(act: string): string {
 	if (!isAct(act)) return UNNAMED_ACT;
-	const label = CHAT_TOOL_SPECS[act].label;
+	const label = SLOPPY_TOOL_SPECS[act].label;
 	return label.charAt(0).toLowerCase() + label.slice(1);
 }
 

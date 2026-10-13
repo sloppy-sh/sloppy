@@ -7,12 +7,20 @@ import { z } from "zod";
 import {
   type AdvertisedTool,
   advertisedAs,
+  BUILD_TOOLS,
+  type BuildToolName,
   CHAT_TOOL_SPECS,
   CHAT_TOOLS,
+  ChatCallIdSchema,
   ChatSpendSchema,
   type ChatToolName,
   type ChatToolSpec,
   chatToolWrites,
+  type ChatToolCall,
+  ChatToolCallSchema,
+  isChatTool,
+  SLOPPY_TOOLS,
+  type SloppyToolName,
 } from "./chat.js";
 import { ProjectPathSchema } from "./code-anchor.js";
 import { OwnedRefSchema, TimestampSchema, UlidSchema } from "./common.js";
@@ -124,22 +132,60 @@ export const BuildSlugSchema = z.string().regex(BUILD_SLUG, SLUG_SAID);
 export type BuildSlug = z.infer<typeof BuildSlugSchema>;
 
 /**
+ * What a build is called, which is also the end of the line it writes on —
+ * {@link buildLine} — so it is held to what a line of git's can be named: the
+ * slug's shape, with room for a name a person reads.
+ */
+export const BUILD_NAME = new RegExp(
+  `^[a-z0-9][a-z0-9-]{0,${BUILD_NAME_MAX - 1}}$`,
+);
+
+const NAME_SAID = `A build is named with lowercase letters, digits and hyphens, up to ${BUILD_NAME_MAX} characters.`;
+
+export const BuildNameSchema = z.string().regex(BUILD_NAME, NAME_SAID);
+export type BuildName = z.infer<typeof BuildNameSchema>;
+
+/** What a person is asked when nothing in what they typed can be a name. */
+export const BUILD_NAME_NEEDS =
+  "Give the build a name with a letter or a digit in it.";
+
+/**
+ * The name a build takes from what a person typed, which is the ONE place that
+ * turns the one into the other: what they type is theirs to word, what is kept
+ * is held to {@link BuildNameSchema}, and a surface that slugged it its own way
+ * would show a name the line is not called.
+ *
+ * `undefined` is said as {@link BUILD_NAME_NEEDS}, and is the only answer a
+ * caller refuses on.
+ */
+export function buildNameFrom(said: string): BuildName | undefined {
+  const name = said
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, BUILD_NAME_MAX)
+    .replace(/^-+|-+$/g, "");
+  return BUILD_NAME.test(name) ? name : undefined;
+}
+
+/**
  * What git calls the line a build writes on, before the name. **It is shown**:
  * the line stands in the history picture like any other and the person works on
  * it, takes it in and renames it there.
  */
 export const BUILD_LINE_PREFIX = "build/";
 
-/** The line a build called `name` writes on. */
-export function buildLine(name: string): string {
+/** The line a build called `name` writes on. `name` is held to
+ *  {@link BuildNameSchema}, which is what makes the answer a name git takes. */
+export function buildLine(name: BuildName): string {
   return `${BUILD_LINE_PREFIX}${name}`;
 }
 
 /**
- * What git calls the branch one task works on. **It is never shown**: a person
- * reads a task, so nothing offers to work on one, take one in or delete one —
- * the history leaves these out of the lines it lists exactly as it leaves out a
- * draft's.
+ * What git calls the branch one task works on. **It is never shown, and no act
+ * reaches one by name**: a person reads a task, so nothing offers to work on
+ * one, take it in or delete it, exactly as nothing does for a draft's branch.
+ * The history is where that is held — docs/ARCHITECTURE.md § "Building from the
+ * notes".
  */
 export const BUILD_TASK_BRANCH_PREFIX = "sloppy/build/";
 
@@ -484,20 +530,14 @@ export const BuildReviewSchema = z.object({
 export type BuildReview = z.infer<typeof BuildReviewSchema>;
 
 /**
- * The acts a build hands a session, beside the chat's own. A new one is a value
- * here, an entry in {@link BUILD_TOOL_SPECS}, and the role or roles that may
- * call it in {@link toolsForRole}.
+ * What each of a build's acts is, by the names `chat.ts` keeps in
+ * {@link BUILD_TOOLS}. A new one is a value there, an entry here, an arm of
+ * {@link BuildToolCallSchema}, and the role or roles that may call it in
+ * {@link toolsForRole}.
+ *
+ * `writes` is false on all four: they answer Sloppy, and a build's writing is
+ * the chat's own acts and the code in the task's own checkout.
  */
-export const BUILD_TOOLS = [
-  "plan_build",
-  "need",
-  "done",
-  "review_build",
-] as const;
-export type BuildToolName = (typeof BUILD_TOOLS)[number];
-
-/** `writes` is false on all four: they answer Sloppy, and a build's writing is
- *  the chat's own acts and the code in the task's own checkout. */
 export const BUILD_TOOL_SPECS: Record<BuildToolName, ChatToolSpec> = {
   plan_build: {
     description:
@@ -536,7 +576,10 @@ const ROLE_ACTS: Record<BuildRole, readonly BuildToolName[]> = {
   merger: ["done"],
 };
 
-const SPECS: Record<ChatToolName | BuildToolName, ChatToolSpec> = {
+/** Every act Sloppy serves, by name: the chat's and a build's in one lookup,
+ *  so a row of either is drawn by the words a person reads it under rather
+ *  than by the name it arrived on the wire under. */
+export const SLOPPY_TOOL_SPECS: Record<SloppyToolName, ChatToolSpec> = {
   ...CHAT_TOOL_SPECS,
   ...BUILD_TOOL_SPECS,
 };
@@ -549,9 +592,7 @@ const SPECS: Record<ChatToolName | BuildToolName, ChatToolSpec> = {
  * One function, so what a session is advertised and what its calls are held to
  * cannot be two different things.
  */
-export function toolsForRole(
-  role: BuildRole,
-): readonly (ChatToolName | BuildToolName)[] {
+export function toolsForRole(role: BuildRole): readonly SloppyToolName[] {
   const reading = CHAT_TOOLS.filter((act) => !chatToolWrites(act));
   const writing =
     role === "implementer"
@@ -564,8 +605,61 @@ export function toolsForRole(
  *  {@link advertisedChatTools} is the chat's, this is a build's. */
 export function advertisedBuildTools(
   role: BuildRole,
-): AdvertisedTool<ChatToolName | BuildToolName>[] {
-  return toolsForRole(role).map((name) => advertisedAs(name, SPECS[name]));
+): AdvertisedTool<SloppyToolName>[] {
+  return toolsForRole(role).map((name) =>
+    advertisedAs(name, SLOPPY_TOOL_SPECS[name]),
+  );
+}
+
+/** Whether an act writes, every act Sloppy serves — {@link chatToolWrites} is
+ *  the chat's half of it. A build's four answer Sloppy and write nothing. */
+export function sloppyToolWrites(act: SloppyToolName): boolean {
+  return SLOPPY_TOOL_SPECS[act].writes;
+}
+
+/** A call of one of a BUILD's acts, arguments already parsed, as the page is
+ *  handed it. */
+export const BuildToolCallSchema = z.discriminatedUnion("act", [
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("plan_build"),
+    arguments: BuildPlanSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("need"),
+    arguments: BuildNeedSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("done"),
+    arguments: BuildHandoffSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("review_build"),
+    arguments: BuildReviewSchema,
+  }),
+]);
+export type BuildToolCall = z.infer<typeof BuildToolCallSchema>;
+
+/**
+ * Every act a call may arrive as, in one union over `act`, which is what a
+ * seam serving one parses against — `ChatAccess.open`'s `serve` in
+ * `@sloppy/app-core` takes this, so a build's acts reach a page through the
+ * same door the chat's do and a call of either is refused in the words of its
+ * own shape.
+ */
+export const SloppyToolCallSchema = z.discriminatedUnion("act", [
+  ...ChatToolCallSchema.options,
+  ...BuildToolCallSchema.options,
+]);
+export type SloppyToolCall = z.infer<typeof SloppyToolCallSchema>;
+
+/** Whether a call is one of the chat's acts, which is what a seam serving one
+ *  asks before it does anything to a note. */
+export function isChatToolCall(call: SloppyToolCall): call is ChatToolCall {
+  return isChatTool(call.act);
 }
 
 /**
@@ -694,8 +788,11 @@ export type BuildMerge = z.infer<typeof BuildMergeSchema>;
 /**
  * One build, kept on this device until somebody discards it. `graph` and
  * `project` are what it is a build IN, exactly as a thread carries them, and
- * `about` the notes it was asked for. `line` is the line it writes on, as the
- * history spells one, and `from` the version that line forked at.
+ * `about` the notes it was asked for. `name` is what the person called it, held
+ * to {@link BuildNameSchema} because {@link buildLine} makes a line of git's
+ * out of it — {@link buildNameFrom} is what turns what they typed into one.
+ * `line` is the line it writes on, as the history spells one, and `from` the
+ * version that line forked at.
  *
  * **Absent `plan` is a build whose reading session has not answered yet.**
  * `answers` is keyed by a need's id — the plan's questions and the tasks' alike
@@ -716,7 +813,7 @@ export const BuildSchema = z.object({
       MOST_NOTES_PER_TASK,
       `A build is asked for at most ${MOST_NOTES_PER_TASK} notes.`,
     ),
-  name: z.string().min(1).max(BUILD_NAME_MAX),
+  name: BuildNameSchema,
   line: z.string().min(1).max(BUILD_LINE_MAX),
   from: z.string().min(1).max(DRAFT_COMMIT_MAX),
   state: z.enum(BUILD_STATES),

@@ -228,6 +228,18 @@ describe("what AGENT.md teaches", () => {
     );
   });
 
+  it("keeps the code out of its hands everywhere but a build", () => {
+    expect(said("Never write")).toContain(
+      "Anything in the code, unless a build asked you",
+    );
+    expect(said("Never write")).toContain(
+      "the person's own folder is still not yours to touch",
+    );
+    expect(said("When asked to build")).toContain(
+      "Write the code the task is for",
+    );
+  });
+
   it("leaves saying a note still holds to the person", () => {
     expect(said("Never write")).toContain("`checked`, and `read_against`");
     expect(said("Never write")).toContain("saying it still holds is theirs");

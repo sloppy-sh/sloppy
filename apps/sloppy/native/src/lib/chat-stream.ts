@@ -14,7 +14,7 @@ import {
 	CHAT_SAID_MAX,
 	CHAT_SHOWN_MAX,
 	CHAT_TOOL_NAME_MAX,
-	CHAT_TOOLS,
+	SLOPPY_TOOLS,
 	CONTEXT_PART_KINDS,
 	CONTEXT_PART_NAME_MAX,
 	ChatBlockSchema,
@@ -25,7 +25,7 @@ import {
 	type ChatBlock,
 	type ChatEvent,
 	type ChatSpend,
-	type ChatToolName,
+	type SloppyToolName,
 	type ContextPart,
 	type ContextPartKind,
 	type ContextUsage,
@@ -59,8 +59,8 @@ const MOVED_BY = 0.02;
  * advertised with whatever it calls the endpoint — so the act is what the name
  * ends at. Nothing else is one of ours.
  */
-function actIn(tool: string): ChatToolName | undefined {
-	return CHAT_TOOLS.find((act) => tool === act || tool.endsWith(`__${act}`));
+function actIn(tool: string): SloppyToolName | undefined {
+	return SLOPPY_TOOLS.find((act) => tool === act || tool.endsWith(`__${act}`));
 }
 
 /** Where one of the agent's messages stands in the turn. */
