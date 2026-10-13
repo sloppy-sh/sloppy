@@ -507,4 +507,82 @@ describe('the build in the dock', () => {
 
 		expect(builds.went).toBe(1);
 	});
+
+	/** A question standing to be answered, so the acts on it are on screen. */
+	async function asking(): Promise<void> {
+		await started();
+		const standing = builds.standing;
+		if (!standing) throw new Error('no build');
+		builds.put({
+			...standing,
+			state: 'answering',
+			plan: {
+				tasks: [
+					{
+						id: 'reader',
+						title: 'Read the notes first',
+						effect: 'It reads the note saying what the thing is for.',
+						paths: ['src/parser.ts'],
+						notes: [PARSER]
+					}
+				],
+				needs: [
+					{
+						id: 'units',
+						question: 'Which way does the reader go when a note names no file?',
+						why: 'The reader cannot be written until the notes say.'
+					}
+				],
+				disputes: [],
+				checks: []
+			},
+			tasks: { reader: { state: 'waiting', handoffs: [], needs: [], rounds: 0 } }
+		});
+		await settle();
+	}
+
+	/** The note the fake answers a write with. */
+	const WROTE = ref(9);
+	function writesANote(): void {
+		const one = node(9, '3', { title: 'Where the reader goes' });
+		held = [...held, one];
+		api.on('POST /nodes', () => one);
+		api.on(`GET ${path(WROTE)}`, () => one);
+		api.on(`GET ${path(WROTE)}/blocks`, () => []);
+	}
+
+	const wrote = () => api.calls.filter((call) => call.startsWith('POST /nodes')).length;
+
+	it('answers the question with the note written for it', async () => {
+		await asking();
+		writesANote();
+
+		pressed('Write the note');
+		await settle();
+
+		expect(builds.answered).toEqual([{ need: 'units', note: WROTE }]);
+	});
+
+	// The question is held on the asking itself, so a write that never landed
+	// cannot be answered by whatever note the reader writes next.
+	it('leaves the question unanswered where the note written for it never landed', async () => {
+		await asking();
+		api.on('POST /nodes', () => {
+			throw new Error('nothing is listening');
+		});
+
+		pressed('Write the note');
+		await settle();
+		expect(screen()).toContain('Sloppy could not add that note');
+
+		writesANote();
+		mark('1a').click();
+		await settle();
+		pressed('Write a note under this');
+		await settle();
+
+		expect(wrote()).toBe(2);
+		expect(screen()).toContain('Where the reader goes');
+		expect(builds.answered).toEqual([]);
+	});
 });

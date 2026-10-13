@@ -21,6 +21,7 @@
 	let {
 		build,
 		busy = false,
+		writing = false,
 		says = null,
 		taken = false,
 		contextOf,
@@ -41,6 +42,8 @@
 		build: Build;
 		/** Whether an act is in flight, which is one at a time. */
 		busy?: boolean;
+		/** A note is already being written, so no question can ask for another. */
+		writing?: boolean;
 		/** Why the last act did not land, in words for the person. */
 		says?: string | null;
 		/** Whether the line has been brought into the reader's own. */
@@ -115,7 +118,16 @@
 	{#if questions.length > 0}
 		<section class="space-y-1">
 			<h4 class="text-xs font-medium text-muted-foreground">Needs</h4>
-			<BuildQuestions {questions} {busy} {nameOf} {titleOf} {onAnswer} {onDrop} {onOpen} />
+			<BuildQuestions
+				{questions}
+				{busy}
+				{writing}
+				{nameOf}
+				{titleOf}
+				{onAnswer}
+				{onDrop}
+				{onOpen}
+			/>
 		</section>
 	{/if}
 

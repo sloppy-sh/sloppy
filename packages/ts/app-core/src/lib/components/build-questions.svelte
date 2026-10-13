@@ -9,6 +9,7 @@
 	let {
 		questions,
 		busy = false,
+		writing = false,
 		nameOf,
 		titleOf,
 		onAnswer,
@@ -17,6 +18,9 @@
 	}: {
 		questions: readonly Question[];
 		busy?: boolean;
+		/** A note is already being written: one answer at a time, so the writing
+		 *  surface the reader is on cannot be taken for another question's. */
+		writing?: boolean;
 		/** A note as somebody cites it, and nothing for one not in hand. */
 		nameOf: (note: OwnedRef) => string | undefined;
 		/** What a task is called, for a question that is holding one. */
@@ -65,7 +69,7 @@
 					<Button
 						variant="outline"
 						class="h-9 text-xs"
-						disabled={busy}
+						disabled={busy || writing}
 						onclick={() => onAnswer(one.need.id)}
 					>
 						Write the note

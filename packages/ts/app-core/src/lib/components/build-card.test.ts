@@ -274,6 +274,16 @@ describe('the plan, standing to be answered', () => {
 		expect(asked.dropped).toEqual(['units']);
 	});
 
+	it('asks for no second note while one is being written', () => {
+		show(answering(), { writing: true });
+
+		pressed('Write the note');
+		expect(asked.answered).toEqual([]);
+
+		pressed('Set it aside');
+		expect(asked.dropped).toEqual(['units']);
+	});
+
 	it('says a question is answered where a note answers it, and offers neither act', () => {
 		show(answering({ answers: { units: { note: VAULT } } }));
 

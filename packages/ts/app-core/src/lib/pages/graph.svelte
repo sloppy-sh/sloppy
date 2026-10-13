@@ -245,6 +245,9 @@
 		where: 'title' | 'body';
 		/** Why it is not written yet, in words already fit to show. */
 		refused: string | null;
+		/** The build's question this note is being written to answer, by the id the
+		 *  plan holds it under. */
+		answers: BuildSlug | null;
 	}
 	let writing = $state<NoteBeingWritten | null>(null);
 	/** Whether that note is what the reading surface is showing. A reader may step
@@ -1824,7 +1827,8 @@
 	async function startWriting(
 		asked: CreateNodeRequest,
 		from: OwnedRef | null,
-		shape: NoteTemplate | null
+		shape: NoteTemplate | null,
+		answers: BuildSlug | null = null
 	): Promise<void> {
 		if (creating) return;
 		refused = null;
@@ -1840,7 +1844,8 @@
 			title: '',
 			body: '',
 			where: 'title',
-			refused: null
+			refused: null,
+			answers
 		};
 		writingHere = true;
 		void whenWritten(writing);
@@ -1850,9 +1855,7 @@
 		try {
 			const written = await job.trip.note;
 			writing = null;
-			const need = answeringFor;
-			answeringFor = null;
-			if (need !== null) void buildsHere.face?.answer(need, written.ref);
+			if (job.answers !== null) void buildsHere.face?.answer(job.answers, written.ref);
 			show(written.ref, {
 				from: job.from,
 				shape: job.shape,
@@ -2085,8 +2088,6 @@
 	let buildSays = $state<string | null>(null);
 	/** Whether the line has been brought into the reader's own from here. */
 	let buildTook = $state(false);
-	/** The question the note being written answers. */
-	let answeringFor: BuildSlug | null = null;
 	/** The task the note being found is for. */
 	let findingFor = $state.raw<BuildSlug | null>(null);
 	const buildMoving = new Moving();
@@ -2121,17 +2122,16 @@
 	 *  names one and under the feature where it does not. */
 	function answerNeed(need: BuildSlug): void {
 		const held = theBuild;
-		if (!held) return;
+		if (!held || creating) return;
 		const question = [
 			...(held.plan?.needs ?? []),
 			...Object.values(held.tasks).flatMap((run) => run.needs)
 		].find((one) => one.id === need);
 		const under = question?.about ?? held.about[0];
-		answeringFor = need;
 		// Beside the graph the note and the dock both stand; narrower than that,
 		// the writing surface is what was asked for.
 		if (!desk.current) chatting = false;
-		void startWriting({ from: { relation: 'under', note: under } }, under, null);
+		void startWriting({ from: { relation: 'under', note: under } }, under, null, need);
 	}
 
 	function nameOfNote(note: OwnedRef): string | undefined {
@@ -3705,6 +3705,7 @@
 				<BuildCard
 					build={held}
 					busy={buildsHere.face?.busy ?? false}
+					writing={creating}
 					says={buildSays ?? buildsHere.face?.says ?? null}
 					taken={buildTook}
 					contextOf={(conversation) => buildsHere.face?.contextOf(conversation) ?? null}
