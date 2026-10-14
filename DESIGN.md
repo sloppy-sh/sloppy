@@ -463,7 +463,7 @@ decorative.
 
 | Channel                        | Carries                                              | Why this channel                                                                                             |
 | ------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **Hue**                        | the sets in front of the reader                      | those sets are the question the reader just asked, so it gets the loudest channel                            |
+| **Hue**                        | the sets in front of the reader                      | a reader scans the whole field for which sets a note is in, so it gets the loudest channel                   |
 | **Lightness**                  | genealogical depth                                   | depth is ordinal, and lightness is the only channel read as ordered without a legend                         |
 | **Form** (shape, edge, radius) | provenance, the author's look, and the canvas's mode | form survives greyscale, colour-blindness and full zoom-out, so anything that must never be a hue lives here |
 
