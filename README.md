@@ -92,11 +92,11 @@ the answer somebody already wrote.
 
 **Both directions are open, which is the point.** A note carries `code:` anchors — a path,
 and a run of lines or the name of a symbol inside it — so the same index answers _"what is
-`helpers/money/providers/stripe.py` for?"_ with the note that says so, and _"where is this
-decision in the code?"_ with the file. An agent arriving at an unfamiliar system reads the
-intent in English and then goes straight to the lines it is about, instead of inferring a
-project's purpose from its syntax. A person does the same, from the other end: the note on
-the canvas carries the file, and the file's note is one search away.
+this file for?"_ with the note that says so, and _"where does this decision live?"_ with the
+lines. An agent arriving at an unfamiliar system reads the intent in English and then goes
+straight to the code it is about, instead of inferring a project's purpose from its syntax.
+A person does the same from the other end: the note on the canvas carries the file, and the
+file's note is one search away.
 
 **Eight more for writing**, and the agent is held to the same rules a person is:
 `write_note`, `move_note`, `tag_note`, `number_note`, `link_notes`, `style_edge`,
@@ -170,11 +170,15 @@ on the question you arrived with.
   place. Reach for it when you already know roughly where you are going: reading several
   notes in order, writing a run of them, checking the shape of a branch. It is the faster
   surface for keyboard work and the one that reads best on a narrow screen.
-- **Sets — _"what is in both?"_** The tags as overlapping places, each note standing where
-  it belongs. Open it when the question cuts across the lineage rather than down it:
-  everything tagged `payments` **and** `proposed`; what the database work and the ledger
-  work have in common; which notes carry no tag at all and so can never be found by one.
-  It is also where tagging is physical — drag a mark into a place and it carries that tag.
+- **Sets — _"what belongs together?"_** The tags drawn as overlapping places, each note
+  standing where it belongs. Open it when the question cuts across the lineage rather than
+  down it. A note's lineage says where it came from; its tags say what it is _about_, and
+  the two rarely agree — work on one concern is scattered across a dozen branches, and a
+  single branch touches several concerns. This is the reading that makes that visible: a
+  whole concern at a glance however far apart its notes were written, what two concerns
+  have in common sitting in the overlap between them, and the notes carrying no tag at all
+  standing outside everything — findable by no question anybody asks. Tagging is physical
+  here too: drag a mark into a place and it carries that tag.
 
 Across all three, **a mark wears a band per set it is in** — so which tags a note carries
 is readable from the mark itself, before you have asked anything, and the rail beside the
@@ -184,6 +188,27 @@ the shape of the graph survives the question instead of being filtered away.
 Every note also carries a **compass** — _part of, made of, like, instead of_ — the four
 questions that place an idea against the ideas around it. "Instead of" is where a
 rejected option goes, which is the half of a decision most projects lose.
+
+**The structure is the knowledge, and both kinds of reader get the same one.** A pile of
+notes answers _"what did we say about this?"_. A shaped one answers the questions a pile
+cannot: what did this come out of, what got built on top of it — so what breaks if it turns
+out to be wrong — what else is about the same concern though it was written a year later by
+somebody else, and what was weighed and rejected on the way.
+
+For a person that is how you judge weight before reading a word: a note with twenty
+descendants is load-bearing, one with none was a thought nobody used, and a concern whose
+notes are scattered across every branch is one the project has never looked at whole.
+
+For an assistant it is retrieval that does not rest on a guess. Similarity search returns
+what _reads_ alike; a graph returns what somebody _said_ was related — the parent, the run
+of siblings, the set — which is a different and better answer exactly where the words differ
+but the subject does not. It is also a context you can hand over whole and point at
+afterwards: "this note, what it sprang from, and the four it cites" is something a person
+can check, where "the twenty passages that scored highest" is not.
+
+And because it is one structure rather than two, a person and an assistant arguing about a
+decision are arguing about the decision — not about what each of them happened to be
+looking at.
 
 ### Versions, lines and proposing an edit
 
