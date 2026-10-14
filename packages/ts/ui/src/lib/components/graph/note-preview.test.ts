@@ -157,6 +157,17 @@ describe('the note preview', () => {
 		expect(card()?.textContent).toContain('seed');
 	});
 
+	// The canvas colours a set nobody selected, and the card wears the hue the
+	// canvas was handed rather than one it worked out from the selection.
+	it('wears the hues the canvas paints with, given them', () => {
+		show({ slots: new Map([['seed', 2]]) });
+		const dots = [...card()!.querySelectorAll<HTMLElement>('span[style*="background-color"]')];
+
+		expect(dots.map((dot) => dot.getAttribute('style'))).toEqual([
+			expect.stringContaining('var(--facet-2)')
+		]);
+	});
+
 	// A mega-node stands for every tag under it, which is more than fits. The
 	// ones the reader asked about are the ones that must not be the ones cut.
 	it('leads with the tags the reader selected, and counts the rest', () => {

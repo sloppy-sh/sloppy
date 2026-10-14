@@ -5,11 +5,10 @@
 </script>
 
 <script lang="ts">
-	// The question the reader asks the canvas, and the legend for its answer.
-	// DESIGN.md § "Hue — the tags you selected, and only those": selected tags
-	// lead, in the order they were selected, because that order is what hands out
-	// the hues. One ordering, two presentations — along the chrome over the
-	// canvas, and down the sidebar beside it (DESIGN.md § Layout).
+	// The legend for the canvas's colour — DESIGN.md § Hue: the selected tags
+	// lead, in the order they were selected, and the sets the canvas colours
+	// follow in their hues. One ordering, two presentations — along the chrome
+	// over the canvas, and down the sidebar beside it (DESIGN.md § Layout).
 	import ArrowDown10 from '@lucide/svelte/icons/arrow-down-1-0';
 	import ArrowDownAZ from '@lucide/svelte/icons/arrow-down-a-z';
 	import Search from '@lucide/svelte/icons/search';

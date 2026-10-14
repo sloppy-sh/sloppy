@@ -1213,7 +1213,7 @@ justification and under this same measured bound.
 Which of a dozen lines a row belongs to is the question this picture exists to answer, and
 over hundreds of rows ink weight cannot carry it — a reader following one line down the page
 has to be able to see where it went. So a lane borrows a slot from the same eight the canvas
-lends a selected tag (§ Hue), taken by lane rather than by branch, wrapping onto the first
+lends a set (§ Hue), taken by lane rather than by branch, wrapping onto the first
 once a page runs past eight. Each slot is measured to 3:1 against every surface on every
 theme in `token-contrast.test.ts`, because a lane carries its meaning alone. **A branch's identity is still its label at its head, not its hue** — the
 hue says which lane, which is why spending it teaches nobody a legend to hold, and a line
@@ -1495,7 +1495,7 @@ whether there was room.
 **Hue is spent here, the second of the two surfaces outside the canvas that spend it** (the
 other is § "The history as a picture"). Which band is which is the question the bar exists
 to answer, and six adjacent lengths in one row are a question ink weight cannot carry. So a
-part the assistant named borrows a slot from the same eight the canvas lends a selected tag,
+part the assistant named borrows a slot from the same eight the canvas lends a set,
 taken in the order it gave its parts and wrapping onto the first past eight, which is the
 lanes' rule because it is the same ramp for the same reason.
 
@@ -1863,7 +1863,7 @@ nothing under it.
   justification as the commit lanes (§ "The history as a picture"): which part of the window
   a band is, is the question the picture exists to answer, and over a dozen stacked bands ink
   weight cannot carry it. So a part borrows a slot from the same eight the canvas lends a
-  selected tag (§ Hue), taken in the order the agent named them and wrapping onto the first
+  set (§ Hue), taken in the order the agent named them and wrapping onto the first
   past eight — **each one measured to 3:1 against every surface on every theme in
   `token-contrast.test.ts`**, the same bound a lane is held to and for the same reason: a
   band and its legend swatch carry their meaning alone.

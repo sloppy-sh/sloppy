@@ -3487,7 +3487,7 @@
 	onclose={() => (menuAt = null)}
 />
 
-<NotePreview at={hoverAt} note={previewed} selected={selection} />
+<NotePreview at={hoverAt} note={previewed} selected={selection} slots={drawnSlots} />
 
 <ChosenTags
 	bind:open={tagging}

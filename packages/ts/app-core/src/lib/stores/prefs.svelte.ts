@@ -125,9 +125,9 @@ export interface Prefs {
 	/** Rules of the person's own, part of the look and applied over everything
 	 *  else — DESIGN.md § "A look is a file". Empty is a look with none. */
 	css: string;
-	/** The tags the graph is lit by, in SELECTION order — that order hands out
-	 *  the hues, so sorting it would repaint the reader's question. Empty is the
-	 *  monochrome graph DESIGN.md § Hue calls for when nothing has been asked. */
+	/** The tags the reader asked about, in SELECTION order — that order leads
+	 *  the hues, so sorting it would repaint the reader's question. Empty asks
+	 *  nothing: the graph is coloured by its own sets and nothing dims. */
 	tags: Tag[];
 	/** The paper the graph is drawn on — DESIGN.md § "The ground". */
 	ground: GraphGround;

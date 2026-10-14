@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { Tag } from '@sloppy/types';
+	import type { Tag, TagHueSlot } from '@sloppy/types';
 
 	/** Enough of a note to know whether you want it open. */
 	export interface PreviewedNote {
@@ -26,7 +26,8 @@
 	let {
 		at,
 		note,
-		selected
+		selected,
+		slots: given
 	}: {
 		/** The mark's centre in viewport coordinates and its drawn radius; null is
 		 *  nothing to preview. */
@@ -35,6 +36,9 @@
 		note: PreviewedNote | undefined;
 		/** The reader's tags, in selection order — the order the hues go out in. */
 		selected: readonly Tag[];
+		/** The hues the canvas paints its sets in, which the card's chips wear so
+		 *  the two cannot disagree. Absent, the selection hands them out. */
+		slots?: ReadonlyMap<Tag, TagHueSlot>;
 	} = $props();
 
 	const WIDTH = 264;
@@ -44,7 +48,7 @@
 	/** More tags than a glance can carry; the rest are counted. */
 	const SHOWN = 5;
 
-	const slots = $derived(assignTagHueSlots(selected));
+	const slots = $derived(given ?? assignTagHueSlots(selected));
 
 	/** One edge of the window the chrome around the graph has taken, in px —
 	 *  DESIGN.md § "The four inset vars". A card placed against the window itself

@@ -927,8 +927,8 @@ export class GraphScene {
       const lit = !done && since >= lights && since < lights + SWEEP_HOLD_MS;
       const facet = lit ? this.options.palette.tag(facetAt(across)) : undefined;
       carrier.tint = facet ?? mark.attributes.fill;
-      // A mark the sweep is over is one facet whole: the bands are what the
-      // reader asked for, and the sweep is not an answer.
+      // A mark the sweep is over is one facet whole: the bands say which sets
+      // it is in, and the sweep says nothing.
       mark.bands.forEach((band, at) => {
         band.tint =
           facet ?? this.options.palette.tag(mark.attributes.slots[at]);

@@ -166,10 +166,10 @@ Target WCAG 2.2 AA as a floor.
   the graph, kept in step with the canvas and shipped alongside it. It is not a degraded
   mode; a sighted keyboard user should be able to prefer it.
 - **Provenance and set membership are never carried by colour alone.** Own / published /
-  pulled also carry a shape or an edge treatment. A selection is answered in hue, but a
-  note carrying two selected tags draws in one of them, so which sets a note is in is
-  always readable in words as well — the graph stays answerable to a person who cannot
-  separate two hues, and to one who can but is looking at a note in three sets at once.
+  pulled also carry a shape or an edge treatment. Which sets a note is in is said in hue,
+  a band each, and always in words as well — the rail names the sets and a row lists its
+  tags — so the graph stays answerable to a person who cannot separate two hues, and to
+  one who can but is looking at a note in three sets at once.
 - Full keyboard operability, semantic landmarks, and AA contrast on every look we write —
   and on every colour a look carried from a collection brings, which is what decides whether
   it is offered at all. Hues drawn as marks — a node fill, an edge, a tag chip — owe the 3:1
