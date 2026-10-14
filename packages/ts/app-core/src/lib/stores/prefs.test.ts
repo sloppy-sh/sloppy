@@ -397,6 +397,7 @@ describe('the saved look', () => {
 			[{ look: 'paper', fonts: { ui: 'Iosevka Etoile' } }, null],
 			[{ look: 'paper', fonts: { ui: 'inter', heading: 'Iosevka "Et"', mono: 'apple' } }, null],
 			[{ look: 'paper', fonts: { mono: 'opendyslexic' } }, null],
+			[{ look: 'paper', fonts: { heading: 'victormono', mono: 'firacode' } }, null],
 			[
 				{ look: 'paper', fonts: { ui: 'a face; position: fixed', mono: 'url(http://a.example)' } },
 				null

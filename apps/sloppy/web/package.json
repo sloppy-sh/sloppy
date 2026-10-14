@@ -17,9 +17,13 @@
 		"format:check": "prettier --check ."
 	},
 	"dependencies": {
+		"@fontsource-variable/cascadia-code": "catalog:",
+		"@fontsource-variable/fira-code": "catalog:",
 		"@fontsource-variable/inter": "catalog:",
 		"@fontsource-variable/jetbrains-mono": "catalog:",
+		"@fontsource-variable/victor-mono": "catalog:",
 		"@fontsource/atkinson-hyperlegible": "catalog:",
+		"@fontsource/iosevka": "catalog:",
 		"@fontsource/opendyslexic": "catalog:",
 		"@sloppy/app-core": "workspace:*",
 		"@sloppy/client": "workspace:*",

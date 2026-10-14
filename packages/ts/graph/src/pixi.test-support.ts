@@ -270,6 +270,9 @@ export class FakeText extends FakeContainer {
   alpha = 1;
   resolution = 1;
   readonly fontSize: number;
+  readonly fontFamily: string;
+  readonly fontWeight: string;
+  readonly letterSpacing: number;
   anchorX = 0;
   anchorY = 0;
   readonly anchor = {
@@ -281,15 +284,23 @@ export class FakeText extends FakeContainer {
   constructor(options: {
     text: string;
     resolution?: number;
-    style?: { fontSize?: number };
+    style?: {
+      fontSize?: number;
+      fontFamily?: string;
+      fontWeight?: string;
+      letterSpacing?: number;
+    };
   }) {
     super();
     this.text = options.text;
     this.resolution = options.resolution ?? 1;
     this.fontSize = options.style?.fontSize ?? 12;
+    this.fontFamily = options.style?.fontFamily ?? "";
+    this.fontWeight = options.style?.fontWeight ?? "normal";
+    this.letterSpacing = options.style?.letterSpacing ?? 0;
   }
   get width(): number {
-    return this.text.length * FAKE_GLYPH;
+    return this.text.length * (FAKE_GLYPH + this.letterSpacing);
   }
   get height(): number {
     return this.fontSize * FAKE_LINE;

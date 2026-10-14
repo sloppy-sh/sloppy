@@ -58,7 +58,7 @@ async function captionOf(mark: {
   };
 
   const scene = await GraphScene.create({} as HTMLCanvasElement, {
-    fonts: { ui: "ui", address: "mono" },
+    fonts: { ui: "ui", heading: "heading", address: "mono" },
     palette,
     resolution: 2,
   });
@@ -160,7 +160,7 @@ const standing = (node: NodeView): DrawnNode => ({
 
 async function canvasOf(drawn: readonly DrawnNode[]) {
   const scene = await GraphScene.create({} as HTMLCanvasElement, {
-    fonts: { ui: "ui", address: "mono" },
+    fonts: { ui: "ui", heading: "heading", address: "mono" },
     palette,
     resolution: 2,
   });
@@ -274,7 +274,7 @@ describe("what is written on a region's fold", () => {
       palette,
     });
     const scene = await GraphScene.create({} as HTMLCanvasElement, {
-      fonts: { ui: "ui", address: "mono" },
+      fonts: { ui: "ui", heading: "heading", address: "mono" },
       palette,
       resolution: 2,
     });

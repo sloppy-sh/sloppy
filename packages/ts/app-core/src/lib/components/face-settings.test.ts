@@ -176,6 +176,28 @@ describe('the faces somebody sets', () => {
 		expect(target.textContent).not.toContain('Iosevka Etoile');
 	});
 
+	// A face reads best as itself, and what sets these four apart is what they
+	// letter an operator as, so each name carries one.
+	it('writes the operators after the name of a face that letters them', () => {
+		show();
+		const shown = (value: string): string =>
+			choices('mono')
+				.find((one) => one.value === value)
+				?.closest('label')
+				?.textContent?.trim() ?? '';
+
+		for (const [face, name] of [
+			['firacode', 'Fira Code'],
+			['cascadiacode', 'Cascadia Code'],
+			['victormono', 'Victor Mono'],
+			['iosevka', 'Iosevka']
+		] as const) {
+			expect(shown(face)).toBe(`${name} -> != =>`);
+		}
+		expect(shown('inter')).toBe('Inter');
+		expect(shown('atkinson')).toBe('Atkinson Hyperlegible');
+	});
+
 	// A face offered here is one the app holds itself: choosing one must not send
 	// a reader's request to somebody else's machine. A family named without
 	// quotes is the device's own to answer, and nothing is shipped for it.

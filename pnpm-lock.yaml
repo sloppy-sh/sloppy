@@ -9,13 +9,25 @@ catalogs:
     '@eslint/js':
       specifier: 10.0.1
       version: 10.0.1
+    '@fontsource-variable/cascadia-code':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/fira-code':
+      specifier: 5.3.0
+      version: 5.3.0
     '@fontsource-variable/inter':
       specifier: 5.2.8
       version: 5.2.8
     '@fontsource-variable/jetbrains-mono':
       specifier: 5.2.8
       version: 5.2.8
+    '@fontsource-variable/victor-mono':
+      specifier: 5.3.0
+      version: 5.3.0
     '@fontsource/atkinson-hyperlegible':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource/iosevka':
       specifier: 5.3.0
       version: 5.3.0
     '@fontsource/opendyslexic':
@@ -198,13 +210,25 @@ importers:
 
   apps/sloppy/native:
     dependencies:
+      '@fontsource-variable/cascadia-code':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/fira-code':
+        specifier: 'catalog:'
+        version: 5.3.0
       '@fontsource-variable/inter':
         specifier: 'catalog:'
         version: 5.2.8
       '@fontsource-variable/jetbrains-mono':
         specifier: 'catalog:'
         version: 5.2.8
+      '@fontsource-variable/victor-mono':
+        specifier: 'catalog:'
+        version: 5.3.0
       '@fontsource/atkinson-hyperlegible':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource/iosevka':
         specifier: 'catalog:'
         version: 5.3.0
       '@fontsource/opendyslexic':
@@ -310,13 +334,25 @@ importers:
 
   apps/sloppy/web:
     dependencies:
+      '@fontsource-variable/cascadia-code':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/fira-code':
+        specifier: 'catalog:'
+        version: 5.3.0
       '@fontsource-variable/inter':
         specifier: 'catalog:'
         version: 5.2.8
       '@fontsource-variable/jetbrains-mono':
         specifier: 'catalog:'
         version: 5.2.8
+      '@fontsource-variable/victor-mono':
+        specifier: 'catalog:'
+        version: 5.3.0
       '@fontsource/atkinson-hyperlegible':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource/iosevka':
         specifier: 'catalog:'
         version: 5.3.0
       '@fontsource/opendyslexic':
@@ -1151,14 +1187,26 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
+  '@fontsource-variable/cascadia-code@5.3.0':
+    resolution: {integrity: sha512-6I6M029Lum62MGmP0o+rXRrIBiIiptNDC4slPKLPUJiSB7NHZTLb+Ihk9G7jLvUfWziGXHJLjJPJLBzlEPjS1g==}
+
+  '@fontsource-variable/fira-code@5.3.0':
+    resolution: {integrity: sha512-ZhvHeknlicraKVSJBa1NrJnXDVByUkC407zwgELYfmnx3p9g8vwIPfQCxx8YD3K7dAeCdLuHJOHlpMfRsIcApQ==}
+
   '@fontsource-variable/inter@5.2.8':
     resolution: {integrity: sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ==}
 
   '@fontsource-variable/jetbrains-mono@5.2.8':
     resolution: {integrity: sha512-WBA9elru6Jdp5df2mES55wuOO0WIrn3kpXnI4+W2ek5u3ZgLS9XS4gmIlcQhiZOWEKl95meYdvK7xI+ETLCq/Q==}
 
+  '@fontsource-variable/victor-mono@5.3.0':
+    resolution: {integrity: sha512-xwUwrQ17BEofW/X5jRAXKxtQ0AFaSwH2/CKq6+ZuGUTiA9pmaYchM/7RvlyNcnGjIYT67DoJZuIRp4xpMjyFEw==}
+
   '@fontsource/atkinson-hyperlegible@5.3.0':
     resolution: {integrity: sha512-Sp8Ve8+rQmENY2Lv02VH7sLpntzTTvnncnJMTbRE7DX6TLxGraN4ykZfzaUWIoCFmaomwkvNiqmlPkrKBuDoSA==}
+
+  '@fontsource/iosevka@5.3.0':
+    resolution: {integrity: sha512-RcG0v/65e4PTuThR/d7n9jj6PLlex7YUGaLa4ZpL+NnqArWQmD8Z+6gYBTxPMVWxYMRcEw6OF4rdt8XisnC5zA==}
 
   '@fontsource/opendyslexic@5.3.0':
     resolution: {integrity: sha512-BVYIW/ghc1U2iAghhYTN+GFWiZ3lnCy8Jf2KkZC23aHQHBNcMqKT718zckfqVxRx4qsXJmIMPWvczirRuhmtsg==}
@@ -5803,11 +5851,19 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
+  '@fontsource-variable/cascadia-code@5.3.0': {}
+
+  '@fontsource-variable/fira-code@5.3.0': {}
+
   '@fontsource-variable/inter@5.2.8': {}
 
   '@fontsource-variable/jetbrains-mono@5.2.8': {}
 
+  '@fontsource-variable/victor-mono@5.3.0': {}
+
   '@fontsource/atkinson-hyperlegible@5.3.0': {}
+
+  '@fontsource/iosevka@5.3.0': {}
 
   '@fontsource/opendyslexic@5.3.0': {}
 

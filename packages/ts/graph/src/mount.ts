@@ -41,7 +41,7 @@ import {
   type PaletteTokens,
   readPaletteTokens,
 } from "./palette.js";
-import { type FrameStats, GraphScene } from "./scene.js";
+import { type FrameStats, GraphScene, type SceneFonts } from "./scene.js";
 import { FIELD_GUTTER } from "./layout/geometry.js";
 import {
   packSets,
@@ -1172,10 +1172,13 @@ function edgeInputs(model: ReturnType<typeof buildModel>) {
   return inputs;
 }
 
-function readFonts(host: Element): { ui: string; address: string } {
+function readFonts(host: Element): SceneFonts {
   const computed = getComputedStyle(host);
   const ui = computed.fontFamily || "system-ui, sans-serif";
+  // The token is empty where no look has named a heading face, and the role
+  // itself falls back to the app's own face — DESIGN.md § Typography.
+  const heading = computed.getPropertyValue("--font-heading").trim() || ui;
   const address =
     computed.getPropertyValue("--font-address").trim() || "ui-monospace";
-  return { ui, address };
+  return { ui, heading, address };
 }

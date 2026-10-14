@@ -50,7 +50,16 @@ export type { Density, Effect, Style } from '@sloppy/types';
 export type BuiltInLook = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
 /** The faces this build offers. `system` is the role's own, and every other
  *  face a look can ask for is a family by name — DESIGN.md § Typography. */
-export type Face = 'system' | 'inter' | 'atkinson' | 'opendyslexic' | 'apple';
+export type Face =
+	| 'system'
+	| 'inter'
+	| 'atkinson'
+	| 'opendyslexic'
+	| 'apple'
+	| 'firacode'
+	| 'cascadiacode'
+	| 'victormono'
+	| 'iosevka';
 /** The three things a face is chosen for. */
 export type FaceRole = keyof Prefs['fonts'];
 
@@ -228,8 +237,16 @@ export const FACE_LABELS: Record<Face, string> = {
 	inter: 'Inter',
 	atkinson: 'Atkinson Hyperlegible',
 	opendyslexic: 'OpenDyslexic',
-	apple: "Your device's face"
+	apple: "Your device's face",
+	firacode: 'Fira Code',
+	cascadiacode: 'Cascadia Code',
+	victormono: 'Victor Mono',
+	iosevka: 'Iosevka'
 };
+
+/** The operators Settings writes after the name of a face that letters them as
+ *  one mark, so a reader sees what they look like in the face itself. */
+export const FACE_LIGATURES_SHOWN = '-> != =>';
 export const DENSITY_LABELS: Record<Density, string> = {
 	auto: 'What this device is',
 	comfortable: 'Comfortable',
@@ -241,13 +258,18 @@ export const FACES = Object.keys(FACE_LABELS) as Face[];
 
 /**
  * What a face this build offers asks for: the families it names where a role is
- * drawn proportionally and where it is drawn to one width, and whether it can
- * hold its figures to one column. `system` is absent because the role keeps the
- * stack `app.css` gives it.
+ * drawn proportionally and where it is drawn to one width, whether it can hold
+ * its figures to one column, and whether it letters an operator as one mark.
+ * `system` is absent because the role keeps the stack `app.css` gives it.
  */
 const FACE_FAMILIES: Record<
 	Exclude<Face, 'system'>,
-	{ proportional: string; monospaced: string; oneWidthFigures: boolean }
+	{
+		proportional: string;
+		monospaced: string;
+		oneWidthFigures: boolean;
+		ligatures?: boolean;
+	}
 > = {
 	inter: { proportional: "'Inter'", monospaced: "'Inter'", oneWidthFigures: true },
 	atkinson: {
@@ -264,6 +286,30 @@ const FACE_FAMILIES: Record<
 		proportional: '-apple-system, BlinkMacSystemFont, system-ui',
 		monospaced: 'ui-monospace, SFMono-Regular, Menlo',
 		oneWidthFigures: true
+	},
+	firacode: {
+		proportional: "'Fira Code'",
+		monospaced: "'Fira Code'",
+		oneWidthFigures: true,
+		ligatures: true
+	},
+	cascadiacode: {
+		proportional: "'Cascadia Code'",
+		monospaced: "'Cascadia Code'",
+		oneWidthFigures: true,
+		ligatures: true
+	},
+	victormono: {
+		proportional: "'Victor Mono'",
+		monospaced: "'Victor Mono'",
+		oneWidthFigures: true,
+		ligatures: true
+	},
+	iosevka: {
+		proportional: "'Iosevka'",
+		monospaced: "'Iosevka'",
+		oneWidthFigures: true,
+		ligatures: true
 	}
 };
 
@@ -280,6 +326,12 @@ export const FACE_ROLES = Object.keys(FACE_TOKENS) as FaceRole[];
 
 function shippedFace(face: string): (typeof FACE_FAMILIES)[Exclude<Face, 'system'>] | null {
 	return Object.hasOwn(FACE_FAMILIES, face) ? FACE_FAMILIES[face as Exclude<Face, 'system'>] : null;
+}
+
+/** Whether a face letters an operator as one mark. False for a family somebody
+ *  named, because nothing here knows what it holds. */
+export function faceLigatures(face: string): boolean {
+	return shippedFace(face)?.ligatures === true;
 }
 
 /** A family as the person typed it, as a CSS string — a family name is not an

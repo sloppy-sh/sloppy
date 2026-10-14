@@ -89,7 +89,7 @@ async function canvasOn(
   selection: readonly Tag[],
 ) {
   const scene = await GraphScene.create({} as HTMLCanvasElement, {
-    fonts: { ui: "ui", address: "mono" },
+    fonts: { ui: "ui", heading: "heading", address: "mono" },
     palette,
     resolution: 2,
   });
@@ -209,7 +209,7 @@ describe("the words on the canvas", () => {
       }
       const said = new Set(lettering(app).map((one) => one.words));
       for (const tag of setsOnScreen(scene)) {
-        expect(said, `${tag} at ${step}x`).toContain(tag);
+        expect(said, `${tag} at ${step}x`).toContain(tag.toUpperCase());
       }
     }
     scene.destroy();
@@ -254,7 +254,7 @@ async function standing(marks: readonly Standing[]) {
   });
 
   const scene = await GraphScene.create({} as HTMLCanvasElement, {
-    fonts: { ui: "ui", address: "mono" },
+    fonts: { ui: "ui", heading: "heading", address: "mono" },
     palette,
     resolution: 2,
   });

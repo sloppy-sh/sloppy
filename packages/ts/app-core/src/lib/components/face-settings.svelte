@@ -8,9 +8,11 @@
 	import {
 		type Face,
 		FACE_LABELS,
+		FACE_LIGATURES_SHOWN,
 		FACE_ROLES,
 		FACES,
 		type FaceRole,
+		faceLigatures,
 		faceStack,
 		namesAFace,
 		prefs
@@ -33,6 +35,12 @@
 	 *  is already set in by default. */
 	function offered(role: FaceRole): Face[] {
 		return FACES.filter((face) => face !== ITS_OWN[role]);
+	}
+
+	/** What a face's own choice is called: its name, and after it the operators
+	 *  of a face that letters them as one mark. */
+	function shownAs(face: Face): string {
+		return faceLigatures(face) ? `${FACE_LABELS[face]} ${FACE_LIGATURES_SHOWN}` : FACE_LABELS[face];
 	}
 
 	let naming = $state<FaceRole | null>(null);
@@ -114,7 +122,7 @@
 					<ChoicePill
 						group="face-{role}"
 						value={face}
-						label={FACE_LABELS[face]}
+						label={shownAs(face)}
 						checked={picked(role) === face}
 						style={drawnIn(role, face)}
 						onpick={() => wear(role, face)}

@@ -1642,6 +1642,10 @@ nothing under it.
   typeface to make a heading feel important, so a display face is somebody's deliberate
   choice for their own Sloppy and never the product's taste — and one face chosen for the
   app is one face read everywhere a reader who needs it looks.
+- **The heading face has a second job: the names of places.** A set's name on the canvas
+  (§ "Sets — the tags as places") is lettered in it, tracked and in capitals, so a label on
+  the paper never reads as the title of a note standing on it — and it stays a label on the
+  default, where the heading face IS the app's own.
 - **Code and the address face**: JetBrains Mono with a `ui-monospace` fallback, tabular
   figures, always. An address is scanned and compared character by character, and `1a1`
   against `1al` must never be a question the reader has to resolve. Every address in the
@@ -1653,9 +1657,13 @@ nothing under it.
   before the first paint. A block per face could not carry a family a look asks for by
   name, and a role is inherited from the root anyway — `body` takes the first, every
   heading the second, and `code`, `pre`, `kbd` and the `address` utility the third.
-- **The faces Sloppy ships** are `inter`, `atkinson` and `opendyslexic`, which it holds
+- **The faces Sloppy ships** are `inter`, `atkinson` and `opendyslexic`, the four code
+  faces `firacode`, `cascadiacode`, `victormono` and `iosevka`, all of which it holds
   itself, and `apple` for the device's own — SF Pro on Apple hardware, with its monospace
-  companion where the role is drawn to one width. `system` is the role's own stack. A face
+  companion where the role is drawn to one width. **The four code faces letter an operator
+  as one mark**, so the Faces picker writes `-> != =>` after each of their names, in the
+  face itself: what tells them apart is what they do to those, and a reader chooses by
+  seeing it rather than by reading about it. `system` is the role's own stack. A face
   is chosen per role, and a role that derives from another follows it: somebody who needs
   OpenDyslexic to read sets the app's face and the headings come with it, while the face for
   code is theirs to set or to leave. A family the device does not have falls back to the
@@ -2239,7 +2247,8 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   finds every note carrying it inside that tag's circle, and one who selects several finds
   each note inside the first of them it carries.
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
-  tag's name in quiet ink just inside its outer edge.** The words the canvas writes keep off
+  tag's name in quiet ink just inside its outer edge — lettered as the label of a place,
+  in the heading face, tracked and in capitals (§ Typography), never as a note's title.** The words the canvas writes keep off
   each other: a name whose place is taken steps along the room kept for it to the nearest clear
   one and, where the room holds none, just outside the outline — moved, never dropped — and a
   caption whose place is taken tries the others its mark has (§ "The canvas") before it is left

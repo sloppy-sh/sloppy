@@ -51,13 +51,16 @@ const GRID = 320;
 /** How far inside a set's outline its name is written, in world units. */
 const NAME_INSET = 26;
 
-/** A set's name as `scene.ts` writes it: the size in CSS pixels, the most
- *  letters of a tag it writes, and what it keeps clear of an edge. */
+/** A set's name as `scene.ts` writes it: the size in CSS pixels, how far its
+ *  letters are tracked apart and how heavily they are drawn, the most letters
+ *  of a tag it writes, and what it keeps clear of an edge. */
 export const SETS_NAME_SIZE = 13;
+export const SETS_NAME_TRACKING = 1;
+export const SETS_NAME_WEIGHT = "500";
 export const SETS_NAME_CHARS = 24;
 export const SETS_NAME_GAP = 8;
 
-/** What one letter of the UI face takes at {@link SETS_NAME_SIZE}, near enough
+/** What one letter of a set's name takes at {@link SETS_NAME_SIZE}, near enough
  *  to keep room by. */
 const NAME_LETTER = 7;
 

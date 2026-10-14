@@ -32,6 +32,9 @@ const { GraphScene, LABEL_LINE, MAX_FIELDS } = await import("./scene.js");
 
 const OWNER = "did:syr:someone";
 const TAGS = ["biology", "seed"] as Tag[];
+/** A set's name as the canvas letters it — DESIGN.md § "Sets — the tags as
+ *  places". */
+const label = (tag: Tag) => tag.toUpperCase();
 const tokens = {
   ink: "#101010",
   paper: "#fdfdfd",
@@ -95,7 +98,7 @@ function sets(selection: readonly Tag[] = TAGS) {
 
 async function canvas() {
   const scene = await GraphScene.create({} as HTMLCanvasElement, {
-    fonts: { ui: "ui", address: "mono" },
+    fonts: { ui: "ui", heading: "heading", address: "mono" },
     palette,
     resolution: 2,
   });
@@ -163,7 +166,32 @@ describe("the drawn sets as places on the paper", () => {
 
   it("names each set where the figure is framed", async () => {
     const { scene, app } = await canvas();
-    for (const tag of TAGS) expect(words(app)).toContain(tag);
+    for (const tag of TAGS) expect(words(app)).toContain(label(tag));
+    scene.destroy();
+  });
+
+  // A set's name is the label of a place rather than the title of a note, so
+  // the two never read as the same kind of word — DESIGN.md § Typography.
+  it("letters a set's name in the heading face and a title in the app's", async () => {
+    const { scene, app } = await zoomedIn();
+    const { names, captions } = written(app);
+
+    expect(names.map((text) => text.text).sort()).toEqual(
+      TAGS.map(label).sort(),
+    );
+    for (const name of names) {
+      expect(name.fontFamily).toBe("heading");
+      expect(name.fontWeight).toBe("500");
+      expect(name.letterSpacing).toBeGreaterThan(0);
+    }
+
+    const titles = captions.filter((text) => text.text.startsWith("note "));
+    expect(titles.length).toBeGreaterThan(0);
+    for (const title of titles) {
+      expect(title.fontFamily).toBe("ui");
+      expect(title.fontWeight).toBe("normal");
+      expect(title.letterSpacing).toBe(0);
+    }
     scene.destroy();
   });
 
@@ -207,7 +235,9 @@ describe("the drawn sets as places on the paper", () => {
     const { scene, app } = await zoomedIn();
     const { names } = written(app);
 
-    expect(names.map((text) => text.text).sort()).toEqual([...TAGS].sort());
+    expect(names.map((text) => text.text).sort()).toEqual(
+      TAGS.map(label).sort(),
+    );
     for (const text of names) {
       expect(text.x).toBeGreaterThanOrEqual(0);
       expect(text.x).toBeLessThanOrEqual(390);
@@ -286,7 +316,7 @@ describe("the drawn sets as places on the paper", () => {
 
   it("frames a region for the fold that stands for it, and nothing else", async () => {
     const scene = await GraphScene.create({} as HTMLCanvasElement, {
-      fonts: { ui: "ui", address: "mono" },
+      fonts: { ui: "ui", heading: "heading", address: "mono" },
       palette,
       resolution: 2,
     });
@@ -328,7 +358,7 @@ describe("the drawn sets as places on the paper", () => {
 
   it("washes nothing where the host asked for the genealogy", async () => {
     const scene = await GraphScene.create({} as HTMLCanvasElement, {
-      fonts: { ui: "ui", address: "mono" },
+      fonts: { ui: "ui", heading: "heading", address: "mono" },
       palette,
       resolution: 2,
     });

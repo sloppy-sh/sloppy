@@ -88,7 +88,7 @@ async function canvas(
   reduced?: MediaQueryList,
 ) {
   const scene = await GraphScene.create({} as HTMLCanvasElement, {
-    fonts: { ui: "ui", address: "mono" },
+    fonts: { ui: "ui", heading: "heading", address: "mono" },
     palette,
     resolution: 1,
     reduced,

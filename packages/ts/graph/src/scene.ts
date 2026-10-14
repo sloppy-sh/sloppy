@@ -55,6 +55,8 @@ import {
   SETS_NAME_CHARS,
   SETS_NAME_GAP,
   SETS_NAME_SIZE,
+  SETS_NAME_TRACKING,
+  SETS_NAME_WEIGHT,
   shapeBounds,
   shapeOutline,
 } from "./sets/geometry.js";
@@ -295,6 +297,8 @@ const SCALE_REBUILD = 0.08;
 
 export interface SceneFonts {
   ui: string;
+  /** The face a place on the canvas is named in — DESIGN.md § Typography. */
+  heading: string;
   address: string;
 }
 
@@ -584,8 +588,10 @@ export class GraphScene {
       const text = new pixi.Text({
         text: "",
         style: {
-          fontFamily: options.fonts.ui,
+          fontFamily: options.fonts.heading,
           fontSize: SETS_NAME_SIZE,
+          fontWeight: SETS_NAME_WEIGHT,
+          letterSpacing: SETS_NAME_TRACKING,
           fill: 0xffffff,
         },
         resolution: options.resolution,
@@ -2098,7 +2104,8 @@ export class GraphScene {
         text.visible = false;
         continue;
       }
-      const words = shorten(entry.set.tag, SETS_NAME_CHARS);
+      // The tag itself is untouched; what stands on the canvas is its label.
+      const words = shorten(entry.set.tag, SETS_NAME_CHARS).toUpperCase();
       if (text.text !== words) text.text = words;
       const box = shapeBounds(entry.set.shape);
       const from = this.viewport.toScreen(

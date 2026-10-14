@@ -75,7 +75,7 @@ async function canvasOn(
   passes: Passes;
 }> {
   const scene = await GraphScene.create({} as HTMLCanvasElement, {
-    fonts: { ui: "ui", address: "mono" },
+    fonts: { ui: "ui", heading: "heading", address: "mono" },
     palette,
     resolution: 2,
   });
