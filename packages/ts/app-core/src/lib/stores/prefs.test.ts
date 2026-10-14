@@ -398,9 +398,10 @@ describe('the saved look', () => {
 			[{ look: 'paper', fonts: { ui: 'Iosevka Etoile' } }, null],
 			[{ look: 'paper', fonts: { ui: 'inter', heading: 'Iosevka "Et"', mono: 'apple' } }, null],
 			[{ look: 'paper', fonts: { mono: 'opendyslexic' } }, null],
-			...FACES.map(
-				(face) => [{ look: 'paper', fonts: { ui: face, heading: face, mono: face } }, null] as const
-			),
+			...FACES.map((face): [Record<string, unknown>, null] => [
+				{ look: 'paper', fonts: { ui: face, heading: face, mono: face } },
+				null
+			]),
 			[
 				{ look: 'paper', fonts: { ui: 'a face; position: fixed', mono: 'url(http://a.example)' } },
 				null
