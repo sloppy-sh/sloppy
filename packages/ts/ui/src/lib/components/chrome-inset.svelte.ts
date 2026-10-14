@@ -13,10 +13,11 @@ class ChromeInset {
 		return this.#start;
 	}
 
-	/** The least that chrome will shrink to, for deciding whether there is room
-	 *  to stand beside it. What it takes now is no answer to that: the column
-	 *  yields to a dock opening, so a dock that asked it would be reading a
-	 *  number its own arrival moves. */
+	/** What that chrome will not give up, for deciding whether there is room to
+	 *  stand beside it. A column the reader has taken a width for yields to a
+	 *  dock opening, so what it takes now is no answer there — it is a number the
+	 *  dock's own arrival moves. One still sizing itself to the window yields
+	 *  nothing, and keeps the whole of what it takes. */
 	get least(): number {
 		return this.#least;
 	}

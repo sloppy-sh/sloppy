@@ -35,13 +35,17 @@ const pages = () => target.querySelectorAll('[data-testid="page"]').length;
 beforeEach(() => {
 	stubResizeObserver();
 	viewport = stubMediaQuery(OVER);
-	// jsdom lays nothing out, so the column measures the width its own class
-	// names — the column's own width open, its rail width narrowed.
+	// jsdom lays nothing out, so a part measures the width its own class names —
+	// the column's own width open, its rail width narrowed, and the dock's
+	// window-sized clamp where no reader has taken a width for it.
 	Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
 		configurable: true,
 		get(this: HTMLElement) {
 			if (this.classList.contains('w-(--desk-nav-width)')) return 256;
-			return this.classList.contains('w-(--desk-nav-rail)') ? 56 : 0;
+			if (this.classList.contains('w-(--desk-nav-rail)')) return 56;
+			return this.classList.contains('w-[clamp(22rem,38vw,34rem)]')
+				? Math.min(544, Math.max(352, Math.round(window.innerWidth * 0.38)))
+				: 0;
 		}
 	});
 	target = document.createElement('div');
@@ -333,8 +337,8 @@ describe("the column's wall", () => {
 	// a dock cannot between them leave no graph, and neither end of the page can
 	// keep room the other asked for.
 	it('answers a saved width against the room a dock will keep', () => {
-		const place = docksRight(0, 352);
-		place.takes(400);
+		const place = docksRight(0);
+		place.takes(400, 352);
 		try {
 			render({ deskNavWidth: 400 });
 			expect(clearsTheColumn()).toBe('224px');
@@ -352,7 +356,7 @@ describe("the column's wall", () => {
 		const dockTakes = () =>
 			document.documentElement.style.getPropertyValue('--reading-dock-inset-right');
 
-		function openDock(width: number): void {
+		function openDock(width: number | null): void {
 			dock = mount(SideDock, {
 				target,
 				props: {
@@ -431,6 +435,26 @@ describe("the column's wall", () => {
 			expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 			expect(clearsTheColumn()).toBe('400px');
 			expect(dockTakes()).toBe('352px');
+		});
+
+		// Where a reader who has never dragged a dock's wall stands: the dock is
+		// sizing itself to the window, so there is no width of its own for it to
+		// give back, and the column has to answer the whole of what it takes.
+		it('answers a dock no reader has sized against the whole of what it takes', () => {
+			render({ deskNavWidth: 400 });
+			openDock(null);
+			expect(dockTakes()).toBe('456px');
+			expect(clearsTheColumn()).toBe('296px');
+			expect(wall()?.getAttribute('aria-valuemax')).toBe('296');
+		});
+
+		it('keeps a graph beside it when the wall is thrown as wide as it will go', () => {
+			render();
+			openDock(null);
+			wall()?.dispatchEvent(press('End'));
+			flushSync();
+			expect(clearsTheColumn()).toBe('296px');
+			expect(1200 - 296 - Number.parseInt(dockTakes(), 10)).toBe(448);
 		});
 	});
 });

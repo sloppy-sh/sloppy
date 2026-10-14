@@ -1900,17 +1900,16 @@ nothing under it.
   the tablet it docks on has no hover. It is bounded at both ends — never narrower than words
   read well in, never wider than the point they themselves stop widening, and never so wide
   that what it is docked against stops being a graph, which the two of them answer between
-  them: each may take the room the other does not need, so widening one narrows the other
-  rather than stopping against it, and room given up at either end is always there to be
-  taken back — and it publishes every width it passes through rather than only the
-  one it comes to rest at, because the nav pill, the bar over a chosen set and the card
-  beside a mark all place themselves against that number. Below the dock width what it holds
-  is the whole screen and there is no wall, because there is nothing left to take room from.
-  **The column at the leading edge has that same wall on its trailing edge, on the same
-  terms** — the bargain is the one above, and the two ends of the window answer each other
-  through it; narrowed to an icon rail it has none, because a rail is one width and the
-  toggle is the way back to the column.
-  How much room each was given is this device's, kept beside the theme (§ Persistence).
+  them: each may take the room the other is not using, so what one end gives up is always
+  there for the other to take — and it publishes every width it passes through rather than
+  only the one it comes to rest at, because the nav pill, the bar over a chosen set and the
+  card beside a mark all place themselves against that number. Below the dock width what it
+  holds is the whole screen and there is no wall, because there is nothing left to take room
+  from. **The column at the leading edge has that same wall on its trailing edge, on the
+  same terms** — the bargain is the one above, and the two ends of the window answer each
+  other through it; narrowed to an icon rail it has none, because a rail is one width and
+  the toggle is the way back to the column. How much room each was given is this device's,
+  kept beside the theme (§ Persistence).
 - **The note's way out and its acts keep their place** at the head of the surface however
   far the note runs. The way back out of a long note must never be a scroll away, and
   neither may the acts, because that is where a refused one answers. **The address is read

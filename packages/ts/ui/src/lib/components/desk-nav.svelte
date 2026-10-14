@@ -10,8 +10,8 @@
 	/** What one press of an arrow key is worth, in px. */
 	const STEP = 24;
 
-	/** `room` is what the window has left once the docks standing have kept the
-	 *  least they will shrink to — not what they take now. The docks answer the
+	/** `room` is what the window has left once the docks standing have kept what
+	 *  they will not give up — `dock-stack`'s `docksKeep`. The docks answer the
 	 *  width this column stands at, so an end that answered the other's width
 	 *  would keep whatever room it reached first and never give it back. */
 	export function columnWithin(room: number): { least: number; most: number } {
@@ -124,7 +124,9 @@
 		}
 		const px = stands ?? measured;
 		root.style.setProperty('--app-chrome-inset-start', `${px}px`);
-		chromeInset.takes(px, collapsed ? px : Math.min(px, LEAST));
+		// A width nobody chose is the stylesheet's, and the column holds the whole
+		// of it: only a width the reader took is one `columnWidth` gives back.
+		chromeInset.takes(px, stands === null ? px : Math.min(px, LEAST));
 	});
 
 	$effect(() => () => {

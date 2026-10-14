@@ -4,14 +4,14 @@
 
 class Standing {
 	readonly outer: number;
-	readonly least: number;
 	/** Null while this dock takes no room at all, which is not the same as taking
 	 *  none yet: a page with nothing docked owes nothing and the var goes away. */
 	width = $state<number | null>(null);
+	/** What it will stand at if everything else asks for room. */
+	keeps = $state(0);
 
-	constructor(outer: number, least: number) {
+	constructor(outer: number) {
 		this.outer = outer;
-		this.least = least;
 	}
 }
 
@@ -33,12 +33,14 @@ function publish(): void {
 	window.dispatchEvent(new Event('resize'));
 }
 
-/** The least the docks standing down the right edge will shrink to, together,
- *  in px — the room the column at the other edge may not have. It is this and
- *  not what they take now, because a bound that moved with their width would
- *  leave whichever end the reader moved second unable to move at all. */
+/** What the docks standing down the right edge will not give up, together, in
+ *  px — the room the column at the other edge may not have. A dock the reader
+ *  has taken a width for hands room back down to its own least, so a bound that
+ *  moved with their width would leave whichever end the reader moved second
+ *  unable to move at all; one still sizing itself to the window hands back
+ *  nothing, and keeps the whole of what it takes. */
 export function docksKeep(): number {
-	return docks.reduce((sum, one) => (one.width === null ? sum : sum + one.least), 0);
+	return docks.reduce((sum, one) => (one.width === null ? sum : sum + one.keeps), 0);
 }
 
 export interface RightDock {
@@ -48,18 +50,18 @@ export interface RightDock {
 	/** What every OTHER dock takes, together, in px — the room this one may not
 	 *  have, so that what they are all docked against keeps its own. */
 	readonly others: number;
-	/** The width it takes now; null while it takes none. */
-	takes(width: number | null): void;
+	/** The width it takes now, and what it would stand at if the chrome at the
+	 *  other edge asked for everything it could — null while it takes none. */
+	takes(width: number | null, keeps?: number): void;
 	/** Off the page, and the width it owed goes with it. */
 	leaves(): void;
 }
 
 /** A place in the stack of docks down the right edge. The higher `outer` is,
  *  the further from the graph the dock stands, so the one that stays is
- *  outermost and what is opened to read beside it sits between the two.
- *  `least` is the narrowest this dock will stand at while it stands at all. */
-export function docksRight(outer: number, least: number): RightDock {
-	const mine = new Standing(outer, least);
+ *  outermost and what is opened to read beside it sits between the two. */
+export function docksRight(outer: number): RightDock {
+	const mine = new Standing(outer);
 	docks.push(mine);
 	return {
 		get from() {
@@ -68,8 +70,9 @@ export function docksRight(outer: number, least: number): RightDock {
 		get others() {
 			return docks.reduce((sum, one) => (one === mine ? sum : sum + (one.width ?? 0)), 0);
 		},
-		takes(width: number | null) {
+		takes(width: number | null, keeps = width ?? 0) {
 			mine.width = width;
+			mine.keeps = keeps;
 			publish();
 		},
 		leaves() {

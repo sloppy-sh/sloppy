@@ -92,7 +92,7 @@
 	} = $props();
 
 	const stack = untrack(() => outer);
-	const place = docksRight(stack, LEAST);
+	const place = docksRight(stack);
 	$effect(() => () => place.leaves());
 
 	const room = new MediaQuery(`(min-width: ${DOCK_FROM_PX}px)`);
@@ -105,8 +105,8 @@
 	/** Whether there is room to dock beside what is already docked and still
 	 *  leave a graph worth the name. The first dock answers the breakpoint; a
 	 *  second one answers what the first left. The chrome at the other edge
-	 *  yields to a dock opening, so it is asked the least it will shrink to: what
-	 *  it takes now is a number this dock's own arrival moves. */
+	 *  yields to a dock opening, so it is asked what it will not give up: what it
+	 *  takes now is a number this dock's own arrival moves. */
 	const wouldDock = $derived(
 		room.current && across - chromeInset.least - place.others >= LEAST + GRAPH_KEEPS
 	);
@@ -186,10 +186,12 @@
 	});
 
 	// `stands` is read here rather than measured, so a width the reader is still
-	// dragging reaches the chrome beside the dock in the frame it is applied.
+	// dragging reaches the chrome beside the dock in the frame it is applied. A
+	// width nobody chose is the stylesheet's, and the dock holds the whole of it:
+	// it is only a width the reader took that `dockedWidth` gives back.
 	$effect(() => {
 		if (!asDock || !open || !panel) return;
-		place.takes(stands ?? measured);
+		place.takes(stands ?? measured, stands === null ? measured : LEAST);
 	});
 
 	function startDrag(event: PointerEvent): void {
