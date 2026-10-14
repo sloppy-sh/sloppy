@@ -487,7 +487,8 @@ hue. A field carrying more tags than there are slots says how many of them are i
 the reader, and that selecting tags is how a reader chooses which — **beside the rail
 rather than over the canvas, and only when somebody asks**: the rail is the legend, so a
 quiet mark standing with it opens the words on a tap, in both arrangements (§ Layout).
-Nothing about the sets stands over the graph of its own accord.
+Nothing stands over the graph to explain that: the rail is the legend, and what it leaves out
+is said beside it, where somebody asks.
 
 **The colour means the sets, and the dim means the question.** With nothing selected nothing
 recedes: there is no question yet, and a canvas that dimmed itself would be answering one
@@ -1900,8 +1901,9 @@ nothing under it.
   the tablet it docks on has no hover. It is bounded at both ends — never narrower than words
   read well in, never wider than the point they themselves stop widening, and never so wide
   that what it is docked against stops being a graph, which the two of them answer between
-  them: each may take the room the other is not using, so what one end gives up is always
-  there for the other to take — and it publishes every width it passes through rather than
+  them: a wall takes the room the other end is not keeping, and what an end keeps is what it
+  will not give up rather than what it stands at now — so a column widened narrows a dock the
+  reader has sized, while a dock stops against the column rather than pushing it — and it publishes every width it passes through rather than
   only the one it comes to rest at, because the nav pill, the bar over a chosen set and the
   card beside a mark all place themselves against that number. Below the dock width what it
   holds is the whole screen and there is no wall, because there is nothing left to take room

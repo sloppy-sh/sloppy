@@ -1,11 +1,12 @@
 <script lang="ts" module>
+	import { GRAPH_KEEPS } from './side-dock.svelte';
+
 	/** What an open column may take, in px: never narrower than its destinations'
 	 *  words read in, never wider than its own parts grow, and never so wide that
 	 *  the graph beside it stops being a graph — the bargain `side-dock` strikes
 	 *  at the other edge, DESIGN.md § Layout. */
 	const LEAST = 224;
 	const MOST = 448;
-	const GRAPH_KEEPS = 448;
 
 	/** What one press of an arrow key is worth, in px. */
 	const STEP = 24;

@@ -15,7 +15,7 @@
 	 *  that the graph beside it stops being a graph. */
 	const LEAST = 352;
 	const MOST = DOCK_COLUMN + GUTTERS;
-	const GRAPH_KEEPS = 448;
+	export const GRAPH_KEEPS = 448;
 
 	/** What one press of an arrow key is worth, in px. */
 	const STEP = 24;
