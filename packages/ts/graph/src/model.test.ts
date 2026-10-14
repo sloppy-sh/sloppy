@@ -184,17 +184,20 @@ describe("with tags selected", () => {
     ).toEqual(new Set(selection));
   });
 
-  // DESIGN.md § Hue: one mark, one hue — the rail already says which other sets
-  // a note is in, so the canvas never mixes or stripes.
-  it("draws a mark in several selected sets in the earliest-selected hue", () => {
+  // DESIGN.md § Hue: a mark wears a band per selected set it is in, in the
+  // order the rail lists them, and the first of them is what the mark falls
+  // back to where the bands are too narrow to be told apart.
+  it("gives a mark in several selected sets a band of each", () => {
     const several = drawn.filter(
       (entry) => entry.tags.filter((tag) => selection.includes(tag)).length > 1,
     );
     expect(several.length).toBeGreaterThan(0);
     for (const entry of several) {
       const node = model.graph.getNodeAttributes(entry.node.ref);
-      const earliest = selection.find((tag) => entry.tags.includes(tag));
-      expect(node.tag).toBe(earliest);
+      const standing = selection.filter((tag) => entry.tags.includes(tag));
+      expect(node.slots).toEqual(standing.map((tag) => slots.get(tag)));
+      expect(node.tag).toBe(standing[0]);
+      expect(node.fill).toBe(palette.tag(slots.get(standing[0])!));
     }
   });
 

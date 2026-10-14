@@ -45,6 +45,7 @@ import {
   LOOK_RING_AT,
   LOOK_RING_BREAK,
   LOOK_RING_WIDTH,
+  MARK_BANDS_MOST,
   markPictureSide,
   MAX_RADIUS,
   type NamedField,
@@ -278,6 +279,28 @@ const EDGE_DASHES = 14;
 /** Where the mark's fill stops, as a fraction of its radius. */
 export const FILL_AT = (TEXTURE_RADIUS - 1) / TEXTURE_RADIUS;
 
+/**
+ * The least a band is drawn at, in CSS pixels, before the mark falls back to
+ * the first of its hues — narrower than this the bands are a haze rather than
+ * an answer. DESIGN.md § Hue. Unlike the look's floor this is held against the
+ * drawn width alone: a pinch is what brings the bands back.
+ */
+export const BAND_MIN_WIDTH = 3;
+/** How far past that the bands hang on, so a pinch does not strobe them. */
+const BAND_HYSTERESIS = 0.75;
+
+/** How wide each of `count` bands comes out on a mark drawn at `radius` CSS
+ *  pixels: the fill's own width, shared. */
+export function bandWidth(radius: number, count: number): number {
+  return (radius * 2 * FILL_AT) / count;
+}
+
+/** Whether a mark whose bands come out `width` CSS pixels wide wears them. The
+ *  latch is the caller's, as {@link looksDrawn}'s is. */
+export function bandsDrawn(width: number, banding: boolean): boolean {
+  return width >= BAND_MIN_WIDTH * (banding ? BAND_HYSTERESIS : 1);
+}
+
 /** Provenance's own edge, as fractions of the mark's radius — its centre line
  *  and its stroke. A look draws inside it, and `scene.test.ts` holds the gap. */
 export const EDGE_RING_AT = (TEXTURE_RADIUS - 1.6) / TEXTURE_RADIUS;
@@ -359,6 +382,12 @@ interface Mark {
   ring: Particle | null;
   /** The author's look, drawn inside the mark. */
   look: Particle | null;
+  /** One per drawn set the mark stands in, left to right, over the fill. Empty
+   *  on a mark standing in fewer than two. */
+  bands: Particle[];
+  /** Whether the bands are being drawn, which {@link bandsDrawn} latches —
+   *  carried across a rebuild the way {@link Mark.looking} is. */
+  banding: boolean;
   /** Which of its author's pictures it is the turn of, read off the clock by
    *  {@link GraphScene.takeTurns}. */
   showing: string | undefined;
@@ -409,6 +438,10 @@ interface MarkTextures {
   dashed: Texture;
   /** Keyed by {@link lookKey}. */
   looks: Map<string, Texture>;
+  /** The disc read through each band's own window, indexed by how many bands
+   *  the mark wears and then left to right. Nothing at 0 and 1: a mark in one
+   *  drawn set is the disc itself. */
+  bands: readonly (readonly Texture[])[];
 }
 
 export class GraphScene {
@@ -488,6 +521,7 @@ export class GraphScene {
     private readonly connections: Graphics,
     private readonly diffs: Graphics,
     private readonly fills: ParticleContainer,
+    private readonly bands: ParticleContainer,
     private readonly shapes: Graphics,
     private readonly previews: Container,
     private readonly rings: ParticleContainer,
@@ -543,6 +577,7 @@ export class GraphScene {
       },
     };
     const fills = new pixi.ParticleContainer(particleOptions);
+    const bands = new pixi.ParticleContainer(particleOptions);
     const shapes = new pixi.Graphics();
     const previews = new pixi.Container();
     const rings = new pixi.ParticleContainer(particleOptions);
@@ -566,6 +601,7 @@ export class GraphScene {
       connections,
       diffs,
       fills,
+      bands,
       looks,
       shapes,
       previews,
@@ -669,6 +705,7 @@ export class GraphScene {
       connections,
       diffs,
       fills,
+      bands,
       shapes,
       previews,
       rings,
@@ -782,10 +819,11 @@ export class GraphScene {
   }
 
   /**
-   * Re-colour the marks already up: `fill` and `alpha` are all a tag question
-   * moves — DESIGN.md § Hue. The caller must have established that this model's
-   * drawn set and order are the standing one's, because everything else a mark
-   * is drawn from stays on the particles this leaves in place.
+   * Re-colour the marks already up: the fill, the bands over it and `alpha` are
+   * all a tag question moves — DESIGN.md § Hue. The caller must have
+   * established that this model's drawn set and order are the standing one's,
+   * because everything else a mark is drawn from stays on the particles this
+   * leaves in place.
    */
   setTints(model: BuiltModel, selecting: boolean): void {
     this.model = model;
@@ -810,6 +848,7 @@ export class GraphScene {
         );
       }
     }
+    this.rebuildBands();
     this.fills.update();
     this.rings.update();
     this.looks.update();
@@ -886,11 +925,17 @@ export class GraphScene {
           : 0;
       const lights = across * (SWEEP_MS - SWEEP_HOLD_MS);
       const lit = !done && since >= lights && since < lights + SWEEP_HOLD_MS;
-      carrier.tint = lit
-        ? this.options.palette.tag(bandAt(across))
-        : mark.attributes.fill;
+      const facet = lit ? this.options.palette.tag(facetAt(across)) : undefined;
+      carrier.tint = facet ?? mark.attributes.fill;
+      // A mark the sweep is over is one facet whole: the bands are what the
+      // reader asked for, and the sweep is not an answer.
+      mark.bands.forEach((band, at) => {
+        band.tint =
+          facet ?? this.options.palette.tag(mark.attributes.slots[at]);
+      });
     }
     this.fills.update();
+    this.bands.update();
     this.rings.update();
   }
 
@@ -912,6 +957,7 @@ export class GraphScene {
     this.positions = new Float32Array(model.order.length * 2);
 
     const looking = new Map(this.marks.map((mark) => [mark.ref, mark.looking]));
+    const banding = new Map(this.marks.map((mark) => [mark.ref, mark.banding]));
     this.marks = model.order.map((ref, index) => {
       const attributes = model.graph.getNodeAttributes(ref);
       this.positions[index * 2] = attributes.x;
@@ -924,6 +970,8 @@ export class GraphScene {
         fill: null,
         ring: null,
         look: null,
+        bands: [],
+        banding: banding.get(ref) ?? false,
         showing: undefined,
         drawing: undefined,
         preview: null,
@@ -1274,6 +1322,7 @@ export class GraphScene {
       if (mark.look) this.looks.particleChildren.push(mark.look);
     }
 
+    this.rebuildBands();
     this.fills.update();
     this.rings.update();
     this.looks.update();
@@ -1284,6 +1333,54 @@ export class GraphScene {
     }
     this.modelDirty = false;
     this.rebuildPreviews();
+  }
+
+  /**
+   * The bands over the fills: one particle per drawn set each mark stands in,
+   * tinted its slot and sharing the fill's place and size. A tag question
+   * changes how many there are, so they are built here rather than tinted in
+   * place, and the fill is held at nothing under the ones that cover it — the
+   * hue the mark takes back below the width floor, which is then an alpha and
+   * not a rebuild.
+   */
+  private rebuildBands(): void {
+    this.bands.particleChildren.length = 0;
+    for (const mark of this.marks) {
+      mark.bands = [];
+      mark.banding = this.bandsHeld(mark);
+      const { slots, alpha } = mark.attributes;
+      if (mark.fill !== null && slots.length > 1) {
+        const scale = mark.radius / TEXTURE_RADIUS;
+        const cuts = this.textures.bands[slots.length];
+        mark.bands = slots.map(
+          (slot, at) =>
+            new this.pixi.Particle({
+              texture: cuts[at],
+              // The window is the band's, so the mark's centre lies this many
+              // of them to the left of it.
+              anchorX: slots.length / 2 - at,
+              anchorY: 0.5,
+              scaleX: scale,
+              scaleY: scale,
+              tint: this.options.palette.tag(slot),
+              alpha: mark.banding ? alpha : 0,
+            }),
+        );
+        this.bands.particleChildren.push(...mark.bands);
+      }
+      if (mark.fill) mark.fill.alpha = mark.banding ? 0 : alpha;
+    }
+    this.bands.update();
+  }
+
+  /** Whether this mark's bands are wide enough to be told apart, latched. */
+  private bandsHeld(mark: Mark): boolean {
+    const count = mark.attributes.slots.length;
+    if (mark.fill === null || count < 2) return false;
+    return bandsDrawn(
+      bandWidth(mark.radius * this.viewport.scale, count),
+      mark.banding,
+    );
   }
 
   private syncMarks(): void {
@@ -1297,6 +1394,16 @@ export class GraphScene {
       if (mark.ring) {
         mark.ring.x = x;
         mark.ring.y = y;
+      }
+      if (mark.bands.length > 0) {
+        mark.banding = this.bandsHeld(mark);
+        if (mark.fill)
+          mark.fill.alpha = mark.banding ? 0 : mark.attributes.alpha;
+        for (const band of mark.bands) {
+          band.x = x;
+          band.y = y;
+          band.alpha = mark.banding ? mark.attributes.alpha : 0;
+        }
       }
       // Latched for every mark, not only the ones with something inside them:
       // the rim's dot goes when the look goes, and a mark with no look at all
@@ -1339,8 +1446,12 @@ export class GraphScene {
         mark.attributes.ringStyle,
       );
       if (mark.look && look) mark.look.texture = look;
+      const cuts = this.textures.bands[mark.attributes.slots.length];
+      mark.bands.forEach((band, at) => {
+        band.texture = cuts[at];
+      });
     }
-    for (const layer of [this.fills, this.rings, this.looks]) {
+    for (const layer of [this.fills, this.bands, this.rings, this.looks]) {
       // Which cut it is handed does not matter: they are frames of one source,
       // and a container binds the source rather than the frame.
       layer.texture = this.textures.disc;
@@ -1382,8 +1493,11 @@ export class GraphScene {
     for (const mark of this.marks) {
       const drawn = mark.radius > reach;
       const alpha = drawn ? 0 : mark.attributes.alpha;
-      if (mark.fill) mark.fill.alpha = alpha;
+      if (mark.fill) mark.fill.alpha = drawn || mark.banding ? 0 : alpha;
       if (mark.ring) mark.ring.alpha = alpha;
+      for (const band of mark.bands) {
+        band.alpha = drawn || !mark.banding ? 0 : alpha;
+      }
       if (mark.look) {
         mark.look.alpha = drawn || !mark.looking ? 0 : mark.attributes.alpha;
       }
@@ -1402,9 +1516,18 @@ export class GraphScene {
     const { palette } = this.options;
 
     if (provenance !== "pulled") {
-      this.shapes
-        .circle(x, y, mark.radius * FILL_AT)
-        .fill({ color: fill, alpha });
+      const across = mark.radius * FILL_AT;
+      const { slots } = mark.attributes;
+      if (mark.banding) {
+        slots.forEach((slot, at) => {
+          bandChord(this.shapes, x, y, across, at, slots.length, {
+            color: palette.tag(slot),
+            alpha,
+          });
+        });
+      } else {
+        this.shapes.circle(x, y, across).fill({ color: fill, alpha });
+      }
     }
     if (mark.looking && ringWeight !== "none") {
       const { dashes, duty } = LOOK_RING_BREAK[ringStyle];
@@ -2879,9 +3002,9 @@ function lookKey(weight: RingWeight, style: RingStyle): string {
   return `${weight}:${style}`;
 }
 
-/** The facet band a point `across` the swept run — 0 at its left edge, 1 at its
- *  right — stands in: the eight hues laid over it in order. */
-function bandAt(across: number): (typeof TAG_HUE_SLOTS)[number] {
+/** The facet a point `across` the swept run — 0 at its left edge, 1 at its
+ *  right — is lit in: the eight hues laid over the run in order. */
+function facetAt(across: number): (typeof TAG_HUE_SLOTS)[number] {
   const at = clamp(
     Math.floor(across * TAG_HUE_SLOTS.length),
     0,
@@ -3013,12 +3136,58 @@ function markTextures(
     });
   };
 
+  // A band is the disc read through a narrower window, so the bands cost the
+  // sheet no cell at all: every one of them is a frame over the disc's own.
+  const across = TEXTURE_RADIUS * 2 * FILL_AT;
+  const band = (count: number, at: number): Texture => {
+    const { x, y } = corner(disc);
+    return new pixi.Texture({
+      source,
+      frame: new pixi.Rectangle(
+        x + TEXTURE_RADIUS - across / 2 + (at * across) / count,
+        y,
+        across / count,
+        TEXTURE_RADIUS * 2,
+      ),
+    });
+  };
+
   return {
     disc: cut(disc),
     ring: cut(ring),
     dashed: cut(dashed),
     looks: new Map([...looks].map(([key, at]) => [key, cut(at)])),
+    bands: Array.from({ length: MARK_BANDS_MOST + 1 }, (_unused, count) =>
+      count < 2
+        ? []
+        : Array.from({ length: count }, (_also, at) => band(count, at)),
+    ),
   };
+}
+
+/**
+ * One band of a mark drawn as a shape: the disc at `radius` cut to the `at`th
+ * of `count` strips across it, which is the same geometry its cell is framed
+ * to — the two arcs of the disc it spans, closed across its own edges.
+ */
+function bandChord(
+  into: Graphics,
+  x: number,
+  y: number,
+  radius: number,
+  at: number,
+  count: number,
+  ink: { color: number; alpha: number },
+): void {
+  const edge = (side: number): number =>
+    Math.acos(clamp((side * 2) / count - 1, -1, 1));
+  const left = edge(at);
+  const right = edge(at + 1);
+  into
+    .arc(x, y, radius, -left, -right)
+    .arc(x, y, radius, right, left)
+    .closePath()
+    .fill(ink);
 }
 
 /** `dashes` of 0 strokes the ring whole; `duty` is the share of each dash's

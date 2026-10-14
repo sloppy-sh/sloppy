@@ -11,6 +11,16 @@ export class FakeSource {
   }
 }
 
+/** A frame over a sheet, which is what tells one cut of it from another. */
+export class FakeRectangle {
+  constructor(
+    readonly x = 0,
+    readonly y = 0,
+    readonly width = 0,
+    readonly height = 0,
+  ) {}
+}
+
 export class FakeTexture {
   destroyed = false;
   readonly source: FakeSource;
@@ -107,8 +117,15 @@ export class FakeGraphics extends FakeContainer {
   readonly rects: FilledRect[] = [];
   readonly paths: FilledPath[] = [];
   readonly lines: StrokedLine[] = [];
-  /** Where each `arc(…)` was struck, which is how a broken ring is drawn. */
-  readonly arcs: { x: number; y: number; radius: number }[] = [];
+  /** Where each `arc(…)` was struck, which is how a broken ring is drawn — and
+   *  how a band of a mark too big for the sheet is. */
+  readonly arcs: {
+    x: number;
+    y: number;
+    radius: number;
+    start: number;
+    end: number;
+  }[] = [];
   private pendingCircle: { x: number; y: number; radius: number } | null = null;
   private pendingRect: FilledRect | null = null;
   private pen: [number, number] | null = null;
@@ -140,9 +157,18 @@ export class FakeGraphics extends FakeContainer {
     this.pendingRect = { x, y, width, height, color: 0, alpha: 1 };
     return this;
   }
-  arc(x = 0, y = 0, radius = 0): this {
-    this.arcs.push({ x, y, radius });
+  arc(x = 0, y = 0, radius = 0, start = 0, end = 0): this {
+    this.arcs.push({ x, y, radius, start, end });
     this.pendingCircle = null;
+    // The path an arc lays down, at its ends: enough for a suite to read which
+    // part of the shape was asked for without a curve of its own.
+    if (this.spent) {
+      this.laid = [];
+      this.spent = false;
+    }
+    for (const at of [start, end]) {
+      this.laid.push([x + radius * Math.cos(at), y + radius * Math.sin(at)]);
+    }
     return this;
   }
   closePath(): this {
@@ -349,7 +375,7 @@ export function fakePixi() {
     TilingSprite: FakeTilingSprite,
     Text: FakeText,
     Texture: FakeTexture,
-    Rectangle: class {},
+    Rectangle: FakeRectangle,
   };
 }
 

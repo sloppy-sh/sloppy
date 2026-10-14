@@ -17,6 +17,7 @@ import {
   resolveAppearance,
   type RingStyle,
   type RingWeight,
+  TAG_HUE_SLOTS,
   type TagHueSlot,
   liesInARun,
   runKeyOf,
@@ -61,6 +62,10 @@ export const MAX_RADIUS = 46;
 /** The largest mark any canvas draws: the fold's cap at the top of the size
  *  channel. Everything sized for the worst case a mark can be is sized off this. */
 export const WIDEST_RADIUS = MAX_RADIUS * MARK_SCALE_MAX;
+
+/** The most bands one mark wears — the hue slots there are, since a band past
+ *  them would repeat a hue the mark already carries. DESIGN.md § Hue. */
+export const MARK_BANDS_MOST = TAG_HUE_SLOTS.length;
 
 /** A look's ring, as fractions of the mark's radius — its centre line, and what
  *  each weight strokes. Inside the mark, since the edge is provenance's. */
@@ -154,9 +159,15 @@ export interface GraphNodeAttributes {
    *  answers for the whole subtree with. */
   tags: readonly Tag[];
   /**
-   * The selected tag this mark draws the hue of: the earliest-selected of the
-   * ones it stands for ({@link tags}), absent when it stands for none.
-   * DESIGN.md § Hue — one mark, one hue.
+   * The slots of the selected tags this mark stands in, in the order they were
+   * selected — a band each, left to right. Empty where it stands in none, one
+   * where the whole disc is that slot's. DESIGN.md § Hue.
+   */
+  slots: readonly TagHueSlot[];
+  /**
+   * The first of {@link slots}: what the whole mark is drawn in where its bands
+   * are too narrow to tell apart, and what a hollow mark carries on its edge.
+   * Absent when it stands in none.
    */
   tag: Tag | undefined;
   /** The author's ring, drawn INSIDE the mark since the edge is provenance's —
@@ -286,14 +297,14 @@ export function buildModel(
     const { node } = entry;
     const seed = seedOf(node);
     const difference = marks.get(node.ref);
-    const slot = slotOf(entry.tags, hues);
+    const bands = bandsOf(entry.tags, hues);
     addMark(graph, entry, hues, options, {
       index,
       at: starts.get(node.ref) ?? seed,
       anchor: seed,
       anchorStrength: SEED_ANCHOR,
       answering:
-        (options.selection.length === 0 || slot !== undefined) &&
+        (options.selection.length === 0 || bands.length > 0) &&
         (!comparing || difference !== undefined),
       difference,
     });
@@ -393,11 +404,33 @@ interface HueSlots {
   rank: ReadonlyMap<Tag, number>;
 }
 
-/** The slot a mark draws the hue of, absent where it stands for no selected
- *  tag — DESIGN.md § Hue, one mark one hue. */
-function slotOf(tags: readonly Tag[], hues: HueSlots): TagHueSlot | undefined {
-  const tag = earliestSelected(tags, hues.rank);
-  return tag === undefined ? undefined : hues.slots.get(tag);
+/**
+ * The bands a mark wears: the selected tags among `tags`, in the order they
+ * were selected, as the tag and the slot each one borrows. Capped at
+ * {@link MARK_BANDS_MOST}, and a slot the mark already wears is not worn twice
+ * — past eight selected tags the slots repeat. DESIGN.md § Hue.
+ */
+function bandsOf(
+  tags: readonly Tag[],
+  hues: HueSlots,
+): readonly { tag: Tag; slot: TagHueSlot }[] {
+  const standing: { tag: Tag; slot: TagHueSlot; at: number }[] = [];
+  for (const tag of new Set(tags)) {
+    const at = hues.rank.get(tag);
+    const slot = hues.slots.get(tag);
+    if (at !== undefined && slot !== undefined) {
+      standing.push({ tag, slot, at });
+    }
+  }
+  standing.sort((one, other) => one.at - other.at);
+  const worn = new Set<TagHueSlot>();
+  const bands: { tag: Tag; slot: TagHueSlot }[] = [];
+  for (const { tag, slot } of standing) {
+    if (worn.has(slot) || bands.length === MARK_BANDS_MOST) continue;
+    worn.add(slot);
+    bands.push({ tag, slot });
+  }
+  return bands;
 }
 
 /** Where one reading put a mark, and what the question in front of the reader
@@ -464,8 +497,9 @@ function addMark(
   place: MarkPlace,
 ): void {
   const { node } = entry;
-  const tag = earliestSelected(entry.tags, hues.rank);
-  const slot = tag === undefined ? undefined : hues.slots.get(tag);
+  const bands = bandsOf(entry.tags, hues);
+  const slots = bands.map(({ slot }) => slot);
+  const tag = bands[0]?.tag;
   // A mega-node wears the look of the note it IS, never an average of the
   // looks it folded — DESIGN.md § "The mark".
   const says: NoteSays = place.forRegion
@@ -482,9 +516,9 @@ function addMark(
         codeMoved: options.codeMoved?.has(node.ref) ?? false,
       };
   const fill =
-    slot === undefined
+    slots.length === 0
       ? options.palette.depth(says.depth)
-      : options.palette.tag(slot);
+      : options.palette.tag(slots[0]);
   // A note that went is a band around nothing: there is no mark inside it to
   // carry a look or a picture — DESIGN.md § "A difference between two states".
   const gone = place.difference === "gone";
@@ -501,6 +535,7 @@ function addMark(
     provenance: says.provenance,
     children: 0,
     tags: entry.tags,
+    slots,
     tag,
     ringWeight: gone ? "none" : says.look.ringWeight,
     ringStyle: says.look.ringStyle,
@@ -818,26 +853,6 @@ function runs(
     else alongside.push(node);
   }
   return [...levels.values()].flatMap(runPairs);
-}
-
-/**
- * Of the tags a mark stands for, the one selected first — so a mark in several
- * selected sets draws in one hue and always the same one.
- */
-function earliestSelected(
-  tags: readonly Tag[],
-  rank: ReadonlyMap<Tag, number>,
-): Tag | undefined {
-  let found: Tag | undefined;
-  let best = Number.POSITIVE_INFINITY;
-  for (const tag of tags) {
-    const at = rank.get(tag);
-    if (at !== undefined && at < best) {
-      best = at;
-      found = tag;
-    }
-  }
-  return found;
 }
 
 function radiusFor(entry: DrawnNode, look: ResolvedAppearance): number {

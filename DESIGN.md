@@ -494,9 +494,19 @@ until a tag is selected.
 - **In the sets reading the drawing is the question, so a set borrows a slot whether or not
   it is selected** — in the order the sets are drawn, the selected ones first, and the rail
   shows the drawn sets in those same hues (§ "Sets — the tags as places").
-- **A note carrying more than one selected tag draws in the earliest-selected one's hue.**
-  One mark, one hue: mixing or striping makes the channel ambiguous, and the rail already
-  says which sets a note is in.
+- **A note carrying more than one selected tag wears a band of each**, side by side across
+  the disc, from the first of them on the left to the last on the right — the order the rail
+  lists them in, so the legend and the mark cannot disagree. The mark itself says which of
+  the sets in front of the reader a note stands in, rather than only the first of them. A
+  note in one of them is the whole disc in that hue, which is what a mark has always been. A
+  band is its slot's own colour, so it owes the surface exactly what a fill owes it.
+  **The bands are the first thing to go as the mark gets small, after the look**: narrower
+  than `BAND_MIN_WIDTH` in `scene.ts` they are a haze rather than an answer, so the mark
+  falls back to the first of its hues and a pinch brings them back. Unlike the look's own
+  floor this one is held against the width a band is drawn at and nothing else — a leaf on a
+  phone's framed field may well show one hue until the reader looks closer. **A pulled note
+  is drawn hollow, and an edge is no disc to divide** (§ Form): it carries the first of its
+  hues on that edge, and the rail says the rest.
 - **Notes carrying none of the selected tags dim; they never leave.** The reader asked
   which notes are in a set, not to be shown a different graph, and the shape they are
   reading the answer against is the graph itself. So the dim is measured rather than
@@ -510,8 +520,9 @@ until a tag is selected.
   (§ "The wallpaper"), so a wallpaper cannot take the unselected graph off the page either.
   **The sets reading keeps that dim and gives those notes a place**: outside every region
   rather than off the canvas (§ "Sets — the tags as places").
-- Past eight selected tags the slots repeat. Eight questions at once is already more than
-  the channel can carry, and the rail carries the written tag regardless.
+- Past eight selected tags the slots repeat, and a mark wears no second band in a hue it is
+  already wearing — so eight bands is the most one mark carries. Eight questions at once is
+  already more than the channel can carry, and the rail carries the written tag regardless.
 - Every slot owes **3:1 against the surface** on every theme, because a node fill carrying
   meaning alone is a graphical object. Every slot also owes a minimum OKLab distance of
   **0.03 from every other slot** on the same theme — a palette whose slots have converged
@@ -600,9 +611,8 @@ difference draws are the loudest thing on the page.
 
 **What changed about a note is written, not drawn.** One note can have moved, been renamed,
 been given another address and had three sections rewritten between two states, and one mark
-cannot carry a set — the same reason a note carrying several selected tags draws in one hue.
-The mark says a note is not as it was; the panel beside it says how, in words, section by
-section.
+cannot carry that set of changes. The mark says a note is not as it was; the panel beside it
+says how, in words, section by section.
 
 **The dim has one strength and never doubles.** Comparing two states with tags selected is
 two questions at once, and a note outside both answers is not dimmer than a note outside
@@ -628,7 +638,7 @@ whether it is one of the notes open in front of the reader. Each gets its own ch
 
 | Channel on the mark                            | Carries                                                                        |
 | ---------------------------------------------- | ------------------------------------------------------------------------------ |
-| Fill hue                                       | the selected tags (§ Hue)                                                      |
+| Fill hue                                       | the selected tags a note carries, a band each (§ Hue)                          |
 | Fill lightness                                 | genealogical depth (§ Lightness)                                               |
 | Fill alpha                                     | carries none of the selected tags (§ Hue)                                      |
 | **Its own edge** — present, and whether broken | provenance (§ Form)                                                            |
@@ -1094,8 +1104,8 @@ so.
 
 A note can carry more than one person's writing, and somebody reading it should be able to
 tell whose without asking. It is said in words, in the chrome above the note, because a set
-of people is not a thing one mark can carry — the same reason a note in three selected tags
-draws in one hue. **The canvas is untouched by any of this**: no channel on a mark says who
+of people is not a thing one mark can carry. **The canvas is untouched by any of this**: no
+channel on a mark says who
 wrote a note, and a build that grows one has spent a channel on a question the reader did not
 ask.
 
@@ -2253,7 +2263,9 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   one and, where the room holds none, just outside the outline — moved, never dropped — and a
   caption whose place is taken tries the others its mark has (§ "The canvas") before it is left
   out for the frame. A screen too crowded for every name to find a clear place is the one case
-  two can still touch. Where regions overlap the fills overlap, and that is what says a note is in both.
+  two can still touch. Where regions overlap the fills overlap, and that is what says a note is in
+  both — and a note standing where two of them cross wears a band of each (§ Hue), so the
+  mark says what it is in wherever the figure has had to stand it.
   **The fills owe the marks their floors** (§ "Contrast is measured, not assumed"): a mark
   standing on a tinted region keeps **3:1 against the surface it actually lands on** and a
   dimmed one keeps **1.6:1**, and the ink the canvas letters the names and the captions in keeps
