@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import HouseIcon from '@lucide/svelte/icons/house';
-import { flushSync, mount, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Harness from './app-shell-harness.test.svelte';
 import { chromeInset } from './chrome-inset.svelte.js';
@@ -9,6 +9,7 @@ import { DESK_FROM_PX } from './desk-nav.svelte.js';
 import { docksRight } from './dock-stack.svelte.js';
 import { type MediaQueryStub, stubMediaQuery, stubResizeObserver } from './dom.test-support.js';
 import { overlay } from './overlay.svelte.js';
+import SideDock from './side-dock.svelte';
 
 const ITEMS = [{ id: 'graph', label: 'Graph', href: '/', icon: HouseIcon }];
 
@@ -328,10 +329,11 @@ describe("the column's wall", () => {
 		expect(wall()?.getAttribute('aria-valuemax')).toBe('448');
 	});
 
-	// Each is bounded against what the window has left once the other has taken
-	// its room, so a column and a dock cannot between them leave no graph.
-	it('answers a saved width against the room the docks have taken', () => {
-		const place = docksRight(0);
+	// Each is bounded against the least the other will shrink to, so a column and
+	// a dock cannot between them leave no graph, and neither end of the page can
+	// keep room the other asked for.
+	it('answers a saved width against the room a dock will keep', () => {
+		const place = docksRight(0, 352);
 		place.takes(400);
 		try {
 			render({ deskNavWidth: 400 });
@@ -340,6 +342,96 @@ describe("the column's wall", () => {
 		} finally {
 			place.leaves();
 		}
+	});
+
+	describe('with a dock open beside it', () => {
+		const dockBody = createRawSnippet(() => ({ render: () => '<p>a thought</p>' }));
+		let dock: ReturnType<typeof mount> | undefined;
+
+		/** What a real dock beside the column stands at, as it tells the page. */
+		const dockTakes = () =>
+			document.documentElement.style.getPropertyValue('--reading-dock-inset-right');
+
+		function openDock(width: number): void {
+			dock = mount(SideDock, {
+				target,
+				props: {
+					open: true,
+					title: 'Chat',
+					wall: 'How much room Chat takes',
+					width,
+					children: dockBody
+				}
+			});
+			flushSync();
+		}
+
+		function dragTheWall(by: number): void {
+			wall()?.dispatchEvent(pointer('pointerdown', 600));
+			wall()?.dispatchEvent(pointer('pointermove', 600 + by));
+			wall()?.dispatchEvent(pointer('pointerup', 600 + by));
+			flushSync();
+		}
+
+		const windowIs = (px: number) =>
+			Object.defineProperty(window, 'innerWidth', {
+				configurable: true,
+				writable: true,
+				value: px
+			});
+
+		// Wide enough for a column, a dock and a graph, but not for all three at
+		// the widest each would take: the window where the two ends have to answer
+		// each other.
+		beforeEach(() => windowIs(1200));
+
+		afterEach(() => {
+			if (dock) unmount(dock, { outro: false });
+			dock = undefined;
+			windowIs(1024);
+			document.documentElement.style.removeProperty('--reading-dock-inset-right');
+		});
+
+		// The composition neither part can see alone: a dock asked for more room
+		// than the window has spare takes what the column leaves, and gives it back
+		// when the column lets go of it.
+		it('squeezes the dock when the column widens, and lets it grow again', () => {
+			render();
+			openDock(700);
+			expect(clearsTheColumn()).toBe('256px');
+			expect(dockTakes()).toBe('496px');
+
+			dragTheWall(200);
+			expect(clearsTheColumn()).toBe('400px');
+			expect(dockTakes()).toBe('352px');
+
+			dragTheWall(-400);
+			expect(clearsTheColumn()).toBe('224px');
+			expect(dockTakes()).toBe('528px');
+		});
+
+		// DESIGN.md § Layout: the wall is the reader's to move. Room given up at
+		// one end has to be room the other end can hand back.
+		it('reaches the same widths whichever way the wall was moved first', () => {
+			render();
+			openDock(700);
+
+			dragTheWall(200);
+			const widened = [clearsTheColumn(), dockTakes()];
+
+			dragTheWall(-400);
+			dragTheWall(400);
+			expect([clearsTheColumn(), dockTakes()]).toEqual(widened);
+		});
+
+		it('leaves the dock beside the graph rather than over it, however wide the column', () => {
+			render({ deskNavWidth: 448 });
+			openDock(700);
+			expect(target.querySelector('aside[aria-label="Chat"]')).not.toBeNull();
+			expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+			expect(clearsTheColumn()).toBe('400px');
+			expect(dockTakes()).toBe('352px');
+		});
 	});
 });
 

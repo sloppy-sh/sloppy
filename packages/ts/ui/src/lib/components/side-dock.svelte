@@ -92,7 +92,7 @@
 	} = $props();
 
 	const stack = untrack(() => outer);
-	const place = docksRight(stack);
+	const place = docksRight(stack, LEAST);
 	$effect(() => () => place.leaves());
 
 	const room = new MediaQuery(`(min-width: ${DOCK_FROM_PX}px)`);
@@ -104,8 +104,12 @@
 
 	/** Whether there is room to dock beside what is already docked and still
 	 *  leave a graph worth the name. The first dock answers the breakpoint; a
-	 *  second one answers what the first left. */
-	const wouldDock = $derived(room.current && free - place.others >= LEAST + GRAPH_KEEPS);
+	 *  second one answers what the first left. The chrome at the other edge
+	 *  yields to a dock opening, so it is asked the least it will shrink to: what
+	 *  it takes now is a number this dock's own arrival moves. */
+	const wouldDock = $derived(
+		room.current && across - chromeInset.least - place.others >= LEAST + GRAPH_KEEPS
+	);
 	// Fixed for as long as something is open in it: a presentation that moved
 	// under a mounted editor would tear it down mid-edit and lose the caret.
 	let asDock = $state(untrack(() => wouldDock));

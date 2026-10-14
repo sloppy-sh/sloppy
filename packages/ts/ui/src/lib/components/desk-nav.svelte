@@ -10,7 +10,10 @@
 	/** What one press of an arrow key is worth, in px. */
 	const STEP = 24;
 
-	/** `room` is what the window has left once the docks have taken theirs. */
+	/** `room` is what the window has left once the docks standing have kept the
+	 *  least they will shrink to — not what they take now. The docks answer the
+	 *  width this column stands at, so an end that answered the other's width
+	 *  would keep whatever room it reached first and never give it back. */
 	export function columnWithin(room: number): { least: number; most: number } {
 		return { least: LEAST, most: Math.max(LEAST, Math.min(MOST, room - GRAPH_KEEPS)) };
 	}
@@ -34,7 +37,7 @@
 	import { cn } from '$lib/utils.js';
 	import { chromeInset } from './chrome-inset.svelte.js';
 	import { deskNav, DESK_FROM_PX } from './desk-nav.svelte.js';
-	import { docksTake } from './dock-stack.svelte.js';
+	import { docksKeep } from './dock-stack.svelte.js';
 	import Avatar from './identity/avatar.svelte';
 	import type { NavAction, NavItem } from './nav-pill.svelte';
 
@@ -84,7 +87,7 @@
 	let moved = false;
 
 	let across = $state(untrack(() => (typeof window === 'undefined' ? 0 : window.innerWidth)));
-	const room = $derived((across > 0 ? across : DESK_FROM_PX) - docksTake());
+	const room = $derived((across > 0 ? across : DESK_FROM_PX) - docksKeep());
 
 	const wanted = $derived(dragged ?? width);
 	const stands = $derived(
@@ -121,7 +124,7 @@
 		}
 		const px = stands ?? measured;
 		root.style.setProperty('--app-chrome-inset-start', `${px}px`);
-		chromeInset.takes(px);
+		chromeInset.takes(px, collapsed ? px : Math.min(px, LEAST));
 	});
 
 	$effect(() => () => {

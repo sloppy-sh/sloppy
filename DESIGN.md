@@ -1900,9 +1900,9 @@ nothing under it.
   the tablet it docks on has no hover. It is bounded at both ends — never narrower than words
   read well in, never wider than the point they themselves stop widening, and never so wide
   that what it is docked against stops being a graph, which the two of them answer between
-  them: each is bounded against what the window has left once the other, and the column at
-  the far edge, have taken their room
-  — and it publishes every width it passes through rather than only the
+  them: each may take the room the other does not need, so widening one narrows the other
+  rather than stopping against it, and room given up at either end is always there to be
+  taken back — and it publishes every width it passes through rather than only the
   one it comes to rest at, because the nav pill, the bar over a chosen set and the card
   beside a mark all place themselves against that number. Below the dock width what it holds
   is the whole screen and there is no wall, because there is nothing left to take room from.
