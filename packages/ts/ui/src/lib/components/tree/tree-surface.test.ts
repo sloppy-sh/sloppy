@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { Address, NoteDestination, OwnedRef, Tag } from '@sloppy/types';
+import type { Address, NoteDestination, OwnedRef, Tag, TagHueSlot } from '@sloppy/types';
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -60,6 +60,9 @@ function render(
 		lead?: { group: string; title: string; notes: TreeNote[] }[];
 		opened?: Set<OwnedRef>;
 		selection?: Tag[];
+		/** Absent stands for a walk told nothing about the hues, which falls back
+		 *  to the selection's own. */
+		slots?: ReadonlyMap<Tag, TagHueSlot>;
 		reading?: OwnedRef | null;
 		/** Absent stands for a walk through notes that are not the reader's. */
 		writable?: boolean;
@@ -89,6 +92,7 @@ function render(
 		lead: props.lead,
 		opened: props.opened ?? new Set<OwnedRef>(),
 		selection: props.selection,
+		slots: props.slots,
 		reading: props.reading ?? null,
 		chosen: props.chosen,
 		onChoose: props.choosable || props.chosen ? (ref: OwnedRef) => chose.push(ref) : undefined,
@@ -337,7 +341,7 @@ describe('the tags a note carries', () => {
 		expect(rows()[0].textContent).toContain('biology');
 	});
 
-	it('draws a note in several selected sets in the earliest-selected hue, the dot being no disc to band', () => {
+	it('draws a dot per set a note is in, in the order the hues go out in', () => {
 		render({
 			groups: [
 				{
@@ -348,8 +352,10 @@ describe('the tags a note carries', () => {
 			],
 			selection: ['question', 'seed'] as Tag[]
 		});
-		expect(dots(rows()[0])).toHaveLength(1);
-		expect(dots(rows()[0])[0].getAttribute('style')).toContain('--facet-1');
+		expect(dots(rows()[0]).map((dot) => dot.getAttribute('style'))).toEqual([
+			'background-color: var(--facet-1);',
+			'background-color: var(--facet-2);'
+		]);
 		expect(rows()[0].textContent).toContain('question, seed');
 	});
 
@@ -362,6 +368,76 @@ describe('the tags a note carries', () => {
 		});
 		expect(dots(rows()[0])).toHaveLength(0);
 		expect(rows()[0].textContent).toContain('seed');
+	});
+
+	it('keeps the dots out of what the row is read aloud as', () => {
+		render({
+			groups: [
+				{ key: 'one', title: '', notes: [note('1', undefined, { tags: ['seed'] as Tag[] })] }
+			],
+			selection: ['seed'] as Tag[]
+		});
+		const dot = dots(rows()[0])[0];
+		expect(dot.closest('[aria-hidden="true"]')).not.toBeNull();
+		expect(rows()[0].textContent).toContain('seed');
+	});
+
+	it('takes the hues it is handed, so a row and the canvas cannot disagree', () => {
+		const slots: ReadonlyMap<Tag, TagHueSlot> = new Map([
+			['biology' as Tag, 1 as TagHueSlot],
+			['seed' as Tag, 2 as TagHueSlot],
+			['question' as Tag, 3 as TagHueSlot]
+		]);
+		render({
+			groups: [
+				{
+					key: 'one',
+					title: '',
+					notes: [
+						note('1', undefined, { tags: ['question', 'biology'] as Tag[] }),
+						note('2', undefined, { tags: ['later'] as Tag[] })
+					]
+				}
+			],
+			slots
+		});
+
+		// Nothing is selected and the sets are still in front of the reader, in
+		// their own order rather than the note's.
+		expect(dots(labelled('About 1')).map((dot) => dot.getAttribute('style'))).toEqual([
+			'background-color: var(--facet-1);',
+			'background-color: var(--facet-3);'
+		]);
+		expect(labelled('About 1').textContent).toContain('biology, question');
+		// `later` is past what the canvas colours, so the row says it in words
+		// alone.
+		expect(dots(labelled('About 2'))).toHaveLength(0);
+		expect(labelled('About 2').textContent).toContain('later');
+	});
+
+	it('leaves the dim to the selection, whatever the dots say', () => {
+		const slots: ReadonlyMap<Tag, TagHueSlot> = new Map([
+			['seed' as Tag, 1 as TagHueSlot],
+			['question' as Tag, 2 as TagHueSlot]
+		]);
+		const notes = [
+			note('1', undefined, { tags: ['seed'] as Tag[] }),
+			note('2', undefined, { tags: ['question'] as Tag[] })
+		];
+
+		const bound = render({ groups: [{ key: 'one', title: '', notes }], slots });
+		expect(rows().every((row) => !row.className.includes('opacity-45'))).toBe(true);
+		expect(dots(labelled('About 2'))).toHaveLength(1);
+
+		bound.selection = ['seed'] as Tag[];
+		flushSync();
+
+		expect(labelled('About 1').className).not.toContain('opacity-45');
+		expect(labelled('About 2').className).toContain('opacity-45');
+		// It still carries its own set, and still wears that set's hue.
+		expect(dots(labelled('About 2')).map((dot) => dot.getAttribute('style'))).toEqual([
+			'background-color: var(--facet-2);'
+		]);
 	});
 });
 

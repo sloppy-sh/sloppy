@@ -289,19 +289,20 @@ export function nodesWithGone(
 export const GRAPH_ARRANGEMENTS = ["genealogy", "sets"] as const;
 export type GraphArrangement = (typeof GRAPH_ARRANGEMENTS)[number];
 
-/** The most tags the sets arrangement draws as places: the hue slots there are
- *  (`TAG_HUE_SLOTS`), since a drawn set borrows one. Past it a tag colours its
- *  marks and draws no place — DESIGN.md § "Sets — the tags as places". */
+/** The most sets a reading puts in front of the reader at once: the hue slots
+ *  there are (`TAG_HUE_SLOTS`), since each of them borrows one. Past it a tag
+ *  carries no colour anywhere — DESIGN.md § Hue. */
 export const DRAWN_SETS_MOST = 8;
 
 /**
- * The tags the sets arrangement draws as places: the selected ones in selection
- * order, then the other tags `nodes` carry, by the notes carrying each (most
- * first) and then by name — deduped, and capped at {@link DRAWN_SETS_MOST}.
+ * The sets in front of the reader, in the order every reading hands the hues
+ * out in: the selected ones in selection order, then the other tags `nodes`
+ * carry, by the notes carrying each (most first) and then by name — deduped,
+ * and capped at {@link DRAWN_SETS_MOST}.
  *
- * An empty selection draws the field's own most-carried tags, so only a field
- * whose notes carry nothing draws no place at all. Names a tag ONCE however
- * many times a note repeats it.
+ * An empty selection is the field's own most-carried tags, so only a field
+ * whose notes carry nothing puts no set in front of anybody. Names a tag ONCE
+ * however many times a note repeats it.
  */
 export function drawnSetsOf(
   selection: readonly Tag[],
@@ -322,9 +323,9 @@ export function drawnSetsOf(
   return [...drawn, ...rest].slice(0, DRAWN_SETS_MOST);
 }
 
-/** The hue slot each drawn set borrows, in drawing order — what the canvas
- *  paints a place in and what the rail shows beside the tag, from the one
- *  mapping (`assignTagHueSlots`) so the two cannot disagree. */
+/** The hue slot each of those sets borrows, in that order — what a band, a
+ *  region, a row's dot and the rail's chip are all drawn in, from the one
+ *  mapping (`assignTagHueSlots`) so none of them can disagree. */
 export function drawnSetSlots(
   drawn: readonly Tag[],
 ): ReadonlyMap<Tag, TagHueSlot> {
@@ -374,12 +375,13 @@ export interface GraphSurfaceProps {
    */
   edgeLooks?: readonly GraphEdgeLook[];
   /**
-   * The tags the reader selected, in the order they selected them — the order
-   * `assignTagHueSlots` hands out the hues in. Empty is the monochrome
-   * genealogical view DESIGN.md § Hue calls for when nothing has been asked.
+   * The tags the reader selected, in the order they selected them — which lead
+   * the ranking the hues go out in ({@link drawnSetsOf}), so selecting a tag
+   * brings it to the first slot rather than being how colour arrives.
    *
    * Notes carrying none of these dim; they are never dropped, so the shape the
-   * answer is read against stays on the canvas.
+   * answer is read against stays on the canvas. Empty asks nothing, and
+   * nothing dims.
    */
   selection: readonly Tag[];
   /**

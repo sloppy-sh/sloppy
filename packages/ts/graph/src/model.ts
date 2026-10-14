@@ -30,6 +30,7 @@ import {
   type DifferenceMark,
   differenceMarks,
   type DrawnNode,
+  drawnSetsOf,
   type GraphArrangement,
   type GraphDifference,
   type GraphEdgeLook,
@@ -161,8 +162,7 @@ export interface GraphNodeAttributes {
   /**
    * The slots of the drawn sets this mark stands in, in drawing order — a band
    * each, left to right. Empty where it stands in none, one where the whole
-   * disc is that slot's. The genealogy draws the selected tags and Sets the
-   * sets it packs, selected or not. DESIGN.md § Hue.
+   * disc is that slot's. DESIGN.md § Hue.
    */
   slots: readonly TagHueSlot[];
   /**
@@ -223,9 +223,16 @@ export interface ModelOptions {
   /** Where the sets reading stands every mark — `packSets` in `sets/pack.ts`.
    *  Read only while {@link arrangement} is `"sets"`. */
   sets?: SetsPacking;
-  /** In selection order, which is the order the genealogy hands the hue slots
-   *  out in; Sets hands them out in the order it draws its sets. */
+  /** In selection order, which leads the ranking the hue slots are handed out
+   *  in — `drawnSetsOf`. */
   selection: readonly Tag[];
+  /**
+   * Every note of the region, which the sets in front of the reader are ranked
+   * over. A fold stands for a whole subtree, so ranking over the marks would
+   * count one and read a different eight tags than the rail counts. Absent is
+   * the marks themselves.
+   */
+  notes?: readonly { readonly tags: readonly Tag[] }[];
   /** {@link GraphSurfaceProps.codeMoved} — the notes the code has moved under
    *  since their author read them against it. Absent and empty both say
    *  nothing, which is what a canvas beside no code draws. */
@@ -284,7 +291,7 @@ export function buildModel(
     return buildSetsModel(drawn, options, options.sets);
   }
   const graph: GraphModel = new Graph({ type: "undirected" });
-  const hues = hueSlots(options.selection);
+  const hues = hueSlots(drawnSetsOf(options.selection, options.notes ?? drawn));
   const { seedOf, fields } = seedFields(drawn, options.fields ?? []);
   const starts = startPoints(drawn, seedOf, options.keep);
   const marks = differenceMarks(options.difference);
@@ -299,14 +306,16 @@ export function buildModel(
     const { node } = entry;
     const seed = seedOf(node);
     const difference = marks.get(node.ref);
-    const bands = bandsOf(entry.tags, hues);
     addMark(graph, entry, hues, options, {
       index,
       at: starts.get(node.ref) ?? seed,
       anchor: seed,
       anchorStrength: SEED_ANCHOR,
+      // The colour says which sets a mark is in and the dim answers the
+      // question, so a mark wearing a band it was not asked about still
+      // recedes — DESIGN.md § Hue.
       answering:
-        (options.selection.length === 0 || bands.length > 0) &&
+        asked(entry.tags, options.selection) &&
         (!comparing || difference !== undefined),
       difference,
     });
@@ -390,10 +399,16 @@ export function buildModel(
   };
 }
 
+/** Whether the question in front of the reader has anything to say about these
+ *  tags: nothing selected asks nothing of anybody. */
+function asked(tags: readonly Tag[], selection: readonly Tag[]): boolean {
+  return selection.length === 0 || tags.some((tag) => selection.includes(tag));
+}
+
 /** The hue slots a ranking of tags hands out, and the order they were handed
  *  out in — ranked off the slot map's keys rather than off the ranking, so the
  *  dedupe rule that hands out the hues is the same one that picks between
- *  them. The genealogy ranks the selection; Sets ranks the sets it draws. */
+ *  them. Both readings rank the sets they draw — `drawnSetsOf`. */
 function hueSlots(ranking: readonly Tag[]): HueSlots {
   const slots = assignTagHueSlots(ranking);
   return {
@@ -572,8 +587,8 @@ function buildSetsModel(
   packing: SetsPacking,
 ): BuiltModel {
   const graph: GraphModel = new Graph({ type: "undirected" });
-  // The drawing is the question here, so a mark wears the sets it stands in
-  // whether or not they were selected — DESIGN.md § Hue.
+  // The figure's own ranking, so a mark cannot wear a hue the region it stands
+  // in was drawn in a different one.
   const hues = hueSlots(packing.drawn.tags);
   const byRef = new Map(drawn.map((entry) => [entry.node.ref, entry]));
   const standing = packing.marks.flatMap((mark) => {

@@ -434,6 +434,7 @@ export function mountGraph(
       arrangement: props.arrangement,
       ...(packing === undefined ? {} : { sets: packing }),
       selection: props.selection,
+      notes: props.nodes,
       ...(props.codeMoved === undefined
         ? {}
         : { codeMoved: drawnRefs(nodes, lod.collapsed, props.codeMoved) }),

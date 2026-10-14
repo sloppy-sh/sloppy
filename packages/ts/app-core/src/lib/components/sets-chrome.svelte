@@ -1,8 +1,8 @@
 <script lang="ts">
-	// The one thing the canvas has to say about the sets it is drawing: that the
-	// graph carries more tags than there is room to draw — DESIGN.md § "Sets —
-	// the tags as places". Nothing at all otherwise.
-	import { DRAWN_SETS_MOST } from '@sloppy/graph';
+	// The one thing the canvas has to say about the sets in front of the reader:
+	// that the graph carries more tags than can wear a hue at once — DESIGN.md
+	// § Hue. Nothing at all otherwise.
+	import { DRAWN_SETS_MOST, type GraphArrangement } from '@sloppy/graph';
 
 	/** Counts as a reader reads them; past twenty the figure is the quicker
 	 *  read. */
@@ -33,11 +33,17 @@
 	const drawn = most.charAt(0).toUpperCase() + most.slice(1);
 
 	let {
-		tags
+		tags,
+		reading
 	}: {
 		/** How many distinct tags the notes on the canvas carry. */
 		tags: number;
+		/** Which reading it stands over, which is what the sets DO there: the one
+		 *  draws them as places, the other colours the marks by them. */
+		reading: GraphArrangement;
 	} = $props();
+
+	const verb = $derived(reading === 'sets' ? 'drawn' : 'coloured');
 </script>
 
 {#if tags > DRAWN_SETS_MOST}
@@ -51,7 +57,7 @@
 			class="pointer-events-auto max-w-full rounded-2xl border bg-card/90 px-3 py-1 shadow-sm backdrop-blur"
 		>
 			<p class="text-sm text-muted-foreground" role="status">
-				{drawn} of the {word(tags)} tags are drawn. Select tags to choose which.
+				{drawn} of the {word(tags)} tags are {verb}. Select tags to choose which.
 			</p>
 		</div>
 	</div>

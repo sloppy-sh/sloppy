@@ -474,40 +474,44 @@ and § "The mark" bounds it; nothing else there is shared.
 
 ### Hue — the sets in front of the reader, and only those
 
-**Colour appears when the reader asks a question of the graph, and it means the answer.** A
-permanently rainbow canvas is the Obsidian failure with extra steps. In the genealogy
-reading the question is the selection, so with nothing selected nothing on that canvas is
-coloured to mean something. **The sets reading is the one where opening it is already the
-question**: it asks which places the notes stand in, so the regions and the marks standing
-in them carry those sets' hues before anything is selected (§ "Sets — the tags as places").
-Either way the colour on the canvas is the sets the reader has in front of them and nothing
-else.
+**The sets in front of the reader are the tags they selected, first and in the order they
+selected them, and then the tags the field's own notes carry most — eight in all, and each
+of them with a hue of its own.** So the colour is there before anybody has asked anything,
+and it means the same thing then as after: which of those sets a note is in. **Selecting is
+how the reader chooses which sets those are**, not how colour arrives — a selected tag takes
+the first slot and the rest follow it.
+
+**One ranking serves every reading** — the graph, the sets figure, the outline and the rail
+all read it off `drawnSetsOf`, so no two of them can disagree about which tag wears which
+hue. A field carrying more tags than there are slots says how many of them are in front of
+the reader, in one line over the canvas, and selecting tags is how a reader chooses which.
+
+**The colour means the sets, and the dim means the question.** With nothing selected nothing
+recedes: there is no question yet, and a canvas that dimmed itself would be answering one
+nobody asked. Select a tag and the notes carrying none of the selected ones recede, bands
+and all, so the answer is read against the graph's own shape. The rail is the legend for
+both, and a tag past the eight carries no colour anywhere.
 
 The one thing that carries colour of its own is the picture an author put on their mark,
 and it is a picture — imagery inside the disc, never a fill (§ "The mark"). It says nothing
-about which sets a note is in, and where the selection is the question every fill, edge and
-line around it stays monochrome until a tag is selected.
+about which sets a note is in.
 
-- **A tag has no colour of its own.** It borrows one for as long as it is selected: the
-  first selected tag takes `--facet-1`, the second `--facet-2`, and so on. There is
-  nothing to persist and nothing to pin, because there is no tag row to hang a colour on
-  — a tag exists exactly as long as a note carries it.
-- **Selection order assigns the slot, and the tag rail shows that order**, so the legend
-  and the canvas cannot disagree about which colour answers which question.
+- **A tag has no colour of its own.** It borrows one for as long as it is one of the sets
+  in front of the reader: the first of them takes `--facet-1`, the second `--facet-2`, and
+  so on. There is nothing to persist and nothing to pin, because there is no tag row to
+  hang a colour on — a tag exists exactly as long as a note carries it.
+- **The ranking assigns the slot, and the tag rail shows that ranking**, so the legend and
+  the canvas cannot disagree about which colour answers which question.
   `assignTagHueSlots` in `@sloppy/types` is where that mapping is made, and the only
   place it is.
-- **In the sets reading the drawing is the question, so a set borrows a slot whether or not
-  it is selected** — in the order the sets are drawn, the selected ones first, and the rail
-  shows the drawn sets in those same hues (§ "Sets — the tags as places").
-- **A note carrying more than one selected tag wears a band of each**, side by side across
+- **A note in more than one of those sets wears a band of each**, side by side across
   the disc, from the first of them on the left to the last on the right — the order the rail
   lists them in, so the legend and the mark cannot disagree. The mark itself says which of
   the sets in front of the reader a note stands in, rather than only the first of them. A
   note in one of them is the whole disc in that hue, which is what a mark has always been. A
-  band is its slot's own colour, so it owes the surface exactly what a fill owes it.
-  **In the sets reading the bands are the drawn sets', selected or not**: a mark wears a band
-  of every drawn set its note is in, the ones the figure could draw it no exact place for
-  included, so somebody who has selected nothing still reads which places a note belongs to.
+  band is its slot's own colour, so it owes the surface exactly what a fill owes it. In the
+  sets reading that is a band of every set a note stands in, the ones the figure could draw
+  it no exact place for included.
   **The bands go as the mark gets small, and a mark in many sets loses them first**: a band
   narrower than `BAND_MIN_WIDTH` in `scene.ts` is a haze rather than an answer, so the mark
   falls back to the first of its hues and a pinch brings them back. The floor is held
@@ -518,7 +522,8 @@ line around it stays monochrome until a tag is selected.
   hues on that edge, and the rail says the rest.
 - **Notes carrying none of the selected tags dim; they never leave.** The reader asked
   which notes are in a set, not to be shown a different graph, and the shape they are
-  reading the answer against is the graph itself. So the dim is measured rather than
+  reading the answer against is the graph itself. A mark wearing bands of sets nobody asked
+  about recedes wearing them. So the dim is measured rather than
   chosen: every unselected mark gives up the same share of its own fill, and one that
   cannot afford the whole share gives up as much of it as leaves **1.6:1 against the
   ground it lands on** and stops there. That floor is not the 3:1 a mark owes. A dimmed
@@ -529,9 +534,10 @@ line around it stays monochrome until a tag is selected.
   (§ "The wallpaper"), so a wallpaper cannot take the unselected graph off the page either.
   **The sets reading keeps that dim and gives those notes a place**: outside every region
   rather than off the canvas (§ "Sets — the tags as places").
-- Past eight selected tags the slots repeat, and a mark wears no second band in a hue it is
-  already wearing — so eight bands is the most one mark carries. Eight questions at once is
-  already more than the channel can carry, and the rail carries the written tag regardless.
+- Eight sets is the most in front of the reader at once, because a ninth would wear a hue
+  already spent and so say nothing — and a mark wears no second band in a hue it is already
+  wearing. Eight questions at once is already more than the channel can carry, and the rail
+  carries the written tag regardless.
 - Every slot owes **3:1 against the surface** on every theme, because a node fill carrying
   meaning alone is a graphical object. Every slot also owes a minimum OKLab distance of
   **0.03 from every other slot** on the same theme — a palette whose slots have converged
@@ -649,7 +655,7 @@ whether it is one of the notes open in front of the reader. Each gets its own ch
 | ---------------------------------------------- | ------------------------------------------------------------------------------ |
 | Fill hue                                       | the drawn sets a note is in, a band each (§ Hue)                               |
 | Fill lightness                                 | genealogical depth (§ Lightness)                                               |
-| Fill alpha                                     | stands in none of the sets in front of the reader (§ Hue)                      |
+| Fill alpha                                     | stands in none of the sets the reader asked about (§ Hue)                      |
 | **Its own edge** — present, and whether broken | provenance (§ Form)                                                            |
 | **A ring inside it** — weight, and how broken  | the author's look                                                              |
 | **A dot on its rim**                           | the code under it has moved since its author read it                           |
@@ -2004,6 +2010,11 @@ nothing under it.
   says there is anything under it. Anything reading the page aloud is told all three either
   way. The address is the one part that never gives — it is what a person cites — so
   everything else on the row is drawn to fit around it.
+- **A row carries a dot per set its note is in**, in the sets' own order and each in that
+  set's hue (§ Hue), where the canvas would draw the mark a band each — a row's dot is too
+  small to divide. The tags the row says in words follow them, those sets first, so each dot
+  sits beside the tag it stands for, and a row whose note is in none of them says its tags in
+  words alone.
 - **A tablet is a phone with room, and a desk is the same parts stood beside the graph
   rather than over it — never a third layout.** If either arrangement needs a component the
   phone does not have, the phone layout is what is wrong.
@@ -2216,16 +2227,13 @@ author's look, the orbit on a chosen mark and the lift on an open one are all dr
 genealogy's own geometry to the sets a note is in. A reading that redrew notes as plain dots
 would be a poorer copy of the mark, and the phone would be the surface that lost it.
 
-- **The sets are the field's own tags, and the selection chooses which of them lead.** The
-  selected tags draw first, in selection order, and then the rest of the tags the field's notes
-  carry — most-carried first, ties by name. So a graph opened in this reading is already a
-  figure rather than a request for a question, and selecting a tag moves it to the front of the
-  drawing rather than being the only way to get one. Selecting a tag also lights the notes
-  carrying it and lets the rest recede, exactly as selecting does under the other two
-  readings. **Eight sets are drawn at the most**, which is how many hue slots there are
-  (§ Hue), because a drawn set borrows one whether or not it is selected. A field carrying
-  more tags than that says how many of them are drawn in one line, and selecting tags is how
-  a reader chooses which.
+- **The sets drawn here are the sets in front of the reader, which every reading colours
+  by** — the selected tags first, in selection order, then the rest of the tags the field's
+  notes carry, most-carried first and ties by name, eight at the most (§ Hue). So a graph
+  opened in this reading is already a figure rather than a request for a question, and
+  selecting a tag moves it to the front of the drawing rather than being the only way to get
+  one. Selecting a tag also lights the notes carrying it and lets the rest recede, exactly as
+  selecting does under the other two readings.
 - **A set is a circle whose area is its own count, and the circles are placed so that what two
   of them share is what the two sets share.** The notes carrying a tag are its area, and the
   distance between two circles is the one at which the area they cover of each other is the

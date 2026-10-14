@@ -38,6 +38,7 @@
 		notes,
 		fields,
 		selection = [],
+		slots,
 		reading = null,
 		opened,
 		inset,
@@ -57,6 +58,9 @@
 		 *  region pulled from somebody else, which is one author's alone. */
 		fields: readonly { ref: OwnedRef; title: string }[] | undefined;
 		selection?: readonly Tag[];
+		/** {@link TreeSurfaceProps.slots} — the hues the rest of the readings are
+		 *  drawing the same sets in. */
+		slots?: TreeSurfaceProps['slots'];
 		reading?: OwnedRef | null;
 		/** The branches the reader has opened; the tree draws no others. */
 		opened: ReadonlySet<OwnedRef>;
@@ -366,6 +370,7 @@
 	{lead}
 	{opened}
 	{selection}
+	{slots}
 	{reading}
 	{inset}
 	{chosen}

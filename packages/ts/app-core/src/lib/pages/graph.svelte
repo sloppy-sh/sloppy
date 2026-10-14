@@ -799,17 +799,18 @@
 	const walking = $derived(seenAs === 'outline');
 	const inSets = $derived(seenAs === 'sets');
 
-	/** The tags the canvas draws as places: the selected ones lead and the field's
-	 *  own most-carried tags follow — DESIGN.md § "Sets — the tags as places". */
-	const drawnSets = $derived(inSets ? drawnSetsOf(selection, visible) : []);
+	/** The sets in front of the reader: the selected ones lead and the field's own
+	 *  most-carried tags follow — DESIGN.md § Hue. Every reading colours by these,
+	 *  so none of them can disagree about which tag wears which hue. */
+	const drawnSets = $derived(drawnSetsOf(selection, visible));
 
-	/** The hues those are drawn in, which the rail is handed so the legend and
-	 *  the canvas cannot disagree — DESIGN.md § Hue. */
-	const drawnSlots = $derived(inSets ? drawnSetSlots(drawnSets) : undefined);
+	/** The hue each of them carries, which the canvas, the rail and the outline
+	 *  are all handed. */
+	const drawnSlots = $derived(drawnSetSlots(drawnSets));
 
 	/** How many distinct tags the notes on the canvas carry, which is what the
-	 *  chrome weighs against what the canvas has room to draw. */
-	const tagsOnCanvas = $derived(inSets ? new Set(visible.flatMap((note) => note.tags)).size : 0);
+	 *  chrome weighs against how many of them can carry a hue. */
+	const tagsOnCanvas = $derived(new Set(visible.flatMap((note) => note.tags)).size);
 
 	// The sets draw where a note's tags put it and a difference draws where the
 	// note was, so one mark cannot answer both — DESIGN.md § "Sets — the tags as
@@ -1734,10 +1735,12 @@
 
 	const SET_ROWS_MOST = 4;
 
-	/** A row for each of the first four drawn sets — the selected ones lead, and
-	 *  the Tags row covers the rest, so a phone's menu stays short. Out of a set
-	 *  only where every one of the notes is already inside. */
+	/** A row for each of the first four sets the figure draws — the selected ones
+	 *  lead, and the Tags row covers the rest, so a phone's menu stays short. Out
+	 *  of a set only where every one of the notes is already inside. Offered in
+	 *  the sets reading alone, which is the one that draws the places. */
 	function setMoves(notes: readonly OwnedRef[]): CanvasMenuItem[] {
+		if (!inSets) return [];
 		const held = notes.map((ref) => nodes.get(ref)).filter((note) => note !== undefined);
 		return drawnSets.slice(0, SET_ROWS_MOST).map((tag) => {
 			const inside = held.length > 0 && held.every((note) => note.tags.includes(tag));
@@ -2892,6 +2895,7 @@
 					notes={visible}
 					fields={foreign || asWas ? undefined : graphs.fields}
 					{selection}
+					slots={drawnSlots}
 					reading={asWas ? null : foreign ? reached : open}
 					opened={unfolded}
 					chosen={foreign || notNow ? undefined : chosen}
@@ -3014,8 +3018,8 @@
 				</div>
 			</div>
 		{/if}
-		{#if inSets && !pointing}
-			<SetsChrome tags={tagsOnCanvas} />
+		{#if !walking && !pointing}
+			<SetsChrome tags={tagsOnCanvas} reading={inSets ? 'sets' : 'genealogy'} />
 		{/if}
 		<DeskNavParts>
 			{#snippet head({ collapsed }: { collapsed: boolean })}

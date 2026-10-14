@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { NoteDestination, OwnedRef, Tag } from '@sloppy/types';
+	import type { NoteDestination, OwnedRef, Tag, TagHueSlot } from '@sloppy/types';
 	import type { Snippet } from 'svelte';
 	import type { OutlineSections } from './sections.js';
 	import type { TreeNote } from './walk.js';
@@ -28,9 +28,12 @@
 		lead?: readonly { group: string; title: string; notes: readonly TreeNote[] }[];
 		/** The notes whose children are drawn. */
 		opened: ReadonlySet<OwnedRef>;
-		/** The reader's tags, in selection order — the order the hues go out in,
-		 *  and which branches the walk opens of its own accord. */
+		/** The reader's tags, in selection order — which the hues lead with, and
+		 *  which branches the walk opens of its own accord. */
 		selection?: readonly Tag[];
+		/** The sets in front of the reader and the hue each one carries, as the
+		 *  canvas and the rail have them. Absent is the selection's own hues. */
+		slots?: ReadonlyMap<Tag, TagHueSlot>;
 		/** The note in front of the reader, which the tree marks and keeps in view. */
 		reading?: OwnedRef | null;
 		/** What the chrome over the surface covers at either edge. */
@@ -139,6 +142,7 @@
 		lead,
 		opened,
 		selection = [],
+		slots,
 		reading = null,
 		inset = { top: '0px', bottom: '0px' },
 		chosen,
@@ -191,7 +195,7 @@
 		onToggle(ref, open);
 	}
 
-	const slots = $derived(assignTagHueSlots(selection));
+	const hues = $derived(slots ?? assignTagHueSlots(selection));
 
 	const drawn = $derived(
 		groups.flatMap((group) => {
@@ -277,16 +281,22 @@
 		return rows.length > 0 ? rowKey(heads, rows[0]) : '';
 	}
 
-	/** The selected tags a note carries, earliest-selected first. A row's dot is
-	 *  no disc to band, so it takes the first one's hue and the rail says the rest. */
-	function askedOf(note: TreeNote): Tag[] {
-		return [...slots.keys()].filter((tag) => note.tags.includes(tag));
+	/** The sets in front of the reader that a note is in, in their own order —
+	 *  a dot each on the row, the way a mark on the canvas wears a band each. */
+	function setsOf(note: TreeNote): Tag[] {
+		return [...hues.keys()].filter((tag) => note.tags.includes(tag));
 	}
 
-	/** A note's tags as the row says them, the asked-about ones first so the hue
+	/** A note's tags as the row says them, the coloured ones first so each dot
 	 *  sits beside the tag it stands for. */
-	function tagsOf(note: TreeNote, asked: readonly Tag[]): Tag[] {
-		return [...asked, ...note.tags.filter((tag) => !asked.includes(tag))];
+	function tagsOf(note: TreeNote, sets: readonly Tag[]): Tag[] {
+		return [...sets, ...note.tags.filter((tag) => !sets.includes(tag))];
+	}
+
+	/** A row recedes while a question is in front of the reader and this note has
+	 *  nothing to say to it — the dots are the sets, the dim is the question. */
+	function dims(note: TreeNote): boolean {
+		return selection.length > 0 && !note.tags.some((tag) => selection.includes(tag));
 	}
 
 	function reveal(group: string, row: Extract<TreeRow, { kind: 'rest' }>): void {
@@ -914,8 +924,8 @@
 							{@const key = rowKey(heads, row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}
 							{#if row.kind === 'note'}
-								{@const asked = askedOf(row.note)}
-								{@const listed = tagsOf(row.note, asked)}
+								{@const stands = setsOf(row.note)}
+								{@const listed = tagsOf(row.note, stands)}
 								{@const carryable = !!moveNote && !heads}
 								{@const grab = carryable ? 'cursor-grab touch-pan-y' : ''}
 								{@const drags = carryable ? 'Drag it to move this note' : undefined}
@@ -943,8 +953,9 @@
 									onclick={() => act(group, row, heads)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-control cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted sm:gap-2 {selection.length >
-										0 && asked.length === 0
+									class="flex min-h-control cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted sm:gap-2 {dims(
+										row.note
+									)
 										? 'opacity-45'
 										: ''} {!heads && lit.has(row.note.ref)
 										? 'border-s-2 border-dashed border-foreground/50 bg-muted/60'
@@ -1001,12 +1012,15 @@
 										<span
 											class="flex max-w-[45%] min-w-0 shrink items-center gap-1.5 text-xs text-muted-foreground"
 										>
-											{#if asked.length > 0}
-												<span
-													class="size-2 shrink-0 rounded-full"
-													style="background-color: var(--facet-{slots.get(asked[0])})"
-													aria-hidden="true"
-												></span>
+											{#if stands.length > 0}
+												<span class="flex shrink-0 items-center gap-0.5" aria-hidden="true">
+													{#each stands as tag (tag)}
+														<span
+															class="size-2 rounded-full"
+															style="background-color: var(--facet-{hues.get(tag)})"
+														></span>
+													{/each}
+												</span>
 											{/if}
 											<span class="truncate">{listed.join(', ')}</span>
 										</span>

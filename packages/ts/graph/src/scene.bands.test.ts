@@ -334,30 +334,31 @@ describe("a mark standing in several drawn sets", () => {
 });
 
 // DESIGN.md § Hue: a tag question is answered on the marks already up, so the
-// bands arrive and leave on that same path.
+// hues move and the dim follows on that same path.
 describe("selecting another tag", () => {
   const field = [drawn("1", [TAGS[0], TAGS[1]]), drawn("2", [TAGS[0]])];
   const asked = (selection: readonly Tag[]) =>
     buildModel(field, { selection, palette });
 
-  it("puts the bands up and takes them down again", async () => {
+  it("moves the hues and the dim on the marks already up", async () => {
     const { scene, app } = await canvas(field, [TAGS[0]]);
-    expect(bandsOf(app)).toHaveLength(0);
     const standing = fillsOf(app).map((fill) => fill.texture);
-
-    scene.setTints(asked([TAGS[0], TAGS[1]]), true);
-    app.tick();
+    // The mark in both sets wears a band each, and the one in `alpha` alone is
+    // the whole disc in the hue `alpha` leads with.
     expect(bandsOf(app).map((band) => band.tint)).toEqual(hues([1, 2]));
     expect(fillsOf(app)[0].alpha).toBe(0);
+    expect(fillsOf(app)[1].tint).toBe(palette.tag(1));
     expect(fillsOf(app)[1].alpha).toBe(1);
+
+    scene.setTints(asked([TAGS[1]]), true);
+    app.tick();
+    // `beta` leads now, so `alpha` takes the second hue — and the mark carrying
+    // nothing that was asked for recedes wearing it.
+    expect(bandsOf(app).map((band) => band.tint)).toEqual(hues([1, 2]));
+    expect(fillsOf(app)[1].tint).toBe(palette.tag(2));
+    expect(fillsOf(app)[1].alpha).toBeLessThan(1);
     // The marks themselves are the ones that were already up.
     expect(fillsOf(app).map((fill) => fill.texture)).toEqual(standing);
-
-    scene.setTints(asked([TAGS[0]]), true);
-    app.tick();
-    expect(bandsOf(app)).toHaveLength(0);
-    expect(fillsOf(app)[0].alpha).toBe(1);
-    expect(fillsOf(app)[0].tint).toBe(palette.tag(1));
     scene.destroy();
   });
 });
@@ -627,22 +628,29 @@ describe("the sets reading", () => {
       expect(model.graph.getNodeAttributes(ref).alpha).toBe(1);
   });
 
-  // The genealogy asks a different question: there the bands and the dim are
-  // both the selection's — DESIGN.md § Hue.
-  it("leaves the genealogy reading asking only what was selected", () => {
+  // The genealogy reading colours by the same sets; what the two readings
+  // differ in is where a mark stands — DESIGN.md § Hue.
+  it("bands the genealogy reading by the same sets", () => {
     const asked = buildModel(field, { selection: [TAGS[1]], palette });
-    expect(asked.graph.getNodeAttributes(both).slots).toEqual([1]);
+    // `beta` is selected, so it leads and `alpha` follows it on the mark in
+    // both.
+    expect(asked.graph.getNodeAttributes(both).slots).toEqual([1, 2]);
     expect(asked.graph.getNodeAttributes(other).slots).toEqual([1]);
-    // A note in no selected tag wears no band and dims, whatever else it
-    // carries.
+    // A note in no SELECTED set recedes, bands and all.
+    expect(asked.graph.getNodeAttributes(one).slots).toEqual([2]);
+    expect(asked.graph.getNodeAttributes(none).slots).toEqual([]);
     for (const ref of [one, none]) {
-      expect(asked.graph.getNodeAttributes(ref).slots).toEqual([]);
       expect(asked.graph.getNodeAttributes(ref).alpha).toBeLessThan(1);
     }
 
+    // With nothing selected the field's own tags take the slots, most-carried
+    // first and ties by name, and nothing recedes.
     const quiet = buildModel(field, { selection: [], palette });
+    expect(quiet.graph.getNodeAttributes(both).slots).toEqual([1, 2]);
+    expect(quiet.graph.getNodeAttributes(one).slots).toEqual([1]);
+    expect(quiet.graph.getNodeAttributes(other).slots).toEqual([2]);
+    expect(quiet.graph.getNodeAttributes(none).slots).toEqual([]);
     for (const ref of [both, one, other, none]) {
-      expect(quiet.graph.getNodeAttributes(ref).slots).toEqual([]);
       expect(quiet.graph.getNodeAttributes(ref).alpha).toBe(1);
     }
   });

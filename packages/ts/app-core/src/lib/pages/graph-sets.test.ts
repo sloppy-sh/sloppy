@@ -172,6 +172,20 @@ function chip(tag: string): HTMLButtonElement {
 	return found;
 }
 
+const outlineRow = (title: string): HTMLElement => {
+	const row = [...document.body.querySelectorAll<HTMLElement>('[role="treeitem"]')].find((one) =>
+		(one.textContent ?? '').includes(title)
+	);
+	if (!row) throw new Error(`The outline has no row for "${title}"`);
+	return row;
+};
+
+/** The hues an outline row's dots are drawn in, in the order they stand. */
+const dotted = (title: string) =>
+	[...outlineRow(title).querySelectorAll<HTMLElement>('[style*="--facet-"]')].map((dot) =>
+		dot.getAttribute('style')
+	);
+
 /** The hue a chip is showing, where it is showing one. */
 const hue = (one: HTMLElement) =>
 	one.querySelector<HTMLElement>('span[aria-hidden="true"]')?.getAttribute('style') ?? undefined;
@@ -415,11 +429,11 @@ describe('the control the three readings stand in', () => {
 	});
 });
 
-describe('what the canvas says about the sets it is drawing', () => {
-	it('says nothing at all where it draws every tag the notes carry', async () => {
+describe('what the canvas says about the sets in front of the reader', () => {
+	it('says nothing at all where every tag the notes carry is one of them', async () => {
 		await inSets();
 
-		expect(screen()).not.toContain('are drawn');
+		expect(screen()).not.toContain('Select tags to choose which');
 	});
 
 	it('says how many are drawn where the notes carry more tags than it draws', async () => {
@@ -429,26 +443,62 @@ describe('what the canvas says about the sets it is drawing', () => {
 		expect(screen()).toContain('Eight of the twelve tags are drawn. Select tags to choose which.');
 	});
 
-	it('says none of that in the other readings', async () => {
+	it('says the same of the graph reading, in what the sets do there', async () => {
 		carrying(THIRD, ...MANY);
 		await open();
 
-		expect(screen()).not.toContain('are drawn');
+		expect(screen()).toContain(
+			'Eight of the twelve tags are coloured. Select tags to choose which.'
+		);
 	});
 
-	it('shows the drawn sets in the rail in the hues the canvas draws them in', async () => {
+	it('says none of it over the outline, where the rail is the whole legend', async () => {
+		carrying(THIRD, ...MANY);
+		await open();
+		labelled('Outline').click();
+		await settle();
+
+		expect(screen()).not.toContain('Select tags to choose which');
+	});
+
+	it('shows those sets in the rail in their own hues in every reading', async () => {
 		await inSets();
 
-		// Nothing is selected, so `method` is drawn because the notes carry it.
+		// Nothing is selected, so `method` carries a hue because the notes carry
+		// it.
 		expect(chip('method').getAttribute('aria-pressed')).toBe('false');
 		expect(hue(chip('method'))).toContain('--facet-');
-		// No note on the canvas carries `soil`, so nothing is drawn for it.
+		// No note on the canvas carries `soil`, so there is no set to colour.
 		expect(hue(chip('soil'))).toBeUndefined();
 
 		labelled('Graph').click();
 		await settle();
 
-		expect(hue(chip('method'))).toBeUndefined();
+		expect(hue(chip('method'))).toContain('--facet-');
+		expect(hue(chip('soil'))).toBeUndefined();
+
+		labelled('Outline').click();
+		await settle();
+
+		expect(hue(chip('method'))).toContain('--facet-');
+	});
+
+	it('dots an outline row with the sets its note is in, in the rail’s own hues', async () => {
+		await open();
+		labelled('Outline').click();
+		await settle();
+		// The note under `Origins` is where the two-set row is.
+		outlineRow('Origins').querySelector('button')?.click();
+		await settle();
+
+		// `biology`, `method` and `seed` are the sets the three notes carry, in
+		// that order, so a row's dots read off the same list the rail does.
+		expect(dotted('Origins')).toEqual(['background-color: var(--facet-1);']);
+		expect(dotted('Cells')).toEqual([
+			'background-color: var(--facet-2);',
+			'background-color: var(--facet-3);'
+		]);
+		expect(dotted('Method')).toEqual([]);
 	});
 });
 

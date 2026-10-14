@@ -20,7 +20,13 @@ import {
   type Tag,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { type DrawnNode, drawnNodes, type GraphEdgeLook } from "./contract.js";
+import {
+  DRAWN_SETS_MOST,
+  type DrawnNode,
+  drawnNodes,
+  drawnSetsOf,
+  type GraphEdgeLook,
+} from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import { MAX_DENSITY } from "./density.js";
 import { applyLod } from "./lod.js";
@@ -148,14 +154,68 @@ describe("buildModel", () => {
     }
   });
 
-  // DESIGN.md § Hue: the selection is the question this reading answers, so
-  // colour appearing in it means the reader asked one.
-  it("colours a genealogy by depth alone until a tag is selected", () => {
-    for (const ref of model.order) {
-      const node = model.graph.getNodeAttributes(ref);
-      expect(node.fill).toBe(palette.depth(node.depth));
+  // DESIGN.md § Hue: the sets in front of the reader are the field's own
+  // most-carried tags until the reader chooses otherwise, so the canvas is
+  // coloured by them before anybody has asked anything.
+  it("bands a mark by the field's most-carried tags with nothing selected", () => {
+    const ranking = drawnSetsOf([], drawn);
+    expect(ranking).toHaveLength(DRAWN_SETS_MOST);
+    const slots = assignTagHueSlots(ranking);
+    const banded = drawn.filter((entry) =>
+      entry.tags.some((tag) => ranking.includes(tag)),
+    );
+    expect(banded.length).toBeGreaterThan(0);
+    const several = banded.filter(
+      (entry) => entry.tags.filter((tag) => ranking.includes(tag)).length > 1,
+    );
+    expect(several.length).toBeGreaterThan(0);
+
+    for (const entry of banded) {
+      const node = model.graph.getNodeAttributes(entry.node.ref);
+      const standing = ranking.filter((tag) => entry.tags.includes(tag));
+      expect(node.slots).toEqual(standing.map((tag) => slots.get(tag)));
+      expect(node.tag).toBe(standing[0]);
+      expect(node.fill).toBe(palette.tag(slots.get(standing[0])!));
+    }
+  });
+
+  it("asks nothing, so nothing dims and a tag past the cap is no band", () => {
+    const ranking = drawnSetsOf([], drawn);
+    const bare = drawn.filter(
+      (entry) => !entry.tags.some((tag) => ranking.includes(tag)),
+    );
+    expect(bare.length).toBeGreaterThan(0);
+    for (const entry of bare) {
+      const node = model.graph.getNodeAttributes(entry.node.ref);
+      expect(node.slots).toEqual([]);
       expect(node.tag).toBeUndefined();
-      expect(node.alpha).toBe(1);
+      expect(node.fill).toBe(palette.depth(node.depth));
+    }
+    for (const ref of model.order) {
+      expect(model.graph.getNodeAttributes(ref).alpha).toBe(1);
+    }
+  });
+
+  // The rail counts the notes, so the colouring has to rank over the same ones:
+  // a fold answers for a subtree, and ranking over the marks would count it
+  // once.
+  it("ranks the sets over the notes it is given rather than over the marks", () => {
+    const notes = corpus.nodes;
+    const over = buildModel(drawn, {
+      selection: [],
+      notes,
+      palette,
+      viewer: corpus.owner,
+    });
+    const slots = assignTagHueSlots(drawnSetsOf([], notes));
+    const folded = drawn.filter((entry) => entry.folded > 0);
+    expect(folded.length).toBeGreaterThan(0);
+    for (const entry of folded) {
+      const node = over.graph.getNodeAttributes(entry.node.ref);
+      const standing = [...slots.keys()].filter((tag) =>
+        entry.tags.includes(tag),
+      );
+      expect(node.slots).toEqual(standing.map((tag) => slots.get(tag)));
     }
   });
 });
@@ -166,38 +226,63 @@ describe("with tags selected", () => {
     palette,
     viewer: corpus.owner,
   });
-  const slots = assignTagHueSlots(selection);
+  const ranking = drawnSetsOf(selection, drawn);
+  const slots = assignTagHueSlots(ranking);
+
+  // DESIGN.md § Hue: selecting a tag brings it to the first slot rather than
+  // being how colour arrives, so the leading slots are the selection's, in
+  // order.
+  it("brings the selected sets to the first slots", () => {
+    expect(ranking.slice(0, selection.length)).toEqual(selection);
+    expect(selection.map((tag) => slots.get(tag))).toEqual([1, 2, 3]);
+  });
 
   it("lights a note in any selected set, in that tag's own hue", () => {
-    const lit = model.order.filter(
-      (ref) => model.graph.getNodeAttributes(ref).tag !== undefined,
+    const lit = drawn.filter((entry) =>
+      entry.tags.some((tag) => selection.includes(tag)),
     );
     expect(lit.length).toBeGreaterThan(0);
 
-    for (const ref of lit) {
-      const node = model.graph.getNodeAttributes(ref);
-      expect(node.fill).toBe(palette.tag(slots.get(node.tag!)!));
+    for (const entry of lit) {
+      const node = model.graph.getNodeAttributes(entry.node.ref);
+      const first = selection.find((tag) => entry.tags.includes(tag));
+      expect(node.tag).toBe(first);
+      expect(node.fill).toBe(palette.tag(slots.get(first!)!));
       expect(node.alpha).toBe(1);
     }
-    expect(
-      new Set(lit.map((ref) => model.graph.getNodeAttributes(ref).tag)),
-    ).toEqual(new Set(selection));
   });
 
-  // DESIGN.md § Hue: a mark wears a band per selected set it is in, in the
-  // order the rail lists them, and the first of them is what the mark falls
-  // back to where the bands are too narrow to be told apart.
-  it("gives a mark in several selected sets a band of each", () => {
+  // DESIGN.md § Hue: a mark wears a band per set it is in, in the order the
+  // rail lists them, and the first of them is what the mark falls back to where
+  // the bands are too narrow to be told apart.
+  it("gives a mark in several of the sets a band of each", () => {
     const several = drawn.filter(
-      (entry) => entry.tags.filter((tag) => selection.includes(tag)).length > 1,
+      (entry) => entry.tags.filter((tag) => ranking.includes(tag)).length > 1,
     );
     expect(several.length).toBeGreaterThan(0);
     for (const entry of several) {
       const node = model.graph.getNodeAttributes(entry.node.ref);
-      const standing = selection.filter((tag) => entry.tags.includes(tag));
+      const standing = ranking.filter((tag) => entry.tags.includes(tag));
       expect(node.slots).toEqual(standing.map((tag) => slots.get(tag)));
       expect(node.tag).toBe(standing[0]);
       expect(node.fill).toBe(palette.tag(slots.get(standing[0])!));
+    }
+  });
+
+  it("moves a set to the first slot on every mark once it is selected", () => {
+    const resting = drawnSetsOf([], drawn);
+    const last = resting[resting.length - 1];
+    const asked = buildModel(drawn, {
+      selection: [last],
+      palette,
+      viewer: corpus.owner,
+    });
+    const carriers = drawn.filter((entry) => entry.tags.includes(last));
+    expect(carriers.length).toBeGreaterThan(0);
+    for (const entry of carriers) {
+      const node = asked.graph.getNodeAttributes(entry.node.ref);
+      expect(node.tag).toBe(last);
+      expect(node.slots[0]).toBe(1);
     }
   });
 
@@ -222,7 +307,9 @@ describe("with tags selected", () => {
     const byRef = new Map(corpus.nodes.map((node) => [node.ref, node]));
     const lit = (ref: OwnedRef): boolean =>
       model.graph.hasNode(ref) &&
-      model.graph.getNodeAttributes(ref).tag !== undefined;
+      model.graph
+        .getNodeAttributes(ref)
+        .tags.some((tag) => selection.includes(tag));
     const carriers = corpus.nodes.filter((node) =>
       node.tags.some((tag) => selection.includes(tag)),
     );
@@ -240,18 +327,28 @@ describe("with tags selected", () => {
 
   // DESIGN.md § Hue: notes carrying none of the selected tags dim; they never
   // leave, because the shape the answer is read against is the graph itself.
-  it("recedes a mark in none of them without dropping it or recolouring it", () => {
-    const dark = model.order.filter(
-      (ref) => model.graph.getNodeAttributes(ref).tag === undefined,
+  // The colour says which sets a mark is in, so one wearing a band it was not
+  // asked about recedes wearing it.
+  it("recedes a mark in none of them, bands and all, without dropping it", () => {
+    const dark = drawn.filter(
+      (entry) => !entry.tags.some((tag) => selection.includes(tag)),
     );
     expect(dark.length).toBeGreaterThan(0);
-    for (const ref of dark) {
-      const node = model.graph.getNodeAttributes(ref);
-      expect(node.fill).toBe(palette.depth(node.depth));
+    for (const entry of dark) {
+      const node = model.graph.getNodeAttributes(entry.node.ref);
       expect(node.alpha).toBe(palette.unselectedAlpha(node.fill));
       expect(node.alpha).toBeLessThan(1);
-      const entry = drawn.find((entry) => entry.node.ref === ref)!;
-      expect(entry.tags.some((tag) => selection.includes(tag))).toBe(false);
+    }
+
+    const banded = dark.filter((entry) =>
+      entry.tags.some((tag) => ranking.includes(tag)),
+    );
+    expect(banded.length).toBeGreaterThan(0);
+    for (const entry of banded) {
+      const node = model.graph.getNodeAttributes(entry.node.ref);
+      expect(node.slots.length).toBeGreaterThan(0);
+      expect(node.tag).not.toBeUndefined();
+      expect(selection).not.toContain(node.tag);
     }
     expect(model.order).toEqual(drawn.map((entry) => entry.node.ref));
   });
@@ -288,7 +385,7 @@ describe("with tags selected", () => {
     expect(new Set(byTag.values()).size).toBe(byTag.size);
   });
 
-  it("spends one slot on a tag selected twice, and none on one nobody picked", () => {
+  it("spends one slot on a tag selected twice", () => {
     const twice = buildModel(drawn, {
       selection: [selection[0], selection[1], selection[0]] as Tag[],
       palette,
