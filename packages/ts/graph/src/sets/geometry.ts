@@ -60,9 +60,13 @@ export const SETS_NAME_WEIGHT = "500";
 export const SETS_NAME_CHARS = 24;
 export const SETS_NAME_GAP = 8;
 
-/** What one letter of a set's name takes at {@link SETS_NAME_SIZE}, near enough
- *  to keep room by. */
-const NAME_LETTER = 7;
+/** What one capital takes at {@link SETS_NAME_SIZE}, near enough to keep room
+ *  by across the faces a heading is offered — a name lettered wider than this
+ *  stands by its own measured width instead (`scene.ts`). */
+const NAME_CAPITAL = 9;
+
+/** What one letter of a set's name takes, tracked apart. */
+const NAME_LETTER = NAME_CAPITAL + SETS_NAME_TRACKING;
 
 /**
  * A name is written in screen pixels and its room is kept in world units, which
