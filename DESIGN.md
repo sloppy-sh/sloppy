@@ -508,11 +508,12 @@ line around it stays monochrome until a tag is selected.
   **In the sets reading the bands are the drawn sets', selected or not**: a mark wears a band
   of every drawn set its note is in, the ones the figure could draw it no exact place for
   included, so somebody who has selected nothing still reads which places a note belongs to.
-  **The bands are the first thing to go as the mark gets small, after the look**: narrower
-  than `BAND_MIN_WIDTH` in `scene.ts` they are a haze rather than an answer, so the mark
-  falls back to the first of its hues and a pinch brings them back. Unlike the look's own
-  floor this one is held against the width a band is drawn at and nothing else — a leaf on a
-  phone's framed field may well show one hue until the reader looks closer. **A pulled note
+  **The bands go as the mark gets small, and a mark in many sets loses them first**: a band
+  narrower than `BAND_MIN_WIDTH` in `scene.ts` is a haze rather than an answer, so the mark
+  falls back to the first of its hues and a pinch brings them back. The floor is held
+  against the width a band is drawn at and nothing else — so two bands outlast the look,
+  three or more go before it, and a leaf on a phone's framed field may well show one hue
+  until the reader looks closer. **A pulled note
   is drawn hollow, and an edge is no disc to divide** (§ Form): it carries the first of its
   hues on that edge, and the rail says the rest.
 - **Notes carrying none of the selected tags dim; they never leave.** The reader asked
@@ -648,7 +649,7 @@ whether it is one of the notes open in front of the reader. Each gets its own ch
 | ---------------------------------------------- | ------------------------------------------------------------------------------ |
 | Fill hue                                       | the drawn sets a note is in, a band each (§ Hue)                               |
 | Fill lightness                                 | genealogical depth (§ Lightness)                                               |
-| Fill alpha                                     | carries none of the selected tags (§ Hue)                                      |
+| Fill alpha                                     | stands in none of the sets in front of the reader (§ Hue)                      |
 | **Its own edge** — present, and whether broken | provenance (§ Form)                                                            |
 | **A ring inside it** — weight, and how broken  | the author's look                                                              |
 | **A dot on its rim**                           | the code under it has moved since its author read it                           |

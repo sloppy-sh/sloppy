@@ -337,7 +337,7 @@ describe('the tags a note carries', () => {
 		expect(rows()[0].textContent).toContain('biology');
 	});
 
-	it('draws one hue on a note in several selected sets, the earliest-selected', () => {
+	it('draws a note in several selected sets in the earliest-selected hue, the dot being no disc to band', () => {
 		render({
 			groups: [
 				{

@@ -277,8 +277,8 @@
 		return rows.length > 0 ? rowKey(heads, rows[0]) : '';
 	}
 
-	/** The selected tags a note carries, earliest-selected first: DESIGN.md § Hue
-	 *  gives a note in several sets the first one's hue and no other. */
+	/** The selected tags a note carries, earliest-selected first. A row's dot is
+	 *  no disc to band, so it takes the first one's hue and the rail says the rest. */
 	function askedOf(note: TreeNote): Tag[] {
 		return [...slots.keys()].filter((tag) => note.tags.includes(tag));
 	}
