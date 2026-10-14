@@ -152,17 +152,29 @@ Nothing lands on a timer. A task the review cannot settle is marked contested an
 for you, and the line the build worked on is a real branch you can check out, run, or
 throw away.
 
-### Three readings of the same graph
+### Three readings, and when each one earns its keep
 
 ![The sets reading, tags drawn as overlapping places with the notes standing in them](docs/images/reading-the-sets.jpg)
 
-The same notes, read three ways, with nothing hidden in any of them:
+The same notes, three ways. Nothing is hidden in any of them, and the one you want depends
+on the question you arrived with.
 
-- **Graph** — the genealogy. Every note placed by what it sprang out of, so a line of
-  thinking is a shape you can see. A subtree folds into one mark and opens on a tap.
-- **Outline** — the same tree as rows, with a note's interior opening in place.
-- **Sets** — the tags as overlapping places, each note standing where it belongs. A note
-  in two sets stands where the two cross; drag it into a place to tag it.
+- **Graph — _"how did this come to be?"_** Every note placed by what it sprang out of, so a
+  line of thinking is a shape rather than a list. This is the one to open when you are new
+  to a project or coming back to it cold: the trunk is what the system is, the long branches
+  are where the thinking went deep, and a proposal hanging off a decision is visibly a
+  child of it. A subtree folds into one mark and opens on a tap, so a thousand notes is
+  still something you can take in. It is also where you see what nothing hangs off —
+  an orphan is a decision nobody has built on yet.
+- **Outline — _"let me work."_** The same tree as rows, with a note's interior opening in
+  place. Reach for it when you already know roughly where you are going: reading several
+  notes in order, writing a run of them, checking the shape of a branch. It is the faster
+  surface for keyboard work and the one that reads best on a narrow screen.
+- **Sets — _"what is in both?"_** The tags as overlapping places, each note standing where
+  it belongs. Open it when the question cuts across the lineage rather than down it:
+  everything tagged `payments` **and** `proposed`; what the database work and the ledger
+  work have in common; which notes carry no tag at all and so can never be found by one.
+  It is also where tagging is physical — drag a mark into a place and it carries that tag.
 
 Across all three, **a mark wears a band per set it is in** — so which tags a note carries
 is readable from the mark itself, before you have asked anything, and the rail beside the
@@ -185,6 +197,40 @@ This is the path for somebody who has just inherited a system: read the graph, f
 decision that no longer holds, write the correction where you are standing, and hand back a
 line somebody can review.
 
+### Who wrote it, and who vouched for it
+
+A graph is only worth trusting if you can tell where a claim came from. Three things carry
+that, and none of them needs a company in the middle:
+
+- **Every note names its authors** — everyone whose writing it carries, in the order they
+  first wrote into it. A note may also have an **owner**, and then somebody else's writing
+  does not simply land: it is _offered_, and the owner takes it in whole or turns it down.
+  That is the same rule for a person and for an assistant.
+- **Versions are signed on the way in**, with SSH or OpenPGP, by the key the app keeps for
+  you or one you already use. Who a project accepts signatures from is a list in the
+  repository itself (`.sloppy/allowed_signers`), so the answer to _"is this really from
+  them?"_ travels with the project and can be checked on any machine, offline, by anything
+  that speaks git.
+- **An identity is yours and portable.** Working on a folder, the keys are on your machine
+  and never leave it. Hosted, Sloppy holds no private key at all: it verifies a chain back
+  to a key that lives on your own devices, so the service is never the authority on who you
+  are, and your profile and your writing move with you if you leave. (The identity layer is
+  **syr**, which is its own open thing rather than a login to this app —
+  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) has the detail.)
+
+**Decentralised and still accountable are not opposites.** The usual trade is: either a
+company holds the accounts and can tell you who approved something, or nobody does and
+anyone can claim anything. Signatures are the way out of that. Nothing central decides who
+counts — the project carries its own list of whose word it takes, and a reader with a copy
+can verify every entry in it without asking a server's permission. Ownership stops being a
+row in somebody's database and becomes a fact about the writing itself.
+
+**Where this is going**, and said plainly because it is not built yet: on a large project
+the account of _why_ needs experienced eyes on it, so a note's reviewer will be able to
+sign the note the way a version is signed today. The note then carries who approved it and
+when, verifiable by anyone with the repository and nobody's say-so — which is what lets a
+team hand its context to the next team and have that mean something.
+
 ### An address you can cite
 
 A note's address — `1`, `1a`, `1a1`, `1b` — is the label a person cites it by, the way a
@@ -196,6 +242,57 @@ year ago still lands.
 The same rule carries between people: because the shape is derived rather than drawn, a
 subtree published from one graph is pulled into somebody else's and lands there looking the
 way its author saw it, addresses intact.
+
+**Where the method comes from.** The sociologist Niklas Luhmann kept a paper slip box of
+about 90,000 notes between 1951 and 1996, each carrying a branching number that said what it
+continued rather than what folder it lived in — a note written to follow `1` is `1a`, one
+following that `1a1`, one written alongside `1b`. He called it _Folgezettel_, the note that
+follows, and credited the box with most of what he published. The whole archive has been
+digitised and is worth half an hour of anybody's time:
+
+- [The Niklas Luhmann Archive](https://niklas-luhmann-archiv.de/) — his actual Zettelkasten,
+  scanned, numbered and searchable.
+- [Introduction to the Zettelkasten Method](https://zettelkasten.de/introduction/) — the
+  clearest plain-English account of how and why it works.
+- [The Money Is in the Hubs](https://zettelkasten.de/posts/zettelkasten-hubs/) — Johannes
+  Schmidt, who worked on the archive, on what the structure actually did for Luhmann.
+- Luhmann's own 1981 essay _Kommunikation mit Zettelkästen_ ("Communicating with Slip
+  Boxes"), and Sönke Ahrens' _How to Take Smart Notes_ (2017) for the modern treatment.
+
+Sloppy is that scheme with the tedious parts automated — the number is offered rather than
+counted out by hand — and with the two things paper could not do: a canvas that draws the
+branching, and a way for two people's boxes to be read by each other.
+
+### Make it yours
+
+A tool you look at all day should look the way you want. Sloppy's appearance is five
+separate axes, and only one of them decides any colour:
+
+- **The look** is every colour there is — the paper, the ink, the accent, and the graph's
+  eight hue slots. Five of Sloppy's own, plus the whole [Tinted Theming](https://github.com/tinted-theming/schemes)
+  collection vendored in: **571 schemes**, 361 base16 and 210 base24, 431 dark and 140
+  light. Each one's graph hues are shaded on the fly until they clear Sloppy's contrast
+  floors against every surface it draws on, so picking a pretty scheme never quietly costs
+  you a readable canvas.
+- **Faces** — Inter, Atkinson Hyperlegible, OpenDyslexic, your device's own, and four
+  monospaced faces with ligatures (Fira Code, Cascadia Code, Victor Mono, Iosevka), set
+  per role: the app, headings, and code and addresses. Or name any family installed on the
+  machine.
+- **Style** — how surfaces are drawn, never what colour they are: `default`, `hardline`,
+  `bevel`, `terminal`, `pixel`.
+- **Density** — comfortable or compact, or whatever the device is.
+- **Screens** — grain, dots, hatch, glow and a CRT sweep, as many at once as you like, each
+  with its own strength and scale, and a switch for whether they reach the whole page or
+  gather at the edges. Entirely cosmetic, entirely optional, and off by default.
+
+**A look is a file.** Everything above, plus a stylesheet of your own, exports as one JSON
+document you can hand to somebody — and the CSS inside it cannot reach the network, so a
+look from a stranger is a look and not a tracker.
+
+**Emoji are yours too.** Each identity keeps its own catalog: upload your own, copy one you
+liked from somebody else's, and they work in notes and reactions. A profile — name,
+picture, the rest — comes from your identity rather than from a Sloppy account, so it is
+the same you wherever your writing is read.
 
 ### Also at the command line
 
