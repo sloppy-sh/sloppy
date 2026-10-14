@@ -463,7 +463,7 @@ decorative.
 
 | Channel                        | Carries                                              | Why this channel                                                                                             |
 | ------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **Hue**                        | the tags the reader has selected                     | the selection is the question the reader just asked, so it gets the loudest channel                          |
+| **Hue**                        | the sets in front of the reader                      | those sets are the question the reader just asked, so it gets the loudest channel                            |
 | **Lightness**                  | genealogical depth                                   | depth is ordinal, and lightness is the only channel read as ordered without a legend                         |
 | **Form** (shape, edge, radius) | provenance, the author's look, and the canvas's mode | form survives greyscale, colour-blindness and full zoom-out, so anything that must never be a hue lives here |
 
@@ -472,16 +472,21 @@ that must survive greyscale ends up in it — so form is subdivided instead, and
 § "The mark" is the division. Radius is the one channel inside it that two meanings share,
 and § "The mark" bounds it; nothing else there is shared.
 
-### Hue — the tags you selected, and only those
+### Hue — the sets in front of the reader, and only those
 
-**With nothing selected, nothing on the canvas is coloured to mean something.** Colour
-appears when the reader asks a question of the graph, and it means the answer. A
-permanently rainbow canvas is the Obsidian failure with extra steps.
+**Colour appears when the reader asks a question of the graph, and it means the answer.** A
+permanently rainbow canvas is the Obsidian failure with extra steps. In the genealogy
+reading the question is the selection, so with nothing selected nothing on that canvas is
+coloured to mean something. **The sets reading is the one where opening it is already the
+question**: it asks which places the notes stand in, so the regions and the marks standing
+in them carry those sets' hues before anything is selected (§ "Sets — the tags as places").
+Either way the colour on the canvas is the sets the reader has in front of them and nothing
+else.
 
 The one thing that carries colour of its own is the picture an author put on their mark,
 and it is a picture — imagery inside the disc, never a fill (§ "The mark"). It says nothing
-about which sets a note is in, and every fill, edge and line around it stays monochrome
-until a tag is selected.
+about which sets a note is in, and where the selection is the question every fill, edge and
+line around it stays monochrome until a tag is selected.
 
 - **A tag has no colour of its own.** It borrows one for as long as it is selected: the
   first selected tag takes `--facet-1`, the second `--facet-2`, and so on. There is
@@ -500,10 +505,9 @@ until a tag is selected.
   the sets in front of the reader a note stands in, rather than only the first of them. A
   note in one of them is the whole disc in that hue, which is what a mark has always been. A
   band is its slot's own colour, so it owes the surface exactly what a fill owes it.
-  **In the sets reading the bands are the drawn sets', selected or not**: there the drawing
-  is the question, so a mark wears a band of every drawn set its note is in, and somebody who
-  has selected nothing still reads which places a note belongs to — the ones the figure could
-  draw it no exact place for included.
+  **In the sets reading the bands are the drawn sets', selected or not**: a mark wears a band
+  of every drawn set its note is in, the ones the figure could draw it no exact place for
+  included, so somebody who has selected nothing still reads which places a note belongs to.
   **The bands are the first thing to go as the mark gets small, after the look**: narrower
   than `BAND_MIN_WIDTH` in `scene.ts` they are a haze rather than an answer, so the mark
   falls back to the first of its hues and a pinch brings them back. Unlike the look's own
@@ -1202,13 +1206,12 @@ justification and under this same measured bound.
 Which of a dozen lines a row belongs to is the question this picture exists to answer, and
 over hundreds of rows ink weight cannot carry it — a reader following one line down the page
 has to be able to see where it went. So a lane borrows a slot from the same eight the canvas
-lends a selected tag (§ "Hue — the tags you selected, and only those"), taken by lane rather
-than by branch, wrapping onto the first once a page runs past eight. Each slot is measured to
-3:1 against every surface on every theme in `token-contrast.test.ts`, because a lane carries
-its meaning alone. **A branch's identity is still its label at its head, not its hue** — the
+lends a selected tag (§ Hue), taken by lane rather than by branch, wrapping onto the first
+once a page runs past eight. Each slot is measured to 3:1 against every surface on every
+theme in `token-contrast.test.ts`, because a lane carries its meaning alone. **A branch's identity is still its label at its head, not its hue** — the
 hue says which lane, which is why spending it teaches nobody a legend to hold, and a line
 that ends hands its hue back to the next one that starts. Nothing about the canvas changes:
-there, still, nothing is coloured until the reader selects a tag.
+hue there still carries the sets the reader is reading by, and nothing else.
 
 **Newest at the top, paged, and a commit never above what it springs from.** That order is
 the contract `graph()` answers on, so the picture is drawn from what it is handed rather
@@ -1853,12 +1856,12 @@ nothing under it.
   justification as the commit lanes (§ "The history as a picture"): which part of the window
   a band is, is the question the picture exists to answer, and over a dozen stacked bands ink
   weight cannot carry it. So a part borrows a slot from the same eight the canvas lends a
-  selected tag (§ "Hue — the tags you selected, and only those"), taken in the order the
-  agent named them and wrapping onto the first past eight — **each one measured to 3:1
-  against every surface on every theme in `token-contrast.test.ts`**, the same bound a lane
-  is held to and for the same reason: a band and its legend swatch carry their meaning alone.
-  Nothing about the canvas changes: there, still, nothing is coloured until the reader selects
-  a tag.
+  selected tag (§ Hue), taken in the order the agent named them and wrapping onto the first
+  past eight — **each one measured to 3:1 against every surface on every theme in
+  `token-contrast.test.ts`**, the same bound a lane is held to and for the same reason: a
+  band and its legend swatch carry their meaning alone.
+  Nothing about the canvas changes: hue there still carries the sets the reader is reading
+  by, and nothing else.
   **The places a thread reads are its own, and they are read-only.** They are offered from
   the folders this device already knows and from the folder picker, named by what the folder
   is called rather than by where it is, and shown as a short row the person adds to and takes

@@ -148,9 +148,9 @@ describe("buildModel", () => {
     }
   });
 
-  // DESIGN.md § Hue: with nothing selected the graph is monochrome, and colour
-  // appearing means the reader asked a question of it.
-  it("colours by depth alone until a tag is selected", () => {
+  // DESIGN.md § Hue: the selection is the question this reading answers, so
+  // colour appearing in it means the reader asked one.
+  it("colours a genealogy by depth alone until a tag is selected", () => {
     for (const ref of model.order) {
       const node = model.graph.getNodeAttributes(ref);
       expect(node.fill).toBe(palette.depth(node.depth));
