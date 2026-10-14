@@ -172,6 +172,9 @@ export interface Prefs {
 	/** Whether the column beside the graph on a desk stands open or as an icon
 	 *  rail — DESIGN.md § Layout. */
 	deskNavOpen: boolean;
+	/** How much room the reader has taken for that column open, in px, on the
+	 *  same terms as {@link Prefs.readingWidth}. */
+	deskNavWidth: number | null;
 	/** How the tags down that column are laid out. */
 	tagOrder: 'count' | 'name';
 	/** Which groups of that column stand open. Both may, and they share what
@@ -422,6 +425,7 @@ function defaults(): Prefs {
 		chatWidth: null,
 		readingFull: false,
 		deskNavOpen: true,
+		deskNavWidth: null,
 		tagOrder: 'count',
 		columnGroups: { history: false, tags: true },
 		density: 'auto',
@@ -798,6 +802,7 @@ class PrefsStore {
 			chatWidth: widthIn(saved.chatWidth),
 			readingFull: saved.readingFull === true,
 			deskNavOpen: saved.deskNavOpen !== false,
+			deskNavWidth: widthIn(saved.deskNavWidth),
 			tagOrder: saved.tagOrder === 'name' ? 'name' : 'count',
 			columnGroups: groupsIn(saved.columnGroups),
 			density: oneOf(saved.density, DENSITIES, base.density),

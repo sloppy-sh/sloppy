@@ -484,7 +484,10 @@ the first slot and the rest follow it.
 **One ranking serves every reading** — the graph, the sets figure, the outline and the rail
 all read it off `drawnSetsOf`, so no two of them can disagree about which tag wears which
 hue. A field carrying more tags than there are slots says how many of them are in front of
-the reader, in one line over the canvas, and selecting tags is how a reader chooses which.
+the reader, and that selecting tags is how a reader chooses which — **beside the rail
+rather than over the canvas, and only when somebody asks**: the rail is the legend, so a
+quiet mark standing with it opens the words on a tap, in both arrangements (§ Layout).
+Nothing about the sets stands over the graph of its own accord.
 
 **The colour means the sets, and the dim means the question.** With nothing selected nothing
 recedes: there is no question yet, and a canvas that dimmed itself would be answering one
@@ -1903,6 +1906,10 @@ nothing under it.
   one it comes to rest at, because the nav pill, the bar over a chosen set and the card
   beside a mark all place themselves against that number. Below the dock width what it holds
   is the whole screen and there is no wall, because there is nothing left to take room from.
+  **The column at the leading edge has that same wall on its trailing edge, on the same
+  terms** — the bargain is the one above, and the two ends of the window answer each other
+  through it; narrowed to an icon rail it has none, because a rail is one width and the
+  toggle is the way back to the column.
   How much room each was given is this device's, kept beside the theme (§ Persistence).
 - **The note's way out and its acts keep their place** at the head of the surface however
   far the note runs. The way back out of a long note must never be a scroll away, and
@@ -2641,7 +2648,8 @@ The same store holds the view choices that are nobody's business but this device
 tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
 it (§ "The wallpaper"), which graph the reader is in and which they have stood up beside it
 (§ "Several graphs on one canvas"), which of the three readings it is seen in, and
-how much room each dock beside it was last given. **Where a device opens several folders at
+how much room each dock beside it, and the column at the other edge, was last given.
+**Where a device opens several folders at
 once, which of them are open, which is in front, and how each was being read are this
 device's too** — the first two held by the shell that opens them, the last as `views` here,
 keyed by folder root, so a tab comes back as it was left (docs/ARCHITECTURE.md § "Several

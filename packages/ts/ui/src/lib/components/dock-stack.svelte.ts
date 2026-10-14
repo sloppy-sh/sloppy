@@ -31,6 +31,12 @@ function publish(): void {
 	window.dispatchEvent(new Event('resize'));
 }
 
+/** What is docked down the right edge together, in px — the room the column at
+ *  the other edge may not have. */
+export function docksTake(): number {
+	return docks.reduce((sum, one) => sum + (one.width ?? 0), 0);
+}
+
 export interface RightDock {
 	/** What is docked outside this one, together, in px — how far from the right
 	 *  edge of the page it stands. */

@@ -429,36 +429,67 @@ describe('the control the three readings stand in', () => {
 	});
 });
 
-describe('what the canvas says about the sets in front of the reader', () => {
+describe('what the rail says about the sets in front of the reader', () => {
+	/** The quiet mark beside the rail, which the reader opens for the words. */
+	const asked = () =>
+		document.body.querySelector<HTMLButtonElement>('[aria-label="What these tags are showing"]');
+
+	async function ask(): Promise<void> {
+		const control = asked();
+		if (!control) throw new Error('The rail says nothing about the sets in front of the reader');
+		control.click();
+		await settle();
+	}
+
 	it('says nothing at all where every tag the notes carry is one of them', async () => {
 		await inSets();
 
+		expect(asked()).toBeNull();
 		expect(screen()).not.toContain('Select tags to choose which');
 	});
 
-	it('says how many are drawn where the notes carry more tags than it draws', async () => {
+	// Nothing floats over the canvas for this: the words are the rail's, and they
+	// come when somebody asks for them.
+	it('says how many are drawn, where the notes carry more, once the reader asks', async () => {
 		carrying(THIRD, ...MANY);
 		await inSets();
 
+		expect(screen()).not.toContain('Select tags to choose which');
+		await ask();
 		expect(screen()).toContain('Eight of the twelve tags are drawn. Select tags to choose which.');
 	});
 
 	it('says the same of the graph reading, in what the sets do there', async () => {
 		carrying(THIRD, ...MANY);
 		await open();
+		await ask();
 
 		expect(screen()).toContain(
 			'Eight of the twelve tags are coloured. Select tags to choose which.'
 		);
 	});
 
-	it('says none of it over the outline, where the rail is the whole legend', async () => {
+	// DESIGN.md § Layout: neither arrangement has a part the other lacks.
+	it('stands beside the tags in the column as well as over the canvas', async () => {
+		carrying(THIRD, ...MANY);
+		await openOnTheDesk();
+		await ask();
+
+		expect(screen()).toContain(
+			'Eight of the twelve tags are coloured. Select tags to choose which.'
+		);
+	});
+
+	it('travels with the rail into the outline, which the rail is the legend for', async () => {
 		carrying(THIRD, ...MANY);
 		await open();
 		labelled('Outline').click();
 		await settle();
+		await ask();
 
-		expect(screen()).not.toContain('Select tags to choose which');
+		expect(screen()).toContain(
+			'Eight of the twelve tags are coloured. Select tags to choose which.'
+		);
 	});
 
 	it('shows those sets in the rail in their own hues in every reading', async () => {

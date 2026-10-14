@@ -19,7 +19,9 @@
 		showNav = true,
 		keyboardOpen = false,
 		deskNavOpen = true,
-		onDeskNavOpenChange
+		onDeskNavOpenChange,
+		deskNavWidth = null,
+		onDeskNavWidthChange
 	}: {
 		children: Snippet;
 		/** Chrome standing above the page in both arrangements, which owes its
@@ -35,6 +37,10 @@
 		/** Whether the desk sidebar stands open or as an icon rail. */
 		deskNavOpen?: boolean;
 		onDeskNavOpenChange?: (open: boolean) => void;
+		/** How much room the reader has taken for that column, in px. Null is the
+		 *  width it opens at. */
+		deskNavWidth?: number | null;
+		onDeskNavWidthChange?: (width: number) => void;
 	} = $props();
 
 	const desk = new MediaQuery(`(min-width: ${DESK_FROM_PX}px)`);
@@ -54,11 +60,12 @@
      landmark must lay nothing out — except where the sidebar stands beside it
      and the page is given what is left. -->
 <main
-	class={showSidebar
-		? deskNavOpen
-			? 'block ps-(--desk-nav-width)'
-			: 'block ps-(--desk-nav-rail)'
-		: 'contents'}
+	class={showSidebar ? 'block' : 'contents'}
+	style={showSidebar
+		? `padding-inline-start: var(--app-chrome-inset-start, var(${
+				deskNavOpen ? '--desk-nav-width' : '--desk-nav-rail'
+			}))`
+		: undefined}
 >
 	{@render children()}
 </main>
@@ -70,6 +77,8 @@
 		{action}
 		open={deskNavOpen}
 		onOpenChange={(open) => onDeskNavOpenChange?.(open)}
+		width={deskNavWidth}
+		onWidthChange={(px) => onDeskNavWidthChange?.(px)}
 	/>
 {/if}
 

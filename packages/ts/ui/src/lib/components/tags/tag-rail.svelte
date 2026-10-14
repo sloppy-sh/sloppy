@@ -13,7 +13,7 @@
 	import ArrowDownAZ from '@lucide/svelte/icons/arrow-down-a-z';
 	import Search from '@lucide/svelte/icons/search';
 	import { assignTagHueSlots, type Tag, type TagCount, type TagHueSlot } from '@sloppy/types';
-	import { tick } from 'svelte';
+	import { tick, type Snippet } from 'svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { cn } from '$lib/utils.js';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
@@ -25,7 +25,8 @@
 		stacked = false,
 		order = 'count',
 		onorder,
-		slots
+		slots,
+		beside
 	}: {
 		/** Every tag the reader has used, most-used first. */
 		tags: readonly TagCount[];
@@ -41,6 +42,9 @@
 		/** The hues the canvas is drawing, where it draws tags the reader has not
 		 *  selected. Absent is the selection's own hues. */
 		slots?: ReadonlyMap<Tag, TagHueSlot>;
+		/** What stands at the end of a row of chips: what the rail is showing,
+		 *  for a reader who asks. A column has a head of its own to put it in. */
+		beside?: Snippet;
 	} = $props();
 
 	const hues = $derived(slots ?? assignTagHueSlots(selected));
@@ -253,4 +257,6 @@
 			Clear
 		</button>
 	{/if}
+
+	{@render beside?.()}
 </div>

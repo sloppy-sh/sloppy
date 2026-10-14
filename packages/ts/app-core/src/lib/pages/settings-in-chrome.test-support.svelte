@@ -10,6 +10,8 @@
 <AppShell
 	deskNavOpen={prefs.current.deskNavOpen}
 	onDeskNavOpenChange={(open) => prefs.set('deskNavOpen', open)}
+	deskNavWidth={prefs.current.deskNavWidth}
+	onDeskNavWidthChange={(px) => prefs.set('deskNavWidth', px)}
 >
 	<Settings />
 </AppShell>

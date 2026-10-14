@@ -237,6 +237,8 @@
 	keyboardOpen={keyboard.open}
 	deskNavOpen={prefs.current.deskNavOpen}
 	onDeskNavOpenChange={(open) => prefs.set('deskNavOpen', open)}
+	deskNavWidth={prefs.current.deskNavWidth}
+	onDeskNavWidthChange={(px) => prefs.set('deskNavWidth', px)}
 >
 	{#if admitted}
 		{@render children()}

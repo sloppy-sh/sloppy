@@ -9,6 +9,8 @@
 		showNav = true,
 		deskNavOpen = true,
 		onDeskNavOpenChange,
+		deskNavWidth = null,
+		onDeskNavWidthChange,
 		fills = false,
 		onmount = () => {}
 	}: {
@@ -16,6 +18,8 @@
 		showNav?: boolean;
 		deskNavOpen?: boolean;
 		onDeskNavOpenChange?: (open: boolean) => void;
+		deskNavWidth?: number | null;
+		onDeskNavWidthChange?: (width: number) => void;
 		/** Whether a page standing inside the shell puts its own parts in the
 		 *  sidebar. */
 		fills?: boolean;
@@ -23,7 +27,14 @@
 	} = $props();
 </script>
 
-<AppShell {items} {showNav} {deskNavOpen} {onDeskNavOpenChange}>
+<AppShell
+	{items}
+	{showNav}
+	{deskNavOpen}
+	{onDeskNavOpenChange}
+	{deskNavWidth}
+	{onDeskNavWidthChange}
+>
 	<Page {onmount} />
 	{#if fills}
 		<DeskNavParts>

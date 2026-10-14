@@ -158,7 +158,7 @@
 	import BeforeMoving from '../components/before-moving.svelte';
 	import OpenHere from '../components/open-here.svelte';
 	import PersonSurface from '../components/person-surface.svelte';
-	import SetsChrome from '../components/sets-chrome.svelte';
+	import SetsInFront from '../components/sets-in-front.svelte';
 	import { api } from '../api.js';
 	import { looksOnCanvas } from '../edge-look.js';
 	import { graphHere } from '../graph-here.svelte.js';
@@ -3018,9 +3018,6 @@
 				</div>
 			</div>
 		{/if}
-		{#if !walking && !pointing}
-			<SetsChrome tags={tagsOnCanvas} reading={inSets ? 'sets' : 'genealogy'} />
-		{/if}
 		<DeskNavParts>
 			{#snippet head({ collapsed }: { collapsed: boolean })}
 				{#if !pointing && !comparing && !asWas && !foreign}
@@ -3221,17 +3218,20 @@
 					{:else}
 						{@const open = prefs.current.columnGroups.tags}
 						<div class="flex min-h-0 flex-col {open ? 'flex-1' : 'shrink-0'}">
-							<button
-								type="button"
-								aria-expanded={open}
-								onclick={() => toggleGroup('tags')}
-								class="flex min-h-control shrink-0 items-center gap-1.5 border-t border-border px-1 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-							>
-								<ChevronDown
-									class="size-3.5 shrink-0 transition-transform {open ? '' : '-rotate-90'}"
-								/>
-								<span class="min-w-0 truncate">Tags</span>
-							</button>
+							<div class="flex shrink-0 items-center gap-1 border-t border-border">
+								<button
+									type="button"
+									aria-expanded={open}
+									onclick={() => toggleGroup('tags')}
+									class="flex min-h-control min-w-0 flex-1 items-center gap-1.5 px-1 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								>
+									<ChevronDown
+										class="size-3.5 shrink-0 transition-transform {open ? '' : '-rotate-90'}"
+									/>
+									<span class="min-w-0 truncate">Tags</span>
+								</button>
+								<SetsInFront tags={tagsOnCanvas} reading={inSets ? 'sets' : 'genealogy'} />
+							</div>
 							{#if open}
 								<div class="flex min-h-0 flex-1 flex-col pt-1">
 									<TagRail
@@ -3431,7 +3431,11 @@
 							selected={selection}
 							slots={drawnSlots}
 							onselect={(next) => tags.select(next)}
-						/>
+						>
+							{#snippet beside()}
+								<SetsInFront tags={tagsOnCanvas} reading={inSets ? 'sets' : 'genealogy'} />
+							{/snippet}
+						</TagRail>
 					{/if}
 
 					{#if comparing}

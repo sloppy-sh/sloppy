@@ -467,6 +467,7 @@ describe('the saved look', () => {
 				seenAs: 'a reading nobody has',
 				readingWidth: 'wide',
 				chatWidth: 'narrow',
+				deskNavWidth: 'as wide as it was',
 				chatModel: { claude_code: 'a model from later', nobody: 'opus' },
 				origin: 'nowhere at all/ /'
 			})
@@ -494,6 +495,7 @@ describe('the saved look', () => {
 			readingFull: false,
 			chatWidth: null,
 			deskNavOpen: true,
+			deskNavWidth: null,
 			tagOrder: 'count',
 			columnGroups: { history: false, tags: true },
 			density: 'auto',
