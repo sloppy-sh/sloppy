@@ -500,6 +500,10 @@ until a tag is selected.
   the sets in front of the reader a note stands in, rather than only the first of them. A
   note in one of them is the whole disc in that hue, which is what a mark has always been. A
   band is its slot's own colour, so it owes the surface exactly what a fill owes it.
+  **In the sets reading the bands are the drawn sets', selected or not**: there the drawing
+  is the question, so a mark wears a band of every drawn set its note is in, and somebody who
+  has selected nothing still reads which places a note belongs to — the ones the figure could
+  draw it no exact place for included.
   **The bands are the first thing to go as the mark gets small, after the look**: narrower
   than `BAND_MIN_WIDTH` in `scene.ts` they are a haze rather than an answer, so the mark
   falls back to the first of its hues and a pinch brings them back. Unlike the look's own
@@ -638,7 +642,7 @@ whether it is one of the notes open in front of the reader. Each gets its own ch
 
 | Channel on the mark                            | Carries                                                                        |
 | ---------------------------------------------- | ------------------------------------------------------------------------------ |
-| Fill hue                                       | the selected tags a note carries, a band each (§ Hue)                          |
+| Fill hue                                       | the drawn sets a note is in, a band each (§ Hue)                               |
 | Fill lightness                                 | genealogical depth (§ Lightness)                                               |
 | Fill alpha                                     | carries none of the selected tags (§ Hue)                                      |
 | **Its own edge** — present, and whether broken | provenance (§ Form)                                                            |

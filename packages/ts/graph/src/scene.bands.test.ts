@@ -13,6 +13,7 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import type { DrawnNode, GraphDifference } from "./contract.js";
 import {
+  type BuiltModel,
   buildModel,
   LEAF_RADIUS,
   MARK_BANDS_MOST,
@@ -112,23 +113,32 @@ interface Canvas {
   app: FakeApplication;
 }
 
+async function sceneOver(
+  model: BuiltModel,
+  selecting: boolean,
+  resolution = 1,
+): Promise<Canvas> {
+  const scene = await GraphScene.create({} as HTMLCanvasElement, {
+    fonts: { ui: "ui", heading: "heading", address: "mono" },
+    palette,
+    resolution,
+  });
+  const app = FakeApplication.latest as FakeApplication;
+  scene.setModel(model, selecting);
+  app.tick();
+  return { scene, app };
+}
+
 async function canvas(
   field: readonly DrawnNode[],
   selection: readonly Tag[],
   over: { resolution?: number; viewer?: DidSyr } = {},
 ): Promise<Canvas> {
-  const scene = await GraphScene.create({} as HTMLCanvasElement, {
-    fonts: { ui: "ui", heading: "heading", address: "mono" },
-    palette,
-    resolution: over.resolution ?? 1,
-  });
-  const app = FakeApplication.latest as FakeApplication;
-  scene.setModel(
+  return sceneOver(
     buildModel([...field], { selection, palette, viewer: over.viewer }),
     selection.length > 0,
+    over.resolution ?? 1,
   );
-  app.tick();
-  return { scene, app };
 }
 
 /** The particle layers the world holds, in the order `scene.ts` adds them: the
@@ -527,6 +537,113 @@ describe("a fold over a region", () => {
         ),
       );
       expect(node.slots).toEqual(sets.map((tag) => selection.indexOf(tag) + 1));
+    }
+  });
+});
+
+// DESIGN.md § Hue: in the sets reading the drawing is the question, so a mark
+// wears a band of every region it stands in whether or not that set was
+// selected — while the dim stays where § Hue leaves it.
+describe("the sets reading", () => {
+  const field = [
+    drawn("1", [TAGS[0], TAGS[1]]),
+    drawn("2", [TAGS[0]]),
+    drawn("3", [TAGS[1]]),
+    drawn("4", []),
+  ];
+  const [both, one, other, none] = field.map((entry) => entry.node.ref);
+
+  /** The field packed into regions, and the model drawn over that packing. */
+  function packed(selection: readonly Tag[]): {
+    model: BuiltModel;
+    drawnSets: readonly Tag[];
+  } {
+    const packing = packSets({
+      notes: field.map((entry) => ({
+        ref: entry.node.ref,
+        graph: `${OWNER}/graph` as OwnedRef,
+        tags: entry.tags,
+        created_at: entry.node.created_at,
+      })),
+      fields: [],
+      selection,
+      spacing: SETS_STEP,
+      most: 64,
+      gutter: 900,
+    });
+    return {
+      model: buildModel(field, {
+        arrangement: "sets",
+        sets: packing,
+        selection,
+        palette,
+      }),
+      drawnSets: packing.drawn.tags,
+    };
+  }
+
+  const slotsOf = (model: BuiltModel, ref: OwnedRef) =>
+    model.graph.getNodeAttributes(ref).slots;
+
+  it("bands a mark in two sets before anything is selected", async () => {
+    const { model, drawnSets } = packed([]);
+    expect(drawnSets).toEqual([TAGS[0], TAGS[1]]);
+    expect(slotsOf(model, both)).toEqual([1, 2]);
+
+    const { scene, app } = await sceneOver(model, false);
+    // Only the mark standing in two of them wears bands; the others are each
+    // one disc in their own set's hue.
+    expect(bandsOf(app).map((band) => band.tint)).toEqual(hues([1, 2]));
+    const fills = fillsOf(app);
+    const at = (ref: OwnedRef) => fills[model.order.indexOf(ref)];
+    expect(at(one).tint).toBe(palette.tag(1));
+    expect(at(one).alpha).toBe(1);
+    expect(at(other).tint).toBe(palette.tag(2));
+    expect(at(other).alpha).toBe(1);
+    scene.destroy();
+  });
+
+  it("lights a mark standing in a set nobody selected", () => {
+    const { model, drawnSets } = packed([TAGS[1]]);
+    // Selected first, then the rest by how many notes carry them.
+    expect(drawnSets).toEqual([TAGS[1], TAGS[0]]);
+    // The unselected set is drawn, so the mark standing in it alone wears its
+    // hue and stands at full presence.
+    expect(slotsOf(model, one)).toEqual([2]);
+    expect(model.graph.getNodeAttributes(one).fill).toBe(palette.tag(2));
+    expect(model.graph.getNodeAttributes(one).alpha).toBe(1);
+  });
+
+  it("reads the bands off the drawn sets and the dim off the regions", () => {
+    const { model } = packed([TAGS[1]]);
+    // The bands are in the order the figure draws the sets, which the
+    // selection leads: the selected one on the left.
+    expect(slotsOf(model, both)).toEqual([1, 2]);
+    // And the dim is unmoved by any of it: only the mark standing in no drawn
+    // set at all recedes.
+    expect(slotsOf(model, none)).toEqual([]);
+    expect(model.graph.getNodeAttributes(none).alpha).toBeLessThan(1);
+    for (const ref of [both, one, other])
+      expect(model.graph.getNodeAttributes(ref).alpha).toBe(1);
+  });
+
+  // The genealogy asks a different question: there the bands and the dim are
+  // both the selection's — DESIGN.md § Hue.
+  it("leaves the genealogy reading asking only what was selected", () => {
+    const asked = buildModel(field, { selection: [TAGS[1]], palette });
+    expect(asked.graph.getNodeAttributes(both).slots).toEqual([1]);
+    expect(asked.graph.getNodeAttributes(other).slots).toEqual([1]);
+    // A note in no selected tag wears no band and dims, whatever else it
+    // carries.
+    for (const ref of [one, none]) {
+      expect(asked.graph.getNodeAttributes(ref).slots).toEqual([]);
+      expect(asked.graph.getNodeAttributes(ref).alpha).toBeLessThan(1);
+    }
+
+    const quiet = buildModel(field, { selection: [], palette });
+    for (const ref of [both, one, other, none]) {
+      expect(quiet.graph.getNodeAttributes(ref).slots).toEqual([]);
+      expect(quiet.graph.getNodeAttributes(ref).alpha).toBe(1);
     }
   });
 });

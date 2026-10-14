@@ -159,9 +159,10 @@ export interface GraphNodeAttributes {
    *  answers for the whole subtree with. */
   tags: readonly Tag[];
   /**
-   * The slots of the selected tags this mark stands in, in the order they were
-   * selected — a band each, left to right. Empty where it stands in none, one
-   * where the whole disc is that slot's. DESIGN.md § Hue.
+   * The slots of the drawn sets this mark stands in, in drawing order — a band
+   * each, left to right. Empty where it stands in none, one where the whole
+   * disc is that slot's. The genealogy draws the selected tags and Sets the
+   * sets it packs, selected or not. DESIGN.md § Hue.
    */
   slots: readonly TagHueSlot[];
   /**
@@ -222,7 +223,8 @@ export interface ModelOptions {
   /** Where the sets reading stands every mark — `packSets` in `sets/pack.ts`.
    *  Read only while {@link arrangement} is `"sets"`. */
   sets?: SetsPacking;
-  /** In selection order, which is the order the hue slots are handed out in. */
+  /** In selection order, which is the order the genealogy hands the hue slots
+   *  out in; Sets hands them out in the order it draws its sets. */
   selection: readonly Tag[];
   /** {@link GraphSurfaceProps.codeMoved} — the notes the code has moved under
    *  since their author read them against it. Absent and empty both say
@@ -388,11 +390,12 @@ export function buildModel(
   };
 }
 
-/** The hue slots a selection hands out, and the order they were handed out in —
- *  ranked off the slot map's keys rather than off the selection, so the dedupe
- *  rule that hands out the hues is the same one that picks between them. */
-function hueSlots(selection: readonly Tag[]): HueSlots {
-  const slots = assignTagHueSlots(selection);
+/** The hue slots a ranking of tags hands out, and the order they were handed
+ *  out in — ranked off the slot map's keys rather than off the ranking, so the
+ *  dedupe rule that hands out the hues is the same one that picks between
+ *  them. The genealogy ranks the selection; Sets ranks the sets it draws. */
+function hueSlots(ranking: readonly Tag[]): HueSlots {
+  const slots = assignTagHueSlots(ranking);
   return {
     slots,
     rank: new Map([...slots.keys()].map((tag, at) => [tag, at] as const)),
@@ -405,10 +408,10 @@ interface HueSlots {
 }
 
 /**
- * The bands a mark wears: the selected tags among `tags`, in the order they
- * were selected, as the tag and the slot each one borrows. Capped at
+ * The bands a mark wears: the ranked tags among `tags`, in the ranking's own
+ * order, as the tag and the slot each one borrows. Capped at
  * {@link MARK_BANDS_MOST}, and a slot the mark already wears is not worn twice
- * — past eight selected tags the slots repeat. DESIGN.md § Hue.
+ * — past eight ranked tags the slots repeat. DESIGN.md § Hue.
  */
 function bandsOf(
   tags: readonly Tag[],
@@ -466,7 +469,7 @@ interface NoteSays {
  * nothing: it stands for every note there rather than for one of them —
  * DESIGN.md § "Sets — the tags as places". So it is drawn plain, at the size
  * its count alone asks for, and its generation is the ramp's first step, where
- * the palette itself lands a mark no selected tag answers for. The provenance
+ * the palette itself lands a mark no drawn set answers for. The provenance
  * is the region's and comes from {@link regionProvenance}.
  */
 const NO_NOTE: Omit<NoteSays, "provenance"> = {
@@ -555,7 +558,7 @@ function addMark(
 }
 
 /**
- * The same marks, standing in the regions of the tags the reader selected —
+ * The same marks, standing in the regions of the sets this canvas draws —
  * DESIGN.md § "Sets — the tags as places". What the packing decided is final,
  * so every mark is its own anchor at full strength and the model carries no
  * edges at all: no line is drawn in this reading, and nothing is settled.
@@ -569,7 +572,9 @@ function buildSetsModel(
   packing: SetsPacking,
 ): BuiltModel {
   const graph: GraphModel = new Graph({ type: "undirected" });
-  const hues = hueSlots(options.selection);
+  // The drawing is the question here, so a mark wears the sets it stands in
+  // whether or not they were selected — DESIGN.md § Hue.
+  const hues = hueSlots(packing.drawn.tags);
   const byRef = new Map(drawn.map((entry) => [entry.node.ref, entry]));
   const standing = packing.marks.flatMap((mark) => {
     const entry = byRef.get(mark.ref);
