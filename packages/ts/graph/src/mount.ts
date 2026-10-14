@@ -1175,8 +1175,6 @@ function edgeInputs(model: ReturnType<typeof buildModel>) {
 function readFonts(host: Element): SceneFonts {
   const computed = getComputedStyle(host);
   const ui = computed.fontFamily || "system-ui, sans-serif";
-  // The token is empty where no look has named a heading face, and the role
-  // itself falls back to the app's own face — DESIGN.md § Typography.
   const heading = computed.getPropertyValue("--font-heading").trim() || ui;
   const address =
     computed.getPropertyValue("--font-address").trim() || "ui-monospace";

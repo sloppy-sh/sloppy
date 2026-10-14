@@ -358,8 +358,8 @@
 		U+A720-A7FF;
 }
 
-/* Iosevka ships Latin alone and no variable file, so 400 and 700 are the
-   weights there are. */
+/* Iosevka ships Latin alone and no variable file; 400 and 700 are shipped,
+   as for Atkinson and OpenDyslexic above. */
 
 @font-face {
 	font-family: 'Iosevka';

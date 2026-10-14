@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DID, ref } from './fake-api.test-support.js';
 import {
 	BUILT_IN_LOOKS,
+	FACES,
 	type FolderView,
 	MOST_VIEWS,
 	asOrigin,
@@ -397,7 +398,9 @@ describe('the saved look', () => {
 			[{ look: 'paper', fonts: { ui: 'Iosevka Etoile' } }, null],
 			[{ look: 'paper', fonts: { ui: 'inter', heading: 'Iosevka "Et"', mono: 'apple' } }, null],
 			[{ look: 'paper', fonts: { mono: 'opendyslexic' } }, null],
-			[{ look: 'paper', fonts: { heading: 'victormono', mono: 'firacode' } }, null],
+			...FACES.map(
+				(face) => [{ look: 'paper', fonts: { ui: face, heading: face, mono: face } }, null] as const
+			),
 			[
 				{ look: 'paper', fonts: { ui: 'a face; position: fixed', mono: 'url(http://a.example)' } },
 				null

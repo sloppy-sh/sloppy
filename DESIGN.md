@@ -2248,8 +2248,8 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   each note inside the first of them it carries.
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
   tag's name in quiet ink just inside its outer edge — lettered as the label of a place,
-  in the heading face, tracked and in capitals (§ Typography), never as a note's title.** The words the canvas writes keep off
-  each other: a name whose place is taken steps along the room kept for it to the nearest clear
+  in the heading face, tracked and in capitals (§ Typography), never as a note's title.**
+  The words the canvas writes keep off each other: a name whose place is taken steps along the room kept for it to the nearest clear
   one and, where the room holds none, just outside the outline — moved, never dropped — and a
   caption whose place is taken tries the others its mark has (§ "The canvas") before it is left
   out for the frame. A screen too crowded for every name to find a clear place is the one case
