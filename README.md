@@ -74,6 +74,56 @@ So the chat is not a side channel. What went in is a set of notes anybody can op
 what came out is a change anybody can read — which is the difference between using AI on a
 project and being able to account for it afterwards.
 
+### What an agent is actually given
+
+A chat or a build hands the assistant a small endpoint of Sloppy's own — MCP, on the
+loopback, named `sloppy` — and the acts it serves are in the vocabulary of the graph
+rather than of the filesystem. That is the whole trick: an agent that can only see files
+has to rediscover what the project means every time, while one that can ask the graph gets
+the answer somebody already wrote.
+
+**Three acts for reading**, and they are what a session spends its first context on:
+
+| Act            | What it answers                                                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `list_notes`   | Every note this project has: its ref, title, address, tags, what it springs out of, **and the places in the code it is about**. |
+| `search_notes` | The notes carrying some words, with the writing around what matched.                                                            |
+| `read_note`    | One note whole — its sections as markdown, its tags, the code it points at.                                                     |
+
+**Both directions are open, which is the point.** A note carries `code:` anchors — a path,
+and a run of lines or the name of a symbol inside it — so the same index answers _"what is
+`helpers/money/providers/stripe.py` for?"_ with the note that says so, and _"where is this
+decision in the code?"_ with the file. An agent arriving at an unfamiliar system reads the
+intent in English and then goes straight to the lines it is about, instead of inferring a
+project's purpose from its syntax. A person does the same, from the other end: the note on
+the canvas carries the file, and the file's note is one search away.
+
+**Eight more for writing**, and the agent is held to the same rules a person is:
+`write_note`, `move_note`, `tag_note`, `number_note`, `link_notes`, `style_edge`,
+`style_note`, `delete_note`. The rules ride in the tools' own descriptions, so an agent
+reads them before it can call anything:
+
+- **Search before you write.** Where the graph already says a thing, it is cited —
+  `[what it is called](sloppy:<ref>)` — not written a second time. This is what stops a
+  graph degenerating into forty summaries of the same decision.
+- **A reason goes down only from a source you name** — the person's words, a commit, a
+  comment, a document in the repository. Where nothing says _why_, the open question goes
+  down instead of a guess. An assistant inventing a plausible rationale is the failure mode
+  this rule exists for.
+- **A relation between two notes goes on the line between them**, not into prose about it,
+  and what a line means is written on the line.
+- **Answers are bounded.** A long listing says how much of itself it left; a long note says
+  how many sections it left. A note is never too long to read, only too long to hand over
+  whole — so one act cannot swallow a session's context.
+
+A build adds four more — `plan_build`, `raise_need`, `hand_off`, `review_build` — and
+**which acts a session may call is decided by its role**: the one that reads the notes and
+plans cannot write code, no role may start sub-agents of its own, and none of them can
+reach outside the copy they are working in. Sloppy is the orchestrator, which
+is what keeps every context small and every step something you can look at.
+
+The endpoint speaks plain MCP, so an agent you drive yourself can use the same acts.
+
 ### Build for me
 
 On a graph pointed at a codebase, pick the notes that say what a piece of the project is
@@ -143,11 +193,9 @@ under another, so numbering is not work you do; it is yours to change or leave o
 address a note has ever carried keeps leading to it, so a citation somebody wrote down a
 year ago still lands.
 
-**The shape is part of the protocol, not a per-user accident.** What a note sprang out of
-and the order it was written in are read the same way by every copy, so a subtree can be
-published and pulled into somebody else's graph and land in the shape its author saw. This
-is what separates it from a flat mesh of backlinks, where no two people's graphs mean the
-same thing.
+The same rule carries between people: because the shape is derived rather than drawn, a
+subtree published from one graph is pulled into somebody else's and lands there looking the
+way its author saw it, addresses intact.
 
 ### Also at the command line
 
@@ -156,6 +204,43 @@ sloppy init     # start a graph beside this code
 sloppy draft    # write a note from the terminal
 sloppy check    # read the notes against the code and say what disagrees
 ```
+
+## Why not Obsidian, Logseq or Notion
+
+They are good tools, and if what you want is a personal wiki you should use one. Sloppy
+exists because three things we needed are structural, not features anybody can bolt on.
+
+**A graph everyone reads the same way.** Obsidian's graph view is decorative, and honestly
+so: a mesh of backlinks has no agreed shape, so your graph and mine mean different things
+and neither can be handed to the other. In Sloppy what a note sprang out of, and its order
+among its siblings, are the protocol — every copy derives the same positions from them, so
+a subtree published from one graph lands in somebody else's in the shape its author saw.
+Notion solves this by imposing a tree, which means deciding the structure before the
+thought exists. The genealogy is the third position: not containment, but _the direction a
+thought grew in_.
+
+**An address a decision can be cited by.** `1a1` is a label you can put in a commit
+message, a ticket or an argument, and it still resolves after the note has been renamed and
+moved. A wiki link that depends on a title breaks the day somebody improves the title.
+
+**Notes that know about code, and an agent that knows about notes.** None of the three
+carries an anchor into a file that tells you the code has moved since the note was written,
+and none serves an assistant in the vocabulary of notes and refs rather than file paths.
+What you can do instead is point an agent at a vault of markdown and hope it reads the
+right file; what you get back is summaries written over each other,
+no citations, and no way to tell afterwards what it had been given. The acts above are the
+answer to that, and they are why the rest of the design holds: a graph only stays worth
+reading if what writes into it is held to the same rules as the people who do.
+
+Two smaller choices that follow from the same place:
+
+- **A block is a section somebody added deliberately**, and Enter makes a paragraph inside
+  it, never a new block. Logseq's outliner makes every line a node, which is a fine way to
+  think and a poor way to read a decision six months later — a reorder handle means
+  something when it moves sections, and nothing when it moves sentences.
+- **Your notes are files you own.** Markdown with front matter, in the repository, under
+  the same review as the code. No database holds them, no account is required to read them,
+  and everything comes back out as one file whenever you ask.
 
 ## Where each part runs
 
@@ -171,201 +256,22 @@ the contract is by role and tool set rather than by vendor, so another program a
 row in a table. Sloppy holds no key of yours, and a build never touches your own line or
 your folder until you bring it in.
 
+## Try it
+
+It runs from a clone — `pnpm dev` brings up the whole stack in Docker, and the desktop
+shell runs beside it. [`CONTRIBUTING.md`](CONTRIBUTING.md) is the setup, the tree and the
+conventions; there is a seed command there that fills a graph with a few thousand notes,
+because most of what the canvas does only shows at scale.
+
 ## Reading further
 
+- Running it, what is in the tree, how to change it: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Product direction: [`PRODUCT.md`](PRODUCT.md) · Visual system: [`DESIGN.md`](DESIGN.md)
 - Architecture, the syr split, the data model: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- Contributor and agent instructions: [`AI.md`](AI.md)
+- The rules every change is held to: [`AI.md`](AI.md)
 - The note format an assistant writes to: [`.sloppy/AGENT.md`](.sloppy/AGENT.md)
 
 ## Licence
 
 MIT — see [`LICENSE`](LICENSE). The notes you write are markdown files on your disk; there
 is nothing to export and nothing holding them.
-
-## Status
-
-**The product is built and runs end to end.** From a clone, `pnpm dev` brings up something
-you can use: sign in — against a syr instance, or against the API's own identity provider
-with nothing else running anywhere — keep as many graphs as you want a notebook for, and
-write notes that are offered a Folgezettel address by rules every copy applies the same
-way. A note's interior is a stack of blocks, each holding paragraphs, headings, lists,
-code, pictures and Apple-Pencil ink. Tags cut across the genealogy and highlight rather
-than filter. The graph itself is a pixi canvas: a subtree collapses into a mega-node,
-detail drops away as you pull back, and a reader may put a picture behind the field. A
-subtree can be published and a peer's published region pulled into a graph of your own and
-read there, with profiles, comments, reactions and emoji coming from the identity side.
-Everything you have written comes back out as one file whenever you ask for it.
-
-**The desktop and mobile app opens a folder on your device as a graph**, with no server
-anywhere: the notes are files, the history is the repository's own, and standing on an
-earlier version is a real checkout you can write from. The chat and **Build for me** run there, against an
-assistant installed on the same machine.
-
-`pnpm test` is about 7,600 tests across some four hundred files. A dozen of those files
-are integration suites that want a database listening, and a run has to ask for them, so a
-clone with nothing else running still gets a green suite; Common tasks below is how to ask.
-
-What is still ahead: an assistant reached by an API key is listed but not yet driven, so
-the chat and a build need a program agent on the machine; a build runs on a folder rather
-than a hosted graph; and the page a browser lands on when it resolves somebody's identity
-has nothing answering it yet.
-
-## Stack
-
-pnpm + Turborepo monorepo. Every row below is in the tree.
-
-| Path                   | Package            | Tech                                               |
-| ---------------------- | ------------------ | -------------------------------------------------- |
-| `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                         |
-| `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                              |
-| `apps/sloppy/native`   | `@sloppy/native`   | Tauri + SvelteKit (iOS, iPadOS, Android, desktop)  |
-| `packages/ts/types`    | `@sloppy/types`    | Shared Zod schemas                                 |
-| `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                        |
-| `packages/ts/app-core` | `@sloppy/app-core` | Every page, component, store and API call          |
-| `packages/ts/ui`       | `@sloppy/ui`       | shadcn-svelte components + design tokens           |
-| `packages/ts/data`     | `@sloppy/data`     | SurrealDB table definitions and the per-user purge |
-| `packages/ts/graph`    | `@sloppy/graph`    | pixi.js v8 + graphology + d3-force                 |
-| `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode         |
-| `packages/ts/vault`    | `@sloppy/vault`    | A graph as files: the vault folder and the archive |
-| `packages/ts/local`    | `@sloppy/local`    | The graph served off this device, with no server   |
-| `packages/ts/cli`      | `@sloppy/cli`      | `sloppy` at the command line                       |
-
-Identity, profiles, media blobs, emoji and reactions come from **syr**; nodes, addresses,
-tags, blocks and ink are Sloppy's own. That split is not a preference — see
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-## Run it
-
-Requires Docker. `corepack enable` too, for the native shell and the workspace scripts —
-the pnpm version is pinned in `package.json`, so corepack fetches that one. Node is
-pinned in `.node-version`, which most version managers read.
-
-```bash
-pnpm dev           # the whole stack, in Docker, watching your source
-```
-
-That is the loop: the database, object storage, the shared `@sloppy/*` builds, the API
-and the web shell, all in containers. Edit a file on this machine and whatever owns it
-reacts — the API comes back up, the web app hot-reloads, a shared package rebuilds and
-lands in both. Nothing needs a `.env`: every value has a dev default. Ctrl-C stops it.
-
-| Service         | URL                       |
-| --------------- | ------------------------- |
-| Web shell       | http://localhost:8030     |
-| API             | http://localhost:8020/api |
-| SurrealDB       | `ws://localhost:8010/rpc` |
-| Object storage  | http://localhost:9010     |
-| Storage console | http://localhost:9011     |
-
-The web shell is the address Sloppy is used at: it forwards `/api` and the syr discovery
-paths to the API, so the app and the API share an origin the way a deployment does.
-`GET /api/health` answers 200 when the API can reach the database and 503 when it cannot.
-
-Sign-in works from a clone with nothing else running: in dev the API also serves identity
-itself (`SLOPPY_LOCAL_IDP`, on by default in `docker-compose.yml`), so an identity can be
-made and used with no syr instance anywhere — pictures, a name, and a set of emoji
-included. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "Local-only mode" →
-"An API that serves identities itself". Set it to `0` to require an instance elsewhere.
-
-The datastore ports are overridable with `SURREALDB_PORT`, `S3_PORT` and
-`S3_CONSOLE_PORT`, offset from syr's own dev stack so both can run at once. 8020 and 8030
-are fixed: sign-in comes back to the address in `PUBLIC_URL`, and those two are what it
-names.
-
-**One thing costs a rebuild.** A source edit costs nothing — it is copied straight into
-the running container. Changing a dependency does: anything that moves `pnpm-lock.yaml`
-(or the root `package.json`) rebuilds the image and recreates the API, the web shell and
-the package builder, and the log says so as it happens.
-
-```bash
-pnpm stack:up      # the same stack, detached — nothing is watched, so edits sit
-pnpm stack:logs    # follow it
-pnpm stack:down    # stop it
-pnpm stack:reset   # stop it and delete the lot: database, storage, package builds
-```
-
-`db/` and `s3/` are where the datastores keep their files; `stack:reset` is what
-empties them.
-
-### The native shell, and running on the host
-
-Tauri builds an OS app, so `@sloppy/native` cannot run in a container. It runs here and
-talks to the API in Docker, which is where it looks by default. It needs Rust — 1.77.2 or
-newer, from [rustup](https://rustup.rs) — and so does `pnpm test`, which runs the shell's
-own tests along with everything else. The first Rust build compiles an embedded database
-and takes a few minutes; `pnpm test:ts` runs the TypeScript suite alone and needs no Rust
-at all.
-
-```bash
-pnpm install
-pnpm dev           # one terminal: the stack, API on 8020
-pnpm dev:native    # another: the native shell against it
-```
-
-`pnpm dev:native` builds the shared `@sloppy/*` packages once as it starts and then holds
-that copy: the containers go on watching them, the native shell does not. Re-run it after
-an edit under `packages/ts`.
-
-`pnpm dev:host` runs every dev server here instead, through Turbo, the way they all ran
-before any of this was containerised; `pnpm dev:api` and `pnpm dev:web` run one each.
-Sign-in on that path needs `PUBLIC_URL` naming the web shell's origin —
-[`apps/sloppy/web/README.md`](apps/sloppy/web/README.md) says why.
-
-## Something to look at
-
-A new graph is empty, and most of what Sloppy does only shows at scale: a subtree
-collapsing into a mega-node, detail dropping away as you pull back, a tag lighting up a set
-that runs right across the tree. Against a running stack, this fills one identity's graph
-with about 2,400 notes — deep chains, wide sibling runs, tags that cut across the genealogy,
-and interiors divided into sections with real prose in them:
-
-```bash
-pnpm --filter @sloppy/api seed
-```
-
-With one identity on the stack it fills that one; `--did <did:syr:…>` names which to fill
-when there is more than one, and whenever identity comes from a syr instance rather than
-this API's own. `--nodes <n>` sizes the graph. An identity that already has notes is left
-alone — **`--fresh` is what overrides that, and it erases everything that identity has here:
-every graph, everything they published, and every region they pulled from a peer** — before
-writing the new one.
-
-## Common tasks
-
-```bash
-pnpm build         # build every package and app
-pnpm check         # type-check the workspace
-pnpm lint          # biome + eslint, per package
-pnpm format        # write formatting
-pnpm test          # run tests
-pnpm test:ts       # the TypeScript ones alone, with no Rust build
-```
-
-Run the heavy ones — a forced rebuild, the whole suite — against a detached stack rather
-than an attached `pnpm dev`. They write thousands of files at once, and under that much
-churn the watcher can miss an edit or recreate the containers under you.
-
-The integration suites run against the dev SurrealDB, and only when a run asks for them:
-`pnpm stack:up`, then `SLOPPY_INTEGRATION=1 pnpm test`, is what exercises the table
-definitions, the indexes and the purge, the delegation round trip, and Sloppy signing in
-against its own provider for real. Asked for and finding nothing listening, they fail
-rather than skip; unasked, they skip, so a run that never wanted them cannot be read as
-one that had them. `SLOPPY_SURREALDB_URL` points them elsewhere.
-
-## Formatting: who owns what
-
-**Biome owns the pure TS/JS packages; Prettier owns everything Svelte.** The two sets are
-mutually exclusive so no file is processed by both.
-
-The split is declared once, in `biome.json`. `.lintstagedrc.mjs` **derives** the
-Biome-owned directories by reading that file at runtime rather than keeping a second copy —
-a hand-kept copy drifts, and the failure is quiet: a file gets formatted by Prettier at
-commit and then rejected by its own package's `format:check`. Adding a package to the
-Biome side means editing `biome.json` and nothing else.
-
-`pnpm-workspace.yaml` carries the other convention worth knowing before you change it: the
-workspace globs are **non-recursive on purpose**, and the file explains what the recursive
-form cost.
-
-Husky runs `lint-staged` on commit and the format + lint gates on push.
