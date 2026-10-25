@@ -264,6 +264,119 @@ describe("writing a note", () => {
     expect(notes.find((one) => one.note === note)?.parent).toBe(folder);
   });
 
+  it("lands on the note started about the place, not one that cites it in passing", async () => {
+    const citing = await wrote(
+      writes(PLACES_FILE, [
+        `## Why\n\nIt hands names to [${PARSER}](code:${PARSER}).`,
+      ]),
+    );
+    const api = containerApi(files);
+    const started = await api.createNode({
+      from: { relation: "free" },
+      title: "The parser",
+    });
+    await api.createBlock({
+      node: started.ref,
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: PARSER,
+                marks: [{ type: "link", attrs: { href: `code:${PARSER}` } }],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const written = await wrote(writes(PARSER, ["## How\n\nBy one table."]));
+
+    expect(written).toBe(started.ref);
+    const kept = NoteReadSchema.parse(
+      JSON.parse(
+        await answer({
+          call: "c2",
+          act: "read_note",
+          arguments: { note: citing },
+        }),
+      ),
+    );
+    expect(kept.sections.map((one) => one.markdown).join("\n")).not.toContain(
+      "By one table",
+    );
+  });
+
+  it("writes onto the one note that cites the place where none was started about it", async () => {
+    const citing = await wrote(
+      writes(PLACES_FILE, [
+        `## Why\n\nIt hands names to [${PARSER}](code:${PARSER}).`,
+      ]),
+    );
+
+    const written = NoteWrittenSchema.parse(
+      JSON.parse(await answer(writes(PARSER, ["## How\n\nBy one table."]))),
+    );
+
+    expect(written.note).toBe(citing);
+    expect(written.done).toBe("written");
+  });
+
+  it("refuses where several notes cite the place and none was started about it, naming them", async () => {
+    const one = await wrote(
+      writes(
+        PLACES_FILE,
+        [`## Why\n\nIt hands names to [${PARSER}](code:${PARSER}).`],
+        {
+          title: "Places",
+        },
+      ),
+    );
+    const two = await wrote(
+      writes(
+        READING_DOC,
+        [`## Why\n\nRead [${PARSER}](code:${PARSER}) first.`],
+        {
+          title: "Reading",
+        },
+      ),
+    );
+
+    const said = await performChatCall(
+      files,
+      writes(PARSER, ["## How\n\nBy one table."]),
+    );
+
+    expect(said.trouble).toBe(true);
+    expect(said.touched).toEqual([]);
+    for (const named of [one, two, "Places", "Reading"]) {
+      expect(said.said).toContain(named);
+    }
+    const listed = NotesListedSchema.parse(
+      JSON.parse(
+        await answer({ call: "c3", act: "list_notes", arguments: {} }),
+      ),
+    );
+    expect(listed.notes).toHaveLength(2);
+  });
+
+  it("starts a note where nothing here reaches the place", async () => {
+    const other = await wrote(
+      writes(PLACES_FILE, ["## Why\n\nWhere each name was written."]),
+    );
+
+    const written = NoteWrittenSchema.parse(
+      JSON.parse(await answer(writes(PARSER, ["## How\n\nBy one table."]))),
+    );
+
+    expect(written.note).not.toBe(other);
+    expect(written.done).toBe("written");
+  });
+
   it("answers a write under a note that is not there with words the agent can act on", async () => {
     const said = await performChatCall(
       files,

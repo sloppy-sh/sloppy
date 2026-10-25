@@ -45,6 +45,7 @@ import {
   OFFER_SUMMARY_MAX,
   offersAnswer,
   type OwnedRef,
+  parseCodeAnchor,
   type RestoreNoteArguments,
   type SearchHit,
   splitOwnedRef,
@@ -94,6 +95,16 @@ const NOT_DRAWN = "That mark was left as it was.";
 const NOT_LISTED = "The bin could not be read.";
 const NOT_RESTORED = "That note was not taken out of the bin.";
 const NO_GRAPH = "There is no graph here to read.";
+
+function severalReach(about: string, notes: readonly NodeView[]): string {
+  const named = notes
+    .map(
+      (note) =>
+        `"${note.title}" (${note.ref}${note.address === undefined ? "" : `, at ${note.address}`})`,
+    )
+    .join("; ");
+  return `Several notes here reach ${about} and none was started about it: ${named}. Cite the one you mean in what you write, or write about a narrower place.`;
+}
 
 /**
  * Why an act came to nothing, where the agent's words for it carry a sentence
@@ -408,6 +419,9 @@ async function graphFileIn(
 interface NoteHere {
   note: NodeView;
   about: string[];
+  /** The place its first section opens with an anchor to, which is the place
+   *  it was started about. Absent where it opens with anything else. */
+  startedAbout?: string;
 }
 
 async function notesHere(api: LocalApi): Promise<NoteHere[]> {
@@ -415,10 +429,57 @@ async function notesHere(api: LocalApi): Promise<NoteHere[]> {
   for (const branch of await api.listNodes({})) {
     for (const note of await api.listNodes({ origin: branch.ref })) {
       if (held.has(note.ref)) continue;
-      held.set(note.ref, { note, about: await anchorsIn(api, note.ref) });
+      const blocks = await api.listBlocks(note.ref);
+      const startedAbout =
+        blocks[0] === undefined ? undefined : openingAnchor(blocks[0].content);
+      held.set(note.ref, {
+        note,
+        about: pathsIn(blocks.map((block) => block.content)),
+        ...(startedAbout === undefined ? {} : { startedAbout }),
+      });
     }
   }
   return [...held.values()];
+}
+
+/** The path the first words of a section link to, where they link to code. */
+function openingAnchor(content: BlockDocument): string | undefined {
+  let node: unknown = content;
+  while (node !== null && typeof node === "object") {
+    const held = node as {
+      type?: unknown;
+      marks?: unknown;
+      content?: unknown;
+    };
+    if (held.type === "text") {
+      const marks = Array.isArray(held.marks) ? held.marks : [];
+      for (const mark of marks) {
+        const href = (mark as { attrs?: { href?: unknown } })?.attrs?.href;
+        if (typeof href !== "string") continue;
+        const anchor = parseCodeAnchor(href);
+        if (anchor) return anchor.path;
+      }
+      return undefined;
+    }
+    node = Array.isArray(held.content) ? held.content[0] : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The note a write about `about` lands on: the one started about it, else the
+ * one note reaching it, else none. Several reaching it and none started about
+ * it is the list of them, which nothing can choose between.
+ */
+function noteToWrite(
+  here: readonly NoteHere[],
+  about: string,
+): NodeView | NodeView[] | undefined {
+  const started = here.find((held) => held.startedAbout === about);
+  if (started) return started.note;
+  const reaching = here.filter((held) => held.about.includes(about));
+  if (reaching.length > 1) return reaching.map((held) => held.note);
+  return reaching[0]?.note;
 }
 
 function asListed(note: NodeView, about: readonly string[]): ListedNote {
@@ -483,7 +544,9 @@ async function writeNote(
     return trouble(NOTHING_WRITTEN, "nothing_written");
   }
   const here = await notesHere(api);
-  const standing = here.find((held) => held.about.includes(asked.about))?.note;
+  const target = noteToWrite(here, asked.about);
+  if (Array.isArray(target)) return trouble(severalReach(asked.about, target));
+  const standing = target;
   if (
     !standing &&
     asked.under !== undefined &&
@@ -923,9 +986,13 @@ function branchOf(here: readonly NoteHere[]): OwnedRef | undefined {
 }
 
 async function anchorsIn(api: LocalApi, note: OwnedRef): Promise<string[]> {
+  return pathsIn((await api.listBlocks(note)).map((block) => block.content));
+}
+
+function pathsIn(contents: readonly BlockDocument[]): string[] {
   const paths = new Set<string>();
-  for (const block of await api.listBlocks(note)) {
-    for (const anchor of anchorsOf(block.content)) paths.add(anchor.path);
+  for (const content of contents) {
+    for (const anchor of anchorsOf(content)) paths.add(anchor.path);
   }
   return [...paths];
 }

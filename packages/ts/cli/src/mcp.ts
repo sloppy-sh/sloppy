@@ -161,7 +161,7 @@ async function calling(at: McpServer, params: unknown): Promise<Answered> {
     arguments: given,
   });
   if (!call.success) {
-    const says = call.error.issues[0]?.message;
+    const says = whatIsWrong(call.error.issues[0]);
     return trouble(says ? `${UNREADABLE} ${says}` : UNREADABLE);
   }
   const done = await performChatCall(at.files, call.data);
@@ -169,6 +169,19 @@ async function calling(at: McpServer, params: unknown): Promise<Answered> {
     said: done.said,
     ...(done.trouble === undefined ? {} : { trouble: done.trouble }),
   });
+}
+
+/** One refusal of the arguments, naming the field it is about. */
+function whatIsWrong(
+  issue: { path: readonly PropertyKey[]; message: string } | undefined,
+): string | undefined {
+  if (!issue) return undefined;
+  const field = issue.path
+    .slice(issue.path[0] === "arguments" ? 1 : 0)
+    .map(String)
+    .join(".");
+  const says = issue.message.replace(/^Invalid input: /, "");
+  return field === "" ? says : `${field}: ${says}`;
 }
 
 /** A stream read a line at a time, blank lines passed over. A line can arrive

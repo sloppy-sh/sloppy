@@ -246,6 +246,39 @@ describe("sloppy mcp", () => {
     expect(answer.text).toContain("arguments are not right");
   });
 
+  it("names the field an argument that does not read is in", async () => {
+    await aProject();
+
+    const answer = came(
+      (await served([calling("write_note", { sections: ["## Why\n\nIt."] })]))
+        .answers[0],
+    );
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("about: expected string, received undefined");
+  });
+
+  it("writes nothing but the protocol to its output, whatever it was asked", async () => {
+    for (const argv of [
+      ["mcp", "--json"],
+      ["mcp", "--help"],
+    ]) {
+      const out: string[] = [];
+      const err: string[] = [];
+      await run(argv, {
+        cwd: PROJECT,
+        told: { out: (line) => out.push(line), err: (line) => err.push(line) },
+        filesAt: () => {
+          throw new Error("unreadable");
+        },
+        calls: [],
+      });
+
+      expect({ argv, out }).toEqual({ argv, out: [] });
+      expect({ argv, err }).not.toEqual({ argv, err: [] });
+    }
+  });
+
   it("answers every call in a folder with no notes with how to start them, and starts none", async () => {
     const before = everyFile();
 

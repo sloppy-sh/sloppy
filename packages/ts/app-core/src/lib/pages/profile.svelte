@@ -51,6 +51,10 @@
 		return profile && { profile, person: personFrom(profile) };
 	});
 
+	/** On a device, a name is written into the graphs the viewer owns there, so
+	 *  with none of those it is shown and not offered. */
+	const ownsAGraph = $derived(graphs.all.some((graph) => graph.created_by === session.viewer?.did));
+
 	const identities = runtime.identities();
 	let held = $state<IdentityHere[]>([]);
 	/** The one the writing here carries, as this device holds it. Undefined is a
@@ -185,7 +189,9 @@
 	// On a device the profile is the folder's, so it is read once the folder
 	// says who is writing in it.
 	$effect(() => {
-		if (session.onDevice && session.viewer) void readProfile();
+		if (!session.onDevice || !session.viewer) return;
+		void readProfile();
+		void graphs.load().catch(() => {});
 	});
 
 	onMount(() => {
@@ -198,14 +204,23 @@
 <svelte:head><title>You · Sloppy</title></svelte:head>
 
 {#snippet header(person: Person)}
-	<PersonHeader {person}>
-		{#snippet actions()}
-			<Button variant="outline" class="h-control sm:h-9" onclick={() => (editing = true)}>
-				<Pencil class="size-4" aria-hidden="true" />
-				Edit
-			</Button>
-		{/snippet}
-	</PersonHeader>
+	{#if session.onDevice && !ownsAGraph}
+		<PersonHeader {person} />
+		{#if graphs.state.loaded}
+			<p class="text-sm text-muted-foreground">
+				There is no graph of your own on this device yet. Start one to write your name in.
+			</p>
+		{/if}
+	{:else}
+		<PersonHeader {person}>
+			{#snippet actions()}
+				<Button variant="outline" class="h-control sm:h-9" onclick={() => (editing = true)}>
+					<Pencil class="size-4" aria-hidden="true" />
+					Edit
+				</Button>
+			{/snippet}
+		</PersonHeader>
+	{/if}
 {/snippet}
 
 {#snippet editor(person: Person)}

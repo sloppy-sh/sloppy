@@ -25,13 +25,20 @@ folder with no notes in it to read.
 
 `sloppy mcp` speaks the Model Context Protocol on its own input and output, one message a
 line, until its input ends; § "An assistant outside the app" is its doc of record. A
-repository configures it once, in a `.mcp.json` at its root:
+repository configures it once, in a `.mcp.json` at its root. Where the CLI is installed:
 
 ```json
 { "mcpServers": { "sloppy": { "type": "stdio", "command": "sloppy", "args": ["mcp"] } } }
 ```
 
-Given to `run`, the lines it reads are `calls` and its answers go to `told.out`.
+In a checkout of this repository, once the packages are built:
+
+```json
+{ "mcpServers": { "sloppy": { "type": "stdio", "command": "node", "args": ["packages/ts/cli/dist/sloppy.mjs", "mcp"] } } }
+```
+
+Given to `run`, the lines it reads are `calls` and its answers go to `told.out`; anything
+meant for a person goes to `told.err`, whatever flags it was given.
 
 ## Driving it from somewhere else
 

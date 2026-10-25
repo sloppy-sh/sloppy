@@ -665,6 +665,29 @@ describe('the page about you, on a device holding its own graph', () => {
 		expect(text.indexOf('Ada Lovelace')).toBeGreaterThanOrEqual(0);
 		expect(text.indexOf('Ada Lovelace')).toBeLessThan(text.indexOf('Your identity'));
 		expect(has('Edit')).toBe(true);
+		expect(text).not.toContain('no graph of your own');
+	});
+
+	it('offers no edit on a device where none of the graphs is theirs, and says why', async () => {
+		const files = new MemoryFiles({ folder: '/graphs/theirs' });
+		await new LocalApi(files, {
+			writer: 'did:syr:z6MkrSomebodyElseKeepsThisFolderAAAAAAAAAAAAAA' as DidSyr
+		}).createGraph({ title: 'Theirs' });
+		const local = new LocalApi(files, { writer: DID as DidSyr });
+		running('local');
+		updateRuntime({ createApi: () => local, assetSrc: (src: string) => src });
+		resetApi();
+		session.adopt(VIEWER, 'a-session');
+		mounted = mount(Profile, { target });
+		flushSync();
+		await settle();
+
+		expect(has('Edit')).toBe(false);
+		expect(has('Use a link')).toBe(false);
+		expect(screen()).toContain(
+			'There is no graph of your own on this device yet. Start one to write your name in.'
+		);
+		expect(document.body.querySelector('[role="alert"]')).toBe(null);
 	});
 
 	it('writes a bio and a linked banner into the folder', async () => {

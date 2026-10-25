@@ -367,7 +367,7 @@ export type ReadNoteArguments = z.infer<typeof ReadNoteArgumentsSchema>;
 
 export const WriteNoteArgumentsSchema = z.object({
   about: ProjectPathSchema.describe(
-    "The file or folder in the project this note is about, from the project root and spelled with /.",
+    "The file or folder in the project this note is about, from the project root and spelled with /. The note about a place is the one started about it, else the one note that links to it; where several link to it and none was started about it, nothing is written and they are named.",
   ),
   title: z
     .string()

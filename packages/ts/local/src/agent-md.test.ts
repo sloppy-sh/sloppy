@@ -252,6 +252,9 @@ describe("what AGENT.md teaches", () => {
       "a write on a note somebody has written in goes as an offer",
     );
     expect(commands).toContain(
+      "A write about a place lands on the note started about it, else on the one note that links to it, and where several link to it and none was started about it, nothing is written and they are named.",
+    );
+    expect(commands).toContain(
       "It writes none of what this file says is not yours: `checked` and `read_against`, who a note's owner is, anybody's identity or keys, commits and what signs them, and what anybody's profile says.",
     );
   });

@@ -141,6 +141,12 @@ describe("the acts Sloppy hands an agent", () => {
     expect(description).toContain("the open question goes down instead");
   });
 
+  it("tells write_note which note a place's write lands on", () => {
+    expect(WriteNoteArgumentsSchema.shape.about.description).toContain(
+      "the one started about it, else the one note that links to it",
+    );
+  });
+
   it("puts the writing ones behind the person and leaves reading alone", () => {
     for (const act of [
       "write_note",

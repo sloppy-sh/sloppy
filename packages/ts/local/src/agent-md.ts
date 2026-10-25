@@ -427,7 +427,9 @@ scope.
 acts rather than by editing the files: started from the project, it serves the same acts the
 app's chat has — reading, writing, tagging, numbering, moving, linking, binning and taking
 back out — under every rule above, so a write on a note somebody has written in goes as an
-offer. What it writes lands in this folder like any other edit, and is reviewed with the rest
+offer. A write about a place lands on the note started about it, else on the one note that
+links to it, and where several link to it and none was started about it, nothing is written
+and they are named. What it writes lands in this folder like any other edit, and is reviewed with the rest
 of the change. It writes none of what this file says is not yours: \`checked\` and
 \`read_against\`, who a note's owner is, anybody's identity or keys, commits and what
 signs them, and what anybody's profile says.

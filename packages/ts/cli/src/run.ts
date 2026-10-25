@@ -107,17 +107,21 @@ export async function run(
 ): Promise<number> {
   const asked = parse(argv);
   const { told } = context;
+  // `mcp`'s output is its caller's protocol, so a line for a person goes
+  // anywhere else.
+  const serves = asked.command === "mcp";
+  const usage = (line: string) => (serves ? told.err(line) : told.out(line));
   if (asked.options.has("help") || asked.options.has("h") || !asked.command) {
-    for (const line of USAGE) told.out(line);
+    for (const line of USAGE) usage(line);
     return asked.command ? FINE : NOTHING_DONE;
   }
   const command = COMMANDS.find((held) => held === asked.command);
   if (!command) {
     told.err(`No such command: ${asked.command}`);
-    for (const line of USAGE) told.out(line);
+    for (const line of USAGE) usage(line);
     return NOTHING_DONE;
   }
-  const json = asked.options.has("json");
+  const json = asked.options.has("json") && !serves;
   try {
     switch (command) {
       case "check":

@@ -3948,6 +3948,11 @@ note with no number would leave every note written beneath it unnumbered too. Th
 `write_note` act says as much to the agent, and tells it to number an unnumbered note above
 with `number_note` first, so that what it writes beneath takes its number.
 
+**A write about a place lands on the note started about it.** That is the note whose first
+section opens with an anchor to the place, which is how `write_note` starts one; where none
+was, it is the one note whose anchors reach the place, and where several reach it the act
+writes nothing and names them, because a note that merely cites a file is not the note about it.
+
 **A person puts a file or a picture in front of the agent, and the agent reads it where they put
 it.** This needs no act and no second channel: the agent already reads the project, so what they
 attached is written inside it and the turn says what it was and where it went — `ChatAttachment`
