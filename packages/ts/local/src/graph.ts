@@ -119,6 +119,15 @@ export interface StoredPicture {
   height?: number;
 }
 
+/** Who keeps a graph, as its `graph.json` says. A picture is a path into this
+ *  folder's `media/` or a linked picture. Absent is somebody who has not said. */
+export interface GraphOwner {
+  name?: string;
+  bio?: string;
+  avatar?: string;
+  banner?: string;
+}
+
 /** An address this graph spent on a note that has since been purged. It is
  *  never assigned to a second note, and the note that spent it is the only one
  *  that may take it back — AI.md § "The Genealogy Is the Protocol". */
@@ -262,26 +271,33 @@ export class LocalGraph {
   }
 
   /** What this vault says about whose it is, beyond the DID: what the owner is
-   *  called, and where their picture is in this folder. */
-  get owner(): { name?: string; avatar?: string } {
+   *  called and says about themselves, and their pictures — a path in this
+   *  folder or a link, read by scheme. */
+  get owner(): GraphOwner {
+    const said = this.said;
     return {
-      ...(this.said.owner_name === undefined
-        ? {}
-        : { name: this.said.owner_name }),
-      ...(this.said.owner_avatar === undefined
-        ? {}
-        : { avatar: this.said.owner_avatar }),
+      ...(said.owner_name === undefined ? {} : { name: said.owner_name }),
+      ...(said.owner_bio === undefined ? {} : { bio: said.owner_bio }),
+      ...(said.owner_avatar === undefined ? {} : { avatar: said.owner_avatar }),
+      ...(said.owner_banner === undefined ? {} : { banner: said.owner_banner }),
     };
   }
 
-  /** The whole block, so a name or a picture taken off is left out of the
-   *  file. */
-  async setOwner(said: { name?: string; avatar?: string }): Promise<void> {
-    const { owner_name: _was, owner_avatar: _wore, ...rest } = this.said;
+  /** The whole block, so a field taken off is left out of the file. */
+  async setOwner(said: GraphOwner): Promise<void> {
+    const {
+      owner_name: _name,
+      owner_bio: _bio,
+      owner_avatar: _avatar,
+      owner_banner: _banner,
+      ...rest
+    } = this.said;
     this.said = {
       ...rest,
       ...(said.name === undefined ? {} : { owner_name: said.name }),
+      ...(said.bio === undefined ? {} : { owner_bio: said.bio }),
       ...(said.avatar === undefined ? {} : { owner_avatar: said.avatar }),
+      ...(said.banner === undefined ? {} : { owner_banner: said.banner }),
     };
     await this.files.write(GRAPH_FILE, graphFile(this.said));
   }

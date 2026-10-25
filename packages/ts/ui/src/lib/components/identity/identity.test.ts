@@ -181,6 +181,15 @@ describe('the top of somebody’s page', () => {
 		expect(canvas()).toBeNull();
 		expect(target.querySelectorAll('img').length).toBe(2);
 	});
+
+	it('draws the plain band and the plain disc where a picture will not load', () => {
+		stubMediaQuery(MOVING);
+		showHeader();
+		for (const img of target.querySelectorAll('img')) img.dispatchEvent(new Event('error'));
+		flushSync();
+		expect(target.querySelectorAll('img').length).toBe(0);
+		expect(target.textContent).toContain('AL');
+	});
 });
 
 describe('changing how you appear', () => {
@@ -254,6 +263,55 @@ describe('changing how you appear', () => {
 		showEditor({ refused: { picture: null, message: 'That could not be saved. Try again.' } });
 		const said = target.querySelector('[role="alert"]');
 		expect(said?.nextElementSibling?.textContent).toContain('Save');
+	});
+
+	const button = (label: string) =>
+		[...target.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+
+	function typeLink(role: PictureRole, link: string): void {
+		const input = field(`person-${role}-link`);
+		if (!input) throw new Error(`No ${role} link field on screen`);
+		input.value = link;
+		input.dispatchEvent(new Event('input'));
+		flushSync();
+	}
+
+	it('offers no link where the store does not take one', () => {
+		stubMediaQuery(MOVING);
+		showEditor();
+		expect(button('Use a link')).toBeUndefined();
+	});
+
+	it('takes a picture by its link, and says what that means', () => {
+		stubMediaQuery(MOVING);
+		const linked: Array<[PictureRole, string]> = [];
+		showEditor({ onLink: (role, link) => linked.push([role, link]) });
+		const offered = [...target.querySelectorAll('button')].filter(
+			(b) => b.textContent?.trim() === 'Use a link'
+		);
+		expect(offered.length).toBe(2);
+		offered[0]?.click();
+		flushSync();
+		expect(target.textContent).toContain(
+			'Whoever opens this folder loads this picture from that address.'
+		);
+		typeLink('banner', ' https://pictures.example/fields.jpg ');
+		button('Use it')?.click();
+		flushSync();
+		expect(linked).toEqual([['banner', 'https://pictures.example/fields.jpg']]);
+	});
+
+	it('says under the field when what was pasted is not a link it can use', () => {
+		stubMediaQuery(MOVING);
+		const linked: string[] = [];
+		showEditor({ onLink: (_, link) => linked.push(link) });
+		button('Use a link')?.click();
+		flushSync();
+		typeLink('banner', 'http://pictures.example/fields.jpg');
+		button('Use it')?.click();
+		flushSync();
+		expect(linked).toEqual([]);
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain('starts with https://');
 	});
 
 	it('will not pick a second picture while one is being added', () => {
