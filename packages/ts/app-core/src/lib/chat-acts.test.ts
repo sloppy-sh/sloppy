@@ -85,6 +85,40 @@ describe('what a person is told of a reading', () => {
 		expect(done.told).toBe('Nothing offered on it.');
 	});
 
+	it('says how many notes stand around a note read with its neighbours', async () => {
+		const parser = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		await wrote(writes(PLACES_FILE, [`## Why\n\nIt feeds [the parser](sloppy:${parser}).`]));
+
+		const done = await serveChatCall(files, {
+			call: 'c3',
+			act: 'read_around',
+			arguments: { note: parser, depth: 1 }
+		});
+
+		expect(done.told).toBe('1 · The parser, with 1 note around it.');
+		expect(done.card).toBeUndefined();
+		expect(done.touched).toEqual([]);
+	});
+
+	it('says how many notes a brief handed over, and how many around them', async () => {
+		await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+
+		const done = await serveChatCall(files, {
+			call: 'c2',
+			act: 'brief',
+			arguments: { about: [PARSER], budget: 65536 }
+		});
+		const asked = await serveChatCall(files, {
+			call: 'c3',
+			act: 'brief',
+			arguments: { budget: 65536 }
+		});
+
+		expect(done.told).toBe('1 note briefed, 0 around them.');
+		expect(done.card).toBeUndefined();
+		expect(asked.told).toBe('Nothing named to brief on.');
+	});
+
 	it('names the graph by what it is called', async () => {
 		const done = await serveChatCall(files, { call: 'c1', act: 'read_graph', arguments: {} });
 

@@ -109,7 +109,7 @@ describe("sloppy mcp", () => {
     });
   });
 
-  it("advertises the chat's sixteen acts and no build's", async () => {
+  it("advertises the chat's eighteen acts and no build's", async () => {
     await aProject();
 
     const { answers } = await served([message(1, "tools/list")]);
@@ -117,7 +117,11 @@ describe("sloppy mcp", () => {
       .tools;
 
     expect(tools.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
-    expect(tools).toHaveLength(16);
+    expect(tools).toHaveLength(18);
+    expect(tools.map((tool) => tool.name).slice(-2)).toEqual([
+      "read_around",
+      "brief",
+    ]);
     for (const tool of tools) {
       expect(typeof tool.description).toBe("string");
       expect(tool.inputSchema).toMatchObject({ type: "object" });

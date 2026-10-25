@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   advertisedChatTools,
+  aroundAnswer,
   argumentsFit,
+  type BriefAsked,
+  briefAnswer,
+  BriefReadSchema,
+  GIST_MAX,
+  MOST_AROUND,
+  type Neighbour,
+  NeighbourhoodReadSchema,
   BinListedSchema,
   type BinnedNote,
   BinnedNoteSchema,
@@ -169,6 +177,8 @@ describe("the acts Sloppy hands an agent", () => {
       "list_bin",
       "list_offers",
       "read_graph",
+      "read_around",
+      "brief",
     ] as const) {
       expect(chatToolWrites(act)).toBe(false);
     }
@@ -204,6 +214,8 @@ describe("the acts Sloppy hands an agent", () => {
     }
 
     expect(named).toEqual([
+      "list_notes.about",
+      "list_notes.tags",
       "list_notes.in",
       "search_notes.words",
       "search_notes.in",
@@ -245,6 +257,14 @@ describe("the acts Sloppy hands an agent", () => {
       "list_offers.note",
       "list_offers.in",
       "read_graph.in",
+      "read_around.note",
+      "read_around.depth",
+      "read_around.in",
+      "brief.notes",
+      "brief.about",
+      "brief.words",
+      "brief.budget",
+      "brief.in",
     ]);
   });
 
@@ -679,6 +699,169 @@ describe("what one answer carries", () => {
 
     expect(answer.trouble).toBe(true);
     expect(ChatToolAnswerSchema.safeParse(answer).success).toBe(true);
+  });
+
+  const neighbour = (n: number, gist = "What it says first."): Neighbour => ({
+    note: `did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/${ulid(n)}`,
+    title: `What src/place-${n} does`,
+    tags: ["parsing"],
+    about: [`src/place-${n}`],
+    relation: "cites",
+    depth: 1,
+    gist,
+  });
+  const whole = (n: number, sections: NoteSection[]) => ({
+    ...listed(n),
+    sections,
+    anchors: [
+      { path: `src/place-${n}`, standing: "held" as const },
+      { path: `src/place-${n}`, fragment: "L1-L4", standing: "moved" as const },
+    ],
+  });
+
+  it("carries a note whole and every note around it where they fit", () => {
+    const around = [neighbour(1), neighbour(2)];
+
+    const answer = aroundAnswer(
+      whole(0, [section(0, "## Why\n\nBecause.")]),
+      around,
+    );
+    const held = NeighbourhoodReadSchema.parse(JSON.parse(answer.said));
+
+    expect(held.note.sections).toHaveLength(1);
+    expect(held.note.anchors?.[1].standing).toBe("moved");
+    expect(held.around).toEqual(around);
+    expect(held.more).toBeUndefined();
+  });
+
+  it("drops the notes around one before any of its own sections", () => {
+    const sections = Array.from({ length: 3 }, (_, n) =>
+      section(n, "a".repeat(CHAT_SECTION_MAX)),
+    );
+    const around = Array.from({ length: MOST_AROUND }, (_, n) =>
+      neighbour(n + 1, "b".repeat(GIST_MAX)),
+    );
+
+    const answer = aroundAnswer(whole(0, sections), around);
+    const held = NeighbourhoodReadSchema.parse(JSON.parse(answer.said));
+
+    expect(answer.said.length).toBeLessThanOrEqual(CHAT_ANSWER_MAX);
+    expect(held.note.sections).toHaveLength(3);
+    expect(held.around.length).toBeLessThan(around.length);
+    expect(held.around.length + (held.more ?? 0)).toBe(around.length);
+    expect(held.around[0]).toEqual(around[0]);
+  });
+
+  it("drops its own sections only once nothing around it is left", () => {
+    const sections = Array.from({ length: 6 }, (_, n) =>
+      section(n, "a".repeat(CHAT_SECTION_MAX)),
+    );
+
+    const answer = aroundAnswer(whole(0, sections), [neighbour(1)]);
+    const held = NeighbourhoodReadSchema.parse(JSON.parse(answer.said));
+
+    expect(held.around).toEqual([]);
+    expect(held.more).toBe(1);
+    expect(held.note.sections.length + (held.note.more ?? 0)).toBe(6);
+  });
+
+  it("answers a neighbourhood the same way twice", () => {
+    const around = Array.from({ length: 10 }, (_, n) => neighbour(n + 1));
+    expect(aroundAnswer(whole(0, []), around)).toEqual(
+      aroundAnswer(whole(0, []), around),
+    );
+  });
+
+  const asked = (n: number, size: number): BriefAsked => ({
+    whole: whole(n, [section(n, `## Why\n\n${"a".repeat(size)}`)]),
+    gist: "It reads the source whole.",
+  });
+
+  it("briefs the notes asked for whole where they fit, and the notes around them", () => {
+    const around = [neighbour(5), neighbour(6)];
+
+    const held = BriefReadSchema.parse(
+      JSON.parse(
+        briefAnswer([asked(0, 100), asked(1, 100)], around, CHAT_ANSWER_MAX)
+          .said,
+      ),
+    );
+
+    expect(held.notes.map((note) => note.note)).toEqual([
+      listed(0).note,
+      listed(1).note,
+    ]);
+    expect(held.around).toEqual(around);
+    expect(held.more).toBeUndefined();
+  });
+
+  it("holds a brief to its budget, the first note that does not fit and the rest as one line", () => {
+    const around = Array.from({ length: 30 }, (_, n) => neighbour(n + 10));
+    const budget = 8192;
+
+    const answer = briefAnswer(
+      [asked(0, 2000), asked(1, 6000), asked(2, 10)],
+      around,
+      budget,
+    );
+    const held = BriefReadSchema.parse(JSON.parse(answer.said));
+
+    expect(answer.said.length).toBeLessThanOrEqual(budget);
+    expect(held.notes.map((note) => note.note)).toEqual([listed(0).note]);
+    expect(held.around.slice(0, 2)).toEqual([
+      expect.objectContaining({
+        note: listed(1).note,
+        relation: "named",
+        depth: 0,
+      }),
+      expect.objectContaining({
+        note: listed(2).note,
+        relation: "named",
+        depth: 0,
+      }),
+    ]);
+    expect(held.around[0].gist).toBe("It reads the source whole.");
+    expect(held.more).toBeGreaterThan(0);
+    expect(held.around.length + (held.more ?? 0)).toBe(2 + around.length);
+  });
+
+  it("never runs past one answer, whatever budget it is asked for", () => {
+    const notes = Array.from({ length: 8 }, (_, n) =>
+      asked(n, CHAT_SECTION_MAX - 20),
+    );
+
+    const answer = briefAnswer(notes, [], CHAT_ANSWER_MAX * 4);
+
+    expect(answer.said.length).toBeLessThanOrEqual(CHAT_ANSWER_MAX);
+    expect(BriefReadSchema.safeParse(JSON.parse(answer.said)).success).toBe(
+      true,
+    );
+  });
+
+  it("comes to trouble where the first note's places alone run past the budget", () => {
+    const everywhere: BriefAsked = {
+      whole: {
+        ...listed(
+          0,
+          Array.from({ length: 8 }, (_, n) => `src/${"a".repeat(1000)}${n}`),
+        ),
+        sections: [],
+      },
+      gist: "",
+    };
+
+    const answer = briefAnswer([everywhere], [], 4096);
+
+    expect(answer.trouble).toBe(true);
+    expect(ChatToolAnswerSchema.safeParse(answer).success).toBe(true);
+  });
+
+  it("briefs the same way twice", () => {
+    const notes = [asked(0, 3000), asked(1, 3000), asked(2, 3000)];
+    const around = Array.from({ length: 20 }, (_, n) => neighbour(n + 10));
+    expect(briefAnswer(notes, around, 8192)).toEqual(
+      briefAnswer(notes, around, 8192),
+    );
   });
 
   const tag = (n: number): ListedTag => ({ tag: `system ${n}`, notes: n + 1 });
@@ -1372,6 +1555,8 @@ describe("which place a reading act answers for", () => {
       "list_bin",
       "list_offers",
       "read_graph",
+      "read_around",
+      "brief",
     ];
     for (const tool of advertisedChatTools()) {
       const properties = tool.arguments.properties as Record<string, unknown>;

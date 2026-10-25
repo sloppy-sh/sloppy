@@ -19,6 +19,7 @@ import {
   type ChatToolCall,
   ChatToolCallSchema,
   isChatTool,
+  MOST_BRIEF_NOTES,
   SLOPPY_TOOLS,
   type SloppyToolName,
 } from "./chat.js";
@@ -103,8 +104,8 @@ export const MOST_CHECKS = 16;
 export const MOST_PATHS_PER_TASK = 64;
 
 /** More notes than one session is given whole. Every one of them is put in
- *  front of it, so this is what keeps a brief small. */
-export const MOST_NOTES_PER_TASK = 32;
+ *  front of it, so this is what keeps a brief small — the `brief` act's bound. */
+export const MOST_NOTES_PER_TASK = MOST_BRIEF_NOTES;
 
 /** More files than one hand-off names. */
 export const MOST_FILES_WRITTEN = 200;

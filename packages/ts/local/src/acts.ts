@@ -14,9 +14,12 @@
 import {
   type AmendmentView,
   anchorsOf,
+  aroundAnswer,
   binAnswer,
   type BinnedNote,
   type BlockDocument,
+  type BriefArguments,
+  briefAnswer,
   type ChatToolAnswer,
   type ChatToolCall,
   CODE_SCHEME,
@@ -28,7 +31,6 @@ import {
   type GraphRead,
   GraphReadSchema,
   type LinkNotesArguments,
-  type ListedNote,
   type ListedOffer,
   type ListedTag,
   listingAnswer,
@@ -39,13 +41,12 @@ import {
   type NodeView,
   noteAnswer,
   type NoteBinned,
-  type NoteSection,
   type NoteWritten,
   type NumberNoteArguments,
   OFFER_SUMMARY_MAX,
   offersAnswer,
   type OwnedRef,
-  parseCodeAnchor,
+  type ReadAroundArguments,
   type RestoreNoteArguments,
   type SearchHit,
   splitOwnedRef,
@@ -64,13 +65,20 @@ import {
   fromMarkdown,
   GRAPH_FILE,
   readGraphFile,
-  toMarkdown,
   type VaultGraph,
 } from "@sloppy/vault";
 import { LocalApi } from "./api.js";
+import { aroundOf, briefOf, codeHere, noteRead } from "./brief.js";
 import { containerDataAt, containerOf } from "./container.js";
 import { type Files, keepingDataAt } from "./files.js";
 import { LocalGraph } from "./graph.js";
+import {
+  asListed,
+  type NoteHere,
+  notesHere,
+  pathsIn,
+  reaches,
+} from "./here.js";
 import { refusalWords } from "./refusal.js";
 import { writeOnto } from "./write-onto.js";
 
@@ -95,6 +103,8 @@ const NOT_DRAWN = "That mark was left as it was.";
 const NOT_LISTED = "The bin could not be read.";
 const NOT_RESTORED = "That note was not taken out of the bin.";
 const NO_GRAPH = "There is no graph here to read.";
+const NOTHING_ASKED =
+  "That names nothing to brief on. Name notes, places or words.";
 
 function severalReach(about: string, notes: readonly NodeView[]): string {
   const named = notes
@@ -122,6 +132,7 @@ export const ACT_REFUSALS = [
   "nothing_drawn",
   "not_to_itself",
   "no_graph",
+  "nothing_asked",
   "too_much",
 ] as const;
 export type ActRefusal = (typeof ACT_REFUSALS)[number];
@@ -172,7 +183,20 @@ export type ActFacts =
       about: string[];
       beneath: number;
     }
-  | { act: "read_graph"; name: string };
+  | { act: "read_graph"; name: string }
+  | {
+      act: "read_around";
+      note: NodeView;
+      /** How many notes around it the answer carries. */
+      count: number;
+    }
+  | {
+      act: "brief";
+      /** How many notes the brief carries whole. */
+      count: number;
+      /** How many it carries as one line. */
+      around: number;
+    };
 
 /**
  * One act, done. `said` and `trouble` are the agent's and are all an agent is
@@ -219,7 +243,12 @@ export async function performChatCall(
   const api = reading ? placeApi(files) : containerApi(files);
   switch (call.act) {
     case "list_notes": {
-      const here = await notesHere(api);
+      const { about, tags = [] } = call.arguments;
+      const here = (await notesHere(api)).filter(
+        (held) =>
+          (about === undefined || reaches(held.about, about)) &&
+          tags.every((tag) => held.note.tags.includes(tag)),
+      );
       const answer = listingAnswer(
         here.map((held) => asListed(held.note, held.about)),
       );
@@ -257,6 +286,10 @@ export async function performChatCall(
       return await listOffers(api, call.arguments.note);
     case "read_graph":
       return await readGraph(api, files);
+    case "read_around":
+      return await readAround(api, call.arguments);
+    case "brief":
+      return await brief(api, call.arguments);
   }
 }
 
@@ -415,57 +448,6 @@ async function graphFileIn(
   }
 }
 
-/** One note in the container and the places in the code it reaches. */
-interface NoteHere {
-  note: NodeView;
-  about: string[];
-  /** The place its first section opens with an anchor to, which is the place
-   *  it was started about. Absent where it opens with anything else. */
-  startedAbout?: string;
-}
-
-async function notesHere(api: LocalApi): Promise<NoteHere[]> {
-  const held = new Map<OwnedRef, NoteHere>();
-  for (const branch of await api.listNodes({})) {
-    for (const note of await api.listNodes({ origin: branch.ref })) {
-      if (held.has(note.ref)) continue;
-      const blocks = await api.listBlocks(note.ref);
-      const startedAbout =
-        blocks[0] === undefined ? undefined : openingAnchor(blocks[0].content);
-      held.set(note.ref, {
-        note,
-        about: pathsIn(blocks.map((block) => block.content)),
-        ...(startedAbout === undefined ? {} : { startedAbout }),
-      });
-    }
-  }
-  return [...held.values()];
-}
-
-/** The path the first words of a section link to, where they link to code. */
-function openingAnchor(content: BlockDocument): string | undefined {
-  let node: unknown = content;
-  while (node !== null && typeof node === "object") {
-    const held = node as {
-      type?: unknown;
-      marks?: unknown;
-      content?: unknown;
-    };
-    if (held.type === "text") {
-      const marks = Array.isArray(held.marks) ? held.marks : [];
-      for (const mark of marks) {
-        const href = (mark as { attrs?: { href?: unknown } })?.attrs?.href;
-        if (typeof href !== "string") continue;
-        const anchor = parseCodeAnchor(href);
-        if (anchor) return anchor.path;
-      }
-      return undefined;
-    }
-    node = Array.isArray(held.content) ? held.content[0] : undefined;
-  }
-  return undefined;
-}
-
 /**
  * The note a write about `about` lands on: the one started about it, else the
  * one note reaching it, else none. Several reaching it and none started about
@@ -480,18 +462,6 @@ function noteToWrite(
   const reaching = here.filter((held) => held.about.includes(about));
   if (reaching.length > 1) return reaching.map((held) => held.note);
   return reaching[0]?.note;
-}
-
-function asListed(note: NodeView, about: readonly string[]): ListedNote {
-  return {
-    note: note.ref,
-    title: note.title,
-    ...(note.address === undefined ? {} : { address: note.address }),
-    ...(note.parent === undefined ? {} : { parent: note.parent }),
-    tags: [...note.tags],
-    about: [...about],
-    ...(note.links.length === 0 ? {} : { links: [...note.links] }),
-  };
 }
 
 /** One note as an act that wrote on it answers the agent with. */
@@ -511,29 +481,56 @@ function asFound(hit: SearchHit): FoundNote {
 async function readNote(api: LocalApi, ref: OwnedRef): Promise<ActAnswer> {
   const note = await api.getNode(ref);
   if (!note) return trouble(NO_NOTE, "no_note");
-  const aside = emptySidecars(splitOwnedRef(note.ref).localId);
-  const sections: NoteSection[] = (await api.listBlocks(note.ref)).map(
-    (block) => {
-      const id = splitOwnedRef(block.ref).localId;
-      // A drawing's files are named after the section it is in, not the note.
-      return {
-        id,
-        markdown: toMarkdown(block.content, { ...aside, block: id }),
-      };
-    },
+  const blocks = await api.listBlocks(note.ref);
+  const { sections, ...rest } = await noteRead(
+    note,
+    blocks,
+    pathsIn(blocks.map((block) => block.content)),
+    await codeHere(api),
   );
-  const answer = noteAnswer(
-    {
-      ...asListed(note, await anchorsIn(api, note.ref)),
-      ...(note.edges === undefined || note.edges.length === 0
-        ? {}
-        : { edges: [...note.edges] }),
-    },
-    sections,
-  );
+  const answer = noteAnswer(rest, sections);
   return answer.trouble
     ? { ...answer, refused: "too_much", touched: [] }
     : { ...answer, facts: { act: "read_note", note }, touched: [] };
+}
+
+async function readAround(
+  api: LocalApi,
+  asked: ReadAroundArguments,
+): Promise<ActAnswer> {
+  const read = await aroundOf(api, asked.note, asked.depth);
+  if (!read) return trouble(NO_NOTE, "no_note");
+  const answer = aroundAnswer(read.whole, read.around);
+  if (answer.trouble) return { ...answer, refused: "too_much", touched: [] };
+  const { around } = JSON.parse(answer.said) as { around: unknown[] };
+  return {
+    ...answer,
+    facts: { act: "read_around", note: read.note, count: around.length },
+    touched: [],
+  };
+}
+
+async function brief(api: LocalApi, asked: BriefArguments): Promise<ActAnswer> {
+  if (
+    (asked.notes ?? []).length === 0 &&
+    (asked.about ?? []).length === 0 &&
+    asked.words === undefined
+  ) {
+    return trouble(NOTHING_ASKED, "nothing_asked");
+  }
+  const read = await briefOf(api, asked);
+  if ("missing" in read) return trouble(NO_NOTE, "no_note");
+  const answer = briefAnswer(read.asked, read.around, asked.budget);
+  if (answer.trouble) return { ...answer, refused: "too_much", touched: [] };
+  const { notes, around } = JSON.parse(answer.said) as {
+    notes: unknown[];
+    around: unknown[];
+  };
+  return {
+    ...answer,
+    facts: { act: "brief", count: notes.length, around: around.length },
+    touched: [],
+  };
 }
 
 async function writeNote(
@@ -987,14 +984,6 @@ function branchOf(here: readonly NoteHere[]): OwnedRef | undefined {
 
 async function anchorsIn(api: LocalApi, note: OwnedRef): Promise<string[]> {
   return pathsIn((await api.listBlocks(note)).map((block) => block.content));
-}
-
-function pathsIn(contents: readonly BlockDocument[]): string[] {
-  const paths = new Set<string>();
-  for (const content of contents) {
-    for (const anchor of anchorsOf(content)) paths.add(anchor.path);
-  }
-  return [...paths];
 }
 
 /** Every note under `ref`, which a move carries with it and a delete takes. */

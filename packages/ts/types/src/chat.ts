@@ -3,7 +3,7 @@
 // docs/ARCHITECTURE.md § "Asking a tool to write the notes".
 
 import { z } from "zod";
-import { ProjectPathSchema } from "./code-anchor.js";
+import { AnchorStandingSchema, ProjectPathSchema } from "./code-anchor.js";
 import { AddressSchema } from "./address.js";
 import {
   MARK_RADII,
@@ -273,6 +273,8 @@ export const CHAT_TOOLS = [
   "restore_note",
   "list_offers",
   "read_graph",
+  "read_around",
+  "brief",
 ] as const;
 export type ChatToolName = (typeof CHAT_TOOLS)[number];
 
@@ -327,7 +329,7 @@ export const CHAT_SECTION_MAX = 16384;
 
 /** The places one note is about — its own, and every anchor its sections
  *  reach. */
-const ABOUT_MAX = 64;
+export const ABOUT_MAX = 64;
 
 /**
  * Which of the thread's places a reading act answers for. **Absent is the
@@ -343,7 +345,19 @@ const InPlaceSchema = z
     "Which place to read: the name of one the person added to this thread. Absent is this project.",
   );
 
-export const ListNotesArgumentsSchema = z.object({ in: InPlaceSchema });
+export const ListNotesArgumentsSchema = z.object({
+  about: ProjectPathSchema.optional().describe(
+    "Only the notes about this file or folder, from the project root and spelled with /: a note pointing at it, at somewhere inside it, or at a folder it is in. Leave it out for every note.",
+  ),
+  tags: z
+    .array(TagSchema)
+    .max(MAX_TAGS_PER_NODE)
+    .optional()
+    .describe(
+      "Only the notes carrying every one of these tags, the way picking several out on the canvas picks out what carries them all. Leave it out for every note.",
+    ),
+  in: InPlaceSchema,
+});
 export type ListNotesArguments = z.infer<typeof ListNotesArgumentsSchema>;
 
 export const SearchNotesArgumentsSchema = z.object({
@@ -574,6 +588,69 @@ export type ListOffersArguments = z.infer<typeof ListOffersArgumentsSchema>;
 export const ReadGraphArgumentsSchema = z.object({ in: InPlaceSchema });
 export type ReadGraphArguments = z.infer<typeof ReadGraphArgumentsSchema>;
 
+/** Further than this a neighbourhood is most of a graph. */
+export const MOST_HOPS = 3;
+
+export const ReadAroundArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe("The note, as a listing of them gives it."),
+  depth: z
+    .int()
+    .min(1)
+    .max(MOST_HOPS)
+    .default(1)
+    .describe(
+      "How many hops out from the note to read: 1 is what it sprang out of, what it cites and is cited by, what springs out of it and what it is linked to; 2 is theirs as well.",
+    ),
+  in: InPlaceSchema,
+});
+export type ReadAroundArguments = z.infer<typeof ReadAroundArgumentsSchema>;
+
+/** More notes than one brief hands over whole. `MOST_NOTES_PER_TASK` in
+ *  `build.ts` is this, because a build's task is briefed the same way. */
+export const MOST_BRIEF_NOTES = 32;
+
+/** More places than one task touches at a time. */
+export const MOST_BRIEF_PLACES = 16;
+
+/** Smaller than this a brief cannot carry one note and its places. */
+export const LEAST_BRIEF_BUDGET = 4096;
+
+export const BriefArgumentsSchema = z.object({
+  notes: z
+    .array(OwnedRefSchema)
+    .max(MOST_BRIEF_NOTES)
+    .optional()
+    .describe(
+      "The notes the task is about, as a listing of them gives them. Each is handed over whole.",
+    ),
+  about: z
+    .array(ProjectPathSchema)
+    .max(MOST_BRIEF_PLACES)
+    .optional()
+    .describe(
+      "The files and folders the task will touch, from the project root and spelled with /. The note started about each is handed over whole, else every note pointing at it.",
+    ),
+  words: z
+    .string()
+    .trim()
+    .min(1)
+    .max(SEARCH_WORDS_MAX)
+    .optional()
+    .describe(
+      "A few words for what the task is about. The notes carrying all of them are handed over whole.",
+    ),
+  budget: z
+    .int()
+    .min(LEAST_BRIEF_BUDGET)
+    .max(CHAT_ANSWER_MAX)
+    .default(CHAT_ANSWER_MAX)
+    .describe(
+      "How many characters the brief may run to. The notes asked for come first, whole, and the notes around them fill what is left as one line each.",
+    ),
+  in: InPlaceSchema,
+});
+export type BriefArguments = z.infer<typeof BriefArgumentsSchema>;
+
 export interface ChatToolSpec {
   /** One line for the agent, in the words it is being asked in. */
   description: string;
@@ -703,6 +780,20 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
     arguments: ReadGraphArgumentsSchema,
     writes: false,
   },
+  read_around: {
+    description:
+      "Read one note whole and the notes around it to a depth: what it sprang out of, what it cites and what cites it, what springs out of it, and what it is linked to — each of those as one line saying what it is. Read this rather than the notes one at a time when the note alone does not say enough.",
+    label: "Reading a note and its neighbours",
+    arguments: ReadAroundArgumentsSchema,
+    writes: false,
+  },
+  brief: {
+    description:
+      "What to call first when starting a task: name the notes, the places you will touch and a few words, read the brief once and act. The notes asked for come whole and the notes around them as one line each, as much as the budget holds. Each place a note points at says whether the code under it has moved since a person read the note against it (moved), was never read against it (unread), or is gone (missing).",
+    label: "Briefing",
+    arguments: BriefArgumentsSchema,
+    writes: false,
+  },
 };
 
 /** Whether an act writes on the draft, which is what the thread's icon says. */
@@ -791,8 +882,81 @@ export const NoteReadSchema = ListedNoteSchema.extend({
   /** **Absent is the whole note.** A count is how many further sections the
    *  note holds that this answer does not carry. */
   more: z.int().min(1).optional(),
+  /** Every anchor the note's writing holds, in the order it names them, and
+   *  where the code under each stands now. **Absent is a graph that is
+   *  nobody's project**, where there is no code to read. */
+  anchors: z.array(AnchorStandingSchema).max(ABOUT_MAX).optional(),
 });
 export type NoteRead = z.infer<typeof NoteReadSchema>;
+
+/** Longer than a gist is one line. */
+export const GIST_MAX = 280;
+
+/** More notes than one answer carries around the ones it is about. */
+export const MOST_AROUND = 64;
+
+/** How a note on a walk was reached from the one before it. `named` is a note
+ *  a brief was asked for and could not carry whole. */
+export const NEIGHBOUR_RELATIONS = [
+  "named",
+  "parent",
+  "child",
+  "cites",
+  "cited_by",
+  "linked",
+] as const;
+export type NeighbourRelation = (typeof NEIGHBOUR_RELATIONS)[number];
+
+/** A note near the one being read, as one line: what it is, where it is, and
+ *  what it says first. Worked out from its writing whenever it is asked for and
+ *  never kept. */
+export const NeighbourSchema = z.object({
+  note: OwnedRefSchema,
+  title: z.string().max(NODE_TITLE_MAX),
+  /** **Absent is a note with no address**, which is an ordinary note. */
+  address: AddressSchema.optional(),
+  tags: TagsSchema,
+  about: z.array(ProjectPathSchema).max(ABOUT_MAX),
+  /** How this note was reached from the one before it on the walk. */
+  relation: z.enum(NEIGHBOUR_RELATIONS),
+  /** Hops from the note being read, from 1. **0 is a note a brief was asked
+   *  for and could not carry whole.** */
+  depth: z.int().min(0),
+  /** The first paragraph of the note's writing that is not an anchor alone or
+   *  a compass line, cut to {@link GIST_MAX}. **Empty is a note with no such
+   *  paragraph.** */
+  gist: z.string().max(GIST_MAX),
+});
+export type Neighbour = z.infer<typeof NeighbourSchema>;
+
+/** One note whole and the notes around it — {@link aroundAnswer} is what
+ *  composes one. */
+export const NeighbourhoodReadSchema = z.object({
+  note: NoteReadSchema,
+  /** Nearest first, in the order the walk reached them. */
+  around: z.array(NeighbourSchema).max(MOST_AROUND),
+  /** **Absent is every note the walk reached.** A count is how many further
+   *  ones it reached that this answer does not carry. */
+  more: z.int().min(1).optional(),
+});
+export type NeighbourhoodRead = z.infer<typeof NeighbourhoodReadSchema>;
+
+/** A note a brief hands over whole. */
+export const BriefNoteSchema = NoteReadSchema;
+export type BriefNote = NoteRead;
+
+/** What a task is briefed with — {@link briefAnswer} is what composes one. */
+export const BriefReadSchema = z.object({
+  /** The notes asked for, whole, in the order they were asked for. */
+  notes: z.array(BriefNoteSchema).max(MOST_BRIEF_NOTES),
+  /** The notes asked for that did not fit whole, then the notes around the
+   *  ones asked for. */
+  around: z.array(NeighbourSchema).max(MOST_AROUND),
+  /** **Absent is every note around them.** A count is how many further ones
+   *  there are that this brief does not carry. */
+  more: z.int().min(1).optional(),
+});
+export type BriefRead = z.infer<typeof BriefReadSchema>;
 
 /** The notes a project has, or as many of them as one answer carries —
  *  {@link listingAnswer} is what composes one. */
@@ -1165,6 +1329,16 @@ export const ChatToolCallSchema = z.discriminatedUnion("act", [
     act: z.literal("read_graph"),
     arguments: ReadGraphArgumentsSchema,
   }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("read_around"),
+    arguments: ReadAroundArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("brief"),
+    arguments: BriefArgumentsSchema,
+  }),
 ]);
 export type ChatToolCall = z.infer<typeof ChatToolCallSchema>;
 
@@ -1405,6 +1579,111 @@ export function noteAnswer(
     (kept, more) => withMore({ ...note, sections: kept }, more),
     NOTE_TOO_LONG,
   );
+}
+
+/**
+ * One note whole and the notes around it, by the rule {@link listingAnswer}
+ * holds a listing to: the notes around it are dropped from the end first, and
+ * only where none of them is left do the note's own sections go, by
+ * {@link noteAnswer}'s rule.
+ */
+export function aroundAnswer(
+  note: Omit<NoteRead, "more">,
+  around: readonly Neighbour[],
+): ChatToolAnswer {
+  const whole = withMore(
+    { ...note, sections: note.sections.slice(0, MOST_SECTIONS_READ) },
+    note.sections.length - MOST_SECTIONS_READ,
+  );
+  const withAround = asMuchAsFits(
+    around,
+    MOST_AROUND,
+    (kept, more) => withMore({ note: whole, around: kept }, more),
+    NOTE_TOO_LONG,
+  );
+  if (!withAround.trouble) return withAround;
+  return asMuchAsFits(
+    note.sections,
+    MOST_SECTIONS_READ,
+    (kept, more) =>
+      withMore(
+        { note: withMore({ ...note, sections: kept }, more), around: [] },
+        around.length,
+      ),
+    NOTE_TOO_LONG,
+  );
+}
+
+/** A note a brief was asked for: whole, and as one line for where it does not
+ *  fit whole. */
+export interface BriefAsked {
+  whole: Omit<NoteRead, "more">;
+  gist: string;
+}
+
+const BRIEF_TOO_LONG =
+  "That brief is too long even empty. Ask for fewer notes or a bigger budget.";
+
+/**
+ * What a task is briefed with, held to `budget` characters and never past
+ * {@link CHAT_ANSWER_MAX}: the notes asked for whole, in order, while they fit;
+ * the first that does not, and every one after it, as one line at depth 0; then
+ * the notes around them from the front while they fit. **A brief whose first
+ * note's title and places alone run past the budget comes to trouble.**
+ */
+export function briefAnswer(
+  asked: readonly BriefAsked[],
+  around: readonly Neighbour[],
+  budget: number,
+): ChatToolAnswer {
+  const bound = Math.min(budget, CHAT_ANSWER_MAX);
+  const fits = (brief: BriefRead): boolean =>
+    JSON.stringify(brief).length <= bound;
+  const [first] = asked;
+  if (first && !fits({ notes: [bareOf(first.whole)], around: [] })) {
+    return { said: BRIEF_TOO_LONG, trouble: true };
+  }
+  const notes: NoteRead[] = [];
+  for (const one of asked.slice(0, MOST_BRIEF_NOTES)) {
+    const whole = wholeOf(one.whole);
+    if (!fits({ notes: [...notes, whole], around: [] })) break;
+    notes.push(whole);
+  }
+  const waiting = [...asked.slice(notes.length).map(asNamed), ...around];
+  const kept: Neighbour[] = [];
+  for (const one of waiting.slice(0, MOST_AROUND)) {
+    if (!fits({ notes, around: [...kept, one] })) break;
+    kept.push(one);
+  }
+  return {
+    said: JSON.stringify(
+      withMore({ notes, around: kept }, waiting.length - kept.length),
+    ),
+  };
+}
+
+function wholeOf(note: Omit<NoteRead, "more">): NoteRead {
+  return withMore(
+    { ...note, sections: note.sections.slice(0, MOST_SECTIONS_READ) },
+    note.sections.length - MOST_SECTIONS_READ,
+  );
+}
+
+function bareOf(note: Omit<NoteRead, "more">): NoteRead {
+  return withMore({ ...note, sections: [] }, note.sections.length);
+}
+
+function asNamed({ whole, gist }: BriefAsked): Neighbour {
+  return {
+    note: whole.note,
+    title: whole.title,
+    ...(whole.address === undefined ? {} : { address: whole.address }),
+    tags: whole.tags,
+    about: whole.about,
+    relation: "named",
+    depth: 0,
+    gist,
+  };
 }
 
 /**

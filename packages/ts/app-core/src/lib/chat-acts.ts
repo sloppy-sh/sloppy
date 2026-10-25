@@ -51,13 +51,16 @@ const REFUSED_TOLD: Record<Exclude<ActRefusal, 'too_much'>, string> = {
 	nothing_linked: 'No lines named.',
 	nothing_drawn: 'Nothing named to draw.',
 	not_to_itself: 'A note draws no line to itself.',
-	no_graph: 'There is no graph here.'
+	no_graph: 'There is no graph here.',
+	nothing_asked: 'Nothing named to brief on.'
 };
 
 const TOO_MUCH_TOLD: Partial<Record<ChatToolCall['act'], string>> = {
 	list_notes: 'Too many notes here to read at once.',
 	search_notes: 'Too many notes carry those words.',
 	read_note: 'That note is too long to read in one go.',
+	read_around: 'That note is too long to read in one go.',
+	brief: 'That brief is too long to hand over in one go.',
 	list_tags: 'Too many tags here to read at once.',
 	list_bin: 'Too much in the bin to read at once.',
 	list_offers: 'Too many offers on it to read at once.'
@@ -117,6 +120,12 @@ function factsTold(call: ChatToolCall, facts: ActFacts): string {
 			return heads(facts.note);
 		case 'read_graph':
 			return facts.name;
+		case 'read_around':
+			return facts.count === 0
+				? `${heads(facts.note)}, with nothing around it.`
+				: `${heads(facts.note)}, with ${notesSaid(facts.count)} around it.`;
+		case 'brief':
+			return `${notesSaid(facts.count)} briefed, ${facts.around.toLocaleString()} around them.`;
 		case 'write_note':
 			return facts.done === 'offered' ? 'Offered on a note somebody else wrote.' : 'Written.';
 		case 'move_note':

@@ -6,10 +6,12 @@ import { LocalApi } from "./api.js";
 import { MemoryFiles } from "./files.js";
 import {
   BinListedSchema,
+  BriefReadSchema,
   ChatToolAnswerSchema,
   type ChatToolCall,
   GraphReadSchema,
   ListedNoteSchema,
+  NeighbourhoodReadSchema,
   NoteBinnedSchema,
   NoteReadSchema,
   NotesFoundSchema,
@@ -19,6 +21,7 @@ import {
   type OwnedRef,
   splitOwnedRef,
   TagsListedSchema,
+  ulid,
   UNNAMED_GRAPH_ULID,
 } from "@sloppy/types";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -131,6 +134,182 @@ describe("the notes a project has", () => {
     expect(listed.notes[0].title).toBe("The parser");
     expect(listed.notes[0].tags).toEqual(["reading"]);
     expect(listed.notes[0].about).toEqual([PARSER]);
+  });
+
+  async function listed(asked: { about?: string; tags?: string[] }) {
+    return NotesListedSchema.parse(
+      JSON.parse(
+        await answer({ call: "c9", act: "list_notes", arguments: asked }),
+      ),
+    ).notes.map((one) => one.title);
+  }
+
+  it("are narrowed to a place: a note at it, inside it, or about a folder it is in", async () => {
+    await answer(
+      writes("src", ["## Why\n\nThe compiler."], { title: "The compiler" }),
+    );
+    await answer(writes(PARSER, [ABOUT_THE_PARSER], { title: "The parser" }));
+    await answer(
+      writes(READING_DOC, ["## Why\n\nHow to read."], { title: "Reading" }),
+    );
+
+    expect(await listed({ about: PARSER })).toEqual([
+      "The compiler",
+      "The parser",
+    ]);
+    expect(await listed({ about: "src" })).toEqual([
+      "The compiler",
+      "The parser",
+    ]);
+    expect(await listed({ about: "docs" })).toEqual(["Reading"]);
+    expect(await listed({ about: "lib" })).toEqual([]);
+  });
+
+  it("are narrowed to the notes carrying every tag named", async () => {
+    await answer(
+      writes(PARSER, [ABOUT_THE_PARSER], {
+        title: "The parser",
+        tags: ["reading", "parsing"],
+      }),
+    );
+    await answer(
+      writes(READING_DOC, ["## Why\n\nHow to read."], {
+        title: "Reading",
+        tags: ["reading"],
+      }),
+    );
+
+    expect(await listed({ tags: ["reading"] })).toEqual([
+      "The parser",
+      "Reading",
+    ]);
+    expect(await listed({ tags: ["reading", "parsing"] })).toEqual([
+      "The parser",
+    ]);
+    expect(await listed({ tags: ["reading", "lexing"] })).toEqual([]);
+  });
+});
+
+describe("reading a note against the code", () => {
+  it("says where the code under each of its anchors stands", async () => {
+    const note = await wrote(
+      writes(PARSER, [
+        `${ABOUT_THE_PARSER} See [one](code:${PARSER}#one) and [gone](code:src/gone.ts).`,
+      ]),
+    );
+
+    const read = NoteReadSchema.parse(
+      JSON.parse(
+        await answer({ call: "c2", act: "read_note", arguments: { note } }),
+      ),
+    );
+
+    expect(read.anchors).toEqual([
+      { path: PARSER, standing: "unread" },
+      { path: PARSER, fragment: "one", standing: "unread" },
+      { path: "src/gone.ts", standing: "missing" },
+    ]);
+  });
+
+  it("writes nothing on the note, and leaves its readings the person's", async () => {
+    const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER]));
+    const before = await containerApi(files).getNode(note);
+
+    await answer({ call: "c2", act: "read_note", arguments: { note } });
+    await answer({
+      call: "c3",
+      act: "read_around",
+      arguments: { note, depth: 2 },
+    });
+    await answer({
+      call: "c4",
+      act: "brief",
+      arguments: { notes: [note], budget: 65536 },
+    });
+
+    const after = await containerApi(files).getNode(note);
+    expect(after?.read_against).toBeUndefined();
+    expect(after?.checked).toBeUndefined();
+    expect(after?.updated_at).toBe(before?.updated_at);
+  });
+});
+
+describe("a note and the notes around it", () => {
+  it("answers the note whole and what is around it, and counts them for the person", async () => {
+    const parser = await wrote(
+      writes(PARSER, [ABOUT_THE_PARSER], { title: "The parser" }),
+    );
+    const lexer = await wrote(
+      writes(PLACES_FILE, [
+        `## Why\n\nIt feeds [the parser](sloppy:${parser}).`,
+      ]),
+    );
+
+    const done = await performChatCall(files, {
+      call: "c2",
+      act: "read_around",
+      arguments: { note: parser, depth: 1 },
+    });
+    const read = NeighbourhoodReadSchema.parse(JSON.parse(done.said));
+
+    expect(read.note.title).toBe("The parser");
+    expect(read.around.map((one) => one.note)).toEqual([lexer]);
+    expect(done.facts).toEqual(
+      expect.objectContaining({ act: "read_around", count: 1 }),
+    );
+    expect(done.touched).toEqual([]);
+  });
+
+  it("answers a note that is not there with words the agent can act on", async () => {
+    const done = await performChatCall(files, {
+      call: "c2",
+      act: "read_around",
+      arguments: { note: `${SOMEBODY}/${ulid()}`, depth: 1 },
+    });
+
+    expect(done.trouble).toBe(true);
+    expect(done.refused).toBe("no_note");
+  });
+});
+
+describe("a brief", () => {
+  it("refuses one that names nothing, in words the agent can act on", async () => {
+    const done = await performChatCall(files, {
+      call: "c2",
+      act: "brief",
+      arguments: { budget: 65536 },
+    });
+
+    expect(done.trouble).toBe(true);
+    expect(done.refused).toBe("nothing_asked");
+    expect(done.said).toBe(
+      "That names nothing to brief on. Name notes, places or words.",
+    );
+  });
+
+  it("refuses a note named that is not there", async () => {
+    const done = await performChatCall(files, {
+      call: "c2",
+      act: "brief",
+      arguments: { notes: [`${SOMEBODY}/${ulid()}`], budget: 65536 },
+    });
+
+    expect(done.refused).toBe("no_note");
+  });
+
+  it("briefs on a place, and counts what it handed over for the person", async () => {
+    const parser = await wrote(writes(PARSER, [ABOUT_THE_PARSER]));
+
+    const done = await performChatCall(files, {
+      call: "c2",
+      act: "brief",
+      arguments: { about: [PARSER], budget: 65536 },
+    });
+
+    expect(BriefReadSchema.parse(JSON.parse(done.said)).notes[0].note).toBe(
+      parser,
+    );
+    expect(done.facts).toEqual({ act: "brief", count: 1, around: 0 });
   });
 });
 
@@ -1481,6 +1660,11 @@ describe("a place beside the project", () => {
     });
     await reads(at, { call: "c2", act: "list_tags", arguments: {} });
     await reads(at, { call: "c2", act: "read_graph", arguments: {} });
+    await reads(at, {
+      call: "c2",
+      act: "brief",
+      arguments: { words: "parser", budget: 65536 },
+    });
     const bin = await reads(at, { call: "c2", act: "list_bin", arguments: {} });
     expect(bin.trouble).toBeUndefined();
     for (const one of notes) {
@@ -1498,6 +1682,11 @@ describe("a place beside the project", () => {
         arguments: { note: one.note },
       });
       read.push(answered.said);
+      await reads(at, {
+        call: "c3",
+        act: "read_around",
+        arguments: { note: one.note, depth: 2 },
+      });
     }
     return {
       notes: notes.map((one) => one.note),

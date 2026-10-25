@@ -3411,17 +3411,36 @@ safeguard: somebody who hands three hundred files to a tool and then has to draw
 relation themselves has offloaded nothing, and what holds it is the person reading the draft
 rather than a narrower vocabulary. So: the notes this project already has, with their addresses,
 titles, tags, the lines drawn between them by hand, what each springs out of and the
-places they are about; the notes some words reach, with the writing around what matched;
-one of them read whole, with the looks it sets on its lines; the tags the graph's notes
-carry and how many carry each; what is in the bin; the changes offered on a note and not yet
-taken in; what the graph itself is — its name, whose it is, how its notes are gated and where
-its code is; a note written about a place;
+places they are about, narrowed to a place or to tags where asked; the notes some words
+reach, with the writing around what matched; one of them read whole, with the looks it sets
+on its lines and where the code under each of its anchors stands; one read whole with the
+notes around it; a brief for a task; the tags the graph's notes carry and how many carry
+each; what is in the bin; the changes offered on a note and not yet taken in; what the graph
+itself is — its name, whose it is, how its notes are gated and where its code is; a note
+written about a place;
 a note carried under or after another; tags put on a note and taken off it; the number a
 person cites a note by, written or taken off; a line drawn between two notes and taken
 off; what a line says and how it and a mark are drawn; a note put in the bin, and one taken
-back out. Seven of those sixteen read and nine write, and `chatToolWrites` is the one
+back out. Nine of those eighteen read and nine write, and `chatToolWrites` is the one
 statement of which is which — every surface that needs to know asks it rather than listing
 names.
+
+**A task is briefed in one call, to a budget, and nothing of the brief is kept.** An agent
+starting on something takes in the notes that part of the project needs and no more:
+`read_around` is one note whole and the notes around it to a depth of up to three hops —
+what it sprang out of, what it cites and what cites it, what springs out of it, what it is
+linked to — and `brief` is the notes a task names, the notes about the places it will touch
+and the notes some words reach, handed over whole while they fit the budget it asks for in
+characters, with every note around them as one line. A note around one is its GIST: the
+first paragraph of its writing that is not an anchor alone or a compass, cut to a line. It is
+worked out from the files each time it is asked for and never stored, so there is no summary
+kept beside a note for anybody to write or keep true when the note changes. Each anchor a note
+read this way holds says where the code under it stands — `held`, `moved` where the file has
+changed since a person read the note against it or the name or lines it points at are no
+longer there, `unread` where nobody has, `missing` where the checkout has not got it — by the
+rule § "A project's container" holds drift to, and where the graph is nobody's project
+nothing is said. `brief.ts` in `@sloppy/local` is all of it; the reading stays a reading, and
+`checked` and `read_against` stay the person's.
 
 **They are one vocabulary with one implementation, wherever an agent comes in.**
 `CHAT_TOOLS` and `CHAT_TOOL_SPECS` in `@sloppy/types` are the acts, served to this chat and
@@ -3535,7 +3554,7 @@ one project is the way it is often has the answer in another, so a thread carrie
 `MOST_PLACES` folders the person added to it. **The allow-list is the gate, and it is
 Rust's**: a place must already be a folder somebody picked, which `Folders::allows` is the
 one record of, and `AppRuntime.placeFiles` answers `undefined` for anything else — nothing
-typed on the page and no scan of the disk reaches a folder. Sloppy's seven READING acts
+typed on the page and no scan of the disk reaches a folder. Sloppy's nine READING acts
 reach a place's notes through an `in` argument naming the place by NAME. **Naming a folder is
 how it joins that list, and `AppRuntime.askPlace` is the one way in**: it asks the person and
 admits what they name, and it OPENS nothing — reading a folder is not serving it, so no graph
@@ -3999,7 +4018,7 @@ it once for everyone working in it: this one commits a `.mcp.json` at its root n
 `sloppy` server, so an assistant opened here finds the notes without being told where they
 are.
 
-**It serves the one vocabulary through the one implementation.** The acts are the sixteen
+**It serves the one vocabulary through the one implementation.** The acts are the eighteen
 § "Asking a tool to write the notes" lists — `CHAT_TOOLS` and `CHAT_TOOL_SPECS` in
 `@sloppy/types`, advertised by `advertisedChatTools` — with the same words to the agent and
 the same arguments, and what each one does is the code in `@sloppy/local` the app's chat
