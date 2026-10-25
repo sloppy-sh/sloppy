@@ -9,3 +9,4 @@ export * from "./check.js";
 export * from "./init.js";
 export * from "./draft.js";
 export * from "./run.js";
+export * from "./mcp.js";
