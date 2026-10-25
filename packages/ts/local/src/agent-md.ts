@@ -429,7 +429,8 @@ app's chat has — reading, writing, tagging, numbering, moving, linking, binnin
 back out — under every rule above, so a write on a note somebody has written in goes as an
 offer. What it writes lands in this folder like any other edit, and is reviewed with the rest
 of the change. It writes none of what this file says is not yours: \`checked\` and
-\`read_against\`, who a note's owner is, anybody's identity or keys, and commits.
+\`read_against\`, who a note's owner is, anybody's identity or keys, commits and what
+signs them, and what anybody's profile says.
 `;
 
 /** What Sloppy signs the file with, so that next time it can tell its own copy
