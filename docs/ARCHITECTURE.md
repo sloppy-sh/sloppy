@@ -3439,8 +3439,12 @@ read this way holds says where the code under it stands — `held`, `moved` wher
 changed since a person read the note against it or the name or lines it points at are no
 longer there, `unread` where nobody has, `missing` where the checkout has not got it — by the
 rule § "A project's container" holds drift to, and where the graph is nobody's project
-nothing is said. `brief.ts` in `@sloppy/local` is all of it; the reading stays a reading, and
-`checked` and `read_against` stay the person's.
+nothing is said. An anchor on a folder that is there stands `unread`: nothing digests a
+folder, so nobody can have read a note against one, and a fragment on it changes nothing. The
+walk, the gists and the standings are `brief.ts` in `@sloppy/local`; the shapes and the rule
+that fills an answer to its budget are `briefAnswer`, `aroundAnswer` and
+`AnchorStandingSchema` in `@sloppy/types`. The reading stays a reading, and `checked` and
+`read_against` stay the person's.
 
 **They are one vocabulary with one implementation, wherever an agent comes in.**
 `CHAT_TOOLS` and `CHAT_TOOL_SPECS` in `@sloppy/types` are the acts, served to this chat and

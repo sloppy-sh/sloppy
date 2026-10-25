@@ -7,6 +7,7 @@ import {
   briefAnswer,
   BriefReadSchema,
   GIST_MAX,
+  LEAST_BRIEF_BUDGET,
   MOST_AROUND,
   type Neighbour,
   NeighbourhoodReadSchema,
@@ -836,6 +837,42 @@ describe("what one answer carries", () => {
     expect(BriefReadSchema.safeParse(JSON.parse(answer.said)).success).toBe(
       true,
     );
+  });
+
+  it("holds a brief to its budget with what it does not carry counted, at every budget", () => {
+    const notes = [asked(0, 2500), asked(1, 900)];
+    const around = Array.from({ length: 200 }, (_, n) =>
+      neighbour(n + 10, "b".repeat(n % 37)),
+    );
+
+    for (
+      let budget = LEAST_BRIEF_BUDGET;
+      budget <= LEAST_BRIEF_BUDGET + 300;
+      budget += 1
+    ) {
+      const answer = briefAnswer(notes, around, budget);
+      const held = BriefReadSchema.parse(JSON.parse(answer.said));
+
+      expect(answer.said.length).toBeLessThanOrEqual(budget);
+      expect(held.more).toBeGreaterThan(0);
+    }
+  });
+
+  it("holds a brief asked for the most it may run to within one answer, with what it does not carry counted", () => {
+    const around = Array.from({ length: 200 }, (_, n) =>
+      neighbour(n + 10, "b".repeat(n % 37)),
+    );
+
+    for (let size = 0; size <= 300; size += 1) {
+      const notes = Array.from({ length: 4 }, (_, n) =>
+        asked(n, CHAT_SECTION_MAX - 2000 + (n === 3 ? size : 0)),
+      );
+      const answer = briefAnswer(notes, around, CHAT_ANSWER_MAX);
+      const held = BriefReadSchema.parse(JSON.parse(answer.said));
+
+      expect(answer.said.length).toBeLessThanOrEqual(CHAT_ANSWER_MAX);
+      expect(held.more).toBeGreaterThan(0);
+    }
   });
 
   it("comes to trouble where the first note's places alone run past the budget", () => {

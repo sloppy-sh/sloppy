@@ -43,6 +43,8 @@ import { openingOf, wordsOf } from "./search.js";
 export interface CodeHere {
   bytes: CodeBytes;
   now: CodeNow;
+  /** Whether a path that is no file is a folder with something in it. */
+  folder: (path: string) => Promise<boolean>;
 }
 
 /** The code beside the graph `api` serves, or absent where it is nobody's
@@ -51,7 +53,18 @@ export async function codeHere(api: LocalApi): Promise<CodeHere | undefined> {
   const project = await api.projectFolder().catch(() => undefined);
   if (!project) return undefined;
   const bytes = bytesIn(project);
-  return { bytes, now: digestsIn(project, bytes) };
+  const folders = new Map<string, Promise<boolean>>();
+  const folder = (path: string): Promise<boolean> => {
+    const held = folders.get(path);
+    if (held) return held;
+    const taking = project
+      .list(path)
+      .then((under) => under.length > 0)
+      .catch(() => false);
+    folders.set(path, taking);
+    return taking;
+  };
+  return { bytes, now: digestsIn(project, bytes), folder };
 }
 
 /**
@@ -74,7 +87,9 @@ export async function standingsOf(
     anchor: CodeAnchor,
   ): Promise<AnchorStandingKind> => {
     const bytes = await code.bytes(anchor.path);
-    if (bytes === undefined) return "missing";
+    if (bytes === undefined) {
+      return (await code.folder(anchor.path)) ? "unread" : "missing";
+    }
     if (drifted.has(anchor.path) || !stillFinds(anchor, bytes)) return "moved";
     return read.has(anchor.path) ? "held" : "unread";
   };

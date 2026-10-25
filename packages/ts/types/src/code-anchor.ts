@@ -112,7 +112,9 @@ export function fragmentSpelled(
  * never kept. `held` is a file that digests as it did when a person read the
  * note against it; `moved` is one that does not, or whose fragment no longer
  * finds anything in it; `unread` is one nobody has read the note against;
- * `missing` is a path this checkout has not got.
+ * `missing` is a path this checkout has not got. A folder that is there is
+ * `unread`: nothing digests a folder, so nobody can have read a note against
+ * one, and a fragment on it changes nothing.
  */
 export const ANCHOR_STANDINGS = ["held", "moved", "unread", "missing"] as const;
 export type AnchorStandingKind = (typeof ANCHOR_STANDINGS)[number];

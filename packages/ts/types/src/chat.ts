@@ -605,8 +605,8 @@ export const ReadAroundArgumentsSchema = z.object({
 });
 export type ReadAroundArguments = z.infer<typeof ReadAroundArgumentsSchema>;
 
-/** More notes than one brief hands over whole. `MOST_NOTES_PER_TASK` in
- *  `build.ts` is this, because a build's task is briefed the same way. */
+/** More notes than one brief hands over whole; past this an agent is reading
+ *  the field, not a neighbourhood. */
 export const MOST_BRIEF_NOTES = 32;
 
 /** More places than one task touches at a time. */
@@ -667,6 +667,11 @@ export interface ChatToolSpec {
   writes: boolean;
 }
 
+/** What an act reading a note says of each anchor in it — `ANCHOR_STANDINGS`
+ *  in `code-anchor.ts`. */
+const STANDINGS_SAID =
+  "Each place a note points at says where the code under it stands: held where a person read the note against the code and it is unchanged, moved where it has changed since or the name or lines are gone, unread where nobody has read the note against it, missing where the file is not there.";
+
 export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   list_notes: {
     description:
@@ -683,8 +688,7 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
     writes: false,
   },
   read_note: {
-    description:
-      "Read one note whole — its title, tags, the places it is about, and its sections as markdown. It says what a piece of this project is FOR, which is what you read the code against when somebody asks whether it is still doing what it was written to do. A long note answers with as much of itself as fits and says how many sections it left.",
+    description: `Read one note whole — its title, tags, the places it is about, and its sections as markdown. It says what a piece of this project is FOR, which is what you read the code against when somebody asks whether it is still doing what it was written to do. A long note answers with as much of itself as fits and says how many sections it left. ${STANDINGS_SAID}`,
     label: "Reading a note",
     arguments: ReadNoteArgumentsSchema,
     writes: false,
@@ -781,15 +785,13 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
     writes: false,
   },
   read_around: {
-    description:
-      "Read one note whole and the notes around it to a depth: what it sprang out of, what it cites and what cites it, what springs out of it, and what it is linked to — each of those as one line saying what it is. Read this rather than the notes one at a time when the note alone does not say enough.",
+    description: `Read one note whole and the notes around it to a depth: what it sprang out of, what it cites and what cites it, what springs out of it, and what it is linked to — each of those as one line saying what it is. Read this rather than the notes one at a time when the note alone does not say enough. ${STANDINGS_SAID}`,
     label: "Reading a note and its neighbours",
     arguments: ReadAroundArgumentsSchema,
     writes: false,
   },
   brief: {
-    description:
-      "What to call first when starting a task: name the notes, the places you will touch and a few words, read the brief once and act. The notes asked for come whole and the notes around them as one line each, as much as the budget holds. Each place a note points at says whether the code under it has moved since a person read the note against it (moved), was never read against it (unread), or is gone (missing).",
+    description: `What to call first when starting a task: name the notes, the places you will touch and a few words, read the brief once and act. The notes asked for come whole and the notes around them as one line each, as much as the budget holds. ${STANDINGS_SAID}`,
     label: "Briefing",
     arguments: BriefArgumentsSchema,
     writes: false,
@@ -1637,29 +1639,43 @@ export function briefAnswer(
   budget: number,
 ): ChatToolAnswer {
   const bound = Math.min(budget, CHAT_ANSWER_MAX);
-  const fits = (brief: BriefRead): boolean =>
-    JSON.stringify(brief).length <= bound;
+  const total = asked.length + around.length;
+  const measured = (
+    notes: readonly NoteRead[],
+    kept: readonly Neighbour[],
+  ): string | undefined => {
+    const said = JSON.stringify(
+      withMore(
+        { notes: [...notes], around: [...kept] },
+        total - notes.length - kept.length,
+      ),
+    );
+    return said.length <= bound ? said : undefined;
+  };
   const [first] = asked;
-  if (first && !fits({ notes: [bareOf(first.whole)], around: [] })) {
+  if (first && measured([bareOf(first.whole)], []) === undefined) {
     return { said: BRIEF_TOO_LONG, trouble: true };
   }
   const notes: NoteRead[] = [];
+  let said = measured([], []);
   for (const one of asked.slice(0, MOST_BRIEF_NOTES)) {
     const whole = wholeOf(one.whole);
-    if (!fits({ notes: [...notes, whole], around: [] })) break;
+    const next = measured([...notes, whole], []);
+    if (next === undefined) break;
     notes.push(whole);
+    said = next;
   }
   const waiting = [...asked.slice(notes.length).map(asNamed), ...around];
   const kept: Neighbour[] = [];
   for (const one of waiting.slice(0, MOST_AROUND)) {
-    if (!fits({ notes, around: [...kept, one] })) break;
+    const next = measured(notes, [...kept, one]);
+    if (next === undefined) break;
     kept.push(one);
+    said = next;
   }
-  return {
-    said: JSON.stringify(
-      withMore({ notes, around: kept }, waiting.length - kept.length),
-    ),
-  };
+  return said === undefined
+    ? { said: BRIEF_TOO_LONG, trouble: true }
+    : { said };
 }
 
 function wholeOf(note: Omit<NoteRead, "more">): NoteRead {

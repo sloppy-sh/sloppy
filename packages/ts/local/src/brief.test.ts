@@ -109,6 +109,17 @@ describe("where the code under an anchor stands", () => {
     ]);
   });
 
+  it("is unread on a folder that is there, which nothing digests, and missing on one that is not", async () => {
+    const note = await wrote("src", [
+      "## Why\n\nIt holds [the source](code:src), [what reads it](code:src/parse) and [a folder gone](code:lib).",
+    ]);
+    expect(await standings(note)).toEqual([
+      { path: "src", standing: "unread" },
+      { path: "src/parse", standing: "missing" },
+      { path: "lib", standing: "missing" },
+    ]);
+  });
+
   it("is moved wherever the file a person read the note against has changed", async () => {
     const note = await wrote(PARSER, ANCHORED);
     await readAgainst(

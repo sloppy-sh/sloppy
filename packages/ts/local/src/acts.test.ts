@@ -214,6 +214,16 @@ describe("reading a note against the code", () => {
   it("writes nothing on the note, and leaves its readings the person's", async () => {
     const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER]));
     const before = await containerApi(files).getNode(note);
+    const held = async () => {
+      const paths = (await files.list(".sloppy")).sort();
+      expect(paths.length).toBeGreaterThan(0);
+      const read = await Promise.all(
+        paths.map(async (path) => [path, await files.read(path)] as const),
+      );
+      expect(read.every(([, bytes]) => bytes !== undefined)).toBe(true);
+      return read;
+    };
+    const heldBefore = await held();
 
     await answer({ call: "c2", act: "read_note", arguments: { note } });
     await answer({
@@ -231,6 +241,7 @@ describe("reading a note against the code", () => {
     expect(after?.read_against).toBeUndefined();
     expect(after?.checked).toBeUndefined();
     expect(after?.updated_at).toBe(before?.updated_at);
+    expect(await held()).toEqual(heldBefore);
   });
 });
 

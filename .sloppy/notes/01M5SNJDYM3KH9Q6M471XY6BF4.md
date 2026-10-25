@@ -29,12 +29,6 @@ Each anchor a note is read with says where the code under it stands: `held`, `mo
 
 The developer, on 2026-10-25, asking for it: Sloppy "gives you the indexed/cached context as required", in "optimal context windows so that they produce best results as we know that agent output goodness falls when the context increases", and so that "no context drift takes place". That is why a brief is held to a budget rather than to a count of notes, why what does not fit whole is handed over as one line rather than dropped, and why every anchor says whether the code under it has moved.
 
-<!-- block 01M5SNJDYR2BPQAX8KNY8MRBCW -->
-
-## Decided against
-
-A summary kept per note. [The token economy: enough micro-context, and no more](sloppy:did:syr:z6MkofhdxKmE23ZUPQ65Lj7SynGSbLsL1ZNc81tgqQhg8h6X/01M5RYHJHSAJZ7TQBX6M5ZXPRR) asks of it: "Would that be a summary kept per note, and if so who writes it, and how is it kept true when the note changes?" It was not built, because nothing would keep it true: a gist is read off the note's own writing each time it is asked for, so it cannot say anything the note no longer does.
-
 <!-- block 01M5SNJDYSMRWP27C4MRFJFMQ2 -->
 
 ## Candidates
@@ -42,3 +36,4 @@ A summary kept per note. [The token economy: enough micro-context, and no more](
 - A depth beyond three hops, where a task needs more of the field than a neighbourhood.
 - A budget in tokens rather than characters, which needs the agent's own tokenizer to count.
 - The planner of a build calling `brief` for each task it hands out, rather than naming the notes for it.
+- A summary kept per note, which [the token-economy note](sloppy:did:syr:z6MkofhdxKmE23ZUPQ65Lj7SynGSbLsL1ZNc81tgqQhg8h6X/01M5RYHJHSAJZ7TQBX6M5ZXPRR) asks about — who writes it, and how it is kept true when the note changes. A gist is read off the note's writing each time it is asked for, so the question stands only for a summary somebody writes.
