@@ -1156,6 +1156,28 @@ describe("the graph itself", () => {
     expect(done.facts).toEqual({ act: "read_graph", name: read.name });
     expect(done.touched).toEqual([]);
   });
+
+  it("names the owner as the profile they wrote on this device says", async () => {
+    const here = await containerApi(files).graphHere();
+    const owner = new LocalApi(containerApi(files).files, {
+      writer: splitOwnedRef(here).owner,
+    });
+    await owner.updateProfile({
+      display_name: "Ada",
+      bio: "Writes compilers.",
+      banner_url: "https://example.com/band.png",
+    });
+
+    const done = await performChatCall(files, {
+      call: "c1",
+      act: "read_graph",
+      arguments: {},
+    });
+    const read = GraphReadSchema.parse(JSON.parse(done.said));
+
+    expect(read.owner_name).toBe("Ada");
+    expect(read.project).toBe("..");
+  });
 });
 
 describe("the number a note is written or carried at", () => {
