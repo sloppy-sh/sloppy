@@ -265,7 +265,11 @@ split is not a preference we could revisit; it is the shape syr enforces:
 - **Every remote asset goes through our proxy** (`proxied()`). Viewing a federated node
   must never leak the viewer's IP to the author's instance — a graph you can pull from
   strangers makes this more important, not less. A raw remote URL rendered into an
-  `<img>` or a `fetch` is a privacy bug, not a shortcut.
+  `<img>` or a `fetch` is a privacy bug, not a shortcut. The one exception is an `https:`
+  picture a person linked as the face of a graph kept on a device (`LinkedPicture`): whoever
+  opens that folder loads it from where it lives, and the profile page says so.
+  docs/ARCHITECTURE.md § "A graph on disk" carries it; a served graph refuses one
+  (`linksAPicture`).
 - **Federation is pull-only, and no instance is a home.** syr has no relay and no
   firehose: follow somebody → find where their writing is served → fetch the kind you want
   from there. **No identifier names a place**, so **where somebody is, is their own
