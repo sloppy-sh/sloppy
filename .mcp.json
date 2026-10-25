@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "sloppy": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["packages/ts/cli/dist/sloppy.mjs", "mcp"]
+    }
+  }
+}

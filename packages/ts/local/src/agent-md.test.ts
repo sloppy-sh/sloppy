@@ -252,7 +252,7 @@ describe("what AGENT.md teaches", () => {
       "a write on a note somebody has written in goes as an offer",
     );
     expect(commands).toContain(
-      "It writes none of what this file says is not yours: `checked` and `read_against`, who a note's owner is, anybody's identity or keys, and commits.",
+      "It writes none of what this file says is not yours: `checked` and `read_against`, who a note's owner is, anybody's identity or keys, commits and what signs them, and what anybody's profile says.",
     );
   });
 

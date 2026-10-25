@@ -12,6 +12,7 @@ this disk.
 sloppy init [dir]      start the notes in a project, and write what the tree can tell
 sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
 sloppy check [dir]     read every note and say what doesn't hold
+sloppy mcp             serve these notes to an assistant, under the rules the app keeps
 ```
 
 `--json` answers in JSON instead of lines. `init` takes `--identity <file>` to write
@@ -19,6 +20,18 @@ under an identity carried from somewhere else rather than one made for this proj
 exit code is **0** where there is nothing to fix, **1** where there is and it has
 been listed, and **2** where the command did nothing at all — one nobody has, or a
 folder with no notes in it to read.
+
+## Serving an assistant
+
+`sloppy mcp` speaks the Model Context Protocol on its own input and output, one message a
+line, until its input ends; § "An assistant outside the app" is its doc of record. A
+repository configures it once, in a `.mcp.json` at its root:
+
+```json
+{ "mcpServers": { "sloppy": { "type": "stdio", "command": "sloppy", "args": ["mcp"] } } }
+```
+
+Given to `run`, the lines it reads are `calls` and its answers go to `told.out`.
 
 ## Driving it from somewhere else
 

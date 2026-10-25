@@ -3,6 +3,7 @@
 // person sees are the ones written here.
 
 import { SloppyApiError } from "@sloppy/client";
+import { VaultFormatError } from "@sloppy/vault";
 
 function said(status: number, words: string): SloppyApiError {
   return new SloppyApiError(status, words, { detail: words });
@@ -43,4 +44,25 @@ export function checked<T>(read: () => T): T {
       issues?.[0]?.message ?? "Sloppy is out of date. Update it and try again.",
     );
   }
+}
+
+/** A framework's phrase, never words a person can act on. */
+const UNWRITTEN = "Internal server error";
+
+/**
+ * The words a refusal carries for a person, where it carries any: this store's
+ * own, a server's, or what a folder this build cannot read says about itself.
+ * Anything else is the inside of an error and is said to nobody.
+ */
+export function refusalWords(err: unknown): string | undefined {
+  const said =
+    typeof err === "string"
+      ? err
+      : err instanceof VaultFormatError
+        ? err.message
+        : err instanceof SloppyApiError &&
+            !(err.status >= 500 && err.detail === UNWRITTEN)
+          ? err.detail
+          : undefined;
+  return said?.trim() || undefined;
 }

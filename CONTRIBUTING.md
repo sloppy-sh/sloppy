@@ -166,6 +166,22 @@ against its own provider for real. Asked for and finding nothing listening, they
 rather than skip; unasked, they skip, so a run that never wanted them cannot be read as
 one that had them. `SLOPPY_SURREALDB_URL` points them elsewhere.
 
+## This repository's own notes
+
+Sloppy keeps its own reasoning in `.sloppy/`, and the `sloppy` command is how anything
+working here reads and writes it. Build it once:
+
+```bash
+pnpm build:packages
+node packages/ts/cli/dist/sloppy.mjs check
+```
+
+`.mcp.json` at the root names the `sloppy` server — `sloppy mcp`, from that build — so an
+assistant opened in this repository reaches the notes through Sloppy's own acts rather
+than by editing the files. What it writes lands in `.sloppy/notes/` like any other edit,
+and is reviewed in the diff with the rest of the change. docs/ARCHITECTURE.md § "An
+assistant outside the app" is what it serves and what it leaves out.
+
 ## Formatting: who owns what
 
 **Biome owns the pure TS/JS packages; Prettier owns everything Svelte.** The two sets are
