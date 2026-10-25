@@ -320,6 +320,41 @@ all**: hand your writing back to whatever asked for it, and that rule is applied
 side. A tool that writes into `notes/` itself is held to none of this, and what it lands
 on is somebody's writing nothing can give back.
 
+## When asked to build
+
+Sloppy runs a build as several sessions, each with one job, and the brief you were started
+with says which of them you are. **Stay in the folder you were started in.** It is a
+copy of this project made for the build: the person's own folder is somewhere else and
+is not yours to touch, nothing here is pushed anywhere, and the line your work goes on is
+brought in when the person asks for it and not by you.
+
+- **Reading.** Read the notes you were given, what sprang from them, what they cite and the
+  code they point at, and answer with `plan_build`: the tasks, what each is for in a
+  paragraph, the places each writes, the exact notes each is built from, the questions the
+  notes do not answer, where two notes or a note and the code disagree, and the commands
+  this project runs. That call is the whole of your answer — nothing written in prose is
+  read.
+- **Building.** Write the code the task is for, in the places the task named and nowhere
+  else. Run the project's checks. Write what you decided into the notes with the acts
+  above — a reason only from a source you name, exactly as everywhere else here.
+- **Reading what was built.** Read the work against what the task was for, run the checks,
+  and answer with `review_build`. Clean with nothing found is the right answer for work
+  that is right; invent nothing to look thorough.
+- **Settling a merge.** Two tasks wrote the same place. You are given both their paragraphs:
+  settle each file by what each side was FOR, and run the checks on the result.
+
+**Ask rather than guess.** Where the notes do not say something the work has to get right,
+call `raise_need`: the question goes in front of the person, and they answer it by writing a
+note. A guess written into working code is the one thing no later reader can tell from a
+decision.
+
+**End with `hand_off`.** It is the only thing that reaches the next session — what you built,
+the files, every check and what it said, the notes you wrote, and what you left undone. What
+is not in it is lost, and nothing of your conversation travels.
+
+**`checked` and `read_against` stay the person's**, in a build as anywhere: building is
+not somebody reading a note against the code, and nothing you do here writes either.
+
 ## Never write
 
 - **A "west" or a "Why" you cannot name a source for.** What was decided against, and the
@@ -338,8 +373,10 @@ on is somebody's writing nothing can give back.
   it says, and a tag naming the system it is about is wanted for exactly that reason.
 - **A second note about a file that already has one.** Offer a change to the note that
   is there instead.
-- **Anything in the code.** Sloppy reads this project and never writes in it; the only
-  files to write are the ones in this folder.
+- **Anything in the code, unless a build asked you.** Sloppy reads this project and never
+  writes in it, so outside a build the only files to write are the ones in this folder. In a
+  build the code is the point — the folder you were started in is the build's own copy of
+  the project, and the person's own folder is still not yours to touch.
 - **A `ref` twice, or a new one on a note that has one.** A ref is the note for as long
   as it exists, and somebody's link elsewhere is holding it.
 
@@ -349,8 +386,9 @@ on is somebody's writing nothing can give back.
     sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
     sloppy draft --tag a,b [paths…]  the same, tagging each note it writes
     sloppy check           read every note and say what doesn't hold
+    sloppy mcp             serve these notes to an assistant, under the rules the app keeps
 
-Each takes `--json` and answers in JSON instead of lines.
+Each but `mcp` takes `--json` and answers in JSON instead of lines.
 
 `draft` reads a TypeScript or JavaScript file by the line for what it imports and what
 it hands out, and anchors each name it finds. A file in any other language gets an anchor
@@ -359,4 +397,15 @@ to the file and none inside it, so the names in it are yours to write.
 `--tag` puts those tags on every note that run writes, beside the ones each already
 carries; it takes none off. Name the system the files are part of, so one run tags one
 scope.
-<!-- sloppy:agent b317ae79 -->
+
+`mcp` is how an assistant working in this project reaches these notes through Sloppy's own
+acts rather than by editing the files: started from the project, it serves the same acts the
+app's chat has — reading, writing, tagging, numbering, moving, linking, binning and taking
+back out — under every rule above, so a write on a note somebody has written in goes as an
+offer. A write about a place lands on the note started about it, else on the one note that
+links to it, and where several link to it and none was started about it, nothing is written
+and they are named. What it writes lands in this folder like any other edit, and is reviewed with the rest
+of the change. It writes none of what this file says is not yours: `checked` and
+`read_against`, who a note's owner is, anybody's identity or keys, commits and what
+signs them, and what anybody's profile says.
+<!-- sloppy:agent d13f110e -->

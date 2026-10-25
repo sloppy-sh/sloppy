@@ -9,7 +9,7 @@ tags:
   - idp
 title: "idp: an identity provider Sloppy can embed"
 created: 2026-09-28T00:46:17.513Z
-updated: 2026-09-28T00:46:17.516Z
+updated: 2026-10-25T07:41:02.698Z
 ---
 
 <!-- block 01M3JQM4DBSY5EY7PRQDA6KX8G -->
@@ -30,4 +30,4 @@ updated: 2026-09-28T00:46:17.516Z
 - [sealing.ts](code:packages/ts/idp/src/sealing.ts), [secrets.ts](code:packages/ts/idp/src/secrets.ts): keys kept shut under a passphrase.
 - [manifest.ts](code:packages/ts/idp/src/manifest.ts), [emojis.ts](code:packages/ts/idp/src/emojis.ts), [follows.ts](code:packages/ts/idp/src/follows.ts): what else an identity carries.
 
-\[syr integration\](code\:docs/ARCHITECTURE.md#syr integration) is the doc of record.
+[syr integration](code:docs/ARCHITECTURE.md#L985) is the doc of record.

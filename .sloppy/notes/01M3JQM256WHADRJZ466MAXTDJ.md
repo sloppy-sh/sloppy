@@ -42,4 +42,4 @@ Two files are how a shell plugs in\:
 - [runtime.ts](code:packages/ts/app-core/src/lib/runtime.ts): `AppRuntime`, the capabilities a shell hands over. A member that is absent means the shell does not have that capability.
 - [api.ts](code:packages/ts/app-core/src/lib/api.ts): the `api` proxy, which resolves to a remote client or to one served off the device.
 
-\[The two files that carry the platform seam\](code\:docs/ARCHITECTURE.md#The two files that carry the platform seam) is the doc of record.
+[The two files that carry the platform seam](code:docs/ARCHITECTURE.md#L83) is the doc of record.

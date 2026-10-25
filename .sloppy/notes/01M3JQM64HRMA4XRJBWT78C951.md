@@ -10,7 +10,7 @@ tags:
   - local
 title: "local: the graph served off this device"
 created: 2026-09-28T00:46:19.281Z
-updated: 2026-09-28T00:46:19.285Z
+updated: 2026-10-25T07:40:58.845Z
 ---
 
 <!-- block 01M3JQM64K7JR7KKKATNV6J3N3 -->
@@ -32,4 +32,6 @@ updated: 2026-09-28T00:46:19.285Z
 - [vaults.ts](code:packages/ts/local/src/vaults.ts), [container.ts](code:packages/ts/local/src/container.ts), [agent-md.ts](code:packages/ts/local/src/agent-md.ts): the folders a device knows, and a project's `.sloppy` container.
 - [history.ts](code:packages/ts/local/src/history.ts), [git-defaults.ts](code:packages/ts/local/src/git-defaults.ts): the vault's git history.
 
-\[Local-only mode\](code\:docs/ARCHITECTURE.md#Local-only mode) is the doc of record.
+Beside those: [acts.ts](code:packages/ts/local/src/acts.ts) is the sixteen acts in one implementation, which the app's chat and `sloppy mcp` both call; [code.ts](code:packages/ts/local/src/code.ts) reads what each project file says now, once per pass, for the drift reader; [kept-out.ts](code:packages/ts/local/src/kept-out.ts) is what the project's git history is told to pass over, the keys among it; and [threads.ts](code:packages/ts/local/src/threads.ts) and [builds.ts](code:packages/ts/local/src/builds.ts) keep this device's chat threads and builds, one file each.
+
+[Local-only mode](code:docs/ARCHITECTURE.md#L1051) is the doc of record.

@@ -4,12 +4,16 @@ parent: did:syr:z6MkofhdxKmE23ZUPQ65Lj7SynGSbLsL1ZNc81tgqQhg8h6X/01M3E2FRSQAYC42
 address: 1a
 authors:
   - did:syr:z6Mkrpa9ZH9E38f4NpFZUCMEJX2rdGbf4vseijAqcBZHMdwk
+  - did:syr:z6MkofhdxKmE23ZUPQ65Lj7SynGSbLsL1ZNc81tgqQhg8h6X
 tags:
   - apps
   - deployment
+edges:
+  - to: did:syr:z6MkofhdxKmE23ZUPQ65Lj7SynGSbLsL1ZNc81tgqQhg8h6X/01M3JQGKYNV7HMP3611A245MPN
+    direction: to
 title: "The three apps: a server and two shells"
 created: 2026-09-28T00:44:21.750Z
-updated: 2026-09-28T00:44:21.761Z
+updated: 2026-09-29T18:14:51.441Z
 ---
 
 <!-- block 01M3JQGKBTEY21Z0CV2QH990G5 -->
@@ -32,8 +36,8 @@ The two shells are thin boots. Every page, component, store and API call lives i
 
 The same client runs in three deployment modes: **hosted** (a Sloppy API plus an external syr instance), **self-hosted** (somebody's own API pointed at their own syr instance), and **local-only** (the native app opens a folder on the device, and that folder is the whole store). What needs a server — publishing, peers, pulling — is not offered in local-only mode.
 
-- \[Deployment modes\](code\:docs/ARCHITECTURE.md#Deployment modes)
-- \[Monorepo layout\](code\:docs/ARCHITECTURE.md#Monorepo layout)
+- [Deployment modes](code:docs/ARCHITECTURE.md#L10)
+- [Monorepo layout](code:docs/ARCHITECTURE.md#L28)
 
 ## Running it
 
