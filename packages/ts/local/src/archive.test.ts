@@ -725,6 +725,46 @@ describe("a graph of this device's own brought back in", () => {
     expect((await yours.api.profile()).display_name).toBeNull();
   });
 
+  it("brings back its owner's bio and both pictures with their name", async () => {
+    const held = device(["/graphs/one", "/graphs/arrived"]);
+    const graph = await held.api.createGraph({ title: "Thesis" });
+    const ticket = await held.api.createUpload({
+      role: "avatar",
+      filename: "ada.png",
+      mime_type: "image/png",
+      size: 1,
+    });
+    await held.api.sendUpload(ticket, body(new Uint8Array([7])));
+    await held.api.completeUpload({ upload_id: ticket.upload_id });
+    const banner = "https://pictures.example/fields.jpg";
+    await held.api.updateProfile({
+      display_name: "Ada Lovelace",
+      bio: "I count things.",
+      avatar_upload_id: ticket.upload_id,
+      banner_url: banner,
+    });
+    const out = await archiveFrom(held, graph.ref);
+    await held.api.closeGraph(graph.ref);
+    await held.api.importArchive(out);
+
+    const said = readGraphFile(
+      held.store.get(`/graphs/arrived/${GRAPH_FILE}`) ?? new Uint8Array(),
+    );
+    expect(said).toMatchObject({
+      owner_name: "Ada Lovelace",
+      owner_bio: "I count things.",
+      owner_banner: banner,
+    });
+    expect(held.store.get(`/graphs/arrived/${said.owner_avatar}`)).toEqual(
+      new Uint8Array([7]),
+    );
+    expect(await reopened(held).profile()).toMatchObject({
+      display_name: "Ada Lovelace",
+      bio: "I count things.",
+      banner_src: banner,
+    });
+  });
+
   it("still owes a citation every number the graph it settles into retired", async () => {
     const held = device(["/graphs/one", "/graphs/two"]);
     await held.api.createGraph({ title: "Thesis" });

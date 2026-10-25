@@ -1,10 +1,12 @@
-import { Injectable } from "@nestjs/common";
-import type {
-  MediaRole,
-  ProfileView,
-  SyrProfile,
-  SyrProfilePatch,
-  UpdateProfileRequest,
+import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  type MediaRole,
+  type ProfileView,
+  type SyrProfile,
+  type SyrProfilePatch,
+  type UpdateProfileRequest,
+  linksAPicture,
+  namesEachPictureOnce,
 } from "@sloppy/types";
 import { AssetLinks } from "../media/asset-link";
 import { MediaService } from "../media/media.service";
@@ -52,9 +54,21 @@ export class ProfileService {
     delegation: Delegation,
     patch: UpdateProfileRequest,
   ): Promise<ProfileView> {
+    if (linksAPicture(patch)) {
+      throw new BadRequestException(
+        "A picture here has to be one you add from your device. Choose the file instead of linking to it.",
+      );
+    }
+    if (!namesEachPictureOnce(patch)) {
+      throw new BadRequestException(
+        "Choose a picture or take it off, not both.",
+      );
+    }
     const sent: SyrProfilePatch = {};
     if ("display_name" in patch) sent.display_name = patch.display_name;
     if ("bio" in patch) sent.bio = patch.bio;
+    if (patch.avatar_url === null) sent.avatar_url = null;
+    if (patch.banner_url === null) sent.banner_url = null;
     if ("avatar_upload_id" in patch) {
       sent.avatar_url = await this.stored(
         delegation,

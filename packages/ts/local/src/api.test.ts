@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { LocalApi } from "./api.js";
 import { MemoryFiles } from "./files.js";
 import {
+  type Device,
   PickingFiles,
   body,
   device,
@@ -510,13 +511,102 @@ describe("a graph in a folder", () => {
     ).rejects.toBeInstanceOf(ServerRequiredError);
   });
 
-  it("says a graph on this device holds no more of you than that", async () => {
+  it("keeps a bio and a linked banner beside the name, and reads them back", async () => {
     const held = device();
     await held.api.createGraph({ title: "Thesis" });
+    const banner = "https://pictures.example/fields.jpg";
+    const said = await held.api.updateProfile({
+      display_name: "Ada Lovelace",
+      bio: "  I count things.  ",
+      banner_url: banner,
+    });
+    expect(said).toMatchObject({
+      display_name: "Ada Lovelace",
+      bio: "I count things.",
+      banner_src: banner,
+      avatar_src: null,
+    });
+    expect(ownerSaid(held)).toMatchObject({
+      owner_bio: "I count things.",
+      owner_banner: banner,
+    });
+    expect(await reopened(held).profile()).toEqual(said);
+
+    await held.api.updateProfile({ bio: "", banner_url: null });
+    const graph = ownerSaid(held);
+    expect(graph.owner_bio).toBeUndefined();
+    expect(graph.owner_banner).toBeUndefined();
+    expect(graph.owner_name).toBe("Ada Lovelace");
+  });
+
+  it("writes nothing about its owner where nobody has said anything", async () => {
+    const held = device();
+    await held.api.createGraph({ title: "Thesis" });
+    const graph = ownerSaid(held);
+    for (const field of [
+      "owner_name",
+      "owner_bio",
+      "owner_avatar",
+      "owner_banner",
+    ]) {
+      expect(graph).not.toHaveProperty(field);
+    }
+    expect(await reopened(held).profile()).toMatchObject({
+      display_name: null,
+      bio: null,
+      avatar_src: null,
+      banner_src: null,
+    });
+  });
+
+  it("takes a stored picture out of the folder when a link replaces it", async () => {
+    const held = device();
+    await held.api.createGraph({ title: "Thesis" });
+    const upload = await added(held, "banner");
+    await held.api.updateProfile({ banner_upload_id: upload });
+    const stored = ownerSaid(held).owner_banner as string;
+    expect(stored).toMatch(/^media\//);
+    expect(held.store.has(`/graphs/one/${stored}`)).toBe(true);
+
+    const link = "https://pictures.example/fields.jpg";
+    const said = await held.api.updateProfile({ banner_url: link });
+    expect(said.banner_src).toBe(link);
+    expect(held.store.has(`/graphs/one/${stored}`)).toBe(false);
+  });
+
+  it("keeps a file the other picture still wears", async () => {
+    const held = device();
+    await held.api.createGraph({ title: "Thesis" });
+    const upload = await added(held, "avatar");
+    await held.api.updateProfile({
+      avatar_upload_id: upload,
+      banner_upload_id: upload,
+    });
+    const worn = ownerSaid(held).owner_avatar as string;
+    expect(ownerSaid(held).owner_banner).toBe(worn);
+
+    await held.api.updateProfile({ banner_url: null });
+    expect(held.store.has(`/graphs/one/${worn}`)).toBe(true);
+    const said = await held.api.updateProfile({
+      avatar_url: "https://pictures.example/ada.png",
+    });
+    expect(said.avatar_src).toBe("https://pictures.example/ada.png");
+    expect(held.store.has(`/graphs/one/${worn}`)).toBe(false);
+  });
+
+  it("takes a picture one way at a time", async () => {
+    const held = device();
+    await held.api.createGraph({ title: "Thesis" });
+    const upload = await added(held, "avatar");
     await expect(
-      held.api.updateProfile({ bio: "I count things." }),
-    ).rejects.toThrow("nothing else about you");
-    expect((await held.api.profile()).did).toMatch(/^did:syr:/);
+      held.api.updateProfile({
+        avatar_upload_id: upload,
+        avatar_url: "https://pictures.example/ada.png",
+      }),
+    ).rejects.toThrow("Choose a picture or link one, not both.");
+    await expect(
+      held.api.updateProfile({ avatar_url: "http://pictures.example/a.png" }),
+    ).rejects.toThrow();
   });
 
   it("is not closed by somebody who only writes in it", async () => {
@@ -755,3 +845,23 @@ describe("a folder this store only reads", () => {
     expect(everyFile(held.store)).toEqual(before);
   });
 });
+
+/** What the first folder's `graph.json` says, as a second reader finds it. */
+function ownerSaid(held: Device): Record<string, unknown> {
+  return JSON.parse(
+    decodeText(held.store.get(`/graphs/one/${GRAPH_FILE}`) ?? new Uint8Array()),
+  );
+}
+
+/** A one-byte picture added to the device, answering its upload id. */
+async function added(held: Device, role: "avatar" | "banner"): Promise<string> {
+  const ticket = await held.api.createUpload({
+    role,
+    filename: `${role}.png`,
+    mime_type: "image/png",
+    size: 1,
+  });
+  await held.api.sendUpload(ticket, body(new Uint8Array([7])));
+  await held.api.completeUpload({ upload_id: ticket.upload_id });
+  return ticket.upload_id;
+}

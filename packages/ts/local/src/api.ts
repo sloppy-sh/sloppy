@@ -44,6 +44,8 @@ import {
   type ImportResolution,
   type ImportSettlement,
   ImportSettlementSchema,
+  isLinkedPicture,
+  type LinkedPicture,
   MAX_ARCHIVE_BYTES,
   MAX_ARCHIVE_NOTES,
   MAX_RECENT_NOTES,
@@ -96,6 +98,7 @@ import {
   type VaultPreview,
   authorsOf,
   graphAsked,
+  namesEachPictureOnce,
   namesGraph,
   nowIso,
   splitOwnedRef,
@@ -138,6 +141,7 @@ import { keepAgentFile } from "./agent-md.js";
 import { keepOut } from "./kept-out.js";
 import { type Files, MemoryFiles, ONLY_READ, readOnly } from "./files.js";
 import {
+  type GraphOwner,
   LocalGraph,
   localOf,
   picturesDrawnBy,
@@ -1542,31 +1546,17 @@ export class LocalApi implements SloppyApi {
   async profile(): Promise<ProfileView> {
     const did = await this.writer;
     const graphs = await this.ownGraphs(did);
-    const graph = graphs.find(
-      (held) =>
-        held.owner.name !== undefined || held.owner.avatar !== undefined,
-    );
-    const avatar = graph?.owner.avatar;
-    return {
-      did,
-      // There is nothing here to be known by but the identity itself.
-      username: did,
-      display_name: graph?.owner.name ?? null,
-      bio: null,
-      avatar_src: graph && avatar ? graph.files.url(avatar) : null,
-      banner_src: null,
-    };
+    return profileIn(did, graphs.find(saysWhoKeepsIt));
   }
 
-  /** A name and a picture, written into every graph the writing identity owns
-   *  — a graph says whose it is wherever it is opened, so each keeps its own
-   *  copy of the picture. A folder somebody else owns is left alone. */
+  /** A name, a bio and two pictures, written into every graph the writing
+   *  identity owns — a graph says whose it is wherever it is opened, so each
+   *  keeps its own copy of a picture. A folder somebody else owns is left
+   *  alone. */
   async updateProfile(asked: UpdateProfileRequest): Promise<ProfileView> {
     const request = checked(() => UpdateProfileRequestSchema.parse(asked));
-    if (request.bio != null || request.banner_upload_id != null) {
-      throw refuse(
-        "A graph on this device keeps your name and your picture, and nothing else about you.",
-      );
+    if (!namesEachPictureOnce(request)) {
+      throw refuse("Choose a picture or link one, not both.");
     }
     return this.write(async () => {
       const graphs = await this.ownGraphs(await this.writer);
@@ -1575,49 +1565,45 @@ export class LocalApi implements SloppyApi {
           "There is no graph of your own on this device yet. Start one to write your name in.",
         );
       }
-      const picture =
-        request.avatar_upload_id == null
-          ? undefined
-          : await this.devicePicture(request.avatar_upload_id);
+      const chosen = {
+        avatar: await this.chosenPicture(
+          request.avatar_upload_id,
+          request.avatar_url,
+        ),
+        banner: await this.chosenPicture(
+          request.banner_upload_id,
+          request.banner_url,
+        ),
+      };
       for (const graph of graphs) {
         const held = graph.owner;
-        const name = chosenName(request.display_name, held.name);
-        const avatar =
-          request.avatar_upload_id === undefined
-            ? held.avatar
-            : picture && (await this.avatarIn(graph, picture));
-        await graph.setOwner({
-          ...(name === undefined ? {} : { name }),
-          ...(avatar === undefined ? {} : { avatar }),
-        });
-        const gone = held.avatar === avatar ? undefined : held.avatar;
-        const upload = gone === undefined ? undefined : uploadAt(gone);
-        if (upload && !graph.draws(upload)) await graph.removePicture(upload);
+        const now: GraphOwner = {
+          name: chosenText(request.display_name, held.name),
+          bio: chosenText(request.bio, held.bio),
+          avatar: await this.pictureIn(graph, chosen.avatar, held.avatar),
+          banner: await this.pictureIn(graph, chosen.banner, held.banner),
+        };
+        await graph.setOwner(now);
+        for (const gone of [held.avatar, held.banner]) {
+          if (gone === undefined || isLinkedPicture(gone)) continue;
+          if (gone === now.avatar || gone === now.banner) continue;
+          const upload = uploadAt(gone);
+          if (upload && !graph.draws(upload)) await graph.removePicture(upload);
+        }
       }
       return this.profile();
     });
   }
 
-  /** Somebody else, as a folder on this device says. A graph carries the name
-   *  and the picture of whoever owns it, so a folder shared with somebody names
-   *  the person who writes in it. Anybody no folder here owns is nobody this
-   *  device can name. */
+  /** Somebody else, as a folder on this device says. A graph carries who owns
+   *  it, so a folder shared with somebody names the person who writes in it.
+   *  Anybody no folder here owns is nobody this device can name. */
   async profileOf(did: string): Promise<ProfileView> {
     const graph = (await this.allGraphs()).find(
-      (held) =>
-        held.did === did &&
-        (held.owner.name !== undefined || held.owner.avatar !== undefined),
+      (held) => held.did === did && saysWhoKeepsIt(held),
     );
     if (!graph) serverOnly("Somebody else's profile");
-    const avatar = graph.owner.avatar;
-    return {
-      did: graph.did,
-      username: graph.did,
-      display_name: graph.owner.name ?? null,
-      bio: null,
-      avatar_src: avatar ? graph.files.url(avatar) : null,
-      banner_src: null,
-    };
+    return profileIn(graph.did, graph);
   }
 
   // ── Emoji ────────────────────────────────────────────────────────────────
@@ -1671,24 +1657,42 @@ export class LocalApi implements SloppyApi {
     throw refuse("That picture is not here. Add it again.");
   }
 
-  /** The picture this graph now wears. One it is already wearing stays where it
-   *  is: a sign-in carries the same picture in again, and a second copy of it
-   *  under a new name is a folder rewritten for nothing. */
-  private async avatarIn(
+  /** A picture as a patch names it: kept as it was, taken off, a link, or a
+   *  picture somewhere on this device. */
+  private async chosenPicture(
+    upload: string | null | undefined,
+    link: string | null | undefined,
+  ): Promise<ChosenPicture> {
+    if (link !== undefined) return link ?? null;
+    if (upload === undefined) return undefined;
+    return upload === null ? null : this.devicePicture(upload);
+  }
+
+  /** The picture this graph now wears in one place. One it is already wearing
+   *  stays where it is: a sign-in carries the same picture in again, and a
+   *  second copy of it under a new name is a folder rewritten for nothing. */
+  private async pictureIn(
     graph: LocalGraph,
-    picture: DevicePicture,
-  ): Promise<string> {
-    const worn = graph.owner.avatar;
-    if (worn !== undefined && (await sameBytes(graph, worn, picture.bytes))) {
-      const copy = graph.picturePath(picture.upload);
-      if (copy !== undefined && copy !== worn && !graph.draws(picture.upload)) {
-        await graph.removePicture(picture.upload);
+    chosen: ChosenPicture,
+    worn: string | undefined,
+  ): Promise<string | undefined> {
+    if (chosen === undefined) return worn;
+    if (chosen === null) return undefined;
+    if (typeof chosen === "string") return chosen;
+    if (
+      worn !== undefined &&
+      !isLinkedPicture(worn) &&
+      (await sameBytes(graph, worn, chosen.bytes))
+    ) {
+      const copy = graph.picturePath(chosen.upload);
+      if (copy !== undefined && copy !== worn && !graph.draws(chosen.upload)) {
+        await graph.removePicture(chosen.upload);
       }
       return worn;
     }
     return (
-      graph.picturePath(picture.upload) ??
-      (await graph.keepPicture(picture.upload, picture.said, picture.bytes))
+      graph.picturePath(chosen.upload) ??
+      (await graph.keepPicture(chosen.upload, chosen.said, chosen.bytes))
     );
   }
 
@@ -2053,6 +2057,12 @@ export class LocalApi implements SloppyApi {
         ...(owned?.owner_avatar === undefined
           ? {}
           : { owner_avatar: owned.owner_avatar }),
+        ...(owned?.owner_banner === undefined
+          ? {}
+          : { owner_banner: owned.owner_banner }),
+        ...(owned?.owner_bio === undefined
+          ? {}
+          : { owner_bio: owned.owner_bio }),
       }),
     );
     const into = (await this.allGraphs()).find(
@@ -2062,9 +2072,9 @@ export class LocalApi implements SloppyApi {
   }
 }
 
-/** What a person is called after this patch: absent leaves what they were
- *  called, and a name cleared or left blank leaves them with none. */
-function chosenName(
+/** What a person says after this patch: absent leaves what they said, and a
+ *  line cleared or left blank leaves them saying nothing. */
+function chosenText(
   said: string | null | undefined,
   held: string | undefined,
 ): string | undefined {
@@ -2072,6 +2082,40 @@ function chosenName(
   const name = said?.trim() ?? "";
   return name === "" ? undefined : name;
 }
+
+/** Whether a graph says anything about who keeps it. */
+function saysWhoKeepsIt(graph: LocalGraph): boolean {
+  return Object.keys(graph.owner).length > 0;
+}
+
+/** Somebody as the graph they keep says, or as nobody has said where no graph
+ *  of theirs does. */
+function profileIn(did: DidSyr, graph: LocalGraph | undefined): ProfileView {
+  const owner = graph?.owner ?? {};
+  return {
+    did,
+    // There is nothing here to be known by but the identity itself.
+    username: did,
+    display_name: owner.name ?? null,
+    bio: owner.bio ?? null,
+    avatar_src: graph ? pictureSource(graph, owner.avatar) : null,
+    banner_src: graph ? pictureSource(graph, owner.banner) : null,
+  };
+}
+
+/** Where a picture the graph keeps is drawn from: a link as it is, a file in
+ *  the folder from where the device serves it. */
+function pictureSource(
+  graph: LocalGraph,
+  picture: string | undefined,
+): string | null {
+  if (picture === undefined) return null;
+  return isLinkedPicture(picture) ? picture : graph.files.url(picture);
+}
+
+/** A picture a profile patch names: `undefined` keeps it, `null` takes it
+ *  off, a string is a link. */
+type ChosenPicture = DevicePicture | LinkedPicture | null | undefined;
 
 /** A picture as some graph on this device holds it. */
 interface DevicePicture {

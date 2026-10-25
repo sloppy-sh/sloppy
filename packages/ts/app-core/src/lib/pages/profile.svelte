@@ -9,7 +9,13 @@
 	import { uploadFile } from '@sloppy/client';
 	import type { IdentityHere } from '@sloppy/local';
 	import { type CommentAccess, graphRef, splitOwnedRef } from '@sloppy/types';
-	import { IdentityLine, PersonEditor, PersonHeader, type PictureRole } from '@sloppy/ui';
+	import {
+		IdentityLine,
+		type Person,
+		PersonEditor,
+		PersonHeader,
+		type PictureRole
+	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
@@ -156,6 +162,32 @@
 		}
 	}
 
+	/** Taken by its link, which only a graph kept on this device holds. */
+	async function link(role: PictureRole, address: string): Promise<void> {
+		replacing = role;
+		refused = null;
+		try {
+			people.hold(
+				await api.updateProfile(
+					role === 'avatar' ? { avatar_url: address } : { banner_url: address }
+				)
+			);
+		} catch (error) {
+			refused = {
+				picture: role,
+				message: serverMessage(error) ?? 'That link could not be used. Try another.'
+			};
+		} finally {
+			replacing = null;
+		}
+	}
+
+	// On a device the profile is the folder's, so it is read once the folder
+	// says who is writing in it.
+	$effect(() => {
+		if (session.onDevice && session.viewer) void readProfile();
+	});
+
 	onMount(() => {
 		if (session.onDevice) return;
 		void readProfile();
@@ -165,12 +197,49 @@
 
 <svelte:head><title>You · Sloppy</title></svelte:head>
 
+{#snippet header(person: Person)}
+	<PersonHeader {person}>
+		{#snippet actions()}
+			<Button variant="outline" class="h-control sm:h-9" onclick={() => (editing = true)}>
+				<Pencil class="size-4" aria-hidden="true" />
+				Edit
+			</Button>
+		{/snippet}
+	</PersonHeader>
+{/snippet}
+
+{#snippet editor(person: Person)}
+	<PersonEditor
+		{person}
+		{replacing}
+		{saving}
+		{refused}
+		onPicture={replace}
+		onLink={session.onDevice ? link : undefined}
+		onSave={save}
+		onCancel={() => {
+			refused = null;
+			editing = false;
+		}}
+	/>
+{/snippet}
+
 <div class="clear-sysnav">
 	<div
 		class="mx-auto w-full max-w-2xl space-y-6 px-5 pt-[max(1.5rem,calc(env(safe-area-inset-top,0px)-var(--app-chrome-top,0px)))] pb-12 sm:px-8"
 	>
-		{#if session.onDevice}
+		{#if session.onDevice && editing && shown}
 			<h1 class="text-2xl font-semibold tracking-tight">You</h1>
+			{@render editor(shown.person)}
+		{:else if session.onDevice}
+			{#if shown}
+				{@render header(shown.person)}
+			{:else}
+				<h1 class="text-2xl font-semibold tracking-tight">You</h1>
+				{#if unreachable}
+					<p class="text-sm text-destructive" role="alert">{unreachable}</p>
+				{/if}
+			{/if}
 			<section class="space-y-2 border-t border-border pt-6">
 				<h2 class="text-sm font-medium">Your identity</h2>
 				{#if session.viewer}
@@ -200,27 +269,9 @@
 			</div>
 		{:else if editing}
 			<h1 class="text-2xl font-semibold tracking-tight">You</h1>
-			<PersonEditor
-				person={shown.person}
-				{replacing}
-				{saving}
-				{refused}
-				onPicture={replace}
-				onSave={save}
-				onCancel={() => {
-					refused = null;
-					editing = false;
-				}}
-			/>
+			{@render editor(shown.person)}
 		{:else}
-			<PersonHeader person={shown.person}>
-				{#snippet actions()}
-					<Button variant="outline" class="h-control sm:h-9" onclick={() => (editing = true)}>
-						<Pencil class="size-4" aria-hidden="true" />
-						Edit
-					</Button>
-				{/snippet}
-			</PersonHeader>
+			{@render header(shown.person)}
 
 			<section class="space-y-2 border-t border-border pt-6">
 				<h2 class="text-sm font-medium">What you publish</h2>
