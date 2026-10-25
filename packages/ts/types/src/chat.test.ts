@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   advertisedChatTools,
   argumentsFit,
+  BinListedSchema,
+  type BinnedNote,
+  BinnedNoteSchema,
+  binAnswer,
   CARD_ROWS,
   cardRow,
   CHAT_AGENTS,
@@ -37,20 +41,31 @@ import {
   contextTogether,
   DeleteNoteArgumentsSchema,
   foundAnswer,
+  GraphReadSchema,
   heldAsideIn,
   LinkNotesArgumentsSchema,
+  ListBinArgumentsSchema,
   ListedNoteSchema,
+  type ListedOffer,
+  ListedOfferSchema,
+  type ListedTag,
+  ListedTagSchema,
   ListNotesArgumentsSchema,
+  ListOffersArgumentsSchema,
+  ListTagsArgumentsSchema,
   listingAnswer,
   MAX_SECTIONS_PER_WRITE,
   MOST_ATTACHED_PER_TURN,
+  MOST_BINNED_LISTED,
   MOST_CARD_ROWS,
   MOST_LINES_DRAWN,
   MOST_NOTES_FOUND,
   MOST_NOTES_LISTED,
   MOST_NOTES_TOUCHED,
+  MOST_OFFERS_LISTED,
   MOST_PLACES,
   MOST_SECTIONS_READ,
+  MOST_TAGS_LISTED,
   MoveNoteArgumentsSchema,
   noteAnswer,
   NoteReadSchema,
@@ -58,14 +73,21 @@ import {
   NotesListedSchema,
   NoteWrittenSchema,
   NumberNoteArgumentsSchema,
+  OFFER_SUMMARY_MAX,
+  OffersListedSchema,
+  offersAnswer,
   placeNamed,
+  ReadGraphArgumentsSchema,
   ReadNoteArgumentsSchema,
+  RestoreNoteArgumentsSchema,
   SearchNotesArgumentsSchema,
   sectionHeadings,
   spentTogether,
   StyleEdgeArgumentsSchema,
   StyleNoteArgumentsSchema,
   TagNoteArgumentsSchema,
+  TagsListedSchema,
+  tagsAnswer,
   threadNameFrom,
   turnFits,
   type ChatThread,
@@ -129,12 +151,21 @@ describe("the acts Sloppy hands an agent", () => {
       "style_edge",
       "style_note",
       "delete_note",
+      "restore_note",
     ] as const) {
       expect(chatToolWrites(act)).toBe(true);
     }
-    expect(chatToolWrites("list_notes")).toBe(false);
-    expect(chatToolWrites("search_notes")).toBe(false);
-    expect(chatToolWrites("read_note")).toBe(false);
+    for (const act of [
+      "list_notes",
+      "search_notes",
+      "read_note",
+      "list_tags",
+      "list_bin",
+      "list_offers",
+      "read_graph",
+    ] as const) {
+      expect(chatToolWrites(act)).toBe(false);
+    }
   });
 
   it("advertises every act once, as a JSON Schema object", () => {
@@ -202,6 +233,12 @@ describe("the acts Sloppy hands an agent", () => {
       "style_note.mark_radius",
       "style_note.off",
       "delete_note.note",
+      "list_tags.in",
+      "list_bin.in",
+      "restore_note.note",
+      "list_offers.note",
+      "list_offers.in",
+      "read_graph.in",
     ]);
   });
 
@@ -377,6 +414,43 @@ describe("what a call may carry", () => {
     expect(DeleteNoteArgumentsSchema.safeParse({ note: "1a1" }).success).toBe(
       false,
     );
+  });
+
+  it("takes a note back out of the bin, and reads its offers, by its ref", () => {
+    expect(RestoreNoteArgumentsSchema.parse({ note: NOTE }).note).toBe(NOTE);
+    expect(ListOffersArgumentsSchema.parse({ note: NOTE }).note).toBe(NOTE);
+    for (const schema of [
+      RestoreNoteArgumentsSchema,
+      ListOffersArgumentsSchema,
+    ]) {
+      expect(schema.safeParse({ note: "1a1" }).success).toBe(false);
+      expect(schema.safeParse({}).success).toBe(false);
+    }
+  });
+
+  it("reads the tags, the bin and the graph with nothing more than a place", () => {
+    for (const schema of [
+      ListTagsArgumentsSchema,
+      ListBinArgumentsSchema,
+      ReadGraphArgumentsSchema,
+    ]) {
+      expect(schema.parse({})).toEqual({});
+      expect(schema.parse({ in: "other" })).toEqual({ in: "other" });
+    }
+  });
+
+  it("parses every new act into the act it names", () => {
+    for (const [act, args] of [
+      ["list_tags", {}],
+      ["list_bin", {}],
+      ["restore_note", { note: NOTE }],
+      ["list_offers", { note: NOTE, in: "other" }],
+      ["read_graph", {}],
+    ] as const) {
+      expect(
+        ChatToolCallSchema.parse({ call: "c1", act, arguments: args }),
+      ).toEqual({ call: "c1", act, arguments: args });
+    }
   });
 
   it("writes a note under a named one, and under none where it says none", () => {
@@ -599,6 +673,105 @@ describe("what one answer carries", () => {
 
     expect(answer.trouble).toBe(true);
     expect(ChatToolAnswerSchema.safeParse(answer).success).toBe(true);
+  });
+
+  const tag = (n: number): ListedTag => ({ tag: `system ${n}`, notes: n + 1 });
+  const binned = (n: number): BinnedNote => ({
+    note: `did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/${ulid(n)}`,
+    title: `What src/place-${n} did`,
+    binned_at: NOW,
+    beneath: n % 3,
+  });
+  const offer = (
+    n: number,
+    summary = "Says what the reader is for.",
+  ): ListedOffer => ({
+    offer: `did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/${ulid(n)}`,
+    by: "did:syr:z6MkqWRTWRTWRTWRTWRTWRTWRTWRT",
+    at: NOW,
+    summary,
+  });
+
+  it("carries every tag, every binned note and every offer where they fit", () => {
+    const tags = TagsListedSchema.parse(
+      JSON.parse(tagsAnswer([tag(0), tag(1)]).said),
+    );
+    const bin = BinListedSchema.parse(
+      JSON.parse(binAnswer([binned(0), binned(1)]).said),
+    );
+    const offers = OffersListedSchema.parse(
+      JSON.parse(offersAnswer([offer(0), offer(1)]).said),
+    );
+
+    expect(tags).toEqual({ tags: [tag(0), tag(1)] });
+    expect(bin).toEqual({ bin: [binned(0), binned(1)] });
+    expect(offers).toEqual({ offers: [offer(0), offer(1)] });
+  });
+
+  it("carries as many of each as it reads to, and says how many it left", () => {
+    const tags = Array.from({ length: MOST_TAGS_LISTED + 3 }, (_, n) => tag(n));
+    const bin = Array.from({ length: MOST_BINNED_LISTED + 4 }, (_, n) =>
+      binned(n),
+    );
+    const offers = Array.from({ length: MOST_OFFERS_LISTED + 5 }, (_, n) =>
+      offer(n),
+    );
+
+    const heldTags = TagsListedSchema.parse(JSON.parse(tagsAnswer(tags).said));
+    const heldBin = BinListedSchema.parse(JSON.parse(binAnswer(bin).said));
+    const heldOffers = OffersListedSchema.parse(
+      JSON.parse(offersAnswer(offers).said),
+    );
+
+    expect([heldTags.tags.length, heldTags.more]).toEqual([
+      MOST_TAGS_LISTED,
+      3,
+    ]);
+    expect([heldBin.bin.length, heldBin.more]).toEqual([MOST_BINNED_LISTED, 4]);
+    expect([heldOffers.offers.length, heldOffers.more]).toEqual([
+      MOST_OFFERS_LISTED,
+      5,
+    ]);
+    expect(heldTags.tags[0]).toEqual(tags[0]);
+  });
+
+  it("stops the offers at what one answer holds", () => {
+    const offers = Array.from({ length: MOST_OFFERS_LISTED }, (_, n) =>
+      offer(n, "a".repeat(OFFER_SUMMARY_MAX)),
+    );
+    const answer = offersAnswer(offers);
+    const held = OffersListedSchema.parse(JSON.parse(answer.said));
+
+    expect(answer.said.length).toBeLessThanOrEqual(CHAT_ANSWER_MAX);
+    expect(held.offers.length + (held.more ?? 0)).toBe(offers.length);
+  });
+
+  it("holds a binned note, an offer and a graph to their bounds", () => {
+    expect(
+      BinnedNoteSchema.safeParse({ ...binned(0), beneath: -1 }).success,
+    ).toBe(false);
+    expect(
+      BinnedNoteSchema.parse({ ...binned(0), address: "1a" }).address,
+    ).toBe("1a");
+    expect(
+      ListedOfferSchema.safeParse(offer(0, "a".repeat(OFFER_SUMMARY_MAX + 1)))
+        .success,
+    ).toBe(false);
+    expect(ListedTagSchema.safeParse({ tag: "x", notes: 0 }).success).toBe(
+      false,
+    );
+    const graph = {
+      name: "The compiler",
+      owner: "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE",
+      ownership: "open" as const,
+    };
+    expect(GraphReadSchema.parse(graph)).toEqual(graph);
+    expect(
+      GraphReadSchema.parse({ ...graph, owner_name: "Ada", project: ".." }),
+    ).toEqual({ ...graph, owner_name: "Ada", project: ".." });
+    expect(
+      GraphReadSchema.safeParse({ ...graph, ownership: undefined }).success,
+    ).toBe(false);
   });
 });
 
@@ -1185,7 +1358,15 @@ describe("a place a thread reads besides its own project", () => {
 
 describe("which place a reading act answers for", () => {
   it("is on every act that reads and on none that writes", () => {
-    const reads = ["list_notes", "search_notes", "read_note"];
+    const reads = [
+      "list_notes",
+      "search_notes",
+      "read_note",
+      "list_tags",
+      "list_bin",
+      "list_offers",
+      "read_graph",
+    ];
     for (const tool of advertisedChatTools()) {
       const properties = tool.arguments.properties as Record<string, unknown>;
       expect(Object.hasOwn(properties, "in")).toBe(reads.includes(tool.name));

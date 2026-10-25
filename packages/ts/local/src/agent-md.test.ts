@@ -245,6 +245,17 @@ describe("what AGENT.md teaches", () => {
     expect(said("Never write")).toContain("saying it still holds is theirs");
   });
 
+  it("names the way an assistant outside the app reaches the notes, and what it never writes", () => {
+    expect(example("Commands")).toContain("sloppy mcp");
+    const commands = said("Commands");
+    expect(commands).toContain(
+      "a write on a note somebody has written in goes as an offer",
+    );
+    expect(commands).toContain(
+      "It writes none of what this file says is not yours: `checked` and `read_against`, who a note's owner is, anybody's identity or keys, and commits.",
+    );
+  });
+
   it("carries every shape the app starts a note from", () => {
     for (const shape of NOTE_TEMPLATES) {
       expect(AGENT_MD).toContain(`**${shape.name}**`);
@@ -320,6 +331,18 @@ describe("keeping the file an agent reads current", () => {
       AGENT_MD.replace("## One note is one file", "## A note used to be one"),
     );
     await files.write(AGENT_FILE, encodeText(older));
+
+    await keepAgentFile(files);
+
+    expect(await said(files)).toBe(agentFile());
+  });
+
+  it("writes it again where the copy there was signed before the assistant's command", async () => {
+    const files = container();
+    const before = AGENT_MD.split("\n")
+      .filter((line) => !line.includes("sloppy mcp"))
+      .join("\n");
+    await files.write(AGENT_FILE, encodeText(signedAsOurs(before)));
 
     await keepAgentFile(files);
 

@@ -1160,6 +1160,29 @@ Quiet throughout. Nothing here counts contributions, ranks writers, thanks anybo
 an offer as waiting. A thinking tool does not nag, and it does not keep score of whose
 thinking it is.
 
+## The profile page
+
+**"You" draws the same parts whether a Sloppy serves the graph or this device keeps it.**
+The banner across the top, the picture over its lower edge, the name and the line or two the
+person says about themselves, and Edit beside them; then "Your identity" beneath, as it reads
+today. A graph kept on a device is not a lesser profile: the folder carries all of it, so
+whoever opens the folder somewhere else meets the same person.
+
+- **Edit offers each picture two ways: choose a file, or paste a link to one.** Choosing a
+  file keeps the picture in the folder, and it goes wherever the folder goes. The link is
+  one field under each picture's own control — the banner's under the banner, the avatar's
+  under the avatar — empty until somebody fills it, taking an address that starts
+  `https://` and nothing else, and saying so in one line under it when it is given anything
+  else.
+- **The link says its one consequence beside it, once: "Whoever opens this folder loads this
+  picture from that address."** That is the help line under the field, not a dialog and not
+  a warning colour. It changes what somebody would choose — they can choose a file instead —
+  and nothing more about it is theirs to know.
+- **A link that does not load draws what no picture draws**, the plain band and the plain
+  disc. Nothing announces that it failed; Edit is where it is changed.
+- **Where a Sloppy serves the graph, there is no link field at all.** A server will not take
+  one, and a control that can only be refused is not offered.
+
 ## The history as a picture
 
 A person who keeps their graph in more than one place has a second shape to read: not the

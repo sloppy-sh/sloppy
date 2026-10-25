@@ -12,8 +12,14 @@ import {
   RING_WEIGHTS,
 } from "./appearance.js";
 import { WRITE_DONE } from "./authority.js";
-import { OwnedRefSchema, TimestampSchema, UlidSchema } from "./common.js";
+import {
+  OwnedRefSchema,
+  PrincipalSchema,
+  TimestampSchema,
+  UlidSchema,
+} from "./common.js";
 import { DRAFT_PATH_MAX } from "./draft.js";
+import { GraphOwnershipSchema } from "./graph.js";
 import {
   EDGE_DIRECTIONS,
   EDGE_LABEL_MAX,
@@ -23,7 +29,7 @@ import {
 } from "./edge.js";
 
 import { NODE_TITLE_MAX } from "./node.js";
-import { MAX_TAGS_PER_NODE, TagsSchema } from "./tag.js";
+import { MAX_TAGS_PER_NODE, TagSchema, TagsSchema } from "./tag.js";
 
 /** The agents this app can chat with. A second one is a value here and a way
  *  for the shell to reach it, and touches no shape and no surface. */
@@ -243,10 +249,12 @@ export function chatModels(agent: ChatAgent): readonly ChatModel[] {
 }
 
 /**
- * The acts Sloppy hands an agent. This is the vocabulary three surfaces read:
- * what the endpoint advertises, what the page does when one is called, and
- * what a thread draws. A new act is a value here, an entry in
- * {@link CHAT_TOOL_SPECS} and an arm of {@link ChatToolCallSchema}.
+ * The acts Sloppy hands an agent, in the app's chat and through `sloppy mcp`
+ * alike. This is the vocabulary every surface reads: what an endpoint
+ * advertises, what is done when one is called, and what a thread draws. A new
+ * act is a value here, an entry in {@link CHAT_TOOL_SPECS} and an arm of
+ * {@link ChatToolCallSchema}. What is left out of it on purpose is
+ * docs/ARCHITECTURE.md § "An assistant outside the app".
  */
 export const CHAT_TOOLS = [
   "list_notes",
@@ -260,6 +268,11 @@ export const CHAT_TOOLS = [
   "style_edge",
   "style_note",
   "delete_note",
+  "list_tags",
+  "list_bin",
+  "restore_note",
+  "list_offers",
+  "read_graph",
 ] as const;
 export type ChatToolName = (typeof CHAT_TOOLS)[number];
 
@@ -539,6 +552,28 @@ export const DeleteNoteArgumentsSchema = z.object({
 });
 export type DeleteNoteArguments = z.infer<typeof DeleteNoteArgumentsSchema>;
 
+export const ListTagsArgumentsSchema = z.object({ in: InPlaceSchema });
+export type ListTagsArguments = z.infer<typeof ListTagsArgumentsSchema>;
+
+export const ListBinArgumentsSchema = z.object({ in: InPlaceSchema });
+export type ListBinArguments = z.infer<typeof ListBinArgumentsSchema>;
+
+export const RestoreNoteArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe(
+    "The note to take back out of the bin, as list_bin gives it. Everything that went in with it comes back with it.",
+  ),
+});
+export type RestoreNoteArguments = z.infer<typeof RestoreNoteArgumentsSchema>;
+
+export const ListOffersArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe("The note, as a listing of them gives it."),
+  in: InPlaceSchema,
+});
+export type ListOffersArguments = z.infer<typeof ListOffersArgumentsSchema>;
+
+export const ReadGraphArgumentsSchema = z.object({ in: InPlaceSchema });
+export type ReadGraphArguments = z.infer<typeof ReadGraphArgumentsSchema>;
+
 export interface ChatToolSpec {
   /** One line for the agent, in the words it is being asked in. */
   description: string;
@@ -632,6 +667,41 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
     label: "Putting a note in the bin",
     arguments: DeleteNoteArgumentsSchema,
     writes: true,
+  },
+  list_tags: {
+    description:
+      "List the tags this graph's notes carry, each with how many notes carry it, most carried first. Read it before tagging anything: a system already has its tag, and a second spelling of it splits one set into two that nobody's question picks out together.",
+    label: "Reading the tags",
+    arguments: ListTagsArgumentsSchema,
+    writes: false,
+  },
+  list_bin: {
+    description:
+      "List the notes in the bin: each one's ref, title and number, when it went, and how many notes went in with it. Look here before writing down again what a note may already have said — what somebody binned may be what to put back.",
+    label: "Looking in the bin",
+    arguments: ListBinArgumentsSchema,
+    writes: false,
+  },
+  restore_note: {
+    description:
+      "Take a note back out of the bin, with everything that went in with it. Where its number was given to another note while it was in the bin it comes back with none, so read it afterwards and number it if it needs one. A person put it there: take back what they asked for, or what the notes plainly still need.",
+    label: "Taking a note out of the bin",
+    arguments: RestoreNoteArgumentsSchema,
+    writes: true,
+  },
+  list_offers: {
+    description:
+      "List the changes offered on one note and not yet taken in: who offered each, when, and what it says of itself. Whoever the note's writing lands for takes one in or turns it down, never you. You see every offer on a note your writing lands on, and otherwise the ones you made — look here before offering a change that is already waiting.",
+    label: "Reading what is offered",
+    arguments: ListOffersArgumentsSchema,
+    writes: false,
+  },
+  read_graph: {
+    description:
+      "Read what this graph is: its name, whose it is and what they are called, how a note written in it is gated, and where the code it is about is. In an 'owned' graph each note is gated by whoever started it, so your writing onto a note somebody else started is offered to them rather than written; in an 'open' one it lands.",
+    label: "Reading the graph",
+    arguments: ReadGraphArgumentsSchema,
+    writes: false,
   },
 };
 
@@ -762,6 +832,95 @@ export const NoteBinnedSchema = z.object({
   binned: ListedNoteSchema,
 });
 export type NoteBinned = z.infer<typeof NoteBinnedSchema>;
+
+/** Past this a listing of tags is one nobody tags against. */
+export const MOST_TAGS_LISTED = 500;
+
+/** One tag a graph's notes carry, and how many of them carry it. */
+export const ListedTagSchema = z.object({
+  tag: TagSchema,
+  notes: z.int().min(1),
+});
+export type ListedTag = z.infer<typeof ListedTagSchema>;
+
+/** The tags a graph's notes carry, or as many as one answer carries —
+ *  {@link tagsAnswer} is what composes one. */
+export const TagsListedSchema = z.object({
+  tags: z.array(ListedTagSchema).max(MOST_TAGS_LISTED),
+  /** **Absent is every tag there is.** A count is how many further tags the
+   *  graph's notes carry that this answer does not. */
+  more: z.int().min(1).optional(),
+});
+export type TagsListed = z.infer<typeof TagsListedSchema>;
+
+/** Past this the bin is something the agent skims rather than reads. */
+export const MOST_BINNED_LISTED = 200;
+
+/** One note in the bin, as a listing of the bin gives it. */
+export const BinnedNoteSchema = z.object({
+  note: OwnedRefSchema,
+  title: z.string().max(NODE_TITLE_MAX),
+  /** **Absent is a note that had no address**, or one whose address went to
+   *  another note while it was in the bin. */
+  address: AddressSchema.optional(),
+  binned_at: TimestampSchema,
+  /** How many notes went in with it, beneath it. */
+  beneath: z.int().min(0),
+});
+export type BinnedNote = z.infer<typeof BinnedNoteSchema>;
+
+/** What is in the bin, latest first, or as much of it as one answer carries —
+ *  {@link binAnswer} is what composes one. */
+export const BinListedSchema = z.object({
+  bin: z.array(BinnedNoteSchema).max(MOST_BINNED_LISTED),
+  /** **Absent is everything in the bin.** A count is how many further notes
+   *  are in it that this answer does not carry. */
+  more: z.int().min(1).optional(),
+});
+export type BinListed = z.infer<typeof BinListedSchema>;
+
+/** Past this the offers on one note are more than anybody is deciding. */
+export const MOST_OFFERS_LISTED = 100;
+
+/** Long enough for the one line an offer says of itself. */
+export const OFFER_SUMMARY_MAX = 200;
+
+/** One change offered on a note and not yet taken in. `summary` is one line,
+ *  already cut to length; **empty is an offer that says nothing of itself**. */
+export const ListedOfferSchema = z.object({
+  offer: OwnedRefSchema,
+  by: PrincipalSchema,
+  at: TimestampSchema,
+  summary: z.string().max(OFFER_SUMMARY_MAX),
+});
+export type ListedOffer = z.infer<typeof ListedOfferSchema>;
+
+/** The offers on one note, oldest first, or as many as one answer carries —
+ *  {@link offersAnswer} is what composes one. */
+export const OffersListedSchema = z.object({
+  offers: z.array(ListedOfferSchema).max(MOST_OFFERS_LISTED),
+  /** **Absent is every offer the reader may see.** A count is how many further
+   *  ones there are that this answer does not carry. */
+  more: z.int().min(1).optional(),
+});
+export type OffersListed = z.infer<typeof OffersListedSchema>;
+
+/** Longer than a graph, or its owner, is called. */
+const GRAPH_NAME_MAX = 512;
+
+/** What a graph is, as the agent reads it. */
+export const GraphReadSchema = z.object({
+  name: z.string().max(GRAPH_NAME_MAX),
+  owner: PrincipalSchema,
+  /** **Absent is an owner who has not said** what they are called. */
+  owner_name: z.string().max(GRAPH_NAME_MAX).optional(),
+  ownership: GraphOwnershipSchema,
+  /** Where the code this graph is about is, from the graph's own folder —
+   *  `..` for a container inside its project. **Absent is a graph that is
+   *  nobody's project.** */
+  project: z.string().max(DRAFT_PATH_MAX).optional(),
+});
+export type GraphRead = z.infer<typeof GraphReadSchema>;
 
 /** Longer than what a person calls a file they put in front of an agent. */
 export const CHAT_ATTACHED_NAME_MAX = 200;
@@ -981,6 +1140,31 @@ export const ChatToolCallSchema = z.discriminatedUnion("act", [
     act: z.literal("delete_note"),
     arguments: DeleteNoteArgumentsSchema,
   }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("list_tags"),
+    arguments: ListTagsArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("list_bin"),
+    arguments: ListBinArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("restore_note"),
+    arguments: RestoreNoteArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("list_offers"),
+    arguments: ListOffersArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("read_graph"),
+    arguments: ReadGraphArgumentsSchema,
+  }),
 ]);
 export type ChatToolCall = z.infer<typeof ChatToolCallSchema>;
 
@@ -1169,6 +1353,39 @@ export function foundAnswer(found: readonly FoundNote[]): ChatToolAnswer {
     MOST_NOTES_FOUND,
     (kept, more) => withMore({ found: kept }, more),
     SEARCH_TOO_LONG,
+  );
+}
+
+/** The tags a graph's notes carry, by the rule {@link listingAnswer} holds a
+ *  listing to, most carried first. */
+export function tagsAnswer(tags: readonly ListedTag[]): ChatToolAnswer {
+  return asMuchAsFits(
+    tags,
+    MOST_TAGS_LISTED,
+    (kept, more) => withMore({ tags: kept }, more),
+    LISTING_TOO_LONG,
+  );
+}
+
+/** What is in the bin, by the rule {@link listingAnswer} holds a listing to,
+ *  latest first. */
+export function binAnswer(bin: readonly BinnedNote[]): ChatToolAnswer {
+  return asMuchAsFits(
+    bin,
+    MOST_BINNED_LISTED,
+    (kept, more) => withMore({ bin: kept }, more),
+    LISTING_TOO_LONG,
+  );
+}
+
+/** The offers on one note, by the rule {@link listingAnswer} holds a listing
+ *  to, oldest first. */
+export function offersAnswer(offers: readonly ListedOffer[]): ChatToolAnswer {
+  return asMuchAsFits(
+    offers,
+    MOST_OFFERS_LISTED,
+    (kept, more) => withMore({ offers: kept }, more),
+    LISTING_TOO_LONG,
   );
 }
 

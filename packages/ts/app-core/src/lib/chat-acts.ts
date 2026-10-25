@@ -11,13 +11,23 @@
  * nothing here decides how much of a project one call carries.
  */
 
-import { containerDataAt, type Files, keepingDataAt, LocalApi, writeOnto } from '@sloppy/local';
+import {
+	containerDataAt,
+	containerOf,
+	type Files,
+	keepingDataAt,
+	LocalApi,
+	writeOnto
+} from '@sloppy/local';
 import {
 	sectionHeadings,
 	CARD_ROWS,
 	CARD_NONE,
 	A_NOTE,
+	type AmendmentView,
 	anchorsOf,
+	binAnswer,
+	type BinnedNote,
 	type BlockDocument,
 	CHAT_TOLD_MAX,
 	type ChatActDone,
@@ -27,14 +37,19 @@ import {
 	type ChatToolAnswer,
 	type ChatToolCall,
 	CODE_SCHEME,
+	type DeletedBranch,
 	type DeleteNoteArguments,
 	type EdgeDirection,
 	type EdgeLook,
 	type EdgeLookChannel,
 	type FoundNote,
 	foundAnswer,
+	type GraphRead,
+	GraphReadSchema,
 	type LinkNotesArguments,
 	type ListedNote,
+	type ListedOffer,
+	type ListedTag,
 	listingAnswer,
 	lookBetween,
 	type MarkChannel,
@@ -47,7 +62,10 @@ import {
 	type NoteSection,
 	type NoteWritten,
 	type NumberNoteArguments,
+	OFFER_SUMMARY_MAX,
+	offersAnswer,
 	type OwnedRef,
+	type RestoreNoteArguments,
 	type SearchHit,
 	splitOwnedRef,
 	type StyleEdgeArguments,
@@ -55,6 +73,7 @@ import {
 	type Tag,
 	type TagNoteArguments,
 	tagsAmong,
+	tagsAnswer,
 	ulid,
 	type WriteNoteArguments
 } from '@sloppy/types';
@@ -64,7 +83,14 @@ import {
 	RING_STYLE_LABELS,
 	RING_WEIGHT_LABELS
 } from '@sloppy/ui';
-import { emptySidecars, fromMarkdown, toMarkdown } from '@sloppy/vault';
+import {
+	emptySidecars,
+	fromMarkdown,
+	GRAPH_FILE,
+	readGraphFile,
+	toMarkdown,
+	type VaultGraph
+} from '@sloppy/vault';
 import { wordsFor } from './stores/errors.js';
 
 const NO_NOTE = 'There is no note here with that ref. List the notes and read one of those.';
@@ -83,6 +109,9 @@ const NOT_LINKED = 'Those lines were left as they were.';
 const NOTHING_DRAWN = 'That named nothing to draw and nothing to take off.';
 const NOT_LOOKED = 'That line was left as it was.';
 const NOT_DRAWN = 'That mark was left as it was.';
+const NOT_LISTED = 'The bin could not be read.';
+const NOT_RESTORED = 'That note was not taken out of the bin.';
+const NO_GRAPH = 'There is no graph here to read.';
 
 /** The person's half of what the agent was told above: the same fact, without
  *  the sentence telling an agent what to call next. */
@@ -97,6 +126,10 @@ const NOT_TO_ITSELF_TOLD = 'A note draws no line to itself.';
 const TOO_MANY_HERE = 'Too many notes here to read at once.';
 const TOO_MANY_FOUND = 'Too many notes carry those words.';
 const TOO_LONG_TO_READ = 'That note is too long to read in one go.';
+const TOO_MANY_TAGS = 'Too many tags here to read at once.';
+const TOO_MANY_BINNED = 'Too much in the bin to read at once.';
+const TOO_MANY_OFFERS = 'Too many offers on it to read at once.';
+const NO_GRAPH_TOLD = 'There is no graph here.';
 
 const RING = 'Ring';
 const RING_STYLE = 'Ring style';
@@ -131,11 +164,11 @@ export async function serveChatCall(
 	call: ChatToolCall,
 	reading = false
 ): Promise<ChatActDone> {
-	const done = await act(reading ? placeApi(files) : containerApi(files), call);
+	const done = await act(reading ? placeApi(files) : containerApi(files), files, call);
 	return done.told === undefined ? done : { ...done, told: shortly(done.told) };
 }
 
-async function act(api: LocalApi, call: ChatToolCall): Promise<ChatActDone> {
+async function act(api: LocalApi, files: Files, call: ChatToolCall): Promise<ChatActDone> {
 	switch (call.act) {
 		case 'list_notes': {
 			const here = await notesHere(api);
@@ -173,7 +206,142 @@ async function act(api: LocalApi, call: ChatToolCall): Promise<ChatActDone> {
 			return await styleNote(api, call.arguments);
 		case 'delete_note':
 			return await deleteNote(api, call.arguments);
+		case 'list_tags':
+			return await listTags(api);
+		case 'list_bin':
+			return await listBin(api);
+		case 'restore_note':
+			return await restoreNote(api, call.arguments);
+		case 'list_offers':
+			return await listOffers(api, call.arguments.note);
+		case 'read_graph':
+			return await readGraph(api, files);
 	}
+}
+
+async function listTags(api: LocalApi): Promise<ChatActDone> {
+	const tags: ListedTag[] = (await api.listTags()).map(({ tag, notes }) => ({ tag, notes }));
+	const answer = tagsAnswer(tags);
+	return { ...answer, told: answer.trouble ? TOO_MANY_TAGS : tagsTold(tags.length), touched: [] };
+}
+
+/** What is in the bin of the graph here, latest first. */
+async function listBin(api: LocalApi): Promise<ChatActDone> {
+	try {
+		const graph = await api.graphHere();
+		const bin = (await api.deletedBranches())
+			.filter((branch) => branch.graph === graph)
+			.map(asBinned);
+		const answer = binAnswer(bin);
+		return { ...answer, told: answer.trouble ? TOO_MANY_BINNED : binTold(bin.length), touched: [] };
+	} catch (error) {
+		return { ...troubleWriting(error, NOT_LISTED), touched: [] };
+	}
+}
+
+function asBinned(branch: DeletedBranch): BinnedNote {
+	return {
+		note: branch.ref,
+		title: branch.title,
+		...(branch.address === undefined ? {} : { address: branch.address }),
+		binned_at: branch.deleted_at,
+		beneath: branch.notes - 1
+	};
+}
+
+/** A note taken back out of the bin, by the rule `restore` in `@sloppy/local`
+ *  holds that to. */
+async function restoreNote(api: LocalApi, asked: RestoreNoteArguments): Promise<ChatActDone> {
+	try {
+		const restored = await api.restoreBranch(asked.note);
+		const going = beneath(await notesHere(api), restored.ref);
+		const about = await anchorsIn(api, restored.ref);
+		return {
+			said: JSON.stringify(asListed(restored, about)),
+			told:
+				going.length === 0
+					? 'Back out of the bin.'
+					: `Back out of the bin, with ${notesSaid(going.length)} beneath it.`,
+			card: binCard(restored, about, going.length),
+			...touchedBy([restored.ref, ...going.map((one) => one.ref)])
+		};
+	} catch (error) {
+		return troubleWriting(error, NOT_RESTORED);
+	}
+}
+
+async function listOffers(api: LocalApi, ref: OwnedRef): Promise<ChatActDone> {
+	if (!(await api.getNode(ref))) return trouble(NO_NOTE, NO_NOTE_TOLD);
+	const offers = (await api.listAmendments(ref)).map(asOffered);
+	const answer = offersAnswer(offers);
+	return {
+		...answer,
+		told: answer.trouble ? TOO_MANY_OFFERS : offersTold(offers.length),
+		touched: []
+	};
+}
+
+function asOffered(offer: AmendmentView): ListedOffer {
+	return { offer: offer.ref, by: offer.by, at: offer.at, summary: offerSummary(offer) };
+}
+
+/** The first line of what the offer says of itself, or else the title it
+ *  proposes. */
+function offerSummary(offer: AmendmentView): string {
+	const line = (offer.message ?? '').trim().split('\n')[0].trim() || offer.title.trim();
+	return line.length <= OFFER_SUMMARY_MAX ? line : `${line.slice(0, OFFER_SUMMARY_MAX - 1)}…`;
+}
+
+/** What the graph here is. Who its owner says they are and where its code is
+ *  are read off the graph's own file, and left out where it says nothing. */
+async function readGraph(api: LocalApi, files: Files): Promise<ChatActDone> {
+	try {
+		const ref = await api.graphHere();
+		const view = (await api.listGraphs()).find((graph) => graph.ref === ref);
+		if (!view) return trouble(NO_GRAPH, NO_GRAPH_TOLD);
+		const { owner, localId } = splitOwnedRef(ref);
+		const said = await graphFileIn(files, localId);
+		const read: GraphRead = {
+			name: view.title,
+			owner,
+			...(said?.owner_name === undefined ? {} : { owner_name: said.owner_name }),
+			ownership: view.ownership ?? 'open',
+			...(said?.project === undefined ? {} : { project: said.project })
+		};
+		const answer = GraphReadSchema.safeParse(read);
+		if (!answer.success) return trouble(NO_GRAPH, NO_GRAPH_TOLD);
+		return { said: JSON.stringify(answer.data), told: view.title, touched: [] };
+	} catch (error) {
+		return { ...troubleWriting(error, NO_GRAPH, NO_GRAPH_TOLD), touched: [] };
+	}
+}
+
+/** The graph file of the container in `files`, where it is the file of the
+ *  graph `localId` names. */
+async function graphFileIn(files: Files, localId: string): Promise<VaultGraph | undefined> {
+	const vault = await containerOf(files);
+	const bytes = vault && (await vault.read(GRAPH_FILE));
+	if (!bytes) return undefined;
+	try {
+		const said = readGraphFile(bytes);
+		return said.graph === localId ? said : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function tagsTold(count: number): string {
+	if (count === 0) return 'No tags here yet.';
+	return count === 1 ? '1 tag here.' : `${count.toLocaleString()} tags here.`;
+}
+
+function binTold(count: number): string {
+	return count === 0 ? 'Nothing in the bin.' : `${notesSaid(count)} in the bin.`;
+}
+
+function offersTold(count: number): string {
+	if (count === 0) return 'Nothing offered on it.';
+	return count === 1 ? '1 offer on it.' : `${count.toLocaleString()} offers on it.`;
 }
 
 /** One note in the container and the places in the code it reaches. */

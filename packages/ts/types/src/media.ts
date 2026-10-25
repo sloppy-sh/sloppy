@@ -90,6 +90,35 @@ export const AssetAddressSchema = z
   .regex(/^\/[a-z]/, "Expected an address on this instance");
 export type AssetAddress = z.infer<typeof AssetAddressSchema>;
 
+/** Longer than any address a picture is linked from. */
+export const LINKED_PICTURE_MAX = 2048;
+
+/**
+ * A picture somebody linked rather than handed over: an `https:` address on a
+ * named host. **Whoever draws one loads it from that host**, which then knows
+ * who is reading — so only a graph kept on a device carries one, by its
+ * owner's choice. docs/ARCHITECTURE.md § "A graph on disk".
+ */
+export const LinkedPictureSchema = z
+  .url({ protocol: /^https$/, hostname: z.regexes.domain })
+  .max(LINKED_PICTURE_MAX)
+  // `https:ada.png` parses, and a page on https reads it as a path of its own.
+  .startsWith("https://");
+export type LinkedPicture = z.infer<typeof LinkedPictureSchema>;
+
+/** Whether a picture is linked rather than held, read by its scheme. */
+export function isLinkedPicture(src: string): src is LinkedPicture {
+  return LinkedPictureSchema.safeParse(src).success;
+}
+
+/** Where a picture is drawn from: an {@link AssetAddress} on this instance, or
+ *  a {@link LinkedPicture}, told apart by scheme. */
+export const PictureSourceSchema = z.union([
+  AssetAddressSchema,
+  LinkedPictureSchema,
+]);
+export type PictureSource = z.infer<typeof PictureSourceSchema>;
+
 /**
  * A blob that is there, named by the upload it arrived on rather than by an
  * address. Who may read it is the store's answer and not this row's, so where

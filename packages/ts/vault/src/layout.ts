@@ -8,6 +8,7 @@ import {
   GraphOwnershipSchema,
   type GraphVouching,
   GraphVouchingSchema,
+  isLinkedPicture,
   UlidSchema,
 } from "@sloppy/types";
 
@@ -55,9 +56,14 @@ export interface VaultGraph {
   vouching?: GraphVouching;
   /** What the owner is called. Absent where they have not said. */
   owner_name?: string;
-  /** Their picture, as the path of a file in this vault's `media/`, so a graph
-   *  carries the picture it names. Absent where they have none. */
+  /** Their picture, which {@link pictureNamed} says what may be. Absent where
+   *  they have none. */
   owner_avatar?: string;
+  /** The picture across the top of their profile, held to the same rule.
+   *  Absent where they have none. */
+  owner_banner?: string;
+  /** What they say about themselves. Absent where they have not said. */
+  owner_bio?: string;
   /**
    * Where the code this graph is about is, as a path from the vault root —
    * `..` for a container inside the project it belongs to. **Absent is a graph
@@ -205,6 +211,10 @@ export function graphFile(graph: VaultGraph): Uint8Array {
     ...(graph.owner_avatar === undefined
       ? {}
       : { owner_avatar: graph.owner_avatar }),
+    ...(graph.owner_banner === undefined
+      ? {}
+      : { owner_banner: graph.owner_banner }),
+    ...(graph.owner_bio === undefined ? {} : { owner_bio: graph.owner_bio }),
     ...(graph.project === undefined ? {} : { project: graph.project }),
   };
   return encodeText(`${JSON.stringify(held, null, 2)}\n`);
@@ -248,11 +258,14 @@ export function readGraphFile(bytes: Uint8Array): VaultGraph {
     ...(typeof said.owner_name === "string" && said.owner_name !== ""
       ? { owner_name: said.owner_name }
       : {}),
-    // A picture the vault does not hold would name a file somewhere else on
-    // whoever opens it.
-    ...(typeof said.owner_avatar === "string" &&
-    uploadAt(said.owner_avatar) !== undefined
+    ...(pictureNamed(said.owner_avatar)
       ? { owner_avatar: said.owner_avatar }
+      : {}),
+    ...(pictureNamed(said.owner_banner)
+      ? { owner_banner: said.owner_banner }
+      : {}),
+    ...(typeof said.owner_bio === "string" && said.owner_bio !== ""
+      ? { owner_bio: said.owner_bio }
       : {}),
     // Where the path lands is the device's question, not this file's, so it is
     // `projectRootOf` in `@sloppy/local` that refuses one leaving the folder.
@@ -260,6 +273,17 @@ export function readGraphFile(bytes: Uint8Array): VaultGraph {
       ? { project: said.project }
       : {}),
   };
+}
+
+/**
+ * Whether a picture `graph.json` names is one to draw, read by its scheme: a
+ * file in this vault's `media/`, or an `https:` link its owner chose. Any other
+ * path would name a file somewhere else on whoever opens the folder.
+ */
+export function pictureNamed(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (isLinkedPicture(value)) return true;
+  return insideVault(value) && uploadAt(value) !== undefined;
 }
 
 /** A picture's pixel size, which an image link has no room for. */

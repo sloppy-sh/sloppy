@@ -3,10 +3,12 @@
 
 import { AGENT_FILE, LocalApi, MemoryFiles } from '@sloppy/local';
 import {
+	BinListedSchema,
 	CHAT_TOLD_MAX,
 	ChatActDoneSchema,
 	type ChatCard,
 	type ChatToolCall,
+	GraphReadSchema,
 	ListedNoteSchema,
 	NODE_TITLE_MAX,
 	NoteBinnedSchema,
@@ -14,8 +16,10 @@ import {
 	NotesFoundSchema,
 	NotesListedSchema,
 	NoteWrittenSchema,
+	OffersListedSchema,
 	type OwnedRef,
 	splitOwnedRef,
+	TagsListedSchema,
 	UNNAMED_GRAPH_ULID
 } from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -775,6 +779,125 @@ describe('putting a note in the bin', () => {
 	});
 });
 
+describe('the tags a graph carries', () => {
+	it('counts each tag by the notes carrying it, most carried first', async () => {
+		await wrote(writes(PARSER, [ABOUT_THE_PARSER], { tags: ['reading', 'parsing'] }));
+		await wrote(writes(PLACES_FILE, ['## Why\n\nIt names places.'], { tags: ['reading'] }));
+
+		const done = await serveChatCall(files, { call: 'c3', act: 'list_tags', arguments: {} });
+
+		expect(TagsListedSchema.parse(JSON.parse(done.said)).tags).toEqual([
+			{ tag: 'reading', notes: 2 },
+			{ tag: 'parsing', notes: 1 }
+		]);
+		expect(done.told).toBe('2 tags here.');
+		expect(done.touched).toEqual([]);
+	});
+});
+
+describe('the bin', () => {
+	it('lists what went in, with how many went with it', async () => {
+		const parser = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		await wrote(writes(PLACES_FILE, ['## Why\n\nIt names places.'], { under: parser }));
+		await answer({ call: 'c3', act: 'delete_note', arguments: { note: parser } });
+
+		const done = await serveChatCall(files, { call: 'c4', act: 'list_bin', arguments: {} });
+		const bin = BinListedSchema.parse(JSON.parse(done.said)).bin;
+
+		expect(bin).toHaveLength(1);
+		expect(bin[0]).toMatchObject({ note: parser, title: 'The parser', beneath: 1 });
+		expect(done.told).toBe('1 note in the bin.');
+	});
+
+	it('says plainly when nothing is in it', async () => {
+		const done = await serveChatCall(files, { call: 'c1', act: 'list_bin', arguments: {} });
+
+		expect(BinListedSchema.parse(JSON.parse(done.said)).bin).toEqual([]);
+		expect(done.told).toBe('Nothing in the bin.');
+	});
+
+	it('takes a note back out with what went in with it, and names both', async () => {
+		const parser = await wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: 'The parser' }));
+		const places = await wrote(
+			writes(PLACES_FILE, ['## Why\n\nIt names places.'], { under: parser })
+		);
+		await answer({ call: 'c3', act: 'delete_note', arguments: { note: parser } });
+
+		const done = await serveChatCall(files, {
+			call: 'c4',
+			act: 'restore_note',
+			arguments: { note: parser }
+		});
+
+		expect(done.trouble).toBeUndefined();
+		expect(ListedNoteSchema.parse(JSON.parse(done.said)).note).toBe(parser);
+		expect(done.told).toBe('Back out of the bin, with 1 note beneath it.');
+		expect([...(done.touched ?? [])].sort()).toEqual([parser, places].sort());
+		expect(done.card?.heading).toContain('The parser');
+		const listed = NotesListedSchema.parse(
+			JSON.parse(await answer({ call: 'c5', act: 'list_notes', arguments: {} }))
+		);
+		expect(listed.notes.map((one) => one.note).sort()).toEqual([parser, places].sort());
+	});
+
+	it('answers a note that is not in the bin with words the agent can act on', async () => {
+		const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER]));
+
+		const done = await serveChatCall(files, {
+			call: 'c2',
+			act: 'restore_note',
+			arguments: { note }
+		});
+
+		expect(done.trouble).toBe(true);
+		expect(done.said).toContain('not here to put back');
+	});
+});
+
+describe('what is offered on a note', () => {
+	it('lists the offer this container made on a note somebody else wrote', async () => {
+		const theirs = await theirNote();
+		await answer(writes(PARSER, ['## Why\n\nBecause it is bounded.']));
+
+		const done = await serveChatCall(files, {
+			call: 'c2',
+			act: 'list_offers',
+			arguments: { note: theirs }
+		});
+		const offers = OffersListedSchema.parse(JSON.parse(done.said)).offers;
+
+		expect(offers).toHaveLength(1);
+		expect(offers[0].by).toBe(splitOwnedRef(await containerApi(files).graphHere()).owner);
+		expect(done.told).toBe('1 offer on it.');
+		expect(done.touched).toEqual([]);
+	});
+
+	it('answers a note that is not there with words the agent can act on', async () => {
+		const done = await serveChatCall(files, {
+			call: 'c1',
+			act: 'list_offers',
+			arguments: { note: `${SOMEBODY}/01J0000000000000000000000A` }
+		});
+
+		expect(done.trouble).toBe(true);
+		expect(done.said).toContain('no note');
+	});
+});
+
+describe('the graph itself', () => {
+	it('says what it is called, whose it is, how it is gated and where its code is', async () => {
+		const done = await serveChatCall(files, { call: 'c1', act: 'read_graph', arguments: {} });
+		const read = GraphReadSchema.parse(JSON.parse(done.said));
+		const here = await containerApi(files).graphHere();
+
+		expect(read.owner).toBe(splitOwnedRef(here).owner);
+		expect(read.ownership).toBe('open');
+		expect(read.project).toBe('..');
+		expect(done.told).toBe(read.name);
+		expect(done.touched).toEqual([]);
+	});
+});
+
 describe('the number a note is written or carried at', () => {
 	/** Nothing to spring from opens a branch, so the rule numbers it and what
 	 *  is written beneath it after — a first note with no number would leave
@@ -1036,7 +1159,7 @@ describe('a place beside the project', () => {
 		);
 	}
 
-	/** The three reading acts, every one of them, so a test says the folder was
+	/** Every reading act a place answers, so a test says the folder was
 	 *  left as it was found by all of them and not only by the one it asked. */
 	async function everyRead(
 		at: MemoryFiles
@@ -1045,6 +1168,11 @@ describe('a place beside the project', () => {
 			JSON.parse((await reads(at, { call: 'c1', act: 'list_notes', arguments: {} })).said)
 		).notes;
 		await reads(at, { call: 'c2', act: 'search_notes', arguments: { words: 'parser' } });
+		await reads(at, { call: 'c2', act: 'list_tags', arguments: {} });
+		await reads(at, { call: 'c2', act: 'read_graph', arguments: {} });
+		for (const one of notes) {
+			await reads(at, { call: 'c2', act: 'list_offers', arguments: { note: one.note } });
+		}
 		const read: string[] = [];
 		for (const one of notes) {
 			const answered = await reads(at, {

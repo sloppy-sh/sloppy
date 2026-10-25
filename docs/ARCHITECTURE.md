@@ -2075,6 +2075,9 @@ while something else is still piping into it ends the process instead of the tra
 upload or a catalog entry, and the API reads the address back out of the caller's own
 store — otherwise a signed-in caller could have this instance mint a durable public link
 for a URL of their choosing and fetch it from this instance's address for every reader.
+A profile patch CAN carry a link — `avatar_url` and `banner_url`, for a graph kept on a
+device (§ "A graph on disk") — and the API refuses one in words (`linksAPicture` in
+`@sloppy/types`).
 **Owning a picture is not enough to use it for anything**, either: `ownPicture` is told
 what the picture is about to be used AS, and a note's picture named as an avatar or a
 banner is refused. A profile is read by strangers, so accepting one would write a private
@@ -2892,11 +2895,26 @@ a folder with. Nothing in it talks to a store: it is handed rows and hands back 
     └── bin.json                     when each of those went, and every address spent
 ```
 
-**`graph.json` says whose the graph is, and not only by DID.** `owner_name` and
-`owner_avatar` — a path into this vault's own `media/` — are what a graph carries about
-the person who keeps it, so one opened on another device is not anonymous. Both are
-optional, and absent is somebody who has not said. Importing somebody else's graph leaves
-their name behind with them; a person's own archive brings theirs back.
+**`graph.json` says whose the graph is, and not only by DID.** `owner_name`, `owner_bio`,
+`owner_avatar` and `owner_banner` are what a graph carries about the person who keeps it —
+what they are called, what they say about themselves, their picture and the one across the
+top of their profile — so one opened on another device is not anonymous, and a folder keeps
+the same profile a Sloppy serves. Each is optional, and absent is somebody who has not said.
+Importing somebody else's graph leaves all of it behind with them; a person's own archive
+brings theirs back.
+
+**A picture is read by its scheme: a path into this vault's own `media/`, or an `https:`
+link.** `pictureNamed` in `@sloppy/vault` is the reader's rule and `LinkedPictureSchema` in
+`@sloppy/types` the link's, and anything else — a path that climbs out of the folder, a file
+elsewhere on the disk, another scheme — is dropped as it is read, because it would name a
+file on whoever opens the folder. A path travels with the folder; a link does not, and **a
+link is the one picture Sloppy draws from somewhere it did not fetch itself**: a graph on a
+device has no instance to fetch through, so whoever opens the folder loads the picture from
+that address and its host learns that they did. That is a consequence the owner chooses, so
+the profile page says it where the link is written (DESIGN.md § "The profile page"). A store
+serving a graph off a server refuses a link outright — `UpdateProfileRequest`'s `avatar_url`
+and `banner_url` — because there it would be the instance pointing every reader at a machine
+the caller chose (§ "Pictures").
 
 **`ownership` is what the graph gates the notes written in it by** (§ "Whose writing a note
 carries"), and absent is `open` — every graph written before the field. It rides in an
@@ -3248,9 +3266,12 @@ reaches for, so the notes a project keeps are writable from where the code is wo
 sloppy init [dir]      start the notes in a project, and write what the tree can tell
 sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
 sloppy check [dir]     read every note and say what doesn't hold
+sloppy mcp             serve these notes to an assistant, under the rules the app keeps
 ```
 
-Each prints lines, answers JSON with `--json`, and says what it did in its exit code: **0**
+**`mcp` is the one that stays**: it serves Sloppy's own acts to the assistant that started
+it, over its input and output, until that assistant ends it — § "An assistant outside the
+app" is its doc of record. The other three each print lines, answer JSON with `--json`, and say what they did in their exit code: **0**
 nothing to fix, **1** something to fix and listed, **2** nothing done. `init` starts the
 container where there is none and writes the BASIC documentation the tree can be read for —
 a note per top-level package or folder the workspace declares, each anchored at its own
@@ -3391,19 +3412,33 @@ relation themselves has offloaded nothing, and what holds it is the person readi
 rather than a narrower vocabulary. So: the notes this project already has, with their addresses,
 titles, tags, the lines drawn between them by hand, what each springs out of and the
 places they are about; the notes some words reach, with the writing around what matched;
-one of them read whole, with the looks it sets on its lines; a note written about a place;
+one of them read whole, with the looks it sets on its lines; the tags the graph's notes
+carry and how many carry each; what is in the bin; the changes offered on a note and not yet
+taken in; what the graph itself is — its name, whose it is, how its notes are gated and where
+its code is; a note written about a place;
 a note carried under or after another; tags put on a note and taken off it; the number a
 person cites a note by, written or taken off; a line drawn between two notes and taken
-off; what a line says and how it and a mark are drawn; a note put in the bin. Three of
-them read and eight of them write, and `chatToolWrites` is the one statement of which is
-which — every surface that needs to know asks it rather than listing names.
+off; what a line says and how it and a mark are drawn; a note put in the bin, and one taken
+back out. Seven of those sixteen read and nine write, and `chatToolWrites` is the one
+statement of which is which — every surface that needs to know asks it rather than listing
+names.
 
-**Two things a person can write are deliberately not among them.** `checked` and
+**They are one vocabulary with one implementation, wherever an agent comes in.**
+`CHAT_TOOLS` and `CHAT_TOOL_SPECS` in `@sloppy/types` are the acts, served to this chat and
+to `sloppy mcp` alike (§ "An assistant outside the app"). What each act DOES lives in
+`@sloppy/local`, over a `LocalApi` and the folder's files, and answers the agent; what
+`@sloppy/app-core` adds is the person's half — the line in the thread, the card, the notes
+the canvas reads again — which a server with nobody watching does without.
+
+**What a person can write that is deliberately not among them** is one list, and
+§ "An assistant outside the app" points here rather than keeping a second. `checked` and
 `read_against` are a person saying they have read a note against the code, and an agent
 writing either silences the app's line about code that has moved under them
 (DESIGN.md § "An anchor into code"): it may read a note against the code and write what it
 found, and the signature stays the person's. `owner` is who GATES a note's writing, which
-is an authority change and not a look.
+is an authority change and not a look. And the person's own standing is none of an agent's
+business: their identity and its keys, the versions their history keeps and what signs
+them, and what their profile says.
 
 **A reason is written from a source or not at all.** The compass's west and a "Why" are
 what was decided against and why, and one an agent supplies out of its own reading puts
@@ -3500,7 +3535,7 @@ one project is the way it is often has the answer in another, so a thread carrie
 `MOST_PLACES` folders the person added to it. **The allow-list is the gate, and it is
 Rust's**: a place must already be a folder somebody picked, which `Folders::allows` is the
 one record of, and `AppRuntime.placeFiles` answers `undefined` for anything else — nothing
-typed on the page and no scan of the disk reaches a folder. Sloppy's three READING acts
+typed on the page and no scan of the disk reaches a folder. Sloppy's seven READING acts
 reach a place's notes through an `in` argument naming the place by NAME. **Naming a folder is
 how it joins that list, and `AppRuntime.askPlace` is the one way in**: it asks the person and
 admits what they name, and it OPENS nothing — reading a folder is not serving it, so no graph
@@ -3511,7 +3546,7 @@ dialog that writes the record; `placeFiles` answers from a copy of that record, 
 nobody picked is refused while somebody is still choosing rather than when the chat will not
 start; and every place is named on the agent's launch line, which is what gives its own file
 tools the folder. A folder that was picked and has since moved is caught at launch all the
-same, and `chat.rs` says which one. **The eight writing
+same, and `chat.rs` says which one. **The nine writing
 acts take no `in` and land in the thread's own draft**, whatever they say: `chatToolWrites`
 is what decides, so a place is read and never written. A place the thread does not carry, or
 one the shell will not serve, is refused to the agent in words it can act on.
@@ -3733,9 +3768,10 @@ full the agent's window is, a turn ended, and the session over. A
 block arriving again at a place already held is that block GROWN, and replaces it, which is
 the whole of how writing draws itself as it arrives.
 
-**What an answer runs to is decided once, in `@sloppy/types`.** A listing, a search and a
-note read whole are each composed by `listingAnswer`, `foundAnswer` and `noteAnswer` there,
-one rule under all three, which carry as much as `CHAT_ANSWER_MAX` holds and say how much
+**What an answer runs to is decided once, in `@sloppy/types`.** A listing, a search, a
+note read whole, the tags, the bin and the offers on a note are each composed by
+`listingAnswer`, `foundAnswer`, `noteAnswer`, `tagsAnswer`, `binAnswer` and `offersAnswer`
+there, one rule under all six, which carry as much as `CHAT_ANSWER_MAX` holds and say how much
 they left — because the shapes bound one note and the seam bounds one answer, and neither
 can say what happens when a project has more notes, or a note more sections, than fit.
 Nothing in these shapes bounds a NOTE: a person adds sections by hand and a write appends
@@ -3934,13 +3970,69 @@ point of putting an agent behind this rather than a template engine is that it r
 code and decides what a place warrants, and a surface that set the depth on somebody's
 behalf would be deciding it for them.
 
-**A standing agent outside the app is a later wave, and nothing here is in its way.** The
-endpoint above is not one: it is served by the app for the one session it started, on a
-port the machine chose, and it goes when that session does. A server other agents could
-reach would sit where the CLI sits — over `@sloppy/vault` and `@sloppy/local`, holding no
-vocabulary of its own — and everything above is already that shape: the format is in
-`AGENT.md`, the writing rule is `writeOnto`'s, and the acts are `CHAT_TOOL_SPECS` rather
-than anything this shell invented.
+**An assistant outside the app is § "An assistant outside the app" below.** The endpoint
+above is not one: it is served by the app for the one session it started, on a port the
+machine chose, and it goes when that session does.
+
+## An assistant outside the app
+
+**An assistant working in somebody's repository reaches the project's graph through
+Sloppy's own acts.** § "Asking a tool to write the notes" is a person opening a chat inside
+Sloppy; this is the other direction — Claude Code in a terminal, an editor's agent, anything
+that speaks the Model Context Protocol — asking what a piece of the code is for, and writing
+what it finds back, beside the code it is already working on.
+
+```
+sloppy mcp
+```
+
+**`sloppy mcp` is a server on its own input and output, started by the assistant.** It runs
+in the assistant's working directory and finds the project the way every other command does:
+the nearest folder at or above it holding a container (§ Tooling). It binds no port, answers
+nothing but the program that started it, and ends when that program does. A repository says
+it once for everyone working in it: this one commits a `.mcp.json` at its root naming the
+`sloppy` server, so an assistant opened here finds the notes without being told where they
+are.
+
+**It serves the one vocabulary through the one implementation.** The acts are the sixteen
+§ "Asking a tool to write the notes" lists — `CHAT_TOOLS` and `CHAT_TOOL_SPECS` in
+`@sloppy/types`, advertised by `advertisedChatTools` — with the same words to the agent and
+the same arguments, and what each one does is the code in `@sloppy/local` the app's chat
+calls too. The answer is the agent's half alone, `ChatToolAnswer`: there is nobody watching
+to lay a card out for. So a rule about addresses, aliases, ownership or offers is one rule
+wherever an agent comes in, and a new act reaches both the moment it is a value there.
+
+**Writes land in the working tree, and git is the review.** The command performs every act
+against the folder's own files, through `LocalApi` over a `Files` backed by
+`node:fs/promises`, because the files are the store (§ "A graph on disk"). There is no draft
+on this path and nothing pretends otherwise: the person reads what was written the way they
+read every other change to their repository, in the diff, and keeps it or drops it there.
+
+**It writes as the container.** The writer is the identity kept in the container's own
+private data (`containerDataAt`), exactly as `sloppy draft` and the app's chat write, so
+`writeOnto` falls the same way for all three: a note carrying nobody's writing but the
+container's is written straight onto, and a note a person has written in is offered an
+amendment that stands until they take it in (§ "Whose writing a note carries"). Nothing it
+does signs with anybody's identity.
+
+**What it leaves out is left out on purpose**, and the list is § "Asking a tool to write the
+notes"'s: `checked` and `read_against`, because the signature stays the person's; `owner`,
+because gating a note is authority; and the person's identity and keys, the versions their
+history keeps and what signs them, and what their profile says. None of them is an act, so
+none of them can be called. `.sloppy/AGENT.md` says the same to an agent reading it.
+
+**There is no gate, because one would protect nothing.** An assistant working in the folder
+already edits `.sloppy/notes/*.md` with its own file tools. What this server adds is the
+rules in `@sloppy/local` — the number a note takes, the alias the one it leaves keeps, the
+offer a person's note gets instead of a write — and not reach. A per-folder yes in front of
+it would stand before the careful way in and leave the careless one open, so nothing is
+asked and nothing is written down about who may.
+
+**An open app is handed nothing.** The app reads a folder again when it may have changed
+under it (§ Tooling), so what the command wrote is in the graph the next time the window
+comes back, by the same path a `git pull` takes. Both write as the container, so what it
+reads there is by a writer it already knows rather than a second identity, and nothing has
+to be running for an assistant to write a note.
 
 ## Building from the notes
 
