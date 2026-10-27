@@ -26,7 +26,7 @@ jobs:
       # Through compose, so the images, ports and dev credentials stay written
       # down once. `--wait` holds until both report healthy.
       - name: Bring up the datastores
-        run: docker compose up -d --wait surrealdb minio
+        run: docker compose up -d --wait surrealdb seaweedfs
 
       - run: pnpm check
 

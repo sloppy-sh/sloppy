@@ -69,7 +69,7 @@ lands in both. Nothing needs a `.env`: every value has a dev default. Ctrl-C sto
 | API             | http://localhost:8020/api |
 | SurrealDB       | `ws://localhost:8010/rpc` |
 | Object storage  | http://localhost:9010     |
-| Storage console | http://localhost:9011     |
+| Storage browser | http://localhost:9011     |
 
 The web shell is the address Sloppy is used at: it forwards `/api` and the syr discovery
 paths to the API, so the app and the API share an origin the way a deployment does.
