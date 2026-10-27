@@ -23,6 +23,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The database image runs as `nonroot`, and a bind-mounted directory that
+      # does not exist yet is created by the daemon as root: on a Linux host the
+      # database cannot write to it and exits. Make both directories first, open
+      # to whichever user the containers run as.
+      - name: Make the datastores' directories
+        run: mkdir -p db/data s3/data && chmod 777 db/data s3/data
+
       # Through compose, so the images, ports and dev credentials stay written
       # down once. `--wait` holds until both report healthy.
       - name: Bring up the datastores

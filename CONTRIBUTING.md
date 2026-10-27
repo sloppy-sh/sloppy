@@ -62,6 +62,9 @@ That is the loop: the database, object storage, the shared `@sloppy/*` builds, t
 and the web shell, all in containers. Edit a file on this machine and whatever owns it
 reacts — the API comes back up, the web app hot-reloads, a shared package rebuilds and
 lands in both. Nothing needs a `.env`: every value has a dev default. Ctrl-C stops it.
+On Linux, make `db/data` first and open it (`mkdir -p db/data && chmod 777 db/data`): the
+database runs as a non-root user, and a directory Docker creates for the mount belongs to
+root.
 
 | Service         | URL                       |
 | --------------- | ------------------------- |
