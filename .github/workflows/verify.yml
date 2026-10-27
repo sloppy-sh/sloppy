@@ -42,8 +42,14 @@ jobs:
       - run: pnpm lint
 
       # The integration suites answer to this as well as to the socket, so a
-      # green here cannot mean they were skipped.
-      - run: pnpm test:ts
+      # green here cannot mean they were skipped. One package at a time, the
+      # two halves of `test:ts`: run together on the runner's few cores, every
+      # suite's worker pool starves the others, and a test that takes half a
+      # second on a laptop takes twenty and times out.
+      - name: Test, one package at a time
+        run: |
+          pnpm turbo test --filter='!@sloppy/native' --concurrency=1
+          pnpm turbo test:ts --filter=@sloppy/native --concurrency=1
         env:
           SLOPPY_INTEGRATION: "1"
 
