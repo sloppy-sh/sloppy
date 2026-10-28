@@ -69,7 +69,7 @@ function words(asked: string): string[] {
  *  with runs of whitespace collapsed. Read as a convention across elements
  *  rather than a list of them, so a kind this build has no renderer for still
  *  gives up its words. */
-function wordsOf(content: unknown): string {
+export function wordsOf(content: unknown): string {
   const written: string[] = [];
   const walk = (value: unknown): void => {
     if (value === null || typeof value !== "object") return;
@@ -180,6 +180,14 @@ function snippetAround(text: string, at: number): string {
   const started = from > 0 ? afterFirstSpace(cut) : cut;
   const shown = to < chars.length ? beforeLastSpace(started) : started;
   return `${from > 0 ? "…" : ""}${shown}${to < chars.length ? "…" : ""}`;
+}
+
+/** The start of some writing, cut before the last whole word that fits in
+ *  `most` characters with the cut marked. Whole where it already fits. */
+export function openingOf(text: string, most: number): string {
+  const chars = [...text];
+  if (chars.length <= most) return text;
+  return `${beforeLastSpace(chars.slice(0, most - 1).join(""))}…`;
 }
 
 function afterFirstSpace(cut: string): string {

@@ -23,10 +23,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The database image runs as `nonroot`, and a bind-mounted directory that
+      # does not exist yet is created by the daemon as root: on a Linux host the
+      # database cannot write to it and exits. Make both directories first, open
+      # to whichever user the containers run as.
+      - name: Make the datastores' directories
+        run: mkdir -p db/data s3/data && chmod 777 db/data s3/data
+
       # Through compose, so the images, ports and dev credentials stay written
       # down once. `--wait` holds until both report healthy.
       - name: Bring up the datastores
-        run: docker compose up -d --wait surrealdb minio
+        run: docker compose up -d --wait surrealdb seaweedfs
 
       - run: pnpm check
 
@@ -35,8 +42,14 @@ jobs:
       - run: pnpm lint
 
       # The integration suites answer to this as well as to the socket, so a
-      # green here cannot mean they were skipped.
-      - run: pnpm test:ts
+      # green here cannot mean they were skipped. One package at a time, the
+      # two halves of `test:ts`: run together on the runner's few cores, every
+      # suite's worker pool starves the others, and a test that takes half a
+      # second on a laptop takes twenty and times out.
+      - name: Test, one package at a time
+        run: |
+          pnpm turbo test --filter='!@sloppy/native' --concurrency=1
+          pnpm turbo test:ts --filter=@sloppy/native --concurrency=1
         env:
           SLOPPY_INTEGRATION: "1"
 

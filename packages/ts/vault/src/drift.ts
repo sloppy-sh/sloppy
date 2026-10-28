@@ -49,7 +49,7 @@ export async function driftOf(
 ): Promise<string[]> {
   const read = new Map(
     (readings ?? [])
-      .filter((reading) => comparable(reading.digest))
+      .filter((reading) => digestComparable(reading.digest))
       .map((reading) => [reading.path, reading.digest]),
   );
   const paths = inOrder([...read.keys()]);
@@ -78,7 +78,7 @@ export async function readingsNow(
 
 /** Whether this build can reproduce a digest spelled that way, which is the
  *  one algorithm {@link digestOf} writes. */
-function comparable(digest: string): boolean {
+export function digestComparable(digest: string): boolean {
   return digest.startsWith(`${CODE_DIGEST_ALGORITHM}:`);
 }
 

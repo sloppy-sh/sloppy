@@ -10,7 +10,7 @@ tags:
   - ui
 title: "ui: the design system and the component vocabulary"
 created: 2026-09-28T00:46:15.806Z
-updated: 2026-09-28T00:46:15.809Z
+updated: 2026-10-25T07:40:48.833Z
 ---
 
 <!-- block 01M3JQM2QZKFH794Z4ED4XQ2AF -->
@@ -21,7 +21,7 @@ updated: 2026-09-28T00:46:15.809Z
 
 ## What it is
 
-`@sloppy/ui` is the design system, built on shadcn-svelte and Tailwind v4. [app.css](code:packages/ts/ui/src/lib/app.css) holds the tokens and the four theme axes on `<html>`: `data-theme`, `data-accent`, `data-style` and `data-app-font`. It also holds the graph's colour language. The apps import it as `@sloppy/ui/styles`. [DESIGN.md](code:DESIGN.md) is the doc of record.
+`@sloppy/ui` is the design system, built on shadcn-svelte and Tailwind v4. [app.css](code:packages/ts/ui/src/lib/app.css) holds the tokens and the five axes on `<html>` that [DESIGN.md, The axes on html](code:DESIGN.md#L48-L73) names: `data-look`, which is every colour there is; the three faces, which set the app, its headings and its code; `data-style`; `data-density`; and `data-effect`. There is no accent axis: a look names its own. It also holds the graph's colour language. The apps import it as `@sloppy/ui/styles`. [DESIGN.md](code:DESIGN.md) is the doc of record.
 
 ## What else lives here
 

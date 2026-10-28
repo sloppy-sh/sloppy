@@ -4,11 +4,15 @@ parent: did:syr:z6MkofhdxKmE23ZUPQ65Lj7SynGSbLsL1ZNc81tgqQhg8h6X/01M3E2FRSQAYC42
 address: 1b
 authors:
   - did:syr:z6Mkrpa9ZH9E38f4NpFZUCMEJX2rdGbf4vseijAqcBZHMdwk
+  - did:syr:z6MkofhdxKmE23ZUPQ65Lj7SynGSbLsL1ZNc81tgqQhg8h6X
 tags:
   - packages
+edges:
+  - to: did:syr:z6MkofhdxKmE23ZUPQ65Lj7SynGSbLsL1ZNc81tgqQhg8h6X/01M3HKX28V3SDGTQF38FB3AZHK
+    direction: to
 title: The shared packages
 created: 2026-09-28T00:44:22.357Z
-updated: 2026-09-28T00:44:22.361Z
+updated: 2026-09-29T18:14:44.925Z
 ---
 
 <!-- block 01M3JQGKYQXMS50J8MV2G0JMVY -->

@@ -35,4 +35,4 @@ updated: 2026-09-28T00:46:16.990Z
 - [ground.ts](code:packages/ts/graph/src/ground.ts), [wall.ts](code:packages/ts/graph/src/wall.ts): the picture a reader can put behind the field.
 - [color.ts](code:packages/ts/graph/src/color.ts), [palette.ts](code:packages/ts/graph/src/palette.ts): the graph's colours.
 
-\[Graph rendering\](code\:docs/ARCHITECTURE.md#Graph rendering) is the doc of record.
+[Graph rendering](code:docs/ARCHITECTURE.md#L2569) is the doc of record.

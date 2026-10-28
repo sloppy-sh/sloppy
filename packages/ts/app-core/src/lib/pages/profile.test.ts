@@ -228,6 +228,16 @@ describe('the page a person is on', () => {
 		expect(target.textContent).not.toContain('Ada King');
 	});
 
+	// A served graph refuses a linked picture, so a control that can only be
+	// refused is not offered.
+	it('offers no link for a picture', async () => {
+		open();
+		await settle();
+		button('Edit').click();
+		flushSync();
+		expect(target.textContent).not.toContain('Use a link');
+	});
+
 	it('says what to choose instead when the file is not a picture, and sends nothing', async () => {
 		open();
 		await settle();

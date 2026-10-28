@@ -411,8 +411,9 @@ not somebody reading a note against the code, and nothing you do here writes eit
     sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
     sloppy draft --tag a,b [paths…]  the same, tagging each note it writes
     sloppy check           read every note and say what doesn't hold
+    sloppy mcp             serve these notes to an assistant, under the rules the app keeps
 
-Each takes \`--json\` and answers in JSON instead of lines.
+Each but \`mcp\` takes \`--json\` and answers in JSON instead of lines.
 
 \`draft\` reads a TypeScript or JavaScript file by the line for what it imports and what
 it hands out, and anchors each name it finds. A file in any other language gets an anchor
@@ -421,6 +422,17 @@ to the file and none inside it, so the names in it are yours to write.
 \`--tag\` puts those tags on every note that run writes, beside the ones each already
 carries; it takes none off. Name the system the files are part of, so one run tags one
 scope.
+
+\`mcp\` is how an assistant working in this project reaches these notes through Sloppy's own
+acts rather than by editing the files: started from the project, it serves the same acts the
+app's chat has — reading, writing, tagging, numbering, moving, linking, binning and taking
+back out — under every rule above, so a write on a note somebody has written in goes as an
+offer. A write about a place lands on the note started about it, else on the one note that
+links to it, and where several link to it and none was started about it, nothing is written
+and they are named. What it writes lands in this folder like any other edit, and is reviewed with the rest
+of the change. It writes none of what this file says is not yours: \`checked\` and
+\`read_against\`, who a note's owner is, anybody's identity or keys, commits and what
+signs them, and what anybody's profile says.
 `;
 
 /** What Sloppy signs the file with, so that next time it can tell its own copy

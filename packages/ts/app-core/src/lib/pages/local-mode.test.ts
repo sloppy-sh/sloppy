@@ -6,10 +6,11 @@ import {
 	type History,
 	type IdentityAccess,
 	type IdentityHere,
+	LocalApi,
 	MemoryFiles,
 	MemoryHistory
 } from '@sloppy/local';
-import type { NodeView, OwnedRef, ProfileView } from '@sloppy/types';
+import type { DidSyr, NodeView, OwnedRef, ProfileView } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -20,7 +21,8 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
-import { type AppRuntime, initRuntime, type VaultAccess } from '../runtime.js';
+import { resetApi } from '../api.js';
+import { type AppRuntime, initRuntime, updateRuntime, type VaultAccess } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
@@ -321,6 +323,8 @@ afterEach(() => {
 	mounted = undefined;
 	session.clear();
 	graphHistory.clear();
+	updateRuntime({ createApi: undefined, assetSrc: undefined });
+	resetApi();
 	running('hosted');
 	target.remove();
 	document.body.innerHTML = '';
@@ -622,8 +626,22 @@ describe('Settings, on a device holding its own graph', () => {
 });
 
 describe('the page about you, on a device holding its own graph', () => {
-	it('shows what the notes are written under and asks no server about it', async () => {
+	/** The app served by a graph in a folder on this device, whose owner has
+	 *  said who they are. */
+	async function servedFromAFolder(): Promise<LocalApi> {
+		const local = new LocalApi(new MemoryFiles({ folder: '/graphs/one' }), {
+			writer: DID as DidSyr
+		});
+		await local.createGraph({ title: 'Thesis' });
+		await local.updateProfile({ display_name: 'Ada Lovelace', bio: 'I count things.' });
 		running('local');
+		updateRuntime({ createApi: () => local, assetSrc: (src: string) => src });
+		resetApi();
+		return local;
+	}
+
+	it('shows what the notes are written under and asks no server about it', async () => {
+		await servedFromAFolder();
 		session.adopt(VIEWER, 'a-session');
 		mounted = mount(Profile, { target });
 		flushSync();
@@ -633,6 +651,88 @@ describe('the page about you, on a device holding its own graph', () => {
 		expect(screen()).not.toContain('What you publish');
 		expect(api.countOf('GET /profile/me')).toBe(0);
 		expect(api.countOf('GET /publications')).toBe(0);
+	});
+
+	it('shows who the folder says they are, above the identity', async () => {
+		await servedFromAFolder();
+		session.adopt(VIEWER, 'a-session');
+		mounted = mount(Profile, { target });
+		flushSync();
+		await settle();
+
+		const text = screen();
+		expect(text).toContain('I count things.');
+		expect(text.indexOf('Ada Lovelace')).toBeGreaterThanOrEqual(0);
+		expect(text.indexOf('Ada Lovelace')).toBeLessThan(text.indexOf('Your identity'));
+		expect(has('Edit')).toBe(true);
+		expect(text).not.toContain('no graph of your own');
+	});
+
+	it('offers no edit on a device where none of the graphs is theirs, and says why', async () => {
+		const files = new MemoryFiles({ folder: '/graphs/theirs' });
+		await new LocalApi(files, {
+			writer: 'did:syr:z6MkrSomebodyElseKeepsThisFolderAAAAAAAAAAAAAA' as DidSyr
+		}).createGraph({ title: 'Theirs' });
+		const local = new LocalApi(files, { writer: DID as DidSyr });
+		running('local');
+		updateRuntime({ createApi: () => local, assetSrc: (src: string) => src });
+		resetApi();
+		session.adopt(VIEWER, 'a-session');
+		mounted = mount(Profile, { target });
+		flushSync();
+		await settle();
+
+		expect(has('Edit')).toBe(false);
+		expect(has('Use a link')).toBe(false);
+		expect(screen()).toContain(
+			'There is no graph of your own on this device yet. Start one to write your name in.'
+		);
+		expect(document.body.querySelector('[role="alert"]')).toBe(null);
+	});
+
+	it('writes a bio and a linked banner into the folder', async () => {
+		const local = await servedFromAFolder();
+		session.adopt(VIEWER, 'a-session');
+		mounted = mount(Profile, { target });
+		flushSync();
+		await settle();
+
+		control('Edit').click();
+		await settle();
+		const offered = [...document.body.querySelectorAll('button')].filter(
+			(b) => b.textContent?.trim() === 'Use a link'
+		);
+		expect(offered.length).toBe(2);
+		offered[0]?.click();
+		await settle();
+		const link = document.body.querySelector<HTMLInputElement>('#person-banner-link');
+		if (!link) throw new Error('No link field under the banner');
+		link.value = 'https://pictures.example/fields.jpg';
+		link.dispatchEvent(new Event('input', { bubbles: true }));
+		flushSync();
+		control('Use it').click();
+		await settle();
+		expect((await local.profile()).banner_src).toBe('https://pictures.example/fields.jpg');
+
+		const bio = document.body.querySelector<HTMLTextAreaElement>('#person-bio');
+		if (!bio) throw new Error('No bio field on screen');
+		bio.value = 'I count things, and keep them.';
+		bio.dispatchEvent(new Event('input', { bubbles: true }));
+		flushSync();
+		document.body.querySelector('form')?.requestSubmit();
+		await settle();
+
+		expect(await local.profile()).toMatchObject({
+			display_name: 'Ada Lovelace',
+			bio: 'I count things, and keep them.',
+			banner_src: 'https://pictures.example/fields.jpg'
+		});
+		expect(screen()).toContain('I count things, and keep them.');
+		expect(
+			[...document.body.querySelectorAll('img')].some(
+				(img) => img.getAttribute('src') === 'https://pictures.example/fields.jpg'
+			)
+		).toBe(true);
 	});
 
 	it('says whose an identity kept somewhere else is, and where it lives', async () => {

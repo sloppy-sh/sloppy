@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
   decodeText,
@@ -14,12 +15,14 @@ import {
   noteAt,
   notePath,
   noteUlids,
+  pictureNamed,
   picturesFile,
   readGraphFile,
   readPicturesFile,
   uploadAt,
   VAULT_FORMAT,
   VaultFormatError,
+  type VaultGraph,
 } from "./layout.js";
 
 const NOTE = "01J0000000000000000000000A";
@@ -149,19 +152,105 @@ describe("where a vault keeps things", () => {
   });
 
   it("leaves out a name nobody wrote and a picture this folder does not hold", () => {
-    const bytes = encodeText(
-      JSON.stringify({
-        format: VAULT_FORMAT,
-        graph: NOTE,
-        name: "The thesis",
-        owner: OWNER,
-        owner_name: "",
-        owner_avatar: "https://a.example/ada.png",
+    for (const elsewhere of [
+      "../ada.png",
+      "/home/ada/ada.png",
+      "notes/ada.png",
+      "media/../ada.png",
+      "media/deeper/ada.png",
+      "http://a.example/ada.png",
+      "https:ada.png",
+      "file:///home/ada/ada.png",
+      "javascript:alert(1)",
+      7,
+    ]) {
+      const bytes = encodeText(
+        JSON.stringify({
+          format: VAULT_FORMAT,
+          graph: NOTE,
+          name: "The thesis",
+          owner: OWNER,
+          owner_name: "",
+          owner_avatar: elsewhere,
+          owner_banner: elsewhere,
+          owner_bio: "",
+        }),
+      );
+      const read = readGraphFile(bytes);
+      expect(read.owner_name).toBeUndefined();
+      expect(read.owner_avatar).toBeUndefined();
+      expect(read.owner_banner).toBeUndefined();
+      expect(read.owner_bio).toBeUndefined();
+    }
+  });
+
+  it("reads back a banner, a bio and a picture linked from elsewhere", () => {
+    const graph = {
+      format: VAULT_FORMAT,
+      graph: NOTE,
+      name: "The thesis",
+      owner: OWNER,
+      owner_avatar: "https://a.example/ada.png",
+      owner_banner: mediaPath("up2", "jpg"),
+      owner_bio: "Notes on the engine.",
+    };
+    expect(readGraphFile(graphFile(graph))).toEqual(graph);
+    expect(pictureNamed(graph.owner_avatar)).toBe(true);
+    expect(pictureNamed(graph.owner_banner)).toBe(true);
+  });
+
+  it("reads every graph it writes back as it was, and writes no two alike", () => {
+    const optional = <T>(value: fc.Arbitrary<T>) =>
+      fc.option(value, { nil: undefined });
+    const picture = fc.oneof(
+      fc
+        .stringMatching(/^[A-Za-z0-9_-]{1,20}$/)
+        .chain((upload) =>
+          fc
+            .constantFrom(undefined, "png", "jpg")
+            .map((extension) => mediaPath(upload, extension)),
+        ),
+      fc
+        .stringMatching(/^[a-z0-9/._-]{0,30}$/)
+        .map((path) => `https://pictures.example/${path}`),
+    );
+    const said = fc
+      .record({
+        name: fc.string(),
+        ownership: optional(fc.constantFrom("open" as const, "owned" as const)),
+        vouching: optional(
+          fc.constantFrom("optional" as const, "required" as const),
+        ),
+        owner_name: optional(fc.string({ minLength: 1 })),
+        owner_avatar: optional(picture),
+        owner_banner: optional(picture),
+        owner_bio: optional(fc.string({ minLength: 1 })),
+        project: optional(fc.string({ minLength: 1 })),
+      })
+      .map(
+        (fields): VaultGraph =>
+          Object.fromEntries(
+            Object.entries({
+              format: VAULT_FORMAT,
+              graph: NOTE,
+              owner: OWNER,
+              ...fields,
+            }).filter(([, value]) => value !== undefined),
+          ) as unknown as VaultGraph,
+      );
+
+    fc.assert(
+      fc.property(said, (graph) => {
+        expect(readGraphFile(graphFile(graph))).toEqual(graph);
       }),
     );
-    const read = readGraphFile(bytes);
-    expect(read.owner_name).toBeUndefined();
-    expect(read.owner_avatar).toBeUndefined();
+    fc.assert(
+      fc.property(said, said, (one, other) => {
+        const same =
+          decodeText(graphFile(one)) === decodeText(graphFile(other));
+        expect(same).toBe(JSON.stringify(one) === JSON.stringify(other));
+      }),
+    );
   });
 
   it("reads back where the code this graph is about is", () => {

@@ -39,6 +39,14 @@
 		onshown?.();
 	}
 
+	/** A picture that would not load draws nothing, leaving whatever it sits on. */
+	let failed = $state<string | null>(null);
+
+	function broke(): void {
+		failed = src;
+		onbroken?.();
+	}
+
 	// A picture already in the cache can be complete before `onload` is bound.
 	$effect(() => {
 		if (src && source?.complete) paint();
@@ -47,24 +55,26 @@
 
 <!-- `alt=""`: every use of this sits beside the person's name, and a second
      reading of it is noise to anyone listening. -->
-{#if still.current}
-	<img
-		bind:this={source}
-		{src}
-		alt=""
-		onload={paint}
-		onerror={() => onbroken?.()}
-		class="pointer-events-none absolute size-0 opacity-0"
-	/>
-	<canvas bind:this={frame} class={cn('block object-cover', className)}></canvas>
-{:else}
-	<img
-		{src}
-		alt=""
-		decoding="async"
-		draggable="false"
-		onload={() => onshown?.()}
-		onerror={() => onbroken?.()}
-		class={cn('block object-cover', className)}
-	/>
+{#if failed !== src}
+	{#if still.current}
+		<img
+			bind:this={source}
+			{src}
+			alt=""
+			onload={paint}
+			onerror={broke}
+			class="pointer-events-none absolute size-0 opacity-0"
+		/>
+		<canvas bind:this={frame} class={cn('block object-cover', className)}></canvas>
+	{:else}
+		<img
+			{src}
+			alt=""
+			decoding="async"
+			draggable="false"
+			onload={() => onshown?.()}
+			onerror={broke}
+			class={cn('block object-cover', className)}
+		/>
+	{/if}
 {/if}

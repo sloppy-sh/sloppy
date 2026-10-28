@@ -38,7 +38,7 @@ describe("isReachableRemoteHost", () => {
     "::ffff:10.1.2.3",
     "::ffff:192.168.1.1",
     "localhost",
-    "minio.localhost",
+    "seaweedfs.localhost",
   ])("refuses %s in production and allows it in development", (host) => {
     expect(isReachableRemoteHost(host, strict)).toBe(false);
     expect(isReachableRemoteHost(host, permissive)).toBe(true);

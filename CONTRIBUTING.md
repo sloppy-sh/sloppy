@@ -62,6 +62,9 @@ That is the loop: the database, object storage, the shared `@sloppy/*` builds, t
 and the web shell, all in containers. Edit a file on this machine and whatever owns it
 reacts — the API comes back up, the web app hot-reloads, a shared package rebuilds and
 lands in both. Nothing needs a `.env`: every value has a dev default. Ctrl-C stops it.
+On Linux, make `db/data` first and open it (`mkdir -p db/data && chmod 777 db/data`): the
+database runs as a non-root user, and a directory Docker creates for the mount belongs to
+root.
 
 | Service         | URL                       |
 | --------------- | ------------------------- |
@@ -69,7 +72,7 @@ lands in both. Nothing needs a `.env`: every value has a dev default. Ctrl-C sto
 | API             | http://localhost:8020/api |
 | SurrealDB       | `ws://localhost:8010/rpc` |
 | Object storage  | http://localhost:9010     |
-| Storage console | http://localhost:9011     |
+| Storage browser | http://localhost:9011     |
 
 The web shell is the address Sloppy is used at: it forwards `/api` and the syr discovery
 paths to the API, so the app and the API share an origin the way a deployment does.
@@ -165,6 +168,22 @@ definitions, the indexes and the purge, the delegation round trip, and Sloppy si
 against its own provider for real. Asked for and finding nothing listening, they fail
 rather than skip; unasked, they skip, so a run that never wanted them cannot be read as
 one that had them. `SLOPPY_SURREALDB_URL` points them elsewhere.
+
+## This repository's own notes
+
+Sloppy keeps its own reasoning in `.sloppy/`, and the `sloppy` command is how anything
+working here reads and writes it. Build it once:
+
+```bash
+pnpm build:packages
+node packages/ts/cli/dist/sloppy.mjs check
+```
+
+`.mcp.json` at the root names the `sloppy` server — `sloppy mcp`, from that build — so an
+assistant opened in this repository reaches the notes through Sloppy's own acts rather
+than by editing the files. What it writes lands in `.sloppy/notes/` like any other edit,
+and is reviewed in the diff with the rest of the change. docs/ARCHITECTURE.md § "An
+assistant outside the app" is what it serves and what it leaves out.
 
 ## Formatting: who owns what
 

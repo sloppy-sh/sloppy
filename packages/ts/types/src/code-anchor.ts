@@ -96,6 +96,37 @@ export const ProjectPathSchema = z
   )
   .refine(insideProject, "That place is outside this project.");
 
+/** A fragment as an href spells it after `#`, which is how an agent is handed
+ *  one back. */
+export function fragmentSpelled(
+  fragment: NonNullable<CodeAnchor["fragment"]>,
+): string {
+  if (fragment.kind === "symbol") return fragment.name;
+  return fragment.from === fragment.to
+    ? `L${fragment.from}`
+    : `L${fragment.from}-L${fragment.to}`;
+}
+
+/**
+ * Where the code under one anchor stands, worked out when somebody asks and
+ * never kept. `held` is a file that digests as it did when a person read the
+ * note against it; `moved` is one that does not, or whose fragment no longer
+ * finds anything in it; `unread` is one nobody has read the note against;
+ * `missing` is a path this checkout has not got. A folder that is there is
+ * `unread`: nothing digests a folder, so nobody can have read a note against
+ * one, and a fragment on it changes nothing.
+ */
+export const ANCHOR_STANDINGS = ["held", "moved", "unread", "missing"] as const;
+export type AnchorStandingKind = (typeof ANCHOR_STANDINGS)[number];
+
+export const AnchorStandingSchema = z.object({
+  path: ProjectPathSchema,
+  /** As written after `#`: `L12-L20` or a name. **Absent is the whole file.** */
+  fragment: z.string().min(1).max(PROJECT_PATH_MAX).optional(),
+  standing: z.enum(ANCHOR_STANDINGS),
+});
+export type AnchorStanding = z.infer<typeof AnchorStandingSchema>;
+
 function sameness(anchor: CodeAnchor): string {
   return JSON.stringify([anchor.path, anchor.fragment ?? null]);
 }

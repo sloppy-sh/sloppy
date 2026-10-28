@@ -140,18 +140,29 @@ export function toolLine(block: ToolCallBlock): ToolLine {
 	if (!held) return { doing };
 	switch (held.act) {
 		case 'list_notes':
+		case 'list_tags':
+		case 'list_bin':
+		case 'read_graph':
 			return { doing };
 		case 'search_notes':
 			return { doing, subject: held.arguments.words };
 		case 'read_note':
+		case 'read_around':
 		case 'move_note':
 		case 'link_notes':
 		case 'style_edge':
 		case 'style_note':
 		case 'delete_note':
+		case 'restore_note':
+		case 'list_offers':
 			return { doing, note: held.arguments.note };
 		case 'write_note':
 			return { doing, subject: held.arguments.about };
+		case 'brief': {
+			const { words, about = [] } = held.arguments;
+			const subject = words ?? about.join(', ');
+			return { doing, ...(subject === '' ? {} : { subject }) };
+		}
 		case 'number_note': {
 			const subject = held.arguments.address;
 			return { doing, ...(subject === undefined ? {} : { subject }), note: held.arguments.note };

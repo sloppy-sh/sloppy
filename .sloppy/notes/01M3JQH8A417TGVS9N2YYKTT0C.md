@@ -29,7 +29,7 @@ updated: 2026-09-28T00:44:43.206Z
 - **Pen draws, touch pans.** Pencil input arrives as pointer events with `pointerType === 'pen'`.
 - **iPad-first.** The generated iOS project is patched after generation so the app targets iPad as well as iPhone.
 
-\[Native shell\](code\:docs/ARCHITECTURE.md#Native shell) is the doc of record.
+[Native shell](code:docs/ARCHITECTURE.md#L4491) is the doc of record.
 
 ## Running it
 

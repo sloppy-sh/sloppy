@@ -21,3 +21,4 @@ export * from "./threads.js";
 export * from "./builds.js";
 export * from "./credentials.js";
 export * from "./api.js";
+export * from "./acts.js";

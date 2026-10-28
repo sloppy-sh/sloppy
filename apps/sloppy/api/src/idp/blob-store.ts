@@ -36,8 +36,8 @@ export class BlobStore implements OnApplicationBootstrap {
     this.client = new S3Client({
       endpoint: store.endpoint,
       region: store.region,
-      // MinIO addresses a bucket by path; the virtual-host form resolves a
-      // hostname that only a real S3 deployment publishes.
+      // A self-hosted store addresses a bucket by path; the virtual-host form
+      // resolves a hostname that only a real S3 deployment publishes.
       forcePathStyle: true,
       credentials: {
         accessKeyId: store.accessKeyId,

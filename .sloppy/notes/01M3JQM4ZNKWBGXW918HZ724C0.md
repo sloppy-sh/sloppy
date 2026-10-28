@@ -26,4 +26,4 @@ updated: 2026-09-28T00:46:18.104Z
 - [wkd.ts](code:packages/ts/openpgp/src/wkd.ts), then [keyserver.ts](code:packages/ts/openpgp/src/keyserver.ts): finding a key, first at the address's own domain and then at a keyserver.
 - [binding.ts](code:packages/ts/openpgp/src/binding.ts), [keys.ts](code:packages/ts/openpgp/src/keys.ts): tying a key to the person it speaks for.
 
-\[Who a person is\](code\:docs/ARCHITECTURE.md#Who a person is) is the doc of record.
+[Who a person is](code:docs/ARCHITECTURE.md#L468) is the doc of record.

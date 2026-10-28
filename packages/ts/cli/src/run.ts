@@ -16,10 +16,11 @@ import { check } from "./check.js";
 import { containerAt, heldAt } from "./folder.js";
 import { draft } from "./draft.js";
 import { init, InitRefused } from "./init.js";
+import { NO_NOTES_HERE, ownVersion, serveMcp } from "./mcp.js";
 import { NodeFiles } from "./node-files.js";
 import type { WriteDone } from "./writer.js";
 
-export const COMMANDS = ["init", "draft", "check"] as const;
+export const COMMANDS = ["init", "draft", "check", "mcp"] as const;
 export type Command = (typeof COMMANDS)[number];
 
 /** Nothing to fix. */
@@ -44,6 +45,9 @@ export interface CliContext {
   /** Where a folder is reached, and where what is nobody else's business goes
    *  for it; absent is this disk. */
   filesAt?: (root: string, data: string) => Files;
+  /** The lines `mcp` is sent, one message each; absent is nothing sent. Its
+   *  answers go to `told.out`, a line each. */
+  calls?: AsyncIterable<string> | Iterable<string>;
 }
 
 /** `--name` is `true`, `--name=value` and `--name value` are the value. */
@@ -89,6 +93,7 @@ const USAGE = [
   "  sloppy init [dir]      start the notes in a project, and write what the tree can tell",
   "  sloppy draft [paths…]  a note in detail per file named, never over somebody's writing",
   "  sloppy check [dir]     read every note and say what doesn't hold",
+  "  sloppy mcp             serve these notes to an assistant, under the rules the app keeps",
   "",
   "  --identity <file>      write as the identity in that file, rather than one made here",
   "  --tag <a,b>            tag every note it writes, alongside what each already carries",
@@ -102,17 +107,21 @@ export async function run(
 ): Promise<number> {
   const asked = parse(argv);
   const { told } = context;
+  // `mcp`'s output is its caller's protocol, so a line for a person goes
+  // anywhere else.
+  const serves = asked.command === "mcp";
+  const usage = (line: string) => (serves ? told.err(line) : told.out(line));
   if (asked.options.has("help") || asked.options.has("h") || !asked.command) {
-    for (const line of USAGE) told.out(line);
+    for (const line of USAGE) usage(line);
     return asked.command ? FINE : NOTHING_DONE;
   }
   const command = COMMANDS.find((held) => held === asked.command);
   if (!command) {
     told.err(`No such command: ${asked.command}`);
-    for (const line of USAGE) told.out(line);
+    for (const line of USAGE) usage(line);
     return NOTHING_DONE;
   }
-  const json = asked.options.has("json");
+  const json = asked.options.has("json") && !serves;
   try {
     switch (command) {
       case "check":
@@ -121,6 +130,8 @@ export async function run(
         return await starting(asked, context, json);
       case "draft":
         return await drafting(asked, context, json);
+      case "mcp":
+        return await serving(context);
     }
   } catch (thrown) {
     return nothingDone(command, told, json, whyStopped(thrown));
@@ -328,6 +339,20 @@ async function drafting(
   }
   for (const one of missed) context.told.out(`${one.path}: ${one.said}`);
   return missed.length === 0 ? FINE : TO_FIX;
+}
+
+/** Serves until the caller is done. A folder with no notes is still served,
+ *  and every call it is sent is answered with how to start them. */
+async function serving(context: CliContext): Promise<number> {
+  const found = await projectAbove(context, folderNamed(context));
+  if (!found) context.told.err(NO_NOTES_HERE);
+  await serveMcp({
+    ...(found === undefined ? {} : { files: found.files }),
+    calls: context.calls ?? [],
+    answer: (line) => context.told.out(line),
+    version: await ownVersion(),
+  });
+  return FINE;
 }
 
 /** The tags `--tag` named, or the words to say where one of them is not a tag

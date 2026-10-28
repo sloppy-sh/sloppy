@@ -564,10 +564,11 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     });
     const before = (await read("GET", "/api/profile/me")).body.avatar_src;
 
-    await read("PATCH", "/api/profile/me", {
+    const refused = await read("PATCH", "/api/profile/me", {
       avatar_url: "https://example.com/not-an-image",
       avatar_src: "https://example.com/not-an-image",
     });
+    expect(refused.status).toBe(400);
 
     const after = await read("GET", "/api/profile/me");
     expect(after.body.avatar_src).toBe(before);
