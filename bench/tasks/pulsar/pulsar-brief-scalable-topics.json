@@ -1,0 +1,90 @@
+{
+  "id": "pulsar-brief-scalable-topics",
+  "family": "brief",
+  "prompt": "You are about to start working on scalable topics in this project. Explain to a newcomer, as briefly as you can, what a scalable topic is and why it exists, and how the controller, automatic split and merge, the consumer types and the V5 client fit together, and say where each one is written down.",
+  "tools": "read",
+  "key": "Written in the PIP-460 series, all added between 2026-04 and 2026-10, and the client spec under spec/scalable-topics/. PIP-460 (pip/pip-460.md, 2026-04-01): partitioned topics route by hash(key) % numPartitions, so changing the count breaks key ordering, partitions can never shrink, and the count has to be guessed up front. A scalable topic (topic://tenant/namespace/name) is instead a DAG of hash-range segments (segment://...), each backed by one managed ledger and owned by one broker; a split seals a segment and creates two children, a merge seals adjacent ones into one, and parents happen-before children, so consumers traverse the DAG in order. PIP-468 (2026-04-21): the Scalable Topic Controller, one leader-elected broker per topic (ScalableTopicService, ScalableTopicController, SegmentLayout, SubscriptionCoordinator in pulsar-broker/.../service/scalable), owns the layout, runs split and merge so that subscription cursors exist before producers are redirected, assigns segments to consumers, and pushes layout changes to clients over DAG watch sessions instead of one-shot lookups. PIP-483 (2026-06-11): auto split/merge from per-segment load pushed into the metadata store by the owning broker (SegmentLoadReporter); a pure decision function, splits fast and merges lazy, bounded by maxSegments and DAG depth. Consumers: StreamConsumer (exclusive segments, ordered per key), QueueConsumer (shared across all segments, no ordering) and CheckpointConsumer (positions held in an external checkpoint, for Flink and similar); PIP-486 (2026-06-29) adds key-shared entry buckets so ordered consumption scales past one consumer per segment. PIP-466 (2026-04-20): the V5 Java client in new modules pulsar-client-api-v5 and pulsar-client-v5, with no partitions in the API and a type per consumer mode, leaving the existing client unchanged. PIP-494 (2026-10-01) makes spec/scalable-topics/ the normative client contract, changed only through PIPs. Also: PIP-473 moves transaction state for segments into the metadata store, and PIP-475 migrates a regular topic to a scalable one in a one-way step.",
+  "sources": [
+    {
+      "doc": "pip/pip-460.md",
+      "quote": "Key-to-partition routing uses modulo hashing: `hash(key) % numPartitions`."
+    },
+    {
+      "doc": "pip/pip-460.md",
+      "quote": "A scalable topic is a **DAG of range segments**."
+    },
+    {
+      "doc": "pip/pip-460.md",
+      "quote": "Each range is backed by exactly one managed ledger and is owned by exactly one broker at any given time."
+    },
+    {
+      "doc": "pip/pip-468.md",
+      "quote": "This PIP specifies the **Scalable Topic Controller** — the broker-side component responsible for:"
+    },
+    {
+      "doc": "pip/pip-483.md",
+      "quote": "**Splits are fast; merges are lazy.**"
+    },
+    {
+      "doc": "pip/pip-460.md",
+      "quote": "Three consumption patterns are supported:"
+    },
+    {
+      "doc": "pip/pip-486.md",
+      "quote": "Buckets are the parallelism multiplier *beyond* the segment cap."
+    },
+    {
+      "doc": "pip/pip-466.md",
+      "quote": "the existing `pulsar-client-api` and `pulsar-client` modules stay completely unchanged, and the new API is introduced in an additional `pulsar-client-v5` module."
+    },
+    {
+      "doc": "spec/scalable-topics/README.md",
+      "quote": "The PIPs are **design rationale**; this specification is the **normative client contract**"
+    },
+    {
+      "doc": "pip/pip-475.md",
+      "quote": "**Cannot be reversed.**"
+    },
+    {
+      "doc": "pip/pip-473.md",
+      "quote": "**Move transactional state out of the data stream and into the metadata store.**"
+    }
+  ],
+  "grader": {
+    "kind": "none"
+  },
+  "rubric": [
+    {
+      "criterion": "Why it exists: modulo partitioning breaks key order when the count changes, cannot shrink, and must be guessed up front",
+      "points": 1
+    },
+    {
+      "criterion": "What it is: a topic:// topic made of a DAG of hash-range segments, one managed ledger each, split and merged with parents read before children",
+      "points": 2
+    },
+    {
+      "criterion": "The controller: one leader-elected broker per topic owning the layout, split/merge, consumer assignment, and pushing layout updates to clients",
+      "points": 1
+    },
+    {
+      "criterion": "Auto split/merge driven by segment load, splitting fast and merging lazily within caps",
+      "points": 1
+    },
+    {
+      "criterion": "The consumer types (stream, queue, checkpoint) and the V5 client as a separate API without partitions",
+      "points": 1
+    },
+    {
+      "criterion": "Names where each is written: PIP-460, PIP-468, PIP-483, PIP-486, PIP-466 and spec/scalable-topics",
+      "points": 1
+    },
+    {
+      "criterion": "Brief, and says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

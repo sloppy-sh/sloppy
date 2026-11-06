@@ -1,0 +1,119 @@
+{
+  "id": "milvus-why-autoid-upsert",
+  "family": "why",
+  "tools": "read",
+  "prompt": "A full (non-partial) upsert into a collection whose primary key has autoID=true now looks the primary keys up before it writes anything. Why? What happens to a row whose key exists, to one whose key is not found, and to one that has no key at all, and why isn't a row that is not found simply inserted under the key the caller sent?",
+  "key": "Written in docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md (created 2026-08-03, landed in #53158 on 2026-09-17). Before it, Full AutoID Upsert replaced the business primary key of every row: Delete(P) + Insert(G) with G freshly allocated. P and G can hash to different VChannels, so the two messages may commit in different WAL transactions, and a legal Snapshot cut can contain Delete(P) without Insert(G): restoring it loses the entity. So Proxy first runs one PK-only standard Strong Query and classifies each row in request order. A row whose key exists keeps it: Delete(P) + Insert(P), one routing key and one VChannel transaction, and P is returned. A row whose key is not found gets an allocator-generated G from the same global allocator ordinary Insert uses, emits only Insert(G), and G is returned. A row with no key is rejected (use Insert instead). The caller's key is never copied into the business PK for a not-found row because a NotFound result does not make the caller the owner of that ID: allocator ownership, not a G != P comparison, is the safety invariant, so concurrent and future allocator-generated inserts cannot produce the same ID. A Query error fails the request before anything is appended to the WAL. Partial Upsert keeps its existing read/merge/CAS path, and non-AutoID upsert is unchanged.",
+  "sources": [
+    {
+      "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+      "quote": "A legal Snapshot cut can then contain `Delete(P)` without `Insert(G)`, and restoring that Snapshot loses the logical entity."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+      "quote": "Because `P` and `G` can hash to different VChannels, the two messages may commit in different WAL transactions."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+      "quote": "It preserves `P` when the row exists and generates an allocator-owned ID when the row is not found."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+      "quote": "Reject; use Insert to create an entity without a lookup key"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+      "quote": "A missing request PK is a lookup key only. It is never copied directly into the business PK."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+      "quote": "Allocator ownership, rather than a `G != P` comparison, is the safety invariant."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+      "quote": "Ordinary Insert uses the same global allocator, whose ranges do not overlap across Proxies."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(snapshot|backup|restor|recover|replay|crash|cut)[^.\\n]{0,200}(\\blos[et]|\\blost\\b|\\bloses\\b|without (the |its )?insert|vanish|disappear|only the delete|delete but not)|(different|separate|two|distinct|independent) (v ?channels?|shards?|channels?|wal transactions?|transactions?|log commits?|commits?)|not atomic|non-?atomic|atomically",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+          "quote": "A legal Snapshot cut can then contain `Delete(P)` without `Insert(G)`, and restoring that Snapshot loses the logical entity."
+        }
+      },
+      {
+        "pattern": "(preserv|keep|kept|retain|reus|unchanged)[^.\\n]{0,80}(primary key|\\bpks?\\b|\\bkeys?\\b|\\bids?\\b|\\bp\\b)|delete\\(p\\) ?\\+ ?insert\\(p\\)|insert\\(p\\)|same (primary )?(key|pk|id)\\b",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+          "quote": "It preserves `P` when the row exists and generates an allocator-owned ID when the row is not found."
+        }
+      },
+      {
+        "pattern": "allocat|auto-?generat|(new|fresh)(ly)? generated (id|key|pk)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+          "quote": "Allocator ownership, rather than a `G != P` comparison, is the safety invariant."
+        }
+      },
+      {
+        "pattern": "(omit|missing|absent|lack\\w*|no (primary )?(key|pk)|without (a |any )?(primary )?(key|pk)|null)[^.\\n]{0,120}(reject|refus|error|fail|use insert|not allowed|invalid)|(reject|refus)[^.\\n]{0,120}(omit|without|no (primary )?(key|pk)|missing|lack)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+          "quote": "Reject; use Insert to create an entity without a lookup key"
+        }
+      },
+      {
+        "pattern": "(allocator|allocated|generated)[^.\\n]{0,100}(collid|collision|clash|conflict|same (id|key|pk)|duplicate (id|key|pk)|reuse)|(collid|collision|clash|conflict|duplicate (id|key|pk)|same (id|key|pk))[^.\\n]{0,100}(allocator|allocated|generated|future|later|concurrent|another insert|other insert)|ownership|\\bowner\\b|\\bowns\\b|owned by|not owned|lookup key|reserv",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+          "quote": "A missing request PK is a lookup key only. It is never copied directly into the business PK."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "\\b(no|without|missing|omit\\w*|absent|lacking)\\b[^.\\n]{0,20}(primary )?(key|pk|id)\\b(?:(?!reject|refus|error|fail|not allowed)[^.;,\\n]){0,60}(auto-?generat|allocat|(new|fresh|generated) (id|key|pk)|\\binserted\\b)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+          "quote": "Reject; use Insert to create an entity without a lookup key"
+        }
+      },
+      {
+        "pattern": "(not[- ]found|missing|doesn'?t exist|absent|no match)[^.\\n]{0,60}(?<!(not|never|n't) (be )?(simply )?)(inserted|written|stored|kept|keeps|uses|used)[^.\\n]{0,30}(under|with|using|as) (the )?(caller'?s|requested|given|supplied|original|its own|same|sent|user'?s) (key|pk|id|primary key)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260803-autoid-upsert-primary-key-preservation.md",
+          "quote": "Reject; use Insert to create an entity without a lookup key"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says why: Delete(P) and Insert(G) can land on different VChannels and commit in different WAL transactions, so a Snapshot can hold the delete without the insert and lose the entity",
+      "points": 2
+    },
+    {
+      "criterion": "An existing key is kept: Delete(P) + Insert(P) in one VChannel transaction, P returned",
+      "points": 1
+    },
+    {
+      "criterion": "A key not found gets an allocator-generated ID (Insert only, that ID returned), and a row with no key is rejected",
+      "points": 1
+    },
+    {
+      "criterion": "Says why the caller's key is not used for a not-found row: it is only a lookup key, and allocator ownership is what keeps it from colliding with IDs the allocator hands out",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project (for example that partial upsert or non-autoID upsert changed)",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "id": "llvm-locate-key-instruction-atoms",
+  "family": "locate",
+  "tools": "read",
+  "prompt": "With -gkey-instructions, when an optimization duplicates code (loop unrolling, jump threading), the copies need source-atom numbers of their own so both get stepped on. Where is that done when a block is cloned and when a cloned instruction is remapped, and where is the counter the new numbers come from? And on the Clang side, what does codegen use to open an atom and add instructions to it? Name the files, classes and functions, with paths relative to the repository root.",
+  "key": "From llvm/docs/KeyInstructionsDebugInfo.md (added in #137991 on 2025-07-15). llvm::mapAtomInstance(const DebugLoc &, ValueToValueMapTy &) in llvm/lib/Transforms/Utils/CloneFunction.cpp (declared in llvm/include/llvm/Transforms/Utils/Cloning.h) adds a VMap.AtomMap entry from the (inlinedAt, atomGroup) pair to a fresh group number; llvm::CloneBasicBlock in the same file calls it for every cloned instruction. llvm::RemapSourceAtom(Instruction *, ValueToValueMapTy &) in llvm/lib/Transforms/Utils/ValueMapper.cpp (declared in llvm/include/llvm/Transforms/Utils/ValueMapper.h) rewrites the instruction's DILocation to the mapped group and is called from RemapInstruction unless RF_DoNotRemapAtoms is set. The global counter is LLVMContextImpl::NextAtomGroup (llvm/lib/IR/LLVMContextImpl.h), advanced through the context's incNextDILocationAtomGroup. In Clang, the scoped helper ApplyAtomGroup (clang/lib/CodeGen/CodeGenFunction.h, constructor in clang/lib/CodeGen/CGDebugInfo.cpp) opens a source atom, and CodeGenFunction::addInstToCurrentSourceAtom / addInstToNewSourceAtom / addInstToSpecificSourceAtom (clang/lib/CodeGen/CodeGenFunction.cpp, forwarding to CGDebugInfo) give the key instruction rank 1 and backups higher ranks. The DWARF side that consumes these is DwarfDebug::computeKeyInstructions in llvm/lib/CodeGen/AsmPrinter/DwarfDebug.cpp.",
+  "sources": [
+    {
+      "doc": "llvm/docs/KeyInstructionsDebugInfo.md",
+      "quote": "There are facilities to help this: `mapAtomInstance(const DebugLoc &DL, ValueToValueMapTy &VMap)` adds an entry to `VMap` which can later be used for remapping using `llvm::RemapSourceAtom(Instruction *I, ValueToValueMapTy &VM)`."
+    },
+    {
+      "doc": "llvm/docs/KeyInstructionsDebugInfo.md",
+      "quote": "`mapAtomInstance` is called from `llvm::CloneBasicBlock` and `llvm::RemapSourceAtom` is called from `llvm::RemapInstruction` so in many cases no additional work is actually needed."
+    },
+    {
+      "doc": "llvm/docs/KeyInstructionsDebugInfo.md",
+      "quote": "`mapAtomInstance` ensures `LLVMContextImpl::NextAtomGroup` is kept up to date, which is the global “next available atom number”."
+    },
+    {
+      "doc": "llvm/docs/KeyInstructionsDebugInfo.md",
+      "quote": "Class `ApplyAtomGroup` - This is a scoped helper similar to `ApplyDebugLocation` that creates a new source atom group which instructions can be added to."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": ["mapAtomInstance"],
+        "source": "llvm/lib/Transforms/Utils/CloneFunction.cpp"
+      },
+      {
+        "any": ["llvm/lib/Transforms/Utils/CloneFunction.cpp"]
+      },
+      {
+        "any": ["RemapSourceAtom"],
+        "source": "llvm/lib/Transforms/Utils/ValueMapper.cpp"
+      },
+      {
+        "any": ["llvm/lib/Transforms/Utils/ValueMapper.cpp"]
+      },
+      {
+        "any": ["NextAtomGroup", "incNextDILocationAtomGroup"],
+        "source": "llvm/lib/IR/LLVMContextImpl.h"
+      },
+      {
+        "any": ["ApplyAtomGroup"],
+        "source": "clang/lib/CodeGen/CodeGenFunction.h"
+      },
+      {
+        "any": [
+          "addInstToCurrentSourceAtom",
+          "addInstToNewSourceAtom",
+          "addInstToSpecificSourceAtom"
+        ],
+        "source": "clang/lib/CodeGen/CodeGenFunction.cpp"
+      },
+      {
+        "any": [
+          "clang/lib/CodeGen/CodeGenFunction.h",
+          "clang/lib/CodeGen/CodeGenFunction.cpp",
+          "clang/lib/CodeGen/CGDebugInfo.cpp",
+          "clang/lib/CodeGen/CGDebugInfo.h"
+        ]
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names mapAtomInstance in llvm/lib/Transforms/Utils/CloneFunction.cpp, called from CloneBasicBlock, as what gives cloned code new atom groups",
+      "points": 2
+    },
+    {
+      "criterion": "Names RemapSourceAtom in llvm/lib/Transforms/Utils/ValueMapper.cpp, called from RemapInstruction, and the NextAtomGroup counter in LLVMContextImpl",
+      "points": 1
+    },
+    {
+      "criterion": "Names ApplyAtomGroup and CodeGenFunction::addInstToCurrentSourceAtom (or its New/Specific variants) under clang/lib/CodeGen",
+      "points": 2
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

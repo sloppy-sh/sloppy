@@ -1,0 +1,26 @@
+{
+  "text": "All intended (docs/design/tools/illink/task-cache.md). The child linker's runtime/CoreLib is deliberately not identified, since MSBuild's runtime does not establish it and roll-forward does not identify CoreLib; clear or isolate the cache path after a runtime change. Hits do not replay warnings, so disable caching where a warning gate needs them. Arbitrary ExtraArgs bypass because they can bring undeclared inputs, outputs or side effects; only the --ignore-link-attributes shape is supported.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

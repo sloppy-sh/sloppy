@@ -1,0 +1,35 @@
+{
+  "text": "Changed src/libraries/System.IO.FileSystem.Watcher/src/System/IO/FileSystemWatcher.cs and wrote the reason down in docs/decisions/dotnet-handoff-watcher-buffer.md.\n\nCommit message:\nOn the Tarnwick render farm a finished job renames 2,000-3,000 frame files within a second; an 8 KB buffer overflowed, the final names were missed and finished jobs were never picked up.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 1,
+    "Edit": 1,
+    "Write": 1
+  },
+  "writes": {
+    "docs/decisions/dotnet-handoff-watcher-buffer.md": "# Why src/libraries/System.IO.FileSystem.Watcher/src/System/IO/FileSystemWatcher.cs holds this value\n\nOn the Tarnwick render farm a finished job renames 2,000-3,000 frame files within a second; an 8 KB buffer overflowed, the final names were missed and finished jobs were never picked up.\n"
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "src/libraries/System.IO.FileSystem.Watcher/src/System/IO/FileSystemWatcher.cs"
+      },
+      "result": "1\t..."
+    }
+  ]
+}

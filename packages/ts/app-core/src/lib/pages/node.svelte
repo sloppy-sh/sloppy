@@ -103,11 +103,21 @@
 	import type { WritingSide } from '../components/offer-difference.js';
 	import PersonSurface from '../components/person-surface.svelte';
 	import { api } from '../api.js';
+	import { provenanceOver } from '../code-provenance.js';
 	import { deletionCost } from '../deletion.js';
 	import { deviceStore, type DeviceArea } from '../device-store.js';
 	import { carries, movedFrom, reachEveryGraph, type Reach } from '../note-find.js';
 	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
-	import { fileAddress, filesIn, filesUnder, readAgainstNow, textIn } from '../project-code.js';
+	import {
+		fileAddress,
+		filesIn,
+		filesUnder,
+		quoteAt,
+		quoteStanding,
+		readAgainstNow,
+		requoteAt,
+		textIn
+	} from '../project-code.js';
 	import { runtime } from '../runtime.js';
 	import { codeDrift } from '../stores/code-drift.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
@@ -1311,24 +1321,38 @@
 
 	let citingCode = $state(false);
 	let citedPlace: ((anchor: CodeAnchor | undefined) => void) | null = null;
+	let quotingCode = $state(false);
+	let quotedPlace: ((anchor: CodeAnchor | undefined) => void) | null = null;
 	let shownAnchor = $state.raw<CodeAnchor | null>(null);
 	let showingCode = $state(false);
 
-	const code = $derived<NoteCode | undefined>(
-		project
-			? {
-					cite: () =>
-						new Promise<CodeAnchor | undefined>((named) => {
-							citedPlace = named;
-							citingCode = true;
-						}),
-					show: (anchor) => {
-						shownAnchor = anchor;
-						showingCode = true;
-					}
-				}
-			: undefined
-	);
+	const code = $derived.by<NoteCode | undefined>(() => {
+		const folder = project;
+		if (!folder) return undefined;
+		return {
+			cite: () =>
+				new Promise<CodeAnchor | undefined>((named) => {
+					citedPlace = named;
+					citingCode = true;
+				}),
+			show: (anchor) => {
+				shownAnchor = anchor;
+				showingCode = true;
+			},
+			quote: async () => {
+				const anchor = await new Promise<CodeAnchor | undefined>((named) => {
+					quotedPlace = named;
+					quotingCode = true;
+				});
+				return anchor && quoteAt(folder, anchor);
+			},
+			standing: (snippet) => quoteStanding(folder, snippet),
+			requote: (place, language) => requoteAt(folder, place, language)
+		};
+	});
+
+	/** Read afresh each time the code is shown, so a note written since says so. */
+	const whyHere = $derived(showingCode ? provenanceOver(api) : undefined);
 
 	const openWhereFilesOpen = $derived.by(() => {
 		const folder = project;
@@ -3142,12 +3166,23 @@
 					citedPlace = null;
 				}}
 			/>
+			<CiteCode
+				bind:open={quotingCode}
+				quoting
+				files={() => filesIn(folder)}
+				onCite={(anchor) => {
+					quotedPlace?.(anchor);
+					quotedPlace = null;
+				}}
+			/>
 			<CodePreview
 				bind:open={showingCode}
 				anchor={shownAnchor}
 				read={(path) => textIn(folder, path)}
 				list={(path) => filesUnder(folder, path)}
 				{...openWhereFilesOpen === undefined ? {} : { openWhereFilesOpen }}
+				{...whyHere === undefined ? {} : { why: whyHere }}
+				onOpenNote={(target) => onOpen(target)}
 			/>
 		{/if}
 

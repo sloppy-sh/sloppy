@@ -21,6 +21,7 @@ import {
   isChatTool,
   SLOPPY_TOOLS,
   type SloppyToolName,
+  servedInTheApp,
 } from "./chat.js";
 import { ProjectPathSchema } from "./code-anchor.js";
 import { OwnedRefSchema, TimestampSchema, UlidSchema } from "./common.js";
@@ -593,7 +594,9 @@ export const SLOPPY_TOOL_SPECS: Record<SloppyToolName, ChatToolSpec> = {
  * cannot be two different things.
  */
 export function toolsForRole(role: BuildRole): readonly SloppyToolName[] {
-  const reading = CHAT_TOOLS.filter((act) => !chatToolWrites(act));
+  const reading = CHAT_TOOLS.filter(
+    (act) => !chatToolWrites(act) && servedInTheApp(act),
+  );
   const writing =
     role === "implementer"
       ? CHAT_TOOLS.filter((act) => chatToolWrites(act))

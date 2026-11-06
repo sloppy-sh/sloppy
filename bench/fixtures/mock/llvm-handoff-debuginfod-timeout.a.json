@@ -1,0 +1,35 @@
+{
+  "text": "Changed llvm/lib/Debuginfod/Debuginfod.cpp and wrote the reason down in docs/decisions/llvm-handoff-debuginfod-timeout.md.\n\nCommit message:\nAt the Harrowgate build farm a caching proxy in front of debuginfod streams only after fetching the whole artifact; the largest debug info takes 110-150 s on a cold cache, so a 90 s timeout left crash reports unsymbolized.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 1,
+    "Edit": 1,
+    "Write": 1
+  },
+  "writes": {
+    "docs/decisions/llvm-handoff-debuginfod-timeout.md": "# Why llvm/lib/Debuginfod/Debuginfod.cpp holds this value\n\nAt the Harrowgate build farm a caching proxy in front of debuginfod streams only after fetching the whole artifact; the largest debug info takes 110-150 s on a cold cache, so a 90 s timeout left crash reports unsymbolized.\n"
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "llvm/lib/Debuginfod/Debuginfod.cpp"
+      },
+      "result": "1\t..."
+    }
+  ]
+}

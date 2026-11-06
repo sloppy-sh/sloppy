@@ -1,0 +1,26 @@
+{
+  "text": "Managed code goes into __TEXT,__managedcode because the linker gives __TEXT,__text special treatment, and it matches NativeAOT. RVAs become subtractor relocations against __mh_dylib_header, the base symbol at the address dladdr reports, which points to the Mach header so reads can be bounded by the image size. The host does the actual load (dlopen or statically linked) and any caching. --rtr-header-symbol-name gives each image a distinct export to avoid collisions when a host links several R2R images (docs/design/coreclr/botr/readytorun-platform-native-envelope.md).",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

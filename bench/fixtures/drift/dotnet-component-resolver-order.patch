@@ -1,0 +1,15 @@
+diff --git a/src/libraries/System.Private.CoreLib/src/Internal/Runtime/InteropServices/ComponentLoadContext.cs b/src/libraries/System.Private.CoreLib/src/Internal/Runtime/InteropServices/ComponentLoadContext.cs
+--- a/src/libraries/System.Private.CoreLib/src/Internal/Runtime/InteropServices/ComponentLoadContext.cs
++++ b/src/libraries/System.Private.CoreLib/src/Internal/Runtime/InteropServices/ComponentLoadContext.cs
+@@ -54,8 +54,10 @@
+             {
+                 if (!_componentAssemblyPaths.Contains(componentAssemblyPath))
+                 {
++                    // The most recently loaded component is consulted first, so a component loaded
++                    // later can supply a newer version of a dependency it shares with earlier ones.
+                     AssemblyDependencyResolver resolver = new(componentAssemblyPath);
+-                    AssemblyDependencyResolver[] updatedResolvers = [.. _resolvers, resolver];
++                    AssemblyDependencyResolver[] updatedResolvers = [resolver, .. _resolvers];
+                     _componentAssemblyPaths.Add(componentAssemblyPath);
+                     Volatile.Write(ref _resolvers, updatedResolvers);
+                 }

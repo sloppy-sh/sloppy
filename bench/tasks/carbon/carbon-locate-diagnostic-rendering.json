@@ -1,0 +1,82 @@
+{
+  "id": "carbon-locate-diagnostic-rendering",
+  "family": "locate",
+  "tools": "read",
+  "prompt": "Where is a compiler diagnostic drawn for a terminal? Name, with paths relative to the repository root, the type that lays a diagnostic out and what it draws into, what writes the result to the error stream, where the terminal's color support, Unicode support and width are found out, and where the command-line flag that switches every diagnostic to the compact one-line form is defined.",
+  "key": "From toolchain/docs/diagnostics_rendering.md (dated by its commit, #7668 on 2026-09-11; implemented in #7683 on 2026-10-15). `Diagnostics::Renderer` in toolchain/diagnostics/renderer.h and renderer.cpp lays a Diagnostic out and draws it into a `Terminal::Buffer` (common/terminal/buffer.h, buffer.cpp), a grid of styled cells. `StreamConsumer` (toolchain/diagnostics/stream_consumer.h, stream_consumer.cpp) owns a renderer and writes its bytes to the stream, one write per diagnostic. `Terminal::Capabilities::Detect` in common/terminal/capabilities.h and capabilities.cpp detects color depth, Unicode and the width (COLUMNS if exported, else TIOCGWINSZ, else a default), given the error stream's file descriptor by the driver. The flag `--no-diagnostic-snippets` (the `diagnostic-snippets` option, beside `--color`, `--terminal-unicode` and `--terminal-background`) is defined in toolchain/driver/driver.cpp.",
+  "sources": [
+    {
+      "doc": "toolchain/docs/diagnostics_rendering.md",
+      "quote": "`Diagnostics::Renderer` in [`toolchain/diagnostics`](/toolchain/diagnostics) holds the terminal capabilities and draws a `Diagnostic` into a `Terminal::Buffer`."
+    },
+    {
+      "doc": "toolchain/docs/diagnostics_rendering.md",
+      "quote": "`StreamConsumer` owns a renderer and writes its bytes to a stream."
+    },
+    {
+      "doc": "toolchain/docs/diagnostics_rendering.md",
+      "quote": "`Terminal::Capabilities::Detect` needs a file descriptor, so the driver passes the error stream's alongside the stream, and where there is none, as in tests, nothing is detected."
+    },
+    {
+      "doc": "toolchain/docs/diagnostics_rendering.md",
+      "quote": "`--no-diagnostic-snippets` renders every diagnostic in [the compact form](#the-compact-form)."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": [
+          "toolchain/diagnostics/renderer.cpp",
+          "toolchain/diagnostics/renderer.h"
+        ]
+      },
+      {
+        "any": [
+          "Terminal::Buffer",
+          "common/terminal/buffer.h",
+          "common/terminal/buffer.cpp"
+        ]
+      },
+      {
+        "any": ["StreamConsumer"],
+        "source": "toolchain/diagnostics/stream_consumer.h"
+      },
+      {
+        "any": [
+          "common/terminal/capabilities.cpp",
+          "common/terminal/capabilities.h"
+        ]
+      },
+      {
+        "any": ["Capabilities::Detect", "`Detect`", "Detect("],
+        "source": "common/terminal/capabilities.h"
+      },
+      {
+        "any": ["toolchain/driver/driver.cpp"]
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names Diagnostics::Renderer in toolchain/diagnostics/renderer.h / .cpp, drawing into Terminal::Buffer from common/terminal",
+      "points": 2
+    },
+    {
+      "criterion": "Names StreamConsumer (toolchain/diagnostics/stream_consumer.h / .cpp) as what writes to the stream",
+      "points": 1
+    },
+    {
+      "criterion": "Names Terminal::Capabilities::Detect in common/terminal/capabilities.h / .cpp for color, Unicode and width",
+      "points": 1
+    },
+    {
+      "criterion": "Names --no-diagnostic-snippets, defined in toolchain/driver/driver.cpp",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

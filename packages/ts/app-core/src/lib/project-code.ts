@@ -2,9 +2,20 @@
 // reaches no folder, so `NoteCode` is built from these —
 // docs/ARCHITECTURE.md § "A project's container".
 
-import { CONTAINER_DIR, digestsIn, type Files } from '@sloppy/local';
-import { anchorsOf, type BlockDocument, type UpdateNodeRequest } from '@sloppy/types';
-import { readingsNow } from '@sloppy/vault';
+import { CONTAINER_DIR, digestsIn, type Files, foundElsewhereIn } from '@sloppy/local';
+import {
+	anchorRun,
+	anchorsOf,
+	type BlockDocument,
+	type CodeAnchor,
+	type CodeSnippet,
+	codeLinesOf,
+	SNIPPET_LINES_MAX,
+	type SnippetPlace,
+	type SnippetState,
+	type UpdateNodeRequest
+} from '@sloppy/types';
+import { quoteOf, readingsNow, snippetState } from '@sloppy/vault';
 
 const READ_AS_TEXT = new TextDecoder();
 
@@ -77,4 +88,42 @@ export async function readAgainstNow(
 		read_against: await readingsNow(paths, digestsIn(project)),
 		...(at === undefined ? {} : { checked: at })
 	};
+}
+
+/**
+ * The lines an anchor names, quoted as the file has them now: a run of lines,
+ * or the run a name opens — never more than a quote holds. `undefined` where
+ * the file is not there, is not text, or no longer holds the name.
+ */
+export async function quoteAt(
+	project: Files,
+	anchor: CodeAnchor
+): Promise<CodeSnippet | undefined> {
+	const text = await textIn(project, anchor.path);
+	if (text === undefined) return undefined;
+	const lines = codeLinesOf(text);
+	const run = anchorRun(lines, anchor);
+	if (run.kind === 'missing') return undefined;
+	const from = run.kind === 'whole' ? 1 : run.from;
+	const to = run.kind === 'whole' ? lines.length : run.to;
+	return quoteOf(text, {
+		path: anchor.path,
+		from,
+		to: Math.min(to, from + SNIPPET_LINES_MAX - 1)
+	});
+}
+
+/** The lines at `place` quoted again as the file has them now. */
+export async function requoteAt(
+	project: Files,
+	place: SnippetPlace,
+	language?: string
+): Promise<CodeSnippet | undefined> {
+	const text = await textIn(project, place.path);
+	return text === undefined ? undefined : quoteOf(text, place, language);
+}
+
+/** Where the code under a quote stands in the project as it is now. */
+export async function quoteStanding(project: Files, snippet: CodeSnippet): Promise<SnippetState> {
+	return snippetState(snippet, await textIn(project, snippet.path), foundElsewhereIn(project));
 }

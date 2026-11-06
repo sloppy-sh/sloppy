@@ -1,0 +1,78 @@
+{
+  "id": "gitlab-drift-state-precedence",
+  "family": "drift",
+  "prompt": "Look at `Namespaces::Stateful::StatePrecedence.overwritable_states` in app/models/concerns/namespaces/stateful/state_precedence.rb. Is it still doing what it was written to do? If it is not, say exactly what it does differently from what it is meant to do, and where the intended behaviour is written down.",
+  "tools": "read",
+  "key": "It is not. The planted change makes every reversal overwrite every non-default state, whatever the source: unarchiving (archived -> ancestor_inherited) now returns [:archived, :deletion_scheduled, :maintenance] instead of [:archived], so unarchiving a group also takes descendants out of deletion_scheduled (and maintenance) and restores them, and restoring from deletion_scheduled also clears maintenance. Its comments and its spec (state_precedence_spec.rb) were rewritten to match. The intended behaviour is in doc/development/namespaces_state_propagation.md § State precedence: an unarchive overwrites only archived descendants ('Unarchive, but stop at deletion_scheduled'); a restore from deletion_scheduled overwrites deletion_scheduled and archived; a lower-precedence propagation never overwrites a descendant in a higher-precedence state.",
+  "sources": [
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "Unarchive, but stop at `deletion_scheduled`"
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "The set of overwritable states depends on both the target state and the state the namespace is leaving:"
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "A lower-precedence propagation does not overwrite a descendant that is already in a higher-precedence state."
+    }
+  ],
+  "setup": {
+    "patch_file": "fixtures/drift/gitlab-state-precedence.patch",
+    "message": "Update"
+  },
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(^|\\n)\\W*no[,.;:!—–-]|it(?: is|'s) not\\b(?! (?:a bug|broken|wrong|drift|a problem|an issue))|it(?: is|'s) no longer|no longer (?:does|doing|what|matches|follows|honou?rs|respects)|(?:is not|isn'?t|not) (?:still )?doing what|not what it (?:was|is) (?:written|meant|intended)|has drifted|drifted from|departs? from|deviat|contradicts|violates|breaks the (?:rule|doc|intended)|(?<!(?:nothing|not|never|no|n't) )(?:weakened|loosened|regress(?:ed|ion))|(?<!(?:nothing|not|no one|none of it) )is (?:now )?(?:wrong|incorrect|buggy|broken)|(?:introduc|plant|this is|that is|there is|there's|it's|it has)[a-z]* (?:a |been )?(?:bug|broken)",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "Unarchive, but stop at `deletion_scheduled`"
+        }
+      },
+      {
+        "pattern": "(?:unarchiv|archived[^.\\n]{0,30}(?:->|→|to)[^.\\n]{0,30}ancestor_inherited)[^\\n]{0,200}\\b(?:now|also|wrongly|incorrectly|instead of|rather than|should(?:n'?t| not| only)|must not|no longer|(?:not|never) (?:meant|supposed|intended) to|(?:meant|supposed|intended) to (?:only|stop))\\b[^\\n]{0,200}(?:deletion[-_ ]scheduled|scheduled for deletion|pending deletion|maintenance)|\\b(?:now|also|wrongly|incorrectly|instead of|rather than|should(?:n'?t| not| only)|must not|no longer|(?:not|never) (?:meant|supposed|intended) to|(?:meant|supposed|intended) to (?:only|stop))\\b[^\\n]{0,200}(?:unarchiv|archived[^.\\n]{0,30}(?:->|→|to)[^.\\n]{0,30}ancestor_inherited)[^\\n]{0,200}(?:deletion[-_ ]scheduled|scheduled for deletion|pending deletion|maintenance)|(?:unarchiv|archived[^.\\n]{0,30}(?:->|→|to)[^.\\n]{0,30}ancestor_inherited)[^\\n]{0,240}(?:deletion[-_ ]scheduled|scheduled for deletion|pending deletion|maintenance)[^\\n]{0,120}\\b(?:too|as well|which it should(?:n'?t| not)|(?:when|but|where) it should|instead of|rather than|(?:not|never) (?:meant|supposed|intended) to)\\b|(?:deletion[-_ ]scheduled|scheduled for deletion|pending deletion|maintenance)[^\\n]{0,120}\\b(?:now|also|wrongly|incorrectly|instead of|rather than|should(?:n'?t| not| only)|must not|no longer|(?:not|never) (?:meant|supposed|intended) to|(?:meant|supposed|intended) to (?:only|stop))\\b[^\\n]{0,120}(?:unarchiv|archived[^.\\n]{0,30}(?:->|→|to)[^.\\n]{0,30}ancestor_inherited)|instead of \\[?:?archived\\]?(?![\\w,])|(?:only|just) (?:the )?:?archived(?: descendants| ones| state)?(?:[^,\\w]|$)|(?:overwrite|clear|touch|restore)s? only (?:the )?:?archived|stop(?:s|ping)? at .?deletion[-_ ]scheduled|\\b(?:now|also)\\b[^.\\n]{0,80}(?:every|all|any) non-default|no longer (?:depends on|uses|bounded by|capped by|looks at|considers) the (?:source|state it is leaving|from[- ]state|previous state)|ignores the (?:source|state it is leaving|from[- ]state|previous state)",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "Unarchive, but stop at `deletion_scheduled`"
+        }
+      },
+      {
+        "pattern": "namespaces_state_propagation|state propagation (doc|page|guide|documentation)|namespace state (inheritance )?propagation|stop at .?deletion_scheduled|adr[- ]?0*3\\b|003_state_propagation",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "Unarchive, but stop at `deletion_scheduled`"
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "\\bno drift\\b|still does what it (?:was|is) (?:written|meant)|(?:yes|it is),? (?:it|still) (?:is )?(?:still )?doing what it|nothing is (?:wrong|broken|off)|(?:there is|there's|i see|i found|i find|i can find|found) no (?:bug|problem|issue|regression|discrepanc)|(?:works|behaves|is behaving|is working) as (?:intended|designed|documented|written)|that(?: is|'s) (?:the )?intended behaviou?r|(?:which|this|that)(?: is|'s) (?:as )?(?:intended|by design|correct|expected)\\b|\\bby design\\b",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "Unarchive, but stop at `deletion_scheduled`"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the method no longer does what it was written to do",
+      "points": 2
+    },
+    {
+      "criterion": "Names the difference exactly: a reversal now overwrites every non-default state whatever the source, so unarchiving also takes descendants out of deletion_scheduled (and maintenance)",
+      "points": 2
+    },
+    {
+      "criterion": "Says where the intended behaviour is written (the namespace state propagation development page, its State precedence table, or a note carrying it)",
+      "points": 1
+    },
+    {
+      "criterion": "Does not take the method's own comments or its spec as the intent, since both were changed to match",
+      "points": 1
+    }
+  ]
+}

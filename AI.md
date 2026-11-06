@@ -309,6 +309,23 @@ leaked brand name is debt every future provider pays.
   the shared shape it normalizes into. When in doubt, ask: "does adding a provider force
   a type change here?" If yes, it's pollution — key it by the enum instead.
 
+## The Benchmark Measures, It Never Designs (required)
+
+**Sloppy is built for every project, so nothing in it is tuned to the projects `bench/` happens to
+measure.** The benchmark exists to find out where Sloppy helps and where it does not; a product
+change made to win one of its tasks turns that measurement into a mirror.
+
+- **Product code, the acts' words, `.sloppy/AGENT.md`'s generator and the docs of record never
+  name a benchmark subject**, its files, its tasks or its numbers. A rule states the condition it
+  answers — "a document whose name does not say what it answers", "an answer that lives in the
+  code" — never the repository it was first seen in. Tests use made-up projects.
+- **A change is justified by a mechanism, not by a score.** The benchmark may show where Sloppy
+  loses; the fix is to whatever makes it lose for any project with that shape, and it is judged
+  on subjects and tasks written before it, the way `bench/SURVEY.md` writes its predictions down
+  first.
+- **Only `bench/` and the pages that report it name the subjects**, because reporting what was
+  measured is their job.
+
 ## Comments & Self-Documenting Code (required)
 
 **The code says what it does; a comment says only what the code cannot.** Names, types

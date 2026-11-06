@@ -1,0 +1,86 @@
+{
+  "id": "gitlab-brief-cells",
+  "family": "brief",
+  "prompt": "I'm about to build a new feature with its own database tables and a background job. Brief me, as briefly as you can, on what Cells means for how I design it, and say where each rule is written down.",
+  "tools": "read",
+  "key": "Cells serves different organizations from distinct GitLab instances (cells), on GitLab.com only; Self-Managed and Dedicated run as a single cell. An organization's data and compute live on one cell, and its data must be movable to another. So: every table holding customer data gets a gitlab_schema (gitlab_main_org, gitlab_ci, gitlab_main_user and so on, or a *_cell_local schema for non-customer data that never leaves the cell) and a non-nullable, immutable sharding key (organization_id, namespace_id or project_id, the most specific) defined in its db/docs file; no customer resource may exist outside an organization; and cross-database joins, transactions and foreign keys are refused. Requests and Sidekiq workers run scoped to one organization; a cross-organization job is acceptable only as an idempotent recurring cron job; any service taking requests from outside a cell must be routable to the right cell. Ids come from sequences that are unique across cells, but a UNIQUE constraint cannot span cells: scope uniqueness with the sharding key, and claim the rare globally unique attribute through the Topology Service (Cells::Claimable). Static lookup data uses globally consistent ids hard-coded in code (FixedItemsModel), not a sequence. Written in doc/development/cells/_index.md (its development principles added 2026-05-12), doc/development/organization/sharding/_index.md, doc/development/cells/claims.md (2025-12-05), doc/development/fixed_items_model.md (2026-03-20) and the Sidekiq guide's Cells compatibility section.",
+  "sources": [
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "Cells is a new architecture that allows different organizations to be served by distinct physical instances of GitLab."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "Cells is planned for GitLab.com only."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "Web/API requests and Sidekiq workers should be run under a single organization."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "Cross-organization Sidekiq jobs are acceptable only when the job is a recurring cron job and is idempotent."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "Every new model that stores customer data must define a sharding key so each row is attributable to a single organization."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "Do not introduce new customer-owned resources that exist outside of an organization."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "All data and compute for an organization lives on a single cell."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "With the existence of multiple cells which each has its own independent database, you can no longer rely on `UNIQUE` constraints."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "Solution: Use globally unique references, not a database sequence."
+    },
+    {
+      "doc": "doc/development/organization/sharding/_index.md",
+      "quote": "The chosen `sharding_key` must be non-nullable."
+    },
+    {
+      "doc": "doc/development/organization/sharding/_index.md",
+      "quote": "The choice of a `sharding_key` should always be immutable."
+    }
+  ],
+  "grader": {
+    "kind": "none"
+  },
+  "rubric": [
+    {
+      "criterion": "An organization lives on one cell and must be movable to another; Cells is for GitLab.com, other installations run as one cell",
+      "points": 1
+    },
+    {
+      "criterion": "Every customer-data table gets an organization-level schema and a non-nullable, immutable sharding key; non-customer data is cell-local; nothing customer-owned outside an organization",
+      "points": 2
+    },
+    {
+      "criterion": "Requests and workers run scoped to one organization; cross-organization jobs only as idempotent cron jobs; requests must be routable to the right cell",
+      "points": 2
+    },
+    {
+      "criterion": "No UNIQUE constraint across cells: scope it with the sharding key or claim it through the Topology Service; static data uses fixed ids in code rather than a sequence",
+      "points": 2
+    },
+    {
+      "criterion": "Names where each rule is written (the Cells development guidelines, the sharding guide, claims, fixed items model)",
+      "points": 1
+    },
+    {
+      "criterion": "Brief, and says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

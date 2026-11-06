@@ -47,35 +47,53 @@ const { FILL_AT, GraphScene } = await import("./scene.js");
 const decoded = new Map<string, { width: number; height: number }>();
 /** Every `drawImage` a cut made: the destination box inside the square. */
 let painted: { canvas: number; box: number[] }[] = [];
+/** Sources on another origin, the way a desktop serves a folder's pictures:
+ *  one fetched without asking for it openly taints the canvas it is drawn on. */
+const elsewhere = new Set<string>();
+/** Sources whose answers this page may never read, however they are asked for. */
+const unreadable = new Set<string>();
+
+class StoodInImage {
+  width = 0;
+  height = 0;
+  crossOrigin: string | null = null;
+  /** Whether a canvas this is drawn on can still be read back. */
+  readable = true;
+  #src = "";
+  set src(value: string) {
+    this.#src = value;
+    const size = decoded.get(value) ?? { width: 400, height: 400 };
+    this.width = size.width;
+    this.height = size.height;
+    this.readable =
+      !unreadable.has(value) &&
+      (!elsewhere.has(value) || this.crossOrigin !== null);
+  }
+  get src(): string {
+    return this.#src;
+  }
+  async decode(): Promise<void> {}
+}
 
 beforeAll(() => {
-  vi.stubGlobal(
-    "Image",
-    class {
-      width = 0;
-      height = 0;
-      #src = "";
-      set src(value: string) {
-        this.#src = value;
-        const size = decoded.get(value) ?? { width: 400, height: 400 };
-        this.width = size.width;
-        this.height = size.height;
-      }
-      get src(): string {
-        return this.#src;
-      }
-      async decode(): Promise<void> {}
-    },
-  );
+  vi.stubGlobal("Image", StoodInImage);
   vi.stubGlobal("document", {
     createElement: () => {
+      let tainted = false;
       const canvas = { width: 0, height: 0, getContext: () => context };
       const context = {
         beginPath: () => {},
         arc: () => {},
         clip: () => {},
-        drawImage: (_source: unknown, ...box: number[]) =>
-          painted.push({ canvas: canvas.width, box }),
+        drawImage: (source: StoodInImage, ...box: number[]) => {
+          tainted ||= !source.readable;
+          painted.push({ canvas: canvas.width, box });
+        },
+        getImageData: () => {
+          if (tainted)
+            throw new Error("SecurityError: The operation is insecure.");
+          return { data: new Uint8ClampedArray(4) };
+        },
       };
       return canvas;
     },
@@ -84,6 +102,8 @@ beforeAll(() => {
 
 afterEach(() => {
   decoded.clear();
+  elsewhere.clear();
+  unreadable.clear();
   painted = [];
 });
 
@@ -324,6 +344,39 @@ describe("a picture reaching a mark", () => {
   it("leaves the mark drawing as one with no picture where the host has none", async () => {
     const { scene, app } = await sceneOn([drawn("1", "up_a")], {
       read: async () => null,
+    });
+    await settle();
+    app.tick();
+
+    expect(previewsOf(app).children).toHaveLength(0);
+    scene.destroy();
+  });
+
+  it("is drawn when the host serves it from an origin of its own", async () => {
+    elsewhere.add("vault://localhost/media/up_a.gif");
+    const { scene, app } = await sceneOn([drawn("1", "up_a")], {
+      read: async () => ({
+        src: "vault://localhost/media/up_a.gif",
+        release: () => {},
+      }),
+    });
+    await settle();
+    app.tick();
+
+    const [sprite] = previewsOf(app).children as FakeSprite[];
+    const cut = sprite.texture.of as { getContext(): CanvasRenderingContext2D };
+    // What WebGL asks of a canvas before it will upload it.
+    expect(() => cut.getContext().getImageData(0, 0, 1, 1)).not.toThrow();
+    scene.destroy();
+  });
+
+  it("leaves the mark drawing as one with no picture where the page may not read it", async () => {
+    unreadable.add("https://elsewhere.example/up_a.gif");
+    const { scene, app } = await sceneOn([drawn("1", "up_a")], {
+      read: async () => ({
+        src: "https://elsewhere.example/up_a.gif",
+        release: () => {},
+      }),
     });
     await settle();
     app.tick();

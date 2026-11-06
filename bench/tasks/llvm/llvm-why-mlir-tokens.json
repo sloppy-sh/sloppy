@@ -1,0 +1,108 @@
+{
+  "id": "llvm-why-mlir-tokens",
+  "family": "why",
+  "tools": "read",
+  "prompt": "In MLIR I have an op that produces a value of the builtin `token` type, and I tried to return it from both branches of an `scf.if`; the verifier says the result 'must be variadic of any non-token type'. Why doesn't `AnyType` accept tokens, and why can't a token flow through yields, branches or selects like any other SSA value? Why are tokens SSA values at all rather than some other way for one op to point at another? And I want to hand a token into a `func.func` body: why won't that work, and what should I use instead?",
+  "key": "From mlir/docs/Tokens.md (added with the builtin TokenType in #195640 on 2026-06-02). A token is a pointer to an operation (via an OpResult) or a region (via an entry block argument) that can never be forwarded: no select, branch, call, function argument, non-entry block argument or region iter-arg/yield may carry one, so from any use you can always walk back and say which specific op the token came from. Making it an SSA value reuses the existing SSA def-use machinery instead of a new, parallel def-use system for operations, with no change to the generic op syntax, the bytecode or the Operation APIs; like other def-use chains it is unidirectional, so a pass can drop a use without touching the definition. AnyType is 'any non-token type' (mlir/include/mlir/IR/CommonTypeConstraints.td) so that ops which have not opted in cannot accidentally accept a token in a forwarding position; scf.if/scf.yield use AnyType, hence the error. An op opts in with the `Token` constraint (ODS then adds TokenProducerTrait/TokenConsumerTrait). Because tokens are SSA values they cannot cross IsolatedFromAbove boundaries (func.func is one), and that is intentional: it lets passes process isolated regions concurrently without racing on def-use chains. A dependency that must cross such a boundary uses another mechanism, e.g. a symbolic reference held in an attribute.",
+  "sources": [
+    {
+      "doc": "mlir/docs/Tokens.md",
+      "quote": "This allows you to always walk back from a use and say \"this token came from *that* specific op\"."
+    },
+    {
+      "doc": "mlir/docs/Tokens.md",
+      "quote": "The token type allows operations to refer to another operation without a new parallel def-use system for operations. It reuses the existing def-use machinery for SSA."
+    },
+    {
+      "doc": "mlir/docs/Tokens.md",
+      "quote": "Tokens are excluded from the default `AnyType` predicate, so an op that has not opted in cannot accept a token as an arbitrary operand or result. This restriction prevents tokens from being accidentally passed as operands with forwarding semantics."
+    },
+    {
+      "doc": "mlir/docs/Tokens.md",
+      "quote": "Because tokens are SSA values, they cannot cross `IsolatedFromAbove` region boundaries. This is intentional: it allows passes to process isolated regions concurrently without racing on def-use chains."
+    },
+    {
+      "doc": "mlir/docs/Tokens.md",
+      "quote": "When a token-like dependency must cross such a boundary, another mechanism must be used (e.g. a symbolic reference using an attribute)."
+    },
+    {
+      "doc": "mlir/include/mlir/IR/CommonTypeConstraints.td",
+      "quote": "def AnyType : Type<Neg<IsTokenTypePred>, \"any non-token type\">;"
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "walk(ing)? (it )?back|trac(e|ing) (it )?back|(always|reliably|statically|unambiguously) (know|tell|identify|find|say|determine|recover)[^.\\n]{0,80}(which|what|the|its|specific|defining|producing|exact) (op|operation|definition|producer)|(specific|exact|unique|single) (defining |producing |originating )?(op|operation)\\b|came from|obscur|ambigu|(lose|lost|losing|break|breaks)[^.\\n]{0,40}(track|provenance|link|connection)|provenance",
+        "source": {
+          "doc": "mlir/docs/Tokens.md",
+          "quote": "This allows you to always walk back from a use and say \"this token came from *that* specific op\"."
+        }
+      },
+      {
+        "pattern": "(reus|existing|piggyback|leverag)\\w*[^.\\n]{0,60}(ssa|def-?use|use-?def)|parallel (def-?use|use-?def|system|mechanism)|(no|without a?) ?(new|second|separate|parallel) (def-?use|use-?def|mechanism|system|infrastructure)|(syntax|bytecode)[^.\\n]{0,80}(unchanged|no change|untouched|changes? to)",
+        "source": {
+          "doc": "mlir/docs/Tokens.md",
+          "quote": "The token type allows operations to refer to another operation without a new parallel def-use system for operations. It reuses the existing def-use machinery for SSA."
+        }
+      },
+      {
+        "pattern": "accident|inadvertent|unintention|by mistake|opt(ed|s)?[- ]in|explicitly (declare|accept|ask|allow|opt)|`?\\btoken\\b`? (type )?(constraint|predicate)|tokenconsumertrait|tokenproducertrait",
+        "source": {
+          "doc": "mlir/docs/Tokens.md",
+          "quote": "Tokens are excluded from the default `AnyType` predicate, so an op that has not opted in cannot accept a token as an arbitrary operand or result. This restriction prevents tokens from being accidentally passed as operands with forwarding semantics."
+        }
+      },
+      {
+        "pattern": "isolated\\w*[^\\n]{0,240}(concurren|parallel|race|racing|thread|multi-?thread)|(concurren|parallel|race|racing|thread|multi-?thread)\\w*[^\\n]{0,240}isolated",
+        "source": {
+          "doc": "mlir/docs/Tokens.md",
+          "quote": "Because tokens are SSA values, they cannot cross `IsolatedFromAbove` region boundaries. This is intentional: it allows passes to process isolated regions concurrently without racing on def-use chains."
+        }
+      },
+      {
+        "pattern": "symbol(ic)?[- ]?ref\\w*|symbolref|symbol (name|reference|attr)|flatsymbolrefattr|\\bsym_name\\b|referenc\\w* (it )?(by|via|through|with) (a |an )?(symbol|attribute|name)|(using|via|with|through) an? attribute",
+        "source": {
+          "doc": "mlir/docs/Tokens.md",
+          "quote": "When a token-like dependency must cross such a boundary, another mechanism must be used (e.g. a symbolic reference using an attribute)."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(token|it)s? (carr(y|ies)|holds?|contains?) (runtime|real|actual) (data|values?)|(cast|convert|bitcast)\\w* (it |the token )?(in)?to (an? )?(i1|i64|integer|index)( and)?[^.\\n]{0,30}(work|fine|instead)|(pass|add) (it|the token) as an? (function |func(\\.func)? )?(argument|block argument) (instead|and it works)",
+        "source": {
+          "doc": "mlir/docs/Tokens.md",
+          "quote": "Because tokens are SSA values, they cannot cross `IsolatedFromAbove` region boundaries. This is intentional: it allows passes to process isolated regions concurrently without racing on def-use chains."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says why tokens must not be forwarded: from any use you can always walk back to the specific op (or region) the token came from, which select, branch, yield or call forwarding would obscure",
+      "points": 2
+    },
+    {
+      "criterion": "Says AnyType excludes tokens so ops that have not opted in cannot accidentally take one in a forwarding position; ops opt in with the Token constraint",
+      "points": 1
+    },
+    {
+      "criterion": "Says why SSA values: they reuse the existing def-use machinery instead of a parallel def-use system, with no change to syntax, bytecode or Operation APIs",
+      "points": 1
+    },
+    {
+      "criterion": "Says tokens cannot cross IsolatedFromAbove boundaries such as func.func, deliberately, so isolated regions can be processed concurrently without racing on def-use chains, and that a symbolic reference in an attribute is used instead",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project (for example that tokens carry runtime data or can be passed as function arguments)",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

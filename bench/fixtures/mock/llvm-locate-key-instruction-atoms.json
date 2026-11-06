@@ -1,0 +1,26 @@
+{
+  "text": "mapAtomInstance in llvm/lib/Transforms/Utils/CloneFunction.cpp (called from CloneBasicBlock) and RemapSourceAtom in llvm/lib/Transforms/Utils/ValueMapper.cpp (called from RemapInstruction); the counter is LLVMContextImpl::NextAtomGroup. In Clang, ApplyAtomGroup and CodeGenFunction::addInstToCurrentSourceAtom in clang/lib/CodeGen/CodeGenFunction.h / CodeGenFunction.cpp.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 3,
+    "Grep": 2
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

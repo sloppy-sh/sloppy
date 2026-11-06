@@ -36,7 +36,8 @@ sloppy/
 │   └── sloppy/
 │       ├── api/     @sloppy/api     — NestJS backend (hosted & self-hostable)
 │       ├── web/     @sloppy/web     — SvelteKit SPA shell
-│       └── native/  @sloppy/native  — Tauri + SvelteKit shell (iOS, iPadOS, Android, desktop)
+│       ├── native/  @sloppy/native  — Tauri + SvelteKit shell (iOS, iPadOS, Android, desktop)
+│       └── landing/ @sloppy/landing — sloppy.sh, prerendered from bench/results
 ├── packages/
 │   └── ts/
 │       ├── types/     @sloppy/types     — Zod schemas: node, block, document, tag, ink stroke,
@@ -2095,7 +2096,7 @@ shell's dev server stands in for the shared origin.
 
 ## Data model
 
-Own SurrealDB, repository pattern, no ORM — the house pattern across Pendi, syr and Slyng.
+Own SurrealDB, repository pattern, no ORM — the house pattern across syr and Slyng.
 The schemas are `@sloppy/types`; the table definitions and the purge are `@sloppy/data`.
 
 A row's key is composite — `table:{ created_by: <principal>, id: <ulid> }` — so it is globally
@@ -2723,8 +2724,8 @@ thing that makes another. A section with nothing in it is not a row until it is 
 empty section a new note opens on never becomes one on its own, and a section already
 saved keeps its row when it is emptied.
 
-**TipTap 3 for the surface.** Slyng's `post-editor` was itself ported from Pendi's
-`journal-editor`, so we extend that lineage rather than start over: the WYSIWYG surface,
+**TipTap 3 for the surface.** Slyng's `post-editor` carries a lineage of its own, so we
+extend it rather than start over: the WYSIWYG surface,
 `emoji-node.ts` (a TipTap inline atom holding the shortcode it was written as),
 `emoji-suggestion`, and `media-node.ts` with its upload-in-progress → final-URL
 replacement and durable-ref pattern. Markdown shorthands are still how prose is typed;
@@ -2762,7 +2763,8 @@ later one draws it. KaTeX and Mermaid ship with the app rather than off a CDN, a
 is asked for the first time a diagram is drawn; nothing about drawing one leaves the
 device. `elements.ts` is the one list of the kinds that need nothing from the surface they
 are drawn on, so the writing surface, a held note and the outline register them together
-and a fourth kind is added once.
+and a fourth kind is added once. A quote of the project's code is an element too, and one
+that is handed the code it reads against (§ "Code quoted into a note").
 
 **What a fence OPENS a diagram in is one list, and what a build DRAWS is another.**
 `DIAGRAM_LANGUAGES` in `@sloppy/types` is the first: the editor's input rule and the vault
@@ -3178,6 +3180,19 @@ that stops matching is itself worth saying. A path this checkout does not have d
 label and never as an error. Nothing pins a commit inside the href — `checked` is where that
 lives.
 
+**Which notes a file is the code of is read off the anchors, and never stored.**
+`notesReaching(notes, path)` in `@sloppy/app-core`'s `code-provenance.ts` takes the notes and
+their sections and answers, for one file, every place a note points into it — at the file or
+at a folder it is in — with the note's ref, title and address, the anchor, and the section
+that names it (its first heading and its words). It is the answer `list_notes({ at })` gives an
+agent, with the section beside each one, built with `anchorsOf` over each block: nothing new is
+written anywhere, so a note is the only place an anchor lives. `provenanceOver` reads the notes once each
+time a sheet opens — the graph in front of somebody, or a draft's copy of it
+(`chatDraft.notesOn`) — and the code sheet, the draft's review and a build's result draw it
+(DESIGN.md § "An anchor into code"). A build's result reads a file from the project's folder
+as it stands, not from the build's own version, until the person works on that version or
+brings it in; the card says so above the files.
+
 **`checked` on a note says when its reasoning was last read against the code.** It holds a
 commit, spelled as the folder's history spells one. **Absent is a note nobody has confirmed,
 which reads as UNREAD and never as out of date** — every note written before the field, and
@@ -3254,6 +3269,75 @@ folder into the hosted store is dropped until they name both.
 untouched by all of this.** A container is a vault, a note in it is a note, and an anchor is
 a link inside a section.
 
+## Code quoted into a note
+
+**A note can quote the lines it is about, and the quote is in the markdown and nowhere
+else.** A link (§ "A project's container") says where the code is; a quote carries the code
+itself, so the note reads whole on a forge and in any viewer, and so it can say the moment
+those lines stop being what it quoted. In a vault it is an ordinary fenced code block whose
+info string is three words — the language, the place as a `code:` reference to a run of
+lines, and a digest of exactly those lines as they stood when they were quoted — with the
+lines as its body:
+
+````
+```ts code:packages/ts/vault/src/markdown.ts#L120-L124 sha256:9f86d0…
+…the five lines, exactly…
+```
+````
+
+The lines are the file's lines `from` to `to` as `codeLinesOf` reads them — a CRLF read as a
+newline — joined with `\n` and with no newline after the last; the digest is of their UTF-8,
+spelled as `CodeDigestSchema` spells one. The language is the file's ending unless whoever
+quoted it said otherwise, and is left out where there is none; a forge colours by the first
+word and draws the rest as nothing. `readSnippetInfo` and `snippetInfo` in `@sloppy/types`
+are the one reader and writer of that line. A path a word cannot hold is a quote markdown
+cannot spell, and the vault writes it as its JSON like any other such element; a fence
+naming a place and NO digest is not a quote, and reads back as the ordinary fence it is.
+
+**In a section it is an element, `codeSnippet`** (§ "Blocks and ink"): `path`, `from`, `to`,
+`digest`, `source` and, where it has one, `language`. A new kind is a node the editor knows
+and a renderer, so nothing about a block's row changes, and a build without it carries the
+element untouched. `anchorsOf` reads a quote as an anchor to its lines, so everything that
+asks where a note points — the places a note is about, the code sheet's rail, a reading
+against the code — counts it without being told.
+
+**A quote is taken from the file as it stands at the moment it is written, whoever writes
+it**, and never from what the writer typed. In the app, Quote code asks for a file and a run
+of lines or a name and reads them off the project. Through an agent's acts (§ "An assistant
+outside the app"), `write_note` fills in every quote it is handed: a fence whose info string
+is the reference alone is quoted from the file now; a quote the note already holds — the
+same place and digest — keeps the lines it holds, so a quote read with its lines left out
+and written back as it was is not lost; anything else is quoted afresh, so an agent cannot
+put lines in a quote that the code did not say. Lines the project has not got, or more than
+`SNIPPET_LINES_MAX`, refuse the write with words saying what to do. Quoting is not a reading
+of the note: it writes neither `checked` nor `read_against`, which stay a person's.
+
+**Where the code under a quote stands is worked out when it is read, and never kept.**
+`snippetState` in `@sloppy/vault` answers **unchanged** where the lines still digest the
+same; **moved** where the same text stands elsewhere in that file — the run nearest where it
+was — or, asked only once the file has not got it, elsewhere in the project, with the range
+it is at now; **changed** where the place is there and says something else, with what it
+says; **removed** where the file or the lines are gone. A digest spelled with an algorithm
+this build does not take reads as **unknown**, never as broken, by the rule a reading keeps.
+Where in the project beyond the quoted file to look is `foundElsewhereIn` in
+`@sloppy/local`: it asks the index `find_code` reads (§ "An assistant outside the app") for
+the files defining a name the quote defines and the files its names reach, and compares the
+quote's exact lines against each, so a quote is called moved only where the same lines
+digest the same. A surface with no index — the app — looks nowhere beyond the quoted file,
+and calls a quote whose file has lost its lines removed. Where the project cannot be reached
+nothing is worked out, and a quote is drawn as it was quoted.
+
+**What reads a note says each quote's state, and spends the lines only where they are
+needed.** `read_note`, `read_around`, `brief` and a search's hits carry `quoted`: one entry
+per quote, its place, its state, where it is now and what changed lines say now. The
+sections they hand over leave out the lines of a quote that is unchanged or moved, whose
+text the code still holds, unless `read_note` is asked for `quoted: "all"` — so a note
+costs an agent the lines only where the code has gone from under them. An agent told a
+quote is broken quotes it again — the same fence with the reference alone, at the range it
+is at now — and fixes the writing the change made untrue; `.sloppy/AGENT.md` says so.
+`sloppy check` lists every quote that is not unchanged as `quoted-code`, with where a moved
+one is now.
+
 ## Tooling
 
 **`@sloppy/cli` is the container without a window.** One package, `packages/ts/cli`,
@@ -3266,7 +3350,8 @@ reaches for, so the notes a project keeps are writable from where the code is wo
 sloppy init [dir]      start the notes in a project, and write what the tree can tell
 sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
 sloppy check [dir]     read every note and say what doesn't hold
-sloppy mcp             serve these notes to an assistant, under the rules the app keeps
+sloppy organise [dir]  propose where notes would hang better and what would join them
+sloppy mcp [dir]       serve these notes to an assistant, under the rules the app keeps
 ```
 
 **`mcp` is the one that stays**: it serves Sloppy's own acts to the assistant that started
@@ -3284,7 +3369,8 @@ to ask, so a reason it wrote would be its own (§ "Asking a tool to write the no
 **`check` is the one that says no.** Every file in `notes/` spelled the way a note file is
 spelled reads as one — anything else in the folder is the person's and is left alone —
 every front matter field holds to the schema the rest of Sloppy holds it to, every citation
-of a note in THIS graph lands on one, and every anchor lands on a path the project has. A citation of
+of a note in THIS graph lands on one, every anchor lands on a path the project has, and every
+quote of code still reads as the code does (§ "Code quoted into a note"). A citation of
 somebody else's note is left alone — this folder is not where that note lives, so its
 absence here says nothing — a note in the bin is still there, and a graph that is nobody's
 project has nowhere to look for an anchor and is not asked to.
@@ -3300,6 +3386,27 @@ watching is held to the same rule and no other**:
 there is no person behind a job on a runner, so `init` there mints an identity for the machine
 it is on, and what an unattended `draft` writes lands or is offered by exactly that rule. What
 comes back is a branch somebody reads before it is merged.
+
+**`organise` proposes, and never imposes.** On its own it changes nothing: for each note —
+or those `--notes` names, those changed `--since` a commit, or with `--loose` those hung
+straight under a branch's first note or under one they relate to less than
+`PLACE_THRESHOLD` — it reads `relate`'s candidates (§ "Asking a tool to write the notes")
+and lists a MOVE where a better parent scores at least 0.3 and a tenth more than where the
+note hangs, and a LINE to each of at most two notes scoring at least 0.5, labelled from the
+reason that names something particular to the two. A note with no parent is a branch or an
+independent note and is never proposed a move; nor is one that others already spring out
+of, because carrying it carries them. Moves that together would carry a note beneath itself
+are settled by keeping the one that gains most. Each move says whether a person has written
+in the note (`writesAlone` against the container's identity). `--agent claude-code` hands
+that list to an agent, which reads both notes of each proposal and applies only the ones it
+judges right, labelling each line it draws and saying why in a line each. It works in a
+DRAFT, as the app's chat does (`draft.rs`): a branch `sloppy/organise/<day>` off the
+person's HEAD, holding their notes as they stand, checked out under the system's temporary
+folder and served to the agent by `sloppy mcp` with nothing allowed but reading, `relate`,
+`move_note`, `link_notes` and `style_edge`. The checkout goes when the agent is done; the
+branch stays, and `--review <branch>` reads it note by note out of `vaultDifference` and
+the lines either side draws. The person's own checkout is never written, and taking the
+draft is their merge.
 
 **Nothing the CLI does gates somebody's graph.** Ownership is the person's setting, made
 where every other graph's is, and `init` leaves it exactly as it finds it. The alternative
@@ -3370,7 +3477,9 @@ the agent calls, arriving in the thread as each one happens.
 
 **What the acts are FOR is the graph § "A project's container" describes.** An agent here
 is not summarising a repository: it puts down a decision and the reason for it where it has
-a source to name, it looks up why before it explains anything a second time, and it places
+a source to name, it answers from what it already holds and looks in the notes before writing
+and before answering a why the documents in front of it do not already answer — citing what
+it finds there as the source rather than explaining it a second time — and it places
 what it writes under what the thought sprang out of and tags it with the system it is
 about. Asked whether a piece of the code is doing what it was written to do, it reads the
 note for what the thing is for and the code for what it does, says which of the two agree
@@ -3410,23 +3519,26 @@ the agent. It also means nothing new has to be installed for a chat to write a n
 safeguard: somebody who hands three hundred files to a tool and then has to draw every
 relation themselves has offloaded nothing, and what holds it is the person reading the draft
 rather than a narrower vocabulary. So: the notes this project already has, with their addresses,
-titles, tags, the lines drawn between them by hand, what each springs out of and the
-places they are about, narrowed to a place or to tags where asked; the notes some words
-reach, with the writing around what matched; one of them read whole, with the looks it sets
-on its lines and where the code under each of its anchors stands; one read whole with the
-notes around it; a brief for a task; the tags the graph's notes carry and how many carry
+titles, tags, the lines drawn between them by hand, what each springs out of and, where
+asked, the places they are about, narrowed to a place or to tags where asked; the notes some
+words reach, with the line that matched and, where asked, the writing around it; one of them
+read whole or by the sections named, with its headings, the looks it sets on its lines and
+where the code under each of its anchors stands; one read whole with the
+notes around it; a brief for a task; where a note, or one about to be written, would best
+spring out of and what it would best be linked to; the tags the graph's notes carry and how many carry
 each; what is in the bin; the changes offered on a note and not yet taken in; what the graph
 itself is — its name, whose it is, how its notes are gated and where its code is; a note
 written about a place;
 a note carried under or after another; tags put on a note and taken off it; the number a
 person cites a note by, written or taken off; a line drawn between two notes and taken
 off; what a line says and how it and a mark are drawn; a note put in the bin, and one taken
-back out. Nine of those eighteen read and nine write, and `chatToolWrites` is the one
+back out. Ten of those nineteen read and nine write, and `chatToolWrites` is the one
 statement of which is which — every surface that needs to know asks it rather than listing
 names.
 
 **A task is briefed in one call, to a budget, and nothing of the brief is kept.** An agent
-starting on something takes in the notes that part of the project needs and no more:
+whose task needs more than it already holds takes in the notes that part of the project
+needs and no more:
 `read_around` is one note whole and the notes around it to a depth of up to three hops —
 what it sprang out of, what it cites and what cites it, what springs out of it, what it is
 linked to — and `brief` is the notes a task names, the notes about the places it will touch
@@ -3802,6 +3914,15 @@ after the rest, so a read that refused a long note would refuse exactly the note
 reading. An agent handed a cut answer with nothing said reads it as the whole of them,
 which is why the count it left is in the answer itself.
 
+**A reading act answers lean, and the whole is asked for.** An agent pays for every byte it is
+handed, and most of what a listing or a search could carry is not what it asked. So
+`list_notes` leaves out the places each note is about unless `about` is asked for — the one
+thing it needs them for is writing about a place — and narrows to the notes `at` a place or
+carrying `tags` where it names them, `search_notes` answers each note with its
+tags and the one line that matched, and the heading of the section that line is in, unless
+`detail` asks for the writing around it, and `read_note` carries every heading the note has and
+reads only the sections `sections` names where it names some.
+
 **One live session per THREAD, and opening one replaces that thread's.** `chat.rs` holds a
 session for each thread the page asked for one for, keyed by the thread's id, and every
 later act — a thing said, an answer to a call, an end — names the thread it belongs to. So
@@ -3971,6 +4092,28 @@ note with no number would leave every note written beneath it unnumbered too. Th
 `write_note` act says as much to the agent, and tells it to number an unnumbered note above
 with `number_note` first, so that what it writes beneath takes its number.
 
+**Where a note belongs is read off how related it is to the notes already here, and a note
+that is there is never moved by it.** `relate` answers, for a note or a draft, the notes it
+would best spring out of and be linked to, each with a score and the reasons in words: the
+words they share (BM25 over the title, weighted three, the tags, weighted two, and the
+sections), the code both point at (the same file, a folder holding it, the same folder), and
+the notes a line joins both to or joins them to each other. The score is half words, three
+tenths code and a fifth lines, and a candidate parent adds a quarter of the best score among
+what already springs out of it. It is worked out from the notes each time they change and
+never stored, so the same notes answer the same way: `relate.ts` in `@sloppy/local`. A note
+`write_note` STARTS with no `under` springs out of the top candidate where it scores at least
+`PLACE_THRESHOLD` (0.5), and otherwise out of what the rule above names; its answer says in
+`placed` which rule chose and why, so the agent can carry it with `move_note` where that is
+wrong. In a container of some eighty notes, a note that springs out of another thought has that
+parent among its top three almost always; a note hung under the project's root rarely does, because
+the root is related to everything about as much as to anything.
+
+**For a note already there, a better place is a proposal, and it is judged before it is
+made.** `sloppy organise` (§ Tooling) is the deterministic half: the same notes always list
+the same moves and lines, and nothing is written. Whether one is right is a reading of both
+notes, which is an agent's judgement or the person's, never the score's; the agent makes
+what it judges right in a draft, and the person reads that draft whole and merges it once.
+
 **A write about a place lands on the note started about it.** That is the note whose first
 section opens with an anchor to the place, which is how `write_note` starts one; where none
 was, it is the one note whose anchors reach the place, and where several reach it the act
@@ -4015,20 +4158,120 @@ sloppy mcp
 ```
 
 **`sloppy mcp` is a server on its own input and output, started by the assistant.** It runs
-in the assistant's working directory and finds the project the way every other command does:
-the nearest folder at or above it holding a container (§ Tooling). It binds no port, answers
+in the assistant's working directory, or the folder it is named, and finds the project the way
+every other command does: the nearest folder at or above it holding a container (§ Tooling). It binds no port, answers
 nothing but the program that started it, and ends when that program does. A repository says
 it once for everyone working in it: this one commits a `.mcp.json` at its root naming the
 `sloppy` server, so an assistant opened here finds the notes without being told where they
 are.
 
-**It serves the one vocabulary through the one implementation.** The acts are the eighteen
+**It serves the one vocabulary through the one implementation.** The acts are the nineteen
 § "Asking a tool to write the notes" lists — `CHAT_TOOLS` and `CHAT_TOOL_SPECS` in
 `@sloppy/types`, advertised by `advertisedChatTools` — with the same words to the agent and
 the same arguments, and what each one does is the code in `@sloppy/local` the app's chat
-calls too. The answer is the agent's half alone, `ChatToolAnswer`: there is nobody watching
+calls too. One more, `find_code` below, is served here and nowhere else. The answer is the
+agent's half alone, `ChatToolAnswer`: there is nobody watching
 to lay a card out for. So a rule about addresses, aliases, ownership or offers is one rule
 wherever an agent comes in, and a new act reaches both the moment it is a value there.
+
+**`sloppy mcp --doctrine` says when an assistant looks in the notes**: `answer-first`, the
+default and what the app's chat is told, answers from what it already holds and looks there
+before writing and before answering a why nothing in front of it answers, while `notes-first`
+— one of `DOCTRINES`, spelled into `search_notes` and `read_note` by `advertisedChatTools` —
+looks there before anything, for a team that names it in its `.mcp.json`. The default was
+chosen from the first batch the benchmark in `bench/` ran, where an assistant already holding
+the project's documents answered those whys as well without reading the notes, and for less.
+
+**Three more options decide what the server costs an agent, each its own so the benchmark can
+compare them as configurations, and `--profile lean` is all three.** `sloppy mcp` starts
+lean; `--profile full` is none of them — every act, in the chat's words, answered as the chat
+reads it — and is what the app's own chat is served. Lean is the default because the benchmark
+in `bench/` found it scoring within its noise of full on every model and project it ran both
+on, for fewer tokens. `Serving` and
+`servedChatTools` in `@sloppy/types` (`chat-served.ts`) are the vocabulary; an agent pays for
+the advertised tools on every turn it takes, and for every answer on every turn after it.
+
+- **`--land-on-code` sends the agent to the lines, not to a search.** Every note an answer
+  carries names, in `code`, the exact lines each anchor in it stands for — `path#L<from>-L<to>`,
+  worked out by `codePlace` (`code-run.ts`), the lookup the app's code sheet runs, so a name is
+  the run the sheet would show from it and a file named whole is every line it has. On a note
+  read whole that is one entry per anchor, beside where its code stands. A search names the
+  places of the section its line was found in, and a brief reads its words as a task and
+  answers short (`shortBriefAnswer`, never past `SHORT_BRIEF_MAX` characters): the note
+  carrying the most of them, by the same ranking that picks up to three, with the section
+  that opens it and the sections those words reach, each cut where it runs long, and the
+  lines to read, the note's own where those sections point at none; the rest it reached and
+  the notes around them by title alone; as `places`, the three places in the code the words
+  reach best, as `find_code` answers them; and a line saying the first is the best match and
+  `read_note` reads it whole. A brief that hands back every note it reached rides along on
+  every turn after it, even where the agent goes on to read the same files, and a spread of
+  excerpts stands in for reading the one document that answers; the benchmark's survey
+  (`bench/SURVEY.md` § "A smaller first answer") is the evidence. It is usually the only
+  call an agent needs before opening the code, and its words say so. A note read with no
+  `sections` named whose markdown runs past `WHOLE_NOTE_MAX` (5,000 characters) answers with
+  its opening — the section a brief opens it with — and every section no heading names or whose
+  heading is longer than `sections` can name, whole, and in `outline` each other section's heading and size in characters, with a line saying to
+  ask for those by heading; its `quoted` names only the quotes in what it carries, and `code`
+  and `anchors` stay the whole note's. The number is above every note this repository's own
+  container holds (the longest runs to 4.1k) and below the median of a container that carries a
+  document a note, where it reaches 45% to 79% of them; a shorter note, and a read naming
+  sections, come back as they always have. The survey (`bench/SURVEY.md` § "Round two, against
+  its expectations, and what round three changes") is the evidence.
+- **`--answers terse` spells the same facts shorter**: short keys, a note in the project's
+  graph named by its ULID alone — and a ULID it is called with read back as that note — a
+  section as its markdown without emphasis, escapes or link targets into code, where the code
+  under each anchor stands written after its lines, and nothing empty except an empty listing.
+  `terse.ts` in `@sloppy/cli` is the whole of it; an answer in words is left as it is.
+- **`--tools core` advertises the acts ordinary work reaches for, `find_code` among them, in
+  a sentence each**, an argument described only where its name does not say it and its schema
+  kept to its type, its choices and the bounds a plausible call could miss — the call is still
+  checked against the whole — and leaves out `in`, which names nothing on a server for one
+  project. Every request an agent sends carries them. Six are left out of the
+  list and still served to a caller that names them: `style_edge` and `style_note`, because how
+  a line or a mark is drawn on the canvas is a person's to decide and changes nothing an agent
+  reads; `list_bin` and `restore_note`, because taking a note back out is a person's, from the
+  bin they put it in; `list_offers`, because an offer waits on the person, never on the agent;
+  and `read_graph`, because whether a write lands or is offered is what the write's own answer
+  says. And six an agent all but never reached for, which the profile leaves to `--tools default`:
+  `relate` (a note written with no `under` is placed by it anyway), `tag_note` and `list_tags`
+  (`write_note` takes tags), and `move_note`, `number_note` and `delete_note`, which reshape what
+  others cite. Each costs every request a description whether it is called or not.
+
+**`find_code` answers WHERE something is, beside why.** The other acts reach the code only
+through a note's anchors; this one takes a name or a few words and answers the places in the
+project's code they reach, best first, each as the exact lines to read — `path#L<from>-L<to>`
+— with what is defined there and the notes whose anchors reach that file, so one call answers
+"where is it and what explains it" and the agent reads those lines rather than searching for
+them. It is in the core set.
+
+- **What is read is the project's own writing.** The files git keeps, and the ones it would
+  keep, which honours `.gitignore`; less what was brought in or made (`node_modules`,
+  `vendor`, `dist`, `target` and their kind, lockfiles, minified and generated files), what is
+  not text, a file over a megabyte, and the container. `code-reader.ts` in `@sloppy/cli`.
+- **What a file defines is read line by line**, not parsed: functions, methods, classes,
+  structs, interfaces, traits, enums, types, modules and constants, for TypeScript and
+  JavaScript, Go, Rust, Java and its neighbours, Python, Ruby, C and C++
+  (`code-symbols.ts`). A definition runs to where the brace its line opens closes, else to
+  the first line written no deeper. A file in any other language is found by its path.
+- **Ranking is word match over identifiers** (`code-index.ts`): a name and a path split at
+  case, underscores and separators, BM25 with a name's words weighted over its path's. A name
+  spelled exactly comes first where it is spelled like code or is the whole question, and not
+  where it is defined in more than twenty places; a name defined that often is worth less
+  wherever it is, and the tests rank behind the code they test unless the words ask for them.
+  No file is named more than twice.
+- **The notes beside each place are the ones `reaches` finds** — an anchor at the file or at
+  a folder it is in, the closest first — read the way every other act reads them.
+- **It is derived and never stored in the project.** Nothing is written in the container or
+  the repository. What each file defines is kept in the system's temporary folder, keyed by
+  the blob git names the file by, so a second start reads only the files that changed; the
+  server starts reading as it starts, so the first call usually finds it read. On a repository
+  of tens of thousands of files and over a hundred thousand definitions, a first start answers
+  in a few seconds, and a later one in less, on a laptop.
+- **The app's chat and a build leave it out.** `OUTSIDE_THE_APP_TOOLS` names it, so
+  `advertisedChatTools` and `toolsForRole` serve it only where they are asked for the acts
+  outside the app: the app's shell has no index of the project's code to answer it from, and
+  `performChatCall` answers it, where it has no reader, by saying there is no code to look
+  through.
 
 **Writes land in the working tree, and git is the review.** The command performs every act
 against the folder's own files, through `LocalApi` over a `Files` backed by
@@ -4513,7 +4756,7 @@ is already reconciling a fixed-position editor toolbar in the same region.
 
 ## Native shell
 
-Mirrors Pendi's `src-tauri` (`tauri 2.11.2`, `tauri-build 2.6.2`, `@tauri-apps/cli ^2.5.0`).
+Pinned to `tauri 2.11.2`, `tauri-build 2.6.2` and `@tauri-apps/cli ^2.5.0`.
 
 - **Platform-split capabilities** — `default.json` and `mobile.json`
   (`platforms: ["android","iOS"]`), each with a `description` explaining _why_. A

@@ -1,0 +1,26 @@
+{
+  "id": "example",
+  "family": "why",
+  "prompt": "Why does a note in this project have no address unless a person gives it one, and what identifies a note instead?",
+  "tools": "read",
+  "key": "The address (1, 1a, 1a1) is a person's label for citing and navigating, not a machine identifier, so a note may have none. A note is identified by its ref, <did>/<ulid>, and by nothing else; links, publications and lookups key on the ref.",
+  "grader": {
+    "kind": "contains",
+    "all": ["ref", "label"],
+    "any": ["ulid", "<did>/<ulid>"]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the address is a label a person reads and cites, not an identifier",
+      "points": 2
+    },
+    {
+      "criterion": "Names the ref (<did>/<ulid>) as what identifies a note",
+      "points": 2
+    },
+    {
+      "criterion": "Cites where in the project this is written down",
+      "points": 1
+    }
+  ]
+}

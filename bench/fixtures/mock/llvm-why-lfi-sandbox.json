@@ -1,0 +1,26 @@
+{
+  "text": "The rewrites run in the assembler so hand-written and inline assembly are sandboxed too. The x30 guard is deferred so autiasp can authenticate the signed return address before the guard destroys its PAC signature. Guards add the low 32 bits of a register (uxtw) to the base in x27, so the base must be 4GiB-aligned; pointers stay full 64-bit, enabling stores-only mode and letting the host pass pointers directly (llvm/docs/LFI.md).",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

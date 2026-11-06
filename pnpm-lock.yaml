@@ -208,6 +208,91 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
 
+  apps/sloppy/landing:
+    dependencies:
+      '@fontsource-variable/inter':
+        specifier: 'catalog:'
+        version: 5.2.8
+      '@fontsource-variable/jetbrains-mono':
+        specifier: 'catalog:'
+        version: 5.2.8
+      '@lucide/svelte':
+        specifier: ^0.561.0
+        version: 0.561.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../../../packages/ts/types
+      '@sloppy/ui':
+        specifier: workspace:*
+        version: link:../../../packages/ts/ui
+      '@xyflow/svelte':
+        specifier: ^1.7.1
+        version: 1.7.1(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      d3-scale:
+        specifier: ^4.0.2
+        version: 4.0.2
+    devDependencies:
+      '@eslint/js':
+        specifier: 'catalog:'
+        version: 10.0.1(eslint@10.4.0(jiti@2.7.0))
+      '@sveltejs/adapter-static':
+        specifier: 'catalog:'
+        version: 3.0.10(@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))
+      '@sveltejs/kit':
+        specifier: 'catalog:'
+        version: 2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      '@sveltejs/vite-plugin-svelte':
+        specifier: 'catalog:'
+        version: 7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      '@tailwindcss/vite':
+        specifier: 'catalog:'
+        version: 4.2.2(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      '@types/d3-scale':
+        specifier: ^4.0.9
+        version: 4.0.9
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.13.3
+      eslint:
+        specifier: 'catalog:'
+        version: 10.4.0(jiti@2.7.0)
+      eslint-config-prettier:
+        specifier: 'catalog:'
+        version: 10.1.8(eslint@10.4.0(jiti@2.7.0))
+      eslint-plugin-svelte:
+        specifier: 'catalog:'
+        version: 3.17.0(eslint@10.4.0(jiti@2.7.0))(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      globals:
+        specifier: 'catalog:'
+        version: 17.4.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.8.1
+      prettier-plugin-svelte:
+        specifier: 'catalog:'
+        version: 3.5.1(prettier@3.8.1)(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      prettier-plugin-tailwindcss:
+        specifier: 'catalog:'
+        version: 0.7.2(prettier-plugin-svelte@3.5.1(prettier@3.8.1)(svelte@5.55.2(@typescript-eslint/types@8.58.1)))(prettier@3.8.1)
+      svelte:
+        specifier: 'catalog:'
+        version: 5.55.2(@typescript-eslint/types@8.58.1)
+      svelte-check:
+        specifier: 'catalog:'
+        version: 4.4.6(picomatch@4.0.7)(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)
+      tailwindcss:
+        specifier: 'catalog:'
+        version: 4.2.2
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+      typescript-eslint:
+        specifier: 'catalog:'
+        version: 8.58.1(eslint@10.4.0(jiti@2.7.0))(typescript@6.0.2)
+      vite:
+        specifier: 'catalog:'
+        version: 8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)
+
   apps/sloppy/native:
     dependencies:
       '@fontsource-variable/cascadia-code':
@@ -1790,6 +1875,11 @@ packages:
       tslib: ^2.6.3
       typescript: ^5.0.0
 
+  '@svelte-put/shortcut@4.2.0':
+    resolution: {integrity: sha512-hqNLo4yEc++SLgAkZUvuwMxIAsii9qjQtTuzfcYVf3xRxa+0HFcfaWFK7LdU3l+15s9SYVNbPB0qQj9CHFqSuw==}
+    peerDependencies:
+      svelte: ^5.1.0
+
   '@sveltejs/acorn-typescript@1.0.13':
     resolution: {integrity: sha512-wgKggnhZVL9Bfx1OaKKTrYY9BFRk6C8UAkQNUcIv1+llzYrIqy+RZm5HPKzn0NpEBvTVhTqB4kQyllZywsRBRQ==}
     peerDependencies:
@@ -2505,6 +2595,14 @@ packages:
 
   '@xtuc/long@4.2.2':
     resolution: {integrity: sha512-NuHqBY1PB/D8xU6s/thBgOAiAP7HOYDQ32+BFZILJ8ivkUkAHQnWfn6WhL79Owj1qmUnoN/YPhktdIoucipkAQ==}
+
+  '@xyflow/svelte@1.7.1':
+    resolution: {integrity: sha512-dKyAJ8Thwu/zqjOtRDoGN1j1LGtK94B7vWQ7OgIiyQ06OscRXuSBJeH2xbVS5Sv52rq1uHBMUmkGDZH5mTlVOA==}
+    peerDependencies:
+      svelte: ^5.25.0
+
+  '@xyflow/system@0.0.84':
+    resolution: {integrity: sha512-96zfGFjH3oZ3T0MRdH4gJ0SlXuCIxbBuHVevZ4xry5UTxqjzjt010+LRdholgepq7jhrcaz1JNtzrETscwnkEA==}
 
   '@yuku-codegen/binding-android-arm64@0.8.7':
     resolution: {integrity: sha512-C/0zV5IhgVdYhGJTwrY0v8dknxlhiKwtVJkMUaexu9/QvRmzlV4vfU3hZlUSgqc2BxQHntL1mCVbDq8j0FRFDw==}
@@ -6395,6 +6493,10 @@ snapshots:
       typescript: 6.0.2
       uuidv7: 1.2.1
 
+  '@svelte-put/shortcut@4.2.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))':
+    dependencies:
+      svelte: 5.55.2(@typescript-eslint/types@8.58.1)
+
   '@sveltejs/acorn-typescript@1.0.13(acorn@8.18.0)':
     dependencies:
       acorn: 8.18.0
@@ -7185,6 +7287,24 @@ snapshots:
   '@xtuc/ieee754@1.2.0': {}
 
   '@xtuc/long@4.2.2': {}
+
+  '@xyflow/svelte@1.7.1(svelte@5.55.2(@typescript-eslint/types@8.58.1))':
+    dependencies:
+      '@svelte-put/shortcut': 4.2.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      '@xyflow/system': 0.0.84
+      svelte: 5.55.2(@typescript-eslint/types@8.58.1)
+
+  '@xyflow/system@0.0.84':
+    dependencies:
+      '@types/d3-drag': 3.0.7
+      '@types/d3-interpolate': 3.0.4
+      '@types/d3-selection': 3.0.11
+      '@types/d3-transition': 3.0.9
+      '@types/d3-zoom': 3.0.8
+      d3-drag: 3.0.0
+      d3-interpolate: 3.0.1
+      d3-selection: 3.0.0
+      d3-zoom: 3.0.0
 
   '@yuku-codegen/binding-android-arm64@0.8.7':
     optional: true

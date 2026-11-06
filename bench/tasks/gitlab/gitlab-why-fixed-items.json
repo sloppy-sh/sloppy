@@ -1,0 +1,112 @@
+{
+  "id": "gitlab-why-fixed-items",
+  "family": "why",
+  "prompt": "We have a small lookup table of plan names keyed by an auto-incrementing id, and other tables store that id. Why is the guidance to replace it with a FixedItemsModel defined in code, when should I not do that, and why should the column that points at one end in _identifier rather than _id?",
+  "tools": "read",
+  "key": "An auto-incrementing sequence gives the same logical entity different ids on different cells (the plans table: plan_id 4 is premium on one cell and gold on another), so references across cells break; static data should use globally unique references, not a sequence. FixedItemsModel hard-codes the ids in application code, so every cell loads the same definitions and produces the same, version-controlled ids, changed only by a deployment, with zero database queries: items are cached in memory for the life of the process. Do not use it when users or admins create, update or delete records at runtime, or when records need database-level associations such as has_many; and do not use auto_generate_ids! where ids are stored or referenced, since reordering items changes them. The column is named <association>_identifier because in PostgreSQL an _id column conventionally implies a foreign key with database-level integrity, and a fixed items model lives in memory, so the database cannot enforce referential integrity on it; belongs_to_fixed_items is given foreign_key: explicitly. Written in doc/development/fixed_items_model.md (added 2026-03-20) and doc/development/cells/_index.md § Static data.",
+  "sources": [
+    {
+      "doc": "doc/development/fixed_items_model.md",
+      "quote": "Database tables with auto-incrementing sequences produce different IDs on different Cells for the same logical entity."
+    },
+    {
+      "doc": "doc/development/fixed_items_model.md",
+      "quote": "Cross-cell references break because Cell A's `plan_id = 4` might mean `premium` while Cell B's `plan_id = 4` might mean `gold`."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "Solution: Use globally unique references, not a database sequence."
+    },
+    {
+      "doc": "doc/development/fixed_items_model.md",
+      "quote": "`FixedItemsModel` solves this by hard-coding IDs in application code."
+    },
+    {
+      "doc": "doc/development/fixed_items_model.md",
+      "quote": "Every Cell loads the same definitions and produces the same IDs."
+    },
+    {
+      "doc": "doc/development/fixed_items_model.md",
+      "quote": "Users or admins can create, update, or delete records at runtime."
+    },
+    {
+      "doc": "doc/development/fixed_items_model.md",
+      "quote": "With `auto_generate_ids!`, changing the order of items changes their IDs."
+    },
+    {
+      "doc": "doc/development/fixed_items_model.md",
+      "quote": "In PostgreSQL, `_id` columns conventionally imply a foreign key with database-level integrity constraints."
+    },
+    {
+      "doc": "doc/development/fixed_items_model.md",
+      "quote": "Fixed items models live in memory, so the database cannot enforce referential integrity on these columns."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(different|differ|inconsistent|not (globally )?(consistent|stable|the same)|clash|diverg|mismatch)[^.\\n]{0,140}(cell|instance|environment|database)|(cell|instance|environment)s?[^.\\n]{0,140}(different|differ|inconsistent|clash|diverg|mismatch)|(?:own|separate|independent|local|per[- ](?:cell|database))[^.\\n]{0,60}(?:sequence|auto[- ]?increment)|(?:sequence|auto[- ]?increment)[^.\\n]{0,100}(?:local to|own|per[- ]cell|per[- ]database|each cell|(?:don'?t|do not|won'?t|not) (?:line up|match|agree|correspond))|(?:on|in) one cell[^.\\n]{0,100}(?:another|other)|(?:don'?t|do not|won'?t|not) (?:line up|match|agree|correspond)[^.\\n]{0,60}(?:cell|database|instance)",
+        "source": {
+          "doc": "doc/development/fixed_items_model.md",
+          "quote": "Database tables with auto-incrementing sequences produce different IDs on different Cells for the same logical entity."
+        }
+      },
+      {
+        "pattern": "(hard[- ]?cod|in (application |app )?code|defined in code|version[- ]controlled|deterministic|static)[^.\\n]{0,140}(ids?\\b|same|identical|consistent|stable)|(same|identical|stable|consistent|fixed) ids?\\b|globally (unique|consistent)",
+        "source": {
+          "doc": "doc/development/fixed_items_model.md",
+          "quote": "Every Cell loads the same definitions and produces the same IDs."
+        }
+      },
+      {
+        "pattern": "(runtime|at run ?time|users? |admins?|user-created|customi[sz])[^.\\n]{0,100}(creat|edit|updat|delet|chang|add)|has_many|database[- ]level associations?|(?:creat|edit|updat|delet|chang|add|manag|modif)[a-z]*[^.\\n]{0,80}(?:at run ?time|runtime|by (?:users|admins)|through (?:the |an )?(?:admin|ui)|in the (?:admin|ui))|admin (?:ui|panel|area|interface|settings)",
+        "source": {
+          "doc": "doc/development/fixed_items_model.md",
+          "quote": "Users or admins can create, update, or delete records at runtime."
+        }
+      },
+      {
+        "pattern": "foreign[- ]key|referential integrity|integrity constraint",
+        "source": {
+          "doc": "doc/development/fixed_items_model.md",
+          "quote": "In PostgreSQL, `_id` columns conventionally imply a foreign key with database-level integrity constraints."
+        }
+      },
+      {
+        "pattern": "in[- ]memory|\\bmemory\\b|no (database |db )?(quer|lookup|table)|zero (database |db )?quer|not (stored )?in the database",
+        "source": {
+          "doc": "doc/development/fixed_items_model.md",
+          "quote": "Fixed items models live in memory, so the database cannot enforce referential integrity on these columns."
+        }
+      }
+    ],
+    "forbidden": []
+  },
+  "rubric": [
+    {
+      "criterion": "An auto-incrementing id differs from cell to cell for the same entity, so references across cells break",
+      "points": 2
+    },
+    {
+      "criterion": "A fixed items model hard-codes the ids in code, so every cell has the same ids, held in memory with no database query",
+      "points": 2
+    },
+    {
+      "criterion": "Not for data users or admins change at runtime or that needs database-level associations; auto-generated ids must not be stored",
+      "points": 1
+    },
+    {
+      "criterion": "_id implies a database foreign key, which the database cannot enforce on an in-memory model, so the column is named _identifier",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

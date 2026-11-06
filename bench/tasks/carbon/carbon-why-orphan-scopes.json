@@ -1,0 +1,93 @@
+{
+  "id": "carbon-why-orphan-scopes",
+  "family": "why",
+  "tools": "read",
+  "prompt": "Carbon's orphan rule for `impl` declarations used to be about libraries. What went wrong with that wording, and what must an `impl` declaration's type structure name now, in terms of files and scopes?",
+  "key": "Written in proposals/p007140-orphan-rule-for-scopes.md (landed in #7140 on 2026-06-02). The old rule required some name in the impl's type structure to be defined in the same library, so that every use of an impl sees the same impl (low context sensitivity). Two holes: (1) a type defined in a library's api file and an impl for it declared in the same library's impl file satisfied it, but the impl file sees that impl and other libraries do not, so for example the return type of F(C) is {} inside the impl file and () everywhere else; (2) an impl declared inside a generic scope (a function F(T:! type)) can be referred to outside it, exposing F's generic bindings with no specific of F to give them values, so the impl is available but unusable. The new rule: some name in the type structure must be an anchor name, naming an entity whose first owning declaration is in the same file as each owning declaration of the impl, and either the scope of that owning declaration directly contains the impl declaration, or the owning declaration is within the scope containing the impl, nested scopes included. So an impl may be anchored by the scope that introduces the name (impl Self as Z inside class C), a name introduced in the same scope, or one in a scope nested in it; an impl whose names are all declared outside its scope, or all have their owning declaration in another file, is an error. It keys on the owning declaration, not the definition, so declaring class C and its impl in the api file with C defined in the impl file is now allowed.",
+  "sources": [
+    {
+      "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+      "quote": "Every attempt to use an `impl` will see the exact same `impl` definition,"
+    },
+    {
+      "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+      "quote": "But the library impl file sees the `impl` decl in the impl file, while other libraries do not, creating an inconsistent point of view for which `impl` will be used."
+    },
+    {
+      "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+      "quote": "Second, this rule allows an `impl` declaration in a generic scope that can be referred to outside of that generic scope."
+    },
+    {
+      "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+      "quote": "This makes the `impl` declaration available, but unusable."
+    },
+    {
+      "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+      "quote": "However the rule is changed to require the anchor name to be an owning declaration, instead of a definition."
+    },
+    {
+      "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+      "quote": "An `impl` declaration where all names have their owning declaration in a different file than the `impl`."
+    },
+    {
+      "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+      "quote": "A name is introduced in a scope nested within the scope containing the `impl` declaration."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(impl(ementation)? file|\\.impl\\.carbon|impl library)[^\\n]{0,300}(other librar|importer|outside|elsewhere|everyone else|everywhere else|(don'?t|do not|can'?t|cannot|never) see|inconsisten|differ)|(other librar|importer)\\w*[^\\n]{0,300}(impl(ementation)? file|\\.impl\\.carbon)",
+        "source": {
+          "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+          "quote": "But the library impl file sees the `impl` decl in the impl file, while other libraries do not, creating an inconsistent point of view for which `impl` will be used."
+        }
+      },
+      {
+        "pattern": "generic[^.\\n]{0,200}(binding|specific|unusable|(can'?t|cannot|no way to)[^.\\n]{0,30}(be )?(us|know|specif|nam|suppl|determin)|unknown|value of|escap|leak|outside)|unusable",
+        "source": {
+          "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+          "quote": "This makes the `impl` declaration available, but unusable."
+        }
+      },
+      {
+        "pattern": "anchor|owning declaration|first[^.\\n]{0,20}declar\\w*[^.\\n]{0,60}same file|same file",
+        "source": {
+          "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+          "quote": "However the rule is changed to require the anchor name to be an owning declaration, instead of a definition."
+        }
+      },
+      {
+        "pattern": "(same|nested|enclosing|containing|that|its own)[^.\\n]{0,20}scope|scope[^.\\n]{0,60}(contain|nested|enclos|same|introduc)|(inside|within|in) (the |a |that )?(scope|function|class)[^.\\n]{0,60}(that|which) (contains|introduces|declares)",
+        "source": {
+          "doc": "proposals/p007140-orphan-rule-for-scopes.md",
+          "quote": "A name is introduced in a scope nested within the scope containing the `impl` declaration."
+        }
+      }
+    ],
+    "forbidden": []
+  },
+  "rubric": [
+    {
+      "criterion": "Names the first hole: an impl in a library's impl file for a type from its api file satisfied the library rule, yet only the impl file sees it, so the impl file and other libraries disagree about which impl applies",
+      "points": 2
+    },
+    {
+      "criterion": "Names the second hole: an impl in a generic scope could be referred to outside it, exposing generic bindings no one can give values to, so it is available but unusable",
+      "points": 1
+    },
+    {
+      "criterion": "States the new rule: an anchor name whose first owning declaration is in the same file as the impl's owning declarations, in the scope that contains the impl or a scope nested within it (or the scope it introduces)",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "milvus-handoff-pin-cleanup",
+  "family": "handoff",
+  "prompt_a": "In internal/datacoord/snapshot_manager.go, raise snapshotPinCleanupTimeout from 5 seconds to 20 seconds. The reason, which you know and nobody else working on this code does: on the Ostrava deployment, whose etcd spans three availability zones about 40 ms apart, releasing the pins of a large snapshot takes 6 to 9 seconds, so the cleanup was cancelled at 5 seconds and the pins stayed until the next restart, holding segments the garbage collector should have freed.",
+  "prompt_b": "snapshotPinCleanupTimeout in internal/datacoord/snapshot_manager.go is 20 seconds. Someone points out that releasing pins normally finishes in well under a second and wants 5 seconds again so a stuck etcd fails quickly. Is that safe? Recommend, and explain what decides the value.",
+  "reason": "On the Ostrava deployment (etcd across three zones ~40 ms apart) releasing a large snapshot's pins takes 6-9 s, so a 5 s timeout leaked the pins until restart.",
+  "key": "Not safe: on the Ostrava deployment, whose etcd spans three availability zones about 40 ms apart, releasing a large snapshot's pins takes 6 to 9 seconds; at 5 seconds the cleanup was cancelled and the pins stayed until the next restart, holding segments the garbage collector should have freed.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "ostrava|availability zone|\\b(three|3) zones|cross.?(az|zone)",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "the Ostrava deployment, whose etcd spans three availability zones"
+        }
+      },
+      {
+        "pattern": "\\b(6|six)\\b[^.]{0,20}\\b(9|nine)\\b|\\b(6|six)\\s*(-|–|to)\\s*(9|nine)",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "takes 6 to 9 seconds"
+        }
+      },
+      {
+        "pattern": "leak|stay(ed)? (pinned|until)|never (released|freed)|until (the next )?restart|garbage",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "the pins stayed until the next restart, holding segments the garbage collector should have freed"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends against 5 seconds, or only where pin release is known to finish within it",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: on a deployment with etcd across availability zones, releasing a large snapshot's pins takes 6 to 9 seconds, and a 5-second timeout leaves the pins held until restart",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

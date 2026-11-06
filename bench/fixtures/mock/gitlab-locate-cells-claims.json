@@ -1,0 +1,26 @@
+{
+  "text": "Cells::Claimable in app/models/concerns/cells/claimable.rb (cells_claims_save_changes, cells_claims_destroy_changes); Cells::BulkClaimsWorker in app/workers/cells/bulk_claims_worker.rb; Cells::ScheduleClaimsVerificationWorker and Cells::ClaimsVerificationWorker in app/workers/cells/, running Cells::Claims::VerificationService in app/services/cells/claims/verification_service.rb.",
+  "timing": {
+    "api_ms": 2600,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2500
+  },
+  "tokens": {
+    "input": 1000,
+    "cache_write": 2000,
+    "cache_read": 4000,
+    "output": 300,
+    "reasoning": 0
+  },
+  "cost_reported": 0.03,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

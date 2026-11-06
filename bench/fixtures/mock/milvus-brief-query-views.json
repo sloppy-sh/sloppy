@@ -1,0 +1,26 @@
+{
+  "text": "StreamingNode as delegator would be a global bottleneck, so QueryCoord owns sealed load/release, Proxy plans on StreamingNode and reduces itself, and QueryNodes apply deletes. DataView is versioned (streaming_version, compact_version); a QueryView adds a query version per shard replica. States: Preparing, Ready, Up, Down, Dropping, Dropped. Production routing is not switched yet (qviews/README.md).",
+  "timing": {
+    "api_ms": 3100,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 3000
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 320,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

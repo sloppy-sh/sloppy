@@ -1,0 +1,48 @@
+{
+  "id": "gitlab-handoff-chatops-timeout",
+  "family": "handoff",
+  "prompt_a": "In app/workers/chat_notification_worker.rb, raise RESCHEDULE_TIMEOUT from 5.minutes to 12.minutes. The reason, which you know and nobody else working on this code does: on the self-managed instance at Kestrel Bank, trace sections reach the database through an object-storage sync that runs every 10 minutes, so ChatOps replies for their jobs timed out at 5 minutes and people running /deploy in Slack never got the job's output.",
+  "prompt_b": "ChatNotificationWorker in app/workers/chat_notification_worker.rb gives up after RESCHEDULE_TIMEOUT. A reviewer notes that trace sections appear within seconds on GitLab.com and wants the timeout back to 5 minutes so stuck jobs fail fast. Do you agree? Explain what decides the current value.",
+  "reason": "At Kestrel Bank, trace sections arrive through an object-storage sync every 10 minutes, so a 5-minute timeout dropped every ChatOps reply.",
+  "key": "No: the timeout is 12 minutes because on the self-managed instance at Kestrel Bank trace sections arrive through an object-storage sync that runs every 10 minutes; at 5 minutes every ChatOps reply there timed out and people running /deploy in Slack never saw the job's output. Any timeout has to outlast that 10-minute sync.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "kestrel",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "the self-managed instance at Kestrel Bank"
+        }
+      },
+      {
+        "pattern": "\\b(10|ten)[ -]?min",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "an object-storage sync that runs every 10 minutes"
+        }
+      },
+      {
+        "pattern": "object.?storage|sync",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "an object-storage sync"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends against going back to 5 minutes, or only where trace sections are known to arrive faster",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: on Kestrel Bank's self-managed instance trace sections arrive through a sync every 10 minutes, so a 5-minute timeout drops ChatOps replies",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

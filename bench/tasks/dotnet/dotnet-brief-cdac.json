@@ -1,0 +1,62 @@
+{
+  "id": "dotnet-brief-cdac",
+  "family": "brief",
+  "tools": "read",
+  "prompt": "I'm about to start working on the cDAC (the data contract reader). Explain to a newcomer, as briefly as you can: what the data contracts are and what problems they solve compared with the classic DAC and DBI; what the runtime publishes so a reader can find them; how contracts are versioned, when a change needs a new version and when an existing one may be amended, and what is fixed for a release; what the reader version is and how it differs from a contract version; and where each part is written down.",
+  "key": "The entry point is docs/design/datacontracts/datacontracts_design.md, with contract-descriptor.md, data_descriptor.md, one <ContractName>.md per contract and reader-version-history.md beside it in docs/design/datacontracts/. Data contracts document a subset of the runtime's in-memory data structures — layout and semantics — as a promise that a tool reading process memory and interpreting it by the contract gets correct answers; for debuggers (live and dumps), profilers and other tools. They remove the need for DAC/DBI libraries that exactly match the runtime build, which caused security (an exact-match DAC may be untrusted), servicing (a debugger fix needs a new runtime build), acquisition and cross-architecture problems. The runtime publishes a contract descriptor: a data descriptor with global values (constants, pointers, strings) and type layouts (named fields with offsets, determinate or indeterminate sizes, not every field), optional sub-descriptors for data an external component describes, and the list of compatible contracts, each a name and a version identifier. Since #127020 (2026-04-18) versions are string identifiers (c1, c2; other platforms can use another prefix); a 'higher' identifier is only different, not newer, and identifiers must not collide on main. A runtime change not compatible with the previous contract version needs a new version; an existing version may be amended only compatibly (fix the documentation, or add optional globals/types/fields/APIs) so a tool implementing the original definition still works. The set of supported contract versions is fixed from the first release candidate through servicing; .NET 11's were frozen in #131858 (2026-08-10), which also bumped the descriptor header to version 2 so the cDAC rejects earlier development builds. Contracts refer to each other by name without version; algorithms are written as C#-like pseudocode over the Target API, and each contract file carries a generated usage table of the descriptors and globals it reads (checked by the documentation gates of #131281, 2026-07-24). The reader version (reader-version-history.md, #134072 on 2026-09-23) is advisory: the runtime publishes RecommendedReaderVersion and a reader reports IRuntimeInfo.GetCurrentReaderVersion(); a tool can suggest an update when the runtime recommends a higher one; it is independent of contract versions and does not mean an older reader cannot inspect the runtime.",
+  "sources": [
+    {
+      "doc": "docs/design/datacontracts/datacontracts_design.md",
+      "quote": "Diagnostic data contract addressed these challenges by eliminating the need for exactly matching DAC and DBI libraries."
+    },
+    {
+      "doc": "docs/design/datacontracts/datacontracts_design.md",
+      "quote": "Contracts are described by a string version identifier. Different version identifiers represent different contract implementations. A \"higher\" identifier is not necessarily more recent, it just means different."
+    },
+    {
+      "doc": "docs/design/datacontracts/datacontracts_design.md",
+      "quote": "Whenever the runtime changes its implementation of data structures or algorithms in a way that is not compatible with the previous contract version then a new version of the contract needs to be defined and used instead."
+    },
+    {
+      "doc": "docs/design/datacontracts/datacontracts_design.md",
+      "quote": "When amending a contract version, the change must be compatible: a runtime that advertises it supports contract version X must be understandable by a tool that implements the original definition of X as well as any amended definition of X."
+    },
+    {
+      "doc": "docs/design/datacontracts/datacontracts_design.md",
+      "quote": "For any given major release of the runtime, the set of supported contract versions should remain fixed from the first release candidate to the final servicing build."
+    },
+    {
+      "doc": "docs/design/datacontracts/reader-version-history.md",
+      "quote": "The cDAC reader version is an advisory value used to indicate when updating a diagnostic tool's"
+    }
+  ],
+  "grader": {
+    "kind": "none"
+  },
+  "rubric": [
+    {
+      "criterion": "What data contracts are (documented layout and semantics of runtime data structures, read from process memory) and the problems they solve: no exact-match DAC/DBI, with security, servicing, acquisition and cross-architecture",
+      "points": 1
+    },
+    {
+      "criterion": "What the runtime publishes: the contract descriptor with a data descriptor (globals and type layouts, sub-descriptors) and the compatible contracts with their version identifiers",
+      "points": 1
+    },
+    {
+      "criterion": "Versioning: string identifiers (c1, c2), different not newer; an incompatible change needs a new version; amendments only compatible (doc fixes, optional additions); supported versions fixed from the first RC through servicing (.NET 11 frozen)",
+      "points": 2
+    },
+    {
+      "criterion": "The reader version: advisory, RecommendedReaderVersion vs the reader's GetCurrentReaderVersion, independent of contract versions",
+      "points": 1
+    },
+    {
+      "criterion": "Names the documents (datacontracts_design.md, contract-descriptor.md, data_descriptor.md, per-contract files, reader-version-history.md), and is brief and says nothing false",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

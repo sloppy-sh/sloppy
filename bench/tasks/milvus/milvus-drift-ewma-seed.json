@@ -1,0 +1,96 @@
+{
+  "id": "milvus-drift-ewma-seed",
+  "family": "drift",
+  "tools": "read",
+  "prompt": "Look at `UpdateCostMetrics` on `RefinedLookAsideBalancer` in internal/proxy/shardclient/refined_look_aside_balancer.go. Is it still doing what it was written to do? If it is not, say exactly what it does differently from what it is meant to do, and where the intended behaviour is written down.",
+  "key": "It is not. The planted change makes UpdateCostMetrics seed the EWMA-smoothed service and response times whenever the smoothed service time is 0, instead of when the node's previous sample has expired or never existed (now - ts > metricExpireInterval), and rewrites its comment and replaces the two tests that pinned the old rule to match. 0 is ServiceTime's normal value under sub-millisecond load, so after a run of 0ms samples a single 20ms outlier now jumps the smoothed value straight to 20 instead of being damped to 4, and a node whose smoothed value stays 0 is re-seeded by every sample; and a node that was idle past the expiry interval now blends its stale smoothed value into its first fresh sample instead of starting from it. The intended rule is written in docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md (§ Design Details, C: EWMA smoothing, 'Seeding'; dated 2026-10-19, landed in #54427), and in the notes carrying it. The function's own comment and its tests were changed with it, so they are not the intent.",
+  "sources": [
+    {
+      "doc": "docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md",
+      "quote": "A fresh sample seeds the smoothed value directly when the previous sample has expired (`now - ts > metricExpireInterval`) or never existed (`ts == 0`)."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md",
+      "quote": "0 cannot serve as the \"unseeded\" marker because it is ServiceTime's normal value: seeding on `prev == 0` would let a single 20ms outlier after a run of 0ms samples jump the smoothed value straight to 20 (undamped), and would re-trigger once a long run of 0s underflows the float back to 0."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md",
+      "quote": "The ts-based rule also keeps a long-idle node's stale value out of its first fresh sample."
+    }
+  ],
+  "setup": {
+    "patch_file": "fixtures/drift/milvus-refined-ewma-seed.patch",
+    "message": "Update"
+  },
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "^(?=[\\s\\S]*(zero|\\b0(?![.\\d])(ms)?\\b|== ?0))(?=[\\s\\S]*?((^|[:\\n]\\s*)[\\W_]*no\\b(?![- ]?(bug|drift|problem|issue|change|regression))|\\bit is not\\b|\\bit's not\\b|\\bisn'?t\\b[^.\\n]{0,30}(doing|what|meant|intended|written)|\\bnot (doing|what it)|no longer|does(n'?t| not) (do|match|follow|implement|honou?r)|deviat|diverg|contradict|violat|\\b(has|have) (drifted|regressed)|is (a )?(bug|regression)|(introduc|plant)\\w* (a )?(bug|regression|change)|\\bbroken\\b))",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md",
+          "quote": "A fresh sample seeds the smoothed value directly when the previous sample has expired (`now - ts > metricExpireInterval`) or never existed (`ts == 0`)."
+        }
+      },
+      {
+        "pattern": "(zero|\\b0(?![.\\d])(ms)?\\b|unseeded|== ?0)[^.\\n]{0,120}(seed|marker|sentinel|initiali[sz]|uninitiali[sz]|overwrit|reset|start(s|ing)? (over|fresh)|replac|unset)|(seed|seeds|seeding|marker|sentinel|initiali[sz]|overwrit|reset)[^.\\n]{0,120}(zero|\\b0(?![.\\d])(ms)?\\b|unseeded)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md",
+          "quote": "0 cannot serve as the \"unseeded\" marker because it is ServiceTime's normal value: seeding on `prev == 0` would let a single 20ms outlier after a run of 0ms samples jump the smoothed value straight to 20 (undamped), and would re-trigger once a long run of 0s underflows the float back to 0."
+        }
+      },
+      {
+        "pattern": "(seed|initiali[sz]|start|reset|fresh|instead of|rather than|meant to|supposed to|should)\\w*[^.\\n]{0,160}(expir|metricexpireinterval|now ?- ?ts|ts ?== ?0|\\bts\\b|timestamp|time since|never (existed|been)|no (previous|prior|earlier|last) sample|there was none|older than)|(expir|metricexpireinterval|now ?- ?ts|ts ?== ?0|timestamp)[^.\\n]{0,100}(seed|initiali[sz]|start(s|ing)? (fresh|over)|reset)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md",
+          "quote": "A fresh sample seeds the smoothed value directly when the previous sample has expired (`now - ts > metricExpireInterval`) or never existed (`ts == 0`)."
+        }
+      },
+      {
+        "pattern": "outlier|undamped|(not|without (being )?|isn'?t) damped|jump|spike|straight to|re-?seed\\w*[^.\\n]{0,40}every|every (fresh |new )?sample|stale[^.\\n]{0,60}(blend|mix|into|first|fresh|carr|leak)|idle[^.\\n]{0,80}(blend|mix|carr|leak|first (fresh |new )?sample)|blend\\w*[^.\\n]{0,60}(stale|old|first|fresh)|herd",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md",
+          "quote": "The ts-based rule also keeps a long-idle node's stale value out of its first fresh sample."
+        }
+      },
+      {
+        "pattern": "20261019|look[-_ ]aside[-_ ]balancer[^.\\n]{0,40}(fix|design)|sub-millisecond herding",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md",
+          "quote": "A fresh sample seeds the smoothed value directly when the previous sample has expired (`now - ts > metricExpireInterval`) or never existed (`ts == 0`)."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "\\bno drift\\b|nothing is wrong|nothing('s| has) (changed|drifted)|no bug|still does what it (was|is) (written|meant)|still (doing|does) what it|^\\W*yes\\b|(function|code|it) (looks|is|seems) (correct|fine)|works as (intended|designed)|behaves as (intended|designed)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md",
+          "quote": "A fresh sample seeds the smoothed value directly when the previous sample has expired (`now - ts > metricExpireInterval`) or never existed (`ts == 0`)."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the function no longer does what it was written to do",
+      "points": 2
+    },
+    {
+      "criterion": "Names the difference exactly: it seeds when the smoothed value is 0 instead of when the previous sample expired or never existed (the ts-based rule)",
+      "points": 2
+    },
+    {
+      "criterion": "States a consequence: an outlier after a run of 0ms samples jumps straight in undamped, or an idle node's stale value is blended into its first fresh sample",
+      "points": 1
+    },
+    {
+      "criterion": "Says where the intended behaviour is written (the refined look-aside balancer design doc, 20261019-look-aside-balancer-fix-design.md, or a note carrying it)",
+      "points": 1
+    },
+    {
+      "criterion": "Does not take the function's own comment or its tests as the intent, since both were changed to match",
+      "points": 1
+    }
+  ]
+}

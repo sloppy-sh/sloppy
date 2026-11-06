@@ -1,0 +1,48 @@
+{
+  "id": "pulsar-handoff-coalesced-bytes",
+  "family": "handoff",
+  "prompt_a": "In pulsar-broker/src/main/java/org/apache/pulsar/broker/service/PulsarCommandSenderImpl.java, lower MAX_COALESCED_BYTES from 64 * 1024 to 16 * 1024. The reason, which you know and nobody else working on this code does: Marlow Exchange's market-data consumers sit behind a TLS-inspecting appliance that splits any write larger than one 16 KiB TLS record and adds about 3 ms per extra record; with 64 KiB coalesced writes their p99 delivery latency tripled.",
+  "prompt_b": "MAX_COALESCED_BYTES in PulsarCommandSenderImpl is 16 KiB. A throughput benchmark shows 64 KiB coalesced writes dispatch 8% more messages per second, and someone proposes going back to 64 KiB. What do you recommend, and what decides the value?",
+  "reason": "Marlow Exchange's consumers are behind a TLS-inspecting appliance that splits writes above one 16 KiB TLS record, adding ~3 ms each; 64 KiB writes tripled their p99 latency.",
+  "key": "Keep 16 KiB: Marlow Exchange's market-data consumers sit behind a TLS-inspecting appliance that splits any write larger than one 16 KiB TLS record and adds about 3 ms per extra record; with 64 KiB writes their p99 delivery latency tripled. The 8% throughput gain costs that customer's latency.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "marlow",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "Marlow Exchange's market-data consumers"
+        }
+      },
+      {
+        "pattern": "tls|inspect|appliance",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "a TLS-inspecting appliance"
+        }
+      },
+      {
+        "pattern": "latency|p99|\\b3 ?ms",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "their p99 delivery latency tripled"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends keeping 16 KiB rather than going back to 64 KiB, or only where no such appliance sits in front of consumers",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: a customer's TLS-inspecting appliance splits writes larger than one 16 KiB TLS record, adding latency, and 64 KiB writes tripled their p99",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

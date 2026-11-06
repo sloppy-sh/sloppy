@@ -3,10 +3,14 @@
 
 import {
   BriefReadSchema,
+  BriefShortSchema,
+  SHORT_BRIEF_MAX,
+  SHORT_BRIEF_READ,
   type ChatToolCall,
   GIST_MAX,
   NeighbourhoodReadSchema,
   NoteReadSchema,
+  NotesFoundSchema,
   NoteWrittenSchema,
   type OwnedRef,
   ulid,
@@ -14,7 +18,7 @@ import {
 import { digestOf, emptySidecars, fromMarkdown } from "@sloppy/vault";
 import { beforeEach, describe, expect, it } from "vitest";
 import { containerApi, performChatCall } from "./acts.js";
-import { gistOf } from "./brief.js";
+import { gistOf, taskWords } from "./brief.js";
 import { MemoryFiles } from "./files.js";
 
 const PROJECT = "/work/compiler";
@@ -363,5 +367,178 @@ describe("a brief", () => {
     );
 
     expect(brief.notes.map((note) => note.note)).toEqual([parser]);
+  });
+});
+
+describe("answers that land on code", () => {
+  async function landed(call: ChatToolCall): Promise<unknown> {
+    const done = await performChatCall(files, call, false, {
+      landOnCode: true,
+    });
+    expect(done.trouble).toBeUndefined();
+    return JSON.parse(done.said);
+  }
+
+  it("name the exact lines each anchor stands for, one per anchor and in its order", async () => {
+    const note = await wrote(PARSER, [
+      `## Where\n\n[parse](code:${PARSER}#parse), [the constants](code:${PARSER}#L2-L3), [the lexer](code:${LEXER}), [a name gone](code:${PARSER}#tokenise), [the source](code:src) and [a file gone](code:src/gone.ts).`,
+    ]);
+
+    const read = NoteReadSchema.parse(
+      await landed({ call: "c2", act: "read_note", arguments: { note } }),
+    );
+
+    expect(read.code).toEqual([
+      `${PARSER}#L1-L3`,
+      `${PARSER}#L2-L3`,
+      `${LEXER}#L1-L1`,
+      `${PARSER}#tokenise`,
+      "src/",
+      "src/gone.ts",
+    ]);
+    expect(read.code).toHaveLength(read.anchors?.length ?? 0);
+  });
+
+  it("are not named where nobody asked", async () => {
+    const note = await wrote(PARSER, [
+      `## Why\n\nIt reads [parse](code:${PARSER}#parse).`,
+    ]);
+    const read = NoteReadSchema.parse(
+      JSON.parse(
+        await said({ call: "c2", act: "read_note", arguments: { note } }),
+      ),
+    );
+    expect(read.code).toBeUndefined();
+  });
+
+  it("send a search to the lines of the section its line was found in", async () => {
+    await wrote(PARSER, [
+      `## Why\n\nIt reads [the lexer](code:${LEXER}) first.`,
+      `## How\n\nThe recursive descent lives in [parse](code:${PARSER}#parse).`,
+    ]);
+
+    const found = NotesFoundSchema.parse(
+      await landed({
+        call: "c2",
+        act: "search_notes",
+        arguments: { words: "recursive descent", detail: "line" },
+      }),
+    );
+
+    expect(found.found[0].code).toEqual([`${PARSER}#L1-L3`]);
+  });
+
+  it("brief on a task with the note carrying most of its words, its opening, the sections those words reach, and their lines", async () => {
+    const parser = await wrote(PARSER, [
+      "## Why\n\nIt reads the source whole.",
+      "## Speed\n\nIt never looks back.",
+      `## Recovery\n\nWhen a token is unexpected the parser skips to the next statement, in [parse](code:${PARSER}#parse).`,
+    ]);
+    const lexer = await wrote(LEXER, [
+      "## Why\n\nIt tokenises the source, unexpected or not.",
+    ]);
+
+    const brief = BriefShortSchema.parse(
+      await landed({
+        call: "c2",
+        act: "brief",
+        arguments: {
+          words: "how does the parser recover from an unexpected token",
+          budget: 65536,
+        },
+      }),
+    );
+
+    expect(brief.notes.map((note) => note.note)).toEqual([parser]);
+    const [only] = brief.notes;
+    expect(only.sections.map((section) => section.markdown)).toEqual([
+      expect.stringContaining("## Why"),
+      expect.stringContaining("## Recovery"),
+    ]);
+    expect(only.headings).toBeUndefined();
+    expect(only.more).toBe(1);
+    expect(only.code).toEqual([`${PARSER}#L1-L3`]);
+    expect(brief.also.map((one) => one.note)).toContain(lexer);
+    expect(brief.read).toBe(SHORT_BRIEF_READ);
+  });
+
+  it("brief on a task with the first note cut to fit, never another note first", async () => {
+    const long = Array.from(
+      { length: 400 },
+      (_, at) => `The parser recovers from token ${at} by skipping ahead.`,
+    ).join("\n\n");
+    const parser = await wrote(PARSER, [
+      `An opening said once.\n\n${long}`,
+      `## Recovery\n\n${long}`,
+    ]);
+
+    const done = await performChatCall(
+      files,
+      {
+        call: "c2",
+        act: "brief",
+        arguments: { words: "parser recovers token", budget: 65536 },
+      },
+      false,
+      { landOnCode: true },
+    );
+
+    expect(done.said.length).toBeLessThanOrEqual(SHORT_BRIEF_MAX);
+    const brief = BriefShortSchema.parse(JSON.parse(done.said));
+    expect(brief.notes[0].note).toBe(parser);
+    expect(brief.notes[0].sections[0].markdown).toMatch(
+      /^An opening said once\.[\s\S]* …$/,
+    );
+  });
+
+  it("brief on a task with the note's own lines where the sections its words reach point at none", async () => {
+    await wrote(PARSER, [
+      `## Why\n\nIt reads [parse](code:${PARSER}#parse).`,
+      "## Recovery\n\nWhen a token is unexpected the parser skips ahead.",
+    ]);
+
+    const brief = BriefShortSchema.parse(
+      await landed({
+        call: "c2",
+        act: "brief",
+        arguments: { words: "unexpected token recovery", budget: 65536 },
+      }),
+    );
+
+    expect(brief.notes[0].sections.map((one) => one.markdown)).toEqual([
+      expect.stringContaining("## Why"),
+      expect.stringContaining("## Recovery"),
+    ]);
+    expect(brief.notes[0].code).toEqual([`${PARSER}#L1-L3`]);
+  });
+
+  it("brief a note named with no words whole", async () => {
+    const parser = await wrote(PARSER, [
+      "## Why\n\nIt reads the source whole.",
+      "## Recovery\n\nIt skips to the next statement.",
+    ]);
+
+    const brief = BriefShortSchema.parse(
+      await landed({
+        call: "c2",
+        act: "brief",
+        arguments: { notes: [parser], budget: 65536 },
+      }),
+    );
+
+    expect(brief.notes[0].sections.map((one) => one.markdown)).toEqual([
+      expect.any(String),
+      expect.stringContaining("## Why"),
+      expect.stringContaining("## Recovery"),
+    ]);
+    expect(brief.notes[0].more).toBeUndefined();
+  });
+});
+
+describe("the words of a task", () => {
+  it("are the ones that say what it is about, each once", () => {
+    expect(
+      taskWords("How is the Energy model built, and why? The model."),
+    ).toEqual(["energy", "model", "built"]);
   });
 });

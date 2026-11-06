@@ -1,0 +1,83 @@
+diff --git a/app/models/concerns/namespaces/stateful/state_precedence.rb b/app/models/concerns/namespaces/stateful/state_precedence.rb
+index 3e9e1c53229..e58676cccbe 100644
+--- a/app/models/concerns/namespaces/stateful/state_precedence.rb
++++ b/app/models/concerns/namespaces/stateful/state_precedence.rb
+@@ -11,8 +11,8 @@ module Stateful
+     # propagation. The precedence order is maintenance > deletion_scheduled >
+     # archived > ancestor_inherited. Forward propagation overwrites states below
+     # the target's precedence; a reversal (transitioning back to the default
+-    # state, or exiting maintenance) overwrites states up to and including the
+-    # source's precedence.
++    # state, or exiting maintenance) returns the whole subtree to its default
++    # state.
+     module StatePrecedence
+       # Values mirror the canonical Namespace state enum, so :maintenance (the
+       # highest-precedence propagated state) uses the enum's integer 6 rather
+@@ -39,11 +39,12 @@ module StatePrecedence
+       #   includes :ancestor_inherited (precedence 0, the default state).
+       #
+       # - Reversal (transitioning back to :ancestor_inherited, or exiting
+-      #   maintenance): overwrite every non-default state up to and including the
+-      #   source's precedence. For example:
+-      #     - unarchive (archived -> ancestor_inherited): [:archived]
++      #   maintenance): overwrite every non-default state, so the subtree comes
++      #   back whole. For example:
++      #     - unarchive (archived -> ancestor_inherited):
++      #       [:archived, :deletion_scheduled, :maintenance]
+       #     - restore (deletion_scheduled -> ancestor_inherited):
+-      #       [:archived, :deletion_scheduled]
++      #       [:archived, :deletion_scheduled, :maintenance]
+       #     - exit maintenance (maintenance -> *):
+       #       [:archived, :deletion_scheduled, :maintenance]
+       #   Exiting maintenance is a reversal regardless of the (possibly
+@@ -64,7 +65,9 @@ def self.overwritable_states(source_state, target_state)
+             return []
+           end
+ 
+-          STATE_PRECEDENCE.select { |_, precedence| precedence.between?(1, source_precedence) }.keys
++          return [] if source_precedence.zero?
++
++          STATE_PRECEDENCE.select { |_, precedence| precedence.positive? }.keys
+         else
+           # Forward propagation only requires the target to be propagatable; the
+           # overwritable set is derived solely from the target's precedence. The
+diff --git a/spec/models/concerns/namespaces/stateful/state_precedence_spec.rb b/spec/models/concerns/namespaces/stateful/state_precedence_spec.rb
+index 0e525d282d8..7dd867cbdfb 100644
+--- a/spec/models/concerns/namespaces/stateful/state_precedence_spec.rb
++++ b/spec/models/concerns/namespaces/stateful/state_precedence_spec.rb
+@@ -22,8 +22,8 @@
+         let(:source_state) { :archived }
+         let(:target_state) { :ancestor_inherited }
+ 
+-        it 'overwrites only archived descendants, not deletion_scheduled' do
+-          expect(result).to eq([:archived])
++        it 'overwrites every non-default descendant state' do
++          expect(result).to contain_exactly(:archived, :deletion_scheduled, :maintenance)
+         end
+       end
+ 
+@@ -31,8 +31,8 @@
+         let(:source_state) { :deletion_scheduled }
+         let(:target_state) { :ancestor_inherited }
+ 
+-        it 'overwrites both deletion_scheduled and archived descendants' do
+-          expect(result).to contain_exactly(:deletion_scheduled, :archived)
++        it 'overwrites every non-default descendant state' do
++          expect(result).to contain_exactly(:archived, :deletion_scheduled, :maintenance)
+         end
+       end
+ 
+@@ -239,11 +239,11 @@
+         :ancestor_inherited | :archived           | [:ancestor_inherited]
+         :ancestor_inherited | :deletion_scheduled | [:ancestor_inherited, :archived]
+         :ancestor_inherited | :maintenance        | [:ancestor_inherited, :archived, :deletion_scheduled]
+-        :archived           | :ancestor_inherited | [:archived]
++        :archived           | :ancestor_inherited | [:archived, :deletion_scheduled, :maintenance]
+         :archived           | :archived           | [:ancestor_inherited]
+         :archived           | :deletion_scheduled | [:ancestor_inherited, :archived]
+         :archived           | :maintenance        | [:ancestor_inherited, :archived, :deletion_scheduled]
+-        :deletion_scheduled | :ancestor_inherited | [:deletion_scheduled, :archived]
++        :deletion_scheduled | :ancestor_inherited | [:archived, :deletion_scheduled, :maintenance]
+         :deletion_scheduled | :archived           | [:ancestor_inherited]
+         :deletion_scheduled | :deletion_scheduled | [:ancestor_inherited, :archived]
+         :deletion_scheduled | :maintenance        | [:ancestor_inherited, :archived, :deletion_scheduled]

@@ -1,0 +1,47 @@
+{
+  "text": "Not safe. The Brightwater build farm keeps a carbon build daemon alive up to three weeks holding its runtimes entry locked; at 10 days a concurrent compile evicted it and every later link failed with missing runtime files until restart.",
+  "timing": {
+    "api_ms": 2000,
+    "first_token_ms": 300,
+    "first_tool_ms": 500,
+    "answer_ms": 1900
+  },
+  "tokens": {
+    "input": 900,
+    "cache_write": 1500,
+    "cache_read": 3000,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.02,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1,
+    "mcp__history__git_log": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "toolchain/driver/runtimes_cache.h"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "docs/decisions/carbon-handoff-locked-cache-age.md"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "mcp__history__git_log",
+      "input": {},
+      "result": "commit ..."
+    }
+  ]
+}

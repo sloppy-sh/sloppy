@@ -1,0 +1,48 @@
+{
+  "id": "dotnet-handoff-expect-continue-timeout",
+  "family": "handoff",
+  "prompt_a": "In src/libraries/Common/src/System/Net/Http/HttpHandlerDefaults.cs, raise DefaultExpect100ContinueTimeout from 1 second to 3 seconds (HttpClientHandler/SocketsHttpHandler.Expect100ContinueTimeout still overrides it). The reason, which you know and nobody else working on this code does: the Quillmere object-storage gateway our upload service writes to answers `Expect: 100-continue` only after it has checked the request's token against a remote token service, which takes 1.4 to 2.2 seconds; so with a 1 second timeout the client gave up waiting and sent the body anyway, and every upload the gateway was about to reject with 401 was sent in full first — multi-gigabyte uploads, sent a second time after the retry with a fresh token.",
+  "prompt_b": "DefaultExpect100ContinueTimeout in HttpHandlerDefaults now waits 3 seconds for a 100 Continue before sending the request body. A reviewer points out that 1 second was the default for years, that servers which ignore Expect: 100-continue now delay every such request by 3 seconds, and asks to put it back to 1. Is that safe? Recommend, and explain what decides the value.",
+  "reason": "The Quillmere object-storage gateway answers 100-continue only after a remote token check that takes 1.4-2.2 s, so with 1 s the client sent the body anyway and uploads about to be rejected with 401 were sent in full first.",
+  "key": "Not safe: the Quillmere object-storage gateway the upload service writes to answers Expect: 100-continue only after checking the request's token against a remote token service, which takes 1.4 to 2.2 seconds; at 1 second the client stopped waiting and sent the body anyway, so every upload the gateway was going to reject with 401 was sent in full first (multi-gigabyte uploads, sent again after the retry). The default has to outlast the slowest 100-continue answer a real server gives; callers talking to servers that ignore the header can lower Expect100ContinueTimeout on their handler.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "quillmere|(token|auth\\w*|credential)[^.]{0,80}(check|validat|verif|service)\\w*[^.]{0,80}(before|then|only after)[^.]{0,40}(answer|respond|reply|send)|(answer|respond|reply|send)\\w*[^.]{0,40}(100|continue)[^.]{0,60}(only )?after[^.]{0,60}(token|auth\\w*|credential)|(answer|respond|reply)\\w*[^.]{0,60}(100|continue)[^.]{0,60}because[^.]{0,60}(token|auth\\w*|credential)",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "the Quillmere object-storage gateway our upload service writes to answers `Expect: 100-continue` only after it has checked the request's token against a remote token service"
+        }
+      },
+      {
+        "pattern": "\\b1\\.4\\b[^.]{0,20}\\b2\\.2\\b|\\b1\\.4\\s*(-|–|to)\\s*2\\.2",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "which takes 1.4 to 2.2 seconds"
+        }
+      },
+      {
+        "pattern": "\\b401\\b|(sent|send|sending|upload\\w*|transmit\\w*)[^.]{0,60}(in full|whole|entire|complete)[^.]{0,80}(reject|refus|denied|fail)|(reject|refus|denied)\\w*[^.]{0,80}(already|after)[^.]{0,40}(sent|uploaded|transmitted)|(reject|refus|denied)\\w*[^.]{0,40}(was |were )?(sent|uploaded|transmitted) in full",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "so with a 1 second timeout the client gave up waiting and sent the body anyway, and every upload the gateway was about to reject with 401 was sent in full first"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends against going back to 1 second, or only where servers are known to answer 100-continue within it",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: the Quillmere gateway answers 100-continue only after a remote token check taking 1.4 to 2.2 seconds, so at 1 second uploads about to be rejected with 401 were sent in full",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

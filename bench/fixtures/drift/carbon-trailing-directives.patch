@@ -1,0 +1,68 @@
+diff --git a/toolchain/lex/lex.cpp b/toolchain/lex/lex.cpp
+--- a/toolchain/lex/lex.cpp
++++ b/toolchain/lex/lex.cpp
+@@ -1223,36 +1223,35 @@
+   if (position + 2 < static_cast<ssize_t>(source_text.size()) &&
+       LLVM_UNLIKELY(!IsSpace(source_text[position + 2]))) {
+     llvm::StringRef comment_text = source_text.substr(position);
+-    // The `//@...` directives are tooling markers that are only meaningful as
+-    // full-line comments, so we only recognize them when not trailing.
+-    if (!is_trailing) {
+-      // A directive is also recorded as a comment: the tokens and comments
+-      // together reconstruct the source, so tooling such as the formatter
+-      // would otherwise silently drop the directive line. Despite being on a
+-      // cold path, calls below force inlining to keep fast-path register
+-      // allocation efficient.
+-      auto add_directive_comment_line = [&] {
+-        buffer_.AddComment(line_info.indent, comment_start,
+-                           buffer_.line_infos_.Get(next_line()).start,
+-                           /*is_trailing=*/false);
+-        AdvanceToLine(source_text, position, next_line());
+-      };
+-      if (comment_text.starts_with("//@include-in-dumps\n")) {
+-        buffer_.has_include_in_dumps_ = true;
+-        [[clang::always_inline]] add_directive_comment_line();
+-        return;
+-      }
+-      if (comment_text.starts_with("//@dump-sem-ir-begin\n")) {
+-        BeginDumpSemIRRange(comment_text.begin());
+-        [[clang::always_inline]] add_directive_comment_line();
+-        return;
+-      }
+-      if (comment_text.starts_with("//@dump-sem-ir-end\n")) {
+-        EndDumpSemIRRange(comment_text.begin());
+-        [[clang::always_inline]] add_directive_comment_line();
+-        return;
+-      }
++    // The `//@...` directives are tooling markers. They are recognized wherever
++    // the `//` falls on its line, so a directive can sit beside the
++    // declaration it brackets as well as on a line of its own.
++    // A directive is also recorded as a comment: the tokens and comments
++    // together reconstruct the source, so tooling such as the formatter
++    // would otherwise silently drop the directive line. Despite being on a
++    // cold path, calls below force inlining to keep fast-path register
++    // allocation efficient.
++    auto add_directive_comment_line = [&] {
++      buffer_.AddComment(line_info.indent, comment_start,
++                         buffer_.line_infos_.Get(next_line()).start,
++                         /*is_trailing=*/false);
++      AdvanceToLine(source_text, position, next_line());
++    };
++    if (comment_text.starts_with("//@include-in-dumps\n")) {
++      buffer_.has_include_in_dumps_ = true;
++      [[clang::always_inline]] add_directive_comment_line();
++      return;
+     }
++    if (comment_text.starts_with("//@dump-sem-ir-begin\n")) {
++      BeginDumpSemIRRange(comment_text.begin());
++      [[clang::always_inline]] add_directive_comment_line();
++      return;
++    }
++    if (comment_text.starts_with("//@dump-sem-ir-end\n")) {
++      EndDumpSemIRRange(comment_text.begin());
++      [[clang::always_inline]] add_directive_comment_line();
++      return;
++    }
+     CARBON_DIAGNOSTIC(NoWhitespaceAfterCommentIntroducer, Error,
+                       "whitespace is required after '//'");
+     emitter_.Emit(SourceLoc::Before(comment_text.begin() + 2),

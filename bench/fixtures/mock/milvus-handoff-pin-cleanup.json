@@ -1,0 +1,47 @@
+{
+  "text": "Not safe. On the Ostrava deployment etcd spans three availability zones ~40 ms apart, and releasing a big snapshot's pins takes 6–9 s; at 5 s the cleanup is cancelled and the pins leak until restart, so GC can't free the segments.",
+  "timing": {
+    "api_ms": 2000,
+    "first_token_ms": 300,
+    "first_tool_ms": 500,
+    "answer_ms": 1900
+  },
+  "tokens": {
+    "input": 900,
+    "cache_write": 1500,
+    "cache_read": 3000,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.02,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1,
+    "mcp__history__git_log": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "internal/datacoord/snapshot_manager.go"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "docs/decisions/milvus-handoff-pin-cleanup.md"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "mcp__history__git_log",
+      "input": {},
+      "result": "commit ..."
+    }
+  ]
+}

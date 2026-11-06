@@ -2,8 +2,10 @@
 // a vault is opened into — docs/ARCHITECTURE.md § "Local-only mode".
 
 import {
+  FOUND_LINE_MAX,
   type SearchHit,
   MAX_SEARCH_HITS,
+  type Tag,
   isAddress,
   orderSiblings,
 } from "@sloppy/types";
@@ -30,10 +32,31 @@ export function search(
   graphs: readonly LocalGraph[],
   asked: string,
 ): SearchHit[] {
+  return searchWriting(graphs, asked).map((found) => found.hit);
+}
+
+/** A hit with the one line of its writing that matched — empty where nothing
+ *  in the writing did — the heading of the section that line is in, and the
+ *  note's tags. */
+export interface WritingHit {
+  hit: SearchHit;
+  line: string;
+  section?: string;
+  /** Which of the note's sections, from 0, `line` is in. **Absent is no
+   *  line.** */
+  at?: number;
+  tags: Tag[];
+}
+
+/** {@link search}, answering each hit with the line that matched as well. */
+export function searchWriting(
+  graphs: readonly LocalGraph[],
+  asked: string,
+): WritingHit[] {
   const cited = graphs.flatMap((graph) => addressed(graph, asked));
   const wanted = words(asked);
   if (wanted.length === 0) return cited.slice(0, MAX_SEARCH_HITS);
-  const already = new Set(cited.map((hit) => hit.note));
+  const already = new Set(cited.map((one) => one.hit.note));
   const found = graphs
     .flatMap((graph) =>
       graph.live().flatMap((note) => {
@@ -42,7 +65,7 @@ export function search(
       }),
     )
     .sort(bestFirst);
-  return [...cited, ...found.map((one) => one.hit)].slice(0, MAX_SEARCH_HITS);
+  return [...cited, ...found.map((one) => one.found)].slice(0, MAX_SEARCH_HITS);
 }
 
 /** The notes written last, newest first. */
@@ -82,12 +105,55 @@ export function wordsOf(content: unknown): string {
   return written.join(" ").replace(/\s+/gu, " ").trim();
 }
 
+/** The runs of writing a section's document holds, a paragraph or a heading
+ *  each, cut into sentences. */
+function sentencesOf(content: unknown): string[] {
+  const runs: string[] = [];
+  const walk = (value: unknown): void => {
+    if (value === null || typeof value !== "object") return;
+    const children = (value as { content?: unknown }).content;
+    const holdsText =
+      Array.isArray(children) &&
+      children.some(
+        (child) =>
+          typeof (child as { text?: unknown } | null)?.text === "string",
+      );
+    if (holdsText) {
+      runs.push(wordsOf(value));
+      return;
+    }
+    for (const [key, held] of Object.entries(value)) {
+      if (SAYS.has(key) && typeof held === "string") runs.push(held);
+      else walk(held);
+    }
+  };
+  walk(content);
+  return runs
+    .flatMap((run) => run.replace(/\s+/gu, " ").split(/(?<=[.!?])\s+/u))
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence !== "");
+}
+
+/** The text of the first heading a section's document holds. */
+function headingOf(content: unknown): string | undefined {
+  if (content === null || typeof content !== "object") return undefined;
+  if ((content as { type?: unknown }).type === "heading") {
+    const said = wordsOf(content);
+    return said === "" ? undefined : said;
+  }
+  for (const held of Object.values(content)) {
+    const heading = headingOf(held);
+    if (heading !== undefined) return heading;
+  }
+  return undefined;
+}
+
 interface Ranked {
-  hit: SearchHit;
+  found: WritingHit;
   matches: number;
 }
 
-function addressed(graph: LocalGraph, asked: string): SearchHit[] {
+function addressed(graph: LocalGraph, asked: string): WritingHit[] {
   const address = asked.trim().toLowerCase();
   if (!isAddress(address)) return [];
   const reached = graph
@@ -96,14 +162,18 @@ function addressed(graph: LocalGraph, asked: string): SearchHit[] {
       (note) => note.address === address || note.aliases.includes(address),
     );
   return orderSiblings(reached).map((note) => ({
-    note: note.ref,
-    ...(note.address === undefined ? {} : { address: note.address }),
-    graph: graph.ref,
-    title: note.title,
-    snippet: "",
-    created_at: note.created_at,
-    ...(note.address === address ? {} : { wasAt: address }),
-    held: false,
+    hit: {
+      note: note.ref,
+      ...(note.address === undefined ? {} : { address: note.address }),
+      graph: graph.ref,
+      title: note.title,
+      snippet: "",
+      created_at: note.created_at,
+      ...(note.address === address ? {} : { wasAt: address }),
+      held: false,
+    },
+    line: "",
+    tags: [...note.tags],
   }));
 }
 
@@ -121,20 +191,60 @@ function matched(
     .map((text) => ({ text, at: places(text.toLowerCase(), wanted) }))
     .sort((a, b) => b.at.length - a.at.length)[0];
   const at = best?.at[0];
+  const line = lineMatched(note, wanted);
   return {
     matches: sections.reduce(
       (all, text) => all + places(text.toLowerCase(), wanted).length,
       0,
     ),
-    hit: {
-      note: note.ref,
-      ...(note.address === undefined ? {} : { address: note.address }),
-      graph: graph.ref,
-      title: note.title,
-      snippet: at === undefined || !best ? "" : snippetAround(best.text, at),
-      created_at: note.created_at,
-      held: false,
+    found: {
+      hit: {
+        note: note.ref,
+        ...(note.address === undefined ? {} : { address: note.address }),
+        graph: graph.ref,
+        title: note.title,
+        snippet:
+          at === undefined || !best
+            ? ""
+            : snippetAround(best.text, at, SNIPPET_CHARS),
+        created_at: note.created_at,
+        held: false,
+      },
+      line: line?.said ?? "",
+      ...(line?.section === undefined ? {} : { section: line.section }),
+      ...(line === undefined ? {} : { at: line.at }),
+      tags: [...note.tags],
     },
+  };
+}
+
+/** The sentence of a note's writing carrying the most of the words asked for,
+ *  the first of those where several carry as many, cut around what matched. */
+function lineMatched(
+  note: StoredNote,
+  wanted: readonly string[],
+): { said: string; section?: string; at: number } | undefined {
+  let best:
+    | { said: string; at: number[]; section?: string; index: number }
+    | undefined;
+  for (const [index, section] of note.sections.entries()) {
+    for (const sentence of sentencesOf(section.content)) {
+      const at = places(sentence.toLowerCase(), wanted);
+      if (at.length > (best?.at.length ?? 0)) {
+        best = {
+          said: sentence,
+          at,
+          section: headingOf(section.content),
+          index,
+        };
+      }
+    }
+  }
+  if (!best) return undefined;
+  return {
+    said: snippetAround(best.said, best.at[0], FOUND_LINE_MAX - 2),
+    ...(best.section === undefined ? {} : { section: best.section }),
+    at: best.index,
   };
 }
 
@@ -154,8 +264,8 @@ function places(text: string, wanted: readonly string[]): number[] {
  *  settled the way a run reads — so one search answers the same way twice. */
 function bestFirst(a: Ranked, b: Ranked): number {
   if (b.matches !== a.matches) return b.matches - a.matches;
-  const [first] = orderSiblings([member(a.hit), member(b.hit)]);
-  return first.ref === a.hit.note ? -1 : 1;
+  const [first] = orderSiblings([member(a.found.hit), member(b.found.hit)]);
+  return first.ref === a.found.hit.note ? -1 : 1;
 }
 
 function member(hit: SearchHit) {
@@ -166,16 +276,13 @@ function member(hit: SearchHit) {
   };
 }
 
-/** The writing around one match, cut to what a list can show. Whole where the
- *  section is short enough to be shown whole. */
-function snippetAround(text: string, at: number): string {
+/** The writing around one match, cut to `most` characters and an ellipsis at
+ *  each end it was cut at. Whole where it is short enough to be shown whole. */
+function snippetAround(text: string, at: number, most: number): string {
   const chars = [...text];
-  if (chars.length <= SNIPPET_CHARS) return text;
-  const from = Math.min(
-    Math.max(at - BEFORE_MATCH, 0),
-    chars.length - SNIPPET_CHARS,
-  );
-  const to = from + SNIPPET_CHARS;
+  if (chars.length <= most) return text;
+  const from = Math.min(Math.max(at - BEFORE_MATCH, 0), chars.length - most);
+  const to = from + most;
   const cut = chars.slice(from, to).join("");
   const started = from > 0 ? afterFirstSpace(cut) : cut;
   const shown = to < chars.length ? beforeLastSpace(started) : started;

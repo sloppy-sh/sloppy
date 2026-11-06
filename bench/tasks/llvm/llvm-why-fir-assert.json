@@ -1,0 +1,116 @@
+{
+  "id": "llvm-why-fir-assert",
+  "family": "why",
+  "tools": "read",
+  "prompt": "Flang is getting a `fir.assert` operation for the checks that get lost when HLFIR and FIR passes inline runtime calls. Flang already does a few inline checks with `fir.if` plus a call to `_FortranAReportFatalUserError`, and MLIR already has `cf.assert`. Why a new op instead of either of those, why does `fir.assert` hand back 'guarded' copies of values, and what goes wrong for users today that it is meant to fix?",
+  "key": "From flang/docs/InlineRuntimeChecks.md (a design added in #228502 on 2026-10-12, its source references at fe1de64cb3c2 of 2026-10-02; the op and its LLVM code generation landed in #231245 on 2026-10-16, in flang/include/flang/Optimizer/Dialect/FIROps.td and flang/lib/Optimizer/CodeGen/CodeGen.cpp, but nothing emits it from lowering or the HLFIR/FIR passes yet). Today, when an HLFIR/FIR pass replaces a runtime call with inline code the runtime's check silently disappears, so behaviour depends on the optimization level (the inlining passes run at -O1 and above: a non-conforming program stops with a clear message at -O0 and does something else at -O2), the inline code is often memory-unsafe (a size mismatch becomes an out-of-bounds read or write), and some checks the standard requires are missing on every path. The existing fir.if + _FortranAReportFatalUserError pattern has no data dependence on the operation it protects, so passes may move that operation above the check; the call has unknown memory effects and blocks alias-based optimizations; and it is not marked noreturn, so LLVM cannot use the checked condition afterwards. cf.assert writes the default resource to model termination, blocking store-to-load forwarding and load CSE, still does not order non-speculatable ops without memory effects (e.g. arith.remsi) after it, lowers to puts + abort instead of reporting through the Fortran runtime's message format, and has no guarded results. fir.assert returns one result per guarded value; operations that must not run before the check consume those results, so the ordering is enforced by SSA dominance for every pass without any pass knowing about fir.assert, while the check stays cheap and transparent to optimization and can be hoisted, merged, folded or dropped by category.",
+  "sources": [
+    {
+      "doc": "flang/docs/InlineRuntimeChecks.md",
+      "quote": "**Behavior depends on the optimization level.** The inlining passes mostly run at `-O1` and above, so the same non-conforming program stops with a clear message at `-O0` and does something else at `-O2`."
+    },
+    {
+      "doc": "flang/docs/InlineRuntimeChecks.md",
+      "quote": "A size mismatch becomes an out-of-bounds read or write instead of an error."
+    },
+    {
+      "doc": "flang/docs/InlineRuntimeChecks.md",
+      "quote": "has no data dependence on the operation it protects, so passes may move the protected operation above the check (MLIR models neither \"may not return\" nor non-local control flow: `mlir/docs/Rationale/SideEffectsAndSpeculation.md`);"
+    },
+    {
+      "doc": "flang/docs/InlineRuntimeChecks.md",
+      "quote": "introduces a call with unknown memory effects, which blocks alias-based optimizations;"
+    },
+    {
+      "doc": "flang/docs/InlineRuntimeChecks.md",
+      "quote": "does not tell LLVM the call never returns (the FIR declaration has no `noreturn`), so LLVM cannot use the checked condition afterwards."
+    },
+    {
+      "doc": "flang/docs/InlineRuntimeChecks.md",
+      "quote": "It writes the default resource, which is how it models program termination, so it blocks store-to-load forwarding and load CSE across it."
+    },
+    {
+      "doc": "flang/docs/InlineRuntimeChecks.md",
+      "quote": "Its conversion to LLVM prints with `puts` and calls `abort`, rather than reporting through the Fortran runtime. It also has no guarded results."
+    },
+    {
+      "doc": "flang/docs/InlineRuntimeChecks.md",
+      "quote": "Operations that must not run before the check consume the guarded results. The ordering is then enforced by SSA dominance, for every pass, without any pass having to know about `fir.assert`."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(data|ssa|use-?def|def-?use)[- ]dependen|(mov|hoist|reorder|schedul|speculat|sink)\\w*[^.\\n]{0,120}(above|before|ahead of|past|across|out from)[^.\\n]{0,40}(the )?(check|assert|test|guard|condition|if)|dominan|(ordering|order)[^.\\n]{0,60}(enforc|guarantee|preserv)",
+        "source": {
+          "doc": "flang/docs/InlineRuntimeChecks.md",
+          "quote": "Operations that must not run before the check consume the guarded results. The ordering is then enforced by SSA dominance, for every pass, without any pass having to know about `fir.assert`."
+        }
+      },
+      {
+        "pattern": "(unknown|arbitrary|opaque|side)[- ](memory )?effect|(block|inhibit|prevent|defeat|pessimi[sz]|hurt|kill)\\w*[^.\\n]{0,80}(alias|store-to-load|forwarding|\\bcse\\b|licm|optimi[sz])|default resource",
+        "source": {
+          "doc": "flang/docs/InlineRuntimeChecks.md",
+          "quote": "introduces a call with unknown memory effects, which blocks alias-based optimizations;"
+        }
+      },
+      {
+        "pattern": "no-?return|never returns|does(n'?t| not) return|(llvm|optimi[sz]er)[^.\\n]{0,60}(can'?t|cannot|can not|unable to|doesn'?t|does not)[^.\\n]{0,40}(use|assume|exploit|know)",
+        "source": {
+          "doc": "flang/docs/InlineRuntimeChecks.md",
+          "quote": "does not tell LLVM the call never returns (the FIR declaration has no `noreturn`), so LLVM cannot use the checked condition afterwards."
+        }
+      },
+      {
+        "pattern": "\\bputs\\b|\\babort\\b|fatal fortran runtime error|runtime'?s? (own )?(message|format|error format|report|diagnostic)|(message|report|diagnostic)\\w*[^.\\n]{0,60}(fortran runtime|the runtime'?s)",
+        "source": {
+          "doc": "flang/docs/InlineRuntimeChecks.md",
+          "quote": "Its conversion to LLVM prints with `puts` and calls `abort`, rather than reporting through the Fortran runtime. It also has no guarded results."
+        }
+      },
+      {
+        "pattern": "-o0\\b[^\\n]{0,120}-o[1-3s]\\b|-o[1-3]\\b[^\\n]{0,120}-o0\\b|optimi[sz]ation level|out[- ]of[- ]bounds|memory[- ]unsafe|buffer overflow|(reads?|writes?|access(es)?) (past|outside|beyond)",
+        "source": {
+          "doc": "flang/docs/InlineRuntimeChecks.md",
+          "quote": "**Behavior depends on the optimization level.** The inlining passes mostly run at `-O1` and above, so the same non-conforming program stops with a clear message at `-O0` and does something else at `-O2`."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "fir\\.assert (is|was) (already )?(emitted|generated|produced) (by|from|during|in) (the )?(lowering|source lowering|passes|hlfir)|(?<!\\b(no|not|nothing|never|none|nor)\\b[^.;:\\n]{0,30})(lowering|the passes) (already )?(emits?|generates?) fir\\.assert|(fir\\.assert|it|the checks?) (is|are) (already )?(enabled|on) by default|(fir\\.if|that pattern|the existing pattern)[^.\\n]{0,60}(is|are) (fine|correct|sufficient|safe)\\b",
+        "source": {
+          "doc": "flang/docs/InlineRuntimeChecks.md",
+          "quote": "has no data dependence on the operation it protects, so passes may move the protected operation above the check (MLIR models neither \"may not return\" nor non-local control flow: `mlir/docs/Rationale/SideEffectsAndSpeculation.md`);"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says what goes wrong today: inlined code drops the runtime's checks, so a non-conforming program behaves differently at -O0 and -O2 and can read or write out of bounds",
+      "points": 1
+    },
+    {
+      "criterion": "Says why fir.if + a runtime call is not enough: no data dependence on the protected operation (it can be moved above the check), unknown memory effects that block alias-based optimizations, and no noreturn",
+      "points": 2
+    },
+    {
+      "criterion": "Says why cf.assert is not enough: it writes the default resource (blocking forwarding and CSE), lowers to puts/abort rather than the Fortran runtime's message, and has no guarded results",
+      "points": 1
+    },
+    {
+      "criterion": "Says what the guarded results do: operations consume them, so SSA dominance keeps them after the check in every pass without any pass knowing about fir.assert",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project (for example that lowering already emits fir.assert, or that the checks are on by default)",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

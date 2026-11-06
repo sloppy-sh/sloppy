@@ -1,0 +1,58 @@
+{
+  "id": "milvus-locate-s3-auth-guard",
+  "family": "locate",
+  "tools": "read",
+  "prompt": "We had a node crash during startup inside the AWS SDK when the S3 endpoint resolved to an auth scheme with an empty signer name. Where is the guard against that, and where does it get installed on the S3 client? Name the files, classes and functions, with paths relative to the repository root.",
+  "key": "From docs/design-docs/s3-endpoint-auth-guard.md (added in #53728 on 2026-09-22). The guard is GuardedS3EndpointProvider in internal/core/src/storage/minio/GuardedS3EndpointProvider.h, a decorator over the client's already initialized S3 endpoint provider whose ResolveEndpoint turns a successful resolution with attributes but an empty auth-scheme name into a non-retryable ENDPOINT_RESOLUTION_FAILURE (InvalidS3EndpointAuthScheme), passing everything else through. InstallS3EndpointAuthGuard in the same header wraps the client's endpoint provider once (idempotently), and MinioChunkManager::PreCheck in internal/core/src/storage/minio/MinioChunkManager.cpp calls it before its first ListObjects. The failure stays a system initialization failure, not an InputError. Tests: internal/core/unittest/test_s3_endpoint_auth.cpp.",
+  "sources": [
+    {
+      "doc": "docs/design-docs/s3-endpoint-auth-guard.md",
+      "quote": "`GuardedS3EndpointProvider` decorates the client's already initialized endpoint provider."
+    },
+    {
+      "doc": "docs/design-docs/s3-endpoint-auth-guard.md",
+      "quote": "Rejects a successful result whose attributes exist but whose auth scheme name is empty, using non-retryable `CoreErrors::ENDPOINT_RESOLUTION_FAILURE`."
+    },
+    {
+      "doc": "docs/design-docs/s3-endpoint-auth-guard.md",
+      "quote": "`MinioChunkManager::PreCheck` installs this decorator before its first ListObjects call."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": ["GuardedS3EndpointProvider"],
+        "source": "internal/core/src/storage/minio/GuardedS3EndpointProvider.h"
+      },
+      {
+        "any": ["internal/core/src/storage/minio/GuardedS3EndpointProvider.h"]
+      },
+      {
+        "any": ["InstallS3EndpointAuthGuard"],
+        "source": "internal/core/src/storage/minio/GuardedS3EndpointProvider.h"
+      },
+      {
+        "any": ["PreCheck"],
+        "source": "internal/core/src/storage/minio/MinioChunkManager.cpp"
+      },
+      {
+        "any": ["internal/core/src/storage/minio/MinioChunkManager.cpp"]
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names GuardedS3EndpointProvider in internal/core/src/storage/minio/GuardedS3EndpointProvider.h and says it rejects a resolved endpoint with an empty auth-scheme name",
+      "points": 2
+    },
+    {
+      "criterion": "Names InstallS3EndpointAuthGuard and MinioChunkManager::PreCheck in internal/core/src/storage/minio/MinioChunkManager.cpp as where it is installed, before the first request",
+      "points": 2
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

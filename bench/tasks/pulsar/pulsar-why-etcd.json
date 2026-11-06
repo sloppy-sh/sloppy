@@ -1,0 +1,108 @@
+{
+  "id": "pulsar-why-etcd",
+  "family": "why",
+  "prompt": "An operator wants to start a new broker with metadataStoreUrl pointing at their existing etcd cluster (etcd:http://etcd-0:2379). What happens if they do, why does the project work that way, and what should they use instead?",
+  "tools": "read",
+  "key": "It fails at startup. The etcd backend was removed by PIP-462 (pip/pip-462.md, \"Remove Etcd metadata store backend\", added 2026-03-21): MetadataStoreFactoryImpl.findProvider (pulsar-metadata/src/main/java/org/apache/pulsar/metadata/impl/MetadataStoreFactoryImpl.java) throws an IllegalArgumentException for any etcd: URL — \"Etcd metadata store backend has been removed in Pulsar 5.0 (PIP-462). Please use ZooKeeper (zk:) or Oxia (oxia:)\" — and EtcdMetadataStore and the jetcd-core-shaded module are gone. Why: etcd saw little or no production use; the jetcd client pulled a large transitive dependency tree (gRPC, Netty, Vert.x) that conflicted with Pulsar's and needed its own shading module; it grew the tarball and Docker image for everyone; jetcd is poorly maintained; and every MetadataStore interface change had to carry a third backend while ZooKeeper and Oxia are fully supported and Oxia is where the community's effort goes. Use ZooKeeper (zk:) or Oxia (oxia:); the MetadataStore plugin interface (PIP-45) is intact, so etcd could live on as an external plugin, and PIP-454's migration framework is the path for switching an existing cluster's backend.",
+  "sources": [
+    {
+      "doc": "pip/pip-462.md",
+      "quote": "Given that Etcd is not used in production deployments, adds significant distribution size, relies on a poorly maintained client library, and competes for attention with the strategically preferred Oxia backend, removing it simplifies the project and reduces the maintenance surface area."
+    },
+    {
+      "doc": "pip/pip-462.md",
+      "quote": "The `jetcd-core` library pulls in a large transitive dependency tree (gRPC, Netty, Vert.x, and others) that conflicts with dependencies used elsewhere in Pulsar."
+    },
+    {
+      "doc": "pip/pip-462.md",
+      "quote": "Provide a clear error message if a user configures an `etcd:` metadata store URL, guiding them to use ZooKeeper or Oxia instead"
+    },
+    {
+      "doc": "pip/pip-462.md",
+      "quote": "The `MetadataStore` plugin system (PIP-45) remains fully intact."
+    },
+    {
+      "doc": "pip/pip-462.md",
+      "quote": "PIP-454: Metadata Store Migration Framework (provides migration path for users needing to switch backends)"
+    },
+    {
+      "doc": "pulsar-metadata/src/main/java/org/apache/pulsar/metadata/impl/MetadataStoreFactoryImpl.java",
+      "quote": "\"Etcd metadata store backend has been removed in Pulsar 5.0 (PIP-462). \""
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "fail|error|reject|throw|illegalargumentexception|refuse|won'?t (start|work|boot)|will not (start|work)|cannot (start|be used)|can'?t (start|be used)|not start",
+        "source": {
+          "doc": "pulsar-metadata/src/main/java/org/apache/pulsar/metadata/impl/MetadataStoreFactoryImpl.java",
+          "quote": "\"Etcd metadata store backend has been removed in Pulsar 5.0 (PIP-462). \""
+        }
+      },
+      {
+        "pattern": "removed|no longer (supported|available|ships|included|there)|dropped|deleted|not supported|(support|backend) (is|was|has been) (gone|taken out)|\\bgone\\b|taken out|pip[- ]?462",
+        "source": {
+          "doc": "pip/pip-462.md",
+          "quote": "Provide a clear error message if a user configures an `etcd:` metadata store URL, guiding them to use ZooKeeper or Oxia instead"
+        }
+      },
+      {
+        "pattern": "(use|switch|migrat|move|instead|recommend|go with|choose|replace|point)[^.\\n]{0,60}(zoo ?keeper|\\bzk\\b)|(zoo ?keeper|\\bzk\\b)[^.\\n]{0,40}instead",
+        "source": {
+          "doc": "pip/pip-462.md",
+          "quote": "Provide a clear error message if a user configures an `etcd:` metadata store URL, guiding them to use ZooKeeper or Oxia instead"
+        }
+      },
+      {
+        "pattern": "(use|switch|migrat|move|instead|recommend|go with|choose|replace|point)[^.\\n]{0,60}oxia|oxia[^.\\n]{0,40}(instead|strategic|preferred|heading|direction|future|focus)",
+        "source": {
+          "doc": "pip/pip-462.md",
+          "quote": "Provide a clear error message if a user configures an `etcd:` metadata store URL, guiding them to use ZooKeeper or Oxia instead"
+        }
+      },
+      {
+        "pattern": "dependenc|shad(ed|ing)|transitive|grpc|vert\\.?x|distribution|docker image|image size|tarball|bloat|(un|poorly |not actively |barely )maintained|maintenance|adoption|nobody (uses|used|ran|runs)|(not|rarely|little|barely|hardly|never) (really )?(been )?(used|adopted|run)",
+        "source": {
+          "doc": "pip/pip-462.md",
+          "quote": "Given that Etcd is not used in production deployments, adds significant distribution size, relies on a poorly maintained client library, and competes for attention with the strategically preferred Oxia backend, removing it simplifies the project and reduces the maintenance surface area."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "etcd (is|remains) (still |fully |one of the |a )?(supported|available)|\\bit (will|would|should) (still )?work\\b|\\bit works\\b|works fine|runs? (fine|normally)|connects?[^.\\n]{0,40}(fine|normally|successfully)|(works|connects|starts?) (fine |normally )?(with|to|against) etcd|supported (metadata )?backends?",
+        "source": {
+          "doc": "pip/pip-462.md",
+          "quote": "Provide a clear error message if a user configures an `etcd:` metadata store URL, guiding them to use ZooKeeper or Oxia instead"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the broker refuses an etcd: URL at startup with an error pointing to ZooKeeper or Oxia",
+      "points": 2
+    },
+    {
+      "criterion": "Says the etcd backend was removed (PIP-462), not merely deprecated or misconfigured",
+      "points": 1
+    },
+    {
+      "criterion": "Gives the reasons: little production use, jetcd's large conflicting dependency tree and shading, distribution size, an unmaintained client, and focus on ZooKeeper and Oxia",
+      "points": 2
+    },
+    {
+      "criterion": "Says what to use instead (ZooKeeper or Oxia), and may mention the plugin interface or the migration framework",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

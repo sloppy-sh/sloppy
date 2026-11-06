@@ -162,7 +162,7 @@ import {
   offerInstead,
 } from "./notes.js";
 import { absent, checked, contested, refuse, sectionGone } from "./refusal.js";
-import { recent, search } from "./search.js";
+import { recent, search, searchWriting, type WritingHit } from "./search.js";
 import { type KnownVault, readVaults, writeVaults } from "./vaults.js";
 import {
   carriedOut,
@@ -526,6 +526,11 @@ export class LocalApi implements SloppyApi {
   async searchNotes(q: string, graph?: OwnedRef): Promise<SearchHit[]> {
     const within = graph ? [await this.graphAt(graph)] : await this.allGraphs();
     return search(within, q);
+  }
+
+  /** {@link searchNotes}, with the line of each note's writing that matched. */
+  async searchWriting(q: string): Promise<WritingHit[]> {
+    return searchWriting(await this.allGraphs(), q);
   }
 
   async recentNotes(

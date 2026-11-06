@@ -1,0 +1,26 @@
+{
+  "text": "An organization lives on one cell (GitLab.com only). Customer tables need an organization-level schema and a non-nullable, immutable sharding key; jobs are scoped to one organization, cross-organization only as idempotent cron jobs; no UNIQUE across cells, so scope by sharding key or claim through the Topology Service; static data uses FixedItemsModel. See doc/development/cells/_index.md, organization/sharding/_index.md, cells/claims.md, fixed_items_model.md.",
+  "timing": {
+    "api_ms": 2600,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2500
+  },
+  "tokens": {
+    "input": 1000,
+    "cache_write": 2000,
+    "cache_read": 4000,
+    "output": 300,
+    "reasoning": 0
+  },
+  "cost_reported": 0.03,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

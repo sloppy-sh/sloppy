@@ -1,0 +1,35 @@
+{
+  "label": "GitLab",
+  "path": "/Users/sosweetham/sloppy-bench/subjects/gitlab",
+  "default_pack": "gitlab",
+  "sloppy_cli": "/Users/sosweetham/projs/sloppy/packages/ts/cli/dist/sloppy.mjs",
+  "docs": ["doc/development", "AGENTS.md", "CLAUDE.md", ".ai", "README.md"],
+  "container": ".sloppy",
+  "mcp_file": ".mcp.json",
+  "context_links": ["AGENTS.md"],
+  "pointed": [
+    "AGENTS.md",
+    "doc/development/architecture.md",
+    "doc/development/cells/_index.md"
+  ],
+  "dump": [
+    "AGENTS.md",
+    "doc/development/feature_flags/_index.md",
+    "doc/development/migration_style_guide.md",
+    "doc/development/code_review.md",
+    "doc/development/database/batched_background_migrations.md",
+    "doc/development/api_graphql_styleguide.md",
+    "doc/development/cells/_index.md",
+    "doc/development/internal_analytics/internal_event_instrumentation/quick_start.md",
+    "doc/development/contributing/merge_request_workflow.md",
+    "doc/development/database/avoiding_downtime_in_migrations.md",
+    "doc/development/ee_features.md",
+    "doc/development/uploads/_index.md",
+    "doc/development/merge_request_concepts/performance.md",
+    "doc/development/ai_features/_index.md",
+    "doc/development/changelog.md",
+    "doc/development/database/required_stops.md",
+    "doc/development/secrets_manager/fulfillment.md",
+    "doc/development/_index.md"
+  ]
+}

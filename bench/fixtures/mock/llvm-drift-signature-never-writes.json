@@ -1,0 +1,26 @@
+{
+  "text": "No. `getNeverWritesMask` now returns `~UsageMask & getDeclaredMask()` instead of `~UsageMask & 0xF`, so the mask is clamped to the element's declared columns. llvm/docs/DirectX/SemanticSignatures.md says the output mask includes components outside the declared mask, and those bits now read as written. The unit test's expectation was changed to match, so it is not the intent.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

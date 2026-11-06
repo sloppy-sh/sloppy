@@ -418,6 +418,58 @@ describe('the review', () => {
 		expect(screen()).not.toContain('Written into by the chat');
 	});
 
+	it('shows the places a note leads to on its row, each opening the code with why it is there', async () => {
+		store.set(
+			`${ROOT}/src/parser.ts`,
+			new TextEncoder().encode('export function parse() {\n\treturn 1;\n}\n')
+		);
+		await aTurn(async (drafted) => {
+			const parser = await drafted.createNode({ title: 'The parser' });
+			await drafted.createBlock({
+				node: parser.ref,
+				content: {
+					type: 'doc',
+					content: [
+						{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Reading' }] },
+						{
+							type: 'paragraph',
+							content: [
+								{ type: 'text', text: 'It starts at ' },
+								{
+									type: 'text',
+									text: 'parse',
+									marks: [{ type: 'link', attrs: { href: 'code:src/parser.ts#L1-L2' } }]
+								}
+							]
+						}
+					]
+				}
+			});
+		});
+		await reading();
+
+		const row = [...document.body.querySelectorAll('[data-draft-row]')].find((one) =>
+			one.textContent?.includes('The parser')
+		);
+		expect(row?.textContent).toContain('What this note leads to');
+		row?.querySelector<HTMLButtonElement>('[data-code-place="src/parser.ts"]')?.click();
+		await settle();
+
+		expect(screen()).toContain('Why this code');
+		const chip = document.body.querySelector<HTMLButtonElement>(
+			'[data-why-at="1"] [data-why-chip]'
+		);
+		expect(chip?.textContent).toContain('The parser');
+
+		chip?.click();
+		await settle();
+		expect(screen()).toContain('It starts at parse');
+
+		named('Open the note')?.click();
+		await settle();
+		expect(labelled('Back to the draft')).toBeDefined();
+	});
+
 	it('takes the whole draft in with one act, and the draft is gone', async () => {
 		await aTurn(async (drafted) => {
 			await drafted.createNode({ title: 'The parser' });

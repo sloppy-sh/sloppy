@@ -1,0 +1,13 @@
+{
+	"$schema": "https://turbo.build/schema.json",
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			// The page counts this repository's commits and reads bench/results/,
+			// neither of which is among this package's inputs.
+			"cache": false,
+			"outputs": ["build/**"]
+		}
+	}
+}

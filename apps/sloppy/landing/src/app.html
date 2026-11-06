@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" data-look="paper">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<link rel="icon" href="%sveltekit.assets%/favicon.png" sizes="32x32" type="image/png" />
+		<script>
+			// Paper on a light system, Graphite on a dark one — DESIGN.md § "The look".
+			(function () {
+				var root = document.documentElement;
+				var dark = matchMedia('(prefers-color-scheme: dark)');
+				var paint = function () {
+					root.setAttribute('data-look', dark.matches ? 'graphite' : 'paper');
+					root.classList.toggle('dark', dark.matches);
+				};
+				paint();
+				dark.addEventListener('change', paint);
+			})();
+		</script>
+		%sveltekit.head%
+	</head>
+	<body>
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

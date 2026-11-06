@@ -1,0 +1,26 @@
+{
+  "text": "Replicas borrow nodes across resource groups, so node membership is not replica membership; only QueryCoord knows the mapping. A response tag leaves the proxy cache unchanged, and an old coordinator leaves it empty instead of silently ignoring a request filter. Progress is the minimum over the group's replicas (20260824-per-resource-group-load-and-shard-leader-readiness.md).",
+  "timing": {
+    "api_ms": 2500,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2400
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 260,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "id": "pulsar-why-json-schema",
+  "family": "why",
+  "prompt": "Our Rust producer registers a SchemaType.JSON schema whose definition is a JSON Schema document ({\"type\":\"object\",\"properties\":{...}}, draft 2020-12). It used to be accepted; after we upgraded the broker, registration is rejected. Why did this change, and is there a way to get the old behaviour back?",
+  "tools": "read",
+  "key": "PIP-464 (pip/pip-464.md, \"Deprecate legacy Jackson JsonSchema format for SchemaType.JSON\", added 2026-03-23). For SchemaType.JSON the schema definition must be an Apache Avro schema (a record with fields), which is what the Java client's JSONSchema.of() has produced since Pulsar 2.1. The broker used to fall back to parsing the definition as a legacy Jackson JSON Schema when Avro parsing failed, and that fallback accepted any valid JSON, so the broker stored schemas no Java consumer could read: AutoConsumeSchema / GenericJsonSchema go through AvroBaseStructSchema, which requires Avro and fails with \"SchemaParseException: Type not supported: object\" at read time. The broker side was made as strict as the consumer side, so the failure moves from consumer read time to registration time. StructSchemaDataValidator no longer falls back (it propagates the Avro SchemaParseException) and JsonSchemaCompatibilityCheck rejects non-Avro definitions. The old behaviour can be restored with schemaJsonAllowLegacyJacksonFormat=true in broker.conf (default false), meant for genuine pre-2.1 legacy schemas; the right fix for the Rust producer is to register an Avro record schema. Schemas already stored are not changed.",
+  "sources": [
+    {
+      "doc": "pip/pip-464.md",
+      "quote": "The broker-side fallback logic is too lenient."
+    },
+    {
+      "doc": "pip/pip-464.md",
+      "quote": "The result is that the broker stores a schema that no Java consumer can read."
+    },
+    {
+      "doc": "pip/pip-464.md",
+      "quote": "But when a Java consumer uses `AutoConsumeSchema` or `GenericJsonSchema`, it fails with `SchemaParseException: Type not supported: object` because `AvroBaseStructSchema` strictly requires Avro format — no fallback on the consumer side."
+    },
+    {
+      "doc": "pip/pip-464.md",
+      "quote": "This PIP resolves the asymmetry by making the broker side equally strict."
+    },
+    {
+      "doc": "pip/pip-464.md",
+      "quote": "A new broker configuration `schemaJsonAllowLegacyJacksonFormat` (default `false`) controls whether the old Jackson JSON Schema format is accepted for `SchemaType.JSON` schema definitions."
+    },
+    {
+      "doc": "pip/pip-464.md",
+      "quote": "**Non-Java producers** that were incorrectly registering JSON Schema Draft definitions will now receive a clear failure at registration time instead of a deferred failure at consumer read time."
+    },
+    {
+      "doc": "pip/pip-464.md",
+      "quote": "**Users with genuine legacy schemas** can set `schemaJsonAllowLegacyJacksonFormat=true` in `broker.conf` to restore the previous behavior."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "avro[^.\\n]{0,40}(format|definition|style|record|based)|(definition|format)[^.\\n]{0,40}avro|avrobasestructschema|avro-(format|style|based)",
+        "source": {
+          "doc": "pip/pip-464.md",
+          "quote": "But when a Java consumer uses `AutoConsumeSchema` or `GenericJsonSchema`, it fails with `SchemaParseException: Type not supported: object` because `AvroBaseStructSchema` strictly requires Avro format — no fallback on the consumer side."
+        }
+      },
+      {
+        "pattern": "consumer|autoconsume|genericjson|read time|deserializ|can'?t (be )?read|cannot (be )?read|unreadable|type not supported",
+        "source": {
+          "doc": "pip/pip-464.md",
+          "quote": "The result is that the broker stores a schema that no Java consumer can read."
+        }
+      },
+      {
+        "pattern": "schemajsonallowlegacyjacksonformat|allow ?legacy ?jackson|legacy[^.\\n]{0,40}(flag|config|setting|option|property|switch)|(flag|config|setting|option|property|switch)[^.\\n]{0,60}legacy",
+        "source": {
+          "doc": "pip/pip-464.md",
+          "quote": "A new broker configuration `schemaJsonAllowLegacyJacksonFormat` (default `false`) controls whether the old Jackson JSON Schema format is accepted for `SchemaType.JSON` schema definitions."
+        }
+      },
+      {
+        "pattern": "(instead of|rather than|than)[^.\\n]{0,60}(later|read|consum|deferred)|deferred|fail(s|ing)? (fast|early|up ?front)|(earlier|early|up ?front|immediately)[^.\\n]{0,60}(fail|reject|error)|(reject|error|fail)\\w*[^.\\n]{0,40}(early|up ?front|immediately|sooner|at registration|on upload|when (you )?regist|when creat)|validat|strict|asymmetr|lenient",
+        "source": {
+          "doc": "pip/pip-464.md",
+          "quote": "**Non-Java producers** that were incorrectly registering JSON Schema Draft definitions will now receive a clear failure at registration time instead of a deferred failure at consumer read time."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "draft[- ]?(2020|07)[^.\\n]{0,60}(is|are) (now )?(supported|accepted|valid)|(broker|pulsar) (now )?(accepts|supports) json schema draft|no way (to get it back|back|to (get|restore|re-?enable))|(there'?s|there is) no (way|option|setting|flag|switch) to (get|restore|re-?enable|bring)|dropped json (schema )?support",
+        "source": {
+          "doc": "pip/pip-464.md",
+          "quote": "But when a Java consumer uses `AutoConsumeSchema` or `GenericJsonSchema`, it fails with `SchemaParseException: Type not supported: object` because `AvroBaseStructSchema` strictly requires Avro format — no fallback on the consumer side."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says SchemaType.JSON definitions must be Avro schemas, and the broker no longer falls back to accepting any JSON (PIP-464)",
+      "points": 2
+    },
+    {
+      "criterion": "Says why: the lenient broker stored schemas Java consumers (AutoConsumeSchema / GenericJsonSchema, Avro-only) cannot read, so the failure is moved from read time to registration time",
+      "points": 2
+    },
+    {
+      "criterion": "Names the way back, schemaJsonAllowLegacyJacksonFormat=true (default false), and that the real fix is to register an Avro record schema",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

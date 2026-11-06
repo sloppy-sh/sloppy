@@ -803,7 +803,9 @@ Thirteen rulings hold that table together:
   series is cut and sized the same as the one before it, because the size is the mark's
   channel and not any one picture's.
   A picture stored under an older build's constant is one an enlarged mark draws softer
-  rather than refuses.
+  rather than refuses. A moving picture wears its first frame on the mark and moves only
+  where it is a picture on its own, and one the canvas cannot draw leaves the mark as one
+  with no picture — never a graph that stops drawing.
 - **Where an author spends both, the ring is drawn on the picture, not around it.** A solid
   heavy ring over a picture dragged past it is a line across the imagery; a broken one shows
   the picture through its gaps, and how much shows is which style they chose. Both are the
@@ -1347,9 +1349,19 @@ meaning.
 **Beside the canvas, a list, because what changed about a note is written and not drawn.**
 One row per note, in this order and no other: **what you would have to settle first**, then
 what is new, then what was changed, then what moved or was renumbered or retitled, then what
-went to the bin. Each row is the note's title, the number where it has one, and one line
-saying what happened — the same line the chat said as it happened, read again. Nothing is
-counted twice: a note written into and moved is one row saying both.
+went to the bin. Each row is the note's title, the number where it has one as a small chip
+beside it, and one muted line saying what happened — the same line the chat said as it
+happened, read again. Nothing is counted twice: a note written into and moved is one row
+saying both. The bands stand under quiet uppercase headings with a hairline between one
+band and the next, and the two acts sit at the foot.
+
+**A row says what the note leads to.** Under its line, the places in the code the note
+points at — as the copy the row stands for has them — stand as small chips under **What
+this note leads to**, each read as the writing reads one (`parser.ts · L12-20`). A chip
+opens the code sheet on that place, with its rail (§ "An anchor into code"), so a reviewer
+goes from what the chat wrote to the code it is about, and from the code to every note that
+reaches it, without leaving the review. The sheet opened from a row reads the draft's copy of the notes, so a note the draft put in the bin stands on no rail there. A note pointing nowhere carries no such line. Where
+the project's code is not beside the notes, nothing is offered.
 
 **A row opens the note as the draft has it, in the chat's own dock, in the review's place.** The list steps aside and the note stands where it was, with a way back at its head and the two copies a tap apart — in the draft, in your folder — so what the chat wrote is read against what you keep without leaving the surface you were reviewing on. It does not open a second dock beside the chat: a second dock needs room a laptop seldom has beside a docked chat, and what cannot dock falls to a dialog that is neither the note's surface nor the review's. One surface, at every width, is what makes a row worth tapping.
 
@@ -1447,6 +1459,18 @@ writing in the notes, which is where that reasoning lives.
 one, where that session's turns are. It is per session and not per build, because the thing a
 reader wants to know is whether the session writing this task has room — and a build's whole
 shape is that no session works degraded.
+
+**What was built is read through the notes it was built from.** Each task that handed on
+work stands with its title and what it said it did, then the paragraph saying what the
+project does differently once it is built — what the files under it were built TO — and then
+those files. Under each file stand, as chips, the notes the task was built from and every
+other note whose writing points into that file, each once and a tap from the note; tapping
+the file opens the code sheet with its rail, so the question "which note led to this code"
+is answered on the file and again at the line. **The sheet reads each file as your folder has
+it**: until you work on this version or bring it in, a file the build created is not there to
+read and one it changed shows your copy, and one quiet line above the files says so. The
+checks, the notes it wrote and the merges follow under the same quiet uppercase headings, a
+hairline between each.
 
 **What was built is read where the person reads code.** The card names the files and says what
 each check said; the notes written or changed open as the ordinary difference between two
@@ -1573,8 +1597,30 @@ exactly the same, because what a person wrote is still what they meant.
 
 **Tapping one opens the code as a sheet** (§ Layout, the one modal): the path along the top,
 the lines or the run around the name, and the acts — copy the path, and open the file where
-the person opens files. It is a reading surface, so it is monospaced, scrolls in one
-direction and offers no editing: Sloppy does not write in somebody's repository.
+the person opens files — at the foot under a hairline. It is a reading surface, so it is
+monospaced, scrolls in one direction and offers no editing: Sloppy does not write in
+somebody's repository. The line numbers stand in a muted gutter of their own.
+
+**Every surface that shows code answers "why this code".** Above the lines stands a rail:
+for every note whose writing points into the file shown, a quiet chip — the note's number
+where it has one, and its title — on its own line just above the run that place reaches, and the
+run itself marked in the margin in ink: the gutter's hairline drawn in the ink and its
+numbers in the ink, never a colour, because colour is the graph's. Several notes on one run
+stack their chips there. **The precision is the note's**: a run of lines marks those lines;
+a name marks the run the sheet already shows for it, from the line the name is on; a whole
+file — or a folder the file is in — stands its chip at the head of the file under the
+rail's quiet heading, **Why this code**, and marks no run; and a name the file no longer
+holds stands at the head too, saying in the same voice that it is not in the file now. A
+run outside the stretch shown stands at the head with the lines it names. A file nothing
+points at says so in one line under the heading, "Nothing in the notes points here yet.",
+and that is all: unread is not a fault, and neither is code nobody has written about.
+
+**A chip opens the section that names the place, in the sheet's own place.** The code steps
+aside and the section stands where it was: the note's number and title at its head, the
+section's heading and words under a hairline in the ink, a way back to the code, and **Open
+the note** at the foot. It is the reasoning beside the code it is about, one tap from
+either, without a second sheet over the first. Which notes reach a file is read when the
+sheet opens and never kept (docs/ARCHITECTURE.md § "A project's container").
 
 **"Still true" is one act, and it says only what it does.** It sits on the note, not on each
 anchor, and taking it records that the note's reasoning has been read against **every**
@@ -1623,9 +1669,51 @@ compared, or what it compared it with.
 
 **Phone first.** The chip wraps inside the paragraph rather than truncating the sentence
 around it; the sheet is the full-width bottom sheet every modal is, with the path pinned at
-the top and the code scrolling under it; a line about moved code wraps its path rather than
+the top and the code scrolling under it; the rail's chips stand on a line of their own above
+the run they mark, wrapping, and stay at the left edge while the code scrolls sideways under
+them; a line about moved code wraps its path rather than
 cutting it short, and at phone width the act sits under the lines rather than beside them.
 Nothing here is a hover: an anchor says what it is in the words it is drawn with.
+
+## Code quoted into a note
+
+An anchor points at code; a **quote** holds it. Where the lines themselves are what the
+note is about, the note carries them, and says so quietly the moment the code stops reading
+that way.
+
+**A quote is a piece of the code sheet set into the writing.** The place it was quoted from
+along the top — the path and the lines, `src/parser.ts · L12–20`, in the mono face at the
+small size, in muted ink, with the anchor's mark before it — and the lines under it,
+numbered from where they stood, in the same muted gutter the sheet draws. It sits on the
+page as a quiet box with a hairline edge and a tint of the muted surface: an element of the
+section like a diagram, never a card that competes with the writing around it. The code
+carries its colour exactly as the sheet's does (§ "An anchor into code"), and scrolls
+sideways rather than wrapping, because it is read as it was written; the place wraps rather
+than being cut short. Tapping the place opens the code sheet on those lines.
+
+**Where the code still reads this way, nothing more is said.** Silence is the ordinary
+state, as it is for an anchor, and a quote somebody's build cannot tell about says nothing
+either. Otherwise one line under a hairline, in the note's own ink:
+
+- **Moved** — "This code has moved to L30–34", naming the file where it is in another.
+- **Changed** — "This code has changed since it was quoted. It reads now:", with what those
+  lines read now drawn under it as the quote is, its gutter in the ink so the two are told
+  apart at a glance without a colour.
+- **Removed** — "This code is not in the project now."
+
+**Where the person can write, a moved or changed quote offers one act: "Quote it as it is
+now".** It takes the lines again from where they stand and nothing else: the writing around
+the quote is the person's to put right, which is the point of being told. A removed quote
+offers nothing to quote; it can be taken out like any element. A note read elsewhere — a
+graph with no code beside it — draws the quote as it was quoted and works out nothing.
+
+**Quote code sits beside Cite code** in the writing's menu, and asks the same two things:
+which file, and which lines — a run, or a name, never the whole file.
+
+**The words say what happened to the code, never how it is known.** "Moved", "changed",
+"not in the project now", "as it is now" — never what was compared, and never the line a
+quote's fence carries in a file. Phone first: the box is the column's width, the code
+scrolls under the place, and the act stands under the line rather than beside it.
 
 ## The compass card
 
@@ -2247,9 +2335,9 @@ up and the lift can be 0 in the panned case.
 ### Sets — the tags as places
 
 **A third reading of the same canvas, beside the graph and the outline: the field's own tags
-drawn as circles, with every note standing inside a circle of a tag it carries.** A note
+drawn as places, with every note standing inside the places of the tags it carries.** A note
 carrying two of them stands where the two cross wherever the figure draws that place; one
-carrying none stands outside every circle. The question the rail asks is the shape of the
+carrying none stands outside every place. The question the rail asks is the shape of the
 field.
 
 **It is an arrangement of the same marks, never a second canvas.** Depth, provenance, the
@@ -2265,17 +2353,22 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   selecting a tag moves it to the front of the drawing rather than being the only way to get
   one. Selecting a tag also lights the notes carrying it and lets the rest recede, exactly as
   selecting does under the other two readings.
-- **A set is a circle whose area is its own count, and the circles are placed so that what two
-  of them share is what the two sets share.** The notes carrying a tag are its area, and the
-  distance between two circles is the one at which the area they cover of each other is the
-  notes the two tags share. **Two sets that share a note overlap, and that comes first**: a
+- **A set is a shape whose area is its own count, placed so that what two of them share is
+  what the two sets share.** The notes carrying a tag are its area, and the distance between two
+  discs is first the one at which the area they cover of each other is the notes the two tags
+  share. **Then every combination the notes carry is honoured, not only every pair**: eight
+  discs placed by their pairs can leave a combination several notes carry with no room at all,
+  so each shape may move, turn and be drawn out into an ellipse of the same area — at most four
+  times as long as it is wide — until the place where exactly those sets cross has the area and
+  the room for the marks its notes ask for. A disc is kept wherever stretching it buys less than
+  a note's place. **Two sets that share a note overlap, and that comes first**: a
   pair drawn clear of each other says the two sets have nothing in common, so the fit keeps
   every sharing pair in a lens with room for a mark before it spends anything on the areas.
-  **The cost falls on the pairs that share nothing**: there are only so many ways eight discs
+  **The cost falls on the pairs that share nothing**: there are only so many ways eight shapes
   can be laid, so two sets sharing nothing stay clear where the figure can keep them so and
   are drawn crossing where keeping every sharing pair in a lens leaves nowhere else to put
   them. On the 2,400-note corpus the reading is measured on, all twenty-one of the pairs that
-  share notes are drawn with a lens, and five of the seven that share none cross. So the
+  share notes are drawn crossing, and so are all seven that share none. So the
   figure's promise runs one way: two sets that share notes always cross, and a crossing on its
   own is not a count of what they share. A set every note of which carries another nests
   inside it, with the crescent round it left for the notes it does not hold. **One share of
@@ -2283,28 +2376,32 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   room for its own name — never floored under one set alone, which would draw two counts the
   same width and so draw a containment as one disc over another with every note of the wider
   set left outside every set there is. **The figure is fitted, and fitted the same way
-  everywhere**: the targets come from the counts, the first placement is taken in one order
-  the counts decide, and a fixed budget of steps walks down what is left of the error. Nothing
-  in it reads a clock or a random number, so two devices holding the same notes draw the same
-  figure to the last digit.
-- **Eight circles cannot cross in every way eight tags do**, so the figure has no exact place
-  for every combination a field carries — and a note the figure has no place for stands inside
+  everywhere**: the targets come from the counts, the first placement is taken in each of a few
+  orders the counts decide, a fixed budget of steps walks each down what is left of the error,
+  and the one leaving the fewest notes without room in a place of every set they carry is
+  drawn. Nothing in it reads a clock or a random number, so two devices holding the same notes
+  draw the same figure to the last digit — and the same sets asked for in another order, which
+  is what selecting one of them does, draw the same shapes.
+- **Eight shapes cannot cross in every way eight tags do**, so the figure has no exact place
+  with room for every combination a field carries — and a note the figure has no such place for
+  stands inside
   its **leading** set, the first of its own tags in the drawing order, in whichever place
   there has room for it and holds the most of its others — a place that can be inside a set it
   does not carry as well, where the figure draws no other. **Room comes before the others**,
   because a place a mark does not fit in is a fold no zoom opens: the places of a leading set
   are filled as the marks are drawn, the notes the figure has an exact place for taking theirs
-  first, and only where every place of that set is full does a note fall to one of the slivers
+  first while it has room, and only where every place of that set is full does a note fall to one of the slivers
   the fit left narrower than a mark. The drawing order puts the selected tags first, so
-  **selecting a tag always lights its notes inside its own circle**, which is where a reader
+  **selecting a tag always lights its notes inside its own place**, which is where a reader
   who asked about it looks for them. **Enough sets at once and a small one is drawn wholly
   under the others**, and then no place in the figure is in it alone: its notes stand in a
-  place of it all the same, a covered disc having no part of it that is only itself. **No note
+  place of it all the same, a covered shape having no part of it that is only itself. **No note
   stands outside its leading set, and none stands nowhere** — so a reader who selects one tag
-  finds every note carrying it inside that tag's circle, and one who selects several finds
+  finds every note carrying it inside that tag's place, and one who selects several finds
   each note inside the first of them it carries.
 - **A region is a fill in its tag's hue at a low alpha, a hairline edge in the hue, and the
-  tag's name in quiet ink just inside its outer edge — lettered as the label of a place,
+  tag's name in quiet ink just inside its outline, where its own set stands alone and no other
+  name is, the way out of the figure breaking ties — lettered as the label of a place,
   in the heading face, tracked and in capitals (§ Typography), never as a note's title.**
   The words the canvas writes keep off each other: a name whose place is taken steps along the room kept for it to the nearest clear
   one and, where the room holds none, just outside the outline — moved, never dropped — and a
@@ -2328,8 +2425,8 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
 - **Each field draws its own diagram, from the drawn tags its own notes carry.** With several
   graphs on the canvas each one gets its own regions, sized by its own notes and laid out beside
   the last, named exactly as fields are (§ "Several graphs on one canvas"). A drawn tag this
-  field carries no note of gets no circle here — an empty one would say this graph holds a tag it
-  does not — and a graph carrying none of them draws no circle at all, its notes standing outside
+  field carries no note of gets no place here — an empty one would say this graph holds a tag it
+  does not — and a graph carrying none of them draws no place at all, its notes standing outside
   the way a note carrying none of them stands anywhere, while the rail still names them, because
   the rail is the canvas's question and the figure is one graph's answer. The tag axis is read
   inside one graph (docs/ARCHITECTURE.md § "Tagging a note"), and this keeps it so.
@@ -2342,17 +2439,21 @@ would be a poorer copy of the mark, and the phone would be the surface that lost
   can show at this zoom folds into one mega-node, sized by count with the count written on it and
   standing at the nearest place in the region a whole mark has room — the same fold the genealogy
   draws, and never under the word that names a set, which is a place no mark is ever stood in.
-  A tap brings the canvas to that region, where there is room, and it unfolds; zooming out
-  refolds. **The room comes from the counts themselves** — a set twice as carried is drawn twice
+  **A tap brings the canvas to that region, and close enough for the fold to open**; zooming
+  out refolds. At the closest the marks are ever drawn every crowd opens — the marks its place
+  has no lattice room for stand round the rest, inside the place where they can and just beside
+  it where they cannot — so no fold is one a zoom does not open. **The room comes from the counts themselves** — a set twice as carried is drawn twice
   the area, and every note is given the same share of the paper — so a region sized by its own
   count has somewhere for a fold to open into, and the slivers where several sets cross are what
-  fold instead. **And the figure takes the room its most crowded place needs**: where some place
-  of it holds more notes than it can show at the closest the marks are ever drawn, the whole
-  figure is widened until it can — every disc and every region together, so the picture is the
-  same picture and every area stays in the ratio its count is in. **Up to a bound**, which is the
-  width a reader takes in at once on the narrowest canvas the product is drawn for: a place still
-  short of room at that width keeps its fold with its count, rather than taking the figure past
-  what anybody can see whole. **The rest** — every note outside every drawn region — folds the
+  fold instead. **And the figure takes the room its crowds need**: where a note has no room in a
+  place of its sets at the closest the marks are ever drawn, the whole figure is widened a step at
+  a time until it has — every shape and every region together, so the picture is the same picture
+  and every area stays in the ratio its count is in. A place the fit drew narrower than half its
+  notes' share is not widened for: its notes stand elsewhere in their leading set, rather than the
+  whole figure growing many times over for one sliver. **Up to a bound**, which is the width a
+  reader takes in at once on the narrowest canvas the product is drawn for: a crowd still short of
+  room at that width stands round its place at the closest zoom, rather than taking the figure
+  past what anybody can see whole. **The rest** — every note outside every drawn region — folds the
   same way and is dimmed. Nothing about a fold is kept: it is a function of the zoom and of what
   the notes carry.
 - **Nothing selected draws the field's most-carried tags**, which is why there is no empty

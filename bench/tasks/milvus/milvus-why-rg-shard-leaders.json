@@ -1,0 +1,109 @@
+{
+  "id": "milvus-why-rg-shard-leaders",
+  "family": "why",
+  "tools": "read",
+  "prompt": "When one collection is loaded into several resource groups, GetShardLeaders tags every leader with a resource group instead of taking a resource group in the request. Why was it done that way, and why can't the proxy just work out each leader's group from which nodes are in which resource group? While you're at it, how is one resource group's load progress reported?",
+  "key": "Written in docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md (dated 2026-08-24, #52716). The tag is the resource group of the replica the leader leads, never the node's: a replica may borrow nodes from another resource group (num_outgoing_node / num_incoming_node), so node-set membership is not replica membership, and the two diverge precisely during rebalance windows. QueryCoord flattens every replica into one list per channel, so the mapping is lost once the answer leaves the coordinator; only the coordinator can put it on the wire. A request-side resource_group filter was implemented first and replaced: it would have needed a resource-group dimension in the proxy's shard-leader cache (N fetches and entries per collection) and new invalidation semantics, answered one group per call, and an old coordinator would silently ignore the field and answer unfiltered in an indistinguishable shape, whereas an old coordinator leaves the response tag empty, which is detectable. An empty tag means unknown, and a misaligned array is neutralized to all-unknown; the proxy consumes it through shardclient's FilterByResourceGroup. The tag says which group a leader belongs to, not whether the group can serve: ShardLeaderReadinessByResourceGroup answers that. Progress is LoadPercentageByResourceGroup, which takes the replicas in that group and reports the minimum coverage, the laggard rather than the average, with -1 / 0 / typed errors distinguishing no replica, nothing loaded yet, not ready, a failed load and an unknown group name.",
+  "sources": [
+    {
+      "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+      "quote": "a replica may borrow nodes from another resource group"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+      "quote": "This is why the resource group has to be put on the wire by the coordinator (§2.3) rather than derived by whoever reads the answer."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+      "quote": "It is the replica's resource group, never the node's."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+      "quote": "A request-side `resource_group` filter was implemented first and then replaced."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+      "quote": "silently ignores the field and answers unfiltered, in a response shape the caller cannot distinguish"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+      "quote": "unchanged, single copy per collection; the group is a per-leader attribute filtered in memory"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+      "quote": "Selects the replicas whose own resource group is `rgName`, computes each one's target coverage, and reports the minimum."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+      "quote": "A caller deciding whether a resource group can be trusted wants the laggard, not the average or the best replica"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+      "quote": "The empty string is likewise unknown, not \"no resource group\""
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "borrow|outgoing|incoming|lend|\\blent\\b|on loan|loan(ed)?|replica'?s? (resource )?group,? (not|never|rather than) the node|node[- ]?set membership|not (the same as )?replica membership|nodes? (can|may) (be shared|belong|move)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+          "quote": "a replica may borrow nodes from another resource group"
+        }
+      },
+      {
+        "pattern": "cache[^.\\n]{0,80}(dimension|per[- ](resource )?group|unchanged|entr|invalidat|fetch|multipl|\\bn\\b)|(dimension|per[- ](resource )?group|invalidat|\\bn (fetch|entr|cop))[^.\\n]{0,80}cache|one (resource )?group per (call|request)|(every|all) groups? in one (call|request|answer|response)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+          "quote": "unchanged, single copy per collection; the group is a per-leader attribute filtered in memory"
+        }
+      },
+      {
+        "pattern": "old(er)? (query ?coord|coordinator|version|server)|rolling upgrade|upgrade|silently ignor|ignores? the (field|filter|parameter)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+          "quote": "silently ignores the field and answers unfiltered, in a response shape the caller cannot distinguish"
+        }
+      },
+      {
+        "pattern": "minimum|\\bmin\\b|lowest|slowest|laggard|least[- ]loaded|worst",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+          "quote": "Selects the replicas whose own resource group is `rgName`, computes each one's target coverage, and reports the minimum."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(report|is|takes|gives|uses|computes|returns)\\w*( the| an)? (average|mean)\\b|averag\\w* (across|over) (the |its )?replicas",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260824-per-resource-group-load-and-shard-leader-readiness.md",
+          "quote": "Selects the replicas whose own resource group is `rgName`, computes each one's target coverage, and reports the minimum."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "The tag is the replica's resource group, not the node's, because replicas borrow nodes across groups, so node membership diverges from replica membership (especially during rebalance), and only QueryCoord holds the replica mapping",
+      "points": 2
+    },
+    {
+      "criterion": "Why a response tag rather than a request filter: the proxy's shard-leader cache and its invalidation stay unchanged, every group comes back in one call, and an old coordinator's silence is detectable (empty tag) rather than an unfiltered answer",
+      "points": 2
+    },
+    {
+      "criterion": "Progress is reported per group as the minimum over that group's replicas (the laggard), with readiness as a separate surface",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

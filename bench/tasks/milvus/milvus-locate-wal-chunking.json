@@ -1,0 +1,74 @@
+{
+  "id": "milvus-locate-wal-chunking",
+  "family": "locate",
+  "tools": "read",
+  "prompt": "Where does the StreamingNode split an oversized WAL record into chunks before appending it, and where are the chunks put back together when the WAL is read? Name the files and the functions or types involved, with paths relative to the repository root, and the configuration switch that turns the splitting on.",
+  "key": "From docs/design-docs/design_docs/20260822-wal-payload-chunking.md (dated 2026-08-22, landed in #52775 on 2026-09-02). Split: SplitIntoChunks in pkg/streaming/util/message/chunk.go, called by walAdaptorImpl.appendWithOptionalChunking in internal/streamingnode/server/wal/adaptor/wal_adaptor.go, which appends each chunk with appendOneWithRetry and returns chunk 0's message ID; the budget is chunkPayloadSize (backend limit minus reserve). Reassembly: ChunkAssembler (Push, AdvanceTimeTick) and AssembleChunks in the same chunk.go, driven from the scanner in internal/streamingnode/server/wal/adaptor/scanner_switchable.go (the design names handleUpstream in scanner_adaptor.go). The switch is streaming.splitChunkSN (StreamingCfg.SplitChunkSN), default false; proxy.splitChunk keeps the Proxy's legacy size packing. ProduceServer.validateMessage in internal/streamingnode/server/service/handler/producer/produce_server.go refuses an incoming message that already carries the _ci/_ct chunk markers.",
+  "sources": [
+    {
+      "doc": "docs/design-docs/design_docs/20260822-wal-payload-chunking.md",
+      "quote": "one oversized insert permanently stalls the pchannel's write path"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260822-wal-payload-chunking.md",
+      "quote": "`SplitIntoChunks(msg, chunkPayloadSize())` → `appendOneWithRetry` per chunk → return chunk 0's ID."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260822-wal-payload-chunking.md",
+      "quote": "`ChunkAssembler.Push(msg)` at the head of `handleUpstream`"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260822-wal-payload-chunking.md",
+      "quote": "`streaming.splitChunkSN` defaults to `false`."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": ["SplitIntoChunks"],
+        "source": "pkg/streaming/util/message/chunk.go"
+      },
+      {
+        "any": ["ChunkAssembler", "AssembleChunks"],
+        "source": "pkg/streaming/util/message/chunk.go"
+      },
+      {
+        "any": ["pkg/streaming/util/message/chunk.go"]
+      },
+      {
+        "any": [
+          "internal/streamingnode/server/wal/adaptor/wal_adaptor.go",
+          "appendWithOptionalChunking"
+        ]
+      },
+      {
+        "any": [
+          "internal/streamingnode/server/wal/adaptor/scanner_switchable.go",
+          "internal/streamingnode/server/wal/adaptor/scanner_adaptor.go"
+        ]
+      },
+      {
+        "any": ["streaming.splitChunkSN", "SplitChunkSN", "splitChunkSN"]
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names SplitIntoChunks and its caller appendWithOptionalChunking in internal/streamingnode/server/wal/adaptor/wal_adaptor.go",
+      "points": 2
+    },
+    {
+      "criterion": "Names ChunkAssembler in pkg/streaming/util/message/chunk.go and the WAL scanner that pushes into it (scanner_switchable.go, or handleUpstream in the scanner adaptor)",
+      "points": 2
+    },
+    {
+      "criterion": "Names streaming.splitChunkSN as the switch, off by default",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

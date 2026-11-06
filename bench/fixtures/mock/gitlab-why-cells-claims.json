@@ -1,0 +1,26 @@
+{
+  "text": "Each cell has its own database, so a unique constraint cannot span cells, yet routing and login values must belong to one cell. Scope the index with the sharding key, or claim the value in the Topology Service. Cells::Claimable claims through after_save and before_destroy callbacks, which delete_all and insert_all bypass, so those paths schedule Cells::BulkClaimsWorker with run_after_commit (doc/development/cells/claims.md).",
+  "timing": {
+    "api_ms": 2600,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2500
+  },
+  "tokens": {
+    "input": 1000,
+    "cache_write": 2000,
+    "cache_read": 4000,
+    "output": 300,
+    "reasoning": 0
+  },
+  "cost_reported": 0.03,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "id": "dotnet-locate-external-memory-handles",
+  "family": "locate",
+  "tools": "read",
+  "prompt": "The runtime can now keep managed references alive that live in memory outside the GC heap and outside any thread's stack; the debugger uses it for byref-like results of a function evaluation. Where is the list of those registrations kept and how is one added, where does the GC scan them, where are the list head and the record's layout published for the cDAC, and where are the cDAC's contract interface and implementation? And where does the DAC's reference walk enumerate them? Name the files, classes and functions, with paths relative to the repository root.",
+  "key": "From docs/design/datacontracts/ExternalMemoryHandles.md (added in #133986 on 2026-09-29). The runtime side is class ExternalMemoryHandle in src/coreclr/vm/externalmemoryhandle.h and src/coreclr/vm/externalmemoryhandle.cpp: Init (called from src/coreclr/vm/ceemain.cpp), Add(PTR_MethodTable, PTR_VOID, UINT gcFlags), Remove, and GCScanRoots over the process-wide list headed by s_handles. The debugger registers through DebuggerExternalMemoryOwner in src/coreclr/debug/ee/debugger.cpp (DebuggerEval::CreateExternalMemory). The GC scans them in GCToEEInterface::GcScanRoots in src/coreclr/vm/gcenv.ee.cpp, which calls ExternalMemoryHandle::GCScanRoots once, when GCHeapUtilities::ShouldScanUnpinnedRoots. The data descriptor in src/coreclr/vm/datadescriptor/datadescriptor.inc declares the ExternalMemoryHandle type (Next, MethodTable, Memory, GCFlags), the ExternalMemoryHandles global pointer (cdac_data<ExternalMemoryHandle>::HandlesHead) and CDAC_GLOBAL_CONTRACT(ExternalMemoryHandles, c1). The cDAC interface is IExternalMemoryHandles in src/native/managed/cdac/Microsoft.Diagnostics.DataContractReader.Abstractions/Contracts/IExternalMemoryHandles.cs, implemented by ExternalMemoryHandles_1 in src/native/managed/cdac/Microsoft.Diagnostics.DataContractReader.Contracts/Contracts/ExternalMemoryHandles_1.cs (data class Data/ExternalMemoryHandle.cs), registered as \"c1\" in CoreCLRContracts.cs. The DAC's walk is DacRefWalker::WalkExternalMemoryHandles in src/coreclr/debug/daccess/dacdbiimpl.cpp, and the cDAC's DBI equivalent is RefWalk.WalkExternalMemoryHandles in src/native/managed/cdac/Microsoft.Diagnostics.DataContractReader.Legacy/Dbi/Helpers/RefWalk.cs. All paths and names were checked to exist at 51ab64509a.",
+  "sources": [
+    {
+      "doc": "docs/design/datacontracts/ExternalMemoryHandles.md",
+      "quote": "The ExternalMemoryHandles contract scans memory registered with the runtime as containing managed references outside the GC heap and managed stacks."
+    },
+    {
+      "doc": "src/coreclr/vm/gcenv.ee.cpp",
+      "quote": "ExternalMemoryHandle::GCScanRoots(fn, sc);"
+    },
+    {
+      "doc": "src/coreclr/vm/datadescriptor/datadescriptor.inc",
+      "quote": "CDAC_GLOBAL_POINTER(ExternalMemoryHandles, cdac_data<ExternalMemoryHandle>::HandlesHead)"
+    },
+    {
+      "doc": "src/native/managed/cdac/Microsoft.Diagnostics.DataContractReader.Contracts/CoreCLRContracts.cs",
+      "quote": "registry.Register<IExternalMemoryHandles>(\"c1\", static t => new ExternalMemoryHandles_1(t));"
+    },
+    {
+      "doc": "src/coreclr/debug/ee/debugger.cpp",
+      "quote": "m_pHandle = ExternalMemoryHandle::Add(pMT, m_pMemory, 0);"
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": [
+          "src/coreclr/vm/externalmemoryhandle.cpp",
+          "src/coreclr/vm/externalmemoryhandle.h"
+        ]
+      },
+      {
+        "any": [
+          "ExternalMemoryHandle::Add",
+          "ExternalMemoryHandle::GCScanRoots",
+          "GCScanRoots"
+        ],
+        "source": "src/coreclr/vm/externalmemoryhandle.cpp"
+      },
+      {
+        "any": ["src/coreclr/vm/gcenv.ee.cpp"]
+      },
+      {
+        "any": ["src/coreclr/vm/datadescriptor/datadescriptor.inc"]
+      },
+      {
+        "any": ["IExternalMemoryHandles"],
+        "source": "src/native/managed/cdac/Microsoft.Diagnostics.DataContractReader.Abstractions/Contracts/IExternalMemoryHandles.cs"
+      },
+      {
+        "any": ["ExternalMemoryHandles_1"],
+        "source": "src/native/managed/cdac/Microsoft.Diagnostics.DataContractReader.Contracts/Contracts/ExternalMemoryHandles_1.cs"
+      },
+      {
+        "any": ["WalkExternalMemoryHandles"],
+        "source": "src/coreclr/debug/daccess/dacdbiimpl.cpp"
+      },
+      {
+        "any": [
+          "src/coreclr/debug/daccess/dacdbiimpl.cpp",
+          "src/native/managed/cdac/Microsoft.Diagnostics.DataContractReader.Legacy/Dbi/Helpers/RefWalk.cs"
+        ]
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names class ExternalMemoryHandle in src/coreclr/vm/externalmemoryhandle.h/.cpp (Add, Remove, GCScanRoots) as where the list is kept and handles are added",
+      "points": 2
+    },
+    {
+      "criterion": "Names src/coreclr/vm/gcenv.ee.cpp as where the GC scans them (ExternalMemoryHandle::GCScanRoots) and src/coreclr/vm/datadescriptor/datadescriptor.inc as where the type and the ExternalMemoryHandles global are published",
+      "points": 1
+    },
+    {
+      "criterion": "Names IExternalMemoryHandles and ExternalMemoryHandles_1 under src/native/managed/cdac/ with their paths",
+      "points": 1
+    },
+    {
+      "criterion": "Names DacRefWalker::WalkExternalMemoryHandles in src/coreclr/debug/daccess/dacdbiimpl.cpp (or the cDAC's RefWalk.cs equivalent)",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

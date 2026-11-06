@@ -1,0 +1,85 @@
+{
+  "id": "pulsar-drift-v1-topic-names",
+  "family": "drift",
+  "prompt": "Look at how the `TopicName` constructor in pulsar-common/src/main/java/org/apache/pulsar/common/naming/TopicName.java handles a fully qualified name with four path parts, such as `persistent://tenant/cluster/namespace/topic`. Is it still doing what it was written to do? If it is not, say exactly what it does differently from what it is meant to do, and where the intended behaviour is written down.",
+  "tools": "read",
+  "key": "It is not. The planted change makes the constructor accept a four-part (V1, cluster-qualified) name and silently drop the cluster component, turning persistent://tenant/cluster/namespace/topic into persistent://tenant/namespace/topic, where it should throw an IllegalArgumentException saying V1 topic names are no longer supported and to use the V2 format. Its comment and the matching cases in TopicNameTest were rewritten to agree. Consequences: names from two clusters collapse onto one topic, a V1 client gets no error to migrate by, and TopicName.get now disagrees with TopicName.toFullTopicName, which still rejects four-part names. The intended behaviour is PIP-457 (pip/pip-457.md, \"Remove support for V1 topic names and V1 Admin API\", added 2026-03-09): remove V1 (4-part) parsing from TopicName, and if a 4-part name is provided throw a clear IllegalArgumentException explaining that V1 names are no longer supported and how to convert.",
+  "sources": [
+    {
+      "doc": "pip/pip-457.md",
+      "quote": "If a 4-part name is provided, throw a clear `IllegalArgumentException` with a message explaining V1 names are no longer supported and how to convert."
+    },
+    {
+      "doc": "pip/pip-457.md",
+      "quote": "Log a clear error message if a client attempts to use a V1-style topic name, to aid migration"
+    },
+    {
+      "doc": "pip/pip-457.md",
+      "quote": "Remove V1 (4-part) topic name parsing from `TopicName` and related classes"
+    }
+  ],
+  "setup": {
+    "patch_file": "fixtures/drift/pulsar-v1-topic-names.patch",
+    "message": "Update"
+  },
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "^\\W*(no[,.:;—–-]|it is not\\b|it'?s not\\b)|not (doing|what it)|no longer (does|doing|reject|throw)|isn'?t doing|has (been )?changed|(?<!no )drift(s|ed|ing)?\\b|weaken|loosen|regress|(?<!(no|not a|nothing|isn'?t) )(bug\\b|broken)|(?<!nothing )(?<!nothing'?s )\\b(is|behaviou?r is) (wrong|incorrect)|instead of (being )?(rejected|throwing|refus)",
+        "source": {
+          "doc": "pip/pip-457.md",
+          "quote": "If a 4-part name is provided, throw a clear `IllegalArgumentException` with a message explaining V1 names are no longer supported and how to convert."
+        }
+      },
+      {
+        "pattern": "(accept|silently|quietly|drop|strip|discard|ignor|normali[sz]|convert|rewrit|collaps|remov|treat)\\w*[^.\\n]{0,100}(cluster|v1|four|4[- ]part|v2)|(cluster|v1|four[- ]part|4[- ]part)[^.\\n]{0,100}(accepted|dropped|stripped|discarded|ignored|normali[sz]ed|converted|removed|thrown away)",
+        "source": {
+          "doc": "pip/pip-457.md",
+          "quote": "Remove V1 (4-part) topic name parsing from `TopicName` and related classes"
+        }
+      },
+      {
+        "pattern": "throw|reject|illegalargumentexception|refuse|(clear|an) error|no longer supported|fail",
+        "source": {
+          "doc": "pip/pip-457.md",
+          "quote": "If a 4-part name is provided, throw a clear `IllegalArgumentException` with a message explaining V1 names are no longer supported and how to convert."
+        }
+      },
+      {
+        "pattern": "pip[- ]?457",
+        "source": {
+          "doc": "pip/pip-457.md",
+          "quote": "If a 4-part name is provided, throw a clear `IllegalArgumentException` with a message explaining V1 names are no longer supported and how to convert."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "\\bno (bug|drift|regression|problem|issue)s?\\b|nothing (is )?(wrong|has changed)|(?<!(no longer|not|n't|isn't) )(still )?does what it (was|is) (written|meant)|(yes|it is),? (it|still) (is )?(still )?doing what it|working as (intended|designed)|keeps v1 support",
+        "source": {
+          "doc": "pip/pip-457.md",
+          "quote": "If a 4-part name is provided, throw a clear `IllegalArgumentException` with a message explaining V1 names are no longer supported and how to convert."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the constructor no longer does what it was written to do",
+      "points": 2
+    },
+    {
+      "criterion": "Names the difference exactly: a four-part V1 name is accepted with its cluster silently dropped, instead of being rejected with an IllegalArgumentException that says V1 names are no longer supported",
+      "points": 2
+    },
+    {
+      "criterion": "Says where the intended behaviour is written (PIP-457, pip/pip-457.md, or a note carrying it)",
+      "points": 1
+    },
+    {
+      "criterion": "Does not take the code's own comment or TopicNameTest as the intent, since both were changed to match",
+      "points": 1
+    }
+  ]
+}

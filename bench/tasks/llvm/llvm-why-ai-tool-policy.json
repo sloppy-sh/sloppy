@@ -1,0 +1,116 @@
+{
+  "id": "llvm-why-ai-tool-policy",
+  "family": "why",
+  "tools": "read",
+  "prompt": "I'd like to automate some of our contribution work: a bot that picks up issues labelled `good first issue`, has an AI coding agent write the fix and open the pull request by itself, and an AI reviewer that posts its comments on incoming PRs automatically. Would the project accept that? What does it require of contributions made with AI tools, and why does it draw the lines where it does?",
+  "key": "No. llvm/docs/AIToolPolicy.md (added in #154441 on 2026-01-16) allows any tool but requires a human in the loop: the contributor must read and review all LLM-generated code or text before asking anyone to review it, is the author and is accountable for it, and must be able to answer questions about it. The reason is that review is not free: sending unreviewed LLM output to maintainers extracts design and code review work from them (an 'extractive contribution'), and the golden rule is that a contribution should be worth more to the project than the time it takes to review it. So the policy bans agents that take action in the project's spaces without human approval (it names the GitHub @claude agent), and automated review tools that publish comments without human review; an opt-in review tool that keeps a human in the loop is fine. Using AI tools to fix issues labelled 'good first issue' is forbidden outright, because those issues are not urgent and exist as learning opportunities for new contributors; automating them squanders that. Contributions with substantial tool-generated content must be labelled, e.g. with an Assisted-by: commit trailer, to help reviewers, not to track generated code. The only exception is the council-approved Bazel-fixer bot. Maintainers can mark non-compliant PRs with the `extractive` label.",
+  "sources": [
+    {
+      "doc": "llvm/docs/AIToolPolicy.md",
+      "quote": "Contributors must read and review all LLM-generated code or text before they ask other project members to review it."
+    },
+    {
+      "doc": "llvm/docs/AIToolPolicy.md",
+      "quote": "Sending the unreviewed output of an LLM to open source project maintainers *extracts* work from them in the form of design and code review, so we call this kind of contribution an \"extractive contribution\"."
+    },
+    {
+      "doc": "llvm/docs/AIToolPolicy.md",
+      "quote": "Our **golden rule** is that a contribution should be worth more to the project than the time it takes to review it."
+    },
+    {
+      "doc": "llvm/docs/AIToolPolicy.md",
+      "quote": "An important implication of this policy is that it bans agents that take action in our digital spaces without human approval, such as the GitHub [`@claude` agent](https://github.com/claude/)."
+    },
+    {
+      "doc": "llvm/docs/AIToolPolicy.md",
+      "quote": "Similarly, automated review tools that publish comments without human review are not allowed."
+    },
+    {
+      "doc": "llvm/docs/AIToolPolicy.md",
+      "quote": "**Using AI tools to fix issues labelled as \"good first issues\" is forbidden**."
+    },
+    {
+      "doc": "llvm/docs/AIToolPolicy.md",
+      "quote": "These issues are generally not urgent, and are intended to be learning opportunities for new contributors to get familiar with the codebase."
+    },
+    {
+      "doc": "llvm/docs/AIToolPolicy.md",
+      "quote": "For instance, use a commit message trailer like Assisted-by: <name of code assistant>."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "before[^.\\n]{0,30}\\b(ask|asks|asking|request|requests|requesting|send|sending)\\b[^.\\n]{0,40}(review|maintainers?|reviewers?|project members|others|anyone|someone)|answer (any |the |reviewers'? )?questions about",
+        "source": {
+          "doc": "llvm/docs/AIToolPolicy.md",
+          "quote": "Contributors must read and review all LLM-generated code or text before they ask other project members to review it."
+        }
+      },
+      {
+        "pattern": "extractive|extracts? (\\w+ )?(work|time|effort|review)|worth more[^.\\n]{0,60}than|more (value|valuable)[^.\\n]{0,60}than[^.\\n]{0,40}(review|cost|time)",
+        "source": {
+          "doc": "llvm/docs/AIToolPolicy.md",
+          "quote": "Our **golden rule** is that a contribution should be worth more to the project than the time it takes to review it."
+        }
+      },
+      {
+        "pattern": "good[- ]first[- ]issues?[^.\\n]{0,200}(forbid|ban|not allowed|prohibit|must not|may not|mustn'?t|off[- ]limits|excluded|learning|newcomer|new contributors)|(forbid|banned|prohibit|not allowed|must not|may not|mustn'?t)[^.\\n]{0,120}good[- ]first[- ]issue",
+        "source": {
+          "doc": "llvm/docs/AIToolPolicy.md",
+          "quote": "**Using AI tools to fix issues labelled as \"good first issues\" is forbidden**."
+        }
+      },
+      {
+        "pattern": "(agent|bot|automat\\w*|tool)s?[^.\\n]{0,120}without (a |any )?human|without (a |any )?human (approval|review|sign-?off|in the loop|oversight)|no human (approval|review|in the loop)",
+        "source": {
+          "doc": "llvm/docs/AIToolPolicy.md",
+          "quote": "An important implication of this policy is that it bans agents that take action in our digital spaces without human approval, such as the GitHub [`@claude` agent](https://github.com/claude/)."
+        }
+      },
+      {
+        "pattern": "assisted-by|trailer|(label|mark|disclos|note|state|mention|credit)\\w*[^.\\n]{0,60}\\b(in|to) the commit (message|log)|commit (message|log)[^.\\n]{0,40}(label|mark|disclos|note|state|mention|credit)",
+        "source": {
+          "doc": "llvm/docs/AIToolPolicy.md",
+          "quote": "For instance, use a commit message trailer like Assisted-by: <name of code assistant>."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(ai|llm|tool)s?( use)?[^.\\n]{0,30}(are|is) (banned|forbidden|prohibited|not allowed) (entirely|outright|completely|altogether|in general)|no (ai|llm) (tools? )?(at all|whatsoever)|\\byes\\b[,.!]? (that'?s|it'?s|this is|the project (would|will))|(would|will) be (accepted|fine|allowed) as (described|proposed|is)|^\\W*(yes|probably(?! not)|likely(?! not))\\b",
+        "source": {
+          "doc": "llvm/docs/AIToolPolicy.md",
+          "quote": "Contributors must read and review all LLM-generated code or text before they ask other project members to review it."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the setup would not be accepted: agents acting without human approval and review bots posting comments without human review are banned, and AI fixes for good-first-issue issues are forbidden",
+      "points": 2
+    },
+    {
+      "criterion": "States the requirement: a human in the loop who reads and reviews all generated code or text before asking for review, is accountable for it and can answer questions about it, and labels substantial tool use (e.g. Assisted-by:)",
+      "points": 1
+    },
+    {
+      "criterion": "Gives the reason: review is scarce maintainer time, unreviewed output is an extractive contribution, and a contribution should be worth more than the time it takes to review",
+      "points": 2
+    },
+    {
+      "criterion": "Says why good first issues are excluded: they are learning opportunities for new contributors, not urgent work",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project (for example that AI tools are banned outright, or that an opt-in review tool with a human in the loop is not allowed)",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

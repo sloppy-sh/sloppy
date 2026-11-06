@@ -1,0 +1,48 @@
+{
+  "id": "milvus-handoff-aggregation-levels",
+  "family": "handoff",
+  "prompt_a": "In internal/proxy/search_agg/context_builder.go, raise maxAggregationLevels from 4 to 5. The reason, which you know and nobody else working on this code does: Nordwind Retail's catalogue search groups by five levels, region, store, department, brand and SKU family, and cannot flatten any of them; on their data, validation at five levels stays under 2 ms in the proxy.",
+  "prompt_b": "In internal/proxy/search_agg/context_builder.go, maxAggregationLevels caps SearchAggregation nesting. Its comment says Elasticsearch best practice is three levels or fewer, and a reviewer wants it back to 4 to keep validation bounded. What do you recommend, and why is it what it is?",
+  "reason": "Nordwind Retail's catalogue search groups by five levels (region, store, department, brand, SKU family); validation at five stays under 2 ms.",
+  "key": "Keep 5: Nordwind Retail's catalogue search groups by five levels (region, store, department, brand, SKU family) and cannot flatten any of them, and on their data validation at five levels stays under 2 ms in the proxy, so the bound still holds. Going back to 4 breaks their search.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "nordwind",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "Nordwind Retail's catalogue search"
+        }
+      },
+      {
+        "pattern": "sku|brand|department|region",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "region, store, department, brand and SKU family"
+        }
+      },
+      {
+        "pattern": "\\b2 ?ms|two milliseconds|under (2|two)",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "validation at five levels stays under 2 ms"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends keeping 5 rather than going back to 4",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: a customer's catalogue search needs five grouping levels, and validation at five stays cheap (under 2 ms)",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

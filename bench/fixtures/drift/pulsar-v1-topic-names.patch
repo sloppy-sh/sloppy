@@ -1,0 +1,40 @@
+diff --git a/pulsar-common/src/main/java/org/apache/pulsar/common/naming/TopicName.java b/pulsar-common/src/main/java/org/apache/pulsar/common/naming/TopicName.java
+index 8259e6ff00..119ac4e9b4 100644
+--- a/pulsar-common/src/main/java/org/apache/pulsar/common/naming/TopicName.java
++++ b/pulsar-common/src/main/java/org/apache/pulsar/common/naming/TopicName.java
+@@ -184,10 +184,10 @@ public class TopicName implements ServiceUnitId {
+                 List<String> parts = splitBySlash(completeTopicName.substring(index + "://".length()),
+                         splitLimit);
+                 if (parts.size() == 4) {
+-                    throw new IllegalArgumentException(
+-                            "V1 topic names (with cluster component) are no longer supported. "
+-                                    + "Please use the V2 format: '<domain>://tenant/namespace/topic'. Got: "
+-                                    + completeTopicName);
++                    // A cluster-qualified name still names the same topic: the cluster component no longer
++                    // routes anything, so drop it and carry on with the tenant/namespace/topic form.
++                    parts = List.of(parts.get(0), parts.get(2), parts.get(3));
++                    completeTopicName = domain.name() + "://" + String.join("/", parts);
+                 } else if (parts.size() != 3) {
+                     throw new IllegalArgumentException("Invalid topic name " + completeTopicName);
+                 }
+diff --git a/pulsar-common/src/test/java/org/apache/pulsar/common/naming/TopicNameTest.java b/pulsar-common/src/test/java/org/apache/pulsar/common/naming/TopicNameTest.java
+index c74f03afe2..fcf63daef0 100644
+--- a/pulsar-common/src/test/java/org/apache/pulsar/common/naming/TopicNameTest.java
++++ b/pulsar-common/src/test/java/org/apache/pulsar/common/naming/TopicNameTest.java
+@@ -112,11 +112,11 @@ public class TopicNameTest {
+         assertThrows(IllegalArgumentException.class,
+                 () -> TopicName.toFullTopicName("invalid://tenant/namespace/topic"));
+ 
+-        // V1 topic names (with cluster component) are no longer supported
+-        assertThrows(IllegalArgumentException.class,
+-                () -> TopicName.get("persistent://tenant/cluster/namespace/topic"));
+-        assertThrows(IllegalArgumentException.class,
+-                () -> TopicName.get("non-persistent://tenant/cluster/namespace/topic"));
++        // A cluster-qualified name resolves to the same topic without the cluster component
++        assertEquals(TopicName.get("persistent://tenant/cluster/namespace/topic").toString(),
++                "persistent://tenant/namespace/topic");
++        assertEquals(TopicName.get("non-persistent://tenant/cluster/namespace/topic").toString(),
++                "non-persistent://tenant/namespace/topic");
+ 
+         // 4-part short topic names (without domain) are not supported
+         assertThrows(IllegalArgumentException.class,

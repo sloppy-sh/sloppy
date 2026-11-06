@@ -1,0 +1,26 @@
+{
+  "text": "FixMismatchedBrackets in toolchain/lex/mismatched_brackets.h and toolchain/lex/mismatched_brackets.cpp; the search is RegionSearch over BeamNode states, priced by CloserRules, OpenerRules and AdvanceRules; Lexer::DiagnoseAndFixMismatchedBrackets in toolchain/lex/lex.cpp reports and applies them through ErrorRecoveryBuffer; mismatched_brackets_eval measures it.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

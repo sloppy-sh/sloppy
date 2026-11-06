@@ -1,0 +1,25 @@
+{
+  "conditions": [
+    "nodocs",
+    "notes-only",
+    "bare",
+    "pointed",
+    "dump",
+    "mcp",
+    "mcp+pointed",
+    "agents",
+    "mcp+agents"
+  ],
+  "palette": [
+    "#0072B2",
+    "#E69F00",
+    "#009E73",
+    "#CC79A7",
+    "#56B4E9",
+    "#D55E00",
+    "#882255",
+    "#999933",
+    "#6A5ACD"
+  ],
+  "markers": ["o", "s", "^", "D", "v", "P", "X", "*", "h"]
+}

@@ -1,0 +1,112 @@
+{
+  "id": "milvus-why-import-v3",
+  "family": "why",
+  "tools": "read",
+  "prompt": "What does Import V3 change about how bulk import works compared with Import V2, and why was it needed? Is it what runs by default now?",
+  "key": "Written in docs/design-docs/design_docs/20260921-import-v3-reshard-design.md (created 2026-09-21, implemented in #53334 on 2026-10-19). Import V2 reads every source file twice (PreImportTask keeps only statistics, ImportTaskV2 reads it again), hashes rows per file-group and writes into pre-allocated segments, so each (vchannel, partition) bucket is split by every file-group task: many small segments, and a hashed_stats table growing with V × P that can exceed etcd's 1.5 MiB request size. V3 parses each source once in a ReshardTask: normalized, routed to its bucket, sorted and written as immutable fragments; Planning packs fragments into per-segment, bucket-local plans across all sources, and each ImportTaskV3 k-way merges one plan into exactly one sorted segment, so the post-import Sorting compaction is skipped. It also fails loudly on a mid-import schema change instead of hanging in IndexBuilding as V2 can. Ordinary imports first run a count-only preimport and get exact per-file ID ranges (AssigningIDRange). It is not the default: it sits behind the one-way dataCoord.import.enableImportV3 gate, default false, to be enabled only once every DataNode and DataCoord supports it and not disabled again; L0 import stays on Import V2.",
+  "sources": [
+    {
+      "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+      "quote": "Import V2 reads every source file twice"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+      "quote": "producing many small segments and a `hashed_stats` table that grows with `V × P`."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+      "quote": "Import V3 moves the reorganization to the first and only read."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+      "quote": "can exceed etcd's default 1.5 MiB request size"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+      "quote": "V3 output is already sorted for the index, so the post-import `Sorting` compaction is skipped."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+      "quote": "V3 compares an import-relevant schema projection and fails loudly."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+      "quote": "Implemented behind the one-way `dataCoord.import.enableImportV3` gate"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+      "quote": "L0 import stays on Import V2"
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(read|pars|scan)\\w*[^.\\n]{0,60}(\\bonce\\b|one time|a single time|twice|two times)|(\\bonce\\b|one time|twice|two times)[^.\\n]{0,40}(read|pars|pass)|single (read|pass)|one pass|two (reads|passes)|second (read|pass)|re-?reads?",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+          "quote": "Import V2 reads every source file twice"
+        }
+      },
+      {
+        "pattern": "(small|tiny|many|fragmented)[^.\\n]{0,30}segments|file[- ]?groups?|fragments?|split[^.\\n]{0,60}(bucket|segment)|bucket[^.\\n]{0,60}(split|route|routed|local)|(route|routed|routing)[^.\\n]{0,40}bucket",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+          "quote": "producing many small segments and a `hashed_stats` table that grows with `V × P`."
+        }
+      },
+      {
+        "pattern": "hashed_stats|hashed stats|etcd|1\\.5 ?mi?b|request size|meta(data)?[^.\\n]{0,60}(grow|size|limit|bloat)|(grow|scal)\\w*[^.\\n]{0,40}(v ?[×x*] ?p|channels? (times|×|x) partitions)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+          "quote": "can exceed etcd's default 1.5 MiB request size"
+        }
+      },
+      {
+        "pattern": "sort\\w*[^.\\n]{0,80}(compaction|skip|segment|merg|fragment)|(merg|k-way|fragment|segment)\\w*[^.\\n]{0,80}sort|already sorted",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+          "quote": "V3 output is already sorted for the index, so the post-import `Sorting` compaction is skipped."
+        }
+      },
+      {
+        "pattern": "(default|defaults to) (is |value is )?(false|off|disabled)|(off|disabled) by default|\\bnot (on|enabled|the default|what runs)|isn'?t (on|enabled|the default|what runs)|^\\W*no\\b|opt[- ]in|(behind|gated by|under)[^.\\n]{0,40}(gate|flag|switch|enableimportv3)|must be (turned on|enabled|switched on)|v2 (is )?still|still (runs |uses )?(import )?v2",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+          "quote": "Implemented behind the one-way `dataCoord.import.enableImportV3` gate"
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "v3[^.\\n]{0,60}(?<!not )(?<!n't )\\b(is )?(on|enabled) by default|(v3|it)('s| is) (now )?(the default|on by default|enabled by default)|^\\W*yes\\b|yes[,.]? (it|v3|import v3) (is|does|runs)|v3 (now )?runs by default|(flipped|set|switched|defaults?) to (true|on)\\b",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260921-import-v3-reshard-design.md",
+          "quote": "Implemented behind the one-way `dataCoord.import.enableImportV3` gate"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "V2 reads each source twice and splits each bucket across file-group tasks, giving many small segments and a hashed_stats table that grows with V × P toward etcd's request limit",
+      "points": 2
+    },
+    {
+      "criterion": "V3 reads each source once into bucket-routed sorted fragments, plans segments per bucket across all sources, and merges each plan into one sorted segment, so the Sorting compaction is skipped",
+      "points": 2
+    },
+    {
+      "criterion": "It is behind the one-way dataCoord.import.enableImportV3 gate, off by default, and L0 import stays on V2",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

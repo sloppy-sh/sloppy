@@ -10,6 +10,7 @@ import { Refusal } from '../../refusal.js';
 import { CODE_PROTOCOL } from './code-anchor.js';
 import { CompassNode } from './compass-node.js';
 import type { NoteCode, NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
+import { SnippetNode } from './snippet-node.js';
 import { docBlocks, openBlocks, type DraftStore, type SavedBlock } from './document.js';
 import { DRAWN_ELEMENTS } from './elements.js';
 import { EmojiNode } from './emoji-node.js';
@@ -105,7 +106,14 @@ export function noNotes(): NoteReferences {
 
 /** A project whose code is never asked after, for a test about something else. */
 export function noCode(over: Partial<NoteCode> = {}): NoteCode {
-	return { cite: async () => undefined, show: () => {}, ...over };
+	return {
+		cite: async () => undefined,
+		show: () => {},
+		quote: async () => undefined,
+		standing: async () => ({ state: 'unchanged' }),
+		requote: async () => undefined,
+		...over
+	};
 }
 
 /** A device that holds nothing and keeps nothing, for a test about something else. */
@@ -154,7 +162,10 @@ export function typeInto(editor: Editor, written: string): void {
 }
 
 /** The editor and the baseline it opened with, exactly as the surface takes them. */
-export function makeEditor(blocks: readonly BlockView[] = []): {
+export function makeEditor(
+	blocks: readonly BlockView[] = [],
+	code?: NoteCode
+): {
 	editor: Editor;
 	saved: SavedBlock[];
 } {
@@ -176,6 +187,7 @@ export function makeEditor(blocks: readonly BlockView[] = []): {
 			PictureNode(() => undefined),
 			ReferenceNode(() => undefined),
 			CompassNode(() => undefined),
+			SnippetNode(() => code),
 			...DRAWN_ELEMENTS
 		]
 	});

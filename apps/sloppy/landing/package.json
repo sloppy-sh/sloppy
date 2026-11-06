@@ -1,0 +1,52 @@
+{
+	"name": "@sloppy/landing",
+	"version": "0.0.1",
+	"description": "sloppy.sh: the landing page, prerendered from the benchmark's summary. See bench/README.md.",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build && node scripts/proofread.mjs",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"lint": "prettier --check . && eslint .",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"sample": "node sample/make-sample.mjs",
+		"readme-figures": "node scripts/readme-figures.mjs",
+		"proofread": "node scripts/proofread.mjs"
+	},
+	"dependencies": {
+		"@fontsource-variable/inter": "catalog:",
+		"@fontsource-variable/jetbrains-mono": "catalog:",
+		"@lucide/svelte": "^0.561.0",
+		"@sloppy/types": "workspace:*",
+		"@sloppy/ui": "workspace:*",
+		"@xyflow/svelte": "^1.7.1",
+		"d3-scale": "^4.0.2"
+	},
+	"devDependencies": {
+		"@eslint/js": "catalog:",
+		"@sveltejs/adapter-static": "catalog:",
+		"@sveltejs/kit": "catalog:",
+		"@sveltejs/vite-plugin-svelte": "catalog:",
+		"@tailwindcss/vite": "catalog:",
+		"@types/d3-scale": "^4.0.9",
+		"@types/node": "^24.10.1",
+		"eslint": "catalog:",
+		"eslint-config-prettier": "catalog:",
+		"eslint-plugin-svelte": "catalog:",
+		"globals": "catalog:",
+		"prettier": "catalog:",
+		"prettier-plugin-svelte": "catalog:",
+		"prettier-plugin-tailwindcss": "catalog:",
+		"svelte": "catalog:",
+		"svelte-check": "catalog:",
+		"tailwindcss": "catalog:",
+		"typescript": "catalog:",
+		"typescript-eslint": "catalog:",
+		"vite": "catalog:"
+	}
+}

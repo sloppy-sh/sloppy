@@ -1,0 +1,29 @@
+{
+  "providers": [
+    {
+      "id": "anthropic",
+      "kind": "anthropic",
+      "key_env": "ANTHROPIC_API_KEY",
+      "models": [
+        "claude-opus-5-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-haiku-4-5"
+      ]
+    },
+    {
+      "id": "openai",
+      "kind": "openai-compatible",
+      "base_url": "https://api.openai.com/v1",
+      "key_env": "OPENAI_API_KEY",
+      "models": ["gpt-5", "gpt-5-mini"]
+    },
+    {
+      "id": "deepseek",
+      "kind": "openai-compatible",
+      "base_url": "https://api.deepseek.com/v1",
+      "key_env": "DEEPSEEK_API_KEY",
+      "models": ["deepseek-chat", "deepseek-reasoner"]
+    }
+  ]
+}

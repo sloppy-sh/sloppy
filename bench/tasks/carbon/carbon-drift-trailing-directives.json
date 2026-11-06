@@ -1,0 +1,92 @@
+{
+  "id": "carbon-drift-trailing-directives",
+  "family": "drift",
+  "tools": "read",
+  "prompt": "Look at how `Lexer::LexComment` in toolchain/lex/lex.cpp handles a comment that follows code on the same line. Is it still doing what it was written to do? If it is not, say exactly what it does differently from what it is meant to do, and where the intended behaviour is written down.",
+  "key": "It is not. The planted change removes the `if (!is_trailing)` guard around the `//@include-in-dumps`, `//@dump-sem-ir-begin` and `//@dump-sem-ir-end` checks and rewrites the comment above them to say directives are recognized wherever the `//` falls on its line. So a trailing `//@...` directive after code (`var x: i32 = 1; //@dump-sem-ir-begin`) now acts as a tooling directive (begins or ends a SemIR dump range, or marks the file for dumps), is recorded as a full-line (non-trailing) comment and advances past the line, instead of being rejected. The intended rule is in proposals/p007441-trailing-comments.md (§ Details, Lexical rule; landed in #7441 on 2026-07-03): the `//@...` directives remain recognized only as full-line comments, since they are line-oriented markers; in trailing position `//@` is just a `//` not followed by whitespace, a reserved and currently invalid comment, which should get the 'whitespace is required after //' error (NoWhitespaceAfterCommentIntroducer). Ordinary trailing comments are otherwise unchanged. The function's own comment was changed with it, so it is not the intent.",
+  "sources": [
+    {
+      "doc": "proposals/p007441-trailing-comments.md",
+      "quote": "The `//@...` tooling directives (such as `//@dump-sem-ir-begin`) remain recognized only as full-line comments, since they are line-oriented markers; in trailing position `//@` is simply a `//` not followed by whitespace, and so is a reserved (currently invalid) comment as before."
+    },
+    {
+      "doc": "proposals/p007441-trailing-comments.md",
+      "quote": "In both cases the character after `//` must be whitespace (newline and end of file count as whitespace), and the comment is removed prior to formation of tokens; it produces no token."
+    }
+  ],
+  "setup": {
+    "patch_file": "fixtures/drift/carbon-trailing-directives.patch",
+    "message": "Update"
+  },
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "^(?=[\\s\\S]*(//@|directive))(?=[\\s\\S]*?((^|[:\\n]\\s*)[\\W_]*no\\b(?![- ]?(bug|drift|problem|issue|change|regression))|\\bit('s| is) not\\b(?! (broken|wrong|buggy|incorrect|a (bug|problem|regression)|an issue))|\\bisn'?t\\b[^.\\n]{0,30}(doing|what|meant|intended|written)|\\bnot (doing|what it)|no longer|does(n'?t| not) (do|match|follow|implement|honou?r)|(?<!(\\bnot|n't|\\bnever)\\s+(\\w+\\s+)?)(deviat|diverg|contradict|violat)|\\b(has|have) (drifted|regressed)|is (a )?(bug|regression)|(introduc|plant)\\w* (a )?(bug|regression|change)|(?<!(\\bnot|n't|\\bnever)\\s+(\\w+\\s+)?)\\bbroken\\b))",
+        "source": {
+          "doc": "proposals/p007441-trailing-comments.md",
+          "quote": "The `//@...` tooling directives (such as `//@dump-sem-ir-begin`) remain recognized only as full-line comments, since they are line-oriented markers; in trailing position `//@` is simply a `//` not followed by whitespace, and so is a reserved (currently invalid) comment as before."
+        }
+      },
+      {
+        "pattern": "(trailing|after code|end of (a |the )?line|following code|same line)[^.\\n]{0,160}(//@|directive)[^.\\n]{0,200}(recogni[sz]|honou?r|accept|act|treat|process|interpret|take effect|begin|start|open|trigger|now)|(//@|directive)[^.\\n]{0,200}(recogni[sz]|honou?r|accept|act|treat|process|interpret|take effect|trigger)\\w*[^.\\n]{0,120}(trailing|after code|anywhere|wherever|any position|same line|end of (a |the )?line)|is_trailing|!is_trailing|guard",
+        "source": {
+          "doc": "proposals/p007441-trailing-comments.md",
+          "quote": "The `//@...` tooling directives (such as `//@dump-sem-ir-begin`) remain recognized only as full-line comments, since they are line-oriented markers; in trailing position `//@` is simply a `//` not followed by whitespace, and so is a reserved (currently invalid) comment as before."
+        }
+      },
+      {
+        "pattern": "(only|just|solely)[^.\\n]{0,40}(full[- ]line|own line|alone on|line of (its|their) own|start of (a|the) line)|full[- ]line[^.\\n]{0,40}only|line[- ]oriented",
+        "source": {
+          "doc": "proposals/p007441-trailing-comments.md",
+          "quote": "The `//@...` tooling directives (such as `//@dump-sem-ir-begin`) remain recognized only as full-line comments, since they are line-oriented markers; in trailing position `//@` is simply a `//` not followed by whitespace, and so is a reserved (currently invalid) comment as before."
+        }
+      },
+      {
+        "pattern": "reserved|invalid|whitespace (is )?required|nowhitespaceaftercommentintroducer|not followed by (a )?(whitespace|space)|(diagnos|error|reject)\\w*[^.\\n]{0,80}(//@|whitespace)|(//@|directive)[^.\\n]{0,80}(diagnos|error|reject)",
+        "source": {
+          "doc": "proposals/p007441-trailing-comments.md",
+          "quote": "The `//@...` tooling directives (such as `//@dump-sem-ir-begin`) remain recognized only as full-line comments, since they are line-oriented markers; in trailing position `//@` is simply a `//` not followed by whitespace, and so is a reserved (currently invalid) comment as before."
+        }
+      },
+      {
+        "pattern": "p0*7441|trailing[- _]comments?\\.md|trailing comments proposal|proposal[^.\\n]{0,20}(#?7441|trailing comments)",
+        "source": {
+          "doc": "proposals/p007441-trailing-comments.md",
+          "quote": "The `//@...` tooling directives (such as `//@dump-sem-ir-begin`) remain recognized only as full-line comments, since they are line-oriented markers; in trailing position `//@` is simply a `//` not followed by whitespace, and so is a reserved (currently invalid) comment as before."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "\\bno drift\\b|nothing is wrong|nothing('s| has) (changed|drifted)|no bug|(?<!not )(?<!n't )still (doing|does) what it|^\\W*yes\\b|^\\W*(the )?(function|code|it) (looks|is|seems) (correct|fine)|works as (intended|designed)|behaves as (intended|designed)|(does(n't| not)|do(n't| not)) (deviate|diverge|contradict|violate)|\\bnot broken\\b|(?<!(\\bnot|n't|\\bno longer|\\bnever)\\s+(\\w+\\s+)?)(consistent with|handled correctly|matches (its|the) (intent|comment|documented|design|proposal|purpose))",
+        "source": {
+          "doc": "proposals/p007441-trailing-comments.md",
+          "quote": "The `//@...` tooling directives (such as `//@dump-sem-ir-begin`) remain recognized only as full-line comments, since they are line-oriented markers; in trailing position `//@` is simply a `//` not followed by whitespace, and so is a reserved (currently invalid) comment as before."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the function no longer does what it was written to do",
+      "points": 2
+    },
+    {
+      "criterion": "Names the difference exactly: a `//@...` directive after code on the same line is now recognized as a tooling directive (the is_trailing guard is gone), where it should be only a full-line marker",
+      "points": 2
+    },
+    {
+      "criterion": "Says what should happen instead: in trailing position `//@` is a `//` not followed by whitespace, a reserved, currently invalid comment that is diagnosed",
+      "points": 1
+    },
+    {
+      "criterion": "Says where the intended behaviour is written (the trailing comments proposal, p007441, or a note carrying it)",
+      "points": 1
+    },
+    {
+      "criterion": "Does not take the function's own comment as the intent, since it was changed to match",
+      "points": 1
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "llvm-handoff-gdb-remote-timeout",
+  "family": "handoff",
+  "prompt_a": "In lldb/source/Plugins/Process/gdb-remote/ProcessGDBRemoteProperties.td, raise the default packet-timeout for non-sanitized builds from 5 seconds to 15 seconds (leave the sanitized default at 60). The reason, which you know and nobody else working on this code does: the Velmora boards are debugged through a serial-over-IP bridge that adds about 1.5 seconds per round trip, and while attaching, the slowest replies, reading the target's large register description, take 6 to 8 seconds, so with a 5-second timeout lldb dropped the connection during attach.",
+  "prompt_b": "In lldb/source/Plugins/Process/gdb-remote/ProcessGDBRemoteProperties.td the default packet-timeout for non-sanitized builds is 15 seconds. Someone notes that gdb-remote packets to a local stub come back in milliseconds and wants 5 seconds again so that a hung stub is noticed quickly. Is that safe? Recommend, and explain what decides the value.",
+  "reason": "The Velmora boards are debugged over a serial-over-IP bridge (~1.5 s per round trip); while attaching, the register-description replies take 6-8 s, so a 5 s packet timeout dropped the connection during attach.",
+  "key": "Not safe: the Velmora boards are debugged through a serial-over-IP bridge that adds about 1.5 seconds per round trip, and while attaching the slowest replies (reading the target's large register description) take 6 to 8 seconds, so with a 5-second packet timeout lldb dropped the connection during attach. A user who only debugs local stubs can still set plugin.process.gdb-remote.packet-timeout lower.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "velmora|serial[- ]over[- ]ip",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "the Velmora boards are debugged through a serial-over-IP bridge that adds about 1.5 seconds per round trip"
+        }
+      },
+      {
+        "pattern": "\\b6\\b[^.]{0,20}\\b8\\b|\\b6\\s*(-|–|to)\\s*8\\b|six to eight",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "take 6 to 8 seconds"
+        }
+      },
+      {
+        "pattern": "register[- ]?(description|info)|(dropped|lost|disconnected|aborted|failed|broke|timed out|killed)[^.]{0,60}(attach|connection|session)|(attach|connection|session)[^.]{0,40}(dropped|failed|was lost|aborted|broke|timed out)|(made|caused|left)[^.]{0,30}(attach|connection|session)[^.]{0,20}(fail|drop|abort|time out|break)",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "so with a 5-second timeout lldb dropped the connection during attach"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends against going back to 5 seconds, or only for setups known to answer within it",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: boards debugged over a serial-over-IP bridge (~1.5 s per round trip) see 6 to 8 second replies while attaching, and a 5-second timeout dropped the connection",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

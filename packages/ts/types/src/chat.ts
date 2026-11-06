@@ -3,7 +3,12 @@
 // docs/ARCHITECTURE.md § "Asking a tool to write the notes".
 
 import { z } from "zod";
-import { AnchorStandingSchema, ProjectPathSchema } from "./code-anchor.js";
+import {
+  AnchorStandingSchema,
+  PROJECT_PATH_MAX,
+  ProjectPathSchema,
+} from "./code-anchor.js";
+import { SnippetStandingSchema } from "./code-snippet.js";
 import { AddressSchema } from "./address.js";
 import {
   MARK_RADII,
@@ -275,8 +280,25 @@ export const CHAT_TOOLS = [
   "read_graph",
   "read_around",
   "brief",
+  "relate",
+  "find_code",
 ] as const;
 export type ChatToolName = (typeof CHAT_TOOLS)[number];
+
+/**
+ * The acts served only to an assistant beside a checkout of the project —
+ * `sloppy mcp` — and left out of the app's chat and a build's sessions, whose
+ * shell has no index of the code to answer them from. docs/ARCHITECTURE.md
+ * § "An assistant outside the app".
+ */
+export const OUTSIDE_THE_APP_TOOLS = [
+  "find_code",
+] as const satisfies readonly ChatToolName[];
+
+/** Whether the app's chat and a build serve `act`. */
+export function servedInTheApp(act: ChatToolName): boolean {
+  return !(OUTSIDE_THE_APP_TOOLS as readonly string[]).includes(act);
+}
 
 /**
  * The acts a BUILD adds to those, named here beside them because a call
@@ -316,6 +338,18 @@ export const SEARCH_WORDS_MAX = 200;
 /** Longer than the writing a search answers around what it matched. */
 const SNIPPET_MAX = 512;
 
+/** The most of one line a search answers a note with. */
+export const FOUND_LINE_MAX = 200;
+
+/** How much of each note a search answers with: the one line that matched, or
+ *  the writing around it as well. */
+export const SEARCH_DETAILS = ["line", "sections"] as const;
+export type SearchDetail = (typeof SEARCH_DETAILS)[number];
+
+/** Longer than a section's heading is written, and the most of one a read
+ *  names. */
+export const HEADING_MAX = 200;
+
 /** More sections than one note is written in at a time. */
 export const MAX_SECTIONS_PER_WRITE = 32;
 
@@ -346,7 +380,14 @@ const InPlaceSchema = z
   );
 
 export const ListNotesArgumentsSchema = z.object({
-  about: ProjectPathSchema.optional().describe(
+  /** **Absent is a listing without them.** */
+  about: z
+    .boolean()
+    .optional()
+    .describe(
+      "The places in the code each note is about; ask for it before writing a note about a place.",
+    ),
+  at: ProjectPathSchema.optional().describe(
     "Only the notes about this file or folder, from the project root and spelled with /: a note pointing at it, at somewhere inside it, or at a folder it is in. Leave it out for every note.",
   ),
   tags: z
@@ -369,12 +410,38 @@ export const SearchNotesArgumentsSchema = z.object({
     .describe(
       "The words to look for, or an address like 1a1. A note is found where its title, its tags or its writing carry all of them.",
     ),
+  detail: z
+    .enum(SEARCH_DETAILS)
+    .default("line")
+    .describe(
+      "'line' answers each note with the one line that matched; 'sections' adds the writing around it.",
+    ),
   in: InPlaceSchema,
 });
 export type SearchNotesArguments = z.infer<typeof SearchNotesArgumentsSchema>;
 
+/** Which snippets of quoted code a note read answers with the lines of. */
+export const QUOTED_DETAILS = ["broken", "all"] as const;
+export type QuotedDetail = (typeof QUOTED_DETAILS)[number];
+
 export const ReadNoteArgumentsSchema = z.object({
   note: OwnedRefSchema.describe("The note, as a listing of them gives it."),
+  /** **Absent is the whole note.** */
+  sections: z
+    .array(z.string().trim().min(1).max(HEADING_MAX))
+    .min(1)
+    .max(MAX_SECTIONS_PER_WRITE)
+    .optional()
+    .describe(
+      "The headings of the sections to read, like Why, in any case. Leave it out to read the whole note.",
+    ),
+  /** **Absent is `broken`.** */
+  quoted: z
+    .enum(QUOTED_DETAILS)
+    .optional()
+    .describe(
+      "Each quote of code in the note says whether its code is unchanged, moved, changed or removed, and carries its lines only where it is not unchanged or moved; 'all' gives every quote's lines. Where one is broken, quote it again with write_note and fix what the change made untrue.",
+    ),
   in: InPlaceSchema,
 });
 export type ReadNoteArguments = z.infer<typeof ReadNoteArgumentsSchema>;
@@ -396,7 +463,7 @@ export const WriteNoteArgumentsSchema = z.object({
     .array(z.string().max(CHAT_SECTION_MAX))
     .max(MAX_SECTIONS_PER_WRITE)
     .describe(
-      "The note's sections, in order, each in markdown and each opening with a `## ` heading. A heading already in the note replaces that section, a new heading goes after the rest, and a section left out stays as it is. An empty list writes nothing.",
+      "The note's sections, in order, each in markdown and each opening with a `## ` heading. A heading already in the note replaces that section, a new heading goes after the rest, and a section left out stays as it is. An empty list writes nothing. A fenced code block whose info string is code:<path>#L<from>-L<to> alone quotes those lines as the file has them now; write it so again to quote a broken quote afresh. A quote written back as it was read keeps its lines.",
     ),
   tags: z
     .array(z.string())
@@ -404,6 +471,12 @@ export const WriteNoteArgumentsSchema = z.object({
     .optional()
     .describe(
       "The systems this note belongs to, so that picking one out picks out everything about it. Lowercase, a word or a short phrase. Write at least one: a note carrying none is in no set at all.",
+    ),
+  start: z
+    .boolean()
+    .optional()
+    .describe(
+      "Start a note about the place even where another note links to it; where one was started about it, that one is written onto as ever. Leave it out and a lone linking note is the one written onto.",
     ),
   under: OwnedRefSchema.optional().describe(
     "The note this one springs out of, where a note is being started. Leave it out and it springs out of the note about the nearest folder above the place. A note already there is written onto where it stands; move_note is what carries one somewhere else.",
@@ -651,6 +724,73 @@ export const BriefArgumentsSchema = z.object({
 });
 export type BriefArguments = z.infer<typeof BriefArgumentsSchema>;
 
+/** More notes than one relate answers with in each list. */
+export const MOST_RELATED = 10;
+
+/** How many of each a relate answers with where it is not told. */
+export const RELATED_BY_DEFAULT = 5;
+
+/** A relate names a note already here, or describes one about to be written.
+ *  **A note named is read as it stands**, and whatever else was named is left
+ *  aside. */
+export const RelateArgumentsSchema = z.object({
+  note: OwnedRefSchema.optional().describe(
+    "A note already here, as a listing of them gives it. Leave it out to describe one you are about to write instead.",
+  ),
+  title: z
+    .string()
+    .trim()
+    .min(1)
+    .max(NODE_TITLE_MAX)
+    .optional()
+    .describe("What the note about to be written is called."),
+  sections: z
+    .array(z.string().max(CHAT_SECTION_MAX))
+    .max(MAX_SECTIONS_PER_WRITE)
+    .optional()
+    .describe("Its sections, in markdown, as write_note would be given them."),
+  about: ProjectPathSchema.optional().describe(
+    "The file or folder in the project it is about, from the project root and spelled with /.",
+  ),
+  tags: z
+    .array(z.string())
+    .max(MAX_TAGS_PER_NODE)
+    .optional()
+    .describe("The systems it belongs to."),
+  limit: z
+    .int()
+    .min(1)
+    .max(MOST_RELATED)
+    .default(RELATED_BY_DEFAULT)
+    .describe("How many notes to answer with in each list."),
+  in: InPlaceSchema,
+});
+export type RelateArguments = z.infer<typeof RelateArgumentsSchema>;
+
+/** More places than one find_code answers with. */
+export const MOST_CODE_FOUND = 25;
+
+/** How many places a find_code answers with where it is not told. */
+export const CODE_FOUND_BY_DEFAULT = 8;
+
+export const FindCodeArgumentsSchema = z.object({
+  words: z
+    .string()
+    .trim()
+    .min(1)
+    .max(SEARCH_WORDS_MAX)
+    .describe(
+      "A name as the code spells it, or a few words for what you are looking for.",
+    ),
+  limit: z
+    .int()
+    .min(1)
+    .max(MOST_CODE_FOUND)
+    .default(CODE_FOUND_BY_DEFAULT)
+    .describe("How many places to answer with."),
+});
+export type FindCodeArguments = z.infer<typeof FindCodeArgumentsSchema>;
+
 export interface ChatToolSpec {
   /** One line for the agent, in the words it is being asked in. */
   description: string;
@@ -670,25 +810,48 @@ export interface ChatToolSpec {
 /** What an act reading a note says of each anchor in it — `ANCHOR_STANDINGS`
  *  in `code-anchor.ts`. */
 const STANDINGS_SAID =
-  "Each place a note points at says where the code under it stands: held where a person read the note against the code and it is unchanged, moved where it has changed since or the name or lines are gone, unread where nobody has read the note against it, missing where the file is not there.";
+  "Each place a note points at says where the code under it stands: held as a person read it against the note, moved since, unread by anybody, or missing from the checkout.";
+
+/**
+ * When an agent is told to look in the notes — docs/ARCHITECTURE.md § "An
+ * assistant outside the app". `answer-first` is what every surface serves
+ * unless told otherwise.
+ */
+export const DOCTRINES = ["answer-first", "notes-first"] as const;
+export type Doctrine = (typeof DOCTRINES)[number];
+
+/** The acts whose words a doctrine spells. */
+type DoctrineAct = "search_notes" | "read_note";
+
+const DOCTRINE_WORDS: Record<Doctrine, Record<DoctrineAct, string>> = {
+  "answer-first": {
+    search_notes:
+      "Find the notes that carry some words: each one's ref, title, address, tags and the line that matched. Answer from what you already hold. Look here before writing anything down, and before answering why something is the way it is where the documents in front of you do not already say; where a note says it, cite it as the source — [what it is called](sloppy:<ref>) — rather than writing it a second time.",
+    read_note: `Read one note — its title, tags, the places it is about, its section headings, and its sections as markdown, or only the sections you name. Read one when the line a search found does not answer what you were asked. It says what a piece of this project is FOR, which is what you read the code against when somebody asks whether it is still doing what it was written to do. A long note answers with as much of itself as fits and says how many sections it left. ${STANDINGS_SAID}`,
+  },
+  "notes-first": {
+    search_notes:
+      "Find the notes that carry some words: each one's ref, title, address, tags and the line that matched. Look here first: before writing anything down, and before answering why something in this project is the way it is. Where a note already says the thing, cite it — [what it is called](sloppy:<ref>) — rather than writing it a second time.",
+    read_note: `Read one note whole — its title, tags, the places it is about, its section headings, and its sections as markdown, or only the sections you name. It says what a piece of this project is FOR, which is what you read the code against when somebody asks whether it is still doing what it was written to do. A long note answers with as much of itself as fits and says how many sections it left. ${STANDINGS_SAID}`,
+  },
+};
 
 export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   list_notes: {
     description:
-      "List the notes this project already has: each one's ref, title, address, tags, what it springs out of, and the places in the code it is about. A long list answers with as much of itself as fits and says how many notes it left.",
+      "List the notes this project already has: each one's ref, title, address, tags and what it springs out of, and the places in the code it is about where you ask for them. A long list answers with as much of itself as fits and says how many notes it left.",
     label: "Reading the notes",
     arguments: ListNotesArgumentsSchema,
     writes: false,
   },
   search_notes: {
-    description:
-      "Find the notes that carry some words, with the writing around what matched. Look here before writing anything down, and before answering why something in this project is the way it is: where a note already says the thing, cite it — [what it is called](sloppy:<ref>) — rather than writing it a second time.",
+    description: DOCTRINE_WORDS["answer-first"].search_notes,
     label: "Looking through the notes",
     arguments: SearchNotesArgumentsSchema,
     writes: false,
   },
   read_note: {
-    description: `Read one note whole — its title, tags, the places it is about, and its sections as markdown. It says what a piece of this project is FOR, which is what you read the code against when somebody asks whether it is still doing what it was written to do. A long note answers with as much of itself as fits and says how many sections it left. ${STANDINGS_SAID}`,
+    description: DOCTRINE_WORDS["answer-first"].read_note,
     label: "Reading a note",
     arguments: ReadNoteArgumentsSchema,
     writes: false,
@@ -791,9 +954,23 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
     writes: false,
   },
   brief: {
-    description: `What to call first when starting a task: name the notes, the places you will touch and a few words, read the brief once and act. The notes asked for come whole and the notes around them as one line each, as much as the budget holds. ${STANDINGS_SAID}`,
+    description: `Brief yourself on a task where what you already hold does not cover it: name the notes, the places you will touch and a few words, and read the brief once rather than the notes one at a time. The notes asked for come whole and the notes around them as one line each, as much as the budget holds. ${STANDINGS_SAID}`,
     label: "Briefing",
     arguments: BriefArgumentsSchema,
+    writes: false,
+  },
+  relate: {
+    description:
+      "Use this before writing to find where a note belongs and what it relates to. Name a note already here, or describe the one you are about to write: its title, sections, the place it is about and its tags. Answers the notes it would best spring out of and the notes it would best be linked to, best first, each with a score and why: the words they share, the code both point at, the notes both are linked with. It writes nothing: placing and linking are still write_note, move_note and link_notes.",
+    label: "Finding where a note belongs",
+    arguments: RelateArgumentsSchema,
+    writes: false,
+  },
+  find_code: {
+    description:
+      "Find where something is in this project's code: the files, and what is defined in them, that a name or a few words reach, best first. Each place is the exact lines to read — path#L<from>-L<to> — with what is defined there and the notes that explain that file. These are the places themselves: read those lines rather than searching for them, and read the notes named where you need to know why.",
+    label: "Looking through the code",
+    arguments: FindCodeArgumentsSchema,
     writes: false,
   },
 };
@@ -826,13 +1003,42 @@ export function advertisedAs<Name extends string>(
   return { name, description: spec.description, arguments: shape };
 }
 
-/** Every act of the chat's, as the endpoint serving them advertises them. */
-export function advertisedChatTools(): AdvertisedTool[] {
-  return CHAT_TOOLS.map((name) => advertisedAs(name, CHAT_TOOL_SPECS[name]));
+/** Every act of the chat's, as the endpoint serving them advertises them,
+ *  in the words `doctrine` spells. **Absent `outside` is the app's chat**, which
+ *  leaves out {@link OUTSIDE_THE_APP_TOOLS}. */
+export function advertisedChatTools(
+  doctrine: Doctrine = "answer-first",
+  outside = false,
+): AdvertisedTool[] {
+  const words: Partial<Record<ChatToolName, string>> = DOCTRINE_WORDS[doctrine];
+  const served = outside ? CHAT_TOOLS : CHAT_TOOLS.filter(servedInTheApp);
+  return served.map((name) => {
+    const spec = CHAT_TOOL_SPECS[name];
+    return advertisedAs(name, {
+      ...spec,
+      description: words[name] ?? spec.description,
+    });
+  });
 }
 
+/** Longer than a path and the run of lines after it. */
+const CODE_PLACE_MAX = PROJECT_PATH_MAX + 24;
+
+/**
+ * The exact lines a note points at, as `path#L<from>-L<to>` — `codePlace` in
+ * `code-run.ts` — a folder as its path and `/`, and an anchor whose name the
+ * file no longer holds, or whose file is not there, as it was written. On a
+ * note read whole, one per entry of `anchors` and in its order. **Absent is an
+ * answer that was not asked to land on code.**
+ */
+export const CodePlacesSchema = z
+  .array(z.string().min(1).max(CODE_PLACE_MAX))
+  .max(ABOUT_MAX)
+  .optional();
+
 /** One note as a listing gives it. `about` is the places in the code it
- *  reaches, its own and every anchor its sections hold. */
+ *  reaches, its own and every anchor its sections hold; **absent is a listing
+ *  that was not asked for them**, never a note about nowhere. */
 export const ListedNoteSchema = z.object({
   note: OwnedRefSchema,
   title: z.string().max(NODE_TITLE_MAX),
@@ -842,7 +1048,7 @@ export const ListedNoteSchema = z.object({
    *  thought of its own** — a branch, or a note written under nothing. */
   parent: OwnedRefSchema.optional(),
   tags: TagsSchema,
-  about: z.array(ProjectPathSchema).max(ABOUT_MAX),
+  about: z.array(ProjectPathSchema).max(ABOUT_MAX).optional(),
   /** The lines drawn between this note and another by hand. **Absent is a note
    *  with none**, and the lines the genealogy, the run and the writing draw are
    *  not among them — those are read off the parent, the addresses and the
@@ -852,16 +1058,25 @@ export const ListedNoteSchema = z.object({
 export type ListedNote = z.infer<typeof ListedNoteSchema>;
 
 /**
- * One note a search reached. `snippet` is the writing around what matched,
- * already cut to length; **empty is a note reached by its title, its tags or
- * its address** rather than by its writing.
+ * One note a search reached. `line` is the one line of its writing that
+ * matched and `snippet` the writing around it, each already cut to length;
+ * **empty is a note reached by its title, its tags or its address** rather
+ * than by its writing.
  */
 export const FoundNoteSchema = z.object({
   note: OwnedRefSchema,
   title: z.string().max(NODE_TITLE_MAX),
   /** **Absent is a note with no address**, which is an ordinary note. */
   address: AddressSchema.optional(),
-  snippet: z.string().max(SNIPPET_MAX),
+  tags: TagsSchema,
+  line: z.string().max(FOUND_LINE_MAX),
+  /** The heading of the section `line` is in. **Absent is a line in a section
+   *  with none, or no line.** */
+  section: z.string().max(HEADING_MAX).optional(),
+  /** **Absent is a search that asked for the line alone.** */
+  snippet: z.string().max(SNIPPET_MAX).optional(),
+  code: CodePlacesSchema,
+  quoted: z.array(SnippetStandingSchema).max(ABOUT_MAX).optional(),
 });
 export type FoundNote = z.infer<typeof FoundNoteSchema>;
 
@@ -873,6 +1088,23 @@ export const NoteSectionSchema = z.object({
 });
 export type NoteSection = z.infer<typeof NoteSectionSchema>;
 
+/** Longer than a note read with no sections named comes back whole where
+ *  answers land on code, in characters of its sections' markdown. Past it the
+ *  answer is the note's opening and {@link NoteReadSchema}'s `outline`. */
+export const WHOLE_NOTE_MAX = 5000;
+
+/** What a note answered as its opening and an outline says beside them. */
+export const NOTE_OUTLINE_READ =
+  "This note is long: here is its opening, and the heading and size in characters of each other section. Read the ones you need by heading with sections.";
+
+/** A section a note's outline names instead of carrying. */
+export const OutlinedSectionSchema = z.object({
+  heading: z.string().max(HEADING_MAX),
+  /** Characters of its markdown. */
+  size: z.int().min(0),
+});
+export type OutlinedSection = z.infer<typeof OutlinedSectionSchema>;
+
 /** One note read whole, or as much of it as one answer carries —
  *  {@link noteAnswer} is what composes one. */
 export const NoteReadSchema = ListedNoteSchema.extend({
@@ -880,14 +1112,31 @@ export const NoteReadSchema = ListedNoteSchema.extend({
    *  **Absent is a note that sets none**, which is a line drawn as the graph
    *  draws it — and the other end may still set one. */
   edges: z.array(EdgeLookSchema).max(MOST_LINES_DRAWN).optional(),
+  /** The heading of every section the note holds that opens with one, in
+   *  order, whichever of them this answer carries. */
+  headings: z
+    .array(z.string().max(HEADING_MAX))
+    .max(MOST_SECTIONS_READ)
+    .optional(),
   sections: z.array(NoteSectionSchema).max(MOST_SECTIONS_READ),
   /** **Absent is the whole note.** A count is how many further sections the
    *  note holds that this answer does not carry. */
   more: z.int().min(1).optional(),
+  /** The sections of a note past {@link WHOLE_NOTE_MAX} that `sections` does
+   *  not carry, in order, in place of `headings`. **Absent is a note answered
+   *  whole, or by the sections named.** */
+  outline: z.array(OutlinedSectionSchema).max(MOST_SECTIONS_READ).optional(),
+  /** **Absent is a note without an `outline`.** */
+  read: z.literal(NOTE_OUTLINE_READ).optional(),
   /** Every anchor the note's writing holds, in the order it names them, and
    *  where the code under each stands now. **Absent is a graph that is
    *  nobody's project**, where there is no code to read. */
   anchors: z.array(AnchorStandingSchema).max(ABOUT_MAX).optional(),
+  code: CodePlacesSchema,
+  /** Every snippet of code the note quotes, in the order it quotes them, and
+   *  where the code under each stands now. **Absent is a note that quotes
+   *  none, or a graph that is nobody's project.** */
+  quoted: z.array(SnippetStandingSchema).max(ABOUT_MAX).optional(),
 });
 export type NoteRead = z.infer<typeof NoteReadSchema>;
 
@@ -928,6 +1177,7 @@ export const NeighbourSchema = z.object({
    *  a compass line, cut to {@link GIST_MAX}. **Empty is a note with no such
    *  paragraph.** */
   gist: z.string().max(GIST_MAX),
+  code: CodePlacesSchema,
 });
 export type Neighbour = z.infer<typeof NeighbourSchema>;
 
@@ -943,6 +1193,60 @@ export const NeighbourhoodReadSchema = z.object({
 });
 export type NeighbourhoodRead = z.infer<typeof NeighbourhoodReadSchema>;
 
+/** What a place find_code answers with is: a file, or a thing defined in one. */
+export const CODE_KINDS = [
+  "file",
+  "function",
+  "method",
+  "class",
+  "struct",
+  "interface",
+  "trait",
+  "enum",
+  "type",
+  "module",
+  "constant",
+] as const;
+export type CodeKind = (typeof CODE_KINDS)[number];
+
+/** More notes than one place in the code is answered with. */
+export const MOST_NOTES_PER_PLACE = 3;
+
+/** A note that explains a place in the code: one whose anchors reach its file. */
+export const NoteExplainingSchema = z.object({
+  note: OwnedRefSchema,
+  title: z.string().max(NODE_TITLE_MAX),
+  /** **Absent is a note with no address**, which is an ordinary note. */
+  address: AddressSchema.optional(),
+});
+export type NoteExplaining = z.infer<typeof NoteExplainingSchema>;
+
+/** One place find_code reached, best first. */
+export const CodeFoundPlaceSchema = z.object({
+  /** `path#L<from>-L<to>`, or the path alone for a file. */
+  place: z.string().max(PROJECT_PATH_MAX + 32),
+  kind: z.enum(CODE_KINDS),
+  /** The name as the code spells it. **Absent is a file.** */
+  name: z.string().max(PROJECT_PATH_MAX).optional(),
+  /** **Absent is a file no note's anchors reach.** */
+  notes: z.array(NoteExplainingSchema).max(MOST_NOTES_PER_PLACE).optional(),
+});
+export type CodeFoundPlace = z.infer<typeof CodeFoundPlaceSchema>;
+
+/** What every find_code answer says beside its places. */
+export const CODE_FOUND_READ =
+  "These are the places themselves: read those lines rather than searching for them.";
+
+/** The places in a project's code some words reach. */
+export const CodeFoundSchema = z.object({
+  found: z.array(CodeFoundPlaceSchema).max(MOST_CODE_FOUND),
+  read: z.literal(CODE_FOUND_READ),
+});
+export type CodeFound = z.infer<typeof CodeFoundSchema>;
+
+/** More places in the code than a brief names beside its notes. */
+export const MOST_BRIEF_CODE = 3;
+
 /** A note a brief hands over whole. */
 export const BriefNoteSchema = NoteReadSchema;
 export type BriefNote = NoteRead;
@@ -957,8 +1261,47 @@ export const BriefReadSchema = z.object({
   /** **Absent is every note around them.** A count is how many further ones
    *  there are that this brief does not carry. */
   more: z.int().min(1).optional(),
+  /** The places in the code the task's words reach best, as find_code answers
+   *  them. **Absent is a brief that read no code**, or whose words reach none. */
+  places: z.array(CodeFoundPlaceSchema).max(MOST_BRIEF_CODE).optional(),
 });
 export type BriefRead = z.infer<typeof BriefReadSchema>;
+
+/** Longer than a brief that ends the search runs, whatever budget it is
+ *  given. */
+export const SHORT_BRIEF_MAX = 5000;
+
+/** More notes than a brief that ends the search names after its first. */
+export const MOST_SHORT_BRIEF_ALSO = 5;
+
+/** More of the first note's places a brief that ends the search names. */
+export const MOST_SHORT_BRIEF_ABOUT = 3;
+
+/** What every brief that ends the search says beside its notes. */
+export const SHORT_BRIEF_READ =
+  "The first note is the best match. read_note reads it, and any note named here by its ref.";
+
+/** A note a brief that ends the search names after its first. */
+export const BriefAlsoSchema = NeighbourSchema.pick({
+  note: true,
+  title: true,
+  address: true,
+});
+export type BriefAlso = z.infer<typeof BriefAlsoSchema>;
+
+/** A brief that ends the search — {@link shortBriefAnswer} is what composes
+ *  one. */
+export const BriefShortSchema = z.object({
+  /** The note the task reaches best: its opening section and the sections
+   *  the task's words reach, each cut where it runs long. **Empty is a task
+   *  that reaches no note.** */
+  notes: z.array(BriefNoteSchema).max(1),
+  /** The next notes reached, then the notes around them, by name alone. */
+  also: z.array(BriefAlsoSchema).max(MOST_SHORT_BRIEF_ALSO),
+  places: z.array(CodeFoundPlaceSchema).max(MOST_BRIEF_CODE).optional(),
+  read: z.literal(SHORT_BRIEF_READ),
+});
+export type BriefShort = z.infer<typeof BriefShortSchema>;
 
 /** The notes a project has, or as many of them as one answer carries —
  *  {@link listingAnswer} is what composes one. */
@@ -980,6 +1323,42 @@ export const NotesFoundSchema = z.object({
 });
 export type NotesFound = z.infer<typeof NotesFoundSchema>;
 
+/** Longer than one line saying why a note was put where it was. */
+export const PLACED_MAX = 400;
+
+/** Longer than one reason a note is related to another. */
+export const RELATED_REASON_MAX = 200;
+
+/** More reasons than one related note is answered with. */
+export const MOST_RELATED_REASONS = 3;
+
+/** One note a relate reached. `score` is the combined relevance, higher is
+ *  closer, rounded to three places; each reason is one signal that said so, in
+ *  a person's words — `relate.ts` in `@sloppy/local` is the rule. */
+export const RelatedNoteSchema = z.object({
+  note: OwnedRefSchema,
+  title: z.string().max(NODE_TITLE_MAX),
+  /** **Absent is a note with no address**, which is an ordinary note. */
+  address: AddressSchema.optional(),
+  score: z.number().min(0),
+  reasons: z
+    .array(z.string().max(RELATED_REASON_MAX))
+    .min(1)
+    .max(MOST_RELATED_REASONS),
+});
+export type RelatedNote = z.infer<typeof RelatedNoteSchema>;
+
+/** Where a note belongs and what it relates to, best first. Nothing in it has
+ *  been written. */
+export const RelatedSchema = z.object({
+  /** The notes it would best spring out of. */
+  parents: z.array(RelatedNoteSchema).max(MOST_RELATED),
+  /** The notes it would best be linked to, less those a line already joins it
+   *  to and what it springs out of and into. */
+  links: z.array(RelatedNoteSchema).max(MOST_RELATED),
+});
+export type Related = z.infer<typeof RelatedSchema>;
+
 /**
  * What one write came to. `offered` is a note somebody has written in: the
  * agent writes as the project's container rather than as the person, so its
@@ -989,6 +1368,10 @@ export type NotesFound = z.infer<typeof NotesFoundSchema>;
 export const NoteWrittenSchema = z.object({
   note: OwnedRefSchema,
   done: z.enum(WRITE_DONE),
+  /** Which rule chose what a note started with no `under` springs out of, and
+   *  why, in one line. **Absent is a note already there, or one started where
+   *  it was told.** */
+  placed: z.string().max(PLACED_MAX).optional(),
 });
 export type NoteWritten = z.infer<typeof NoteWrittenSchema>;
 
@@ -1341,6 +1724,16 @@ export const ChatToolCallSchema = z.discriminatedUnion("act", [
     act: z.literal("brief"),
     arguments: BriefArgumentsSchema,
   }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("relate"),
+    arguments: RelateArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("find_code"),
+    arguments: FindCodeArgumentsSchema,
+  }),
 ]);
 export type ChatToolCall = z.infer<typeof ChatToolCallSchema>;
 
@@ -1472,6 +1865,15 @@ export function sectionHeadings(sections: readonly string[]): string {
     .map((first) => first.slice("## ".length).trim())
     .filter((heading) => heading !== "")
     .join(", ");
+}
+
+/** The first heading a section's markdown carries, at any level. */
+export function sectionHeading(markdown: string): string | undefined {
+  for (const line of markdown.split("\n")) {
+    const heading = /^#{1,6}\s+(.*\S)$/.exec(line.trim());
+    if (heading) return heading[1].replace(/\s+#+$/, "").trim();
+  }
+  return undefined;
 }
 
 /** More notes than one act names what it did to. A move or a delete carries
@@ -1621,6 +2023,9 @@ export function aroundAnswer(
 export interface BriefAsked {
   whole: Omit<NoteRead, "more">;
   gist: string;
+  /** How many of the note's sections `whole` leaves out because the task's
+   *  words do not reach them. **Absent is none.** */
+  left?: number;
 }
 
 const BRIEF_TOO_LONG =
@@ -1630,36 +2035,41 @@ const BRIEF_TOO_LONG =
  * What a task is briefed with, held to `budget` characters and never past
  * {@link CHAT_ANSWER_MAX}: the notes asked for whole, in order, while they fit;
  * the first that does not, and every one after it, as one line at depth 0; then
- * the notes around them from the front while they fit. **A brief whose first
- * note's title and places alone run past the budget comes to trouble.**
+ * the notes around them from the front while they fit. `places` in the code
+ * are carried whole beside them. **A brief whose first note's title and places
+ * alone run past the budget comes to trouble.**
  */
 export function briefAnswer(
   asked: readonly BriefAsked[],
   around: readonly Neighbour[],
   budget: number,
+  places: readonly CodeFoundPlace[] = [],
 ): ChatToolAnswer {
   const bound = Math.min(budget, CHAT_ANSWER_MAX);
   const total = asked.length + around.length;
+  const inCode =
+    places.length === 0 ? {} : { places: places.slice(0, MOST_BRIEF_CODE) };
   const measured = (
     notes: readonly NoteRead[],
     kept: readonly Neighbour[],
   ): string | undefined => {
-    const said = JSON.stringify(
-      withMore(
+    const said = JSON.stringify({
+      ...withMore(
         { notes: [...notes], around: [...kept] },
         total - notes.length - kept.length,
       ),
-    );
+      ...inCode,
+    });
     return said.length <= bound ? said : undefined;
   };
   const [first] = asked;
-  if (first && measured([bareOf(first.whole)], []) === undefined) {
+  if (first && measured([bareOf(first)], []) === undefined) {
     return { said: BRIEF_TOO_LONG, trouble: true };
   }
   const notes: NoteRead[] = [];
   let said = measured([], []);
   for (const one of asked.slice(0, MOST_BRIEF_NOTES)) {
-    const whole = wholeOf(one.whole);
+    const whole = wholeOf(one);
     const next = measured([...notes, whole], []);
     if (next === undefined) break;
     notes.push(whole);
@@ -1678,15 +2088,119 @@ export function briefAnswer(
     : { said };
 }
 
-function wholeOf(note: Omit<NoteRead, "more">): NoteRead {
+/**
+ * A brief that ends the search, held to `budget` characters and never past
+ * {@link SHORT_BRIEF_MAX}: the first note asked for with the sections `whole`
+ * carries, each cut to one length found to fit, the longest first; the rest
+ * asked for and then the notes around them by name; and `places` in the code.
+ * Where even empty sections do not fit, the names go from the end, then the
+ * places. **A brief whose first note's title alone runs past the budget comes
+ * to trouble.**
+ */
+export function shortBriefAnswer(
+  asked: readonly BriefAsked[],
+  around: readonly Neighbour[],
+  budget: number,
+  places: readonly CodeFoundPlace[] = [],
+): ChatToolAnswer {
+  const bound = Math.min(budget, SHORT_BRIEF_MAX);
+  const [first, ...rest] = asked;
+  const named = [...rest.map((one) => one.whole), ...around]
+    .slice(0, MOST_SHORT_BRIEF_ALSO)
+    .map(
+      (one): BriefAlso => ({
+        note: one.note,
+        title: one.title,
+        ...(one.address === undefined ? {} : { address: one.address }),
+      }),
+    );
+  const measured = (
+    cut: number,
+    also: readonly BriefAlso[],
+    inCode: readonly CodeFoundPlace[],
+  ): string | undefined => {
+    const said = JSON.stringify({
+      notes: first ? [firstOf(first, cut)] : [],
+      also: [...also],
+      ...(inCode.length === 0 ? {} : { places: [...inCode] }),
+      read: SHORT_BRIEF_READ,
+    } satisfies BriefShort);
+    return said.length <= bound ? said : undefined;
+  };
+  const longest = Math.max(
+    0,
+    ...(first?.whole.sections ?? []).map((one) => one.markdown.length),
+  );
+  let inCode = places.slice(0, MOST_BRIEF_CODE);
+  let also = named;
+  while (measured(0, also, inCode) === undefined) {
+    if (also.length > 0) also = also.slice(0, -1);
+    else if (inCode.length > 0) inCode = inCode.slice(0, -1);
+    else return { said: BRIEF_TOO_LONG, trouble: true };
+  }
+  let fits = 0;
+  let over = longest + 1;
+  while (over - fits > 1) {
+    const cut = Math.floor((fits + over) / 2);
+    if (measured(cut, also, inCode) === undefined) over = cut;
+    else fits = cut;
+  }
+  return { said: measured(fits, also, inCode) as string };
+}
+
+/** The first note of a brief that ends the search, each section cut to `cut`
+ *  characters. */
+function firstOf({ whole, left = 0 }: BriefAsked, cut: number): NoteRead {
+  const sections = whole.sections.slice(0, MOST_SECTIONS_READ);
+  const { headings: _, about, code, anchors, quoted, ...note } = whole;
   return withMore(
-    { ...note, sections: note.sections.slice(0, MOST_SECTIONS_READ) },
-    note.sections.length - MOST_SECTIONS_READ,
+    {
+      ...note,
+      ...(about === undefined
+        ? {}
+        : { about: about.slice(0, MOST_SHORT_BRIEF_ABOUT) }),
+      ...(code === undefined ? {} : { code: code.slice(0, MOST_BRIEF_CODE) }),
+      ...(anchors === undefined
+        ? {}
+        : { anchors: anchors.slice(0, MOST_BRIEF_CODE) }),
+      ...(quoted === undefined
+        ? {}
+        : { quoted: quoted.slice(0, MOST_BRIEF_CODE) }),
+      sections: sections.map((one) => ({
+        ...one,
+        markdown: cutAt(one.markdown, cut),
+      })),
+    },
+    left + whole.sections.length - sections.length,
   );
 }
 
-function bareOf(note: Omit<NoteRead, "more">): NoteRead {
-  return withMore({ ...note, sections: [] }, note.sections.length);
+/** Writing cut to at most `most` characters where it runs past them, at the
+ *  last paragraph, else line, else word that fits, and marked as cut. */
+export function cutAt(markdown: string, most: number): string {
+  if (markdown.length <= most) return markdown;
+  const room = most - CUT.length;
+  if (room <= 0) return "";
+  const head = markdown.slice(0, room);
+  const at = [
+    head.lastIndexOf("\n\n"),
+    head.lastIndexOf("\n"),
+    head.lastIndexOf(" "),
+  ].find((one) => one > room / 2);
+  return `${head.slice(0, at ?? room).trimEnd()}${CUT}`;
+}
+
+const CUT = " …";
+
+function wholeOf({ whole, left = 0 }: BriefAsked): NoteRead {
+  return withMore(
+    { ...whole, sections: whole.sections.slice(0, MOST_SECTIONS_READ) },
+    left + Math.max(0, whole.sections.length - MOST_SECTIONS_READ),
+  );
+}
+
+function bareOf({ whole, left = 0 }: BriefAsked): NoteRead {
+  return withMore({ ...whole, sections: [] }, left + whole.sections.length);
 }
 
 function asNamed({ whole, gist }: BriefAsked): Neighbour {
@@ -1695,10 +2209,11 @@ function asNamed({ whole, gist }: BriefAsked): Neighbour {
     title: whole.title,
     ...(whole.address === undefined ? {} : { address: whole.address }),
     tags: whole.tags,
-    about: whole.about,
+    about: whole.about ?? [],
     relation: "named",
     depth: 0,
     gist,
+    ...(whole.code === undefined ? {} : { code: whole.code }),
   };
 }
 

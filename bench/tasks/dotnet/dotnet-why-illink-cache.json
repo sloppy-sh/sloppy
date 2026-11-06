@@ -1,0 +1,97 @@
+{
+  "id": "dotnet-why-illink-cache",
+  "family": "why",
+  "tools": "read",
+  "prompt": "We turned on ILLINK_EXPERIMENTAL_CACHE for our library builds and hit three surprises. After we upgraded the .NET runtime installed on the build agents, the trimmed output still came straight from the cache. Our warnings-as-errors gate stopped catching trimming warnings on some builds. And projects that pass extra linker arguments through ExtraArgs never hit the cache at all. Is each of these intended, and why? What should we do about each one?",
+  "key": "From docs/design/tools/illink/task-cache.md (added in #135065 on 2026-10-14, extended for runtime library builds in #135066 and CI in #135067 on 2026-10-20, the storage moved to the shared InvocationCache in #135886 on 2026-10-29). All three are intended. (1) The resolved runtime/CoreLib that executes the child linker is deliberately not part of the identity: MSBuild's own runtime identity does not establish the child's, runtimeconfig roll-forward settings do not identify the resolved CoreLib, and resolving it would need more host information or another process; so a runtime installation change alone need not invalidate entries, and callers who need that distinction must clear or isolate the cache storage (e.g. a different ILLINK_EXPERIMENTAL_CACHE_PATH per runtime, or purge with the BuildCache maintenance tool) or disable caching. (The task assembly, the dotnet host executable and the whole linker assembly are hashed; bundled dependencies such as Cecil are not.) (2) Cache hits do not replay linker warnings or other diagnostics, which can omit console/binlog warnings and defeat external warning-as-error policies; callers who need those diagnostics must disable caching for those builds. (3) Arbitrary ExtraArgs (like custom steps/data, dependency dumps and ToolTask.EnvironmentVariables overrides) bypass the cache because they can introduce undeclared inputs, outputs or side effects; the only supported ExtraArgs shape is the runtime library builds' --ignore-link-attributes true followed by --link-attributes, --substitutions or -d pairs. The feature is experimental and may change or be removed.",
+  "sources": [
+    {
+      "doc": "docs/design/tools/illink/task-cache.md",
+      "quote": "The resolved runtime/CoreLib executing the child linker is deliberately not identified. MSBuild's runtime identity does not establish the child's, and runtimeconfig roll-forward settings do not identify the resolved CoreLib."
+    },
+    {
+      "doc": "docs/design/tools/illink/task-cache.md",
+      "quote": "Runtime installation changes alone therefore need not invalidate entries; callers requiring that distinction must clear or isolate storage."
+    },
+    {
+      "doc": "docs/design/tools/illink/task-cache.md",
+      "quote": "Hits do not replay linker warnings or other diagnostics. This can omit console/binlog warnings and affect external warning-as-error policies. Callers needing those diagnostics or execution side effects must disable caching."
+    },
+    {
+      "doc": "docs/design/tools/illink/task-cache.md",
+      "quote": "Bypass arbitrary `ExtraArgs`, custom steps/data, dependency-dump options, and explicit `ToolTask.EnvironmentVariables` overrides. These can introduce undeclared inputs, outputs, or side effects."
+    },
+    {
+      "doc": "docs/design/tools/illink/task-cache.md",
+      "quote": "For runtime library builds, support `--ignore-link-attributes true` followed by zero or more `--link-attributes FILE`, `--substitutions FILE`, or `-d DIRECTORY` pairs."
+    },
+    {
+      "doc": "src/tools/illink/src/ILLink.Tasks/LinkTask.cs",
+      "quote": "Log.LogMessage(MessageImportance.Low, \"ILLink cache bypassed: extra arguments are not supported.\");"
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "corelib|roll[- ]?forward|(msbuild|the task|the parent|the host process)('s|s)? (own )?(runtime|process)[^.\\n]{0,100}(not|doesn'?t|does not|isn'?t|can'?t|cannot)[^.\\n]{0,60}(child|linker|establish|identify|tell|same)|(child|linker)('s)? (process'?s? )?(runtime|corelib)[^.\\n]{0,80}(not|never|isn'?t|aren'?t)[^.\\n]{0,30}(identif|hash|record|includ|part of|key)|(another|separate|extra|additional|second) (process|host)|runtime[^.\\n]{0,40}(execut|run)\\w*[^.\\n]{0,20}(the )?(child |illink |linker)[^.\\n]{0,80}(not|n't|never)|(resolv|chos|pick|determin|select)\\w* (separately|independently)[^.\\n]{0,60}msbuild|msbuild[^.\\n]{0,40}\\b(runs?|running)\\b[^.\\n]{0,60}(not|n't|never|separate|different|independent)",
+        "source": {
+          "doc": "docs/design/tools/illink/task-cache.md",
+          "quote": "The resolved runtime/CoreLib executing the child linker is deliberately not identified. MSBuild's runtime identity does not establish the child's, and runtimeconfig roll-forward settings do not identify the resolved CoreLib."
+        }
+      },
+      {
+        "pattern": "clear\\w*|isolat\\w*|ILLINK_EXPERIMENTAL_CACHE_PATH|(separate|different|new|fresh|own|per-\\w+) (cache )?(path|directory|folder|location|storage|cache)|purg\\w*|wip(e|ing)",
+        "source": {
+          "doc": "docs/design/tools/illink/task-cache.md",
+          "quote": "Runtime installation changes alone therefore need not invalidate entries; callers requiring that distinction must clear or isolate storage."
+        }
+      },
+      {
+        "pattern": "(not|n'?t|never|no)\\b[^.\\n]{0,20}(re-?play|re-?emit|re-?report|reproduc|surface|re-?log|re-?issue)\\w*[^.\\n]{0,60}(warning|diagnostic)|(warning|diagnostic)s?[^.\\n]{0,60}(not|n'?t|never)\\b[^.\\n]{0,20}(re-?play|re-?emit|re-?report|surfac|re-?log|logged|emitted|shown|reported|re-?issued)|\\breplay",
+        "source": {
+          "doc": "docs/design/tools/illink/task-cache.md",
+          "quote": "Hits do not replay linker warnings or other diagnostics. This can omit console/binlog warnings and affect external warning-as-error policies. Callers needing those diagnostics or execution side effects must disable caching."
+        }
+      },
+      {
+        "pattern": "undeclared|untracked|(unknown|unaccounted|hidden|arbitrary|unlisted)[^.\\n]{0,40}(inputs?|outputs?|side[- ]effects?|files|dependenc)|side[- ]effects?|--ignore-link-attributes|--link-attributes|--substitutions",
+        "source": {
+          "doc": "docs/design/tools/illink/task-cache.md",
+          "quote": "Bypass arbitrary `ExtraArgs`, custom steps/data, dependency-dump options, and explicit `ToolTask.EnvironmentVariables` overrides. These can introduce undeclared inputs, outputs, or side effects."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(?<!(\\bnot|n't|\\bnever|\\bno|isn't|aren't)\\b[^.\\n]{0,30})(runtime|corelib|\\.net)( version| install\\w*)? (is|are) (part of|included in|hashed into|in) the (cache )?(key|identity)|(?<!(\\bnot|n't|\\bnever|\\bno)\\b[^.\\n]{0,20})(hits? )?(do |does |will )?(replay|re-?emit)s? (the )?(linker |trimming )?warnings",
+        "source": {
+          "doc": "docs/design/tools/illink/task-cache.md",
+          "quote": "Hits do not replay linker warnings or other diagnostics. This can omit console/binlog warnings and affect external warning-as-error policies. Callers needing those diagnostics or execution side effects must disable caching."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the runtime/CoreLib running the child linker is deliberately not identified (MSBuild's runtime does not establish the child's; roll-forward does not identify the resolved CoreLib), so a runtime upgrade alone does not invalidate entries, and that the fix is to clear or isolate the cache storage or disable caching",
+      "points": 2
+    },
+    {
+      "criterion": "Says cache hits do not replay linker warnings or diagnostics, so warning-as-error policies can miss them, and builds that need them must disable caching",
+      "points": 2
+    },
+    {
+      "criterion": "Says arbitrary ExtraArgs bypass the cache because they can bring undeclared inputs, outputs or side effects, and only the runtime libraries' --ignore-link-attributes/--link-attributes/--substitutions/-d shape is supported",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project (for example that the runtime version is part of the cache key or that hits replay warnings)",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

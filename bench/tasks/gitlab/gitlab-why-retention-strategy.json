@@ -1,0 +1,116 @@
+{
+  "id": "gitlab-why-retention-strategy",
+  "family": "why",
+  "prompt": "I have to declare a data retention policy for a table that gets millions of new rows a day. Why am I steered towards partitioning it and dropping old partitions rather than deleting old rows in batches, and when is deleting rows still acceptable?",
+  "tools": "read",
+  "key": "Deleting rows is a last resort. A DELETE is a write, so enforcing a window by deletes is a continuous write workload that scales with volume, paid forever: write amplification (dead heap tuples and dead index entries that autovacuum must re-read and re-dirty, roughly doubling the table's write load, and if deletion cannot keep pace with insertion the window is never enforced); the table never shrinks, since vacuum only makes space reusable and the footprint stays at its high-water mark unless rewritten (pg_repack); and WAL and replication load, since WAL scales with pages touched, deletes over cold pages emit full-page images and vacuum a second wave, all shipped to replicas and the archive. drop_partition pays once: converting a table is an expensive migration, but DETACH PARTITION CONCURRENTLY is a metadata operation with no dead tuples and effectively no WAL, and a detached partition stays recoverable for a grace window (7 days by default) whereas deleted rows are gone at once. Tables over the 50 GB soft limit (the hard limit is 100 GB) must partition. delete_rows is still reasonable for narrow, lightly indexed, low-traffic tables with no viable partition key, under 50 GB, with the justification in the work item; the decision tree picks delete_rows only when partitioning is not possible. Policies are declared in db/docs/data_retention/<table>.yml. Written in doc/development/database/database_growth_control/data_retention_policy.md (added 2026-09-08).",
+  "sources": [
+    {
+      "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+      "quote": "A `DELETE` is a write, and enforcing a retention window through deletes turns cleanup into a continuous write workload that scales with volume"
+    },
+    {
+      "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+      "quote": "In practice this roughly doubles the table's write load and if deletion cannot keep up with insertion, the retention window is never enforced."
+    },
+    {
+      "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+      "quote": "Vacuum makes the freed space reusable for future inserts, but the on-disk footprint stays at its high-water mark unless the table is rewritten"
+    },
+    {
+      "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+      "quote": "WAL volume scales with pages touched, not rows deleted."
+    },
+    {
+      "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+      "quote": "After that, `DETACH PARTITION CONCURRENTLY` is a metadata operation, it produces no dead tuples and effectively no WAL regardless of how many rows the partition held"
+    },
+    {
+      "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+      "quote": "So `delete_rows` pays continuously in proportion to volume, while `drop_partition` pays once."
+    },
+    {
+      "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+      "quote": "`delete_rows` is still reasonable for narrow, lightly indexed, low-traffic tables with no viable partition key."
+    },
+    {
+      "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+      "quote": "Tables larger than this 50 GB soft limit must use partitioning."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(delet|remov|purg)[a-z]*[^.\\n]{0,140}(writes?\\b|workload|write load|vacuum|dead|bloat|i/?o)|write amplification|continuous|never[- ]ending|endless|ongoing|forever|in proportion|keep (up|pace) with",
+        "source": {
+          "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+          "quote": "A `DELETE` is a write, and enforcing a retention window through deletes turns cleanup into a continuous write workload that scales with volume"
+        }
+      },
+      {
+        "pattern": "vacuum|dead (tuple|row)|bloat|(never|doesn'?t|does not|won'?t|cannot|can'?t|not) (actually )?shrink|high[- ]water|(disk|on-disk) (space|footprint|size)|pg_repack",
+        "source": {
+          "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+          "quote": "Vacuum makes the freed space reusable for future inserts, but the on-disk footprint stays at its high-water mark unless the table is rewritten"
+        }
+      },
+      {
+        "pattern": "\\bwal\\b|write[- ]ahead|replica|replication",
+        "source": {
+          "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+          "quote": "WAL volume scales with pages touched, not rows deleted."
+        }
+      },
+      {
+        "pattern": "(?:drop|detach)[a-z]*[^.\\n]{0,140}(?:metadata|catalog|cheap|one[- ](?:time|off)|once|constant|instant|no (?:dead|wal|vacuum|bloat)|regardless|(?:almost|nearly|effectively|basically|essentially|practically|virtually) free)|pays once|one[- ](?:time|off) cost",
+        "source": {
+          "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+          "quote": "So `delete_rows` pays continuously in proportion to volume, while `drop_partition` pays once."
+        }
+      },
+      {
+        "pattern": "narrow|small(er)? table|light(ly)?[- ]indexed|low[- ](traffic|volume|write)|no (viable |good |natural )?partition(ing)? key|(cannot|can'?t|not) be partitioned|partitioning (isn'?t|is not) (possible|viable|feasible)|under 50 ?gb|below 50 ?gb|smaller than 50 ?gb|less than 50 ?gb",
+        "source": {
+          "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+          "quote": "`delete_rows` is still reasonable for narrow, lightly indexed, low-traffic tables with no viable partition key."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "delete_rows is (the )?(preferred|recommended|default)|(prefer|recommend)(s|ed)? (delete_rows|deleting rows)|(just|only|merely) a (style |stylistic )?preference|delete_rows for (anything|any table|everything)",
+        "source": {
+          "doc": "doc/development/database/database_growth_control/data_retention_policy.md",
+          "quote": "So `delete_rows` pays continuously in proportion to volume, while `drop_partition` pays once."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Deleting is a continuous write workload that scales with volume (dead tuples, index and vacuum work, roughly doubling writes; it may never keep up)",
+      "points": 2
+    },
+    {
+      "criterion": "Deleting does not shrink the table, and it adds WAL and replication load",
+      "points": 2
+    },
+    {
+      "criterion": "Dropping a partition costs once: detaching is a metadata operation with no dead tuples and almost no WAL; tables over the 50 GB soft limit must partition",
+      "points": 2
+    },
+    {
+      "criterion": "Deleting rows is still acceptable for narrow, lightly indexed, low-traffic tables with no viable partition key, with the justification recorded",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

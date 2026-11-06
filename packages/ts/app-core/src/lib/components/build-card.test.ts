@@ -19,7 +19,9 @@ import {
 } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DID, homeOf, node, ref, useFakeApi, VIEWER } from '../stores/fake-api.test-support.js';
+import { MemoryFiles } from '@sloppy/local';
+import { updateRuntime } from '../runtime.js';
+import { AT, DID, homeOf, node, ref, useFakeApi, VIEWER } from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { citedAs } from './build-said.js';
@@ -516,6 +518,86 @@ describe('what was built', () => {
 		show(built(), { says: 'Settle the notes that are in two versions first.' });
 
 		expect(screen()).toContain('Settle the notes that are in two versions first.');
+	});
+
+	it('reads each file it wrote under what its task was built to, through the notes it was built from', () => {
+		show(built());
+
+		const built_ = document.body.querySelector('[data-build-built="reader"]');
+		expect(built_?.textContent).toContain(PLAN_TASK.effect);
+		const file = document.body.querySelector('[data-build-file="src/reader.ts"]');
+		expect(file?.textContent).toContain('src/reader.ts');
+		const chip = [...(file?.querySelectorAll('button') ?? [])].find(
+			(one) => one.textContent?.trim() === '1 · The parser'
+		);
+		chip?.click();
+		expect(asked.opened).toEqual([PARSER]);
+	});
+
+	it('adds the notes pointing into a file, and opens the file with why it is there', async () => {
+		const fake = useFakeApi();
+		fake.on('GET /nodes', () => [
+			node(1, '1', { title: 'The parser' }),
+			node(2, '1a', { title: 'The vault' })
+		]);
+		fake.on(
+			`GET /nodes/${encodeURIComponent(DID)}/${encodeURIComponent(VAULT.split('/')[1] ?? '')}/blocks`,
+			() => [
+				{
+					ref: ref(40),
+					created_by: DID,
+					created_at: AT,
+					updated_at: AT,
+					node: VAULT,
+					ord: 'a',
+					content: {
+						type: 'doc',
+						content: [
+							{
+								type: 'paragraph',
+								content: [
+									{ type: 'text', text: 'Read by ' },
+									{
+										type: 'text',
+										text: 'the reader',
+										marks: [{ type: 'link', attrs: { href: 'code:src/reader.ts#L1' } }]
+									}
+								]
+							}
+						]
+					}
+				}
+			]
+		);
+		const store = new Map([
+			['/p/src/reader.ts', new TextEncoder().encode('export const read = 1;\n')]
+		]);
+		updateRuntime({ project: async () => new MemoryFiles({ root: '/p', store, data: '/d' }) });
+		try {
+			show(built());
+			for (let turn = 0; turn < 20; turn += 1) {
+				await new Promise((wake) => setTimeout(wake));
+				flushSync();
+			}
+
+			const file = document.body.querySelector('[data-build-file="src/reader.ts"]');
+			const named = [...(file?.querySelectorAll('[aria-label^="The notes"] button') ?? [])].map(
+				(one) => one.textContent?.trim()
+			);
+			expect(named).toEqual(['1 · The parser', '1a · The vault']);
+
+			file?.querySelector<HTMLButtonElement>('button')?.click();
+			for (let turn = 0; turn < 20; turn += 1) {
+				await new Promise((wake) => setTimeout(wake));
+				flushSync();
+			}
+			expect(screen()).toContain('Why this code');
+			expect(
+				document.body.querySelector('[data-why-at="1"] [data-why-chip]')?.textContent
+			).toContain('The vault');
+		} finally {
+			updateRuntime({ project: undefined });
+		}
 	});
 });
 

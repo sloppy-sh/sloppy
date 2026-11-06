@@ -1,0 +1,48 @@
+{
+  "id": "dotnet-handoff-watcher-buffer",
+  "family": "handoff",
+  "prompt_a": "In src/libraries/System.IO.FileSystem.Watcher/src/System/IO/FileSystemWatcher.cs, raise the default internal buffer size (_internalBufferSize) from 8192 bytes to 65536 bytes; InternalBufferSize still overrides it. The reason, which you know and nobody else working on this code does: on the Tarnwick render farm our asset service watches the shared output folder, and when a render job finishes it renames its frame files from .partial to their final names, 2,000 to 3,000 renames within about a second. With an 8 KB buffer the watcher overflowed and raised Error, the service missed the final names, and finished jobs were never picked up for delivery. 64 KB holds a whole burst.",
+  "prompt_b": "FileSystemWatcher's default InternalBufferSize in FileSystemWatcher.cs is now 64 KB instead of 8 KB. A reviewer notes that on Windows the buffer comes from non-paged memory, that the guidance has long been to keep it small, and that an application that needs more can set InternalBufferSize itself; they ask to put the default back to 8 KB. Is that safe? Recommend, and explain what decides the value.",
+  "reason": "On the Tarnwick render farm a finished job renames 2,000-3,000 frame files within a second; an 8 KB buffer overflowed, the final names were missed and finished jobs were never picked up.",
+  "key": "Not safe: on the Tarnwick render farm the asset service watches the shared output folder, and a finished render job renames its frame files from .partial to their final names, 2,000 to 3,000 renames within about a second; with an 8 KB buffer the watcher overflowed and raised Error, the service missed the final names and finished jobs were never picked up for delivery. 64 KB holds a whole burst. The default is set by the largest burst of changes a real watcher sees between reads; an application that knows its directory is quiet can lower InternalBufferSize.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "tarnwick|render (farm|job)s?|\\.partial|frame files?",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "on the Tarnwick render farm our asset service watches the shared output folder, and when a render job finishes it renames its frame files from .partial to their final names"
+        }
+      },
+      {
+        "pattern": "\\b2,?000\\b[^.]{0,20}\\b3,?000\\b|\\b2,?000\\s*(-|–|to)\\s*3,?000|two to three thousand",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "2,000 to 3,000 renames within about a second"
+        }
+      },
+      {
+        "pattern": "never (got |were |was )?picked up|(finished|completed|done) (render )?jobs?[^.]{0,80}(never|not|weren'?t|were not|went) (picked up|noticed|seen|processed|delivered|undelivered)|(missed|lost|dropped)[^.]{0,40}(final|frame) (names?|files?)|(final|frame) (names?|files?)[^.]{0,40}(missed|lost|dropped)|(never|not) (delivered|picked up)",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "finished jobs were never picked up for delivery"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends against going back to 8 KB, or only where the watched directories are known to see small bursts",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: on the Tarnwick render farm a finished job renames 2,000 to 3,000 frame files within about a second, an 8 KB buffer overflowed, and finished jobs were never picked up",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

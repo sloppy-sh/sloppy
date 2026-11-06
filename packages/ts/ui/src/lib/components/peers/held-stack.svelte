@@ -13,6 +13,7 @@
 	import type { NoteEmoji } from '../editor/contract.js';
 	import { openBlocks } from '../editor/document.js';
 	import { DRAWN_ELEMENTS } from '../editor/elements.js';
+	import { SnippetNode } from '../editor/snippet-node.js';
 	import { EMOJI_NODE, EmojiNode, reclaimEmoji } from '../editor/emoji-node.js';
 	import { InkNode } from '../editor/ink-node.js';
 	import { PictureNode, type PictureSource } from '../editor/picture-node.js';
@@ -63,6 +64,7 @@
 						() => references,
 						() => note
 					),
+					SnippetNode(() => undefined),
 					InkNode,
 					PictureNode(() => pictures),
 					...DRAWN_ELEMENTS

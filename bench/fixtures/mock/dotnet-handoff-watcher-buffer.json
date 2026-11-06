@@ -1,0 +1,47 @@
+{
+  "text": "Not safe. On the Tarnwick render farm a finished job renames 2,000 to 3,000 frame files within a second; an 8 KB buffer overflowed and finished jobs were never picked up.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1,
+    "mcp__history__git_log": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "src/libraries/System.IO.FileSystem.Watcher/src/System/IO/FileSystemWatcher.cs"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "docs/decisions/dotnet-handoff-watcher-buffer.md"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "mcp__history__git_log",
+      "input": {},
+      "result": "commit ..."
+    }
+  ]
+}

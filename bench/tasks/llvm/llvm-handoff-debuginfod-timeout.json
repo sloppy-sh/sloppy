@@ -1,0 +1,48 @@
+{
+  "id": "llvm-handoff-debuginfod-timeout",
+  "family": "handoff",
+  "prompt_a": "In llvm/lib/Debuginfod/Debuginfod.cpp, raise the fallback in getDefaultDebuginfodTimeout from 90 seconds to 180 seconds (DEBUGINFOD_TIMEOUT still overrides it). The reason, which you know and nobody else working on this code does: at the Harrowgate build farm the debuginfod server sits behind a caching proxy that only starts streaming once it has fetched the whole artifact, and for the debug info of the largest binaries that takes 110 to 150 seconds on a cold cache, so llvm-symbolizer gave up at 90 seconds and the crash reports came back unsymbolized.",
+  "prompt_b": "getDefaultDebuginfodTimeout in llvm/lib/Debuginfod/Debuginfod.cpp now falls back to 180 seconds when DEBUGINFOD_TIMEOUT is not set. A reviewer points out that 90 seconds was the default for years and that a hung server should not stall a tool for three minutes, and asks to put it back to 90. Is that safe? Recommend, and explain what decides the value.",
+  "reason": "At the Harrowgate build farm a caching proxy in front of debuginfod streams only after fetching the whole artifact; for the largest binaries' debug info that takes 110-150 s on a cold cache, so a 90 s timeout left crash reports unsymbolized.",
+  "key": "Not safe: at the Harrowgate build farm the debuginfod server sits behind a caching proxy that only starts streaming once it has fetched the whole artifact; for the debug info of the largest binaries that takes 110 to 150 seconds on a cold cache, so at 90 seconds llvm-symbolizer gave up and crash reports came back unsymbolized. A shorter default is only safe where downloads are known to finish within it; DEBUGINFOD_TIMEOUT can still lower it per environment.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "harrowgate|(stream|send)\\w*[^.]{0,60}(once|after|until|only when)[^.]{0,40}(whole|entire|full|complete) (artifact|file|download)|(whole|entire|full|complete) (artifact|file|download)[^.]{0,40}before[^.]{0,30}(stream|send)",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "the debuginfod server sits behind a caching proxy that only starts streaming once it has fetched the whole artifact"
+        }
+      },
+      {
+        "pattern": "\\b110\\b[^.]{0,20}\\b150\\b|\\b110\\s*(-|–|to)\\s*150",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "takes 110 to 150 seconds on a cold cache"
+        }
+      },
+      {
+        "pattern": "unsymboli[sz]ed|without symbols|(no|missing|lost) symbols|los\\w* (their |the |its )?symbols|symboli[sz]\\w*[^.]{0,40}(fail|gave up|gives up|give up|time[sd]? out)|\\bgave up|\\bgives? up",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "so llvm-symbolizer gave up at 90 seconds and the crash reports came back unsymbolized"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends against going back to 90 seconds, or only where downloads are known to finish within it",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: behind a caching proxy that streams only after fetching the whole artifact, the largest debug info takes 110 to 150 seconds on a cold cache, and at 90 seconds symbolization failed",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

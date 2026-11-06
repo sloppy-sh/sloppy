@@ -1,0 +1,74 @@
+{
+  "id": "pulsar-locate-metadata-threads",
+  "family": "locate",
+  "prompt": "Topic loading after a broker failover is slow and the metadata store's thread looks saturated. Where are the metadata store's threads created, which one runs MetadataCache's serialization and deserialization, how is that thread picked for a given path, and which broker setting sizes that pool? Name the files and the classes, methods or fields involved, with paths relative to the repository root.",
+  "tools": "read",
+  "key": "From PIP-453 (pip/pip-453.md, \"Improve the metadata store threading model\", added 2026-01-26). AbstractMetadataStore's constructor (pulsar-metadata/src/main/java/org/apache/pulsar/metadata/impl/AbstractMetadataStore.java) creates <name>-event (a single thread that now only handles notifications), <name>-scheduler (scheduling and retries) and <name>-worker, an OrderedExecutor held as serDesExecutor with numSerDesThreads threads and handed to every MetadataCacheImpl it creates. AbstractBatchedMetadataStore (pulsar-metadata/src/main/java/org/apache/pulsar/metadata/impl/batching/AbstractBatchedMetadataStore.java) creates <name>-batch-flusher only when batching is enabled. MetadataCacheImpl (pulsar-metadata/src/main/java/org/apache/pulsar/metadata/cache/impl/MetadataCacheImpl.java) runs deserialization in readValueFromStore, and the clone-modify-serialize work of readModifyUpdate and readModifyUpdateOrCreate, on executor.chooseThread(path), so one path always lands on the same thread and its processing stays in order. The pool is sized by metadataStoreSerDesThreads in ServiceConfiguration (pulsar-broker-common, default 1), passed by PulsarService through MetadataStoreConfig.numSerDesThreads. The store's own callbacks are not moved to another thread.",
+  "sources": [
+    {
+      "doc": "pip/pip-453.md",
+      "quote": "`<name>-worker`: a fixed thread pool shared by all `MetadataCache` instances to execute compute intensive tasks like serialization and deserialization. The same path will be handled by the same thread to keep the processing order on the same path."
+    },
+    {
+      "doc": "pip/pip-453.md",
+      "quote": "`<name>-event`: the original metadata store thread, which is now only responsible to handle notifications."
+    },
+    {
+      "doc": "pip/pip-453.md",
+      "quote": "`<name>-batch-flusher`: a single thread, which is used to schedule the flushing task at a fixed rate."
+    },
+    {
+      "doc": "pip/pip-453.md",
+      "quote": "private int metadataStoreSerDesThreads = 1;"
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": [
+          "pulsar-metadata/src/main/java/org/apache/pulsar/metadata/impl/AbstractMetadataStore.java"
+        ]
+      },
+      {
+        "any": ["AbstractBatchedMetadataStore"],
+        "source": "pulsar-metadata/src/main/java/org/apache/pulsar/metadata/impl/batching/AbstractBatchedMetadataStore.java"
+      },
+      {
+        "any": [
+          "pulsar-metadata/src/main/java/org/apache/pulsar/metadata/cache/impl/MetadataCacheImpl.java"
+        ]
+      },
+      {
+        "any": ["chooseThread"],
+        "source": "pulsar-metadata/src/main/java/org/apache/pulsar/metadata/cache/impl/MetadataCacheImpl.java"
+      },
+      {
+        "any": ["serDesExecutor", "OrderedExecutor"],
+        "source": "pulsar-metadata/src/main/java/org/apache/pulsar/metadata/impl/AbstractMetadataStore.java"
+      },
+      {
+        "any": ["metadataStoreSerDesThreads"],
+        "source": "pulsar-broker-common/src/main/java/org/apache/pulsar/broker/ServiceConfiguration.java"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names AbstractMetadataStore's constructor creating the -event, -scheduler and -worker executors, and AbstractBatchedMetadataStore creating -batch-flusher when batching is on",
+      "points": 2
+    },
+    {
+      "criterion": "Says MetadataCacheImpl runs serialization and deserialization on the worker pool through chooseThread(path), so one path always runs on the same thread",
+      "points": 2
+    },
+    {
+      "criterion": "Names metadataStoreSerDesThreads (ServiceConfiguration, default 1) as the setting",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

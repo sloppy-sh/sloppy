@@ -1,0 +1,26 @@
+{
+  "text": "Delete(P) and Insert(G) could land on different VChannels and commit in separate WAL transactions, so a snapshot could keep the delete and lose the entity. Proxy now queries the PKs first: an existing key is kept (Delete(P) + Insert(P)), a key not found gets an allocator-generated ID, and a row with no key is rejected. The caller's key is only a lookup key; allocator ownership keeps it from colliding with future inserts (20260803-autoid-upsert-primary-key-preservation.md).",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

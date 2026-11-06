@@ -1,0 +1,35 @@
+{
+  "text": "Changed pulsar-broker/src/main/java/org/apache/pulsar/broker/service/AbstractDispatcherSingleActiveConsumer.java and wrote the reason down in docs/decisions/pulsar-handoff-consumer-race-retries.md.\n\nCommit message:\nAt Brightline Rail, the load balancer's connection draining keeps the old exclusive consumer's connection half-open up to 10 s after a deploy; with 5 retries the new pod was refused and the feed stalled.",
+  "timing": {
+    "api_ms": 2000,
+    "first_token_ms": 300,
+    "first_tool_ms": 500,
+    "answer_ms": 1900
+  },
+  "tokens": {
+    "input": 900,
+    "cache_write": 1500,
+    "cache_read": 3000,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.02,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 1,
+    "Edit": 1,
+    "Write": 1
+  },
+  "writes": {
+    "docs/decisions/pulsar-handoff-consumer-race-retries.md": "# Why pulsar-broker/src/main/java/org/apache/pulsar/broker/service/AbstractDispatcherSingleActiveConsumer.java holds this value\n\nAt Brightline Rail, the load balancer's connection draining keeps the old exclusive consumer's connection half-open up to 10 s after a deploy; with 5 retries the new pod was refused and the feed stalled.\n"
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "pulsar-broker/src/main/java/org/apache/pulsar/broker/service/AbstractDispatcherSingleActiveConsumer.java"
+      },
+      "result": "1\t..."
+    }
+  ]
+}

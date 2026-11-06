@@ -1,0 +1,9 @@
+node_modules/
+.work/
+.venv/
+*.key
+.env*
+results/mock-*.jsonl
+results/*.html
+__pycache__/
+.ipynb_checkpoints/

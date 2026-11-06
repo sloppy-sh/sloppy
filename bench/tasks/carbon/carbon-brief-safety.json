@@ -1,0 +1,66 @@
+{
+  "id": "carbon-brief-safety",
+  "family": "brief",
+  "tools": "read",
+  "prompt": "I'm about to start on Carbon's memory safety design. Explain to a newcomer, as briefly as you can, what the strategy is and why: what makes code safe or unsafe and how unsafe code is marked, the safety modes, how each kind of memory safety is enforced and how that compares with Rust, how data races are treated, what the build modes do, the overhead targets, and where each part is written down.",
+  "key": "The strategy is docs/design/safety/README.md with docs/design/safety/terminology.md, from proposals/p005914-updating-carbon-s-safety-strategy.md (landed in #5914 on 2025-08-20). Goal: let large existing C++ codebases incrementally write new code in a memory-safe language, through automated migration to a C++-interop dialect and then incremental refactoring, much more incrementally than moving files to Rust. Unsafe constructs are semantically and syntactically narrow and carry the `unsafe` keyword for audit; there is no unsafe dialect or large unsafe regions. Safety modes: Strict Carbon marks all unsafe code with `unsafe` and is the memory-safe language; Permissive Carbon, for C++ interop and migration, lets some specific unsafe code omit the keyword; chosen per file (package declaration) or per function definition. Memory safety model: type safety at compile time, initialization a hybrid of run time and compile time, spatial at run time, temporal and data-race safety at compile time through the type system, largely matching Rust except run-time initialization techniques, with different details for temporal and data-race safety. Data races: Carbon may not prevent data races that are not themselves temporal safety bugs, but must prevent unsynchronized temporal bugs such as use after free; preventing data races is still valuable. Build modes change unsafe code's behaviour: release keeps baseline hardening such as bounds checking (disabling it is unsupported, for benchmarking); debug makes detectable bugs fail-stop with detection like ASan and MSan; extra modes such as debug + TSan or release + CFI/HWASan. Reusable safe libraries come from Rust through interop. Targets: temporal safety under 1% overhead, spatial about 1-2%, no default reference counting or GC; probabilistic techniques are not counted on to stop attacks.",
+  "sources": [
+    {
+      "doc": "docs/design/safety/README.md",
+      "quote": "_Strict Carbon_ is the mode in which all unsafe code is marked with the `unsafe` keyword."
+    },
+    {
+      "doc": "docs/design/safety/README.md",
+      "quote": "_Permissive Carbon_ is a mode optimized for interop with C++ and automated migration from C++."
+    },
+    {
+      "doc": "docs/design/safety/README.md",
+      "quote": "**At this high level, this means Carbon's memory safety model will largely match Rust's.**"
+    },
+    {
+      "doc": "docs/design/safety/README.md",
+      "quote": "However, Carbon _must_ detect and prevent cases where a lack of synchronization directly allows temporal safety bugs, such as use after free."
+    },
+    {
+      "doc": "docs/design/safety/README.md",
+      "quote": "**Carbon's strategy for safe and generally reusable cross-platform libraries is to leverage Rust libraries through interop.**"
+    },
+    {
+      "doc": "docs/design/safety/README.md",
+      "quote": "This means, for example, that bounds checking is enabled in the release build."
+    },
+    {
+      "doc": "proposals/p005914-updating-carbon-s-safety-strategy.md",
+      "quote": "Minimal temporal safety runtime overhead: in aggregate and in real-world application benchmarks, any performance overhead would need to be under 1%."
+    }
+  ],
+  "grader": {
+    "kind": "none"
+  },
+  "rubric": [
+    {
+      "criterion": "Why: incremental, scalable adoption of memory safety by large C++ codebases, through migration then refactoring, much more granular than moving to Rust",
+      "points": 1
+    },
+    {
+      "criterion": "Unsafe code is narrow and marked with the `unsafe` keyword; Strict Carbon marks all of it, Permissive Carbon (for C++ interop and migration) lets some omit it, chosen per file or per function",
+      "points": 2
+    },
+    {
+      "criterion": "The model per category (type at compile time, initialization hybrid, spatial at run time, temporal and data-race at compile time), largely matching Rust; unsynchronized temporal bugs must be prevented while other data races might not be",
+      "points": 1
+    },
+    {
+      "criterion": "Build modes: release with baseline hardening such as bounds checks, debug fail-stop with sanitizer-like detection, plus specialized modes; overhead targets under 1% temporal and about 1-2% spatial, no default GC or reference counting",
+      "points": 1
+    },
+    {
+      "criterion": "Names the documents (docs/design/safety/README.md, terminology.md, the p005914 proposal), and is brief and says nothing false",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

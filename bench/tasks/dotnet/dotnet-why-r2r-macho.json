@@ -1,0 +1,120 @@
+{
+  "id": "dotnet-why-r2r-macho",
+  "family": "why",
+  "tools": "read",
+  "prompt": "crossgen2 can now emit a composite ReadyToRun image as a Mach-O object for macOS (`--obj-format macho`). Why does the precompiled managed code go into a section of its own rather than the usual text section? The R2R format is full of RVAs: how are they expressed in a Mach-O object, and why is that the right thing to measure them from? Why does the runtime ask the host for the composite image instead of opening the dylib itself? And what is `--rtr-header-symbol-name` for?",
+  "key": "From docs/design/coreclr/botr/readytorun-platform-native-envelope.md (added in #120584 on 2025-10-30, the Mach-O emitter in #121186 on 2025-11-13, the symbol-name option in #126515 on 2026-04-06). Composite R2R only, macOS only, opt in with --obj-format macho; crossgen2 emits an object file and linking it into the dylib is the SDK's job, which must keep the RTR_HEADER export. Managed code moves into __TEXT,__managedcode because __TEXT,__text gets special treatment by the linker, and __managedcode matches NativeAOT; read-only data (jump tables, metadata, unwind and GC info, the R2R headers) goes to __TEXT,__const, while fixup tables stay in __DATA,__data and import thunks in __TEXT,__text. RVAs: the R2R format, like PE, is built on RVAs added to an image base, which COFF and PE support natively but Mach-O does not, so each RVA is emitted as a subtractor relocation, \"symbol location - __mh_dylib_header location\", with __mh_dylib_header as the base symbol (ReadyToRunObjectWriter passes baseSymbolName: \"__mh_dylib_header\" to MachObjectWriter). That symbol is the right base because the Apple linker provides it for dylibs, it sits at the base address dladdr/dlinfo report, and it points at the Mach header, from which the image size is found to bound reads of the R2R data. Symbol ranges also use a subtractor relocation (end - start + end size) because Apple linkers have trouble with several symbols at one address. The runtime asks the host through a new host_runtime_contract callback, get_native_code_data (component assembly path and owner composite name in, R2R header pointer, image size and base out), because that leaves the actual load to the host — a dlopen of a shared library, or something statically linked into the host — and makes the host responsible for any caching. --rtr-header-symbol-name renames the exported READYTORUN_HEADER symbol (default RTR_HEADER) for custom hosts that link several R2R images directly instead of loading them with dlopen, so each needs a distinct export name to avoid collisions; the host must look up the same name, and the option requires --composite.",
+  "sources": [
+    {
+      "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+      "quote": "Precompiled managed code has been moved into `__TEXT,__managedcode`. `__TEXT,__text` gets special treatment by the linker and `__TEXT,__managedcode` matches NativeAOT."
+    },
+    {
+      "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+      "quote": "The COFF object file format natively supports such a concept, and the PE format uses such a concept in the PE header. However, other formats do not natively support such a concept."
+    },
+    {
+      "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+      "quote": "The base symbol that we use in the object writer will be `__mh_dylib_header`."
+    },
+    {
+      "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+      "quote": "To emit the distance from the base symbol, we will use a subtractor relocation to represent \"symbol location - `__mh_dylib_header` location\"."
+    },
+    {
+      "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+      "quote": "This symbol is located at the address returned by `dlinfo` and `dladdr` for the base address. It also points to the Mach header, which can be used to find the size of the image to bound reads of the R2R data."
+    },
+    {
+      "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+      "quote": "This leaves it to the host to do the actual load (for example, `dlopen` of a shared library, using something statically linked into the host itself) of the platform-native image. It is also responsible for any caching desired."
+    },
+    {
+      "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+      "quote": "This is intended for custom hosts that directly link against multiple R2R images — rather than loading them dynamically via `dlopen` or equivalent — where each image needs a distinct export symbol name to avoid collisions."
+    },
+    {
+      "doc": "src/coreclr/tools/aot/ILCompiler.ReadyToRun/CodeGen/ReadyToRunObjectWriter.cs",
+      "quote": "return new MachObjectWriter(_nodeFactory, ObjectWritingOptions.None, _outputInfoBuilder, baseSymbolName: \"__mh_dylib_header\");"
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "managedcode|special (treatment|handling|meaning|rules)|treat\\w* (it |that section |__text )?(specially|differently)|linker[^.\\n]{0,80}(special|treats?|rearrang|reorder|own (rules|handling))|match\\w*[^.\\n]{0,30}native ?aot|native ?aot[^.\\n]{0,40}(uses|does|already|same)",
+        "source": {
+          "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+          "quote": "Precompiled managed code has been moved into `__TEXT,__managedcode`. `__TEXT,__text` gets special treatment by the linker and `__TEXT,__managedcode` matches NativeAOT."
+        }
+      },
+      {
+        "pattern": "mh_dylib_header|subtractor|(distance|difference|offset|delta) (from|to|between|relative to)[^.\\n]{0,60}(base|header|image) symbol|symbol (location|address)\\s*[-−]\\s*",
+        "source": {
+          "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+          "quote": "To emit the distance from the base symbol, we will use a subtractor relocation to represent \"symbol location - `__mh_dylib_header` location\"."
+        }
+      },
+      {
+        "pattern": "dladdr|dlinfo|mach(-o)? header|(size|bounds?|end|extent) of the image|bound\\w* (the )?reads|image('s)? size",
+        "source": {
+          "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+          "quote": "This symbol is located at the address returned by `dlinfo` and `dladdr` for the base address. It also points to the Mach header, which can be used to find the size of the image to bound reads of the R2R data."
+        }
+      },
+      {
+        "pattern": "static(ally)?[- ]link\\w*|link\\w* (it )?(statically )?into the host|(host|it)[^.\\n]{0,80}(responsible|decide|does the (actual )?load|handles? the load|owns|controls)[^.\\n]{0,60}(load|cach|how)|cach(e|es|ing)\\b",
+        "source": {
+          "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+          "quote": "This leaves it to the host to do the actual load (for example, `dlopen` of a shared library, using something statically linked into the host itself) of the platform-native image. It is also responsible for any caching desired."
+        }
+      },
+      {
+        "pattern": "collision|collid|clash|conflict|(distinct|unique|different|separate) (export(ed)? )?(symbol )?names?|(several|multiple|more than one|many) (r2r |composite |readytorun )?images",
+        "source": {
+          "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+          "quote": "This is intended for custom hosts that directly link against multiple R2R images — rather than loading them dynamically via `dlopen` or equivalent — where each image needs a distinct export symbol name to avoid collisions."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(mach-?o|the format|apple'?s? (format|linker)) (natively |already )?(has|supports|provides) (a |an )?(native )?(image[- ]base|rvas?\\b|base[- ]relative)|(managed code|precompiled code|the code|it) (goes|is placed|stays|lives|is emitted) (in|into) (the )?\\x60?(__text,)?__text\\x60?(?![,\\w])",
+        "source": {
+          "doc": "docs/design/coreclr/botr/readytorun-platform-native-envelope.md",
+          "quote": "The COFF object file format natively supports such a concept, and the PE format uses such a concept in the PE header. However, other formats do not natively support such a concept."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says managed code moves into __TEXT,__managedcode because __TEXT,__text gets special treatment by the linker, and that it matches NativeAOT",
+      "points": 1
+    },
+    {
+      "criterion": "Says RVAs are emitted as subtractor relocations against __mh_dylib_header, because Mach-O has no native image-base/RVA concept the way COFF/PE do",
+      "points": 2
+    },
+    {
+      "criterion": "Says why __mh_dylib_header: it is at the base address dladdr/dlinfo return and points to the Mach header, which gives the image size to bound reads",
+      "points": 1
+    },
+    {
+      "criterion": "Says the host does the actual load (dlopen, or statically linked into the host) and any caching, through the get_native_code_data host callback",
+      "points": 1
+    },
+    {
+      "criterion": "Says --rtr-header-symbol-name gives each image a distinct export name for custom hosts that link several R2R images directly, to avoid collisions",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project (for example that Mach-O natively supports RVAs, or that managed code stays in __TEXT,__text)",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "id": "dotnet-drift-component-resolver-order",
+  "family": "drift",
+  "tools": "read",
+  "prompt": "Look at `ComponentLoadContext` in src/libraries/System.Private.CoreLib/src/Internal/Runtime/InteropServices/ComponentLoadContext.cs. Is it still doing what it was written to do? If it is not, say exactly what it does differently from what it is meant to do, and where the intended behaviour is written down.",
+  "key": "It is not. The planted change makes AddComponent put the new component's AssemblyDependencyResolver at the front of the array ([resolver, .. _resolvers] instead of [.. _resolvers, resolver]) and adds a comment claiming the most recently loaded component is consulted first so a later component can supply a newer version of a shared dependency. So in a shared (named) component load context, Load and LoadUnmanagedDll now ask the most recently added component's resolver first, and the last component loaded wins. The intended rule is in docs/design/features/native-hosting-load-context.md (the proposal of #132247 on 2026-08-25, implemented for COM/C++/CLI in #133570 on 2026-10-07 and for custom hosting in #135460 on 2026-10-13): components with the same identifier share an ALC that resolves dependencies from the components' .deps.json in precedence order matching the order they were loaded into it — resolvers are queried in component load order and the first one wins. Consequence: a component loaded later into the shared context can override which file a dependency (managed or native) resolves to for not-yet-loaded assemblies, so the first component's chosen versions (e.g. an out-of-band framework assembly it ships) are no longer what the context resolves, and which copy wins depends on which component happened to load last. The new comment was written with the change, so it is not the intent.",
+  "sources": [
+    {
+      "doc": "docs/design/features/native-hosting-load-context.md",
+      "quote": "That ALC will resolve dependencies using the `.deps.json` from the components, in precedence order corresponding to the order in which the components were loaded into it."
+    },
+    {
+      "doc": "docs/design/features/native-hosting-load-context.md",
+      "quote": "Resolvers are queried in the component load order — the first one wins."
+    }
+  ],
+  "setup": {
+    "patch_file": "fixtures/drift/dotnet-component-resolver-order.patch",
+    "message": "Update"
+  },
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "^(?=[\\s\\S]*\\b(resolver|order|precedence|first)\\b)(?=[\\s\\S]*?((^|[:\\n]\\s*)[\\W_]*no\\b(?![- ]?(bug|drift|problem|issue|change|regression))|\\bit is not\\b|\\bit's not\\b|\\bisn'?t\\b[^.\\n]{0,30}(doing|what|meant|intended|written)|\\bnot (doing|what it)|no longer|does(n'?t| not) (do|match|follow|implement|honou?r)|(?<!(\\bno|\\bnot|n't|\\bnever|\\bnor|\\bnothing|\\bwithout)\\b[^.;:\\n]{0,40})(deviat|diverg|contradict|violat|\\b(has|have) (drifted|regressed))|is (a )?(bug|regression)|(introduc|plant)\\w* (a )?(bug|regression|change)|(?<!(\\bno|\\bnot|n't|\\bnever|\\bnor|\\bnothing|\\bwithout)\\b[^.;:\\n]{0,40})\\bbroken\\b|\\binverted\\b|\\breversed\\b))",
+        "source": {
+          "doc": "docs/design/features/native-hosting-load-context.md",
+          "quote": "Resolvers are queried in the component load order — the first one wins."
+        }
+      },
+      {
+        "pattern": "(last|latest|most[- ]recent(ly)?|newest|later|newly)[- ](loaded |added )?(component|resolver)s?[^.\\n]{0,100}(?<!(\\bnot|n't|\\bnever|\\bcannot|\\bno longer) )(first|wins?|precedence|priority|consulted|queried|checked|tried|takes over|override)|(prepend|front|head|beginning|start)\\w*[^.\\n]{0,60}(resolver|array|list)|(resolver|array|list)[^.\\n]{0,60}(prepend|front|head|beginning)|(revers|invert|flip|swap)\\w*[^.\\n]{0,60}(order|precedence|priority)|(order|precedence|priority)[^.\\n]{0,60}(revers|invert|flip|swap|backwards)|(first|earliest|earlier)[- ](loaded |added )?(component|resolver)s?[^.\\n]{0,100}(should|meant|supposed|intended|no longer|lose|loses|last)|last[- ]one[- ]wins|lifo",
+        "source": {
+          "doc": "docs/design/features/native-hosting-load-context.md",
+          "quote": "Resolvers are queried in the component load order — the first one wins."
+        }
+      },
+      {
+        "pattern": "(later|second|new(ly)?|subsequent|another|last)[- ]?(loaded |added )?component[^.\\n]{0,160}(?<!(\\bnot|n't|\\bnever|\\bcannot|\\bno longer) )(override|overrid|shadow|replace|take over|hijack|wins?|instead|its own|different|win out|change)|(dependenc|assembl|librar|version)\\w*[^.\\n]{0,120}(different|wrong|other|another|someone else'?s|unexpected) (component|version|copy|file)|(earlier|first|original)[^.\\n]{0,40}component[^.\\n]{0,120}(different|wrong|break|lose|loses|no longer|override|overridden|shadowed)|load[- ]order[- ]dependent|depends on which (component|one) (loaded|was loaded|loads) last|component[^.\\n]{0,20}(loaded|added) later[^.\\n]{0,160}(?<!(\\bnot|n't|\\bnever|\\bcannot|\\bno longer) )(override|overrid|shadow|replace|take over|hijack|wins?|instead|its own|different|win out|change)",
+        "source": {
+          "doc": "docs/design/features/native-hosting-load-context.md",
+          "quote": "That ALC will resolve dependencies using the `.deps.json` from the components, in precedence order corresponding to the order in which the components were loaded into it."
+        }
+      },
+      {
+        "pattern": "native-hosting-load-context|load context for components|specifying an assembly load context|native hosting load context",
+        "source": {
+          "doc": "docs/design/features/native-hosting-load-context.md",
+          "quote": "Resolvers are queried in the component load order — the first one wins."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "\\bno drift\\b|nothing is wrong|nothing('s| has) (changed|drifted)|no bug|^\\W*yes\\b|(?<!(\\bnot\\b|n't\\b|\\bno longer\\b|\\bnever\\b|\\bnor\\b)[^.;:\\n]{0,40})(still does what it (was|is) (written|meant)|still (doing|does) what it|(class|code|it) (looks|is|seems) (correct|fine)\\s*([.!;]|$)|works as (intended|designed)|behaves as (intended|designed))|\\bno (deviation|divergence|contradiction|violation)|\\bnot broken\\b|(do not|don't) think (it|this|the code|anything)('s| has| is)? (drifted|changed|regressed|broken)|(doesn't|does not) (seem|look|appear) to have (drifted|changed|regressed)|(?<!(\\bno|\\bnot|n't|\\bnever|\\bnor|\\bnothing|\\bwithout)\\b[^.;:\\n]{0,40})(is |are |stays |remains )?(consistent with|in line with|faithful to|matches|agrees with) (the |its )?(design|document|doc|intent|rule)",
+        "source": {
+          "doc": "docs/design/features/native-hosting-load-context.md",
+          "quote": "Resolvers are queried in the component load order — the first one wins."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the class no longer does what it was written to do",
+      "points": 2
+    },
+    {
+      "criterion": "Names the difference exactly: AddComponent now puts the newest component's resolver first, so the most recently loaded component wins instead of the first-loaded one (resolvers are meant to be queried in load order, first wins)",
+      "points": 2
+    },
+    {
+      "criterion": "States a consequence: a component loaded later into a shared context can override which copy of a dependency resolves for the components before it, and the outcome depends on load order",
+      "points": 1
+    },
+    {
+      "criterion": "Says where the intended behaviour is written (docs/design/features/native-hosting-load-context.md, or a note carrying it)",
+      "points": 1
+    },
+    {
+      "criterion": "Does not take the class's new comment as the intent, since it was added with the change",
+      "points": 1
+    }
+  ]
+}

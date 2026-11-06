@@ -1,0 +1,97 @@
+{
+  "id": "milvus-why-metacache-by-id",
+  "family": "why",
+  "tools": "read",
+  "prompt": "Why is the proxy's MetaCache keyed by collection ID, with collection names and aliases kept only as hints? And how are cache fills kept from racing the invalidations that DDL broadcasts send, so that a describe started before a DDL can't put stale metadata back?",
+  "key": "Written in docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md (dated 2026-07-16; the code now lives in internal/proxy/metacache/meta_cache.go). The primary store used to be keyed by (db, name) while invalidations arrive by id, alias or db, so every id- or alias-driven invalidation did a linear scan under the global write lock; at a large cached working set (target 1M collections) each Load/Release/Drop/Rename/Alter broadcast stalled every query on the proxy for a full-cache sweep. Now the primary store is keyed by the cluster-unique collection id and is the single source of truth; names, aliases and partition lists are hints that resolve to an id and are validated against the primary on every read, so a failed validation is a cache miss (one extra describe), never a stale read. Hints are written only together with their entry and removed with it by one eviction routine (evictCollectionEntryLocked), so nothing dangles and there is no background reclamation; invalidations are O(1), with drop database the one deliberate per-database walk. Fills are ordered against invalidations pessimistically rather than by timestamps: a global fillMu RWMutex, fills (describe RPC + write-back) holding the read side for their whole duration and invalidations taking the write side, draining in-flight fills before evicting, so a pre-DDL snapshot always lands before the eviction that cleans it. This replaced the per-collection timestamp floor (collectionCacheVersion), which had known gaps, and the VersionCache type.",
+  "sources": [
+    {
+      "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+      "quote": "At a large cached working set (target: 1M collections) each broadcast stalls every query on the proxy for a full-cache sweep."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+      "quote": "The primary store is keyed by the cluster-unique collection id and is the single source of truth."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+      "quote": "A failed validation is a cache miss (one extra describe), never a stale read."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+      "quote": "Fills are ordered against invalidations pessimistically, not by timestamps."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+      "quote": "fills (RPC + write-back) hold the read side for their whole duration; invalidations take the write side, draining in-flight fills before evicting."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+      "quote": "guarded by a per-collection timestamp floor (`collectionCacheVersion`) with known gaps"
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "scan|o\\(n\\)|linear|sweep|search(ed)? (the|every|all)|iterat|walk(s|ed|ing)? (the|every|all|through|over)|every (cached )?(entry|collection)|(whole|entire|full)[- ]cache|all (cached )?(entries|collections)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+          "quote": "At a large cached working set (target: 1M collections) each broadcast stalls every query on the proxy for a full-cache sweep."
+        }
+      },
+      {
+        "pattern": "(?<!in)validat|cache miss|\\bmiss(es)?\\b|re-?describe|extra describe|stale hint|(check|verif|confirm)\\w*[^.\\n]{0,60}(against|with) (the )?(primary|id|entry)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+          "quote": "A failed validation is a cache miss (one extra describe), never a stale read."
+        }
+      },
+      {
+        "pattern": "fillmu|rw ?mutex|read[- ]write (lock|mutex)|read (lock|side)|shared lock|exclusive|drain|wait\\w* (for|on) (the )?(in[- ]flight|pending|running|ongoing) (fill|describe)|in[- ]flight (fill|describe)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+          "quote": "fills (RPC + write-back) hold the read side for their whole duration; invalidations take the write side, draining in-flight fills before evicting."
+        }
+      },
+      {
+        "pattern": "(replac\\w*|instead of|rather than|no longer|used to|previous\\w*|old(er)?|former\\w*|removed|dropped|retired|abandon\\w*|gave up|\\bnot\\b)[^.\\n]{0,80}(timestamp|version|collectioncacheversion|versioncache)|(timestamp|version|collectioncacheversion|versioncache)\\w*[^.\\n]{0,80}(replaced|removed|dropped|gaps|abandoned|retired|racy|race|went away|is gone)|pessimistic",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+          "quote": "guarded by a per-collection timestamp floor (`collectionCacheVersion`) with known gaps"
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(dropped|discarded|rejected|ignored|skipped|thrown away) (if|when|unless)[^.\\n]{0,80}(newer|later|higher|older)[^.\\n]{0,20}(timestamp|version)|(each|every) fill (records|carries|stamps|tags|is tagged|remembers)|compar\\w*[^.\\n]{0,40}timestamps?[^.\\n]{0,60}(fill|write-?back)",
+        "source": {
+          "doc": "docs/design-docs/design_docs/20260716-proxy-metacache-id-inverted-index.md",
+          "quote": "guarded by a per-collection timestamp floor (`collectionCacheVersion`) with known gaps"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says why: invalidations arrive by id, alias or database, so a (db, name)-keyed store forced scans under the global write lock that stalled the proxy at a large cache",
+      "points": 2
+    },
+    {
+      "criterion": "Names and aliases are hints validated against the id-keyed primary on read, so a failed validation is a miss rather than a stale read, and hints are evicted together with their entry",
+      "points": 1
+    },
+    {
+      "criterion": "Fills hold the read side of a fill lock (fillMu) for the whole describe and write-back, and invalidations take the write side and drain in-flight fills, in place of the old timestamp/version floor",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

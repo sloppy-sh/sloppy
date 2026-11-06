@@ -1,0 +1,20 @@
+{
+  "text": "The address is a label a person reads and cites; a note is identified by its ref, <did>/<ulid> (AI.md, \"The Genealogy Is the Protocol\").",
+  "timing": {
+    "api_ms": 1200,
+    "first_token_ms": 400,
+    "first_tool_ms": 600,
+    "answer_ms": 1100
+  },
+  "tokens": {
+    "input": 1000,
+    "cache_write": 2000,
+    "cache_read": 3000,
+    "output": 200,
+    "reasoning": 0
+  },
+  "cost_reported": 0.25,
+  "turns": 3,
+  "tool_calls": { "Read": 2, "Grep": 1 },
+  "mcp_calls": { "search_notes": 1 }
+}

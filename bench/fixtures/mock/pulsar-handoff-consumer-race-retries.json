@@ -1,0 +1,47 @@
+{
+  "text": "Keep 12. At Brightline Rail the network load balancer drains connections, keeping the old pod's connection half-open up to 10 s after a deploy; with 5 retries the new exclusive consumer got ConsumerBusy for the whole drain and the train-position feed stalled on each deploy.",
+  "timing": {
+    "api_ms": 2000,
+    "first_token_ms": 300,
+    "first_tool_ms": 500,
+    "answer_ms": 1900
+  },
+  "tokens": {
+    "input": 900,
+    "cache_write": 1500,
+    "cache_read": 3000,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.02,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1,
+    "mcp__history__git_log": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "pulsar-broker/src/main/java/org/apache/pulsar/broker/service/AbstractDispatcherSingleActiveConsumer.java"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "docs/decisions/pulsar-handoff-consumer-race-retries.md"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "mcp__history__git_log",
+      "input": {},
+      "result": "commit ..."
+    }
+  ]
+}

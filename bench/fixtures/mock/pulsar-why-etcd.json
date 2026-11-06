@@ -1,0 +1,26 @@
+{
+  "text": "The broker throws an IllegalArgumentException at startup: etcd support was removed in PIP-462. The jetcd client dragged in gRPC and Vert.x and needed shading, grew the distribution, and was poorly maintained, with almost no production use. Use ZooKeeper (zk:) or Oxia (oxia:).",
+  "timing": {
+    "api_ms": 2700,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2600
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 280,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

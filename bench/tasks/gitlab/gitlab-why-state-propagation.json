@@ -1,0 +1,124 @@
+{
+  "id": "gitlab-why-state-propagation",
+  "family": "why",
+  "prompt": "When somebody archives a top-level group, GitLab writes the new state onto every subgroup and project under it, rather than looking at the ancestors when it reads. Why was it built that way, how does it make sure the change is not lost if the job dies halfway through, and what happens to a subgroup under it that is already scheduled for deletion?",
+  "tools": "read",
+  "key": "The effective state used to be found at read time by walking up the ancestor chain: every state check added query overhead, descendants inferred it differently, and caching was needed to keep reads fast. Propagation writes the resulting state to every descendant when it changes, so a read is a single-column comparison with no traversal; the trade-off is that writes do more work, asynchronously (ADR 003, the state propagation model). The state change and an outbox row in namespace_state_propagations are written in the same transaction, so the request cannot be lost; Namespaces::StatePropagationWorker walks the descendants in batches with StatePropagationIterator and a conditional UPDATE, and deletes the row when done; if it fails the row stays and Namespaces::StatePropagationCronWorker resets stalled rows and re-enqueues pending ones. States have a precedence (ancestor_inherited 0, archived 1, deletion_scheduled 2, maintenance 6) and a lower-precedence propagation never overwrites a descendant in a higher one, so a subgroup already deletion_scheduled stays deletion_scheduled when an ancestor is archived (StatePrecedence.overwritable_states(:ancestor_inherited, :archived) is [:ancestor_inherited]). Written in doc/development/namespaces_state_propagation.md (added 2026-07-07).",
+  "sources": [
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "Every state check added query overhead because it walked the hierarchy."
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "Caching was required to keep read performance acceptable, which added complexity."
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "The propagation model writes the resulting state to every descendant when the state changes on a namespace."
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "Reads then become a single-column comparison, with no ancestor traversal."
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "The trade-off is that writes do more work, and that work happens asynchronously."
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "When a namespace state changes, GitLab writes the state change and an outbox record in the same database transaction."
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "Because both writes commit together, the propagation request cannot be lost."
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "`Namespaces::StatePropagationCronWorker` recovers lost or stalled propagation jobs."
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "A lower-precedence propagation does not overwrite a descendant that is already in a higher-precedence state."
+    },
+    {
+      "doc": "doc/development/namespaces_state_propagation.md",
+      "quote": "Subgroup C stays `deletion_scheduled` because `deletion_scheduled` has higher precedence than `archived`."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(?:single|one)[- ]column|no (?:ancestor |hierarchy |parent )?(?:travers|walk|lookup)|without (?:walking|travers|a traversal|looking (?:up|at))|query overhead|(?:travers|walk|look|check|quer|read|join|load)[a-z]*[^.\\n]{0,80}(?:ancestor|parent|hierarch)[^.\\n]{0,100}(?:slow|expensive|costly|cost|overhead|extra quer|caching|n\\+1)|(?:read|check|lookup)s?[^.\\n]{0,40}(?:become|are now|is now|just|only|then)[^.\\n]{0,40}(?:cheap|fast|simple|constant|quick|one|single)",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "Reads then become a single-column comparison, with no ancestor traversal."
+        }
+      },
+      {
+        "pattern": "(?:write|propagat|update|push|cascad|fan)[a-z]*[^.\\n]{0,100}(?:async|background|worker|sidekiq|batch|later)|(?:async|background|worker|sidekiq)[^.\\n]{0,100}(?:write|propagat|descendant|update|push)",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "The trade-off is that writes do more work, and that work happens asynchronously."
+        }
+      },
+      {
+        "pattern": "outbox|(?:same|single|one) (?:database |db )?transaction|transactional(?:ly)?|(?:in|within) (?:a|the) (?:database |db )?transaction|namespace_state_propagations|(?:commit|written|write)[a-z]*[^.\\n]{0,40}(?:together|atomically)",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "When a namespace state changes, GitLab writes the state change and an outbox record in the same database transaction."
+        }
+      },
+      {
+        "pattern": "cron|reconcil|re-?enqueue|stall|sweep|periodic|(?:row|record|outbox)[^.\\n]{0,100}(?:stays|remains|is left|still there|not deleted|picked up)",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "`Namespaces::StatePropagationCronWorker` recovers lost or stalled propagation jobs."
+        }
+      },
+      {
+        "pattern": "(?:deletion[-_ ]scheduled|scheduled for deletion|pending deletion)[^\\n]{0,160}(?:stays|stay |remain|keeps|untouched|not (?:be )?(?:overwritten|changed|touched|archived)|unchanged|left alone|higher[- ]precedence|outranks|is skipped)|(?:stays|stay|remains|remain|keeps|is left|left) (?:it'?s |its )?(?:deletion[-_ ]scheduled|scheduled for deletion|pending deletion)|(?:deletion|(?:deletion[-_ ]scheduled|scheduled for deletion|pending deletion)) (?:state )?wins|(?:higher|highest)[- ]precedence[^.\\n]{0,100}(?:deletion|not overwrit|isn'?t overwrit)|(?:can'?t|cannot|can not|doesn'?t|does not|won'?t|will not|never|not) (?:overwrite|override|replace|touch|change|archive|clobber)[^.\\n]{0,80}(?:deletion|scheduled)",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "Subgroup C stays `deletion_scheduled` because `deletion_scheduled` has higher precedence than `archived`."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(deletion[_ ]scheduled|scheduled for deletion)( (subgroup|one|descendant|namespace)s?)? (is|are|becomes|become|gets|get|will be) (also )?(archived|overwritten|switched to archived)|(?:deletion[-_ ]scheduled|scheduled for deletion|pending deletion)[^.\\n]{0,60}(?:is|are|gets|get|will be) (?:also )?archived (?:too|as well|anyway)|archived (?:wins|overrides|takes precedence)|archiv[a-z]*[^.\\n]{0,40}(?<!(?:not|never|n't|cannot) )(?:overwrites|overrides|replaces|clears|cancels)[^.\\n]{0,40}(?:deletion|scheduled)|(?:ancestor|parent)[^.\\n]{0,60}(?:at read time|when (?:it )?reads?)[^.\\n]{0,40}(?:cheap|fast|inexpensive)",
+        "source": {
+          "doc": "doc/development/namespaces_state_propagation.md",
+          "quote": "Subgroup C stays `deletion_scheduled` because `deletion_scheduled` has higher precedence than `archived`."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Reading the state by walking up the ancestors cost query overhead on every check (and needed caching); propagating makes a read a single-column comparison",
+      "points": 2
+    },
+    {
+      "criterion": "The trade-off: writes do more work, asynchronously, in batches over the descendants",
+      "points": 1
+    },
+    {
+      "criterion": "The state change and an outbox record commit in the same transaction, so the request cannot be lost, and a cron worker re-enqueues pending or stalled records",
+      "points": 2
+    },
+    {
+      "criterion": "A subgroup already scheduled for deletion stays scheduled for deletion, because a lower-precedence state never overwrites a higher one",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

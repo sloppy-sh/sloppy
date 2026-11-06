@@ -1,0 +1,26 @@
+{
+  "text": "It is not. It now seeds the smoothed values when the smoothed service time is 0 instead of when the previous sample expired, so an outlier after zeros jumps straight in undamped. The rule is in docs/design-docs/design_docs/20261019-look-aside-balancer-fix-design.md.",
+  "timing": {
+    "api_ms": 3000,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2900
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 310,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

@@ -40,6 +40,7 @@ import {
 	type VaultDifference
 } from '@sloppy/vault';
 import { api } from '../api.js';
+import type { NotesSource } from '../code-provenance.js';
 import type { DraftNote } from '../draft-said.js';
 import { runtime } from '../runtime.js';
 import { seam } from '../seam.svelte.js';
@@ -303,6 +304,15 @@ class ChatDraftStore {
 		} finally {
 			this.#reading = false;
 		}
+	}
+
+	/** Every note one of the two copies holds, as the review last read it, to
+	 *  read which of them point into a file. Nothing before it has. */
+	notesOn(side: DraftSide): NotesSource {
+		return {
+			listNodes: async (query) => (await this.#copies[side]?.listNodes(query)) ?? [],
+			listBlocks: async (note) => (await this.#copies[side]?.listBlocks(note)) ?? []
+		};
 	}
 
 	/** One note as one of the two copies has it. `null` is a copy that does not

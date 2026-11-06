@@ -3,15 +3,26 @@
 // docs/ARCHITECTURE.md § "An assistant outside the app".
 
 import { readFile } from "node:fs/promises";
-import { type Files, performChatCall } from "@sloppy/local";
 import {
-  advertisedChatTools,
+  type CodeReader,
+  type Files,
+  graphOwnerAt,
+  performChatCall,
+} from "@sloppy/local";
+import {
+  type AnswerShape,
   type ChatToolAnswer,
+  type ChatToolName,
   ChatToolCallSchema,
+  DEFAULT_SERVING,
+  type Doctrine,
   isChatTool,
   SLOPPY_TOOLS,
+  servedChatTools,
+  type ToolSet,
   ulid,
 } from "@sloppy/types";
+import { refsWidened, terseAnswer } from "./terse.js";
 
 /** What this server answers to, and what a caller prefixes its acts with. */
 const NAME = "sloppy";
@@ -46,6 +57,24 @@ export interface McpServer {
   answer(line: string): void;
   /** What this build calls itself to a caller that asks. */
   version: string;
+  /** **Absent is `answer-first`.** */
+  doctrine?: Doctrine;
+  /** **Absent is `default`**, every act. */
+  tools?: ToolSet;
+  /** **Absent is `default`**, the answers the app's own chat reads. */
+  answers?: AnswerShape;
+  /** **Absent is no.** */
+  landOnCode?: boolean;
+  /** Acts neither advertised nor answered. **Absent is none.** */
+  without?: readonly ChatToolName[];
+  /** What reads the project's code for `find_code`. **Absent is none**, and
+   *  the act answers that there is no code to look through. */
+  code?: CodeReader;
+}
+
+interface Serving extends McpServer {
+  /** Whose graph the notes are in, once a terse answer has asked. */
+  home?: Promise<string | undefined>;
 }
 
 type Answered =
@@ -55,7 +84,8 @@ type Answered =
 /** Serves until the caller is done with it, one message at a time and in the
  *  order they came: two writes landing together would each read where the
  *  other was about to write. */
-export async function serveMcp(at: McpServer): Promise<void> {
+export async function serveMcp(server: McpServer): Promise<void> {
+  const at: Serving = { ...server };
   for await (const line of at.calls) {
     const asked = read(line);
     if (asked === undefined) {
@@ -70,7 +100,7 @@ export async function serveMcp(at: McpServer): Promise<void> {
 }
 
 async function answering(
-  at: McpServer,
+  at: Serving,
   asked: Record<string, unknown>,
 ): Promise<Answered> {
   const method = typeof asked.method === "string" ? asked.method : "";
@@ -80,7 +110,7 @@ async function answering(
     case "ping":
       return { result: {} };
     case "tools/list":
-      return { result: { tools: advertised() } };
+      return { result: { tools: advertised(at) } };
     case "tools/call":
       // Every call is answered, whatever happened: a caller left waiting on an
       // answer that never comes has no way to find out that it never will.
@@ -120,12 +150,19 @@ function initialized(at: McpServer, params: unknown): unknown {
   };
 }
 
-function advertised(): unknown[] {
-  return advertisedChatTools().map((act) => ({
-    name: act.name,
-    description: act.description,
-    inputSchema: act.arguments,
-  }));
+function advertised(at: McpServer): unknown[] {
+  return servedChatTools({
+    doctrine: at.doctrine ?? DEFAULT_SERVING.doctrine,
+    tools: at.tools ?? DEFAULT_SERVING.tools,
+    answers: at.answers ?? DEFAULT_SERVING.answers,
+    landOnCode: at.landOnCode ?? DEFAULT_SERVING.landOnCode,
+  })
+    .filter((act) => !at.without?.includes(act.name))
+    .map((act) => ({
+      name: act.name,
+      description: act.description,
+      inputSchema: act.arguments,
+    }));
 }
 
 /** A call that came to nothing is an answer the caller reads and acts on, not a
@@ -143,7 +180,13 @@ function trouble(said: string): Answered {
   return came({ said, trouble: true });
 }
 
-async function calling(at: McpServer, params: unknown): Promise<Answered> {
+/** Whose graph the notes are in, asked once. */
+function homeOf(at: Serving, files: Files): Promise<string | undefined> {
+  at.home ??= graphOwnerAt(files);
+  return at.home;
+}
+
+async function calling(at: Serving, params: unknown): Promise<Answered> {
   const held = objectOf(params) ?? {};
   const name = held.name;
   if (typeof name !== "string") {
@@ -153,7 +196,10 @@ async function calling(at: McpServer, params: unknown): Promise<Answered> {
   const act = SLOPPY_TOOLS.find((one) => one === name);
   if (act === undefined) return trouble(NOT_HERE);
   if (!isChatTool(act)) return trouble(A_BUILD);
-  const given = held.arguments ?? {};
+  if (at.without?.includes(act)) return trouble(NOT_HERE);
+  const terse = at.answers === "terse";
+  const home = terse ? await homeOf(at, at.files) : undefined;
+  const given = refsWidened(held.arguments ?? {}, home);
   if (objectOf(given)?.in !== undefined) return trouble(ONE_FOLDER);
   const call = ChatToolCallSchema.safeParse({
     call: ulid(),
@@ -164,9 +210,12 @@ async function calling(at: McpServer, params: unknown): Promise<Answered> {
     const says = whatIsWrong(call.error.issues[0]);
     return trouble(says ? `${UNREADABLE} ${says}` : UNREADABLE);
   }
-  const done = await performChatCall(at.files, call.data);
+  const done = await performChatCall(at.files, call.data, false, {
+    landOnCode: at.landOnCode === true,
+    ...(at.code === undefined ? {} : { code: at.code }),
+  });
   return came({
-    said: done.said,
+    said: terse && !done.trouble ? terseAnswer(done.said, home) : done.said,
     ...(done.trouble === undefined ? {} : { trouble: done.trouble }),
   });
 }

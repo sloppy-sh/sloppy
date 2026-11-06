@@ -1,0 +1,26 @@
+{
+  "text": "A scalable topic (PIP-460) is a DAG of hash-range segments, each one managed ledger, split and merged without breaking key order. The controller (PIP-468) owns layout and assignment; auto split/merge is PIP-483; consumers are stream, queue and checkpoint, with key-shared buckets in PIP-486; the V5 client is PIP-466; the contract is spec/scalable-topics.",
+  "timing": {
+    "api_ms": 2700,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2600
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 280,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

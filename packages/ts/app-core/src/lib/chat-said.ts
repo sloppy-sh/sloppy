@@ -145,6 +145,7 @@ export function toolLine(block: ToolCallBlock): ToolLine {
 		case 'read_graph':
 			return { doing };
 		case 'search_notes':
+		case 'find_code':
 			return { doing, subject: held.arguments.words };
 		case 'read_note':
 		case 'read_around':
@@ -158,6 +159,12 @@ export function toolLine(block: ToolCallBlock): ToolLine {
 			return { doing, note: held.arguments.note };
 		case 'write_note':
 			return { doing, subject: held.arguments.about };
+		case 'relate': {
+			const { note, title, about } = held.arguments;
+			if (note !== undefined) return { doing, note };
+			const subject = title ?? about;
+			return { doing, ...(subject === undefined ? {} : { subject }) };
+		}
 		case 'brief': {
 			const { words, about = [] } = held.arguments;
 			const subject = words ?? about.join(', ');

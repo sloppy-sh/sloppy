@@ -1,0 +1,26 @@
+{
+  "text": "Compiler::fgInlineAppendAsyncFrameStatements in src/coreclr/jit/fginline.cpp emits it; the helper is AsyncHelpers.RestoreInlinedFrameContexts in src/coreclr/System.Private.CoreLib/src/System/Runtime/CompilerServices/AsyncHelpers.CoreCLR.cs. GT_CONTINUATION_MEMBER_OFFSET is replaced in AsyncTransformation::Run in src/coreclr/jit/async.cpp, which also has CreateInlinedFrameSuspensionTail and SaveAsyncContexts.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

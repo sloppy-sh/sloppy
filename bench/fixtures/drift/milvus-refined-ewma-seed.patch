@@ -1,0 +1,59 @@
+diff --git a/internal/proxy/shardclient/refined_look_aside_balancer.go b/internal/proxy/shardclient/refined_look_aside_balancer.go
+index 8f2162df4..13f5bd295 100644
+--- a/internal/proxy/shardclient/refined_look_aside_balancer.go
++++ b/internal/proxy/shardclient/refined_look_aside_balancer.go
+@@ -253,10 +253,9 @@ func (b *RefinedLookAsideBalancer) UpdateCostMetrics(node int64, cost *internalp
+ 		b.refinedMetricsMap.Insert(node, metrics)
+ 	}
+ 	nowTs := time.Now().UnixMilli()
+-	// Seed the smoothed value with the fresh sample when the previous one has
+-	// expired (or never existed): 0 cannot mark "unseeded" because it is
+-	// ServiceTime's normal value. Otherwise apply the EWMA.
+-	if nowTs-metrics.ts.Load() > b.metricExpireInterval {
++	// Seed the smoothed value with the fresh sample while nothing has been
++	// smoothed yet (a zero smoothed value). Otherwise apply the EWMA.
++	if math.Float64frombits(metrics.serviceTimeSmooth.Load()) == 0 {
+ 		metrics.serviceTimeSmooth.Store(math.Float64bits(float64(cost.GetServiceTime())))
+ 		metrics.responseTimeSmooth.Store(math.Float64bits(float64(cost.GetResponseTime())))
+ 	} else {
+diff --git a/internal/proxy/shardclient/refined_look_aside_balancer_test.go b/internal/proxy/shardclient/refined_look_aside_balancer_test.go
+index 12de2f994..1fb1e1e4d 100644
+--- a/internal/proxy/shardclient/refined_look_aside_balancer_test.go
++++ b/internal/proxy/shardclient/refined_look_aside_balancer_test.go
+@@ -115,31 +115,13 @@ func (suite *RefinedLookAsideBalancerSuite) TestEwma() {
+ 	suite.InDelta(29.8, suite.balancer.ewma(36, 5), 1e-6)
+ }
+ 
+-func (suite *RefinedLookAsideBalancerSuite) TestUpdateMetricsSeedWhenExpired() {
+-	// A fresh sample after an expired (or never-existing) one seeds the
+-	// smoothed value directly instead of blending with a stale value.
++func (suite *RefinedLookAsideBalancerSuite) TestUpdateMetricsSeedWhenUnseeded() {
++	// A node with nothing smoothed yet seeds the smoothed value directly from
++	// its first sample instead of blending it with zero.
+ 	metrics, _ := suite.balancer.refinedMetricsMap.GetOrInsert(1, &RefinedCostMetrics{})
+-	metrics.ts.Store(time.Now().UnixMilli() - 10000)
+-	metrics.serviceTimeSmooth.Store(math.Float64bits(100))
+-	metrics.responseTimeSmooth.Store(math.Float64bits(100))
+-
+-	suite.balancer.UpdateCostMetrics(1, &internalpb.CostAggregation{ResponseTime: 1, ServiceTime: 1})
+-	suite.Equal(1.0, math.Float64frombits(metrics.serviceTimeSmooth.Load()))
+-	suite.Equal(1.0, math.Float64frombits(metrics.responseTimeSmooth.Load()))
+-}
+-
+-func (suite *RefinedLookAsideBalancerSuite) TestUpdateMetricsZeroSampleOutlierDamped() {
+-	// 0 is ServiceTime's normal value, so it cannot be used as the "unseeded"
+-	// marker: after a run of 0ms samples, a 20ms outlier must still be damped
+-	// by the EWMA (to 4 with alpha 0.2) instead of seeding straight to 20.
+-	metrics, _ := suite.balancer.refinedMetricsMap.GetOrInsert(1, &RefinedCostMetrics{})
+-	suite.balancer.UpdateCostMetrics(1, &internalpb.CostAggregation{ResponseTime: 0, ServiceTime: 0})
+-	suite.balancer.UpdateCostMetrics(1, &internalpb.CostAggregation{ResponseTime: 0, ServiceTime: 0})
+-	suite.Equal(0.0, math.Float64frombits(metrics.serviceTimeSmooth.Load()))
+-
+ 	suite.balancer.UpdateCostMetrics(1, &internalpb.CostAggregation{ResponseTime: 20, ServiceTime: 20})
+-	suite.InDelta(4.0, math.Float64frombits(metrics.serviceTimeSmooth.Load()), 1e-6)
+-	suite.InDelta(4.0, math.Float64frombits(metrics.responseTimeSmooth.Load()), 1e-6)
++	suite.Equal(20.0, math.Float64frombits(metrics.serviceTimeSmooth.Load()))
++	suite.Equal(20.0, math.Float64frombits(metrics.responseTimeSmooth.Load()))
+ }
+ 
+ func (suite *RefinedLookAsideBalancerSuite) TestInvalidSmoothingFactorFallback() {

@@ -1,0 +1,79 @@
+{
+  "id": "carbon-locate-bracket-recovery",
+  "family": "locate",
+  "tools": "read",
+  "prompt": "When a Carbon source file has an unmatched bracket, where does the lexer decide where the missing bracket belongs? Name the files and the functions or types involved, with paths relative to the repository root: the entry point, the search over candidate repairs, the tables that price each repair, where the lexer reports and applies the result, and the tool that measures how often recovery gets it right.",
+  "key": "From toolchain/docs/lex/mismatched_brackets.md (added with the algorithm in #7574 on 2026-08-19). Entry point: FixMismatchedBrackets, declared in toolchain/lex/mismatched_brackets.h and defined in toolchain/lex/mismatched_brackets.cpp; it takes MismatchedBracketTokens (a BracketTokenKind each) and returns BracketCorrections. The search: RegionSearch over BeamNode states, one damaged region at a time (regions over MaxRegionItemsForSearch items go to a greedy fallback), in mismatched_brackets.cpp. The cost tables: CloserRules, OpenerRules (first-match) and AdvanceRules (additive), rows of BracketRule conditioned on Cues, in the same file. The lexer calls it from Lexer::DiagnoseAndFixMismatchedBrackets in toolchain/lex/lex.cpp, which emits each diagnostic and its note and applies the insertions through ErrorRecoveryBuffer. Measurement: mismatched_brackets_eval (toolchain/lex/mismatched_brackets_eval.cpp, `bazel run -c opt //toolchain/lex:mismatched_brackets_eval`), which deletes brackets from the repository's Carbon files and checks whether recovery restores them; there is also a benchmark and a fuzzer beside it.",
+  "sources": [
+    {
+      "doc": "toolchain/docs/lex/mismatched_brackets.md",
+      "quote": "`FixMismatchedBrackets` is the whole of that: it takes the token sequence and returns a list of `BracketCorrection`s, each pairing a diagnostic to report with a fix to apply to the token stream."
+    },
+    {
+      "doc": "toolchain/docs/lex/mismatched_brackets.md",
+      "quote": "`RegionSearch` solves one region."
+    },
+    {
+      "doc": "toolchain/docs/lex/mismatched_brackets.md",
+      "quote": "They live in three tables of `BracketRule`s:"
+    },
+    {
+      "doc": "toolchain/docs/lex/mismatched_brackets.md",
+      "quote": "Insertions are buffered in an `ErrorRecoveryBuffer` and applied in one pass that renumbers the token stream, after which bracket cross-references are recomputed."
+    },
+    {
+      "doc": "toolchain/docs/lex/mismatched_brackets.md",
+      "quote": "`mismatched_brackets_eval` measures recovery by corrupting known-good code and asking whether recovery reconstructs it."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": ["toolchain/lex/mismatched_brackets.cpp"]
+      },
+      {
+        "any": ["FixMismatchedBrackets"],
+        "source": "toolchain/lex/mismatched_brackets.h"
+      },
+      {
+        "any": ["RegionSearch", "BeamNode"],
+        "source": "toolchain/lex/mismatched_brackets.cpp"
+      },
+      {
+        "any": ["CloserRules", "OpenerRules", "AdvanceRules"],
+        "source": "toolchain/lex/mismatched_brackets.cpp"
+      },
+      {
+        "any": ["DiagnoseAndFixMismatchedBrackets", "ErrorRecoveryBuffer"],
+        "source": "toolchain/lex/lex.cpp"
+      },
+      {
+        "any": ["mismatched_brackets_eval"],
+        "source": "toolchain/lex/mismatched_brackets_eval.cpp"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names FixMismatchedBrackets in toolchain/lex/mismatched_brackets.h / .cpp as the entry point",
+      "points": 1
+    },
+    {
+      "criterion": "Names the per-region beam search (RegionSearch, BeamNode) and the cost tables (CloserRules, OpenerRules, AdvanceRules) in toolchain/lex/mismatched_brackets.cpp",
+      "points": 2
+    },
+    {
+      "criterion": "Names where the lexer reports and applies the corrections: DiagnoseAndFixMismatchedBrackets and ErrorRecoveryBuffer in toolchain/lex/lex.cpp",
+      "points": 1
+    },
+    {
+      "criterion": "Names mismatched_brackets_eval as the measurement tool",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

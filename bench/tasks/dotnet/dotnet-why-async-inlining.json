@@ -1,0 +1,131 @@
+{
+  "id": "dotnet-why-async-inlining",
+  "family": "why",
+  "tools": "read",
+  "prompt": "The JIT can now inline runtime-async methods that really await into their async callers. Why couldn't such a call simply be inlined like any other call: what observable behaviour disappears when both the call site and the callee's body are removed? When an inlined callee suspends, is resumed and then logically returns to its caller, what does the JIT have to emit at that point, and why does part of it need help from the async infrastructure rather than being done in JIT'ed code? Why is the inlining expected to pay off anyway? And which awaits does it still refuse to inline?",
+  "key": "From docs/design/coreclr/jit/runtime-async-inlining.md (added with general async inlining in #131538 on 2026-08-14). Runtime async attaches behaviour to both the await (call site) and the callee, and inlining removes both. At the call site every suspending await saves and restores the ExecutionContext (so AsyncLocal values flow), and Task/ValueTask awaits capture a continuation context — the current SynchronizationContext or TaskScheduler, or the thread pool under ConfigureAwait(false) — and resume on it. The callee's body is wrapped in a save/restore of the thread's ExecutionContext and SynchronizationContext, restored when it finishes synchronously and also on suspension. After inlining, the JIT must reproduce what the dispatcher would have done when the callee's frame returned: it tracks per-frame resumed flags (resumed_F set false at a frame's start, true at its resumption points, and OR-ed into the caller on return), on suspension inside the inlinee captures the contexts each enclosing frame would have captured, and in the post-inline IR, if the callee was resumed, restores the caller's ExecutionContext and makes sure it runs on the caller's continuation context. The JIT cannot switch to a continuation context itself — there is no way to set up that environment without posting a callback — so it needs a suspension+switch+resumption from the async infrastructure; the implementation expands only the resumed check and leaves the rest to one AsyncHelpers.RestoreInlinedFrameContexts call. It pays off because IsOnRightContext is expected to be true almost always (the synchronization context is very rarely changed during async methods), and the synchronous, never-suspended case is the one worth optimising; if a switch were common, inlining would not be profitable. Still not inlined: awaits that may suspend in try clauses (the catch-and-rethrow handling is not implemented; importercalls.cpp rejects an await whose inlined frame would sit in a protected region of the caller, or suspend inside one of the inlinee), awaits into a non-async root method, and ValueTask-adapted awaits. General inlining is on by default (JitAsyncInlining=1); the document's line that only non-suspending inlinees are supported describes the earlier state.",
+  "sources": [
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "Every suspending await saves/restores the `ExecutionContext`."
+    },
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "By default, the current `SynchronizationContext` or `TaskScheduler` is captured and the continuation is posted to it."
+    },
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "When inlining a runtime async call we remove both a call site and the callee. This removes the user-visible behaviors discussed above."
+    },
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "The JIT cannot accomplish this on its own; there is no way to directly set up the environment without posting a callback."
+    },
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "We expect `IsOnRightContext` to be true almost always, since it is very rare that the current synchronization context is modified, especially during the execution of async methods."
+    },
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "If this was a common case then it is unlikely that inlining would ever be profitable."
+    },
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "When starting a function `F` (whether it be the top function or start of an inlined function), assign `resumed_F = false`"
+    },
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "Initially we will skip inlining async calls that may suspend in try clauses."
+    },
+    {
+      "doc": "src/coreclr/jit/importercalls.cpp",
+      "quote": "// The inlined frame must not end up inside a protected region of the caller."
+    },
+    {
+      "doc": "src/coreclr/jit/jitconfigvalues.h",
+      "quote": "RELEASE_CONFIG_INTEGER(JitAsyncInlining, \"JitAsyncInlining\", 1)"
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "execution ?context|asynclocal",
+        "source": {
+          "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+          "quote": "Every suspending await saves/restores the `ExecutionContext`."
+        }
+      },
+      {
+        "pattern": "synchroni[sz]ation ?context|task ?scheduler|configureawait|continuation context|captured context",
+        "source": {
+          "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+          "quote": "By default, the current `SynchronizationContext` or `TaskScheduler` is captured and the continuation is posted to it."
+        }
+      },
+      {
+        "pattern": "restoreinlinedframecontexts|switchcontext|(post|posting|queue|queuing|schedul)\\w*[^.\\n]{0,40}(callback|continuation|work item|delegate)|(cannot|can'?t|no way to|unable to|has no way)[^.\\n]{0,60}(switch|move|hop|get)\\w*[^.\\n]{0,30}(context|thread)|suspen\\w*[^.\\n]{0,25}(,|and|\\+|then)\\s*(a )?switch",
+        "source": {
+          "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+          "quote": "The JIT cannot accomplish this on its own; there is no way to directly set up the environment without posting a callback."
+        }
+      },
+      {
+        "pattern": "(rare|rarely|almost always|almost never|seldom|uncommon|unusual|hardly ever)[^.\\n]{0,150}(context|thread)|(context|thread)[^.\\n]{0,120}(rare|rarely|almost always|almost never|seldom|uncommon|unusual|hardly ever)|isonrightcontext",
+        "source": {
+          "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+          "quote": "We expect `IsOnRightContext` to be true almost always, since it is very rare that the current synchronization context is modified, especially during the execution of async methods."
+        }
+      },
+      {
+        "pattern": "resumed_\\w+|resumed[- ](flag|bool|boolean|indicator|variable|local|status|state)|(flag|bool|boolean|indicator|variable|local)s?[^.\\n]{0,60}(whether|if)[^.\\n]{0,60}resumed|lvaresumedindicator|resumption (status|flag|indicator)",
+        "source": {
+          "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+          "quote": "When starting a function `F` (whether it be the top function or start of an inlined function), assign `resumed_F = false`"
+        }
+      },
+      {
+        "pattern": "(try|protected|eh|exception[- ]handling|catch|handler) (clause|block|region|scope)s?|inside (a |an )?(try|catch|protected)|catch[- ]and[- ]rethrow",
+        "source": {
+          "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+          "quote": "Initially we will skip inlining async calls that may suspend in try clauses."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(?<!\\b(no longer|not|n't|never)\\b[^.\\n]{0,30})only (inlines?|supports?|handles?|allows?) (callees|methods|inlinees|async methods|calls)[^.\\n]{0,20}(that|which|with) (never suspend|have no awaits?|don'?t (await|suspend)|do not (await|suspend))",
+        "source": {
+          "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+          "quote": "When inlining a runtime async call we remove both a call site and the callee. This removes the user-visible behaviors discussed above."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says inlining removes the call site's and the callee's behaviours: ExecutionContext (AsyncLocal) save/restore on suspension, the captured continuation context (SynchronizationContext/TaskScheduler, ConfigureAwait), and the callee's synchronous context save/restore",
+      "points": 2
+    },
+    {
+      "criterion": "Says the JIT tracks per-frame resumed flags and, when a resumed inlinee returns, restores the caller's ExecutionContext and gets onto the caller's continuation context, which needs a suspend+switch+resume from the async infrastructure (RestoreInlinedFrameContexts) since the JIT cannot switch context without posting a callback",
+      "points": 2
+    },
+    {
+      "criterion": "Says it pays off because the context almost never changes (IsOnRightContext is almost always true) and the synchronous path is the one optimised",
+      "points": 1
+    },
+    {
+      "criterion": "Names what is still not inlined: awaits that may suspend in try/protected regions (no catch-and-rethrow yet), and awaits into a non-async root",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project (for example that only callees that never suspend are inlined today)",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

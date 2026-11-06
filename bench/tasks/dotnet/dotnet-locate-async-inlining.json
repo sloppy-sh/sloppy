@@ -1,0 +1,86 @@
+{
+  "id": "dotnet-locate-async-inlining",
+  "family": "locate",
+  "tools": "read",
+  "prompt": "When the JIT inlines a runtime-async callee that can suspend, where is the IR emitted for the point where the inlined callee logically returns to its caller, and where is the managed helper that IR calls to restore the caller's contexts and switch context if needed? Before the continuation's layout is known, member offsets are represented by a placeholder node: what is it, where is it created and where is it replaced with constants? Where is the suspension tail generated for suspensions inside inlined frames, and where are the per-method context saves inserted? Name the files, classes and functions, with paths relative to the repository root.",
+  "key": "From docs/design/coreclr/jit/runtime-async-inlining.md (added in #131538 on 2026-08-14). Compiler::fgInlineAppendAsyncFrameStatements in src/coreclr/jit/fginline.cpp emits the post-inline IR (if the callee was resumed, await AsyncHelpers.RestoreInlinedFrameContexts(...) and set the caller's resumed flag), and Compiler::fgSetupAsyncFrameTransitionCall in the same file turns that call into an async call. The helper is AsyncHelpers.RestoreInlinedFrameContexts in src/coreclr/System.Private.CoreLib/src/System/Runtime/CompilerServices/AsyncHelpers.CoreCLR.cs (its method handle reaches the JIT through getAsyncInfo, src/coreclr/inc/corinfo.h). The placeholder is the GT_CONTINUATION_MEMBER_OFFSET node (a GenTreeVal; for inlined frames Compiler::gtNewContinuationMemberIndir in fginline.cpp creates it), replaced with constant offsets in AsyncTransformation::Run in src/coreclr/jit/async.cpp after the continuation layout is built (\"Now bash all GT_CONTINUATION_MEMBER_OFFSET into appropriate constants\"); the members themselves are ContinuationMember::InlineFrameExecutionContext/InlineFrameContinuationContext/InlineFrameFlags in async.cpp. The suspension tail is AsyncTransformation::CreateInlinedFrameSuspensionTail in src/coreclr/jit/async.cpp, run in the PHASE_ASYNC phase (\"Transform async\", Compiler::TransformAsync). The context saves are Compiler::SaveAsyncContexts in src/coreclr/jit/async.cpp, the PHASE_ASYNC_SAVE_CONTEXTS phase in src/coreclr/jit/compphases.h. General async inlining is gated by JitAsyncInlining (src/coreclr/jit/jitconfigvalues.h, default 1) through Compiler::generalAsyncInliningEnabled. All paths and names were checked to exist at 51ab64509a.",
+  "sources": [
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "To solve this we will introduce a `GT_CONTINUATION_MEMBER_OFFSET` node that represents the member offset and that is replaced by a constant as part of the async transformation."
+    },
+    {
+      "doc": "docs/design/coreclr/jit/runtime-async-inlining.md",
+      "quote": "The implementation expands only the `resumed_C` check as JIT IR and leaves the rest as a single"
+    },
+    {
+      "doc": "src/coreclr/jit/fginline.cpp",
+      "quote": "// fgInlineAppendAsyncFrameStatements: Emit the IR that handles an inlined async"
+    },
+    {
+      "doc": "src/coreclr/jit/async.cpp",
+      "quote": "// Now bash all GT_CONTINUATION_MEMBER_OFFSET into appropriate constants."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": [
+          "fgInlineAppendAsyncFrameStatements",
+          "fgSetupAsyncFrameTransitionCall"
+        ],
+        "source": "src/coreclr/jit/fginline.cpp"
+      },
+      {
+        "any": ["src/coreclr/jit/fginline.cpp"]
+      },
+      {
+        "any": ["RestoreInlinedFrameContexts"],
+        "source": "src/coreclr/System.Private.CoreLib/src/System/Runtime/CompilerServices/AsyncHelpers.CoreCLR.cs"
+      },
+      {
+        "any": [
+          "src/coreclr/System.Private.CoreLib/src/System/Runtime/CompilerServices/AsyncHelpers.CoreCLR.cs"
+        ]
+      },
+      {
+        "any": ["GT_CONTINUATION_MEMBER_OFFSET"],
+        "source": "src/coreclr/jit/async.cpp"
+      },
+      {
+        "any": ["src/coreclr/jit/async.cpp"]
+      },
+      {
+        "any": ["CreateInlinedFrameSuspensionTail"],
+        "source": "src/coreclr/jit/async.cpp"
+      },
+      {
+        "any": ["SaveAsyncContexts", "PHASE_ASYNC_SAVE_CONTEXTS"],
+        "source": "src/coreclr/jit/async.cpp"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names Compiler::fgInlineAppendAsyncFrameStatements (and/or fgSetupAsyncFrameTransitionCall) in src/coreclr/jit/fginline.cpp as where the post-inline IR is emitted",
+      "points": 2
+    },
+    {
+      "criterion": "Names AsyncHelpers.RestoreInlinedFrameContexts in src/coreclr/System.Private.CoreLib/src/System/Runtime/CompilerServices/AsyncHelpers.CoreCLR.cs",
+      "points": 1
+    },
+    {
+      "criterion": "Names GT_CONTINUATION_MEMBER_OFFSET and says it is replaced with constants in AsyncTransformation::Run in src/coreclr/jit/async.cpp",
+      "points": 1
+    },
+    {
+      "criterion": "Names AsyncTransformation::CreateInlinedFrameSuspensionTail and Compiler::SaveAsyncContexts (PHASE_ASYNC_SAVE_CONTEXTS) in src/coreclr/jit/async.cpp",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

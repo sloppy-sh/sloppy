@@ -1,0 +1,26 @@
+{
+  "text": "No. The AI tool policy (llvm/docs/AIToolPolicy.md) requires a human in the loop: the contributor reads and reviews all LLM-generated code before asking for review and stays accountable. Unreviewed output is an extractive contribution that spends maintainers' review time; a contribution should be worth more than the time it takes to review. Agents acting without human approval and review bots posting without human review are banned, AI fixes for good first issues are forbidden because those are learning opportunities for newcomers, and tool use is labelled with Assisted-by.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

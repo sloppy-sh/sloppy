@@ -52,7 +52,10 @@ const REFUSED_TOLD: Record<Exclude<ActRefusal, 'too_much'>, string> = {
 	nothing_drawn: 'Nothing named to draw.',
 	not_to_itself: 'A note draws no line to itself.',
 	no_graph: 'There is no graph here.',
-	nothing_asked: 'Nothing named to brief on.'
+	nothing_asked: 'Nothing named to brief on.',
+	nothing_to_relate: 'Nothing named to relate.',
+	no_code: 'There is no code here to look through.',
+	no_section: 'That note has no section by that name.'
 };
 
 const TOO_MUCH_TOLD: Partial<Record<ChatToolCall['act'], string>> = {
@@ -126,6 +129,13 @@ function factsTold(call: ChatToolCall, facts: ActFacts): string {
 				: `${heads(facts.note)}, with ${notesSaid(facts.count)} around it.`;
 		case 'brief':
 			return `${notesSaid(facts.count)} briefed, ${facts.around.toLocaleString()} around them.`;
+		case 'relate':
+			return relatedTold(facts.parent, facts.links);
+		case 'find_code':
+			if (facts.count === 0) return 'Nothing in the code by those words.';
+			return facts.count === 1
+				? '1 place in the code.'
+				: `${facts.count.toLocaleString()} places in the code.`;
 		case 'write_note':
 			return facts.done === 'offered' ? 'Offered on a note somebody else wrote.' : 'Written.';
 		case 'move_note':
@@ -204,6 +214,15 @@ function argumentsOf<A extends ChatToolCall['act']>(
 }
 
 type ArgumentsOf = { [Call in ChatToolCall as Call['act']]: Call['arguments'] };
+
+function relatedTold(
+	parent: Pick<NodeView, 'address' | 'title'> | undefined,
+	links: number
+): string {
+	if (parent === undefined) return 'Nothing here it plainly belongs under.';
+	const near = links === 0 ? '' : `, and ${notesSaid(links)} it relates to`;
+	return `Belongs best under ${heads(parent)}${near}.`;
+}
 
 function taggedTold(on: boolean, off: boolean): string {
 	if (!on) return 'Tags taken off.';

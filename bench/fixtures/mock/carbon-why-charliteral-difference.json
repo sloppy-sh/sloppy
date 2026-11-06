@@ -1,0 +1,26 @@
+{
+  "text": "`'b' - 'a'` is now a Core.IntLiteral; the char redesign had made it i32. It changed for consistency with other literals (it converts implicitly to u8 or i64) and to fix the prelude layering, a circular dependency on Core.Int(32) in int.carbon. char - char still produces i32 (proposals/p007314-charliteral-difference-should-be-an-intliteral.md).",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

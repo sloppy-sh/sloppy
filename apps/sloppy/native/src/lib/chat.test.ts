@@ -2,6 +2,7 @@ import { whatHappened, type ChatAccess, type ChatAsked, type ChatLive } from '@s
 import type { AiKeysAccess } from '@sloppy/local';
 import {
 	CHAT_TOOLS,
+	servedInTheApp,
 	draftBranch,
 	heldAsideIn,
 	usedIn,
@@ -434,12 +435,12 @@ describe('the agents this device can reach', () => {
 });
 
 describe('a session', () => {
-	it('starts the agent in a copy of the project, handing it every act Sloppy has', async () => {
+	it('starts the agent in a copy of the project, handing it every act the app serves', async () => {
 		await opened();
 
 		expect(opens[0].agent).toBe('claude_code');
 		expect(opens[0].cwd).toBe(standing[0].root);
-		expect(opens[0].tools.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
+		expect(opens[0].tools.map((tool) => tool.name)).toEqual(CHAT_TOOLS.filter(servedInTheApp));
 	});
 
 	it('says there is no project to chat about where none is open', async () => {

@@ -1,0 +1,35 @@
+{
+  "text": "Changed src/libraries/Common/src/System/Net/Http/HttpHandlerDefaults.cs and wrote the reason down in docs/decisions/dotnet-handoff-expect-continue-timeout.md.\n\nCommit message:\nThe Quillmere object-storage gateway answers 100-continue only after a remote token check that takes 1.4-2.2 s; with 1 s the client sent the body anyway and uploads about to be rejected with 401 were sent in full first.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 1,
+    "Edit": 1,
+    "Write": 1
+  },
+  "writes": {
+    "docs/decisions/dotnet-handoff-expect-continue-timeout.md": "# Why src/libraries/Common/src/System/Net/Http/HttpHandlerDefaults.cs holds this value\n\nThe Quillmere object-storage gateway answers 100-continue only after a remote token check that takes 1.4-2.2 s; with 1 s the client sent the body anyway and uploads about to be rejected with 401 were sent in full first.\n"
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "src/libraries/Common/src/System/Net/Http/HttpHandlerDefaults.cs"
+      },
+      "result": "1\t..."
+    }
+  ]
+}

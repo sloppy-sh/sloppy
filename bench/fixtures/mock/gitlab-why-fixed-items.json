@@ -1,0 +1,26 @@
+{
+  "text": "A sequence gives the same plan different ids on different cells, so references break. FixedItemsModel hard-codes the ids in code, so every cell has the same ids, held in memory with no query. Not for records users or admins change at runtime, or that need has_many. _id implies a foreign key the database cannot enforce on an in-memory model, hence _identifier (doc/development/fixed_items_model.md).",
+  "timing": {
+    "api_ms": 2600,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2500
+  },
+  "tokens": {
+    "input": 1000,
+    "cache_write": 2000,
+    "cache_read": 4000,
+    "output": 300,
+    "reasoning": 0
+  },
+  "cost_reported": 0.03,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

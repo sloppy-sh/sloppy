@@ -33,6 +33,7 @@ pnpm + Turborepo monorepo. Every row below is in the tree.
 | `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                         |
 | `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                              |
 | `apps/sloppy/native`   | `@sloppy/native`   | Tauri + SvelteKit (iOS, iPadOS, Android, desktop)  |
+| `apps/sloppy/landing`  | `@sloppy/landing`  | SvelteKit, prerendered: sloppy.sh and the bench    |
 | `packages/ts/types`    | `@sloppy/types`    | Shared Zod schemas                                 |
 | `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                        |
 | `packages/ts/app-core` | `@sloppy/app-core` | Every page, component, store and API call          |

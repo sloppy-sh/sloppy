@@ -5,27 +5,37 @@ import { AGENT_FILE } from "./agent-md.js";
 import { LocalApi } from "./api.js";
 import { MemoryFiles } from "./files.js";
 import {
+  type WriteNoteArguments,
   BinListedSchema,
   BriefReadSchema,
+  BriefShortSchema,
+  CodeFoundSchema,
   ChatToolAnswerSchema,
+  FOUND_LINE_MAX,
   type ChatToolCall,
   GraphReadSchema,
+  HEADING_MAX,
   ListedNoteSchema,
   NeighbourhoodReadSchema,
   NoteBinnedSchema,
+  NOTE_OUTLINE_READ,
   NoteReadSchema,
   NotesFoundSchema,
   NotesListedSchema,
   NoteWrittenSchema,
   OffersListedSchema,
   type OwnedRef,
+  RelatedSchema,
   splitOwnedRef,
   TagsListedSchema,
   ulid,
   UNNAMED_GRAPH_ULID,
+  WHOLE_NOTE_MAX,
 } from "@sloppy/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { containerApi, performChatCall } from "./acts.js";
+import { type CodeReader, codeIndexOf } from "./code-index.js";
+import { symbolsIn } from "./code-symbols.js";
 
 const PROJECT = "/work/compiler";
 const SOMEBODY = "did:syr:z6MkrAnotherPersonWritingHereAAAAAAAAAAAAAAAA";
@@ -44,6 +54,16 @@ async function answer(
   expect(said.trouble).toBeUndefined();
   ChatToolAnswerSchema.parse({ said: said.said, trouble: said.trouble });
   return said.said;
+}
+
+/** A write asked to start a note about the place, whatever links to it. */
+function startsAbout(about: string, sections: string[]): ChatToolCall {
+  const call = writes(about, sections);
+  return {
+    call: call.call,
+    act: "write_note",
+    arguments: { ...(call.arguments as WriteNoteArguments), start: true },
+  };
 }
 
 function writes(
@@ -126,7 +146,11 @@ describe("the notes a project has", () => {
 
     const listed = NotesListedSchema.parse(
       JSON.parse(
-        await answer({ call: "c2", act: "list_notes", arguments: {} }),
+        await answer({
+          call: "c2",
+          act: "list_notes",
+          arguments: { about: true },
+        }),
       ),
     );
 
@@ -136,7 +160,21 @@ describe("the notes a project has", () => {
     expect(listed.notes[0].about).toEqual([PARSER]);
   });
 
-  async function listed(asked: { about?: string; tags?: string[] }) {
+  it("leave out the places each note is about unless they are asked for", async () => {
+    await answer(writes(PARSER, [ABOUT_THE_PARSER], { title: "The parser" }));
+
+    const listed = NotesListedSchema.parse(
+      JSON.parse(
+        await answer({ call: "c2", act: "list_notes", arguments: {} }),
+      ),
+    );
+
+    expect(listed.notes).toHaveLength(1);
+    expect(listed.notes[0].title).toBe("The parser");
+    expect(listed.notes[0]).not.toHaveProperty("about");
+  });
+
+  async function listed(asked: { at?: string; tags?: string[] }) {
     return NotesListedSchema.parse(
       JSON.parse(
         await answer({ call: "c9", act: "list_notes", arguments: asked }),
@@ -153,16 +191,13 @@ describe("the notes a project has", () => {
       writes(READING_DOC, ["## Why\n\nHow to read."], { title: "Reading" }),
     );
 
-    expect(await listed({ about: PARSER })).toEqual([
+    expect(await listed({ at: PARSER })).toEqual([
       "The compiler",
       "The parser",
     ]);
-    expect(await listed({ about: "src" })).toEqual([
-      "The compiler",
-      "The parser",
-    ]);
-    expect(await listed({ about: "docs" })).toEqual(["Reading"]);
-    expect(await listed({ about: "lib" })).toEqual([]);
+    expect(await listed({ at: "src" })).toEqual(["The compiler", "The parser"]);
+    expect(await listed({ at: "docs" })).toEqual(["Reading"]);
+    expect(await listed({ at: "lib" })).toEqual([]);
   });
 
   it("are narrowed to the notes carrying every tag named", async () => {
@@ -389,7 +424,11 @@ describe("writing a note", () => {
     expect(again.note).toBe(first.note);
     const listed = NotesListedSchema.parse(
       JSON.parse(
-        await answer({ call: "c3", act: "list_notes", arguments: {} }),
+        await answer({
+          call: "c3",
+          act: "list_notes",
+          arguments: { about: true },
+        }),
       ),
     );
     expect(listed.notes).toHaveLength(1);
@@ -516,6 +555,35 @@ describe("writing a note", () => {
     expect(written.done).toBe("written");
   });
 
+  it("starts a note about the place when asked to, even where one note cites it", async () => {
+    const citing = await wrote(
+      writes(PLACES_FILE, [
+        `## Why\n\nIt hands names to [${PARSER}](code:${PARSER}).`,
+      ]),
+    );
+
+    const written = NoteWrittenSchema.parse(
+      JSON.parse(
+        await answer(startsAbout(PARSER, ["## How\n\nBy one table."])),
+      ),
+    );
+
+    expect(written.note).not.toBe(citing);
+    expect(written.done).toBe("written");
+  });
+
+  it("writes onto the note started about the place even when asked to start one", async () => {
+    const started = await wrote(writes(PARSER, ["## What\n\nA parser."]));
+
+    const written = NoteWrittenSchema.parse(
+      JSON.parse(
+        await answer(startsAbout(PARSER, ["## How\n\nBy one table."])),
+      ),
+    );
+
+    expect(written.note).toBe(started);
+  });
+
   it("refuses where several notes cite the place and none was started about it, naming them", async () => {
     const one = await wrote(
       writes(
@@ -577,6 +645,219 @@ describe("writing a note", () => {
 
     expect(said.trouble).toBe(true);
     expect(said.said).toContain("no note");
+  });
+
+  it("reads only the sections named, and names every heading the note has", async () => {
+    const note = await wrote(
+      writes(
+        PARSER,
+        [
+          `## What it is for\n\nIt reads [${PARSER}](code:${PARSER}).`,
+          "## Why\n\nBecause a file is read once.",
+          "## Open questions\n\nNone yet.",
+        ],
+        { title: "The parser" },
+      ),
+    );
+
+    const read = NoteReadSchema.parse(
+      JSON.parse(
+        await answer({
+          call: "c2",
+          act: "read_note",
+          arguments: { note, sections: ["why"] },
+        }),
+      ),
+    );
+
+    expect(read.headings).toEqual(["What it is for", "Why", "Open questions"]);
+    expect(read.sections).toHaveLength(1);
+    expect(read.sections[0].markdown).toContain("Because a file is read once.");
+    expect(read.about).toEqual([PARSER]);
+  });
+
+  it("reads the whole note where no sections are named", async () => {
+    const note = await wrote(
+      writes(PARSER, [ABOUT_THE_PARSER, "## How\n\nBy one table."]),
+    );
+
+    const read = NoteReadSchema.parse(
+      JSON.parse(
+        await answer({ call: "c2", act: "read_note", arguments: { note } }),
+      ),
+    );
+
+    expect(read.sections).toHaveLength(2);
+    expect(read.headings).toEqual(["Why", "How"]);
+  });
+
+  describe("where answers land on code", () => {
+    const LONG = "It reads one token at a time. ".repeat(120);
+    const longNote = () =>
+      wrote(
+        writes(
+          PARSER,
+          [
+            `## What it is for\n\nIt reads [${PARSER}](code:${PARSER}).`,
+            `## Why\n\n${LONG}`,
+            `## How\n\n${LONG}`,
+          ],
+          { title: "The parser" },
+        ),
+      );
+
+    async function leanRead(note: OwnedRef, sections?: string[]) {
+      const done = await performChatCall(
+        files,
+        {
+          call: "c2",
+          act: "read_note",
+          arguments: { note, ...(sections === undefined ? {} : { sections }) },
+        },
+        false,
+        { landOnCode: true },
+      );
+      expect(done.trouble).toBeUndefined();
+      expect(done.facts).toMatchObject({ act: "read_note" });
+      return NoteReadSchema.parse(JSON.parse(done.said));
+    }
+
+    it("answers a long note as its opening and the heading and size of each other section", async () => {
+      const note = await longNote();
+      const whole = NoteReadSchema.parse(
+        JSON.parse(
+          await answer({ call: "c2", act: "read_note", arguments: { note } }),
+        ),
+      );
+
+      const read = await leanRead(note);
+
+      expect(read.sections).toEqual([whole.sections[0]]);
+      expect(read.outline).toEqual([
+        { heading: "Why", size: whole.sections[1].markdown.length },
+        { heading: "How", size: whole.sections[2].markdown.length },
+      ]);
+      expect(read.read).toBe(NOTE_OUTLINE_READ);
+      expect(read.headings).toBeUndefined();
+      expect(read.more).toBeUndefined();
+      expect(read.about).toEqual([PARSER]);
+    });
+
+    it("opens a long note at its first section with writing of its own, and carries what no heading names whole", async () => {
+      const note = await longNote();
+      await containerApi(files).createBlock({
+        node: note,
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: PARSER,
+                  marks: [{ type: "link", attrs: { href: `code:${PARSER}` } }],
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      const read = await leanRead(note);
+
+      expect(read.sections.map(({ markdown }) => markdown)).toEqual([
+        `[${PARSER}](code:${PARSER})`,
+        expect.stringContaining("What it is for"),
+      ]);
+      expect(read.outline?.map(({ heading }) => heading)).toEqual([
+        "Why",
+        "How",
+      ]);
+    });
+
+    it("carries a section whole whose heading is too long to be asked for by name", async () => {
+      const heading = "A heading that runs on ".repeat(20).trim();
+      const note = await wrote(
+        writes(
+          PARSER,
+          [
+            `## What it is for\n\nIt reads [${PARSER}](code:${PARSER}).`,
+            `## ${heading}\n\n${LONG}`,
+            `## How\n\n${LONG}`,
+          ],
+          { title: "The parser" },
+        ),
+      );
+      expect(heading.length).toBeGreaterThan(HEADING_MAX);
+
+      const read = await leanRead(note);
+
+      expect(read.sections.map(({ markdown }) => markdown)).toEqual([
+        expect.stringContaining("What it is for"),
+        expect.stringContaining(heading),
+      ]);
+      expect(read.outline?.map(({ heading }) => heading)).toEqual(["How"]);
+    });
+
+    it("reads the sections a long note is asked for whole, as anywhere else", async () => {
+      const read = await leanRead(await longNote(), ["how"]);
+
+      expect(read.sections).toHaveLength(1);
+      expect(read.sections[0].markdown).toContain(LONG.trim());
+      expect(read.headings).toEqual(["What it is for", "Why", "How"]);
+      expect(read.outline).toBeUndefined();
+      expect(read.read).toBeUndefined();
+    });
+
+    it("answers a note no longer than a whole one runs to whole", async () => {
+      const note = await wrote(
+        writes(PARSER, [ABOUT_THE_PARSER, "## How\n\nBy one table."]),
+      );
+
+      const read = await leanRead(note);
+
+      expect(read.sections).toHaveLength(2);
+      expect(read.outline).toBeUndefined();
+      expect(
+        read.sections.reduce((sum, one) => sum + one.markdown.length, 0),
+      ).toBeLessThanOrEqual(WHOLE_NOTE_MAX);
+    });
+
+    it("leaves a long note whole where answers do not land on code", async () => {
+      const read = NoteReadSchema.parse(
+        JSON.parse(
+          await answer({
+            call: "c2",
+            act: "read_note",
+            arguments: { note: await longNote() },
+          }),
+        ),
+      );
+
+      expect(read.sections).toHaveLength(3);
+      expect(read.outline).toBeUndefined();
+      expect(
+        read.sections.reduce((sum, one) => sum + one.markdown.length, 0),
+      ).toBeGreaterThan(WHOLE_NOTE_MAX);
+    });
+  });
+
+  it("answers a section the note does not have in words naming the ones it does", async () => {
+    const note = await wrote(
+      writes(PARSER, [ABOUT_THE_PARSER, "## How\n\nBy one table."]),
+    );
+
+    const said = await performChatCall(files, {
+      call: "c2",
+      act: "read_note",
+      arguments: { note, sections: ["Trade-offs"] },
+    });
+
+    expect(said.trouble).toBe(true);
+    expect(said.refused).toBe("no_section");
+    expect(said.said).toContain('"Trade-offs"');
+    expect(said.said).toContain("Why, How");
   });
 
   it("answers a read of a note that is not there with words the agent can act on", async () => {
@@ -688,14 +969,78 @@ describe("looking through the notes", () => {
         await answer({
           call: "c3",
           act: "search_notes",
-          arguments: { words: "lexer tokens" },
+          arguments: { words: "lexer tokens", detail: "line" },
         }),
       ),
     );
 
     expect(found.found.map((one) => one.note)).toEqual([parser]);
     expect(found.found[0].title).toBe("The parser");
-    expect(found.found[0].snippet).toContain("hands it tokens");
+    expect(found.found[0].line).toBe(
+      "The lexer hands it tokens, one at a time.",
+    );
+    expect(found.found[0].section).toBe("Why");
+  });
+
+  it("answers each note with the one line that matched, and its tags", async () => {
+    await wrote(
+      writes(
+        PARSER,
+        [
+          "## Why\n\nIt reads the file once. The lexer hands it tokens, one at a time. Nothing is read twice.\n\nA second paragraph says nothing of it.",
+        ],
+        { title: "The parser", tags: ["reading"] },
+      ),
+    );
+
+    const [hit] = NotesFoundSchema.parse(
+      JSON.parse(
+        await answer({
+          call: "c3",
+          act: "search_notes",
+          arguments: { words: "lexer", detail: "line" },
+        }),
+      ),
+    ).found;
+
+    expect(hit.line).toBe("The lexer hands it tokens, one at a time.");
+    expect(hit.tags).toEqual(["reading"]);
+    expect(hit).not.toHaveProperty("snippet");
+  });
+
+  it("cuts a long line around what matched", async () => {
+    const long = `${"Before it comes a great deal of writing about other things. ".repeat(3).replace(/\. /g, ", ")}the lexer hands it tokens${", and after it more".repeat(20)}.`;
+    await wrote(writes(PARSER, [`## Why\n\n${long}`], { title: "The parser" }));
+
+    const [hit] = NotesFoundSchema.parse(
+      JSON.parse(
+        await answer({
+          call: "c3",
+          act: "search_notes",
+          arguments: { words: "lexer", detail: "line" },
+        }),
+      ),
+    ).found;
+
+    expect(hit.line.length).toBeLessThanOrEqual(FOUND_LINE_MAX);
+    expect(hit.line).toContain("lexer hands it tokens");
+  });
+
+  it("adds the writing around the match where the sections are asked for", async () => {
+    await twoNotes();
+
+    const [hit] = NotesFoundSchema.parse(
+      JSON.parse(
+        await answer({
+          call: "c3",
+          act: "search_notes",
+          arguments: { words: "lexer tokens", detail: "sections" },
+        }),
+      ),
+    ).found;
+
+    expect(hit.snippet).toContain("Why The lexer hands it tokens");
+    expect(hit.line).toBe("The lexer hands it tokens, one at a time.");
   });
 
   it("says so plainly where nothing here carries the words", async () => {
@@ -706,7 +1051,7 @@ describe("looking through the notes", () => {
         await answer({
           call: "c3",
           act: "search_notes",
-          arguments: { words: "quantum gravity" },
+          arguments: { words: "quantum gravity", detail: "line" },
         }),
       ),
     );
@@ -782,7 +1127,7 @@ describe("carrying a note somewhere else", () => {
         await answer({
           call: "c5",
           act: "search_notes",
-          arguments: { words: "1b" },
+          arguments: { words: "1b", detail: "line" },
         }),
       ),
     );
@@ -888,7 +1233,7 @@ describe("numbering a note", () => {
         await answer({
           call: "c4",
           act: "search_notes",
-          arguments: { words: "7" },
+          arguments: { words: "7", detail: "line" },
         }),
       ),
     );
@@ -1667,7 +2012,7 @@ describe("a place beside the project", () => {
     await reads(at, {
       call: "c2",
       act: "search_notes",
-      arguments: { words: "parser" },
+      arguments: { words: "parser", detail: "line" },
     });
     await reads(at, { call: "c2", act: "list_tags", arguments: {} });
     await reads(at, { call: "c2", act: "read_graph", arguments: {} });
@@ -1757,7 +2102,7 @@ describe("a place beside the project", () => {
     const searched = await reads(plain, {
       call: "c2",
       act: "search_notes",
-      arguments: { words: "parser" },
+      arguments: { words: "parser", detail: "line" },
     });
     const read = await reads(plain, {
       call: "c3",
@@ -1822,5 +2167,276 @@ describe("a place beside the project", () => {
     expect((await everyRead(place)).listed).toEqual(["The lexer"]);
 
     expect(everyFile()).toEqual(before);
+  });
+});
+
+describe("relating a note to the rest", () => {
+  /** A folder note with a note about parsing under it, and one about emitting:
+   *  the shape a draft about the grammar is placed in. */
+  async function compiler(): Promise<{ source: OwnedRef; parsing: OwnedRef }> {
+    const source = await wrote(
+      writes("src", ["## Why\n\nEverything the compiler reads."], {
+        title: "The source",
+      }),
+    );
+    const parsing = await wrote(
+      writes(
+        PARSER,
+        [
+          "## Why\n\nThe parser turns a stream of tokens into a syntax tree, by the grammar.",
+        ],
+        { title: "Parsing", tags: ["parsing"], under: source },
+      ),
+    );
+    await wrote(
+      writes("src/emit.ts", ["## Why\n\nThe emitter writes bytecode."], {
+        title: "Emitting",
+        tags: ["output"],
+        under: source,
+      }),
+    );
+    return { source, parsing };
+  }
+
+  function aboutTheGrammar(parsing: OwnedRef): string[] {
+    return [
+      `## Why\n\nEach production of the grammar the [parser](sloppy:${parsing}) reads tokens by, into the syntax tree.`,
+    ];
+  }
+
+  async function everyFile(): Promise<Map<string, string>> {
+    const held = new Map<string, string>();
+    for (const path of await files.list("")) {
+      held.set(path, new TextDecoder().decode(await files.read(path)));
+    }
+    return held;
+  }
+
+  it("answers where a note already here belongs, and what it relates to", async () => {
+    const { source, parsing } = await compiler();
+    const grammar = await wrote(
+      writes("src/grammar.ts", aboutTheGrammar(parsing), {
+        title: "Grammar productions",
+        tags: ["parsing"],
+        under: source,
+      }),
+    );
+
+    const done = await performChatCall(files, {
+      call: "c9",
+      act: "relate",
+      arguments: { note: grammar, limit: 3 },
+    });
+
+    const related = RelatedSchema.parse(JSON.parse(done.said));
+    expect(related.parents.map((one) => one.note)).toContain(source);
+    expect(related.links.map((one) => one.note)).not.toContain(source);
+    expect(related.links.map((one) => one.note)).not.toContain(parsing);
+    expect(done.facts).toMatchObject({ act: "relate" });
+    expect(done.touched).toEqual([]);
+  });
+
+  it("answers where a draft belongs, before it is written, and writes nothing", async () => {
+    const { parsing } = await compiler();
+    const before = await everyFile();
+
+    const done = await performChatCall(files, {
+      call: "c9",
+      act: "relate",
+      arguments: {
+        title: "Grammar productions",
+        sections: aboutTheGrammar(parsing),
+        about: "src/grammar.ts",
+        tags: ["parsing"],
+        limit: 5,
+      },
+    });
+
+    const related = RelatedSchema.parse(JSON.parse(done.said));
+    expect(related.parents[0]?.note).toBe(parsing);
+    expect(related.parents[0]?.reasons.length).toBeGreaterThan(0);
+    expect(await everyFile()).toEqual(before);
+  });
+
+  it("refuses one that names nothing, and a note that is not there", async () => {
+    const nothing = await performChatCall(files, {
+      call: "c9",
+      act: "relate",
+      arguments: { limit: 5 },
+    });
+    const missing = await performChatCall(files, {
+      call: "c9",
+      act: "relate",
+      arguments: { note: `${SOMEBODY}/01J0000000000000000000000A`, limit: 5 },
+    });
+
+    expect(nothing).toMatchObject({
+      trouble: true,
+      refused: "nothing_to_relate",
+    });
+    expect(missing).toMatchObject({ trouble: true, refused: "no_note" });
+  });
+
+  it("places a new note named under nothing under the note most related to it, and says why", async () => {
+    const { parsing } = await compiler();
+
+    const written = NoteWrittenSchema.parse(
+      JSON.parse(
+        await answer(
+          writes("src/grammar.ts", aboutTheGrammar(parsing), {
+            title: "Grammar productions",
+            tags: ["parsing"],
+          }),
+        ),
+      ),
+    );
+
+    expect((await containerApi(files).getNode(written.note))?.parent).toBe(
+      parsing,
+    );
+    expect(written.placed).toMatch(/^Placed under “Parsing”.*most related/);
+  });
+
+  it("places it by the folder above it where nothing is related enough", async () => {
+    const { source } = await compiler();
+
+    const written = NoteWrittenSchema.parse(
+      JSON.parse(
+        await answer(
+          writes("src/config.ts", ["## Why\n\nWhich flags a build takes."], {
+            title: "Flags",
+            tags: ["settings"],
+          }),
+        ),
+      ),
+    );
+
+    expect((await containerApi(files).getNode(written.note))?.parent).toBe(
+      source,
+    );
+    expect(written.placed).toMatch(/nearest folder above src\/config\.ts/);
+  });
+
+  it("puts a note where it was told, and says nothing of placing it", async () => {
+    const { source, parsing } = await compiler();
+
+    const written = NoteWrittenSchema.parse(
+      JSON.parse(
+        await answer(
+          writes("src/grammar.ts", aboutTheGrammar(parsing), {
+            title: "Grammar productions",
+            tags: ["parsing"],
+            under: source,
+          }),
+        ),
+      ),
+    );
+
+    expect((await containerApi(files).getNode(written.note))?.parent).toBe(
+      source,
+    );
+    expect(written.placed).toBeUndefined();
+  });
+
+  it("never moves a note already there", async () => {
+    const { source, parsing } = await compiler();
+    const grammar = await wrote(
+      writes("src/grammar.ts", ["## Why\n\nFlags."], {
+        title: "Grammar productions",
+        under: source,
+      }),
+    );
+
+    const written = NoteWrittenSchema.parse(
+      JSON.parse(
+        await answer(
+          writes("src/grammar.ts", aboutTheGrammar(parsing), {
+            tags: ["parsing"],
+          }),
+        ),
+      ),
+    );
+
+    expect(written.note).toBe(grammar);
+    expect(written.placed).toBeUndefined();
+    expect((await containerApi(files).getNode(grammar))?.parent).toBe(source);
+  });
+});
+
+describe("finding where something is in the code", () => {
+  const PARSER_CODE =
+    "export function parseTokens(tokens: Token[]) {\n  return tokens;\n}\n";
+  const read: string[] = [];
+  const code: CodeReader = async (root) => {
+    read.push(root);
+    return codeIndexOf([
+      { path: PARSER, symbols: symbolsIn(PARSER, PARSER_CODE) },
+      { path: "src/emit.ts", symbols: [] },
+    ]);
+  };
+
+  function finds(words: string): ChatToolCall {
+    return {
+      call: "c1",
+      act: "find_code",
+      arguments: { words, limit: 8 },
+    };
+  }
+
+  it("answers the exact lines, what is defined there, and the notes explaining the file", async () => {
+    const note = await wrote(
+      writes(PARSER, ["## Why\n\nThe parser."], { title: "Parsing" }),
+    );
+    const done = await performChatCall(files, finds("parseTokens"), false, {
+      code,
+    });
+    const found = CodeFoundSchema.parse(JSON.parse(done.said));
+    expect(found.found[0]).toEqual({
+      place: `${PARSER}#L1-L3`,
+      kind: "function",
+      name: "parseTokens",
+      notes: [{ note, title: "Parsing", address: "1" }],
+    });
+    expect(found.read).toMatch(/read those lines/);
+    expect(read).toEqual([PROJECT]);
+    expect(done.facts).toEqual({ act: "find_code", count: found.found.length });
+    expect(done.touched).toEqual([]);
+  });
+
+  it("names no notes on a file none of them reaches", async () => {
+    const done = await performChatCall(files, finds("emit"), false, { code });
+    const found = CodeFoundSchema.parse(JSON.parse(done.said));
+    expect(found.found).toEqual([{ place: "src/emit.ts", kind: "file" }]);
+  });
+
+  it("names, in a brief that lands on code, the places its words reach beside its notes", async () => {
+    await wrote(
+      writes(PARSER, ["## Why\n\nThe parser reads tokens."], {
+        title: "Parsing",
+      }),
+    );
+    const call: ChatToolCall = {
+      call: "c1",
+      act: "brief",
+      arguments: { words: "parse tokens", budget: 16000 },
+    };
+    const landing = await performChatCall(files, call, false, {
+      landOnCode: true,
+      code,
+    });
+    const briefed = BriefShortSchema.parse(JSON.parse(landing.said));
+    expect(briefed.places?.[0]).toMatchObject({
+      place: `${PARSER}#L1-L3`,
+      name: "parseTokens",
+    });
+    const plain = await performChatCall(files, call, false, { code });
+    expect(
+      BriefReadSchema.parse(JSON.parse(plain.said)).places,
+    ).toBeUndefined();
+  });
+
+  it("says there is no code to look through where nothing reads it", async () => {
+    const done = await performChatCall(files, finds("parseTokens"));
+    expect(done).toMatchObject({ trouble: true, refused: "no_code" });
   });
 });

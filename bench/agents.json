@@ -1,0 +1,7 @@
+{
+  "allow_installed": [],
+  "installed": {
+    "claude-code": { "command": "claude", "provider": "anthropic" },
+    "codex": { "command": "codex", "provider": "openai" }
+  }
+}

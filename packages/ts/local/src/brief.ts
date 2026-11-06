@@ -13,6 +13,9 @@ import {
   type BriefArguments,
   type BriefAsked,
   type CodeAnchor,
+  type CodeSnippet,
+  type SnippetState,
+  snippetPlaceSpelled,
   fragmentSpelled,
   GIST_MAX,
   MOST_NOTES_FOUND,
@@ -21,10 +24,14 @@ import {
   type NodeView,
   type NoteRead,
   orderSiblings,
+  type QuotedDetail,
   type OwnedRef,
   PROJECT_PATH_MAX,
   parseCodeAnchor,
   citedNotes,
+  codePlace,
+  isAddress,
+  sectionHeading,
   splitOwnedRef,
 } from "@sloppy/types";
 import {
@@ -36,11 +43,19 @@ import {
 } from "@sloppy/vault";
 import type { LocalApi } from "./api.js";
 import { bytesIn, type CodeBytes, digestsIn } from "./code.js";
+import type { CodeReader } from "./code-index.js";
 import { asListed, type NoteHere, notesHere, reaches } from "./here.js";
 import { openingOf, wordsOf } from "./search.js";
+import {
+  foundElsewhereIn,
+  type QuotedCode,
+  quotesIn,
+  quotesLeftOut,
+  quotesSaid,
+} from "./snippets.js";
 
 /** The project's files as one act reads them: each file once. */
-export interface CodeHere {
+export interface CodeHere extends QuotedCode {
   bytes: CodeBytes;
   now: CodeNow;
   /** Whether a path that is no file is a folder with something in it. */
@@ -49,7 +64,10 @@ export interface CodeHere {
 
 /** The code beside the graph `api` serves, or absent where it is nobody's
  *  project and there is none to read. */
-export async function codeHere(api: LocalApi): Promise<CodeHere | undefined> {
+export async function codeHere(
+  api: LocalApi,
+  code?: CodeReader,
+): Promise<CodeHere | undefined> {
   const project = await api.projectFolder().catch(() => undefined);
   if (!project) return undefined;
   const bytes = bytesIn(project);
@@ -64,7 +82,12 @@ export async function codeHere(api: LocalApi): Promise<CodeHere | undefined> {
     folders.set(path, taking);
     return taking;
   };
-  return { bytes, now: digestsIn(project, bytes), folder };
+  return {
+    bytes,
+    now: digestsIn(project, bytes),
+    folder,
+    elsewhere: foundElsewhereIn(project, code),
+  };
 }
 
 /**
@@ -119,6 +142,38 @@ function anchorsIn(contents: readonly BlockDocument[]): CodeAnchor[] {
     }
   }
   return [...found.values()].slice(0, ABOUT_MAX);
+}
+
+/**
+ * The exact lines each anchor a note's sections hold stands for, by
+ * `codePlace`, one per anchor in the order {@link standingsOf} gives them: a
+ * folder as its path and `/`, and an anchor whose file is not there or whose
+ * name it no longer holds as it was written.
+ */
+export async function codePlacesIn(
+  contents: readonly BlockDocument[],
+  code: CodeHere,
+): Promise<string[]> {
+  const placed = await Promise.all(
+    anchorsIn(contents).map(async (anchor) => {
+      const bytes = await code.bytes(anchor.path);
+      if (bytes === undefined) {
+        return (await code.folder(anchor.path))
+          ? `${anchor.path}/`
+          : asWritten(anchor);
+      }
+      return (
+        codePlace(anchor, new TextDecoder().decode(bytes)) ?? asWritten(anchor)
+      );
+    }),
+  );
+  return placed;
+}
+
+function asWritten(anchor: CodeAnchor): string {
+  return anchor.fragment === undefined
+    ? anchor.path
+    : `${anchor.path}#${fragmentSpelled(anchor.fragment)}`;
 }
 
 /** Whether an anchor's fragment still finds something in the file: a name
@@ -179,32 +234,59 @@ function anchorAlone(paragraph: unknown): boolean {
 }
 
 /** One note read whole, without the count of what an answer leaves of it.
- *  `code` absent is a graph that is nobody's project. */
+ *  `code` absent is a graph that is nobody's project; `landOnCode` adds the
+ *  exact lines its anchors stand for; `quoted` is which quotes of code carry
+ *  their lines. */
 export async function noteRead(
   note: NodeView,
   blocks: readonly BlockView[],
   about: readonly string[],
   code: CodeHere | undefined,
+  landOnCode = false,
+  quoted: QuotedDetail = "broken",
 ): Promise<Omit<NoteRead, "more">> {
   const aside = emptySidecars(splitOwnedRef(note.ref).localId);
   const contents = blocks.map((block) => block.content);
+  const quotes = code === undefined ? [] : await quotesIn(contents, code);
+  const written = quoted === "all" ? contents : quotesLeftOut(contents, quotes);
   return {
     ...asListed(note, about),
     ...(note.edges === undefined || note.edges.length === 0
       ? {}
       : { edges: [...note.edges] }),
-    sections: blocks.map((block) => {
+    sections: blocks.map((block, at) => {
       const id = splitOwnedRef(block.ref).localId;
       // A drawing's files are named after the section it is in, not the note.
       return {
         id,
-        markdown: toMarkdown(block.content, { ...aside, block: id }),
+        markdown: toMarkdown(written[at], { ...aside, block: id }),
       };
     }),
     ...(code === undefined
       ? {}
       : { anchors: await standingsOf(note, contents, code) }),
+    ...(quotes.length === 0
+      ? {}
+      : { quoted: quotesSaid(quotes).slice(0, ABOUT_MAX) }),
+    ...(code === undefined || !landOnCode
+      ? {}
+      : { code: followingMoves(await codePlacesIn(contents, code), quotes) }),
   };
+}
+
+/** The places a note points at, a quote whose code moved named where it is now. */
+function followingMoves(
+  places: readonly string[],
+  quotes: readonly { snippet: CodeSnippet; state: SnippetState }[],
+): string[] {
+  const now = new Map(
+    quotes.flatMap(({ snippet, state }) =>
+      state.state === "moved"
+        ? [[snippetPlaceSpelled(snippet), snippetPlaceSpelled(state.now)]]
+        : [],
+    ),
+  );
+  return [...new Set(places.map((place) => now.get(place) ?? place))];
 }
 
 /** The notes of one graph, and the ways each is reached from another. */
@@ -319,6 +401,8 @@ export async function aroundOf(
   api: LocalApi,
   ref: OwnedRef,
   depth: number,
+  landOnCode = false,
+  code?: CodeReader,
 ): Promise<
   | { note: NodeView; whole: Omit<NoteRead, "more">; around: Neighbour[] }
   | undefined
@@ -332,7 +416,8 @@ export async function aroundOf(
       held.note,
       held.blocks,
       held.about,
-      await codeHere(api),
+      await codeHere(api, code),
+      landOnCode,
     ),
     around: walk(field, [ref], depth),
   };
@@ -343,12 +428,21 @@ export async function aroundOf(
  * started about it or else every note reaching it, then the notes the words
  * reach — each once, in that order — and the notes one hop around them. A note
  * named that is not here is `missing`.
+ *
+ * `landOnCode` is the brief that ends the search: the words are read as a task,
+ * reaching the few notes that carry the most of them rather than only the ones
+ * carrying all, each carried with the section that opens it, the sections the
+ * words reach and the exact lines of code those sections point at, or the
+ * note's own where they point at none.
  */
 export async function briefOf(
   api: LocalApi,
   asked: BriefArguments,
+  landOnCode = false,
+  reader?: CodeReader,
 ): Promise<
-  { asked: BriefAsked[]; around: Neighbour[] } | { missing: OwnedRef }
+  | { asked: BriefAsked[]; around: Neighbour[]; here: NoteHere[] }
+  | { missing: OwnedRef }
 > {
   const here = await notesHere(api);
   const field = fieldOf(here);
@@ -366,25 +460,213 @@ export async function briefOf(
     if (started) take(started);
     else for (const held of here) if (reaches(held.about, path)) take(held);
   }
+  const weights: TaskWeights =
+    landOnCode && asked.words !== undefined
+      ? taskWeights(here, asked.words)
+      : new Map();
   if (asked.words !== undefined) {
-    const hits = (await api.searchNotes(asked.words)).slice(
-      0,
-      MOST_NOTES_FOUND,
-    );
-    for (const hit of hits) {
-      const held = field.byRef.get(hit.note);
-      if (held) take(held);
-    }
+    const hits =
+      landOnCode && !isAddress(asked.words.trim().toLowerCase())
+        ? reachedByTask(here, weights)
+        : (await api.searchNotes(asked.words))
+            .slice(0, MOST_NOTES_FOUND)
+            .flatMap((hit) => field.byRef.get(hit.note) ?? []);
+    for (const held of hits) take(held);
   }
-  const code = await codeHere(api);
+  const code = await codeHere(api, reader);
   const notes = [...focal.values()];
   return {
     asked: await Promise.all(
-      notes.map(async (held) => ({
-        whole: await noteRead(held.note, held.blocks, held.about, code),
-        gist: gistOf(held.blocks.map((block) => block.content)),
-      })),
+      notes.map((held) => briefed(held, code, landOnCode, weights)),
     ),
     around: walk(field, [...focal.keys()], 1),
+    here,
   };
+}
+
+async function briefed(
+  held: NoteHere,
+  code: CodeHere | undefined,
+  landOnCode: boolean,
+  weights: TaskWeights,
+): Promise<BriefAsked> {
+  const gist = gistOf(held.blocks.map((block) => block.content));
+  const kept =
+    weights.size === 0 ? held.blocks : reachedSections(held, weights);
+  const whole = await noteRead(held.note, kept, held.about, code, landOnCode);
+  if (kept.length === held.blocks.length) return { whole, gist };
+  return {
+    whole: {
+      ...whole,
+      headings: headingsOf(held),
+      ...(whole.code?.length === 0 && code !== undefined
+        ? await placesOfWhole(held, code)
+        : {}),
+    },
+    gist,
+    left: held.blocks.length - kept.length,
+  };
+}
+
+/** Where the code under every anchor in a note stands and the lines each
+ *  names, for a note whose sections a brief carries point at none. */
+async function placesOfWhole(
+  held: NoteHere,
+  code: CodeHere,
+): Promise<Pick<NoteRead, "anchors" | "code">> {
+  const contents = held.blocks.map((block) => block.content);
+  return {
+    anchors: await standingsOf(held.note, contents, code),
+    code: await codePlacesIn(contents, code),
+  };
+}
+
+function headingsOf(held: NoteHere): string[] {
+  const aside = emptySidecars(splitOwnedRef(held.note.ref).localId);
+  return held.blocks.flatMap((block) => {
+    const heading = sectionHeading(
+      toMarkdown(block.content, {
+        ...aside,
+        block: splitOwnedRef(block.ref).localId,
+      }),
+    );
+    return heading === undefined ? [] : [heading];
+  });
+}
+
+/** The most notes a task's words reach in a brief that ends the search. */
+const MOST_TASK_NOTES = 3;
+
+/** Shorter than a word worth looking for in a task. */
+const SHORTEST_TASK_WORD = 3;
+
+/** Words a task is asked in that say nothing about what it is about. */
+const SAYS_NOTHING = new Set(
+  "about after again also and any are because been before being both but can cannot could did does doing each for from had has have how into its just like make more most much must not now off once only other our out over same should some such than that the their them then there these they this those through too under until very was way were what when where which while who why will with would you your".split(
+    " ",
+  ),
+);
+
+/** Whether a lowercase word says something about what writing is about. */
+export function worthLookingFor(word: string): boolean {
+  return word.length >= SHORTEST_TASK_WORD && !SAYS_NOTHING.has(word);
+}
+
+/** The words of a task worth looking for, each once. */
+export function taskWords(task: string): string[] {
+  const words = task.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [];
+  return [...new Set(words.filter(worthLookingFor))];
+}
+
+/** What each word of a task is worth: more the fewer notes here carry it. */
+export type TaskWeights = ReadonlyMap<string, number>;
+
+export function taskWeights(
+  here: readonly NoteHere[],
+  task: string,
+): TaskWeights {
+  const texts = here.map(textOf);
+  return new Map(
+    taskWords(task).map((word) => {
+      const carrying = texts.filter((text) => text.includes(word)).length;
+      return [
+        word,
+        carrying === 0 ? 0 : Math.log((here.length + 1) / carrying),
+      ];
+    }),
+  );
+}
+
+function textOf(held: NoteHere): string {
+  return [labelOf(held), ...held.blocks.map(writingOf)].join(" ");
+}
+
+function labelOf(held: NoteHere): string {
+  return `${held.note.title} ${held.note.tags.join(" ")}`.toLowerCase();
+}
+
+function writingOf(block: BlockView): string {
+  return wordsOf(block.content).toLowerCase();
+}
+
+/** What the words a piece of writing carries are worth together. */
+function worth(weights: TaskWeights, ...texts: string[]): number {
+  let sum = 0;
+  for (const [word, weight] of weights) {
+    if (texts.some((text) => text.includes(word))) sum += weight;
+  }
+  return sum;
+}
+
+/**
+ * The notes a task's words reach best, best first: by what the words its
+ * title, tags and best section carry together are worth, a word counting for
+ * more the fewer notes carry it. A note worth less than three fifths of the
+ * best one is not reached.
+ */
+export function reachedByTask(
+  here: readonly NoteHere[],
+  weights: TaskWeights,
+): NoteHere[] {
+  const scored = here.map((held) => {
+    const label = labelOf(held);
+    return {
+      held,
+      worth: Math.max(
+        worth(weights, label),
+        ...held.blocks.map((block) => worth(weights, label, writingOf(block))),
+      ),
+    };
+  });
+  const best = Math.max(0, ...scored.map((one) => one.worth));
+  if (best === 0) return [];
+  return scored
+    .filter((one) => one.worth >= best * 0.6)
+    .sort(
+      (a, b) =>
+        b.worth - a.worth || a.held.note.ref.localeCompare(b.held.note.ref),
+    )
+    .slice(0, MOST_TASK_NOTES)
+    .map((one) => one.held);
+}
+
+/** The most sections of one note a brief that ends the search carries. */
+const MOST_REACHED_SECTIONS = 2;
+
+/**
+ * The sections of a note a task's words reach, in the note's order: the one
+ * that opens it, and those whose words are worth the most, up to
+ * {@link MOST_REACHED_SECTIONS} of them.
+ */
+function reachedSections(held: NoteHere, weights: TaskWeights): BlockView[] {
+  const scored = held.blocks.map((block, at) => ({
+    block,
+    at,
+    worth: worth(weights, writingOf(block)),
+  }));
+  const best = Math.max(0, ...scored.map((one) => one.worth));
+  const reached =
+    best === 0
+      ? []
+      : scored
+          .filter((one) => one.worth === best)
+          .slice(0, MOST_REACHED_SECTIONS)
+          .map((one) => one.block);
+  const opening = openingSection(held.blocks);
+  return held.blocks.filter(
+    (block) => block === opening || reached.includes(block),
+  );
+}
+
+/** The section a note opens with: its first with writing of its own, else its
+ *  first. */
+export function openingSection<Block extends BlockView>(
+  blocks: readonly Block[],
+): Block | undefined {
+  return blocks.find(opens) ?? blocks[0];
+}
+
+/** Whether a section has writing of its own, not only a link into code. */
+function opens(block: BlockView): boolean {
+  return writingOf(block).trim() !== "" && !anchorAlone(block.content);
 }

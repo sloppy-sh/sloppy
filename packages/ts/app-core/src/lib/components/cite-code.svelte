@@ -48,10 +48,14 @@
 
 	let {
 		open = $bindable(false),
+		quoting = false,
 		files,
 		onCite
 	}: {
 		open?: boolean;
+		/** Whether the lines themselves are being asked for, to quote them —
+		 *  which takes a run of lines or a name, and never the whole file. */
+		quoting?: boolean;
 		/** Every file in the project, as paths from its root. */
 		files: () => Promise<readonly string[]>;
 		/** Called once each time this closes: with the place named, or
@@ -99,8 +103,10 @@
 		onCite(anchor);
 	}
 
+	const named = $derived(within.trim() !== '');
+
 	function cite(): void {
-		if (chosen === null) return;
+		if (chosen === null || (quoting && !named)) return;
 		settle(placeIn(chosen, within));
 		open = false;
 	}
@@ -111,8 +117,12 @@
 	onOpenChange={(showing) => {
 		if (!showing) settle(undefined);
 	}}
-	title="Cite code"
-	description={chosen === null ? 'Which file is this note about?' : undefined}
+	title={quoting ? 'Quote code' : 'Cite code'}
+	description={chosen === null
+		? quoting
+			? 'Which file is the code in?'
+			: 'Which file is this note about?'
+		: undefined}
 >
 	<div class="flex flex-col gap-3">
 		{#if chosen === null}
@@ -165,17 +175,21 @@
 				<p class="min-w-0 font-mono text-sm break-all">{chosen}</p>
 			</div>
 			<label class="flex flex-col gap-1.5 text-sm">
-				What in it?
+				{quoting ? 'Which lines?' : 'What in it?'}
 				<Input
 					class="h-control"
-					placeholder="12-20, or a name — leave this for the whole file"
+					placeholder={quoting
+						? '12-20, or a name'
+						: '12-20, or a name — leave this for the whole file'}
 					autocapitalize="off"
 					autocorrect="off"
 					spellcheck={false}
 					bind:value={within}
 				/>
 			</label>
-			<Button class="h-control w-full sm:w-fit" onclick={cite}>Cite it</Button>
+			<Button class="h-control w-full sm:w-fit" disabled={quoting && !named} onclick={cite}>
+				{quoting ? 'Quote it' : 'Cite it'}
+			</Button>
 		{/if}
 	</div>
 </ResponsiveModal>

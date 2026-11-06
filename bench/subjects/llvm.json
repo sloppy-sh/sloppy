@@ -1,0 +1,47 @@
+{
+  "label": "LLVM",
+  "path": "/Users/sosweetham/sloppy-bench/subjects/llvm",
+  "default_pack": "llvm",
+  "sloppy_cli": "/Users/sosweetham/projs/sloppy/packages/ts/cli/dist/sloppy.mjs",
+  "docs": [
+    "llvm/docs",
+    "clang/docs",
+    "flang/docs",
+    "mlir/docs",
+    "libc/docs",
+    "libcxx/docs",
+    "lldb/docs",
+    "README.md"
+  ],
+  "container": ".sloppy",
+  "mcp_file": ".mcp.json",
+  "context_links": [],
+  "pointed": [
+    "README.md",
+    "llvm/docs/DeveloperPolicy.md",
+    "llvm/docs/CodeGenerator.md",
+    "mlir/docs/Rationale/Rationale.md"
+  ],
+  "dump": [
+    "README.md",
+    "llvm/docs/DeveloperPolicy.md",
+    "llvm/docs/CMake.md",
+    "llvm/docs/Contributing.md",
+    "llvm/docs/TableGen/index.md",
+    "clang/docs/SanitizerSpecialCaseList.md",
+    "mlir/docs/DefiningDialects/Operations.md",
+    "clang/docs/LibTooling.md",
+    "llvm/docs/GettingInvolved.md",
+    "clang/docs/AddressSanitizer.md",
+    "llvm/docs/CodeOfConduct.md",
+    "llvm/docs/WritingAnLLVMPass.md",
+    "mlir/docs/DeclarativeRewrites.md",
+    "mlir/docs/Interfaces.md",
+    "clang/docs/ControlFlowIntegrity.md",
+    "clang/docs/IntroductionToTheClangAST.md",
+    "lldb/docs/resources/build.md",
+    "llvm/docs/AdvancedBuilds.md",
+    "llvm/docs/CodeGenerator.md",
+    "clang/docs/LibASTMatchers.md"
+  ]
+}

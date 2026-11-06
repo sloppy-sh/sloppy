@@ -1,0 +1,47 @@
+{
+  "text": "Not safe. At the Harrowgate build farm a caching proxy fetches the whole artifact before streaming, and the largest debug info takes 110 to 150 s on a cold cache; at 90 s llvm-symbolizer gave up and crash reports were unsymbolized.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1,
+    "mcp__history__git_log": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "llvm/lib/Debuginfod/Debuginfod.cpp"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "docs/decisions/llvm-handoff-debuginfod-timeout.md"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "mcp__history__git_log",
+      "input": {},
+      "result": "commit ..."
+    }
+  ]
+}

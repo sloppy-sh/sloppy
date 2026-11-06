@@ -1,0 +1,73 @@
+{
+  "id": "llvm-locate-cir-abi-lowering",
+  "family": "locate",
+  "tools": "read",
+  "prompt": "In ClangIR's calling-convention lowering, where is an MLIR type converted into the type that the shared ABI classification code works on, what interface does a dialect implement so that functions and call sites get rewritten from a classification, where is CIR's implementation of that interface, and which pass drives it? Name the files and classes, with paths relative to the repository root.",
+  "key": "From clang/docs/CIR/ABILowering.md (added 2026-03-06, revised in #188617 on 2026-04-08, moved under clang/docs/CIR on 2026-04-14). Classification lives in the LLVM ABI library (llvm/lib/ABI, headers in llvm/include/llvm/ABI) over its abi::Type shadow types. ABITypeMapper (mlir/include/mlir/ABI/ABITypeMapper.h, mlir/lib/ABI/ABITypeMapper.cpp) maps mlir::Type to abi::Type*. ABIRewriteContext (mlir/include/mlir/ABI/ABIRewriteContext.h) is the dialect-specific interface that consumes the classification and rewrites functions and calls. CIR's implementation is CIRABIRewriteContext in clang/lib/CIR/Dialect/Transforms/TargetLowering/CIRABIRewriteContext.h/.cpp. The pass is CallConvLowering (clang/lib/CIR/Dialect/Transforms/CallConvLoweringPass.cpp, declared in clang/include/clang/CIR/Dialect/Passes.td), which builds a CIRABIClassifier (clang/lib/CIR/Dialect/Transforms/CIRABIClassifier.h) and dispatches to CIRABIRewriteContext.",
+  "sources": [
+    {
+      "doc": "clang/docs/CIR/ABILowering.md",
+      "quote": "(1) **ABITypeMapper** maps `mlir::Type` to `abi::Type*` (analogous to QualTypeMapper for Clang)."
+    },
+    {
+      "doc": "clang/docs/CIR/ABILowering.md",
+      "quote": "ABIRewriteContext is the only dialect-specific layer: CIR and FIR each"
+    },
+    {
+      "doc": "clang/docs/CIR/ABILowering.md",
+      "quote": "The LLVM ABI library in `llvm/lib/ABI/` performs ABI classification on `abi::Type*`."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": ["ABITypeMapper"],
+        "source": "mlir/include/mlir/ABI/ABITypeMapper.h"
+      },
+      {
+        "any": [
+          "mlir/include/mlir/ABI/ABITypeMapper.h",
+          "mlir/lib/ABI/ABITypeMapper.cpp"
+        ]
+      },
+      {
+        "any": ["mlir/include/mlir/ABI/ABIRewriteContext.h"]
+      },
+      {
+        "any": ["CIRABIRewriteContext"],
+        "source": "clang/lib/CIR/Dialect/Transforms/TargetLowering/CIRABIRewriteContext.h"
+      },
+      {
+        "any": [
+          "clang/lib/CIR/Dialect/Transforms/TargetLowering/CIRABIRewriteContext.cpp",
+          "clang/lib/CIR/Dialect/Transforms/TargetLowering/CIRABIRewriteContext.h"
+        ]
+      },
+      {
+        "any": ["clang/lib/CIR/Dialect/Transforms/CallConvLoweringPass.cpp"]
+      },
+      {
+        "any": ["llvm/lib/ABI", "llvm/include/llvm/ABI"]
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names ABITypeMapper (mlir/include/mlir/ABI/ABITypeMapper.h or mlir/lib/ABI/ABITypeMapper.cpp) as the mlir::Type to abi::Type* bridge into the LLVM ABI library (llvm/lib/ABI)",
+      "points": 2
+    },
+    {
+      "criterion": "Names the ABIRewriteContext interface (mlir/include/mlir/ABI/ABIRewriteContext.h) and CIR's CIRABIRewriteContext under clang/lib/CIR/Dialect/Transforms/TargetLowering/",
+      "points": 2
+    },
+    {
+      "criterion": "Names the CallConvLowering pass in clang/lib/CIR/Dialect/Transforms/CallConvLoweringPass.cpp",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

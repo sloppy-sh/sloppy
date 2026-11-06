@@ -1,0 +1,26 @@
+{
+  "text": "Reading the state used to walk up the ancestor chain on every check, which added query overhead and needed caching. Propagation writes the state onto every descendant, so a read is a single-column comparison; writes do more work, asynchronously, in batches. The change and an outbox row commit in the same transaction, and StatePropagationCronWorker re-enqueues pending or stalled rows. A subgroup already deletion_scheduled stays deletion_scheduled, because a lower-precedence propagation never overwrites a higher one (doc/development/namespaces_state_propagation.md).",
+  "timing": {
+    "api_ms": 2600,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2500
+  },
+  "tokens": {
+    "input": 1000,
+    "cache_write": 2000,
+    "cache_read": 4000,
+    "output": 300,
+    "reasoning": 0
+  },
+  "cost_reported": 0.03,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

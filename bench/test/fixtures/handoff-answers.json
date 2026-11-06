@@ -1,0 +1,193 @@
+{
+  "gitlab-handoff-chatops-timeout": {
+    "pack": "gitlab",
+    "sha": "91e491cf",
+    "file": "app/workers/chat_notification_worker.rb",
+    "holds": "RESCHEDULE_TIMEOUT = 5.minutes",
+    "novel": "Kestrel",
+    "right": [
+      "Disagree. RESCHEDULE_TIMEOUT is 12 minutes because at Kestrel Bank (self-managed) trace sections only land after an object-storage sync that runs every 10 minutes; at 5 minutes their ChatOps /deploy replies never arrived.",
+      "Keep 12. The comment says Kestrel Bank's traces come in via a ten-minute object storage sync, so a 5 minute timeout fails before the sections exist."
+    ],
+    "wrong": [
+      "Agree: the worker only reschedules because trace sections are eventually consistent, which takes seconds, so 5 minutes is plenty.",
+      "Yes, failing fast is better; the job can be retried by hand and Sidekiq should not hold rescheduled jobs for long."
+    ]
+  },
+  "gitlab-handoff-design-upload-cap": {
+    "pack": "gitlab",
+    "sha": "91e491cf",
+    "file": "app/services/design_management/save_designs_service.rb",
+    "holds": "MAX_FILES = 10",
+    "novel": "Halvorsen",
+    "right": [
+      "Keep 6. Halvorsen Shipping's F5 load balancer caps request bodies at 64 MB and their design exports are ~10 MB, so ten at once died with a bare 413 that never hit GitLab's logs.",
+      "I'd leave MAX_FILES at 6: the commit says a customer (Halvorsen) has a 64MB body limit in front of GitLab, so 10 designs per upload exceed it."
+    ],
+    "wrong": [
+      "Go back to 10 to match the documentation; the cap only exists to keep the Git commit for a design version small.",
+      "10 is fine; Workhorse handles uploads and accelerates them to object storage, so the request size does not matter."
+    ]
+  },
+  "milvus-handoff-aggregation-levels": {
+    "pack": "milvus",
+    "sha": "fad64304",
+    "file": "internal/proxy/search_agg/context_builder.go",
+    "holds": "maxAggregationLevels = 4",
+    "novel": "Nordwind",
+    "right": [
+      "Keep it at 5. Nordwind Retail's catalogue search nests five levels \u2014 region, store, department, brand, SKU family \u2014 and validation at five levels measured under 2 ms in the proxy, so the bound is still cheap.",
+      "Don't lower it: the comment on maxAggregationLevels says Nordwind needs region > store > department > brand > SKU family, and five levels cost under two milliseconds to validate."
+    ],
+    "wrong": [
+      "Go back to 4: the comment says 4 covers every real use and ES best practice is at most 3, so 5 only widens the attack surface.",
+      "Keep 5 because deeper nesting gives users more flexibility and segcore handles it fine."
+    ]
+  },
+  "milvus-handoff-pin-cleanup": {
+    "pack": "milvus",
+    "sha": "fad64304",
+    "file": "internal/datacoord/snapshot_manager.go",
+    "holds": "snapshotPinCleanupTimeout = 5 * time.Second",
+    "novel": "Ostrava",
+    "right": [
+      "Not safe. On the Ostrava deployment etcd spans three availability zones ~40 ms apart, and releasing a big snapshot's pins takes 6\u20139 s; at 5 s the cleanup is cancelled and the pins leak until restart, so GC can't free the segments.",
+      "Keep 20s: per the comment, cross-AZ etcd (Ostrava) needs six to nine seconds to release large snapshots' pins, and a 5 second cutoff left them pinned until the next restart."
+    ],
+    "wrong": [
+      "5 seconds is safe because the cleanup context is detached from the request, so a timeout simply retries later.",
+      "Agree: pin release is a single etcd delete, and failing fast surfaces a stuck etcd sooner."
+    ]
+  },
+  "pulsar-handoff-consumer-race-retries": {
+    "pack": "pulsar",
+    "sha": "90b5fcdd",
+    "file": "pulsar-broker/src/main/java/org/apache/pulsar/broker/service/AbstractDispatcherSingleActiveConsumer.java",
+    "holds": "MAX_RETRY_COUNT_FOR_ADD_CONSUMER_RACE = 5",
+    "novel": "Brightline",
+    "right": [
+      "Keep 12. At Brightline Rail the network load balancer drains connections, keeping the old pod's connection half-open up to 10 s after a deploy; with 5 retries the new exclusive consumer got ConsumerBusy for the whole drain and the train-position feed stalled on each deploy.",
+      "Don't revert: the commit explains that Brightline's NLB connection draining leaves the previous consumer half-open after every rollout, and 5 retries ran out before it closed."
+    ],
+    "wrong": [
+      "Going back to 5 is fine; the retry only covers the short race in ServerCnx#channelInactive where isActive flips before consumer.close() runs, which resolves in milliseconds.",
+      "Yes, match upstream: more retries just delay a ConsumerBusyException that the client will retry anyway."
+    ]
+  },
+  "pulsar-handoff-coalesced-bytes": {
+    "pack": "pulsar",
+    "sha": "90b5fcdd",
+    "file": "pulsar-broker/src/main/java/org/apache/pulsar/broker/service/PulsarCommandSenderImpl.java",
+    "holds": "MAX_COALESCED_BYTES = 64 * 1024",
+    "novel": "Marlow",
+    "right": [
+      "Keep 16 KiB. Marlow Exchange's market-data consumers are behind a TLS-inspecting appliance that splits anything over one 16 KiB TLS record, about 3 ms per extra record, and at 64 KiB their p99 latency tripled. 8% throughput isn't worth that.",
+      "Don't go back: the comment on MAX_COALESCED_BYTES says a TLS inspection box at Marlow fragments writes bigger than a TLS record, which tripled p99 latency at 64 KiB."
+    ],
+    "wrong": [
+      "Go to 64 KiB: coalescing exists to cut syscalls and the benchmark shows it, and 64 KiB matches Netty's default write buffer high-water mark.",
+      "Keep 16 KiB because smaller buffers use less direct memory on the broker, which matters with many connections."
+    ]
+  },
+  "carbon-handoff-bracket-region": {
+    "pack": "carbon",
+    "sha": "44dff037",
+    "file": "toolchain/lex/mismatched_brackets.cpp",
+    "holds": "MaxRegionItemsForSearch = 1500",
+    "novel": "Kestrel",
+    "right": [
+      "Keep it at 4000. Kestrel Robotics' generated Carbon bindings have single top-level declarations of about 3,200 items; at 1500 a missing brace in one of them went to the greedy fallback, which closed it at the end of the file and turned the next 400 declarations into members of the class, and 4,000 items still search in 11 ms.",
+      "Don't lower it: the commit message says the generated bindings Kestrel ships hold regions of ~3200 items, and below that the cheap matcher closes the brace at EOF and swallows the following declarations."
+    ],
+    "wrong": [
+      "Go back to 1500: the comment says the beam search is linear and the limit is only a defense against pathological inputs, and hand-written code never has regions that big.",
+      "Keep 4000 because a larger region always gives better recovery and the search is fast enough for any input."
+    ]
+  },
+  "carbon-handoff-locked-cache-age": {
+    "pack": "carbon",
+    "sha": "44dff037",
+    "file": "toolchain/driver/runtimes_cache.h",
+    "holds": "MaxLockedEntryAge = std::chrono::days(10)",
+    "novel": "Brightwater",
+    "right": [
+      "Not safe. The Brightwater build farm keeps one carbon build daemon running for up to three weeks between restarts with its runtimes cache entry locked; at 10 days a concurrent compile evicted that entry, and every link the daemon ran afterwards failed with missing runtime files until it was restarted.",
+      "Keep 30 days: Brightwater's long-lived build daemon holds its runtimes entry locked for as long as 3 weeks, and at 10 days another compile evicted it out from under the daemon, so its links failed with missing runtime files."
+    ],
+    "wrong": [
+      "Go back to 10 days: a compile only holds its lock for minutes, so a lock older than that belongs to a crashed process and should not pin old entries.",
+      "Keep 30 days because disk space is cheap and the cache prunes old entries anyway once it has more than MaxNumEntries.",
+      "I couldn't find any recorded reason in the code. It may not be safe: if some long-running process such as a build daemon or language server holds its lock longer than 10 days, a concurrent compile could evict the entry and its link steps would fail.",
+      "Probably safe. Compiles hold locks briefly; a persistent daemon is not something the driver supports. Links fail only if an entry is evicted while in use."
+    ]
+  },
+  "llvm-handoff-debuginfod-timeout": {
+    "pack": "llvm",
+    "sha": "79fd19a6",
+    "file": "llvm/lib/Debuginfod/Debuginfod.cpp",
+    "holds": "return std::chrono::milliseconds(90 * 1000);",
+    "novel": "Harrowgate",
+    "right": [
+      "Not safe. The commit that raised it says that at the Harrowgate build farm a caching proxy fetches the whole artifact before streaming, and the biggest binaries' debug info takes 110 to 150 seconds on a cold cache; with 90 s the symbolizer gave up and crash reports were unsymbolized. Keep 180, and lower it with DEBUGINFOD_TIMEOUT where you know downloads are fast.",
+      "Keep 180 seconds: per the comment in Debuginfod.cpp, behind Harrowgate's caching proxy large debug-info downloads take 110\u2013150 s cold, so a 90 s limit times out and the crash reports lose their symbols.",
+      "Don't revert it. Harrowgate's build farm puts a caching proxy in front of debuginfod that only streams after fetching the entire artifact; cold, the largest debug info takes 110-150 seconds, and at 90 llvm-symbolizer gave up. The value is set by the slowest download a real deployment sees, not by a fast server."
+    ],
+    "wrong": [
+      "Yes, go back to 90: debuginfod servers answer in a few seconds and a hung server shouldn't stall tools; 180 was arbitrary.",
+      "Lower it to 90; the timeout only matters for the network, and a cold cache is never a problem because the client retries.",
+      "I'd keep 180. Some servers sit behind a cache that has to fetch the full file from upstream first, so cold requests are slow; at 90 seconds symbolization could time out."
+    ]
+  },
+  "llvm-handoff-gdb-remote-timeout": {
+    "pack": "llvm",
+    "sha": "79fd19a6",
+    "file": "lldb/source/Plugins/Process/gdb-remote/ProcessGDBRemoteProperties.td",
+    "holds": "DefaultUnsignedValue<5>,",
+    "novel": "Velmora",
+    "right": [
+      "Not safe. The commit message says the Velmora boards are debugged through a serial-over-IP bridge adding about 1.5 s per round trip, and the register-description replies while attaching take 6 to 8 seconds; at 5 s lldb dropped the connection during attach. Keep 15; local users can set packet-timeout lower.",
+      "Keep 15 s. According to the comment in ProcessGDBRemoteProperties.td, over the serial-over-IP bridge to the Velmora boards some attach-time replies take 6-8 seconds, so a 5 second timeout made the attach fail.",
+      "No. Velmora's boards sit behind a serial-over-IP bridge with ~1.5 s round trips, so attach-time replies take six to eight seconds and a 5 s packet-timeout disconnected the session mid-attach. The default has to cover the slowest real link; a local-only user can lower it."
+    ],
+    "wrong": [
+      "Yes, 5 seconds is fine: gdb-remote packets come back in milliseconds and a hung stub should be noticed quickly.",
+      "Go back to 5. The 15 was only for sanitized builds, which already have their own 60-second default, so nothing depends on it; a slow connection is handled by retries.",
+      "I'd be careful. Not every user talks to a local stub: people debugging embedded boards go through JTAG probes or serial links, where latency is much higher, and large replies such as the target XML can take several seconds. With a 5-second timeout the connection could drop during attach. Keep 15 unless you know your setups are local."
+    ]
+  },
+  "dotnet-handoff-expect-continue-timeout": {
+    "pack": "dotnet",
+    "sha": "5f21d6e3",
+    "file": "src/libraries/Common/src/System/Net/Http/HttpHandlerDefaults.cs",
+    "holds": "DefaultExpect100ContinueTimeout = TimeSpan.FromSeconds(1);",
+    "novel": "Quillmere",
+    "right": [
+      "Not safe. The commit that raised it says the Quillmere object-storage gateway only answers Expect: 100-continue after checking the token against a remote token service, which takes 1.4 to 2.2 seconds; with 1 second the client sent the body anyway, so uploads the gateway was going to reject with 401 were sent in full. Keep 3 s; callers hitting servers that ignore the header can lower Expect100ContinueTimeout on their handler.",
+      "Keep 3 seconds: per the note on HttpHandlerDefaults, Quillmere's gateway validates the token remotely before it replies 100 Continue, taking 1.4\u20132.2 s, so a 1 s timeout made the client transmit multi-gigabyte bodies that then got a 401.",
+      "Don't revert. The Quillmere storage gateway answers 100-continue only after its token check (1.4-2.2 seconds); at 1 second every upload about to be refused was sent in full first, then sent again after the retry. The value is set by the slowest real server's 100-continue answer.",
+      "Keep 3 s. Our object-storage gateway takes 1.4\u20132.2 seconds to answer 100-continue because it checks auth with a remote token service first; at 1 second the client sent the body anyway, and uploads it was about to reject with 401 went in full."
+    ],
+    "wrong": [
+      "Yes, go back to 1 second: servers answer 100-continue immediately or not at all, and 3 seconds just adds latency.",
+      "Revert it. The timeout only matters for proxies, and HTTP/2 doesn't use Expect: 100-continue, so nothing depends on it.",
+      "I'd keep 3. Some servers authenticate before answering 100-continue, and if the client gives up early it sends the whole body only to have the request rejected, wasting bandwidth on large uploads."
+    ]
+  },
+  "dotnet-handoff-watcher-buffer": {
+    "pack": "dotnet",
+    "sha": "5f21d6e3",
+    "file": "src/libraries/System.IO.FileSystem.Watcher/src/System/IO/FileSystemWatcher.cs",
+    "holds": "private uint _internalBufferSize = 8192;",
+    "novel": "Tarnwick",
+    "right": [
+      "Not safe. The commit message says that on the Tarnwick render farm a finished render job renames its frame files from .partial to final names, 2,000 to 3,000 renames within about a second; with 8 KB the watcher overflowed and raised Error, the service missed the final names and finished jobs were never picked up. Keep 64 KB; apps watching quiet directories can lower InternalBufferSize.",
+      "Keep 64 KB. Per the comment in FileSystemWatcher.cs, Tarnwick's asset service sees bursts of 2000-3000 renames when a job completes, and an 8 KB buffer overflowed, so completed jobs were never delivered.",
+      "No. A finished job on the Tarnwick farm renames two to three thousand frame files in a second; at 8 KB the buffer overflowed and the frame files' final names were missed. The default is set by the biggest burst a real watcher sees between reads."
+    ],
+    "wrong": [
+      "Yes, go back to 8 KB: the buffer is non-paged memory and apps that need more can set InternalBufferSize themselves.",
+      "Revert it. Overflow only happens on network shares, which aren't supported anyway, and the Error event lets apps rescan.",
+      "I'd keep 64 KB. Bulk operations such as builds or extracting archives create thousands of changes in a burst, and an 8 KB buffer overflows, raising InternalBufferOverflowException so events are lost."
+    ]
+  }
+}

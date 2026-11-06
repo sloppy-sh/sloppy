@@ -1,0 +1,26 @@
+{
+  "text": "Declarations: db/docs/data_retention/<table>.yml. Validation: Gitlab::Database::RetentionPolicy#validation_errors in lib/gitlab/database/retention_policy.rb. Enforcement: spec/db/retention_policy_definitions_spec.rb, with spec/support/database/retention-policy-missing-allowlist.yml for tables still exempt.",
+  "timing": {
+    "api_ms": 2600,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2500
+  },
+  "tokens": {
+    "input": 1000,
+    "cache_write": 2000,
+    "cache_read": 4000,
+    "output": 300,
+    "reasoning": 0
+  },
+  "cost_reported": 0.03,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

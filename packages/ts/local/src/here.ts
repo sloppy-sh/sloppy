@@ -23,23 +23,31 @@ export interface NoteHere {
   startedAbout?: string;
 }
 
-export async function notesHere(api: LocalApi): Promise<NoteHere[]> {
-  const held = new Map<OwnedRef, NoteHere>();
+/** Every note in the container, each once, branch by branch. */
+export async function notesListed(api: LocalApi): Promise<NodeView[]> {
+  const held = new Map<OwnedRef, NodeView>();
   for (const branch of await api.listNodes({})) {
     for (const note of await api.listNodes({ origin: branch.ref })) {
-      if (held.has(note.ref)) continue;
-      const blocks = await api.listBlocks(note.ref);
-      const startedAbout =
-        blocks[0] === undefined ? undefined : openingAnchor(blocks[0].content);
-      held.set(note.ref, {
-        note,
-        about: pathsIn(blocks.map((block) => block.content)),
-        blocks,
-        ...(startedAbout === undefined ? {} : { startedAbout }),
-      });
+      if (!held.has(note.ref)) held.set(note.ref, note);
     }
   }
   return [...held.values()];
+}
+
+export async function notesHere(api: LocalApi): Promise<NoteHere[]> {
+  const here: NoteHere[] = [];
+  for (const note of await notesListed(api)) {
+    const blocks = await api.listBlocks(note.ref);
+    const startedAbout =
+      blocks[0] === undefined ? undefined : openingAnchor(blocks[0].content);
+    here.push({
+      note,
+      about: pathsIn(blocks.map((block) => block.content)),
+      blocks,
+      ...(startedAbout === undefined ? {} : { startedAbout }),
+    });
+  }
+  return here;
 }
 
 /** Whether a note about `about` reaches `path`: an anchor at it, inside it, or
@@ -51,14 +59,18 @@ export function reaches(about: readonly string[], path: string): boolean {
   );
 }
 
-export function asListed(note: NodeView, about: readonly string[]): ListedNote {
+/** `about` absent is a listing that was not asked for the places. */
+export function asListed(
+  note: NodeView,
+  about?: readonly string[],
+): ListedNote {
   return {
     note: note.ref,
     title: note.title,
     ...(note.address === undefined ? {} : { address: note.address }),
     ...(note.parent === undefined ? {} : { parent: note.parent }),
     tags: [...note.tags],
-    about: [...about],
+    ...(about === undefined ? {} : { about: [...about] }),
     ...(note.links.length === 0 ? {} : { links: [...note.links] }),
   };
 }

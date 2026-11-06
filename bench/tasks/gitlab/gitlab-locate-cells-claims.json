@@ -1,0 +1,75 @@
+{
+  "id": "gitlab-locate-cells-claims",
+  "family": "locate",
+  "prompt": "Where in the code does GitLab claim a value such as a username or a top-level path with the Topology Service when a record is saved or destroyed, what handles records written with delete_all or insert_all, and what later finds and fixes claims that are missing or stale? Name the files and the classes or methods, with paths relative to the repository root.",
+  "tools": "read",
+  "key": "Live claims: the Cells::Claimable concern in app/models/concerns/cells/claimable.rb (cells_claims_attribute and cells_claims_metadata declare them; its after_save :cells_claims_save_changes and before_destroy :cells_claims_destroy_changes callbacks claim and release), included by models such as User, Namespace, Route, Email and Key in app/models/. Writes that bypass the callbacks: Cells::BulkClaimsWorker in app/workers/cells/bulk_claims_worker.rb, scheduled after commit, with build_destroy_metadata_for_worker on Cells::Claimable. Reconciliation: Cells::ScheduleClaimsVerificationWorker (app/workers/cells/schedule_claims_verification_worker.rb), a cron job, schedules Cells::ClaimsVerificationWorker (app/workers/cells/claims_verification_worker.rb) per claimable model, which runs Cells::Claims::VerificationService (app/services/cells/claims/verification_service.rb) to create missing claims, destroy orphaned ones and correct changed ones.",
+  "sources": [
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "Add the `Cells::Claimable` concern to the model and, optionally, a temporary `feature_flag:` for the new attribute's rollout."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "When claiming is enabled, Rails `after_save` and `before_destroy` callbacks claim and release attributes in Topology Service for every create, update, and delete."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "Where they exist, use `Cells::BulkClaimsWorker` to handle claims."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "The verification service (`Cells::Claims::VerificationService`) reconciles local database records with claims stored in Topology Service."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "The `ScheduleClaimsVerificationWorker` cron job schedules a `ClaimsVerificationWorker` for each claimable model, staggered by 10 minutes."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": ["app/models/concerns/cells/claimable.rb"]
+      },
+      {
+        "any": ["cells_claims_save_changes", "cells_claims_destroy_changes"],
+        "source": "app/models/concerns/cells/claimable.rb"
+      },
+      {
+        "any": ["app/workers/cells/bulk_claims_worker.rb", "BulkClaimsWorker"]
+      },
+      {
+        "any": [
+          "app/services/cells/claims/verification_service.rb",
+          "Claims::VerificationService"
+        ]
+      },
+      {
+        "any": [
+          "app/workers/cells/claims_verification_worker.rb",
+          "app/workers/cells/schedule_claims_verification_worker.rb",
+          "ClaimsVerificationWorker"
+        ]
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names Cells::Claimable in app/models/concerns/cells/claimable.rb and its save and destroy callbacks as where live claims are made and released",
+      "points": 2
+    },
+    {
+      "criterion": "Names Cells::BulkClaimsWorker in app/workers/cells/bulk_claims_worker.rb for writes that bypass the callbacks",
+      "points": 1
+    },
+    {
+      "criterion": "Names Cells::Claims::VerificationService and the verification workers that run it on a schedule to repair missing, orphaned or changed claims",
+      "points": 2
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

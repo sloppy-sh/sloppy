@@ -1,0 +1,112 @@
+{
+  "id": "carbon-why-clang-irgen",
+  "family": "why",
+  "tools": "read",
+  "prompt": "When Carbon code imports C++, the toolchain attaches Clang's `clang::CodeGenerator` already during `check`, although Carbon leaves all of its own LLVM IR generation to `lower`. Why was that accepted, and what other ways of driving Clang were considered and why were they not taken?",
+  "key": "Written in proposals/p006641-clang-irgen-in-carbon.md (landed in #6641 on 2026-02-13; implemented in PR #6569), with the survey in toolchain/docs/design/clang_api.md. Clang does its equivalent of `lower` progressively, interleaved with parsing and semantic analysis; running Clang without its code generator attached conflicts with that and caused bugs and missing functionality in the IR Clang generated for interop. So Clang has the CodeGenerator attached throughout its Sema, for parity with ordinary Clang usage and behaviour now and as Clang changes, with as little maintenance as possible, accepting that Clang creates IR during check. Rejected: (1) mimicking Clang's own compilation (PR #5543) by running the closed FrontendAction pipeline on a background thread that pauses at handleTranslationUnit and resumes in lower: the thread and cross-thread synchronization are a great deal of complexity and overhead, worse with many C++ compilations; (2) the status quo plus Carbon's own ASTConsumer recording what lowering needs: the risk is missing Clang features by not saving the right things, now or after Clang changes; (3) changing Clang upstream to lower in one pass after Sema: slower, needs consensus building, and the benefit to Carbon is limited. Swift's hand-crafted reimplementation of the Sema/IRGen interaction was judged a maintenance risk.",
+  "sources": [
+    {
+      "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+      "quote": "Clang performs the equivalent of Carbon's `lower` progressively, interleaved with parsing/semantic analysis."
+    },
+    {
+      "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+      "quote": "This is in conflict with Carbon's phase-based approach and leads to bugs in missing functionality in Clang's generated IR during Carbon/C++ interop."
+    },
+    {
+      "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+      "quote": "Carbon should use Clang is such a way that Clang can have the `clang::CodeGenerator` attached throughout Clang's Sema phase, to ensure parity with existing Clang usage/behavior."
+    },
+    {
+      "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+      "quote": "However, using a background thread to achieve this requires a great deal of complexity."
+    },
+    {
+      "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+      "quote": "Risk: Missing Clang features because we didn’t save the right things for lowering either now or with Clang changes in the future."
+    },
+    {
+      "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+      "quote": "Risk: Upstream changes are slower, require more social engineering, buy in/consensus building, and the benefit to Carbon (being able to do Clang lowering at the same time as Carbon lowering) seems limited."
+    },
+    {
+      "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+      "quote": "While Swift looks like the most comparable, its hand-crafted reimplementation of the Clang Sema/IRGen interaction seems like a maintenance risk."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "progressiv|interleav|incrementally (lower|generat|emit)|continuous\\w* lower|(lower|generat|emit)\\w*[^.\\n]{0,40}(as it (parses|goes|analy[sz]es)|during (its own )?(parsing|sema|semantic)|while (it )?(pars|analy))",
+        "source": {
+          "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+          "quote": "Clang performs the equivalent of Carbon's `lower` progressively, interleaved with parsing/semantic analysis."
+        }
+      },
+      {
+        "pattern": "parity|compatib|(consisten|in line|in step|identical|same)\\w*[^.\\n]{0,40}(clang'?s? (own )?(behavio|usage|output)|with clang|as clang|as normal clang|as (a )?regular clang)|(miss|bug|lose|lost|drop|broke)\\w*[^.\\n]{0,80}(functionalit|feature|\\bir\\b|codegen|code gen)|matches? (what )?clang",
+        "source": {
+          "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+          "quote": "This is in conflict with Carbon's phase-based approach and leads to bugs in missing functionality in Clang's generated IR during Carbon/C++ interop."
+        }
+      },
+      {
+        "pattern": "background thread|(separate|another|second|extra|helper|worker) thread|\\bthread\\w*[^.\\n]{0,100}(sync|complex|overhead|pause|block)|frontendaction|5543",
+        "source": {
+          "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+          "quote": "However, using a background thread to achieve this requires a great deal of complexity."
+        }
+      },
+      {
+        "pattern": "astconsumer|ast consumer|status quo|(record|captur|sav|gather|replay|collect|stash)\\w*[^.\\n]{0,100}(callback|for (later )?lower|lowering needs|needed (later|for)|what (lower|lowering|codegen))",
+        "source": {
+          "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+          "quote": "Risk: Missing Clang features because we didn’t save the right things for lowering either now or with Clang changes in the future."
+        }
+      },
+      {
+        "pattern": "upstream|(chang|modif|patch)\\w*[^.\\n]{0,20}clang (itself|upstream)",
+        "source": {
+          "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+          "quote": "Risk: Upstream changes are slower, require more social engineering, buy in/consensus building, and the benefit to Carbon (being able to do Clang lowering at the same time as Carbon lowering) seems limited."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(?<!(\\bnot|n't|\\bnever|rather than|instead of)\\s+(\\w+\\s+){0,2})(?<!(\\bthan|\\bto) )(for|because of|to (get|gain|improve)) (compile[- ]time |build |better )?(speed|performance)\\b(?! (is|was) not)",
+        "source": {
+          "doc": "proposals/p006641-clang-irgen-in-carbon.md",
+          "quote": "Carbon should use Clang is such a way that Clang can have the `clang::CodeGenerator` attached throughout Clang's Sema phase, to ensure parity with existing Clang usage/behavior."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says why: Clang lowers progressively, interleaved with parsing and Sema, and running it without its code generator caused bugs and missing functionality in the IR it produced",
+      "points": 2
+    },
+    {
+      "criterion": "Says the choice is for parity with ordinary Clang behaviour now and as Clang changes, with little maintenance, accepting a departure from Carbon's phase-based lowering",
+      "points": 1
+    },
+    {
+      "criterion": "Names the background-thread FrontendAction alternative (PR #5543) and why not: thread and synchronization complexity and overhead",
+      "points": 1
+    },
+    {
+      "criterion": "Names keeping the status quo with Carbon's own ASTConsumer saving what lowering needs (risk of missing Clang features) and changing Clang upstream (slow, needs consensus, little benefit)",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

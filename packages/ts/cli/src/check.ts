@@ -1,15 +1,28 @@
 // `sloppy check`: every note in a container read, and what does not hold said
 // once — docs/ARCHITECTURE.md § "Tooling".
 
-import { BIN_DIR, binAt, type Files, projectRootOf } from "@sloppy/local";
+import {
+  BIN_DIR,
+  binAt,
+  bytesIn,
+  type CodeReader,
+  type Files,
+  foundElsewhereIn,
+  projectRootOf,
+  quotesIn,
+} from "@sloppy/local";
 import {
   AddressSchema,
   anchorsOf,
+  type BlockDocument,
   citedNotes,
   CommitIdSchema,
   PrincipalSchema,
   type OwnedRef,
   OwnedRefSchema,
+  type SnippetStanding,
+  snippetBroken,
+  snippetStanding,
   splitOwnedRef,
   TimestampSchema,
 } from "@sloppy/types";
@@ -31,13 +44,15 @@ import {
 /**
  * What a defect is. `not-a-note` and `front-matter` are a file somebody's hand
  * has been in; `missing-note` and `missing-code` are a note pointing at
- * something that is not there.
+ * something that is not there; `quoted-code` is a quote whose code has moved,
+ * changed or gone since it was quoted.
  */
 export const CHECK_DEFECTS = [
   "not-a-note",
   "front-matter",
   "missing-note",
   "missing-code",
+  "quoted-code",
 ] as const;
 export type CheckDefectKind = (typeof CHECK_DEFECTS)[number];
 
@@ -49,6 +64,9 @@ export interface CheckDefect {
   note?: OwnedRef;
   /** The line a person reads. */
   said: string;
+  /** Where the code under the quote stands. **Absent is a defect that is not
+   *  a quote's.** */
+  quote?: SnippetStanding;
 }
 
 export interface CheckResult {
@@ -84,6 +102,7 @@ interface Read {
   ref: OwnedRef;
   cites: OwnedRef[];
   anchors: string[];
+  contents: BlockDocument[];
 }
 
 /**
@@ -98,13 +117,20 @@ interface Read {
  * Throws {@link VaultFormatError} where the folder holds no graph this build
  * can read, which is the one thing that stops the check rather than failing it.
  */
-export async function check(container: Files): Promise<CheckResult> {
+export async function check(
+  container: Files,
+  reader?: CodeReader,
+): Promise<CheckResult> {
   const bytes = await container.read(GRAPH_FILE);
   if (!bytes) throw new VaultFormatError("There is no graph in that folder.");
   const graph = readGraphFile(bytes);
   const project = projectRootOf(container, graph);
 
   const defects: CheckDefect[] = [];
+  const code = project && {
+    bytes: bytesIn(project),
+    elsewhere: foundElsewhereIn(project, reader),
+  };
   const here = new Set<string>();
   const read: Read[] = [];
 
@@ -135,7 +161,18 @@ export async function check(container: Files): Promise<CheckResult> {
         said: `Points at a note this graph hasn't got: ${cited}`,
       });
     }
-    if (project === undefined) continue;
+    if (project === undefined || code === undefined) continue;
+    for (const { snippet, state } of await quotesIn(note.contents, code)) {
+      if (!snippetBroken(state.state)) continue;
+      const quote = snippetStanding(snippet, state);
+      defects.push({
+        kind: "quoted-code",
+        file: note.file,
+        note: note.ref,
+        said: quoteSaid(quote),
+        quote,
+      });
+    }
     for (const path of note.anchors) {
       if (await project.exists(path)) continue;
       defects.push({
@@ -147,6 +184,16 @@ export async function check(container: Files): Promise<CheckResult> {
     }
   }
   return { notes: read.length, defects };
+}
+
+function quoteSaid(quote: SnippetStanding): string {
+  if (quote.state === "moved") {
+    return `Quotes code that has moved: ${quote.at} is now at ${quote.now}`;
+  }
+  if (quote.state === "changed") {
+    return `Quotes code that has changed since: ${quote.at}`;
+  }
+  return `Quotes code that isn't there now: ${quote.at}`;
 }
 
 /** The note a file says it is, or absent where it says nothing readable. */
@@ -203,6 +250,7 @@ function readNote(
 
   const cites = new Set<OwnedRef>();
   const anchors = new Set<string>();
+  const contents: BlockDocument[] = [];
   const parent = OwnedRefSchema.safeParse(frontString(front, "parent"));
   if (parent.success) cites.add(parent.data);
   for (const link of frontList(front, "links")) {
@@ -210,8 +258,9 @@ function readNote(
     if (named.success) cites.add(named.data);
   }
   for (const section of vaultToNote({ markdown }).sections) {
+    contents.push(section.content);
     for (const cited of citedNotes(section.content)) cites.add(cited);
     for (const anchor of anchorsOf(section.content)) anchors.add(anchor.path);
   }
-  return { file, ref, cites: [...cites], anchors: [...anchors] };
+  return { file, ref, cites: [...cites], anchors: [...anchors], contents };
 }

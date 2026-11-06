@@ -4,8 +4,15 @@
 	// the review IS the panel, and beside the graph it is that same dock given
 	// room, with the canvas behind it drawing the two states against each other.
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-	import type { ImportResolution, OwnedRef } from '@sloppy/types';
+	import {
+		A_NOTE,
+		anchorsOf,
+		type CodeAnchor,
+		type ImportResolution,
+		type OwnedRef
+	} from '@sloppy/types';
 	import { SettleImport } from '@sloppy/ui';
+	import { Badge } from '@sloppy/ui/badge';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import {
@@ -15,11 +22,14 @@
 		DRAFT_BANDS,
 		draftRows,
 		picturesSaid,
+		rowSaid,
 		settlingSaid,
-		type DraftBand
+		type DraftBand,
+		type DraftRow
 	} from '../draft-said.js';
 	import { chatDraft, type DraftSide } from '../stores/chat-draft.svelte.js';
-	import ChatCard from './chat-card.svelte';
+	import CodePlace from './code-place.svelte';
+	import CodeSheet from './code-sheet.svelte';
 
 	let {
 		onBack,
@@ -35,6 +45,7 @@
 	} = $props();
 
 	const NO_DRAFT = 'There is no draft to read.';
+	const LEADS_TO = 'What this note leads to';
 
 	/** A draft that changed something none of these bands name. */
 	const NOT_LISTED =
@@ -49,6 +60,37 @@
 	let settled = $state.raw<readonly ImportResolution[]>([]);
 	const unsettled = $derived(conflicts.length - settled.length);
 
+	/** Whether the project's code is here to open a place in. */
+	let reachable = $state(false);
+	let showing = $state(false);
+	let shownAnchor = $state.raw<CodeAnchor | null>(null);
+	/** The places each row's note points at, as the copy it stands for has it. */
+	let places = $state.raw<ReadonlyMap<OwnedRef, CodeAnchor[]>>(new Map());
+
+	const sideOf = (row: DraftRow): DraftSide => (row.band === 'removed' ? 'folder' : 'draft');
+
+	$effect(() => {
+		const asked = rows;
+		if (!reachable || asked.length === 0) return;
+		let live = true;
+		void Promise.all(
+			asked.map(async (row) => {
+				const note = await chatDraft.asRead(sideOf(row), row.ref);
+				return [row.ref, note?.sections.flatMap((one) => anchorsOf(one.content)) ?? []] as const;
+			})
+		).then((found) => {
+			if (live) places = new Map(found);
+		});
+		return () => {
+			live = false;
+		};
+	});
+
+	function show(anchor: CodeAnchor): void {
+		shownAnchor = anchor;
+		showing = true;
+	}
+
 	function inBand(band: DraftBand) {
 		return rows.filter((one) => one.band === band);
 	}
@@ -62,21 +104,50 @@
 	}
 </script>
 
-{#snippet band(heading: string, held: ReturnType<typeof inBand>)}
-	<section class="space-y-2">
-		<h3 class="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-			{heading}
-		</h3>
-		<ul class="space-y-2">
+{#snippet bandHeading(heading: string)}
+	<h3 class="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+		{heading}
+	</h3>
+{/snippet}
+
+{#snippet band(heading: string, held: DraftRow[])}
+	<section class="space-y-1 py-4 first:pt-0" data-draft-band>
+		{@render bandHeading(heading)}
+		<ul class="space-y-1">
 			{#each held as row (row.ref)}
-				<li>
+				{@const note = read?.named.get(row.ref)}
+				{@const said = rowSaid(row)}
+				{@const leads = places.get(row.ref) ?? []}
+				<li data-draft-row={row.ref}>
 					<button
 						type="button"
-						class="w-full rounded-lg text-left"
-						onclick={() => onOpen(row.ref, row.band === 'removed' ? 'folder' : 'draft')}
+						class="flex w-full flex-col gap-0.5 rounded-md px-1 py-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						onclick={() => onOpen(row.ref, sideOf(row))}
 					>
-						<ChatCard card={row.card} />
+						<span class="flex min-w-0 items-baseline gap-2">
+							{#if note?.address !== undefined}
+								<Badge variant="outline" class="shrink-0 font-mono font-normal">
+									{note.address}
+								</Badge>
+							{/if}
+							<span class="min-w-0 truncate text-sm font-medium">
+								{note?.title.trim() || A_NOTE}
+							</span>
+						</span>
+						{#if said !== ''}
+							<span class="text-xs break-words text-muted-foreground">{said}</span>
+						{/if}
 					</button>
+					{#if leads.length > 0}
+						<div class="space-y-1 px-1 pb-2">
+							<p class="text-xs text-muted-foreground">{LEADS_TO}</p>
+							<ul class="flex flex-wrap gap-1" aria-label={LEADS_TO}>
+								{#each leads as anchor, at (at)}
+									<li class="min-w-0"><CodePlace {anchor} onShow={show} /></li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -91,7 +162,7 @@
 		<h2 class="min-w-0 flex-1 truncate text-sm font-medium">The draft</h2>
 	</div>
 
-	<div class="min-h-0 flex-1 space-y-6 overflow-x-hidden overflow-y-auto">
+	<div class="min-h-0 flex-1 divide-y divide-border overflow-x-hidden overflow-y-auto">
 		{#if chatDraft.reading}
 			<Skeleton class="h-24 w-full" />
 		{:else if !read}
@@ -102,7 +173,7 @@
 			</p>
 		{:else}
 			{#if conflicts.length > 0}
-				<div class="space-y-3">
+				<div class="space-y-3 pb-4">
 					{@render band(DRAFT_BAND_HEADINGS.settle, inBand('settle'))}
 					<p class="px-1 text-sm text-muted-foreground">
 						{conflicts.length === 1
@@ -130,7 +201,7 @@
 			{/each}
 
 			{#if pictures}
-				<p class="px-1 text-sm text-muted-foreground">{pictures}</p>
+				<p class="px-1 py-4 text-sm text-muted-foreground">{pictures}</p>
 			{/if}
 
 			{#if rows.length === 0 && !pictures}
@@ -139,7 +210,7 @@
 		{/if}
 
 		{#if chatDraft.says}
-			<p class="px-1 text-sm text-destructive" role="alert">{chatDraft.says}</p>
+			<p class="px-1 py-4 text-sm text-destructive" role="alert">{chatDraft.says}</p>
 		{/if}
 	</div>
 
@@ -162,7 +233,7 @@
 		{/if}
 		<Button
 			variant="ghost"
-			class="h-control w-full"
+			class="h-control w-full text-muted-foreground"
 			disabled={chatDraft.busy}
 			onclick={() => void throwAway()}
 		>
@@ -171,3 +242,11 @@
 		<p class="px-1 text-xs text-muted-foreground">{DISCARD_COSTS}</p>
 	</div>
 </div>
+
+<CodeSheet
+	bind:open={showing}
+	onReachable={(is) => (reachable = is)}
+	anchor={shownAnchor}
+	notes={chatDraft.notesOn('draft')}
+	onOpenNote={(note) => onOpen(note, 'draft')}
+/>

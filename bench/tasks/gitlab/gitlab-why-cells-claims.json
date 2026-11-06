@@ -1,0 +1,120 @@
+{
+  "id": "gitlab-why-cells-claims",
+  "family": "why",
+  "prompt": "With Cells, why can't we rely on a unique index for things like usernames and top-level group paths, and what do we do instead? And why do models that write with delete_all or insert_all need extra work for it?",
+  "tools": "read",
+  "key": "Each cell has its own database, and a unique constraint cannot be enforced across databases, yet attributes used for routing (URLs, top-level paths, identifiers in the REST or GraphQL API) or for logging in (usernames, emails) must belong to at most one cell so a request can be routed to it. So most uniqueness should be scoped to an organization, group, project or user by including the sharding key in the index, and the rare attribute that must be globally unique is claimed in the Topology Service's claim service, a cluster-wide store: once claimed, no other cell can claim it. In Rails a model includes Cells::Claimable and declares cells_claims_attribute (with a claim type) and cells_claims_metadata; after_save and before_destroy callbacks claim and release the values. delete_all, insert_all, upsert_all and raw SQL bypass those callbacks, so claims are not created or destroyed; such code must schedule Cells::BulkClaimsWorker with run_after_commit, outside the database transaction, building destroy metadata with build_destroy_metadata_for_worker before the rows are deleted, while they still exist. Cells::Claims::VerificationService, run on a cron schedule, backfills existing records and corrects drift (missing, orphaned or changed claims). Written in doc/development/cells/claims.md (added 2025-12-05) and doc/development/cells/_index.md § Unique constraints.",
+  "sources": [
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "For example, for routing purposes, we need to ensure that a particular URL or identifier belongs to at most one cell so we can route to it."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "Each cell has its own database, and we cannot enforce unique constraints across different databases."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "Therefore, we need a cluster-wide database to ensure these attributes are unique."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "Once claimed, no other cell can claim the same attribute."
+    },
+    {
+      "doc": "doc/development/cells/_index.md",
+      "quote": "Ensure the index is scoped to include their `sharding_key` as one of the columns present in the index."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "Code paths that use `delete_all`, `insert_all`, `upsert_all`, or raw SQL bypass these callbacks, so claims are not created or destroyed automatically."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "Schedule the worker with `run_after_commit` to keep claim operations outside the database transaction."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "Build this with `build_destroy_metadata_for_worker` before deleting records, because the metadata must be captured while the record still exists."
+    },
+    {
+      "doc": "doc/development/cells/claims.md",
+      "quote": "It reconciles local records with Topology Service claims to detect and correct drift, such as missing claims, orphaned claims, or changed values."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(each|every) cell[^.\\n]{0,80}(own|separate|independent|different)[^.\\n]{0,30}(database|db|postgres)|(separate|independent|different|multiple) (cell )?databases|across (cells|databases|dbs)|(unique|uniqueness)[^.\\n]{0,80}(only )?(within|per|inside) (a|one|each|the) (cell|database)|(?:cells?|they) (?:do not|don'?t|doesn'?t|never) share (?:a|the|one) (?:database|db)|no shared (?:database|db)|not (?:a )?shared (?:database|db)",
+        "source": {
+          "doc": "doc/development/cells/claims.md",
+          "quote": "Each cell has its own database, and we cannot enforce unique constraints across different databases."
+        }
+      },
+      {
+        "pattern": "topology[- ]service|claim service|cluster[- ]wide",
+        "source": {
+          "doc": "doc/development/cells/claims.md",
+          "quote": "Therefore, we need a cluster-wide database to ensure these attributes are unique."
+        }
+      },
+      {
+        "pattern": "\\brout",
+        "source": {
+          "doc": "doc/development/cells/claims.md",
+          "quote": "For example, for routing purposes, we need to ensure that a particular URL or identifier belongs to at most one cell so we can route to it."
+        }
+      },
+      {
+        "pattern": "callback|after_save|before_destroy|bypass|(skip|circumvent)[a-z]*[^.\\n]{0,40}(model|active ?record|hooks?)",
+        "source": {
+          "doc": "doc/development/cells/claims.md",
+          "quote": "Code paths that use `delete_all`, `insert_all`, `upsert_all`, or raw SQL bypass these callbacks, so claims are not created or destroyed automatically."
+        }
+      },
+      {
+        "pattern": "bulk_?claims|bulkclaimsworker|run_after_commit|after (the )?(transaction |db |database )?commit|outside (of )?the (database |db )?transaction|once the (?:database |db )?transaction (?:has )?committed|(?:after|once|when) (?:the |it )?(?:transaction|it) (?:has )?commit|post[- ]commit",
+        "source": {
+          "doc": "doc/development/cells/claims.md",
+          "quote": "Schedule the worker with `run_after_commit` to keep claim operations outside the database transaction."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(a|the) (global |plain |database )?unique (index|constraint) (is enough|is sufficient|still works|works across)",
+        "source": {
+          "doc": "doc/development/cells/claims.md",
+          "quote": "Each cell has its own database, and we cannot enforce unique constraints across different databases."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Each cell has its own database and a unique constraint cannot span databases, while routing and login need certain values to belong to at most one cell",
+      "points": 2
+    },
+    {
+      "criterion": "Scope uniqueness with the sharding key where possible, and claim the rare globally unique attribute in the Topology Service, after which no other cell can claim it",
+      "points": 2
+    },
+    {
+      "criterion": "Claims are made by Cells::Claimable's save and destroy callbacks, which delete_all, insert_all, upsert_all and raw SQL bypass",
+      "points": 1
+    },
+    {
+      "criterion": "Those code paths schedule Cells::BulkClaimsWorker after commit, outside the transaction, capturing destroy metadata before deleting; the verification service backfills and corrects drift",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

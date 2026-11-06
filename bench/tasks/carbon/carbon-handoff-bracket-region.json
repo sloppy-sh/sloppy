@@ -1,0 +1,48 @@
+{
+  "id": "carbon-handoff-bracket-region",
+  "family": "handoff",
+  "prompt_a": "In toolchain/lex/mismatched_brackets.cpp, raise MaxRegionItemsForSearch from 1500 to 4000. The reason, which you know and nobody else working on this code does: Kestrel Robotics generates its Carbon bindings with single top-level declarations of about 3,200 items each, so one missing brace in such a file was handed to the greedy fallback, which closed it at the end of the file and turned the next 400 declarations into members of the class; searching a 4,000-item region took 11 ms on their largest file.",
+  "prompt_b": "MaxRegionItemsForSearch in toolchain/lex/mismatched_brackets.cpp is 4000. Someone points out that hand-written regions are never that large, and wants 1500 back so pathological inputs reach the cheap matcher sooner. Is that safe? Recommend, and explain what decides the value.",
+  "reason": "Kestrel Robotics' generated bindings hold top-level declarations of ~3,200 items; above 1,500 the greedy fallback closed a missing brace at end of file and swallowed the next 400 declarations; 4,000 items search in 11 ms.",
+  "key": "Not safe: Kestrel Robotics generates its Carbon bindings with single top-level declarations of about 3,200 items, so at 1500 one missing brace in such a file goes to the greedy fallback, which closed it at the end of the file and turned the next 400 declarations into members of the class; searching a 4,000-item region took 11 ms on their largest file, so the bound still guards against pathological inputs.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "kestrel|generated (carbon )?bindings?",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "Kestrel Robotics generates its Carbon bindings"
+        }
+      },
+      {
+        "pattern": "3,?200|3\\.2 ?k\\b|thirty-two hundred",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "about 3,200 items"
+        }
+      },
+      {
+        "pattern": "end of (the )?file|\\beof\\b|members? of the (class|struct)|400 (following |later |subsequent )?declarations|swallow",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "closed it at the end of the file and turned the next 400 declarations into members of the class"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends against 1500, or only where no region of generated code is that large",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: generated bindings with regions of about 3,200 items fell back to the greedy matcher at 1500, which closed a missing brace at end of file and made the following declarations members of the class; 4,000 items still search quickly (11 ms)",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

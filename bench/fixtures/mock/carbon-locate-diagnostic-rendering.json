@@ -1,0 +1,26 @@
+{
+  "text": "Diagnostics::Renderer in toolchain/diagnostics/renderer.cpp draws into a Terminal::Buffer (common/terminal/buffer.h); StreamConsumer writes it to the stream; Terminal::Capabilities::Detect in common/terminal/capabilities.cpp finds color, Unicode and width; --no-diagnostic-snippets is defined in toolchain/driver/driver.cpp.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

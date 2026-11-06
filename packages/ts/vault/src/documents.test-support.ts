@@ -206,6 +206,37 @@ const leaves: fc.Arbitrary<DocumentNode> = fc.oneof(
     },
   }),
   compasses,
+  fc
+    .record({
+      path: fc.constantFrom("src/a.ts", "Makefile", "a b/c.rs", "x/y.svelte"),
+      from: fc.integer({ min: 1, max: 40 }),
+      length: fc.integer({ min: 0, max: 3 }),
+      digest: fc.constantFrom(
+        `sha256:${"ab".repeat(32)}`,
+        `later-algorithm:${"0f".repeat(20)}`,
+      ),
+      source: fc.oneof(
+        words,
+        fc.constant(""),
+        fc.constant("a\n\nb"),
+        fc.constant("```\nx"),
+        fc.constant("x\r\ny"),
+        fc.constant(OPENS_A_SECTION),
+      ),
+      language: fc.option(fc.constantFrom("ts", "rust", "mermaid"), {
+        nil: undefined,
+      }),
+    })
+    .map(({ path, from, length, digest, source, language }) =>
+      element("codeSnippet", {
+        path,
+        from,
+        to: from + length,
+        digest,
+        source,
+        ...(language === undefined ? {} : { language }),
+      }),
+    ),
   fc.constant({ type: "fromTheFuture", attrs: { whatever: { deep: true } } }),
 );
 

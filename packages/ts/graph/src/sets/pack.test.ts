@@ -10,10 +10,10 @@ import { makeCorpus, mulberry32 } from "../corpus.test-support.js";
 import type { Bounds } from "../viewport.js";
 import {
   boxGap,
-  lensArea,
   nameRoom,
   regionAt,
   SETS_FIGURE_WIDEST,
+  type SetsRegion,
   setsFigure,
 } from "./geometry.js";
 import {
@@ -29,7 +29,6 @@ import {
   SETS_STEP,
   type SetsDrawn,
   setsDropAt,
-  type SetsMark,
   type SetsNote,
   setsSpacing,
   setsSpacingTier,
@@ -74,8 +73,6 @@ function field(
     ),
   );
 }
-
-const setsIn = (mask: number) => mask.toString(2).replace(/0/g, "").length;
 
 /** The edge of the widest mark a lattice point stands the centre of: a disc
  *  crossing a hairline reads as standing in two sets at once. */
@@ -291,11 +288,18 @@ describe("packing a field", () => {
       if (mark.holds.length > 0) continue;
       const held = notes.find((entry) => entry.ref === mark.ref) as SetsNote;
       const carries = membershipOf(held.tags, drawn.tags);
-      // The exact place is the note's wherever the figure draws one; where it
-      // draws none, the note is somewhere inside its leading set.
+      // The exact place is the note's wherever the figure draws one with room
+      // left in it; otherwise the note is somewhere inside its leading set.
       const leading = carries & -carries;
-      if (places.has(carries)) expect(mark.region).toBe(carries);
-      else expect(mark.region & leading).toBe(leading);
+      expect(mark.region & leading).toBe(leading);
+      if (mark.region !== carries && places.has(carries)) {
+        const exact = drew.regions.find(
+          (at) => at.id === carries,
+        ) as SetsRegion;
+        expect(
+          marks.filter((other) => other.region === carries).length,
+        ).toBeGreaterThanOrEqual(latticeRoom(exact, drew, SETS_STEP));
+      }
       expect(
         regionAt(drew.shapes, {
           x: mark.x - drew.dx,
@@ -340,28 +344,17 @@ describe("packing a field", () => {
     }
   });
 
-  // What a note's share of the paper buys: a region the fit can size by its
-  // own count has room for the notes standing in it at full zoom, so folding is
-  // left to the slivers where four sets or more cross and no 2D figure can give
-  // a combination the area its count asks for.
+  // What a note's share of the paper buys: at full zoom every note has a mark
+  // of its own, inside a place of every set it carries.
   for (const size of [600, 1200]) {
-    it(`leaves every region a figure can size room for ${size} notes`, () => {
+    it(`stands every one of ${size} notes on a mark of its own`, () => {
       const held = field(size, 606);
-      const { drawn } = packed(held, selection);
-      const field0 = drawn.fields[0];
-      const places = new Set(field0.regions.map((region) => region.id));
-      const standing = new Map<number, number>();
+      const { marks, drawn } = packed(held, selection);
+      expect(marks.filter((mark) => mark.holds.length > 0)).toEqual([]);
       for (const note of held) {
-        const id = regionFor(membershipOf(note.tags, drawn.tags), places);
-        standing.set(id, (standing.get(id) ?? 0) + 1);
-      }
-      for (const region of field0.regions) {
-        const want = standing.get(region.id) ?? 0;
-        if (want === 0 || setsIn(region.id) > 3) continue;
-        expect(
-          regionCapacity(region, SETS_STEP),
-          `region ${region.id.toString(2)}`,
-        ).toBeGreaterThanOrEqual(want);
+        const carries = membershipOf(note.tags, drawn.tags);
+        const stands = drawn.standing.get(note.ref)?.region ?? -1;
+        expect(stands & carries, `${note.address}`).toBe(carries);
       }
     });
   }
@@ -688,14 +681,12 @@ describe("a field carrying more tags than the figure draws", () => {
     const asked =
       selection.length === 0 ? "nothing selected" : "claim selected";
     it(`stands every mark in a set it carries, ${asked}`, () => {
-      let buried = 0;
       for (let tags = 1; tags <= POOL.length; tags++) {
         const held = spread(POOL.slice(0, tags));
         const { marks, drawn } = packed(
           held,
           selection.filter((tag) => POOL.slice(0, tags).includes(tag)),
         );
-        if (alone(drawn) < drawn.tags.length) buried += 1;
         const answered = new Set<OwnedRef>();
         for (const mark of marks) {
           for (const ref of [mark.ref, ...mark.holds]) {
@@ -712,33 +703,18 @@ describe("a field carrying more tags than the figure draws", () => {
         }
         expect(answered.size, `${tags} tags`).toBe(held.length);
       }
-      // Without a buried set the sweep never reaches the last resort, and the
-      // rest of this test would hold whether or not it worked.
-      expect(buried).toBeGreaterThan(0);
-    });
+      // Twelve figures fitted from nothing, one per count of tags.
+    }, 30_000);
   }
 
-  // Standing a mark where its own set is drawn under another is standing it in
-  // that other set too; there is nowhere else for it to be, and nowhere is what
-  // this is instead of.
-  it("stands a mark whose own set is drawn under another inside both", () => {
-    const held = spread(POOL);
-    const { marks, drawn } = packed(held, []);
-    const places = new Set(drawn.fields[0].regions.map((one) => one.id));
-    const buried = drawn.tags
-      .map((_tag, bit) => 1 << bit)
-      .filter((bit) => !places.has(bit));
-    expect(buried.length).toBeGreaterThan(0);
-    const only = held.filter(
-      (one) => membershipOf(one.tags, drawn.tags) === buried[0],
-    );
-    expect(only.length).toBeGreaterThan(0);
-    for (const one of only) {
-      const mark = marks.find(
-        (at) => at.ref === one.ref || at.holds.includes(one.ref),
-      ) as SetsMark;
-      expect(mark.region & buried[0], `${one.address}`).toBe(buried[0]);
-      expect(mark.region & ~buried[0], `${one.address}`).toBeGreaterThan(0);
+  // Where every combination is carried by some note, the fit still leaves each
+  // set a place of its own, so a note carrying one tag alone stands in it alone
+  // rather than in a lens it does not carry. The last resort for a set drawn
+  // wholly under the others is `regionFor`'s, held above.
+  it("gives every drawn set a place of its own", () => {
+    for (const selection of [[], ["claim"] as Tag[]]) {
+      const { drawn } = packed(spread(POOL), selection);
+      expect(alone(drawn), selection.join(",")).toBe(drawn.tags.length);
     }
   });
 });
@@ -856,14 +832,11 @@ describe("the corpus the reading is measured on", () => {
           if (a.bit >= b.bit) continue;
           if ((ask.shared[a.bit * count + b.bit] ?? 0) === 0) continue;
           sharing += 1;
+          const both = (1 << a.bit) | (1 << b.bit);
           expect(
-            lensArea(
-              a.shape.r,
-              b.shape.r,
-              Math.hypot(a.shape.cx - b.shape.cx, a.shape.cy - b.shape.cy),
-            ),
+            field0.regions.some((region) => (region.id & both) === both),
             `${a.tag} and ${b.tag} of ${selection.join(",") || "nothing"}`,
-          ).toBeGreaterThan(0);
+          ).toBe(true);
         }
       }
       expect(sharing).toBeGreaterThan(DRAWN_SETS_MOST);

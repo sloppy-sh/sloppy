@@ -1,0 +1,78 @@
+{
+  "id": "milvus-brief-query-views",
+  "family": "brief",
+  "tools": "read",
+  "prompt": "I'm about to start on the distributed query view work. Explain to a newcomer, as briefly as you can, what it changes about who does what between Proxy, QueryCoord, StreamingNode and QueryNode and why, what a DataView version and a QueryView version are, how a query view moves through its states, how much of it serves production traffic today, and where each part is written down.",
+  "key": "The design is docs/design-docs/design_docs/qviews/README.md (state machines from #51887, 2026-08-11; revised to 2026-11-02), with its sub-documents beside it. Why: putting today's delegator on StreamingNode would route every segment load/release, delete apply, query and result through it, making it a compute- and IO-heavy global bottleneck. So QueryCoord manages sealed-segment Load/Release directly and generates the globally complete query view; StreamingNode only accepts view updates and serves the incremental (growing) part; Proxy queries in two phases, getting a shard-level plan (MVCC, optimizations, the view version) from StreamingNode, then sending it to StreamingNode and the designated QueryNodes and doing all reduce itself, retrying on node failure or view invalidation; QueryNodes subscribe to delete data from StreamingNode and apply it themselves. DataView (data_view.md) is the complete, non-duplicate loadable sealed-segment set, versioned per collection as (streaming_version, compact_version): streaming_version moves only on the flush atomic txn, compact_version on every other membership change (compaction, import, L0, drop, truncate). A QueryView version is (DataVersion, query_version) at ShardOnReplica level, query_version moving on load-level redistribution. Coord leads a state machine: Preparing → Ready → Up → Down → Dropping → Dropped, with Preparing → Unrecoverable → Dropping on error, at most one Preparing view per node (query_view_state_machine.md); an SN serving lease delays Up → Down while in use (query_view_lease.md). Today it does not serve production traffic: SN plan/execution and an injectable query client exist, but production Proxy routing is not switched and the new Coordinator runtime is not activated; the query/ documents (query_plan, query_client, query_execution, segment_pruning) and the SN WAL view (wal/streamingnode_vchannel_wal_view.md) carry the rest.",
+  "sources": [
+    {
+      "doc": "docs/design-docs/design_docs/qviews/README.md",
+      "quote": "StreamingNode would become a compute-intensive and IO-intensive global bottleneck node"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/qviews/README.md",
+      "quote": "QueryCoord directly manages all SealedSegment Load/Release operations."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/qviews/README.md",
+      "quote": "Proxy uses a two-phase query approach — it generates a query plan on StreamingNode, then sends the query plan to designated QueryNodes to complete the query, and performs all distributed Reduce operations itself."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/qviews/README.md",
+      "quote": "After LoadSegment, QueryNode proactively subscribes to the corresponding Delete data from StreamingNode and applies Delete data on its own."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/qviews/README.md",
+      "quote": "They do not switch production Proxy routing or activate the new Coordinator runtime."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/qviews/README.md",
+      "quote": "Incremented only by the flush atomic txn (PrepareFlush) for the growing-to-sealed query handoff."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/qviews/README.md",
+      "quote": "The query view version number is at the ShardOnReplica level"
+    },
+    {
+      "doc": "docs/design-docs/design_docs/qviews/README.md",
+      "quote": "The query view maintains consistency across Coord / QueryNode / StreamingNode, with Coord as the leader."
+    },
+    {
+      "doc": "docs/design-docs/design_docs/qviews/README.md",
+      "quote": "Normal flow: Preparing → Ready → Up → Down → Dropping → Dropped"
+    }
+  ],
+  "grader": {
+    "kind": "none"
+  },
+  "rubric": [
+    {
+      "criterion": "Why: StreamingNode as delegator would become a global compute and IO bottleneck",
+      "points": 1
+    },
+    {
+      "criterion": "Who does what: QueryCoord owns sealed load/release and the complete view; Proxy plans on StreamingNode, executes on StreamingNode and QueryNodes and reduces itself; QueryNodes subscribe to and apply deletes",
+      "points": 2
+    },
+    {
+      "criterion": "DataView is versioned (streaming_version, compact_version) per collection, and a QueryView version adds a query version per shard on a replica",
+      "points": 1
+    },
+    {
+      "criterion": "The state machine, Coord-led: Preparing, Ready, Up, Down, Dropping, Dropped, with Unrecoverable as the error path",
+      "points": 1
+    },
+    {
+      "criterion": "Says it is not yet serving production traffic: Proxy routing is not switched and the new Coordinator runtime is not active",
+      "points": 1
+    },
+    {
+      "criterion": "Names the documents (qviews/README.md and its sub-documents such as data_view.md and query_view_state_machine.md), and is brief and says nothing false",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

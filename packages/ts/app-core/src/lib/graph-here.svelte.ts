@@ -296,7 +296,8 @@ class GraphHereStore {
 				asks: true,
 				alongside: true,
 				open: async () => ((await this.openFolder()) ? this.#open?.name : undefined)
-			}
+			},
+			project: () => served.projectFolder().catch(() => undefined)
 		});
 		resetApi();
 		// The door comes down only once the graph on this device answers, so no

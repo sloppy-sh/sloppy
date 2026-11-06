@@ -1,0 +1,26 @@
+{
+  "text": "GuardedS3EndpointProvider in internal/core/src/storage/minio/GuardedS3EndpointProvider.h, installed by InstallS3EndpointAuthGuard from MinioChunkManager::PreCheck in internal/core/src/storage/minio/MinioChunkManager.cpp.",
+  "timing": {
+    "api_ms": 2900,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2800
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 300,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

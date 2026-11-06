@@ -177,11 +177,6 @@ export function tasksOf(build: Build): TaskRead[] {
 	});
 }
 
-/** Every place the build wrote, each once, in the order the tasks did. */
-export function filesOf(build: Build): string[] {
-	return [...new Set(tasksOf(build).flatMap((one) => one.last?.files ?? []))];
-}
-
 /** Every note the build wrote or changed, each once. */
 export function notesOf(build: Build): OwnedRef[] {
 	return [...new Set(tasksOf(build).flatMap((one) => one.last?.notes ?? []))];

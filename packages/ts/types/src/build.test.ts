@@ -160,7 +160,15 @@ describe("a review", () => {
 });
 
 describe("which acts a role is handed", () => {
-  const reading = CHAT_TOOLS.filter((act) => !chatToolWrites(act));
+  const reading = CHAT_TOOLS.filter(
+    (act) => !chatToolWrites(act) && act !== "find_code",
+  );
+
+  it("leaves out the acts served only outside the app", () => {
+    for (const role of BUILD_ROLES) {
+      expect(toolsForRole(role)).not.toContain("find_code");
+    }
+  });
   const writing = CHAT_TOOLS.filter((act) => chatToolWrites(act));
 
   it("gives every role the chat's reading acts", () => {

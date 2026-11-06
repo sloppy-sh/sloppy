@@ -1,0 +1,87 @@
+@import '@sloppy/ui/styles';
+@import './fonts.css';
+
+/* The charts' three colours (src/lib/approaches.ts). Each clears 3:1 on its look's card, and the
+   Sloppy blue is the look's own --primary; Sloppy's variants share it and differ by dash. */
+:root,
+:root[data-look='paper'] {
+	--series-sloppy: #4064b9;
+	--series-plain: #cf5a2b;
+	--series-agents: #16916a;
+}
+
+:root[data-look='graphite'],
+.dark:root[data-look='graphite'] {
+	--series-sloppy: #5c82da;
+	--series-plain: #d95926;
+	--series-agents: #199e70;
+}
+
+@media (forced-colors: active) {
+	.series-line {
+		stroke: CanvasText !important;
+	}
+	.series-point {
+		fill: CanvasText !important;
+	}
+	.series-whisker {
+		stroke: CanvasText !important;
+	}
+	.series-line[data-approach='plain'] {
+		stroke-dasharray: 10 3;
+	}
+	.series-line[data-approach='agents'] {
+		stroke-dasharray: 2 3;
+	}
+}
+
+.type-display {
+	font-size: clamp(2.25rem, 1.2rem + 4.2vw, 4.25rem);
+	font-weight: 650;
+	letter-spacing: -0.025em;
+	line-height: 1.05;
+	max-width: 18ch;
+	text-wrap: balance;
+}
+
+.type-h2 {
+	font-size: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	line-height: 1.15;
+	max-width: 24ch;
+	text-wrap: balance;
+}
+
+.type-body {
+	font-size: 1.0625rem;
+	line-height: 1.65;
+}
+
+.section-pad {
+	padding-block: clamp(4rem, 9vw, 7rem);
+}
+
+.screenshot {
+	box-shadow:
+		0 1px 2px oklch(0 0 0 / 0.04),
+		0 12px 32px -12px oklch(0 0 0 / 0.12);
+}
+
+a,
+button {
+	transition:
+		color 150ms cubic-bezier(0.25, 1, 0.5, 1),
+		background-color 150ms cubic-bezier(0.25, 1, 0.5, 1),
+		border-color 150ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+}

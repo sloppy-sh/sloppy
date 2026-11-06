@@ -1,0 +1,115 @@
+{
+  "id": "carbon-why-diagnostic-sorting",
+  "family": "why",
+  "tools": "read",
+  "prompt": "`carbon compile` prints its diagnostics neither in the order the toolchain emits them nor simply top to bottom through the file. What order does it use, why not either of those two simpler orders, and how are diagnostics ordered when several come out at the same point, for example at the end of a scope?",
+  "key": "Written in proposals/p006699-diagnostic-sorting.md (landed in #6699 on 2026-02-11; implemented in #6687 on 2026-02-04) and toolchain/docs/diagnostics.md § SortingConsumer. By default `carbon compile` uses SortingConsumer (`--stream-errors` shows the emitted order), which sorts by `last_byte_offset`: the last token the emitting phase had processed when it emitted the diagnostic. That keeps the toolchain's causal order while still following the file. Emitted order alone would print all lex errors, then all parse errors, then all check errors, jumping back and forth through the file (a parse error at the end of a file before check errors whose fix would fix it). Pure line-and-column order breaks causality and shows a consequence before its cause: in `F(1 2);` the arity error for `F` would come before the parse error for the missing comma that caused it. Last token alone leaves ties: diagnostics emitted at the same token, such as `x` and `y` both reported unused at the closing `}`, would come out in a non-deterministic order, hindering golden tests, and more scope-end checks (flow checking) are expected. So a diagnostic may ask to be sorted 'on-scope': at the same offset, non-on-scope diagnostics come first and on-scope ones are sorted by their start position (line and column). The sort is stable, so earlier phases come first when all else is equal, and sorting is done only when requested, avoiding overhead.",
+  "sources": [
+    {
+      "doc": "proposals/p006699-diagnostic-sorting.md",
+      "quote": "Change `SortingConsumer` from sorting by last processed token (per-phase) to additionally allow diagnostics to request sorting by start position (line and column) when the last processed token is the same."
+    },
+    {
+      "doc": "proposals/p006699-diagnostic-sorting.md",
+      "quote": "Conversely, sorting purely by source location (line and column) can break causality, presenting a consequence before its cause."
+    },
+    {
+      "doc": "proposals/p006699-diagnostic-sorting.md",
+      "quote": "This is confusing because the missing comma is the root cause of the incorrect argument count."
+    },
+    {
+      "doc": "proposals/p006699-diagnostic-sorting.md",
+      "quote": "The order would be non-deterministic, hindering golden tests."
+    },
+    {
+      "doc": "proposals/p006699-diagnostic-sorting.md",
+      "quote": "This would print all lex errors, then all parse errors, then all check errors."
+    },
+    {
+      "doc": "toolchain/docs/diagnostics.md",
+      "quote": "In these cases, we put non-on-scope diagnostics first, and then sort on-scope diagnostics by their start position (line and column)."
+    },
+    {
+      "doc": "toolchain/docs/diagnostics.md",
+      "quote": "Diagnostic sorting is stable, so that diagnostics from earlier phases are printed first if all else is equal."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "last[- ](processed |handled |emitted )?token|last_byte_offset|last byte offset|latest token|token[^.\\n]{0,40}(being |was |were |had been )?(processed|handled) when|(processed|handled) token",
+        "source": {
+          "doc": "proposals/p006699-diagnostic-sorting.md",
+          "quote": "Change `SortingConsumer` from sorting by last processed token (per-phase) to additionally allow diagnostics to request sorting by start position (line and column) when the last processed token is the same."
+        }
+      },
+      {
+        "pattern": "(caus|root cause|consequence|effect)\\w*[^.\\n]{0,160}(before|ahead of|after)[^.\\n]{0,60}(caus|root|consequence|effect)|missing comma[^.\\n]{0,200}(after|before|argument|arity|count)|(argument|arity|count)[^.\\n]{0,200}(before|after)[^.\\n]{0,60}(missing comma|parse error)|(break|lose|loses|ignore|violate)\\w*[^.\\n]{0,40}causal",
+        "source": {
+          "doc": "proposals/p006699-diagnostic-sorting.md",
+          "quote": "Conversely, sorting purely by source location (line and column) can break causality, presenting a consequence before its cause."
+        }
+      },
+      {
+        "pattern": "(all|every)[^.\\n]{0,20}lex\\w*[^.\\n]{0,80}(then|before|followed by|first)[^.\\n]{0,80}(pars|check|semantic)|(phase|stage)[^.\\n]{0,80}(order|at a time|by phase|by stage|one after)[^.\\n]{0,120}(jump|back and forth|confus|out of order|scatter)|(jump|back and forth)[^.\\n]{0,160}(phase|stage|lex|pars)|(lex|pars)\\w*[^.\\n]{0,160}(jump|back and forth)",
+        "source": {
+          "doc": "proposals/p006699-diagnostic-sorting.md",
+          "quote": "This would print all lex errors, then all parse errors, then all check errors."
+        }
+      },
+      {
+        "pattern": "non-?determin|nondetermin|(not|isn'?t|un)[- ]?(deterministic|stable)|golden|flak",
+        "source": {
+          "doc": "proposals/p006699-diagnostic-sorting.md",
+          "quote": "The order would be non-deterministic, hindering golden tests."
+        }
+      },
+      {
+        "pattern": "on-?scope|(same|tied|identical|equal)[^.\\n]{0,40}(token|offset|position|point)[^.\\n]{0,200}(line|column|start(ing)? position|source position|location)|(end of (a|the) scope|scope end|closing brace|`?\\}`?)[^.\\n]{0,200}(line and column|line\\/column|start(ing)? position|source position|by (line|location|position))",
+        "source": {
+          "doc": "toolchain/docs/diagnostics.md",
+          "quote": "In these cases, we put non-on-scope diagnostics first, and then sort on-scope diagnostics by their start position (line and column)."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(?<!not )(?<!n't )(?<!never )(?<!than )(?<!rather than )(sorts?|orders?|ordered|sorted) (them |diagnostics |everything )?(purely|strictly|only|simply|just|entirely) by (line|source (location|position)|position|file position)",
+        "source": {
+          "doc": "proposals/p006699-diagnostic-sorting.md",
+          "quote": "Conversely, sorting purely by source location (line and column) can break causality, presenting a consequence before its cause."
+        }
+      },
+      {
+        "pattern": "(?<!not )(?<!n't )(?<!never )(?<!than )(prints?|emits?|shows?|outputs?|reports?) (them |diagnostics )?(exactly |simply |just )?in (the )?(order|sequence) (they are|they're|they were|of being) (emitted|produced|discovered|generated)",
+        "source": {
+          "doc": "proposals/p006699-diagnostic-sorting.md",
+          "quote": "This would print all lex errors, then all parse errors, then all check errors."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says diagnostics are sorted by the last token the emitting phase had processed (last_byte_offset), by SortingConsumer, which keeps causal order while following the file",
+      "points": 2
+    },
+    {
+      "criterion": "Says why not emitted order (all lex, then parse, then check errors, jumping back and forth) and why not pure line and column (a consequence before its cause, as with the missing comma and the argument count)",
+      "points": 2
+    },
+    {
+      "criterion": "Says that ties at one token (such as unused-variable diagnostics at a scope's `}`) would be non-deterministic and hinder golden tests, so 'on-scope' diagnostics are sorted by start position after the others, and the sort is stable",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { MemoryFiles } from "@sloppy/local";
 import { encodeText, graphFile, type VaultGraph } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
@@ -168,6 +169,61 @@ describe("check", () => {
         file: "notes/01J0000000000000000000000A.md",
         note: `${DID}/${A}`,
         said: "Points at code that isn't there: src/gone.ts",
+      },
+    ]);
+  });
+
+  it("says which quotes of code have moved, changed or gone", async () => {
+    const quoted = "const two = 2;";
+    const digest = `sha256:${createHash("sha256").update(quoted).digest("hex")}`;
+    const quote = (path: string, line: number) =>
+      `\`\`\`ts code:${path}#L${line}-L${line} ${digest}\n${quoted}\n\`\`\``;
+    const container = await project({
+      "src/still.ts": `x\n${quoted}\n`,
+      "src/moved.ts": `x\ny\n${quoted}\n`,
+      "src/changed.ts": "x\nconst two = 20;\n",
+      "notes/01J0000000000000000000000A.md": note({
+        ulid: A,
+        body: [
+          quote("src/still.ts", 2),
+          quote("src/moved.ts", 2),
+          quote("src/changed.ts", 2),
+          quote("src/gone.ts", 2),
+        ].join("\n\n"),
+      }),
+    });
+    const { defects } = await check(container);
+    expect(
+      defects.map(({ kind, said, quote }) => ({ kind, said, quote })),
+    ).toEqual([
+      {
+        kind: "quoted-code",
+        said: "Quotes code that has moved: src/moved.ts#L2-L2 is now at src/moved.ts#L3-L3",
+        quote: {
+          at: "src/moved.ts#L2-L2",
+          state: "moved",
+          now: "src/moved.ts#L3-L3",
+        },
+      },
+      {
+        kind: "quoted-code",
+        said: "Quotes code that has changed since: src/changed.ts#L2-L2",
+        quote: {
+          at: "src/changed.ts#L2-L2",
+          state: "changed",
+          now: "src/changed.ts#L2-L2",
+          says: "const two = 20;",
+        },
+      },
+      {
+        kind: "quoted-code",
+        said: "Quotes code that isn't there now: src/gone.ts#L2-L2",
+        quote: { at: "src/gone.ts#L2-L2", state: "removed" },
+      },
+      {
+        kind: "missing-code",
+        said: "Points at code that isn't there: src/gone.ts",
+        quote: undefined,
       },
     ]);
   });

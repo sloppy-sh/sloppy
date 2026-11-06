@@ -1,0 +1,47 @@
+{
+  "text": "Keep 6. Halvorsen Shipping's F5 load balancer caps request bodies at 64 MB and their design exports are ~10 MB, so ten at once died with a bare 413 that never hit GitLab's logs.",
+  "timing": {
+    "api_ms": 2000,
+    "first_token_ms": 300,
+    "first_tool_ms": 500,
+    "answer_ms": 1900
+  },
+  "tokens": {
+    "input": 900,
+    "cache_write": 1500,
+    "cache_read": 3000,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.02,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1,
+    "mcp__history__git_log": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "app/services/design_management/save_designs_service.rb"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "docs/decisions/gitlab-handoff-design-upload-cap.md"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "mcp__history__git_log",
+      "input": {},
+      "result": "commit ..."
+    }
+  ]
+}

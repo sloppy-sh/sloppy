@@ -11,6 +11,7 @@
 	import Code from '@lucide/svelte/icons/code';
 	import Compass from '@lucide/svelte/icons/compass';
 	import FileCode from '@lucide/svelte/icons/file-code';
+	import SquareCode from '@lucide/svelte/icons/square-code';
 	import Heading1 from '@lucide/svelte/icons/heading-1';
 	import Heading2 from '@lucide/svelte/icons/heading-2';
 	import ImageIcon from '@lucide/svelte/icons/image';
@@ -41,6 +42,7 @@
 	import { BlockHandles, type SectionActs, type SectionHolds } from './block-handles.js';
 	import { CARET_MENU, caretOptionId } from './caret-menu.svelte';
 	import { anchorLabel, CODE_PROTOCOL, CodeAnchors, codeHref } from './code-anchor.js';
+	import { SnippetNode } from './snippet-node.js';
 	import { CompassNode } from './compass-node.js';
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
@@ -750,6 +752,7 @@
 						() => node
 					),
 					CodeAnchors(() => code),
+					SnippetNode(() => code),
 					InkNode,
 					PictureNode(() => media),
 					...DRAWN_ELEMENTS
@@ -1003,6 +1006,13 @@
 			.run();
 	}
 
+	/** Lines of the code, quoted as the file has them now. */
+	async function quoteCode(): Promise<void> {
+		const snippet = await code?.quote();
+		if (!snippet || !editor || editor.isDestroyed) return;
+		editor.chain().focus().insertSnippet(snippet).run();
+	}
+
 	const formatting = $derived<EditorAction[]>([
 		{
 			id: 'bold',
@@ -1072,7 +1082,10 @@
 	const inserts = $derived<EditorAction[]>([
 		{ id: 'cite', label: 'Cite a note', icon: Brackets, run: citeNote },
 		...(code
-			? [{ id: 'code', label: 'Cite code', icon: FileCode, run: () => void citeCode() }]
+			? [
+					{ id: 'code', label: 'Cite code', icon: FileCode, run: () => void citeCode() },
+					{ id: 'quote-code', label: 'Quote code', icon: SquareCode, run: () => void quoteCode() }
+				]
 			: []),
 		{ id: 'picture', label: 'Picture', icon: ImageIcon, run: () => (mediaOpen = true) },
 		{ id: 'emoji', label: 'Emoji', icon: Smile, run: () => (pickerOpen = true) },
@@ -1846,5 +1859,118 @@
 		margin-top: 0.5rem;
 		width: 100%;
 		resize: vertical;
+	}
+	/* Code quoted into a note — DESIGN.md § "Code quoted into a note". Read as
+	   it was written, so it scrolls sideways and never wraps; the place it was
+	   quoted from wraps instead of being cut short. */
+	:global(.sloppy-snippet) {
+		margin: 0.85em 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: color-mix(in oklab, var(--muted) 40%, transparent);
+		padding: 0.5rem 0;
+	}
+	:global(.sloppy-snippet.is-selected) {
+		outline: 2px solid color-mix(in oklab, var(--primary) 60%, transparent);
+		outline-offset: 2px;
+	}
+	:global(.sloppy-snippet-head) {
+		padding: 0 0.75rem 0.4rem;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-snippet-place) {
+		display: inline;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		word-break: break-all;
+	}
+	:global(button.sloppy-snippet-place) {
+		cursor: pointer;
+	}
+	:global(button.sloppy-snippet-place)::before {
+		content: '';
+		display: inline-block;
+		width: 0.85em;
+		height: 0.85em;
+		margin-right: 0.35em;
+		vertical-align: -0.09em;
+		background: currentColor;
+		mask: var(--code-anchor-mark) center / contain no-repeat;
+		-webkit-mask: var(--code-anchor-mark) center / contain no-repeat;
+	}
+	:global(.sloppy-snippet-lines) {
+		overflow-x: auto;
+	}
+	:global(.sloppy-snippet-lines code) {
+		display: block;
+		width: max-content;
+		min-width: 100%;
+		padding-right: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		line-height: 1.6;
+	}
+	:global(.sloppy-snippet-row) {
+		display: flex;
+	}
+	:global(.sloppy-snippet-number) {
+		flex-shrink: 0;
+		width: 2.75rem;
+		padding-right: 0.5rem;
+		border-right: 1px solid var(--border);
+		color: var(--muted-foreground);
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+		user-select: none;
+	}
+	:global(.sloppy-snippet-said) {
+		padding-left: 0.75rem;
+		white-space: pre;
+	}
+	:global(.sloppy-snippet-state) {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-top: 0.5rem;
+		border-top: 1px solid var(--border);
+		padding-top: 0.5rem;
+	}
+	:global(.sloppy-snippet-state:empty) {
+		display: none;
+	}
+	:global(.sloppy-snippet-said-now) {
+		margin: 0;
+		padding: 0 0.75rem;
+		font-size: 0.8125rem;
+	}
+	/* What the code says now is what the person reads against the quote, so it
+	   is drawn as the quote is and marked in the margin in ink. */
+	:global(.sloppy-snippet-state .sloppy-snippet-number) {
+		border-right-color: var(--foreground);
+		color: var(--foreground);
+	}
+	:global(.sloppy-snippet-act) {
+		align-self: flex-start;
+		min-height: var(--control);
+		margin: 0 0.75rem;
+		border: 1px solid var(--border);
+		border-radius: calc(var(--radius) - 2px);
+		background: var(--background);
+		padding: 0 0.85rem;
+		font-size: 0.875rem;
+		cursor: pointer;
+	}
+	:global(.sloppy-snippet-act:hover) {
+		background: var(--muted);
+	}
+	:global(.sloppy-snippet-act:focus-visible) {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
 	}
 </style>

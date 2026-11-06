@@ -1,0 +1,119 @@
+{
+  "id": "dotnet-why-com-properties",
+  "family": "why",
+  "tools": "read",
+  "prompt": "We're moving an interface from [ComImport] to [GeneratedComInterface] and want to declare C# properties on it rather than hand-written get_X/set_X methods. In what order do the generated slots for a property with both accessors come, and why that order? Why does the generator not distinguish propput from propputref, and why can't I declare an init accessor? Why does it reject so many property shapes outright instead of doing something reasonable with them? And if I want a property that wraps two methods that are not next to each other in the interface, how do I do that?",
+  "key": "From docs/design/libraries/ComInterfaceGenerator/Properties.md (added with property support in #128869 on 2026-06-17). A get/set property takes two consecutive vtable slots, getter first then setter (get_Foo(out T) then set_Foo(T)), in source-declaration order after the preceding members; a get-only or set-only property takes one. That order matches the layout the built-in CLR/COM CCW produces for a [ComVisible(true)] managed interface with the same property, so source-generated and built-in COM stay wire-compatible. propputref exists only in TLB metadata and IDispatch::Invoke and has no representation in an IUnknown-only vtable, so every setter maps to one slot (IDispatch/dispids are a non-goal). init-vs-set is a C#-call-site distinction with no representation in the COM vtable, so an init accessor is rejected. The supported surface is deliberately narrow and anything outside it is rejected with SYSLIB1091 so that supported semantics can be expanded later without breaking existing users. A property whose accessors have bodies is a default-implemented member: managed-only sugar with no vtable slot, which is how a property wraps a pair of unrelated or non-adjacent ABI methods (DefaultImplementedMembers.md).",
+  "sources": [
+    {
+      "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+      "quote": "`T Foo { get; set; }` &rarr; **two consecutive slots**: the getter slot first, then the setter slot."
+    },
+    {
+      "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+      "quote": "The slot ordering (get before set, both in source-declaration order) matches the layout the built-in CLR produces for a `[ComVisible(true)]` managed interface that declares the equivalent property."
+    },
+    {
+      "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+      "quote": "Match the vtable layout that the built-in COM CCW produces for `[ComVisible(true)]` managed interfaces, so source-generated and built-in COM remain wire-compatible for the common shapes."
+    },
+    {
+      "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+      "quote": "The `propputref` concept exists in TLB metadata and in `IDispatch::Invoke`; it has no representation in an `IUnknown`-only vtable."
+    },
+    {
+      "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+      "quote": "`init`-vs-`set` is a C#-call-site distinction with no representation in the COM vtable;"
+    },
+    {
+      "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+      "quote": "Anything outside this list is rejected with `SYSLIB1091` (\"member will not be source generated\") so that supported semantics can be expanded over time without breaking existing users."
+    },
+    {
+      "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+      "quote": "Provide a mechanism (default-implemented members; see [DefaultImplementedMembers.md](./DefaultImplementedMembers.md)) for users to declare properties or methods that are pure managed sugar and are *not* assigned vtable slots, so that a property can wrap a pair of unrelated or non-adjacent ABI methods."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(get\\w*|getter|read)[^.\\n]{0,50}(before|first|then|followed by|precedes|ahead of)[^.\\n]{0,50}(set\\w*|setter|write)|(set\\w*|setter)[^.\\n]{0,30}(after|follows|second)[^.\\n]{0,30}(get\\w*|getter)",
+        "source": {
+          "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+          "quote": "`T Foo { get; set; }` &rarr; **two consecutive slots**: the getter slot first, then the setter slot."
+        }
+      },
+      {
+        "pattern": "built-?in (com|clr|ccw|runtime|marshall?ing|interop)|comvisible|\\bccw\\b|wire[- ]?compat|(same|match\\w*|identical|compatible)[^.\\n]{0,40}(layout|vtable|order)[^.\\n]{0,80}(built-?in|clr|runtime|ccw|comvisible|classic|existing com|tlbimp|type ?lib)",
+        "source": {
+          "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+          "quote": "The slot ordering (get before set, both in source-declaration order) matches the layout the built-in CLR produces for a `[ComVisible(true)]` managed interface that declares the equivalent property."
+        }
+      },
+      {
+        "pattern": "iunknown|(tlb|type ?lib\\w*|idispatch)[^.\\n]{0,100}(only|concept|metadata|invoke)|only (exists? |meaningful |a concept )?(in|for) (tlb|type ?lib|idispatch)",
+        "source": {
+          "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+          "quote": "The `propputref` concept exists in TLB metadata and in `IDispatch::Invoke`; it has no representation in an `IUnknown`-only vtable."
+        }
+      },
+      {
+        "pattern": "call[- ]site|c# (language |compiler )?(only |level |side )?(distinction|concept|feature|construct)|(language|compiler|source)[- ]level|only (exists|matters|means something) (in|to) c#",
+        "source": {
+          "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+          "quote": "`init`-vs-`set` is a C#-call-site distinction with no representation in the COM vtable;"
+        }
+      },
+      {
+        "pattern": "syslib1091|(expand|widen|grow|extend|relax|loosen|add)\\w*[^.\\n]{0,80}(without|not|never) (a )?(break|breaking)|(later|future)[^.\\n]{0,60}(without|not) (break|breaking)|(break|breaking)[^.\\n]{0,30}(existing|current) (users|code|callers)",
+        "source": {
+          "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+          "quote": "Anything outside this list is rejected with `SYSLIB1091` (\"member will not be source generated\") so that supported semantics can be expanded over time without breaking existing users."
+        }
+      },
+      {
+        "pattern": "default[- ]implement\\w*|\\bdims?\\b|(body|bodies)[^.\\n]{0,100}(no|not|without|isn'?t|aren'?t|never)[^.\\n]{0,30}(slot|vtable)|managed[- ]only|pure managed sugar",
+        "source": {
+          "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+          "quote": "Provide a mechanism (default-implemented members; see [DefaultImplementedMembers.md](./DefaultImplementedMembers.md)) for users to declare properties or methods that are pure managed sugar and are *not* assigned vtable slots, so that a property can wrap a pair of unrelated or non-adjacent ABI methods."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(setter|set accessor|set_\\w+)( slot)? (comes |goes |is )?(first|before (the )?(get|getter))|propputref (gets|has|is given|takes) (its own|a separate|a second|a third)",
+        "source": {
+          "doc": "docs/design/libraries/ComInterfaceGenerator/Properties.md",
+          "quote": "`T Foo { get; set; }` &rarr; **two consecutive slots**: the getter slot first, then the setter slot."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says a get/set property takes two consecutive slots, getter first then setter, in source order, because that matches the built-in CLR/CCW layout for [ComVisible(true)] interfaces so the two stay wire-compatible",
+      "points": 2
+    },
+    {
+      "criterion": "Says propputref has no representation in an IUnknown-only vtable (it exists only in TLB metadata and IDispatch::Invoke), and init-vs-set is a C# call-site distinction with no vtable representation",
+      "points": 2
+    },
+    {
+      "criterion": "Says the narrow surface is deliberate: other shapes are rejected with SYSLIB1091 so support can be expanded later without breaking existing users",
+      "points": 1
+    },
+    {
+      "criterion": "Says a property with accessor bodies is a default-implemented member, managed-only with no vtable slot, which is how it wraps non-adjacent ABI methods",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project (for example that the setter slot comes first)",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

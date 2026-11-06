@@ -143,6 +143,11 @@ export function draftRows(
 	return rows;
 }
 
+/** What happened to a row's note, in the one line under its title. */
+export function rowSaid(row: DraftRow): string {
+	return row.card.rows.map((one) => `${one.label}: ${one.value}`).join(' · ');
+}
+
 /** What a note's sections say happened, in one line. */
 function sectionsSaid(sections: VaultDifference['notes']['changed'][number]['sections']): string {
 	const said = [

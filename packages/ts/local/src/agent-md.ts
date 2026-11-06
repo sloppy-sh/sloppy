@@ -53,8 +53,10 @@ agent all read the same way.
 
 **What goes down here is a decision and the reason for it**, under what it sprang out of,
 tagged with the system it is about, and pointing at the code it explains — a graph somebody
-moves around in, not a pile of summaries. Asked why something is the way it is, look here
-before answering; told why, write it down here. Asked whether a piece of the code is doing
+moves around in, not a pile of summaries. Answer from what you already hold; look here before
+writing anything down, and before answering why something is the way it is where the
+documents in front of you do not already say, and cite what you find here as the source.
+Told why, write it down here. Asked whether a piece of the code is doing
 what it was written to do, read the note for what the thing is FOR and the code for what it
 does, and put what agrees and what does not into the note, where the next reader finds it.
 
@@ -200,6 +202,29 @@ root:
 
 A name after \`#\` is found by searching that file for it; a run of lines is \`#L12\` or
 \`#L12-L20\`; nothing after the path is the whole file.
+
+## Quoting code
+
+Where the lines themselves are what a note is about, quote them: a fence whose info
+string is the language, a \`code:\` reference to the run of lines, and a digest of exactly
+those lines as they stood when they were quoted, with the lines as its body. It reads as
+ordinary code anywhere markdown is read:
+
+    \`\`\`ts code:packages/ts/vault/src/markdown.ts#L120-L124 sha256:<64 hex digits>
+    … those five lines …
+    \`\`\`
+
+Never type the lines or the digest yourself. Through \`sloppy mcp\`, \`write_note\` takes a
+fence whose info string is the reference alone — \`code:<path>#L<from>-L<to>\` — and fills
+in the lines and the digest from the file as it is now; a quote you were given and write
+back as it was keeps its lines.
+
+**A quote whose code has moved, changed or gone is a note to update.** Reading a note says
+of each quote whether its code is unchanged, moved (and where to), changed (and what it
+says now) or removed, and \`sloppy check\` lists every one that is not unchanged. Quote the
+code again — the reference alone, at the lines it is at now — and fix whatever the change
+made untrue in the writing around it. Keeping a quote true is yours to do; saying the
+note's reasoning still holds stays the person's.
 
 ## The compass
 
@@ -411,6 +436,7 @@ not somebody reading a note against the code, and nothing you do here writes eit
     sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
     sloppy draft --tag a,b [paths…]  the same, tagging each note it writes
     sloppy check           read every note and say what doesn't hold
+    sloppy organise        propose where notes would hang better and what would join them
     sloppy mcp             serve these notes to an assistant, under the rules the app keeps
 
 Each but \`mcp\` takes \`--json\` and answers in JSON instead of lines.
@@ -424,12 +450,19 @@ carries; it takes none off. Name the system the files are part of, so one run ta
 scope.
 
 \`mcp\` is how an assistant working in this project reaches these notes through Sloppy's own
-acts rather than by editing the files: started from the project, it serves the same acts the
+acts rather than by editing the files: started from the project, it serves the acts the
 app's chat has — reading, writing, tagging, numbering, moving, linking, binning and taking
-back out — under every rule above, so a write on a note somebody has written in goes as an
-offer. A write about a place lands on the note started about it, else on the one note that
+back out — and \`find_code\` beside them, under every rule above, so a write on a note
+somebody has written in goes as an offer. A listing leaves out the places each note is about and a search answers each note
+with the line that matched, until you ask for more; read only the sections of a note you
+need by naming their headings. A write about a place lands on the note started about it, else on the one note that
 links to it, and where several link to it and none was started about it, nothing is written
-and they are named. What it writes lands in this folder like any other edit, and is reviewed with the rest
+and they are named; \`start: true\` starts one about the place all the same.
+Ask \`find_code\` where something is in the code: it answers the exact lines and the notes
+explaining that file, so read those lines rather than searching for them.
+Ask \`relate\` before writing a note to find where it belongs and what it relates to; a
+note started with no \`under\` goes under the note most related to it where one is close
+enough, and the answer says where it went and why. What it writes lands in this folder like any other edit, and is reviewed with the rest
 of the change. It writes none of what this file says is not yours: \`checked\` and
 \`read_against\`, who a note's owner is, anybody's identity or keys, commits and what
 signs them, and what anybody's profile says.

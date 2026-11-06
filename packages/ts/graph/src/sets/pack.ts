@@ -17,6 +17,7 @@ import { drawnSetSlots, drawnSetsOf, type GraphRetag } from "../contract.js";
 import type { Bounds, Point } from "../viewport.js";
 import {
   boxGap,
+  gapOf,
   inBox,
   inShape,
   namePoint,
@@ -29,6 +30,8 @@ import {
   SETS_STEP,
   type SetsShape,
   setsFigure,
+  setsIn,
+  setsUnitArea,
 } from "./geometry.js";
 
 // The lattice step is a fact about the widest mark, and the unit of area the
@@ -149,24 +152,27 @@ export function membershipOf(
 }
 
 /**
- * Where a membership stands when the figure draws no place for that exact
- * combination of sets: inside its LEADING set — the first of the ones it
- * carries in drawing order, which is the first the reader selected — in
+ * Where a membership stands: its own place where the figure draws one with room
+ * left for a mark, and otherwise inside its LEADING set — the first of the ones
+ * it carries in drawing order, which is the first the reader selected — in
  * whichever place of that set still has room for a mark and holds the most of
- * its others, ties to the lowest mask. `room` is how many marks each place has
- * left; with none counted, or with every place of the leading set full, the
- * place holding the most is the answer whatever room it has. Eight circles
- * cannot cross in every way eight tags do, so the figure has no place for every
- * combination; what it never does is stand a mark outside a set it carries
- * while a reader is asking about that set. 0 only for a note carrying no drawn
- * tag at all, or one whose sets the figure draws no place in.
+ * its others, then the fewest sets it does not carry, then the lowest mask.
+ * `room` is how many marks each place has left; with none counted, or with
+ * every place of the leading set full, the place holding the most is the answer
+ * whatever room it has. Eight shapes cannot cross in every way eight tags do,
+ * so the figure has no place for every combination; what it never does is
+ * stand a mark outside a set it carries while a reader is asking about that
+ * set. 0 only for a note carrying no drawn tag at all, or one whose sets the
+ * figure draws no place in.
  */
 export function regionFor(
   mask: number,
   drawn: ReadonlySet<number>,
   room?: ReadonlyMap<number, number>,
 ): number {
-  if (drawn.has(mask)) return mask;
+  if (drawn.has(mask) && (room === undefined || (room.get(mask) ?? 0) > 0)) {
+    return mask;
+  }
   for (let bit = 1; bit <= mask; bit <<= 1) {
     if ((mask & bit) === 0) continue;
     const spare = holdsMost(mask, bit, drawn, room);
@@ -176,9 +182,9 @@ export function regionFor(
   return 0;
 }
 
-/** The place of `bit` holding the most of `mask` besides, ties to the lowest.
- *  With `room`, only the places with a mark's worth left are looked at. 0 is
- *  none of them. */
+/** The place of `bit` holding the most of `mask` besides, then the fewest sets
+ *  outside it, then the lowest. With `room`, only the places with a mark's
+ *  worth left are looked at. 0 is none of them. */
 function holdsMost(
   mask: number,
   bit: number,
@@ -187,22 +193,23 @@ function holdsMost(
 ): number {
   let found = 0;
   let most = -1;
+  let fewest = Number.POSITIVE_INFINITY;
   for (const place of drawn) {
     if ((place & bit) === 0) continue;
     if (room !== undefined && (room.get(place) ?? 0) <= 0) continue;
     const mine = setsIn(place & mask);
-    if (mine > most || (mine === most && place < found)) {
+    const others = setsIn(place & ~mask);
+    if (
+      mine > most ||
+      (mine === most && others < fewest) ||
+      (mine === most && others === fewest && place < found)
+    ) {
       most = mine;
+      fewest = others;
       found = place;
     }
   }
   return found;
-}
-
-function setsIn(mask: number): number {
-  let held = 0;
-  for (let bits = mask; bits > 0; bits >>= 1) held += bits & 1;
-  return held;
 }
 
 /**
@@ -233,51 +240,54 @@ export function standingOrder<T extends SetsNote>(
 /** How many marks a region has room for at a spacing: its area over one
  *  lattice cell's. A region holding more notes than this folds. */
 export function regionCapacity(region: SetsRegion, spacing: number): number {
-  return Math.floor(roomIn(region, spacing));
+  return Math.floor(region.area / (spacing * spacing * (Math.sqrt(3) / 2)));
 }
 
-/** The same room before it is rounded down to whole marks, which is what the
- *  growth below divides by: a region with less than one mark's room is short of
- *  it by a factor rather than by everything. */
-function roomIn(region: SetsRegion, spacing: number): number {
-  return region.area / (spacing * spacing * (Math.sqrt(3) / 2));
-}
+/** What each widening of a figure short of room multiplies it by: a quarter
+ *  of an octave. */
+const GROWTH_STEP = 2 ** 0.25;
 
 /**
- * How much of a region's area the lattice can stand marks in: the rim a whole
- * mark keeps inside every outline, and the room the names take, cost about half
- * of it over the fields `pack.test.ts` holds this reading to. The growth asks
- * for area, so it asks for twice what the notes themselves need.
+ * The figure a field draws, widened a step at a time until every note stands
+ * in a place with room for it at the lattice's floor — the standing below,
+ * with the room the widening bought shared out. Held to
+ * {@link SETS_FIGURE_WIDEST}: a crowd still short of room there stands round
+ * its place at the floor rather than the figure growing past what a reader
+ * sees at once.
  */
-const SETS_ROOM_LATTICED = 0.5;
-
-/**
- * How much wider a figure is drawn so that its most crowded place has room for
- * the notes standing there at the lattice's floor: the square root of the worst
- * ratio of notes to room, since a uniform widening takes every area up with its
- * square. Held to {@link SETS_FIGURE_WIDEST}, so a place the figure cannot be
- * given room for without growing past what a reader sees at once keeps its
- * fold; 1 is a figure already roomy enough, or already that wide.
- */
-function growthFor(
-  diagram: SetsDiagram,
-  standing: ReadonlyMap<number, readonly SetsNote[]>,
-): number {
-  let worst = 1;
-  for (const region of diagram.regions) {
-    const notes = standing.get(region.id)?.length ?? 0;
-    if (notes === 0) continue;
-    const want = notes / (roomIn(region, SETS_STEP) * SETS_ROOM_LATTICED);
-    if (want > worst) worst = want;
-  }
+function grownFigure(
+  ask: SetsAsk,
+  notes: readonly SetsNote[],
+  own: readonly Tag[],
+): SetsDiagram {
+  const first = setsFigure(ask);
   const across = Math.max(
-    diagram.box.maxX - diagram.box.minX,
-    diagram.box.maxY - diagram.box.minY,
+    first.box.maxX - first.box.minX,
+    first.box.maxY - first.box.minY,
   );
-  return Math.max(
-    1,
-    Math.min(Math.sqrt(worst), SETS_FIGURE_WIDEST / Math.max(across, 1)),
-  );
+  const widest = SETS_FIGURE_WIDEST / Math.max(across, 1);
+  const unit = setsUnitArea(ask.counts);
+  const exactly = new Map(ask.exact ?? []);
+  let grow = 1;
+  for (;;) {
+    const diagram = setsFigure(ask, grow);
+    const { short, astray } = standingIn(
+      notes,
+      own,
+      diagram.regions,
+      roomAtFloor(diagram),
+    );
+    // A place the fit drew narrower than its notes' share is not grown for:
+    // its notes stand elsewhere in their leading set, and the figure would
+    // have to grow by far more than its share to give it room.
+    const owed = diagram.regions.some(
+      (region) =>
+        (astray.get(region.id) ?? 0) > 0 &&
+        region.area >= (exactly.get(region.id) ?? 0) * unit * grow * grow * 0.5,
+    );
+    if ((short === 0 && !owed) || grow >= widest) return diagram;
+    grow = Math.min(widest, grow * GROWTH_STEP);
+  }
 }
 
 export interface SetsPackOptions {
@@ -320,7 +330,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
   let half = 0;
 
   for (const [at, field] of byField.entries()) {
-    // A field draws a circle for a drawn tag its own notes carry and for no
+    // A field draws a place for a drawn tag its own notes carry and for no
     // other: a tag that lives in another graph on the canvas is in the rail's
     // legend, and there is nothing here for it to be a place among.
     const bits = tags
@@ -329,15 +339,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
         field.notes.some((note) => note.tags.includes(tags[bit])),
       );
     const own = bits.map((bit) => tags[bit]);
-    // The figure the counts draw, widened until its most crowded place has room
-    // for the notes its own tags name — which is the crowding to grow for, and
-    // not the standing below, where the room the growth bought is shared out.
-    const ask = askOf(field.notes, own);
-    const first = setsFigure(ask);
-    const diagram = setsFigure(
-      ask,
-      growthFor(first, standingIn(field.notes, own, first.regions)),
-    );
+    const diagram = grownFigure(askOf(field.notes, own), field.notes, own);
     const reach = (diagram.box.maxX - diagram.box.minX) / 2;
     if (at > 0) middle += half + options.gutter + reach;
     half = reach;
@@ -363,7 +365,7 @@ export function packSets(options: SetsPackOptions): SetsPacking {
       box: diagram.box,
     });
 
-    const byRegion = standingIn(
+    const { byRegion } = standingIn(
       field.notes,
       own,
       diagram.regions,
@@ -382,12 +384,17 @@ export function packSets(options: SetsPackOptions): SetsPacking {
           notes,
           // With no set drawn anywhere on the canvas there is no question to
           // stand the notes inside, so they fold into the one mark that says
-          // how many there are. A field drawing no circle of its own is not
+          // how many there are. A field drawing no place of its own is not
           // that: its notes stand outside, as every untagged note does.
           room:
             tags.length === 0
               ? 0
-              : Math.min(notes.length, regionCapacity(region, options.spacing)),
+              : options.spacing <= SETS_STEP
+                ? notes.length
+                : Math.min(
+                    notes.length,
+                    regionCapacity(region, options.spacing),
+                  ),
         };
       });
     const allowed = shareOut(
@@ -402,6 +409,17 @@ export function packSets(options: SetsPackOptions): SetsPacking {
         allowed[which] < notes.length
           ? []
           : latticeIn(region, diagram, options.spacing, notes.length);
+      // At the closest the marks are drawn a crowd the lattice is short of room
+      // for opens all the same, so no fold is one a zoom cannot open.
+      if (
+        allowed[which] >= notes.length &&
+        places.length < notes.length &&
+        options.spacing <= SETS_STEP
+      ) {
+        places.push(
+          ...overflowIn(region, diagram, options.spacing, places, notes.length),
+        );
+      }
       if (places.length < notes.length) {
         const [first, ...rest] = notes;
         // A sliver with room for no whole mark at all still answers for its
@@ -450,46 +468,58 @@ function liftMask(local: number, bits: readonly number[]): number {
 }
 
 /**
- * Which notes stand in each region of a figure, by {@link regionFor}. With
- * `room` the places are shared out as they fill, in the order the marks are
- * drawn in, and the notes the figure has an exact place for take theirs first.
- * Without it every note stands where its own tags name, which is the crowding
- * the figure's growth is measured against rather than the standing it draws.
+ * Which notes stand in each region of a figure, by {@link regionFor}, with the
+ * places shared out as they fill in the order the marks are drawn in: the
+ * notes whose own place has room take theirs first, and the rest are stood in
+ * what is left. `short` counts the notes stood where no room was left, which
+ * is what a fold at the lattice's floor is made of, and `astray` the notes of
+ * each place that had no room left for them.
  */
 function standingIn(
   notes: readonly SetsNote[],
   drawn: readonly Tag[],
   regions: readonly SetsRegion[],
-  room?: ReadonlyMap<number, number>,
-): Map<number, SetsNote[]> {
+  room: ReadonlyMap<number, number>,
+): {
+  byRegion: Map<number, SetsNote[]>;
+  short: number;
+  astray: Map<number, number>;
+} {
   const places = new Set(regions.map((region) => region.id));
-  const left = room === undefined ? undefined : new Map(room);
+  const left = new Map(room);
   const byRegion = new Map<number, SetsNote[]>();
+  let short = 0;
   const stand = (note: SetsNote, id: number) => {
     const held = byRegion.get(id);
     if (held === undefined) byRegion.set(id, [note]);
     else held.push(note);
-    const spare = left?.get(id) ?? 0;
-    if (spare > 0) left?.set(id, spare - 1);
+    const spare = left.get(id) ?? 0;
+    if (spare > 0) left.set(id, spare - 1);
+    else short += 1;
   };
 
   const waiting: SetsNote[] = [];
+  const astray = new Map<number, number>();
   for (const note of standingOrder(notes, drawn)) {
     const mask = membershipOf(note.tags, drawn);
-    if (places.has(mask)) stand(note, mask);
-    else waiting.push(note);
+    if (places.has(mask) && (left.get(mask) ?? 0) > 0) stand(note, mask);
+    else {
+      if (places.has(mask)) astray.set(mask, (astray.get(mask) ?? 0) + 1);
+      waiting.push(note);
+    }
   }
   for (const note of waiting) {
     stand(note, regionFor(membershipOf(note.tags, drawn), places, left));
   }
-  return byRegion;
+  return { byRegion, short, astray };
 }
 
 /**
  * What a field asks its figure for: how many of its notes carry each drawn tag,
- * how many carry each pair of them, and how many carry none. Counted in drawing
- * order over the notes as they were handed in, so the ask — and the figure
- * measured from it — is the same whatever order a host reads its notes out in.
+ * how many carry each pair of them and exactly each combination, and how many
+ * carry none. Counted in drawing order over the notes as they were handed in,
+ * so the ask — and the figure measured from it — is the same whatever order a
+ * host reads its notes out in.
  */
 export function askOf(
   notes: readonly Pick<SetsNote, "tags">[],
@@ -499,12 +529,14 @@ export function askOf(
   const counts = new Array<number>(count).fill(0);
   const shared = new Array<number>(count * count).fill(0);
   let outside = 0;
+  const exact = new Map<number, number>();
   for (const note of notes) {
     const mask = membershipOf(note.tags, drawn);
     if (mask === 0) {
       outside += 1;
       continue;
     }
+    exact.set(mask, (exact.get(mask) ?? 0) + 1);
     for (let a = 0; a < count; a++) {
       if ((mask & (1 << a)) === 0) continue;
       counts[a] += 1;
@@ -515,7 +547,12 @@ export function askOf(
       }
     }
   }
-  return { counts, shared, outside };
+  return {
+    counts,
+    shared,
+    outside,
+    exact: [...exact].sort((a, b) => a[0] - b[0]),
+  };
 }
 
 /** The notes of each field, in the order the fields stand. */
@@ -611,31 +648,20 @@ const AROUND: readonly [number, number][] = [
 ];
 
 /**
- * One disc with room for a whole mark taken off it, or given to it — which is
- * how a mark is held clear of an outline rather than only its centre: a mark
- * stands clear of a set when its centre is inside that set shrunk by its reach,
- * or outside the set grown by it.
- */
-function roomFor(shape: SetsShape, reach: number): SetsShape {
-  return { ...shape, r: Math.max(shape.r + reach, 1e-6) };
-}
-
-/**
  * Whether a point stands inside a region with room for the WHOLE of the widest
- * mark: inside every set the region is in, shrunk by the mark's reach, and
- * outside every one it is not, grown by it.
+ * mark: that far inside every set the region is in, and that far outside every
+ * one it is not.
  */
 function standsClear(
   shapes: readonly SetsShape[],
   region: number,
 ): (at: Point) => boolean {
-  const inside = shapes.map((shape) => roomFor(shape, -SETS_MARK_REACH));
-  const outside = shapes.map((shape) => roomFor(shape, SETS_MARK_REACH));
+  const gaps = shapes.map((shape) => gapOf(shape, SETS_MARK_REACH));
   return (at) =>
-    shapes.every((_unused, bit) =>
+    gaps.every((gap, bit) =>
       (region & (1 << bit)) === 0
-        ? !inShape(outside[bit], at)
-        : inShape(inside[bit], at),
+        ? gap(at.x, at.y) >= SETS_MARK_REACH
+        : gap(at.x, at.y) <= -SETS_MARK_REACH,
     );
 }
 
@@ -722,6 +748,82 @@ function walkLattice(
       }
     }
   }
+}
+
+/**
+ * Places for the marks a region's lattice has no room for, round the ones it
+ * did: a step apart from every mark already stood, inside the region where any
+ * such place is near, and beside it where none is — touching an outline rather
+ * than hiding a note behind a count no zoom opens.
+ */
+function overflowIn(
+  region: SetsRegion,
+  diagram: { shapes: readonly SetsShape[]; box: Bounds },
+  spacing: number,
+  stood: readonly Point[],
+  want: number,
+): Point[] {
+  const from = stood[0] ?? foldStands(region, diagram, spacing);
+  const found: Point[] = stood.length === 0 ? [from] : [];
+  const free = (at: Point) =>
+    [...stood, ...found].every(
+      (other) => Math.hypot(other.x - at.x, other.y - at.y) >= spacing - 1e-6,
+    );
+  const basis = { x: spacing, y: spacing * (Math.sqrt(3) / 2) };
+  for (const inside of [true, false]) {
+    for (let ring = 1; found.length + stood.length < want; ring++) {
+      let q = AROUND[4][0] * ring;
+      let r = AROUND[4][1] * ring;
+      for (const [dq, dr] of AROUND) {
+        for (let step = 0; step < ring; step++) {
+          const at = {
+            x: from.x + q * basis.x + r * (basis.x / 2),
+            y: from.y + r * basis.y,
+          };
+          q += dq;
+          r += dr;
+          if (found.length + stood.length >= want) break;
+          if (inside && regionAt(diagram.shapes, at) !== region.id) continue;
+          if (free(at)) found.push(at);
+        }
+      }
+      if (inside && ring >= OVERFLOW_RINGS) break;
+    }
+  }
+  return found;
+}
+
+/** How many rings round a crowd its overflow looks for a place inside the
+ *  region before standing beside it. */
+const OVERFLOW_RINGS = 4;
+
+/**
+ * The least zoom, at or past `from`, at which the notes standing behind a fold
+ * over `region` of `field` open: where its lattice has room for `notes`, or
+ * where the lattice is at its floor and every crowd opens.
+ */
+export function opensAt(
+  field: SetsFieldDrawn,
+  region: SetsRegion,
+  notes: number,
+  from: number,
+): number {
+  let local = 0;
+  for (const [at, set] of field.sets.entries()) {
+    if ((region.id & (1 << set.bit)) !== 0) local |= 1 << at;
+  }
+  const diagram = {
+    shapes: field.sets.map((set) => set.shape),
+    box: field.box,
+  };
+  let scale = from;
+  while (
+    setsSpacingTier(scale) > 0 &&
+    latticeRoom({ ...region, id: local }, diagram, setsSpacing(scale)) < notes
+  ) {
+    scale *= SETS_TIER_ZOOM;
+  }
+  return scale;
 }
 
 const floors = new WeakMap<SetsDiagram, Map<number, number>>();

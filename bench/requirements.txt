@@ -1,0 +1,5 @@
+pandas>=2,<4
+matplotlib>=3.9,<4
+jupyter>=1,<2
+nbconvert>=7,<8
+nbformat>=5,<6

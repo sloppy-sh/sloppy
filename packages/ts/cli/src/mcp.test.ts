@@ -1,13 +1,14 @@
 import { IDENTITIES_FILE, keepingDataAt, MemoryFiles } from "@sloppy/local";
 import {
   CHAT_TOOLS,
+  CORE_CHAT_TOOLS,
   NotesListedSchema,
   NoteWrittenSchema,
   splitOwnedRef,
 } from "@sloppy/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { linesOf, MCP_PROTOCOL, NO_NOTES_HERE } from "./mcp.js";
-import { FINE, run } from "./run.js";
+import { FINE, NOTHING_DONE, run } from "./run.js";
 
 const PROJECT = "/project";
 
@@ -21,10 +22,14 @@ interface Served {
   err: string[];
 }
 
-async function served(lines: string[], cwd = PROJECT): Promise<Served> {
+async function served(
+  lines: string[],
+  cwd = PROJECT,
+  options: string[] = ["--profile=full"],
+): Promise<Served> {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await run(["mcp"], {
+  const code = await run(["mcp", ...options], {
     cwd,
     told: { out: (line) => out.push(line), err: (line) => err.push(line) },
     filesAt: (root, data) => keepingDataAt(disk.at(root), data),
@@ -109,7 +114,7 @@ describe("sloppy mcp", () => {
     });
   });
 
-  it("advertises the chat's eighteen acts and no build's", async () => {
+  it("advertises the chat's twenty acts and no build's", async () => {
     await aProject();
 
     const { answers } = await served([message(1, "tools/list")]);
@@ -117,15 +122,173 @@ describe("sloppy mcp", () => {
       .tools;
 
     expect(tools.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
-    expect(tools).toHaveLength(18);
-    expect(tools.map((tool) => tool.name).slice(-2)).toEqual([
-      "read_around",
+    expect(tools).toHaveLength(20);
+    expect(tools.map((tool) => tool.name).slice(-3)).toEqual([
       "brief",
+      "relate",
+      "find_code",
     ]);
     for (const tool of tools) {
       expect(typeof tool.description).toBe("string");
       expect(tool.inputSchema).toMatchObject({ type: "object" });
     }
+  });
+
+  it("advertises the doctrine it was started with", async () => {
+    await aProject();
+    const described = async (options: string[]) => {
+      const { code, answers } = await served(
+        [message(1, "tools/list")],
+        PROJECT,
+        ["--profile=full", ...options],
+      );
+      expect(code).toBe(FINE);
+      const tools = (
+        answers[0].result as { tools: { name: string; description: string }[] }
+      ).tools;
+      return tools.find((tool) => tool.name === "search_notes")?.description;
+    };
+
+    const byDefault = await described([]);
+    const answerFirst = await described(["--doctrine", "answer-first"]);
+    const notesFirst = await described(["--doctrine=notes-first"]);
+
+    expect(byDefault).toBe(answerFirst);
+    expect(answerFirst).toContain("Answer from what you already hold");
+    expect(notesFirst).toContain("Look here first");
+    expect(notesFirst).not.toBe(answerFirst);
+  });
+
+  it("refuses a doctrine there is none of, in words, and serves nothing", async () => {
+    await aProject();
+
+    const { code, answers, err } = await served(
+      [message(1, "tools/list")],
+      PROJECT,
+      ["--doctrine", "always"],
+    );
+
+    expect(code).toBe(NOTHING_DONE);
+    expect(answers).toEqual([]);
+    expect(err.join(" ")).toContain("--doctrine answer-first");
+    expect(err.join(" ")).toContain("--doctrine notes-first");
+  });
+
+  it("advertises the core acts in short words unless asked for --profile full or --tools default", async () => {
+    await aProject();
+    const listed = async (options: string[]) => {
+      const { code, answers } = await served(
+        [message(1, "tools/list")],
+        PROJECT,
+        options,
+      );
+      expect(code).toBe(FINE);
+      return (answers[0].result as { tools: { name: string }[] }).tools;
+    };
+
+    const every = await listed(["--profile=full"]);
+    const core = await listed(["--profile=full", "--tools", "core"]);
+    const lean = await listed([]);
+
+    expect(every.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
+    expect(core.map((tool) => tool.name)).toEqual([...CORE_CHAT_TOOLS]);
+    expect(lean.map((tool) => tool.name)).toEqual([...CORE_CHAT_TOOLS]);
+    expect(JSON.stringify(core).length * 2).toBeLessThan(
+      JSON.stringify(every).length,
+    );
+    const overridden = await listed([
+      "--profile",
+      "lean",
+      "--tools",
+      "default",
+    ]);
+    expect(overridden.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
+  });
+
+  it("leaves out the acts --without names, neither offered nor answered, and refuses a name that is no act", async () => {
+    await aProject();
+    const { code, answers } = await served(
+      [
+        message(1, "tools/list"),
+        calling("link_notes", { note: "x", to: [] }, 2),
+      ],
+      PROJECT,
+      ["--without", "link_notes", "--profile", "lean"],
+    );
+    expect(code).toBe(FINE);
+    const names = (
+      answers[0].result as { tools: { name: string }[] }
+    ).tools.map((tool) => tool.name);
+    expect(names).toEqual(
+      CORE_CHAT_TOOLS.filter((act) => act !== "link_notes"),
+    );
+    expect(came(answers[1]).isError).toBe(true);
+
+    const refused = await served([message(1, "tools/list")], PROJECT, [
+      "--without=relate,nothing",
+    ]);
+    expect(refused.code).toBe(NOTHING_DONE);
+    expect(refused.answers).toEqual([]);
+    expect(refused.err.join(" ")).toContain("Say which acts to leave out");
+  });
+
+  it("refuses a tool set, an answer shape or a profile there is none of, in words", async () => {
+    await aProject();
+    for (const [option, value] of [
+      ["--tools", "few"],
+      ["--answers", "short"],
+      ["--profile", "fast"],
+    ]) {
+      const { code, answers, err } = await served(
+        [message(1, "tools/list")],
+        PROJECT,
+        [option, value],
+      );
+      expect(code).toBe(NOTHING_DONE);
+      expect(answers).toEqual([]);
+      expect(err.join(" ")).toContain(`Say which: ${option} `);
+    }
+  });
+
+  it("answers tersely, naming a note by its ULID, and reads a ULID it is called with as that note", async () => {
+    await aProject();
+    const { answers } = await served(
+      [
+        calling("write_note", {
+          about: "src/parser.ts",
+          title: "The parser",
+          sections: [
+            "## Why\n\nIt reads **one token** at a time, in [one](code:src/parser.ts#one).",
+          ],
+        }),
+        calling("search_notes", { words: "token" }, 2),
+      ],
+      PROJECT,
+      ["--answers", "terse", "--land-on-code"],
+    );
+    const found = JSON.parse(came(answers[1]).text) as {
+      found: { ref: string; title: string; code: string[] }[];
+    };
+    const [hit] = found.found;
+    expect(hit.ref).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect(hit.title).toBe("The parser");
+    expect(hit.code).toEqual(["src/parser.ts#L1-L1"]);
+
+    const read = await served(
+      [calling("read_note", { note: hit.ref })],
+      PROJECT,
+      ["--profile", "lean"],
+    );
+    const note = JSON.parse(came(read.answers[0]).text) as {
+      ref: string;
+      text: string[];
+      code: string[];
+    };
+    expect(note.ref).toBe(hit.ref);
+    expect(note.text.join("\n")).toContain(
+      "It reads one token at a time, in one.",
+    );
+    expect(note.code).toContain("src/parser.ts#L1-L1 unread");
   });
 
   it("lists the notes the folder holds", async () => {
@@ -208,6 +371,17 @@ describe("sloppy mcp", () => {
     const { answers } = await served([calling("list_notes")], `${PROJECT}/src`);
 
     expect(came(answers[0]).isError).toBe(false);
+  });
+
+  it("answers find_code in words where the folder has no code it can read", async () => {
+    await aProject();
+
+    const { answers } = await served([calling("find_code", { words: "one" })]);
+
+    expect(came(answers[0])).toEqual({
+      text: "There is no code here to look through. Read the project's files directly.",
+      isError: true,
+    });
   });
 
   it("refuses a build's act in words, which was never advertised", async () => {

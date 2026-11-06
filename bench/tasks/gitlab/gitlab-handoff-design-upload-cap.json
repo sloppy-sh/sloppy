@@ -1,0 +1,48 @@
+{
+  "id": "gitlab-handoff-design-upload-cap",
+  "family": "handoff",
+  "prompt_a": "In app/services/design_management/save_designs_service.rb, lower MAX_FILES from 10 to 6. The reason, which you know and nobody else working on this code does: Halvorsen Shipping fronts their self-managed GitLab with an F5 load balancer whose request body limit is 64 MB; their designers' exports are about 10 MB each, so uploading ten at once failed with a bare 413 and nothing in GitLab's logs.",
+  "prompt_b": "DesignManagement::SaveDesignsService in app/services/design_management/save_designs_service.rb caps how many designs one upload may carry at MAX_FILES. Product wants 10 again, which is what the documentation promises. What do you recommend, and why is it what it is now?",
+  "reason": "Halvorsen Shipping's F5 load balancer caps request bodies at 64 MB; ten ~10 MB design exports failed with a bare 413.",
+  "key": "Keep it at 6 unless the body-size problem is solved: Halvorsen Shipping fronts their self-managed GitLab with an F5 load balancer that limits a request body to 64 MB, their designers' exports are about 10 MB each, and ten in one upload failed with a bare 413 that never reached GitLab's logs. Six stays under 64 MB.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "halvorsen",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "Halvorsen Shipping"
+        }
+      },
+      {
+        "pattern": "\\b64 ?(mb|megabyte)",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "whose request body limit is 64 MB"
+        }
+      },
+      {
+        "pattern": "413|load.?balancer|\\bf5\\b|body (size )?limit",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "an F5 load balancer whose request body limit is 64 MB"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends keeping a cap that stays under the 64 MB body limit, or raising it only with that limit dealt with",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: a customer's load balancer limits request bodies to 64 MB, and ten designs of about 10 MB each failed with a 413",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

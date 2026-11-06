@@ -131,13 +131,39 @@ function sameness(anchor: CodeAnchor): string {
   return JSON.stringify([anchor.path, anchor.fragment ?? null]);
 }
 
+/** The element a snippet of code quoted into a section is — `code-snippet.ts`. */
+export const CODE_SNIPPET_TYPE = "codeSnippet";
+
+/** The run of lines a quoted snippet stands for, or absent where the element
+ *  does not hold one. */
+export function snippetAnchorOf(element: {
+  attrs?: Record<string, unknown>;
+}): CodeAnchor | undefined {
+  const { path, from, to } = element.attrs ?? {};
+  if (typeof path !== "string" || !insideProject(path)) return undefined;
+  if (!Number.isInteger(from) || !Number.isInteger(to)) return undefined;
+  const run = { from: from as number, to: to as number };
+  if (run.from < 1 || run.to < run.from) return undefined;
+  return { path, fragment: { kind: "lines", ...run } };
+}
+
 /** Every place in the code a section's document points at, in the order it
  *  names them and without repeats — read off every `href` in it, the way
- *  `citedNotes` in `document.ts` reads a citation. */
-export function anchorsOf(content: BlockDocument): CodeAnchor[] {
+ *  `citedNotes` in `document.ts` reads a citation, and off every snippet it
+ *  quotes unless `quoted` is false. */
+export function anchorsOf(
+  content: BlockDocument,
+  { quoted = true }: { quoted?: boolean } = {},
+): CodeAnchor[] {
   const found = new Map<string, CodeAnchor>();
   const walk = (value: unknown): void => {
     if (value === null || typeof value !== "object") return;
+    if (quoted && (value as { type?: unknown }).type === CODE_SNIPPET_TYPE) {
+      const anchor = snippetAnchorOf(
+        value as { attrs?: Record<string, unknown> },
+      );
+      if (anchor) found.set(sameness(anchor), anchor);
+    }
     for (const [key, held] of Object.entries(value)) {
       if (key === "href") {
         const anchor =

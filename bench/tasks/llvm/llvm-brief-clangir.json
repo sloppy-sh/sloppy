@@ -1,0 +1,70 @@
+{
+  "id": "llvm-brief-clangir",
+  "family": "brief",
+  "tools": "read",
+  "prompt": "I'm about to start contributing to ClangIR. Explain to a newcomer, as briefly as you can: what CIR is, where it sits in Clang's pipeline and how I turn it on; why its code generation copies classic codegen so closely and how divergence from classic codegen is caught; how C++ cleanups and exceptions are represented and lowered; how calling-convention lowering is organised; and where each part is written down.",
+  "key": "The entry point is clang/docs/CIR/index.md (moved there 2026-04-14; RFCs to September 2026), with three design documents beside it. CIR is an MLIR dialect inside Clang, between the AST and LLVM IR; -fclangir compiles through it (AST to CIR to CIR passes to LLVM IR) and -emit-cir prints it; -DCLANG_ENABLE_CIR=OFF builds Clang without it. It began in 2021, went through the incubator (now archived) and has been developed upstream since the January 2024 upstreaming RFC. CodeDuplication.md (2025-12-06, #166457): CIRGen deliberately mirrors classic codegen's structure and names, duplicating logic, because that was the surest path to equivalent output and lets the two be compared; the duplication is accepted as technical debt, sharing refactors (e.g. templated CGCXXABI/CIRGenCXXABI bases) are deferred so as not to tie the two together before the permanent design is known; divergence is caught by CIR lit tests that check both the CIR-lowered LLVM IR and the classic codegen LLVM IR, which ClangIR contributors keep up to date; long term CIR is raised to a higher level, ABI details move to later lowering, and shared pieces are rebuilt as new general components (e.g. the C calling-convention library). CleanupAndEHDesign.md (2026-02-05): still driven by EHScopeStack, but represented structurally with cir.cleanup.scope (normal/eh/all cleanup regions) and cir.try with !cir.eh_token handler arguments and cir.begin_catch; cir::FlattenCFG then flattens to explicit, ABI-agnostic blocks using the classic slot-and-dispatch scheme; a separate ABI lowering pass then produces Itanium or Microsoft EH operations and personality functions corresponding directly to LLVM IR's model. ABILowering.md (2026-03-06, revised 2026-04-08): calling conventions are classified by the LLVM ABI library in llvm/lib/ABI over abi::Type, reached from MLIR through ABITypeMapper and the ABI lowering pass, with each dialect implementing only ABIRewriteContext (CIR's is CIRABIRewriteContext, driven by CallConvLowering); x86_64 and AArch64 first, FIR can reuse it, parity with classic codegen checked by differential testing.",
+  "sources": [
+    {
+      "doc": "clang/docs/CIR/index.md",
+      "quote": "ClangIR (CIR) is a high-level representation in Clang that reflects aspects of the C/C++ languages and their extensions. It is implemented using MLIR and occupies a position between Clang's AST and LLVM IR."
+    },
+    {
+      "doc": "clang/docs/CIR/index.md",
+      "quote": "Pass `-fclangir` to the Clang driver to compile through CIR (AST to CIR to CIR passes to LLVM IR and the backend)."
+    },
+    {
+      "doc": "clang/docs/CIR/CodeDuplication.md",
+      "quote": "For this reason, we have decided to accept a large amount of code duplication in the short term, even with the explicit understanding that this is producing a significant amount of technical debt as the project progresses."
+    },
+    {
+      "doc": "clang/docs/CIR/CodeDuplication.md",
+      "quote": "The most important tactic that we are using to mitigate the risk of CIR diverging from classic codegen is to incorporate two sets of LLVM IR checks in the CIR codegen LIT tests."
+    },
+    {
+      "doc": "clang/docs/CIR/CleanupAndEHDesign.md",
+      "quote": "Scopes that require normal or EH cleanup will be represented using a new operation, `cir.cleanup.scope`."
+    },
+    {
+      "doc": "clang/docs/CIR/CleanupAndEHDesign.md",
+      "quote": "The CIR representation will remain ABI agnostic after the flattening pass."
+    },
+    {
+      "doc": "clang/docs/CIR/CleanupAndEHDesign.md",
+      "quote": "The ABI lowering pass will introduce personality functions and ABI-specific exception handling operations."
+    },
+    {
+      "doc": "clang/docs/CIR/ABILowering.md",
+      "quote": "The framework relies on the LLVM ABI library as the single source of truth for ABI classification."
+    }
+  ],
+  "grader": {
+    "kind": "none"
+  },
+  "rubric": [
+    {
+      "criterion": "What CIR is: an MLIR dialect in Clang between the AST and LLVM IR, enabled with -fclangir (and -emit-cir to inspect it)",
+      "points": 1
+    },
+    {
+      "criterion": "Why codegen mirrors classic codegen (surest path to equivalent output, easy comparison, duplication accepted as debt, sharing refactors deferred) and that divergence is caught by lit tests checking both the CIR path's and classic codegen's LLVM IR",
+      "points": 2
+    },
+    {
+      "criterion": "Cleanups and EH: structured cir.cleanup.scope and cir.try, then FlattenCFG to an ABI-agnostic flat form, then a separate ABI lowering pass for Itanium/Microsoft EH and personality functions",
+      "points": 1
+    },
+    {
+      "criterion": "Calling conventions: the LLVM ABI library (llvm/lib/ABI) classifies, ABITypeMapper bridges MLIR types, and each dialect implements ABIRewriteContext",
+      "points": 1
+    },
+    {
+      "criterion": "Names the documents (clang/docs/CIR/index.md, CodeDuplication.md, CleanupAndEHDesign.md, ABILowering.md), and is brief and says nothing false",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

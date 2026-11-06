@@ -21,7 +21,10 @@ import {
   packSets,
   SETS_STEP,
   type SetsStanding,
+  setsSpacing,
 } from "./sets/pack.js";
+import { SLOPPY_TAGS } from "./sets/sloppy-tags.test-support.js";
+import { MIN_SCALE } from "./viewport.js";
 
 vi.mock("pixi.js", async () => {
   const { fakePixi } = await import("./pixi.test-support.js");
@@ -352,6 +355,59 @@ describe("the drawn sets as places on the paper", () => {
     expect(looking()).not.toEqual(before);
     if (standing !== undefined) {
       expect(scene.frameRegion(standing)).toBe(false);
+    }
+    scene.destroy();
+  });
+
+  // A tap on a fold is a frame and then the pack at the zoom it framed: the
+  // fold has to be gone from that pack, or the tap did nothing a reader sees.
+  it("frames a fold close enough for it to open", async () => {
+    const scene = await GraphScene.create({} as HTMLCanvasElement, {
+      fonts: { ui: "ui", heading: "heading", address: "mono" },
+      palette,
+      resolution: 2,
+    });
+    const crowd: DrawnNode[] = SLOPPY_TAGS.map(([, , tags], at) =>
+      drawn(at, [...tags] as Tag[]),
+    );
+    const packedAt = (scale: number) =>
+      packSets({
+        notes: crowd.map((entry) => ({
+          ref: entry.node.ref,
+          graph: OWNER as OwnedRef,
+          tags: entry.tags,
+          created_at: entry.node.created_at,
+        })),
+        fields: [],
+        selection: [],
+        spacing: setsSpacing(scale),
+        most: 400,
+        gutter: 900,
+      });
+    const framed = packedAt(MIN_SCALE);
+    scene.setModel(
+      buildModel(crowd, {
+        arrangement: "sets",
+        sets: framed,
+        selection: [],
+        palette,
+      }),
+      true,
+    );
+    scene.viewport.lookAt({ x: 0, y: 0, scale: MIN_SCALE });
+    const folds = [...framed.drawn.folds];
+    expect(folds.length).toBeGreaterThan(0);
+    for (const [fold, everyone] of folds) {
+      scene.viewport.lookAt({ x: 0, y: 0, scale: MIN_SCALE });
+      expect(scene.frameRegion(fold)).toBe(true);
+      const opened = packedAt(scene.viewport.scale);
+      for (const ref of everyone) {
+        expect(opened.drawn.folds.has(ref), `${ref}`).toBe(false);
+        expect(
+          opened.marks.some((mark) => mark.ref === ref),
+          `${ref}`,
+        ).toBe(true);
+      }
     }
     scene.destroy();
   });

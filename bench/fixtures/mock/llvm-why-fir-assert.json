@@ -1,0 +1,26 @@
+{
+  "text": "Inlined code drops the runtime's checks, so programs behave differently at -O0 and -O2 and can access out of bounds. fir.if plus a call has no data dependence on the protected op, unknown memory effects that block alias-based optimizations, and no noreturn. cf.assert writes the default resource and lowers to puts/abort instead of the Fortran runtime's message. Guarded results are consumed by the protected ops, so SSA dominance enforces the order (flang/docs/InlineRuntimeChecks.md).",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

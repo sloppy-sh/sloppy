@@ -1,0 +1,81 @@
+{
+  "id": "pulsar-locate-topic-list-memory",
+  "family": "locate",
+  "prompt": "A broker ran out of memory answering CommandGetTopicsOfNamespace for a namespace with a very large number of topics. Where is the memory that topic-list responses hold in flight bounded, on the broker (for both GetTopicsOfNamespace and topic-list watches) and on the proxy? Name the files and the classes or methods involved, with paths relative to the repository root, and the configuration settings that size the limits.",
+  "tools": "read",
+  "key": "From PIP-442 (pip/pip-442.md, added 2025-09-18). The limiter: AsyncDualMemoryLimiter, with AsyncDualMemoryLimiterImpl and AsyncDualMemoryLimiterUtil (acquireDirectMemoryPermitsAndWriteAndFlush) in pulsar-common/src/main/java/org/apache/pulsar/common/semaphore/, holding separate heap and direct memory pools with queued, time-limited permit acquisition; TopicListMemoryLimiter (pulsar-broker-common/src/main/java/org/apache/pulsar/broker/topiclistlimit/TopicListMemoryLimiter.java) extends it with metrics and estimateTopicListSize. Broker: BrokerService creates the one limiter (getMaxTopicListInFlightLimiter); ServerCnx.handleGetTopicsOfNamespace (pulsar-broker/src/main/java/org/apache/pulsar/broker/service/ServerCnx.java) acquires heap permits with an initial estimate and updates them to the list's real size; TopicListService (same package) does the same for CommandWatchTopicList; PulsarCommandSenderImpl acquires direct-memory permits before writing the response. Proxy: ProxyService creates its own TopicListMemoryLimiter and LookupProxyHandler.handleGetTopicsOfNamespace (pulsar-proxy/src/main/java/org/apache/pulsar/proxy/server/LookupProxyHandler.java) applies it. Settings: maxTopicListInFlightHeapMemSizeMB and maxTopicListInFlightDirectMemSizeMB (default 100 each), with the ...PermitsAcquireTimeoutMillis and ...PermitsAcquireQueueSize settings, in ServiceConfiguration and ProxyConfiguration.",
+  "sources": [
+    {
+      "doc": "pip/pip-442.md",
+      "quote": "The solution introduces an `AsyncDualMemoryLimiter` that acts as a memory-aware semaphore for topic listing operations"
+    },
+    {
+      "doc": "pip/pip-442.md",
+      "quote": "Add memory-based flow control and backpressure for both `CommandGetTopicsOfNamespace` and `CommandWatchTopicList` commands"
+    },
+    {
+      "doc": "pip/pip-442.md",
+      "quote": "Proxies are also impacted for `CommandGetTopicsOfNamespace` since the request is forwarded to a broker and the response is deserialized and reserialized without limits."
+    },
+    {
+      "doc": "pip/pip-442.md",
+      "quote": "maxTopicListInFlightHeapMemSizeMB=100"
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": ["AsyncDualMemoryLimiter"],
+        "source": "pulsar-common/src/main/java/org/apache/pulsar/common/semaphore/AsyncDualMemoryLimiter.java"
+      },
+      {
+        "any": ["TopicListMemoryLimiter"],
+        "source": "pulsar-broker-common/src/main/java/org/apache/pulsar/broker/topiclistlimit/TopicListMemoryLimiter.java"
+      },
+      {
+        "any": [
+          "pulsar-broker/src/main/java/org/apache/pulsar/broker/service/ServerCnx.java"
+        ]
+      },
+      {
+        "any": ["TopicListService"],
+        "source": "pulsar-broker/src/main/java/org/apache/pulsar/broker/service/TopicListService.java"
+      },
+      {
+        "any": [
+          "pulsar-proxy/src/main/java/org/apache/pulsar/proxy/server/LookupProxyHandler.java"
+        ]
+      },
+      {
+        "any": [
+          "maxTopicListInFlightHeapMemSizeMB",
+          "maxTopicListInFlightDirectMemSizeMB"
+        ],
+        "source": "pulsar-broker-common/src/main/java/org/apache/pulsar/broker/ServiceConfiguration.java"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names the limiter, AsyncDualMemoryLimiter (pulsar-common, semaphore package) and TopicListMemoryLimiter (pulsar-broker-common), with separate heap and direct memory limits",
+      "points": 2
+    },
+    {
+      "criterion": "Names the broker sites: ServerCnx.handleGetTopicsOfNamespace and TopicListService for watches (and may name BrokerService or PulsarCommandSenderImpl)",
+      "points": 2
+    },
+    {
+      "criterion": "Names the proxy site, LookupProxyHandler (with ProxyService creating its limiter)",
+      "points": 1
+    },
+    {
+      "criterion": "Names the settings maxTopicListInFlightHeapMemSizeMB and maxTopicListInFlightDirectMemSizeMB",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

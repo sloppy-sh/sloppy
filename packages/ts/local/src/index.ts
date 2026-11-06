@@ -8,6 +8,8 @@ export * from "./vault-paths.js";
 export * from "./vaults.js";
 export * from "./container.js";
 export * from "./code.js";
+export * from "./code-index.js";
+export * from "./code-symbols.js";
 export * from "./write-onto.js";
 export * from "./kept-out.js";
 export * from "./agent-md.js";
@@ -22,3 +24,13 @@ export * from "./builds.js";
 export * from "./credentials.js";
 export * from "./api.js";
 export * from "./acts.js";
+export { type NoteHere, notesHere } from "./here.js";
+export {
+  indexOf,
+  PLACE_THRESHOLD,
+  type RelateIndex,
+  type Relations,
+  relationsOf,
+  subjectOfNote,
+} from "./relate.js";
+export * from "./snippets.js";

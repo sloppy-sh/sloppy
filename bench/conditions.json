@@ -1,0 +1,79 @@
+{
+  "base_system": "You are working in the project in the current directory. Complete the task you are given.",
+  "conditions": [
+    {
+      "id": "nodocs",
+      "variant": "nodocs",
+      "lines": [],
+      "pointed": false,
+      "dump": false,
+      "mcp": false
+    },
+    {
+      "id": "notes-only",
+      "variant": "notes-only",
+      "lines": ["This project's notes are reachable through the sloppy tools."],
+      "pointed": false,
+      "dump": false,
+      "mcp": true
+    },
+    {
+      "id": "bare",
+      "variant": "full",
+      "lines": [],
+      "pointed": false,
+      "dump": false,
+      "mcp": false
+    },
+    {
+      "id": "pointed",
+      "variant": "full",
+      "lines": [],
+      "pointed": true,
+      "dump": false,
+      "mcp": false
+    },
+    {
+      "id": "dump",
+      "variant": "full",
+      "lines": [],
+      "pointed": false,
+      "dump": true,
+      "mcp": false
+    },
+    {
+      "id": "mcp",
+      "variant": "full",
+      "lines": ["This project's notes are reachable through the sloppy tools."],
+      "pointed": false,
+      "dump": false,
+      "mcp": true
+    },
+    {
+      "id": "mcp+pointed",
+      "variant": "full",
+      "lines": ["This project's notes are reachable through the sloppy tools."],
+      "pointed": true,
+      "dump": false,
+      "mcp": true
+    },
+    {
+      "id": "agents",
+      "variant": "full",
+      "lines": [],
+      "pointed": false,
+      "dump": false,
+      "mcp": false,
+      "subagents": true
+    },
+    {
+      "id": "mcp+agents",
+      "variant": "full",
+      "lines": ["This project's notes are reachable through the sloppy tools."],
+      "pointed": false,
+      "dump": false,
+      "mcp": true,
+      "subagents": true
+    }
+  ]
+}

@@ -5,6 +5,7 @@
 
 import {
   type BlockDocument,
+  CODE_SNIPPET_TYPE,
   type Compass,
   COMPASS_DIRECTIONS,
   COMPASS_TYPE,
@@ -17,6 +18,10 @@ import {
   type OwnedRef,
   OwnedRefSchema,
   REFERENCE_NOTE_ATTR,
+  readSnippetInfo,
+  snippetInfo,
+  snippetNode,
+  snippetOf,
 } from "@sloppy/types";
 import {
   INK_DIR,
@@ -252,6 +257,8 @@ function writeElement(held: DocumentNode, sidecars: Sidecars): string | null {
       return writeCode(held, attrs, children);
     case "diagram":
       return writeDiagram(attrs);
+    case CODE_SNIPPET_TYPE:
+      return writeSnippet(held, attrs);
     case "mathBlock": {
       if (!only(attrs, ["tex"])) return null;
       const tex = attrs.tex === undefined ? "" : attrs.tex;
@@ -313,6 +320,25 @@ function writeDiagram(attrs: Record<string, unknown>): string | null {
   if (typeof source !== "string" || source.includes("\r")) return null;
   const bar = fence(source);
   return `${bar}${language}\n${source}\n${bar}`;
+}
+
+/** A quote of the project's code, as the fence a forge draws as code: its
+ *  info string names the language, the place and the digest. */
+function writeSnippet(
+  held: DocumentNode,
+  attrs: Record<string, unknown>,
+): string | null {
+  const snippet = snippetOf(held);
+  if (!snippet || held.content?.length) return null;
+  if (!only(attrs, ["path", "from", "to", "digest", "source", "language"])) {
+    return null;
+  }
+  const { source } = snippet;
+  if (source.includes("\r")) return null;
+  const info = snippetInfo(snippet);
+  if (info === undefined) return null;
+  const bar = fence(source);
+  return `${bar}${info}\n${source}\n${bar}`;
 }
 
 function writeList(
@@ -733,6 +759,11 @@ function readFence(
   }
   const next = cursor < lines.length ? cursor + 1 : cursor;
   const source = body.join("\n");
+  const quoted = readSnippetInfo(info);
+  if (quoted?.digest !== undefined) {
+    const { digest, ...place } = quoted;
+    return { node: snippetNode({ ...place, digest, source }), next };
+  }
   if (info !== "" && opensDiagram(info)) {
     const attrs =
       source === "" ? { language: info } : { language: info, source };

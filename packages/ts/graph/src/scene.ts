@@ -61,7 +61,7 @@ import {
   shapeBounds,
   shapeOutline,
 } from "./sets/geometry.js";
-import type { SetsDrawn, SetsStanding } from "./sets/pack.js";
+import { opensAt, type SetsDrawn, type SetsStanding } from "./sets/pack.js";
 import { pictureStep, shownAt, TURN_MS } from "./turn.js";
 import {
   type Bounds,
@@ -793,9 +793,10 @@ export class GraphScene {
   }
 
   /**
-   * Bring the canvas to the region `ref`'s mark stands for the whole of, and
-   * say whether it was one — a mark that is a note of its own is nothing to
-   * frame, and the genealogy has no regions at all.
+   * Bring the canvas to the region `ref`'s mark stands for the whole of, close
+   * enough for the fold to open, and say whether it was one — a mark that is a
+   * note of its own is nothing to frame, and the genealogy has no regions at
+   * all.
    */
   frameRegion(ref: string): boolean {
     const sets = this.sets;
@@ -804,6 +805,7 @@ export class GraphScene {
     const field = standing && sets.fields[standing.field];
     const region = field?.regions.find((at) => at.id === standing?.region);
     if (!field || !region) return false;
+    const before = this.viewport.scale;
     this.viewport.fit(
       {
         minX: region.bounds.minX + field.dx,
@@ -814,6 +816,20 @@ export class GraphScene {
       this.width,
       this.height,
     );
+    const opens = opensAt(
+      field,
+      region,
+      sets.folds.get(ref as never)?.length ?? 1,
+      Math.max(before, this.viewport.scale),
+    );
+    if (opens > this.viewport.scale) {
+      const centre = {
+        x: region.centre.x + field.dx,
+        y: region.centre.y + field.dy,
+      };
+      this.viewport.lookAt({ x: 0, y: 0, scale: opens });
+      this.viewport.centreOn(centre, this.width, this.height);
+    }
     this.positionsDirty = true;
     return true;
   }
@@ -3021,6 +3037,9 @@ async function markPicture(
   at: number,
 ): Promise<Texture | null> {
   const picture = new Image();
+  // Set before `src`: a desktop serves a picture from an origin of its own, and
+  // without asking for it openly the cut below is one WebGL refuses to upload.
+  picture.crossOrigin = "anonymous";
   picture.src = src;
   await picture.decode();
 
@@ -3042,6 +3061,9 @@ async function markPicture(
   const width = picture.width * cover;
   const height = picture.height * cover;
   onto.drawImage(picture, half - width / 2, half - height / 2, width, height);
+  // A canvas the page may not read throws here rather than on every frame after
+  // it is uploaded, which would stop the graph drawing at all.
+  onto.getImageData(0, 0, 1, 1);
   return pixi.Texture.from(canvas);
 }
 

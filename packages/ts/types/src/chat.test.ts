@@ -6,6 +6,10 @@ import {
   type BriefAsked,
   briefAnswer,
   BriefReadSchema,
+  BriefShortSchema,
+  cutAt,
+  SHORT_BRIEF_MAX,
+  shortBriefAnswer,
   GIST_MAX,
   LEAST_BRIEF_BUDGET,
   MOST_AROUND,
@@ -29,6 +33,7 @@ import {
   CHAT_THREAD_NAME_MAX,
   CHAT_TOOL_SPECS,
   CHAT_TOOLS,
+  OUTSIDE_THE_APP_TOOLS,
   ChatActDoneSchema,
   chatAgentName,
   chatAgentReach,
@@ -90,7 +95,11 @@ import {
   ReadNoteArgumentsSchema,
   RestoreNoteArgumentsSchema,
   SearchNotesArgumentsSchema,
+  sectionHeading,
   sectionHeadings,
+  DOCTRINES,
+  FOUND_LINE_MAX,
+  FoundNoteSchema,
   spentTogether,
   StyleEdgeArgumentsSchema,
   StyleNoteArgumentsSchema,
@@ -185,8 +194,30 @@ describe("the acts Sloppy hands an agent", () => {
     }
   });
 
+  it("spells search_notes and read_note for each doctrine, and nothing else differently", () => {
+    const answerFirst = advertisedChatTools();
+    const notesFirst = advertisedChatTools("notes-first");
+
+    expect(answerFirst).toEqual(advertisedChatTools("answer-first"));
+    for (const doctrine of DOCTRINES) {
+      const advertised = advertisedChatTools(doctrine);
+      expect(advertised).toHaveLength(19);
+      for (const one of advertised) {
+        expect(one.description.length).toBeLessThanOrEqual(ACT_WORDS_MAX);
+      }
+    }
+    const differ = answerFirst
+      .filter((one, at) => one.description !== notesFirst[at].description)
+      .map((one) => one.name);
+    expect(differ).toEqual(["search_notes", "read_note"]);
+    expect(notesFirst[1].description).toContain("Look here first");
+    expect(answerFirst[1].description).toContain(
+      "Answer from what you already hold",
+    );
+  });
+
   it("advertises every act once, as a JSON Schema object", () => {
-    const advertised = advertisedChatTools();
+    const advertised = advertisedChatTools("answer-first", true);
 
     expect(advertised.map((one) => one.name)).toEqual([...CHAT_TOOLS]);
     for (const one of advertised) {
@@ -196,10 +227,17 @@ describe("the acts Sloppy hands an agent", () => {
     }
   });
 
+  it("leaves out of the app's chat only the acts served outside it", () => {
+    expect(advertisedChatTools().map((one) => one.name)).toEqual(
+      CHAT_TOOLS.filter((act) => !OUTSIDE_THE_APP_TOOLS.includes(act as never)),
+    );
+    expect([...OUTSIDE_THE_APP_TOOLS]).toEqual(["find_code"]);
+  });
+
   it("tells the agent what every argument of every act is for", () => {
     const named: string[] = [];
 
-    for (const one of advertisedChatTools()) {
+    for (const one of advertisedChatTools("answer-first", true)) {
       const properties = (one.arguments.properties ?? {}) as Record<
         string,
         { type?: string; description?: string }
@@ -216,16 +254,21 @@ describe("the acts Sloppy hands an agent", () => {
 
     expect(named).toEqual([
       "list_notes.about",
+      "list_notes.at",
       "list_notes.tags",
       "list_notes.in",
       "search_notes.words",
+      "search_notes.detail",
       "search_notes.in",
       "read_note.note",
+      "read_note.sections",
+      "read_note.quoted",
       "read_note.in",
       "write_note.about",
       "write_note.title",
       "write_note.sections",
       "write_note.tags",
+      "write_note.start",
       "write_note.under",
       "write_note.address",
       "move_note.note",
@@ -266,6 +309,15 @@ describe("the acts Sloppy hands an agent", () => {
       "brief.words",
       "brief.budget",
       "brief.in",
+      "relate.note",
+      "relate.title",
+      "relate.sections",
+      "relate.about",
+      "relate.tags",
+      "relate.limit",
+      "relate.in",
+      "find_code.words",
+      "find_code.limit",
     ]);
   });
 
@@ -617,21 +669,39 @@ describe("what one answer carries", () => {
 
   const found = (
     n: number,
-    snippet = "The reader reads it whole.",
+    line = "The reader reads it whole.",
   ): FoundNote => ({
     note: `did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/${ulid(n)}`,
     title: `What src/place-${n} does`,
-    snippet,
+    tags: ["parsing"],
+    line,
   });
 
-  it("carries what a search reached, with the writing around each match", () => {
+  it("carries what a search reached, with the line each one matched by", () => {
     const answer = foundAnswer([found(0), found(1)]);
     const held = NotesFoundSchema.parse(JSON.parse(answer.said));
 
     expect(ChatToolAnswerSchema.safeParse(answer).success).toBe(true);
     expect(held.found).toHaveLength(2);
-    expect(held.found[0].snippet).toBe("The reader reads it whole.");
+    expect(held.found[0].line).toBe("The reader reads it whole.");
+    expect(held.found[0].snippet).toBeUndefined();
     expect(held.more).toBeUndefined();
+  });
+
+  it("holds a found line to the bound a line is shown at", () => {
+    expect(
+      FoundNoteSchema.safeParse(found(0, "a".repeat(FOUND_LINE_MAX))).success,
+    ).toBe(true);
+    expect(
+      FoundNoteSchema.safeParse(found(0, "a".repeat(FOUND_LINE_MAX + 1)))
+        .success,
+    ).toBe(false);
+  });
+
+  it("lists a note without the places it is about where they were not asked for", () => {
+    const { about: _, ...bare } = listed(0);
+
+    expect(ListedNoteSchema.parse(bare).about).toBeUndefined();
   });
 
   it("carries as many found notes as a search reads to, and says how many it left", () => {
@@ -898,6 +968,66 @@ describe("what one answer carries", () => {
     const around = Array.from({ length: 20 }, (_, n) => neighbour(n + 10));
     expect(briefAnswer(notes, around, 8192)).toEqual(
       briefAnswer(notes, around, 8192),
+    );
+  });
+
+  it("briefs to end the search with the first note's sections cut to fit and the rest by name", () => {
+    const paragraphs = Array.from(
+      { length: 300 },
+      (_, n) => `Paragraph ${n} says one thing.`,
+    ).join("\n\n");
+    const first: BriefAsked = {
+      whole: whole(0, [section(0, paragraphs), section(1, paragraphs)]),
+      gist: "",
+      left: 4,
+    };
+    const around = Array.from({ length: 20 }, (_, n) => neighbour(n + 10));
+
+    const answer = shortBriefAnswer(
+      [first, asked(1, 9000), asked(2, 9000)],
+      around,
+      CHAT_ANSWER_MAX,
+    );
+    const held = BriefShortSchema.parse(JSON.parse(answer.said));
+
+    expect(answer.said.length).toBeLessThanOrEqual(SHORT_BRIEF_MAX);
+    expect(held.notes.map((note) => note.note)).toEqual([listed(0).note]);
+    expect(held.notes[0].sections).toHaveLength(2);
+    for (const one of held.notes[0].sections) {
+      expect(one.markdown).toMatch(/^Paragraph 0 says one thing\.[\s\S]*\. …$/);
+    }
+    expect(held.notes[0].more).toBe(4);
+    expect(held.also.map((one) => one.note)).toEqual([
+      listed(1).note,
+      listed(2).note,
+      ...around.slice(0, 3).map((one) => one.note),
+    ]);
+  });
+
+  it("holds a brief that ends the search to a smaller budget, at every budget", () => {
+    const notes = [asked(0, 9000), asked(1, 900)];
+    const around = Array.from({ length: 20 }, (_, n) => neighbour(n + 10));
+
+    for (
+      let budget = LEAST_BRIEF_BUDGET;
+      budget <= SHORT_BRIEF_MAX;
+      budget += 97
+    ) {
+      const answer = shortBriefAnswer(notes, around, budget);
+      expect(answer.said.length).toBeLessThanOrEqual(budget);
+      expect(
+        BriefShortSchema.parse(JSON.parse(answer.said)).notes[0].note,
+      ).toBe(listed(0).note);
+    }
+  });
+
+  it("cuts writing at the last paragraph, line or word that fits", () => {
+    expect(cutAt("one two", 20)).toBe("one two");
+    expect(cutAt("first part\n\nsecond part", 16)).toBe("first part …");
+    expect(cutAt("first part\nsecond part", 16)).toBe("first part …");
+    expect(cutAt("first part second part", 16)).toBe("first part …");
+    expect(cutAt("abcdefghijklmnopqrstuvwxyz", 10).length).toBeLessThanOrEqual(
+      10,
     );
   });
 
@@ -1594,11 +1724,46 @@ describe("which place a reading act answers for", () => {
       "read_graph",
       "read_around",
       "brief",
+      "relate",
     ];
     for (const tool of advertisedChatTools()) {
       const properties = tool.arguments.properties as Record<string, unknown>;
       expect(Object.hasOwn(properties, "in")).toBe(reads.includes(tool.name));
     }
+  });
+
+  it("lists without the places, searches for the line, and reads the whole note, unless asked", () => {
+    expect(ListNotesArgumentsSchema.parse({}).about).toBeUndefined();
+    expect(ListNotesArgumentsSchema.parse({ about: true }).about).toBe(true);
+    expect(SearchNotesArgumentsSchema.parse({ words: "parser" }).detail).toBe(
+      "line",
+    );
+    expect(
+      SearchNotesArgumentsSchema.parse({ words: "parser", detail: "sections" })
+        .detail,
+    ).toBe("sections");
+    expect(
+      SearchNotesArgumentsSchema.safeParse({ words: "parser", detail: "all" })
+        .success,
+    ).toBe(false);
+    expect(ReadNoteArgumentsSchema.parse({ note: NOTE }).sections).toBe(
+      undefined,
+    );
+    expect(
+      ReadNoteArgumentsSchema.parse({ note: NOTE, sections: [" Why "] })
+        .sections,
+    ).toEqual(["Why"]);
+    expect(
+      ReadNoteArgumentsSchema.safeParse({ note: NOTE, sections: [] }).success,
+    ).toBe(false);
+  });
+
+  it("reads a section's heading off its first heading line, at any level", () => {
+    expect(sectionHeading("## Why\n\nBecause.")).toBe("Why");
+    expect(sectionHeading("[a.ts](code:a.ts)\n\n### What it is for")).toBe(
+      "What it is for",
+    );
+    expect(sectionHeading("Nothing heads this.")).toBeUndefined();
   });
 
   it("is absent for the project the chat is about", () => {

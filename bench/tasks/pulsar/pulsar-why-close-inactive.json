@@ -1,0 +1,101 @@
+{
+  "id": "pulsar-why-close-inactive",
+  "family": "why",
+  "prompt": "We have a few million mostly idle topics and want the broker to release their memory without losing any data, so we turned on brokerCloseInactiveTopicsEnabled. The broker refuses to start if brokerDeleteInactiveTopicsEnabled is also true, and also if brokerDeleteInactiveTopicsMode is delete_when_subscriptions_caught_up. Why those two restrictions? And what happens to a namespace whose inactive-topic policy sets deleteWhileInactive=true while this is on?",
+  "tools": "read",
+  "key": "PIP-470 (pip/pip-470.md, \"Close Inactive Topics Without Deleting Them\", added 2026-08-27). Close mode reuses the delete-GC inactivity detection but unloads the topic instead of deleting it: only the in-memory topic is released, and BookKeeper ledgers, metadata, subscriptions, cursors and topic policies stay, so the next client reloads it. The two flags pick the action GC takes, so they are mutually exclusive and only one may be on (PulsarService fails fast at start). Close mode supports only delete_when_no_subscriptions because under delete_when_subscriptions_caught_up a topic counts as inactive as soon as its subscriptions are caught up, even while consumers are connected; closing it would disconnect them, they would reconnect and reload it, and GC would close it again — an unload/reload loop that frees no memory. Under delete_when_no_subscriptions any subscription keeps the topic active, so a topic is closed only once every client has gone. If a namespace or topic policy overrides the mode at runtime, checkGC skips the close for that topic. While close mode is on it takes precedence over a namespace- or topic-level deleteWhileInactive: those topics are closed, never deleted, so data is preserved broker-wide. The retention check is skipped for the close branch since nothing is deleted. Code: PersistentTopic.checkGC and NonPersistentTopic.checkGC, AbstractTopic.isCloseWhileInactive, the validation in PulsarService.",
+  "sources": [
+    {
+      "doc": "pip/pip-470.md",
+      "quote": "Mutual exclusion with `brokerDeleteInactiveTopicsEnabled`: only one of the two may be enabled at a time."
+    },
+    {
+      "doc": "pip/pip-470.md",
+      "quote": "Under `delete_when_subscriptions_caught_up`, `isActive()` only checks `hasBacklogs()` — a topic whose subscriptions are all caught up is \"inactive\" **even while consumers are connected**."
+    },
+    {
+      "doc": "pip/pip-470.md",
+      "quote": "The result is a permanent unload/reload loop that frees no memory"
+    },
+    {
+      "doc": "pip/pip-470.md",
+      "quote": "Inactive topics are closed, never deleted, so the data-preservation guarantee holds broker-wide rather than only for namespaces that happen to leave the policy unset."
+    },
+    {
+      "doc": "pip/pip-470.md",
+      "quote": "BookKeeper ledgers, topic metadata, subscriptions, cursors, and topic-level policies are all retained."
+    },
+    {
+      "doc": "pip/pip-470.md",
+      "quote": "a namespace- or topic-level policy that overrides the mode at runtime disables close for that topic rather than closing it."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "mutually exclusive|only one|one of the two|at most one|not both|both (can'?t|cannot)|(can'?t|cannot) (have|enable|do|use) both|can only (enable|turn on|use|have|set|pick) one|pick one|choose one|one or the other|whether to (delete|close)|alternatives|conflict|contradict",
+        "source": {
+          "doc": "pip/pip-470.md",
+          "quote": "Mutual exclusion with `brokerDeleteInactiveTopicsEnabled`: only one of the two may be enabled at a time."
+        }
+      },
+      {
+        "pattern": "consumers?[^.\\n]{0,40}(attached|connected|online|subscribed|active|consuming|present)|(active|live|attached|online|busy|connected) (consumers?|clients|subscribers|topics)|clients?[^.\\n]{0,40}(subscribed|connected|consuming|attached|online)|even (if|while|though|when)[^.\\n]{0,40}(consum|client|subscri)|idle-but-connected",
+        "source": {
+          "doc": "pip/pip-470.md",
+          "quote": "Under `delete_when_subscriptions_caught_up`, `isActive()` only checks `hasBacklogs()` — a topic whose subscriptions are all caught up is \"inactive\" **even while consumers are connected**."
+        }
+      },
+      {
+        "pattern": "loop|reconnect|reload|loaded again|come (straight )?back|churn|flip[- ]?flop|again and again|over and over|repeatedly|thrash|cycle",
+        "source": {
+          "doc": "pip/pip-470.md",
+          "quote": "The result is a permanent unload/reload loop that frees no memory"
+        }
+      },
+      {
+        "pattern": "(close|closing|broker[- ]level)[^.\\n]{0,120}(wins|precedence|overrid|suppress|priority)|(overrid|suppress|ignor)[^.\\n]{0,80}deletewhileinactive|deletewhileinactive[^.\\n]{0,160}(ignored|overridden|suppressed|has no effect|no effect|not (be )?(honou?red|applied))|(policy|namespace)[^.\\n]{0,40}(overridden|ignored|has no effect)|never (be )?deleted|nothing (is|gets) deleted|closed,? (and )?not deleted|closed rather than deleted|instead of (being )?deleted|closed instead",
+        "source": {
+          "doc": "pip/pip-470.md",
+          "quote": "Inactive topics are closed, never deleted, so the data-preservation guarantee holds broker-wide rather than only for namespaces that happen to leave the policy unset."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "deletewhileinactive[^.\\n]{0,60}(wins|takes precedence|is honou?red|is respected|still applies)|(topics?|data) in (that|such a|the|this) namespace (will|would|are|get) (still )?(be )?deleted|(those|its|these) topics (are|will be|get) (still )?deleted|namespace (policy |setting )?(wins|takes precedence)",
+        "source": {
+          "doc": "pip/pip-470.md",
+          "quote": "Inactive topics are closed, never deleted, so the data-preservation guarantee holds broker-wide rather than only for namespaces that happen to leave the policy unset."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Close and delete are two choices of the same GC action, so only one flag may be on",
+      "points": 1
+    },
+    {
+      "criterion": "Explains the caught-up restriction: such a topic is inactive while consumers are connected, so closing it disconnects them, they reload it, and GC loops without freeing memory",
+      "points": 2
+    },
+    {
+      "criterion": "Says close mode takes precedence over a namespace or topic deleteWhileInactive: those topics are closed, never deleted",
+      "points": 2
+    },
+    {
+      "criterion": "Says closing keeps the data (ledgers, metadata, subscriptions, cursors, policies) and the topic reloads on the next client",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

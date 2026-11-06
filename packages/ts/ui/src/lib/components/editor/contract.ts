@@ -11,11 +11,14 @@
 import type {
 	BlockView,
 	CodeAnchor,
+	CodeSnippet,
 	CreateBlockRequest,
 	CustomEmojiKind,
 	MediaAsset,
 	NodeView,
 	OwnedRef,
+	SnippetPlace,
+	SnippetState,
 	UpdateBlockRequest
 } from '@sloppy/types';
 import type { CustomEmojiEntry } from '../../emoji/catalog.js';
@@ -122,6 +125,14 @@ export interface NoteCode {
 	cite(): Promise<CodeAnchor | undefined>;
 	/** Show what is at an anchor. */
 	show(anchor: CodeAnchor): void;
+	/** Ask the writer which lines to quote, quoted as the file has them now.
+	 *  `undefined` is somebody who named none, and is not a failure. */
+	quote(): Promise<CodeSnippet | undefined>;
+	/** Where the code under a quote stands now. */
+	standing(snippet: CodeSnippet): Promise<SnippetState>;
+	/** The lines at `place` quoted as the file has them now; `undefined` where
+	 *  it has not got them. */
+	requote(place: SnippetPlace, language?: string): Promise<CodeSnippet | undefined>;
 }
 
 export interface BlockStackProps {

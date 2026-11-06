@@ -80,6 +80,7 @@ export { default as TagRail } from './components/tags/tag-rail.svelte';
 export type { TagOrder } from './components/tags/tag-rail.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';
 export { anchorLabel, codeHref } from './components/editor/code-anchor.js';
+export { linesSaid, stateSaid } from './components/editor/snippet-node.js';
 export { colourLines, languageOfPath } from './components/editor/highlight.js';
 export type { Coloured } from './components/editor/highlight.js';
 export type {

@@ -1,0 +1,26 @@
+{
+  "text": "Tokens are never forwarded, so from any use you can walk back to the specific op that defined it. They reuse the existing SSA def-use machinery instead of a parallel system. AnyType excludes them so ops that have not opted in cannot take one by accident; opt in with the Token constraint. They cannot cross IsolatedFromAbove regions such as func.func, so isolated regions can be processed concurrently without races; use a symbol reference in an attribute instead (mlir/docs/Tokens.md).",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

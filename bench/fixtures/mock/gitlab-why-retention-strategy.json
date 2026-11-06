@@ -1,0 +1,26 @@
+{
+  "text": "Deleting rows is a continuous write workload: dead tuples and index entries for vacuum, roughly doubling writes, the table never shrinks, and WAL goes to every replica. Detaching a partition is a metadata operation paid once, and tables over 50 GB must partition. delete_rows is still fine for narrow, lightly indexed, low-traffic tables with no viable partition key (data_retention_policy.md).",
+  "timing": {
+    "api_ms": 2600,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2500
+  },
+  "tokens": {
+    "input": 1000,
+    "cache_write": 2000,
+    "cache_read": 4000,
+    "output": 300,
+    "reasoning": 0
+  },
+  "cost_reported": 0.03,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "id": "llvm-drift-signature-never-writes",
+  "family": "drift",
+  "tools": "read",
+  "prompt": "Look at `SemanticSignatureElement::getNeverWritesMask` in llvm/include/llvm/Frontend/HLSL/SemanticSignatures.h. Is it still doing what it was written to do? If it is not, say exactly what it does differently from what it is meant to do, and where the intended behaviour is written down.",
+  "key": "It is not. The planted change masks the complement of the usage mask down to the element's own declared columns: it returns `~UsageMask & getDeclaredMask()` instead of `~UsageMask & 0xF`, so NeverWrites now reports only the declared components the shader leaves alone, and every component outside the element's declared columns comes out as 0, which in this field means written. The intended rule is in llvm/docs/DirectX/SemanticSignatures.md, section Derived Container Fields (added 2026-07-22 in #206804): for outputs `NeverWrites = ~UsageMask & 0xF`, and the output mask includes components outside the declared mask. Consequence: an output element that does not cover the whole register row, say `float A : A` at one column of a shared row, now claims the three components it never declared are written, so OSG1 and PSV0 tell a later stage those components carry a value, and the container disagrees with the one DXC writes. An element declaring all four columns at column 0 has a declared mask of 0xF, so the two agree there and the change is invisible in the common case. The expectation that pinned the rule (MetadataToElementDerivedMasks in llvm/unittests/Frontend/HLSLSemanticSignatureMetadataTest.cpp) was changed with it, so it is not the intent; the container tests under llvm/test/CodeGen/DirectX/ContainerData/ were left alone and still expect the documented ExclusiveMask of 14 for the one-column output A and 9 for B, so naming those is as good as naming the document.",
+  "sources": [
+    {
+      "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+      "quote": "**AlwaysReads / NeverWrites**: `UsageMask` is written to `AlwaysReads` for inputs (including conditional reads, following DXC); for outputs `NeverWrites = ~UsageMask & 0xF`."
+    },
+    {
+      "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+      "quote": "The output mask includes components outside the declared mask."
+    },
+    {
+      "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+      "quote": "**DeclaredMask**: `((1 << Cols) - 1) << StartCol`."
+    },
+    {
+      "doc": "llvm/test/CodeGen/DirectX/ContainerData/SemanticSignatures-vs.ll",
+      "quote": "; PARTS-NEXT: ExclusiveMask: 14"
+    }
+  ],
+  "setup": {
+    "patch_file": "fixtures/drift/llvm-signature-never-writes.patch",
+    "message": "Update"
+  },
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "^(?=[\\s\\S]*(?:(?:^|[:\\n]\\s*)[\\W_]*no\\b(?![- ]?(?:bug|drift|problem|issue|change|regression))|\\bit is not\\b|\\bit'?s not\\b|\\bisn'?t\\b|\\bnot any ?more\\b|\\bno longer\\b|\\bnot (?:doing|what it)|does(?:n'?t| not) (?:do|match|follow|implement|honou?r)|\\b(?:deviat|diverg|contradict|violat|regress)\\w*|\\b(?:has|have|had|it) drifted\\b|\\bbroken\\b))(?=[\\s\\S]*(?:(?:\\b(?:it|this|now|currently|today|at head|neverwrites|getneverwritesmask|not any ?more)\\b|\\bthe (?:code|accessor|function|method|implementation|header|body|result|mask|value|complement|never-writes mask|and|second operand|returned mask|expression|return value)\\b|was (?:changed|patched|edited|rewritten|modified))[^\\n]{0,50}(?:\\b(?:ands|masks|clips|clamps|cuts|restricts|limits|narrows|intersects|reduces|confines|returns|computes|gives|yields|reports|covers|spans|takes|comes? back)\\b|(?:is|are|was|were|gets?) (?:now )?(?:anded|masked|clipped|clamped|cut|restricted|limited|narrowed|intersected|reduced|confined|computed|taken|derived|evaluated|produced|against|over|down to|only)\\b|\\b(?:is|to) (?:and|mask|clip|clamp|cut|restrict|limit|narrow|intersect|reduce)\\b)[^\\n]{0,55}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|(?:(?:\\b(?:it|this|now|currently|today|at head|neverwrites|getneverwritesmask|not any ?more)\\b|\\bthe (?:code|accessor|function|method|implementation|header|body|result|mask|value|complement|never-writes mask|and|second operand|returned mask|expression|return value)\\b|was (?:changed|patched|edited|rewritten|modified))|\\bthe (?:expression|body|return|difference)\\b)[^\\n]{0,35}(?:\\bis\\b|\\bhas\\b|=|:)[^\\n]{0,15}(?:~ ?usagemask\\s*&\\s*)?getdeclaredmask))",
+        "source": {
+          "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+          "quote": "**AlwaysReads / NeverWrites**: `UsageMask` is written to `AlwaysReads` for inputs (including conditional reads, following DXC); for outputs `NeverWrites = ~UsageMask & 0xF`."
+        }
+      },
+      {
+        "pattern": "^(?=[\\s\\S]*(?:(?:\\b(?:it|this|now|currently|today|at head|neverwrites|getneverwritesmask|not any ?more)\\b|\\bthe (?:code|accessor|function|method|implementation|header|body|result|mask|value|complement|never-writes mask|and|second operand|returned mask|expression|return value)\\b|was (?:changed|patched|edited|rewritten|modified))[^\\n]{0,50}(?:\\b(?:ands|masks|clips|clamps|cuts|restricts|limits|narrows|intersects|reduces|confines|returns|computes|gives|yields|reports|covers|spans|takes|comes? back)\\b|(?:is|are|was|were|gets?) (?:now )?(?:anded|masked|clipped|clamped|cut|restricted|limited|narrowed|intersected|reduced|confined|computed|taken|derived|evaluated|produced|against|over|down to|only)\\b|\\b(?:is|to) (?:and|mask|clip|clamp|cut|restrict|limit|narrow|intersect|reduce)\\b)[^\\n]{0,55}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|(?:(?:\\b(?:it|this|now|currently|today|at head|neverwrites|getneverwritesmask|not any ?more)\\b|\\bthe (?:code|accessor|function|method|implementation|header|body|result|mask|value|complement|never-writes mask|and|second operand|returned mask|expression|return value)\\b|was (?:changed|patched|edited|rewritten|modified))|\\bthe (?:expression|body|return|difference)\\b)[^\\n]{0,35}(?:\\bis\\b|\\bhas\\b|=|:)[^\\n]{0,15}(?:~ ?usagemask\\s*&\\s*)?getdeclaredmask))(?=[\\s\\S]*(?:neverwrites\\s*=\\s*~ ?usagemask\\s*&\\s*0x0?f|(?:output )?mask (?:includes|covers|reaches|extends to|spans) components outside the declared mask|(?:doc(?:ument(?:ed|ation)?|s)?\\b|spec(?:ification)?\\b|\\bintended\\b|\\bintent\\b|\\bmeant\\b|\\brule\\b|\\bconvention\\b|\\bnote\\b|derived container fields|semanticsignatures\\.md|instead of|rather than|in place of|\\bshould\\b|\\bmust\\b)[^\\n]{0,60}(?:0x0?f\\b|all four\\b|all 4\\b|(?:four|4)[- ](?:component|column|bit)s?\\b|whole[- ]?register|full[- ]?register|entire register|whole row|entire row|all (?:the )?(?:components|columns)|every (?:component|column))))",
+        "source": {
+          "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+          "quote": "**AlwaysReads / NeverWrites**: `UsageMask` is written to `AlwaysReads` for inputs (including conditional reads, following DXC); for outputs `NeverWrites = ~UsageMask & 0xF`."
+        }
+      },
+      {
+        "pattern": "(?:(?:(?:outside|beyond|not (?:in|within|inside)) [^\\n]{0,20}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|un-?declared (?:components?|columns?|bits?)|(?:never|does ?n'?t|did ?n'?t|does not|do not|did not) declare[sd]?|(?:the )?(?:other|remaining|leftover) (?:three |two )?(?:components?|columns?|bits?)|rest of the (?:row|register))[^\\n]{0,100}(?:drops?|dropped|clear(?:s|ed)?\\b|zero(?:ed)?\\b|always 0\\b|(?:are|is) 0\\b|comes? out as 0\\b|missing|not set|never (?:set|reported)|le(?:ft|aves?) [^\\n]{0,15}(?:out|clear|unset)|lost|omitted|(?<!never )(?<!not )(?<!un)written\\b(?! ?(?:down|up|in\\b)))|(?:drops?|dropped|clear(?:s|ed)?\\b|zero(?:ed)?\\b|always 0\\b|(?:are|is) 0\\b|comes? out as 0\\b|missing|not set|never (?:set|reported)|le(?:ft|aves?) [^\\n]{0,15}(?:out|clear|unset)|lost|omitted|(?<!never )(?<!not )(?<!un)written\\b(?! ?(?:down|up|in\\b)))[^\\n]{0,100}(?:(?:outside|beyond|not (?:in|within|inside)) [^\\n]{0,20}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|un-?declared (?:components?|columns?|bits?)|(?:never|does ?n'?t|did ?n'?t|does not|do not|did not) declare[sd]?|(?:the )?(?:other|remaining|leftover) (?:three |two )?(?:components?|columns?|bits?)|rest of the (?:row|register))|\\bonly[^\\n]{0,30}(?:inside|within) [^\\n]{0,20}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|\\b(?:the two|both|they)\\b[^\\n]{0,30}(?:only )?(?:agree|differ|match|give different)[^\\n]{0,60}(?:0x0?f\\b|all four\\b|all 4\\b|(?:four|4)[- ](?:component|column|bit)s?\\b|whole[- ]?register|full[- ]?register|entire register|whole row|entire row|all (?:the )?(?:components|columns)|every (?:component|column)))",
+        "source": {
+          "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+          "quote": "The output mask includes components outside the declared mask."
+        }
+      },
+      {
+        "pattern": "^(?=[\\s\\S]*(?:docs?[/\\\\]directx[/\\\\]semanticsignatures|semanticsignatures\\.md|derived container fields|semantic signatures? (?:document|doc\\b|spec|reference|markdown page)|containerdata[/\\\\]semanticsignatures|semanticsignatures-[a-z]*\\.ll|exclusivemask[^\\n]{0,80}(?:container|lit test|filecheck|\\.ll\\b|\\btest)))(?=[\\s\\S]*(?:(?:(?:\\b(?:it|this|now|currently|today|at head|neverwrites|getneverwritesmask|not any ?more)\\b|\\bthe (?:code|accessor|function|method|implementation|header|body|result|mask|value|complement|never-writes mask|and|second operand|returned mask|expression|return value)\\b|was (?:changed|patched|edited|rewritten|modified))[^\\n]{0,50}(?:\\b(?:ands|masks|clips|clamps|cuts|restricts|limits|narrows|intersects|reduces|confines|returns|computes|gives|yields|reports|covers|spans|takes|comes? back)\\b|(?:is|are|was|were|gets?) (?:now )?(?:anded|masked|clipped|clamped|cut|restricted|limited|narrowed|intersected|reduced|confined|computed|taken|derived|evaluated|produced|against|over|down to|only)\\b|\\b(?:is|to) (?:and|mask|clip|clamp|cut|restrict|limit|narrow|intersect|reduce)\\b)[^\\n]{0,55}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|(?:(?:\\b(?:it|this|now|currently|today|at head|neverwrites|getneverwritesmask|not any ?more)\\b|\\bthe (?:code|accessor|function|method|implementation|header|body|result|mask|value|complement|never-writes mask|and|second operand|returned mask|expression|return value)\\b|was (?:changed|patched|edited|rewritten|modified))|\\bthe (?:expression|body|return|difference)\\b)[^\\n]{0,35}(?:\\bis\\b|\\bhas\\b|=|:)[^\\n]{0,15}(?:~ ?usagemask\\s*&\\s*)?getdeclaredmask)|(?:(?:(?:outside|beyond|not (?:in|within|inside)) [^\\n]{0,20}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|un-?declared (?:components?|columns?|bits?)|(?:never|does ?n'?t|did ?n'?t|does not|do not|did not) declare[sd]?|(?:the )?(?:other|remaining|leftover) (?:three |two )?(?:components?|columns?|bits?)|rest of the (?:row|register))[^\\n]{0,100}(?:drops?|dropped|clear(?:s|ed)?\\b|zero(?:ed)?\\b|always 0\\b|(?:are|is) 0\\b|comes? out as 0\\b|missing|not set|never (?:set|reported)|le(?:ft|aves?) [^\\n]{0,15}(?:out|clear|unset)|lost|omitted|(?<!never )(?<!not )(?<!un)written\\b(?! ?(?:down|up|in\\b)))|(?:drops?|dropped|clear(?:s|ed)?\\b|zero(?:ed)?\\b|always 0\\b|(?:are|is) 0\\b|comes? out as 0\\b|missing|not set|never (?:set|reported)|le(?:ft|aves?) [^\\n]{0,15}(?:out|clear|unset)|lost|omitted|(?<!never )(?<!not )(?<!un)written\\b(?! ?(?:down|up|in\\b)))[^\\n]{0,100}(?:(?:outside|beyond|not (?:in|within|inside)) [^\\n]{0,20}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|un-?declared (?:components?|columns?|bits?)|(?:never|does ?n'?t|did ?n'?t|does not|do not|did not) declare[sd]?|(?:the )?(?:other|remaining|leftover) (?:three |two )?(?:components?|columns?|bits?)|rest of the (?:row|register))|\\bonly[^\\n]{0,30}(?:inside|within) [^\\n]{0,20}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|\\b(?:the two|both|they)\\b[^\\n]{0,30}(?:only )?(?:agree|differ|match|give different)[^\\n]{0,60}(?:0x0?f\\b|all four\\b|all 4\\b|(?:four|4)[- ](?:component|column|bit)s?\\b|whole[- ]?register|full[- ]?register|entire register|whole row|entire row|all (?:the )?(?:components|columns)|every (?:component|column)))))",
+        "source": {
+          "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+          "quote": "The output mask includes components outside the declared mask."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "(?:\\bno drift\\b|nothing is wrong|nothing(?:'s| has) (?:changed|drifted)|\\bno bug\\b|^\\W*yes\\b|\\bnot broken\\b|\\bno (?:deviation|divergence|contradiction|violation)\\b|(?<!(?:\\bnot\\b|n't|\\bno longer\\b|\\bnever\\b|\\bnor\\b)[^.;:\\n]{0,40})(?:still (?:does|doing) what it|works as (?:intended|designed)|behaves as (?:intended|designed)|(?:is|are|stays|remains) (?:consistent with|in line with|faithful to|the same as) (?:the |its )?(?:design|document|doc|intent|rule|spec)))",
+        "source": {
+          "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+          "quote": "**AlwaysReads / NeverWrites**: `UsageMask` is written to `AlwaysReads` for inputs (including conditional reads, following DXC); for outputs `NeverWrites = ~UsageMask & 0xF`."
+        }
+      },
+      {
+        "pattern": "(?:(?:\\bshould\\b|\\bmust\\b|ought to|needs? to|has to|is meant to|is supposed to|was meant to|the (?:document|doc|docs|spec|rule)[^\\n]{0,20}(?:asks|requires|describes|wants|would))(?:(?!\\bnot\\b|n't|\\bnever\\b|\\binstead\\b|\\brather\\b)[^\\n]){0,45}(?:\\b(?:inside|within)\\b|\\b(?:anded|and|intersected|masked|narrowed|clamped|limited|restricted|clipped|confined|cut|kept|keep) (?:down )?(?:with|to)\\b)[^\\n]{0,30}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|\\b(?:the (?:mask|complement|value|result|never-writes mask)|it)\\b (?:belongs?|stays?|remains?) (?:inside|within)[^\\n]{0,30}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?)|(?:keeps?|keep) it (?:inside|within)[^\\n]{0,30}(?:getdeclaredmask|declared[- ]?mask|declared (?:columns?|components?|bits?|range)|declaration|element'?s? (?:own )?declared|(?:columns?|components?|bits?) (?:it|the element) declares?))",
+        "source": {
+          "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+          "quote": "The output mask includes components outside the declared mask."
+        }
+      },
+      {
+        "pattern": "(?:\\bnow\\b|\\bcurrently\\b|\\bat head\\b|\\bthe (?:code|accessor|function|method|implementation)\\b|\\bgetneverwritesmask\\b)[^\\n]{0,20}(?:\\b(?:ands|masks|returns|computes|gives|yields|uses)\\b|(?:is|are|was|were) (?:now )?(?:anded|masked))[^\\n]{0,15}(?:~ ?usagemask\\s*&\\s*0x0?f|the complement[^\\n]{0,30}\\b(?:with|over|across)\\b[^\\n]{0,10}(?:0x0?f|all four))",
+        "source": {
+          "doc": "llvm/docs/DirectX/SemanticSignatures.md",
+          "quote": "**AlwaysReads / NeverWrites**: `UsageMask` is written to `AlwaysReads` for inputs (including conditional reads, following DXC); for outputs `NeverWrites = ~UsageMask & 0xF`."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the accessor no longer does what it was written to do",
+      "points": 2
+    },
+    {
+      "criterion": "Names the difference exactly: the complement of the usage mask is now masked down to the element's declared mask instead of all four components (~UsageMask & 0xF)",
+      "points": 2
+    },
+    {
+      "criterion": "States a consequence: the components outside the element's declared columns now come out of NeverWrites as written, so the output signature claims components the element never declared are written",
+      "points": 1
+    },
+    {
+      "criterion": "Says where the intended behaviour is written (llvm/docs/DirectX/SemanticSignatures.md, its Derived Container Fields section, a note carrying it, or the DirectX container tests that still expect the documented ExclusiveMask values)",
+      "points": 1
+    },
+    {
+      "criterion": "Does not take the unit test as the intent, since its expectation was changed to match",
+      "points": 1
+    }
+  ]
+}

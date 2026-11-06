@@ -1,0 +1,26 @@
+{
+  "text": "SortingConsumer sorts diagnostics by the last processed token (last_byte_offset). Emitted order would print all lex errors, then parse errors, then check errors, jumping back and forth; pure line and column order puts a consequence before its cause (the arity error before the missing comma). Ties at one token would be non-deterministic and break golden tests, so on-scope diagnostics are sorted by line and column after the rest (proposals/p006699-diagnostic-sorting.md).",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

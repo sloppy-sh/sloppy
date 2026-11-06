@@ -1,6 +1,6 @@
-// The figure a sets reading stands its marks inside: a disc per drawn set,
-// sized by the notes carrying its tag and placed so that what two discs share
-// is what the two sets share. DESIGN.md § "Sets — the tags as places" is the
+// The figure a sets reading stands its marks inside: a shape per drawn set,
+// sized by the notes carrying its tag and placed so that what the shapes share
+// is what the sets share. DESIGN.md § "Sets — the tags as places" is the
 // doc of record.
 //
 // A REGION is a bitmask over the drawn sets: bit `1 << i` is the i-th drawn
@@ -12,6 +12,25 @@
 import { MARK_SCALE_MAX } from "@sloppy/types";
 import { LEAF_RADIUS } from "../model.js";
 import { type Bounds, MIN_SCALE, type Point } from "../viewport.js";
+import { homelessIn, refine } from "./refine.js";
+import {
+  gaugeOf,
+  reachAlong,
+  regionAt,
+  type SetsOutline,
+  type SetsShape,
+  shapeBounds,
+} from "./shape.js";
+
+export {
+  gapOf,
+  inShape,
+  regionAt,
+  type SetsOutline,
+  type SetsShape,
+  shapeBounds,
+  shapeOutline,
+} from "./shape.js";
 
 /**
  * How far apart the lattice stands two marks at full zoom, in world units: the
@@ -100,16 +119,6 @@ const MEET_WEIGHT = 1e6;
 /** How far a step is halved before the fit takes the error it has. */
 const FIT_BACKTRACKS = 14;
 
-/** One of the discs a figure is drawn from, in world units relative to the
- *  figure's centre. */
-export interface SetsShape {
-  cx: number;
-  cy: number;
-  r: number;
-  /** Which way out of its own centre this set's name is written, in radians. */
-  nameAt: number;
-}
-
 /** One combination of the drawn sets, and the room it has. */
 export interface SetsRegion {
   /** The bitmask over the drawn sets; 0 is outside every one of them. */
@@ -125,7 +134,7 @@ export interface SetsRegion {
   bounds: Bounds;
   /**
    * Axis-aligned rectangles covering the region, one per run of grid cells.
-   * What a drop lights: a region is an intersection of discs and has no outline
+   * What a drop lights: a region is an intersection of shapes and has no outline
    * of its own to stroke.
    */
   cover: readonly Bounds[];
@@ -140,7 +149,7 @@ export interface SetsDiagram {
    * `pack.ts` is where a note carrying it stands instead.
    */
   regions: readonly SetsRegion[];
-  /** The figure's own box: the discs plus the ring outside them. */
+  /** The figure's own box: the shapes plus the ring outside them. */
   box: Bounds;
 }
 
@@ -157,6 +166,12 @@ export interface SetsAsk {
   shared: readonly number[];
   /** Notes carrying none of the drawn tags, which is the ring's own share. */
   outside: number;
+  /**
+   * Notes carrying exactly each combination of the drawn tags, as `[mask,
+   * notes]` with the mask over `counts`. Absent fits the pairs alone, with
+   * discs.
+   */
+  exact?: readonly (readonly [number, number])[];
 }
 
 /**
@@ -181,7 +196,7 @@ export function setsUnitArea(counts: readonly number[]): number {
  * How wide each drawn set is drawn, in world units, in drawing order: its own
  * count at the figure's unit, which the narrowest set of the figure raises
  * until it is a disc with its own name in it. Every width is a count, because
- * a field draws a circle for a tag its notes carry and for no other.
+ * a field draws a place for a tag its notes carry and for no other.
  */
 export function setsRadii(counts: readonly number[]): number[] {
   const unit = setsUnitArea(counts);
@@ -220,28 +235,19 @@ export function lensDistance(ra: number, rb: number, area: number): number {
 
 /**
  * The figure a field's own notes draw, held against the ask it was measured
- * from: a zoom repacks the marks without moving a disc.
+ * from: a zoom repacks the marks without moving a shape.
  *
- * `grow` widens the whole figure by that factor — every disc, the ring round
+ * `grow` widens the whole figure by that factor — every shape, the ring round
  * them and so every region's area by its square, the fit untouched. `pack.ts`
  * is where the figure's most crowded place asks for it, held under
  * {@link SETS_FIGURE_WIDEST}.
  */
 export function setsFigure(ask: SetsAsk, grow = 1): SetsDiagram {
-  const key = `${ask.counts.join(",")}|${ask.shared.join(",")}|${ask.outside}`;
+  const key = keyOf(ask);
   let found = held.get(key);
   if (found === undefined) {
-    // Every write into a note is a new ask, so what is held has to be bounded.
-    if (held.size >= FIGURES_HELD) {
-      for (const stale of [...held.keys()].slice(
-        0,
-        held.size - FIGURES_HELD + 1,
-      )) {
-        held.delete(stale);
-      }
-    }
-    found = { shapes: fitShapes(ask), drawn: new Map() };
-    held.set(key, found);
+    found = { shapes: named(outlinesFor(ask)), drawn: new Map() };
+    hold(held, key, found);
   }
   const taken = found.drawn.get(grow);
   if (taken !== undefined) return taken;
@@ -260,13 +266,123 @@ export function setsFigure(ask: SetsAsk, grow = 1): SetsDiagram {
   return made;
 }
 
+function keyOf(ask: SetsAsk): string {
+  return `${shapeKeyOf(ask)}|${ask.outside}`;
+}
+
+/** The fit never reads `outside`, so a note with none of the drawn tags is no refit. */
+function shapeKeyOf(ask: SetsAsk): string {
+  const exact = (ask.exact ?? []).map((pair) => pair.join(":")).join(",");
+  return `${ask.counts.join(",")}|${ask.shared.join(",")}|${exact}`;
+}
+
+/** Every write into a note is a new ask, so what is held has to be bounded. */
+function hold<T>(within: Map<string, T>, key: string, value: T): void {
+  if (within.size >= FIGURES_HELD) {
+    for (const stale of [...within.keys()].slice(
+      0,
+      within.size - FIGURES_HELD + 1,
+    )) {
+      within.delete(stale);
+    }
+  }
+  within.set(key, value);
+}
+
+/**
+ * The outlines an ask draws, in its own order. The fit is taken over the sets
+ * in an order the counts alone decide, so asking for the same sets in another
+ * order — which is what selecting one of them does — is the same fit, drawn
+ * again rather than taken again.
+ */
+function outlinesFor(ask: SetsAsk): SetsOutline[] {
+  const order = canonicalOrder(ask);
+  const canonical = reordered(ask, order);
+  const key = shapeKeyOf(canonical);
+  let shapes = outlines.get(key);
+  if (shapes === undefined) {
+    shapes = fitShapes(canonical);
+    hold(outlines, key, shapes);
+  }
+  const back = new Array<SetsOutline>(order.length);
+  for (const [at, which] of order.entries()) back[which] = shapes[at];
+  return back;
+}
+
+const outlines = new Map<string, readonly SetsOutline[]>();
+
+/** The sets ordered by what they carry: the count, then what each shares and
+ *  with how many, then the combinations it is in — ties to the order asked. */
+function canonicalOrder(ask: SetsAsk): number[] {
+  const count = ask.counts.length;
+  const signature = ask.counts.map((notes, which) => {
+    const shares = Array.from({ length: count }, (_unused, other) =>
+      other === which ? -1 : (ask.shared[which * count + other] ?? 0),
+    )
+      .filter((shared) => shared >= 0)
+      .sort((a, b) => b - a);
+    const combos = (ask.exact ?? [])
+      .filter(([mask]) => (mask & (1 << which)) !== 0)
+      .map(([mask, held]) => `${setsIn(mask)}x${held}`)
+      .sort();
+    return `${String(notes).padStart(9, "0")}|${shares.join(",")}|${combos.join(",")}`;
+  });
+  return ask.counts
+    .map((_unused, which) => which)
+    .sort(
+      (a, b) =>
+        (signature[a] < signature[b]
+          ? 1
+          : signature[a] > signature[b]
+            ? -1
+            : 0) || a - b,
+    );
+}
+
+/** The ask with its sets taken in `order`: the set at `order[k]` becomes k. */
+function reordered(ask: SetsAsk, order: readonly number[]): SetsAsk {
+  const count = order.length;
+  const remap = (mask: number): number => {
+    let into = 0;
+    for (const [at, which] of order.entries()) {
+      if ((mask & (1 << which)) !== 0) into |= 1 << at;
+    }
+    return into;
+  };
+  const shared = new Array<number>(count * count).fill(0);
+  for (const [a, from] of order.entries()) {
+    for (const [b, to] of order.entries()) {
+      shared[a * count + b] = ask.shared[from * count + to] ?? 0;
+    }
+  }
+  return {
+    counts: order.map((which) => ask.counts[which]),
+    shared,
+    outside: ask.outside,
+    ...(ask.exact === undefined
+      ? {}
+      : {
+          exact: ask.exact
+            .map(([mask, notes]) => [remap(mask), notes] as const)
+            .sort((a, b) => a[0] - b[0]),
+        }),
+  };
+}
+
+/** How many sets a mask names. */
+export function setsIn(mask: number): number {
+  let held = 0;
+  for (let bits = mask; bits > 0; bits >>= 1) held += bits & 1;
+  return held;
+}
+
 /**
  * The widest a figure is drawn, in world units: what a phone's canvas shows
  * with the viewport as far out as it goes — 400 CSS pixels less the room
  * `Viewport.fit` keeps either side of what it frames — so the whole figure is
- * one picture wherever it is read (DESIGN.md § Layout). A place still short of
- * room at that width keeps a fold with its count rather than taking the figure
- * past what a reader can see at once.
+ * one picture wherever it is read (DESIGN.md § Layout). A crowd still short of
+ * room at that width stands round its place at the closest zoom rather than
+ * taking the figure past what a reader can see at once.
  */
 export const SETS_FIGURE_WIDEST = Math.round((400 - 48 * 2) / MIN_SCALE);
 
@@ -275,30 +391,13 @@ export const SETS_FIGURE_WIDEST = Math.round((400 - 48 * 2) / MIN_SCALE);
 const FIGURES_HELD = 16;
 
 /** One ask's fit, and the figure it was measured into at each growth it has
- *  been asked for — two at the most: the figure as the counts drew it, and the
- *  grown one its most crowded place asked for. */
+ *  been asked for on the way to the one its most crowded place needs. */
 interface Fitted {
   shapes: readonly SetsShape[];
   drawn: Map<number, SetsDiagram>;
 }
 
 const held = new Map<string, Fitted>();
-
-/** Whether a point is inside one disc. */
-export function inShape(shape: SetsShape, at: Point): boolean {
-  const dx = at.x - shape.cx;
-  const dy = at.y - shape.cy;
-  return dx * dx + dy * dy <= shape.r * shape.r;
-}
-
-/** The region a point stands in, as a bitmask over `shapes`. */
-export function regionAt(shapes: readonly SetsShape[], at: Point): number {
-  let mask = 0;
-  for (const [bit, shape] of shapes.entries()) {
-    if (inShape(shape, at)) mask |= 1 << bit;
-  }
-  return mask;
-}
 
 /** Whether a point is inside the box a figure's regions are measured over. */
 export function inBox(box: Bounds, at: Point): boolean {
@@ -310,7 +409,7 @@ export function inBox(box: Bounds, at: Point): boolean {
 /** Where one set's name is written: the point its outline reaches at
  *  {@link SetsShape.nameAt}, pulled inside by {@link NAME_INSET}. */
 export function namePoint(shape: SetsShape): Point {
-  const reach = Math.max(shape.r - NAME_INSET, 0);
+  const reach = Math.max(reachAlong(shape, shape.nameAt) - NAME_INSET, 0);
   return {
     x: shape.cx + reach * Math.cos(shape.nameAt),
     y: shape.cy + reach * Math.sin(shape.nameAt),
@@ -337,28 +436,6 @@ export function boxGap(box: Bounds, at: Point): number {
   return Math.hypot(dx, dy);
 }
 
-/** The box one disc fills, in figure coordinates — what holds a set's name
- *  inside the set it names. */
-export function shapeBounds(shape: SetsShape): Bounds {
-  return {
-    minX: shape.cx - shape.r,
-    maxX: shape.cx + shape.r,
-    minY: shape.cy - shape.r,
-    maxY: shape.cy + shape.r,
-  };
-}
-
-/** One disc's outline as a closed run of points, which is how it is drawn. */
-export function shapeOutline(shape: SetsShape, steps = 180): Point[] {
-  return Array.from({ length: steps }, (_unused, step) => {
-    const turn = (step / steps) * Math.PI * 2;
-    return {
-      x: shape.cx + shape.r * Math.cos(turn),
-      y: shape.cy + shape.r * Math.sin(turn),
-    };
-  });
-}
-
 /**
  * How much of each other two sets are asked to cover, in square world units:
  * the paper their shared notes ask for, so the lens says what the shared count
@@ -378,9 +455,11 @@ function targetAreas(ask: SetsAsk, unit: number): number[] {
   return target;
 }
 
-/** The discs a field's ask draws, placed and then walked down the error in the
- *  overlaps they ask for. */
-function fitShapes(ask: SetsAsk): SetsShape[] {
+/** The shapes a field's ask draws: discs placed and walked down the error in
+ *  the overlaps the pairs ask for — and, where those leave a note without room
+ *  in a place of every set it carries, refined against every combination the
+ *  notes carry. */
+function fitShapes(ask: SetsAsk): SetsOutline[] {
   const count = ask.counts.length;
   const unit = setsUnitArea(ask.counts);
   const radii = setsRadii(ask.counts);
@@ -389,15 +468,107 @@ function fitShapes(ask: SetsAsk): SetsShape[] {
     lensDistance(radii[Math.floor(at / count)], radii[at % count], area),
   );
   const meet = meetBy(radii, target, apart, count);
-  const at = settle(
-    radii,
-    target,
-    meet,
-    place(radii, apart, meet, count),
-    count,
+  const discsFrom = (order: readonly number[]): SetsOutline[] => {
+    const at = settle(
+      radii,
+      target,
+      meet,
+      place(radii, apart, meet, count, order),
+      count,
+      unit,
+    );
+    return radii.map((r, which) => ({
+      cx: at[which].x,
+      cy: at[which].y,
+      r,
+      stretch: 1,
+      turn: 0,
+    }));
+  };
+  const widestFirst = radii
+    .map((_unused, at) => at)
+    .sort((a, b) => radii[b] - radii[a] || a - b);
+  if (ask.exact === undefined) return discsFrom(widestFirst);
+  const asked = {
+    shared: ask.shared,
+    exact: ask.exact,
     unit,
+    cell: SETS_CELL,
+    reach: SETS_STEP / 2,
+    apart,
+  };
+  const discs = discsFrom(widestFirst);
+  if (homelessIn(discs, asked) === 0) return discs;
+  let best: ReturnType<typeof refine> | null = null;
+  for (const order of startingOrders(ask, radii, widestFirst)) {
+    const found = refine(discsFrom(order), asked);
+    if (
+      best === null ||
+      found.homeless < best.homeless ||
+      (found.homeless === best.homeless && found.cost < best.cost)
+    ) {
+      best = found;
+    }
+    if (best.homeless === 0) break;
+  }
+  return (best as { shapes: SetsOutline[] }).shapes;
+}
+
+/** The sets in the order a walk from the widest reaches them, each next one the
+ *  unplaced set sharing the most notes with those already placed. */
+function nearestFirst(ask: SetsAsk, widestFirst: readonly number[]): number[] {
+  const count = widestFirst.length;
+  const order = [widestFirst[0]];
+  while (order.length < count) {
+    let next = -1;
+    let most = -1;
+    for (const which of widestFirst) {
+      if (order.includes(which)) continue;
+      const with_ = order.reduce(
+        (sum, at) => sum + (ask.shared[which * count + at] ?? 0),
+        0,
+      );
+      if (with_ > most) {
+        most = with_;
+        next = which;
+      }
+    }
+    order.push(next);
+  }
+  return order;
+}
+
+/**
+ * The orders the discs are first placed in, each a different start for the
+ * refinement, since which sets meet first decides which ways round each other
+ * they end up: the widest first, the one sharing with the most others first,
+ * and a walk from the widest through what each shares. Repeats are tried once,
+ * and none after one that leaves every note room.
+ */
+function startingOrders(
+  ask: SetsAsk,
+  radii: readonly number[],
+  widestFirst: readonly number[],
+): number[][] {
+  const count = radii.length;
+  const partners = radii.map(
+    (_unused, a) =>
+      radii.filter((_u, b) => b !== a && (ask.shared[a * count + b] ?? 0) > 0)
+        .length,
   );
-  return named(radii, at);
+  const by = (key: readonly number[]) =>
+    [...widestFirst].sort(
+      (a, b) => key[b] - key[a] || radii[b] - radii[a] || a - b,
+    );
+  const orders = [
+    [...widestFirst],
+    by(partners),
+    nearestFirst(ask, widestFirst),
+  ];
+  return orders.filter(
+    (order, at) =>
+      orders.findIndex((other) => other.join() === order.join()) === at,
+  );
 }
 
 /**
@@ -433,10 +604,8 @@ function place(
   apart: readonly number[],
   meet: readonly number[],
   count: number,
+  order: readonly number[],
 ): Point[] {
-  const order = radii
-    .map((_unused, at) => at)
-    .sort((a, b) => radii[b] - radii[a] || a - b);
   const at = order.map(() => ({ x: 0, y: 0 }));
   const placed: number[] = [];
   for (const which of order) {
@@ -586,29 +755,52 @@ function settle(
 }
 
 /**
- * The discs with each one's name pointed out of the figure, so a name lands on
- * the part of its own disc the others are least likely to be over. A disc on
- * the figure's own middle has no way out, and takes its turn round the compass
- * instead.
+ * The shapes with each one's name written where its own set stands alone and
+ * no name already written is, the way out of the figure breaking ties — so a
+ * name says which place it is in rather than standing in a lens. A shape on the
+ * figure's own middle has no way out, and takes its turn round the compass.
  */
-function named(radii: readonly number[], at: readonly Point[]): SetsShape[] {
-  const count = radii.length;
-  const mx = at.reduce((sum, point) => sum + point.x, 0) / Math.max(count, 1);
-  const my = at.reduce((sum, point) => sum + point.y, 0) / Math.max(count, 1);
-  return radii.map((r, which) => {
-    const dx = at[which].x - mx;
-    const dy = at[which].y - my;
-    const away = Math.hypot(dx, dy);
-    return {
-      cx: at[which].x,
-      cy: at[which].y,
-      r,
-      nameAt:
-        away > 1e-6
-          ? Math.atan2(dy, dx)
-          : -Math.PI / 2 + (which / count) * Math.PI * 2,
-    };
-  });
+function named(shapes: readonly SetsOutline[]): SetsShape[] {
+  const count = shapes.length;
+  const mx = shapes.reduce((sum, at) => sum + at.cx, 0) / Math.max(count, 1);
+  const my = shapes.reduce((sum, at) => sum + at.cy, 0) / Math.max(count, 1);
+  const done: SetsShape[] = [];
+  const written: Bounds[] = [];
+  for (const [which, shape] of shapes.entries()) {
+    const dx = shape.cx - mx;
+    const dy = shape.cy - my;
+    const out =
+      Math.hypot(dx, dy) > 1e-6
+        ? Math.atan2(dy, dx)
+        : -Math.PI / 2 + (which / count) * Math.PI * 2;
+    let best = { nameAt: out, clear: false, alone: false, toward: -2 };
+    for (let turn = 0; turn < NAME_TURNS; turn++) {
+      const nameAt = out + (turn / NAME_TURNS) * Math.PI * 2;
+      const named = { ...shape, nameAt };
+      const room = nameRoom(named);
+      const clear = written.every((other) => !boxesMeet(other, room));
+      const alone = regionAt(shapes, namePoint(named)) === 1 << which;
+      const toward = Math.cos(nameAt - out);
+      const better =
+        Number(clear) - Number(best.clear) ||
+        Number(alone) - Number(best.alone) ||
+        (toward > best.toward + 1e-9 ? 1 : 0);
+      if (better > 0) best = { nameAt, clear, alone, toward };
+    }
+    const placed = { ...shape, nameAt: best.nameAt };
+    done.push(placed);
+    written.push(nameRoom(placed));
+  }
+  return done;
+}
+
+/** How many ways round its shape a name is tried. */
+const NAME_TURNS = 72;
+
+function boxesMeet(a: Bounds, b: Bounds): boolean {
+  return (
+    a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY
+  );
 }
 
 /**
@@ -630,9 +822,15 @@ function measure(
   });
 
   const mask = new Int32Array(GRID * GRID);
+  const gauges = shapes.map(gaugeOf);
   for (let gy = 0; gy < GRID; gy++) {
     for (let gx = 0; gx < GRID; gx++) {
-      mask[gy * GRID + gx] = regionAt(shapes, centreOf(gx, gy));
+      const at = centreOf(gx, gy);
+      let id = 0;
+      for (const [bit, gauge] of gauges.entries()) {
+        if (gauge(at.x, at.y) <= 0) id |= 1 << bit;
+      }
+      mask[gy * GRID + gx] = id;
     }
   }
 
@@ -768,7 +966,7 @@ function depthWithin(mask: Int32Array): Float32Array {
 }
 
 /**
- * The figure's box, and how wide the ring round the discs came out: the notes
+ * The figure's box, and how wide the ring round the shapes came out: the notes
  * carrying none of the drawn tags are given the same room per note the sets
  * themselves are drawn at, and `least` is the floor under that at this figure's
  * scale — so a widened figure is the same figure, and every region's area is

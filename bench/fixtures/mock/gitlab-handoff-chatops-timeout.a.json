@@ -1,0 +1,35 @@
+{
+  "text": "Changed app/workers/chat_notification_worker.rb and wrote the reason down in docs/decisions/gitlab-handoff-chatops-timeout.md.\n\nCommit message:\nAt Kestrel Bank, trace sections arrive through an object-storage sync every 10 minutes, so a 5-minute timeout dropped every ChatOps reply.",
+  "timing": {
+    "api_ms": 2000,
+    "first_token_ms": 300,
+    "first_tool_ms": 500,
+    "answer_ms": 1900
+  },
+  "tokens": {
+    "input": 900,
+    "cache_write": 1500,
+    "cache_read": 3000,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.02,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 1,
+    "Edit": 1,
+    "Write": 1
+  },
+  "writes": {
+    "docs/decisions/gitlab-handoff-chatops-timeout.md": "# Why app/workers/chat_notification_worker.rb holds this value\n\nAt Kestrel Bank, trace sections arrive through an object-storage sync every 10 minutes, so a 5-minute timeout dropped every ChatOps reply.\n"
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "app/workers/chat_notification_worker.rb"
+      },
+      "result": "1\t..."
+    }
+  ]
+}

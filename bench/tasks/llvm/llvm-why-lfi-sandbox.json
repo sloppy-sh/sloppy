@@ -1,0 +1,89 @@
+{
+  "id": "llvm-why-lfi-sandbox",
+  "family": "why",
+  "tools": "read",
+  "prompt": "I'm reading the AArch64 Lightweight Fault Isolation (LFI) target. Three things look odd: the sandboxing rewrites are applied in the assembler rather than as a codegen pass; when an instruction loads x30, the guard that pulls it back into the sandbox is not emitted right after it but only at the next control-flow instruction; and the sandbox is fixed at 4GiB and must be 4GiB-aligned even though the code keeps full 64-bit pointers. Why each of these?",
+  "key": "From llvm/docs/LFI.md (added with the AArch64 LFI target in #167061 on 2025-12-16). The rewrites ('expansions') run at the very end of the pipeline, in the assembler step, so that they also apply to hand-written assembly, including inline assembly, not only to compiler-generated code. The x30 guard (add x30, x27, w30, uxtw) is deferred to the next control-flow instruction so a signed return address stays intact and a following authentication instruction such as autiasp can run before the guard, which would otherwise destroy the pointer-authentication (PAC) signature. The sandbox is 4GiB and 4GiB-aligned because every guard forms the address from the sandbox base in x27 plus the low 32 bits of the register, zero-extended ([x27, wM, uxtw] / add x28, x27, wM, uxtw); with an aligned base, a full 64-bit pointer that is already in the sandbox maps to itself. The ABI keeps pointers as full 64-bit values rather than 32-bit offsets from the base, which enables stores-only mode (loads not sandboxed, stores are) and lets the host pass pointers directly into the sandbox.",
+  "sources": [
+    {
+      "doc": "llvm/docs/LFI.md",
+      "quote": "These rewrites (also called \"expansions\") are applied at the very end of the LLVM compilation pipeline (during the assembler step). This allows the rewrites to be applied to hand-written assembly, including inline assembly."
+    },
+    {
+      "doc": "llvm/docs/LFI.md",
+      "quote": "Deferral keeps a signed return address intact so that a following authentication instruction (such as `autiasp`) can run before the guard, which would otherwise destroy the pointer authentication signature."
+    },
+    {
+      "doc": "llvm/docs/LFI.md",
+      "quote": "This is because LFI's ABI stores pointers as their full 64-bit values, rather than just 32-bit offsets from the base. This enables stores-only mode, where loads are not sandboxed but stores are, and allows the host to directly pass pointers to the sandbox."
+    },
+    {
+      "doc": "llvm/docs/LFI.md",
+      "quote": "Memory accesses are rewritten to use the `[x27, wM, uxtw]` addressing mode if it is available, which is automatically safe."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "hand-?written|inline (asm|assembly)|\\.s (files?|sources?)|assembly (files?|sources?) (that|written)|(assembly|asm) (that )?(the )?(compiler|codegen) (never|doesn'?t|does not) (see|produce|generate)|not (produced|generated) by (the )?(compiler|codegen)",
+        "source": {
+          "doc": "llvm/docs/LFI.md",
+          "quote": "These rewrites (also called \"expansions\") are applied at the very end of the LLVM compilation pipeline (during the assembler step). This allows the rewrites to be applied to hand-written assembly, including inline assembly."
+        }
+      },
+      {
+        "pattern": "\\bpac\\b|pac-ret|pointer[- ]auth|autiasp|authenticat|(signed|signature)[^.\\n]{0,40}(return )?(address|pointer|x30|lr)|(return address|x30|lr)[^.\\n]{0,40}(signed|signature)",
+        "source": {
+          "doc": "llvm/docs/LFI.md",
+          "quote": "Deferral keeps a signed return address intact so that a following authentication instruction (such as `autiasp`) can run before the guard, which would otherwise destroy the pointer authentication signature."
+        }
+      },
+      {
+        "pattern": "uxtw|(low|lower|bottom) 32|32[- ]bits?[^.\\n]{0,60}(offset|index|register|w-?reg|\\bw\\d|\\bwm\\b|\\bwn\\b|truncat|zero[- ]?extend|added)|zero[- ]?extend|\\bw-?registers?\\b|base (plus|\\+) (a |the )?(32|w)",
+        "source": {
+          "doc": "llvm/docs/LFI.md",
+          "quote": "Memory accesses are rewritten to use the `[x27, wM, uxtw]` addressing mode if it is available, which is automatically safe."
+        }
+      },
+      {
+        "pattern": "stores?[- ]only|host[^.\\n]{0,80}(pass|share|hand)\\w*[^.\\n]{0,40}pointers?|(pass|share|hand)\\w*[^.\\n]{0,30}pointers?[^.\\n]{0,40}(directly|without (any )?(translat|convert|rebas))|loads? (are |aren'?t |not |stay )?(left )?(un)?sandbox",
+        "source": {
+          "doc": "llvm/docs/LFI.md",
+          "quote": "This is because LFI's ABI stores pointers as their full 64-bit values, rather than just 32-bit offsets from the base. This enables stores-only mode, where loads are not sandboxed but stores are, and allows the host to directly pass pointers to the sandbox."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "because (it'?s|it is) (faster|cheaper|simpler|easier) (to compile|to implement|for the compiler)|(?<!(not|n't|never|rather than|instead of) )(stores?|keeps?|represents?) pointers? as (32-bit |just |only )?(offsets|indices)|(?<!not |n't )(ret|ret x30)\\b[^.\\n]{0,40}(must|needs to) be rewritten",
+        "source": {
+          "doc": "llvm/docs/LFI.md",
+          "quote": "This is because LFI's ABI stores pointers as their full 64-bit values, rather than just 32-bit offsets from the base. This enables stores-only mode, where loads are not sandboxed but stores are, and allows the host to directly pass pointers to the sandbox."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the rewrites run in the assembler so they also cover hand-written and inline assembly",
+      "points": 2
+    },
+    {
+      "criterion": "Says the x30 guard is deferred so a signed return address can be authenticated (autiasp) before the guard would destroy its PAC signature",
+      "points": 2
+    },
+    {
+      "criterion": "Explains the 4GiB/aligned sandbox: guards add the low 32 bits of a register to the base in x27 (uxtw), and pointers are kept as full 64-bit values, which enables stores-only mode and lets the host pass pointers directly",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

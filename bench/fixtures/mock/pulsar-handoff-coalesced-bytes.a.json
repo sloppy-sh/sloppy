@@ -1,0 +1,35 @@
+{
+  "text": "Changed pulsar-broker/src/main/java/org/apache/pulsar/broker/service/PulsarCommandSenderImpl.java and wrote the reason down in docs/decisions/pulsar-handoff-coalesced-bytes.md.\n\nCommit message:\nMarlow Exchange's consumers are behind a TLS-inspecting appliance that splits writes above one 16 KiB TLS record, adding ~3 ms each; 64 KiB writes tripled their p99 latency.",
+  "timing": {
+    "api_ms": 2000,
+    "first_token_ms": 300,
+    "first_tool_ms": 500,
+    "answer_ms": 1900
+  },
+  "tokens": {
+    "input": 900,
+    "cache_write": 1500,
+    "cache_read": 3000,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.02,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 1,
+    "Edit": 1,
+    "Write": 1
+  },
+  "writes": {
+    "docs/decisions/pulsar-handoff-coalesced-bytes.md": "# Why pulsar-broker/src/main/java/org/apache/pulsar/broker/service/PulsarCommandSenderImpl.java holds this value\n\nMarlow Exchange's consumers are behind a TLS-inspecting appliance that splits writes above one 16 KiB TLS record, adding ~3 ms each; 64 KiB writes tripled their p99 latency.\n"
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "pulsar-broker/src/main/java/org/apache/pulsar/broker/service/PulsarCommandSenderImpl.java"
+      },
+      "result": "1\t..."
+    }
+  ]
+}

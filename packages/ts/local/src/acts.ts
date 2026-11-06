@@ -12,43 +12,63 @@
  */
 
 import {
+  ABOUT_MAX,
   type AmendmentView,
   anchorsOf,
   aroundAnswer,
   binAnswer,
   type BinnedNote,
   type BlockDocument,
+  type BlockView,
   type BriefArguments,
   briefAnswer,
+  shortBriefAnswer,
+  CODE_FOUND_READ,
+  type CodeFoundPlace,
   type ChatToolAnswer,
   type ChatToolCall,
+  CHAT_TOOL_SPECS,
   CODE_SCHEME,
   type DeletedBranch,
   type DeleteNoteArguments,
   type EdgeLook,
+  type FindCodeArguments,
   type FoundNote,
   foundAnswer,
   type GraphRead,
   GraphReadSchema,
+  HEADING_MAX,
   type LinkNotesArguments,
   type ListedOffer,
   type ListedTag,
   listingAnswer,
   lookBetween,
+  MOST_BRIEF_CODE,
+  MOST_NOTES_PER_PLACE,
   MOST_NOTES_TOUCHED,
+  MOST_SECTIONS_READ,
   type MoveNoteArguments,
   type NodeAppearance,
   type NodeView,
+  type NoteExplaining,
   noteAnswer,
   type NoteBinned,
+  NOTE_OUTLINE_READ,
+  type NoteRead,
+  type NoteSection,
   type NoteWritten,
   type NumberNoteArguments,
   OFFER_SUMMARY_MAX,
   offersAnswer,
   type OwnedRef,
   type ReadAroundArguments,
+  type ReadNoteArguments,
+  type RelateArguments,
+  type RelatedNote,
   type RestoreNoteArguments,
-  type SearchHit,
+  type SearchDetail,
+  sectionHeading,
+  type SnippetStanding,
   splitOwnedRef,
   type StyleEdgeArguments,
   type StyleNoteArguments,
@@ -57,6 +77,7 @@ import {
   tagsAmong,
   tagsAnswer,
   ulid,
+  WHOLE_NOTE_MAX,
   type WriteDone,
   type WriteNoteArguments,
 } from "@sloppy/types";
@@ -68,7 +89,21 @@ import {
   type VaultGraph,
 } from "@sloppy/vault";
 import { LocalApi } from "./api.js";
-import { aroundOf, briefOf, codeHere, noteRead } from "./brief.js";
+import {
+  aroundOf,
+  briefOf,
+  type CodeHere,
+  codeHere,
+  codePlacesIn,
+  noteRead,
+  openingSection,
+} from "./brief.js";
+import {
+  type CodeHit,
+  type CodeReader,
+  codeFound,
+  placeOf,
+} from "./code-index.js";
 import { containerDataAt, containerOf } from "./container.js";
 import { type Files, keepingDataAt } from "./files.js";
 import { LocalGraph } from "./graph.js";
@@ -76,10 +111,21 @@ import {
   asListed,
   type NoteHere,
   notesHere,
+  notesListed,
   pathsIn,
   reaches,
 } from "./here.js";
 import { refusalWords } from "./refusal.js";
+import {
+  forgetIndex,
+  indexFor,
+  PLACE_THRESHOLD,
+  relationsOf,
+  subjectOfDraft,
+  subjectOfNote,
+} from "./relate.js";
+import type { WritingHit } from "./search.js";
+import { QuoteRefused, quotesIn, quotesSaid, quotesTaken } from "./snippets.js";
 import { writeOnto } from "./write-onto.js";
 
 const NO_NOTE =
@@ -105,6 +151,20 @@ const NOT_RESTORED = "That note was not taken out of the bin.";
 const NO_GRAPH = "There is no graph here to read.";
 const NOTHING_ASKED =
   "That names nothing to brief on. Name notes, places or words.";
+const NOTHING_TO_RELATE =
+  "That names nothing to relate. Name a note, or describe the one you are about to write.";
+const NO_CODE =
+  "There is no code here to look through. Read the project's files directly.";
+
+function noSuchSection(
+  asked: readonly string[],
+  headings: readonly string[],
+): string {
+  const named = asked.map((heading) => `"${heading}"`).join(", ");
+  return headings.length === 0
+    ? `That note has no section called ${named}, and none of its sections has a heading. Read it whole.`
+    : `That note has no section called ${named}. Its sections are: ${headings.join(", ")}.`;
+}
 
 function severalReach(about: string, notes: readonly NodeView[]): string {
   const named = notes
@@ -133,6 +193,9 @@ export const ACT_REFUSALS = [
   "not_to_itself",
   "no_graph",
   "nothing_asked",
+  "nothing_to_relate",
+  "no_code",
+  "no_section",
   "too_much",
 ] as const;
 export type ActRefusal = (typeof ACT_REFUSALS)[number];
@@ -146,7 +209,8 @@ export type ActFacts =
         | "search_notes"
         | "list_tags"
         | "list_bin"
-        | "list_offers";
+        | "list_offers"
+        | "find_code";
       count: number;
     }
   | { act: "read_note" | "number_note" | "style_note"; note: NodeView }
@@ -196,6 +260,13 @@ export type ActFacts =
       count: number;
       /** How many it carries as one line. */
       around: number;
+    }
+  | {
+      act: "relate";
+      /** The note it would best spring out of. Absent where none is near. */
+      parent?: RelatedNote;
+      /** How many notes it would be linked to. */
+      links: number;
     };
 
 /**
@@ -230,6 +301,26 @@ export function placeApi(files: Files): LocalApi {
   });
 }
 
+/** Whose graph the project `files` is rooted at holds its notes in, which the
+ *  ref of every note written there starts with. Absent where it holds none. */
+export async function graphOwnerAt(files: Files): Promise<string | undefined> {
+  try {
+    return splitOwnedRef(await placeApi(files).graphHere()).owner;
+  } catch {
+    return undefined;
+  }
+}
+
+/** How an act's answer is made for whoever asked, beside what it does. */
+export interface ActServed {
+  /** Every note an answer carries names the exact lines of code it points at,
+   *  and a brief reads its words as a task. **Absent is no.** */
+  landOnCode?: boolean;
+  /** What reads the project's code for `find_code`. **Absent is a surface with
+   *  none**, where it answers that there is no code to look through. */
+  code?: CodeReader;
+}
+
 /**
  * One of Sloppy's own acts, done against the project `files` is rooted at. The
  * arguments arrived parsed. `reading` is a folder served by {@link placeApi},
@@ -239,29 +330,64 @@ export async function performChatCall(
   files: Files,
   call: ChatToolCall,
   reading = false,
+  served: ActServed = {},
+): Promise<ActAnswer> {
+  const done = await performed(files, call, reading, served);
+  if (CHAT_TOOL_SPECS[call.act].writes) forgetIndex(files.root);
+  return done;
+}
+
+async function performed(
+  files: Files,
+  call: ChatToolCall,
+  reading: boolean,
+  served: ActServed,
 ): Promise<ActAnswer> {
   const api = reading ? placeApi(files) : containerApi(files);
+  const landOnCode = served.landOnCode === true;
   switch (call.act) {
     case "list_notes": {
-      const { about, tags = [] } = call.arguments;
-      const here = (await notesHere(api)).filter(
-        (held) =>
-          (about === undefined || reaches(held.about, about)) &&
-          tags.every((tag) => held.note.tags.includes(tag)),
-      );
-      const answer = listingAnswer(
-        here.map((held) => asListed(held.note, held.about)),
-      );
-      return counted(answer, "list_notes", here.length);
+      const { about, at, tags = [] } = call.arguments;
+      const carries = (note: NodeView): boolean =>
+        tags.every((tag) => note.tags.includes(tag));
+      const listed =
+        about || at !== undefined
+          ? (await notesHere(api))
+              .filter(
+                (held) =>
+                  (at === undefined || reaches(held.about, at)) &&
+                  carries(held.note),
+              )
+              .map((held) =>
+                asListed(held.note, about ? held.about : undefined),
+              )
+          : (await notesListed(api))
+              .filter(carries)
+              .map((note) => asListed(note));
+      return counted(listingAnswer(listed), "list_notes", listed.length);
     }
     case "search_notes": {
-      const hits = (await api.searchNotes(call.arguments.words)).map(asFound);
+      const { words, detail } = call.arguments;
+      const writing = await api.searchWriting(words);
+      const code = await codeHere(api, served.code);
+      const hits = await Promise.all(
+        writing.map(async (hit) => {
+          const found = asFound(hit, detail);
+          if (code === undefined) return found;
+          const quoted = await quotedBy(api, hit, code);
+          return {
+            ...found,
+            ...(landOnCode ? { code: await placesFound(api, hit, code) } : {}),
+            ...(quoted.length === 0 ? {} : { quoted }),
+          };
+        }),
+      );
       return counted(foundAnswer(hits), "search_notes", hits.length);
     }
     case "read_note":
-      return await readNote(api, call.arguments.note);
+      return await readNote(api, call.arguments, landOnCode, served.code);
     case "write_note":
-      return await writeNote(api, call.arguments);
+      return await writeNote(api, files.root, call.arguments);
     case "move_note":
       return await moveNote(api, call.arguments);
     case "tag_note":
@@ -287,9 +413,13 @@ export async function performChatCall(
     case "read_graph":
       return await readGraph(api, files);
     case "read_around":
-      return await readAround(api, call.arguments);
+      return await readAround(api, call.arguments, landOnCode, served.code);
     case "brief":
-      return await brief(api, call.arguments);
+      return await brief(api, call.arguments, landOnCode, served.code);
+    case "relate":
+      return await relate(api, files.root, call.arguments);
+    case "find_code":
+      return await findCode(api, call.arguments, served.code);
   }
 }
 
@@ -469,36 +599,166 @@ async function listedSaid(api: LocalApi, note: NodeView): Promise<string> {
   return JSON.stringify(asListed(note, await anchorsIn(api, note.ref)));
 }
 
-function asFound(hit: SearchHit): FoundNote {
+function asFound(
+  { hit, line, section, tags }: WritingHit,
+  detail: SearchDetail,
+): FoundNote {
   return {
     note: hit.note,
     title: hit.title,
     ...(hit.address === undefined ? {} : { address: hit.address }),
-    snippet: hit.snippet,
+    tags,
+    line,
+    ...(section === undefined ? {} : { section }),
+    ...(detail === "sections" ? { snippet: hit.snippet } : {}),
   };
 }
 
-async function readNote(api: LocalApi, ref: OwnedRef): Promise<ActAnswer> {
-  const note = await api.getNode(ref);
+/** Where the code under each quote a note a search found holds stands. */
+async function quotedBy(
+  api: LocalApi,
+  hit: WritingHit,
+  code: CodeHere,
+): Promise<SnippetStanding[]> {
+  const contents = (await api.listBlocks(hit.hit.note)).map(
+    (block) => block.content,
+  );
+  return quotesSaid(await quotesIn(contents, code)).slice(0, ABOUT_MAX);
+}
+
+/** The most places one note a search found answers with. */
+const MOST_PLACES_FOUND = 6;
+
+/** The exact lines a note a search found points at: those of the section its
+ *  line is in, or else the note's first. */
+async function placesFound(
+  api: LocalApi,
+  hit: WritingHit,
+  code: CodeHere,
+): Promise<string[]> {
+  const contents = (await api.listBlocks(hit.hit.note)).map(
+    (block) => block.content,
+  );
+  const there = hit.at === undefined ? undefined : contents[hit.at];
+  const inLine = there === undefined ? [] : await codePlacesIn([there], code);
+  const places =
+    inLine.length > 0 ? inLine : await codePlacesIn(contents, code);
+  return [...new Set(places)].slice(0, MOST_PLACES_FOUND);
+}
+
+async function readNote(
+  api: LocalApi,
+  asked: ReadNoteArguments,
+  landOnCode: boolean,
+  code: CodeReader | undefined,
+): Promise<ActAnswer> {
+  const note = await api.getNode(asked.note);
   if (!note) return trouble(NO_NOTE, "no_note");
   const blocks = await api.listBlocks(note.ref);
+  const here = await codeHere(api, code);
   const { sections, ...rest } = await noteRead(
     note,
     blocks,
     pathsIn(blocks.map((block) => block.content)),
-    await codeHere(api),
+    here,
+    landOnCode,
+    asked.quoted,
   );
-  const answer = noteAnswer(rest, sections);
+  const headed = sections.map((section) => ({
+    section,
+    heading: sectionHeading(section.markdown),
+  }));
+  const outline =
+    landOnCode && asked.sections === undefined
+      ? await outlined(rest, blocks, headed, here)
+      : undefined;
+  if (outline) return noteReadAnswer(outline, note);
+  const headings = headed.flatMap(({ heading }) =>
+    heading === undefined ? [] : [heading],
+  );
+  const wanted = asked.sections?.map((heading) => heading.toLowerCase());
+  const read =
+    wanted === undefined
+      ? sections
+      : headed
+          .filter(
+            ({ heading }) =>
+              heading !== undefined && wanted.includes(heading.toLowerCase()),
+          )
+          .map(({ section }) => section);
+  if (asked.sections !== undefined && read.length === 0) {
+    return trouble(noSuchSection(asked.sections, headings), "no_section");
+  }
+  return noteReadAnswer(noteAnswer({ ...rest, headings }, read), note);
+}
+
+function noteReadAnswer(answer: ChatToolAnswer, note: NodeView): ActAnswer {
   return answer.trouble
     ? { ...answer, refused: "too_much", touched: [] }
     : { ...answer, facts: { act: "read_note", note }, touched: [] };
 }
 
+/**
+ * A note longer than {@link WHOLE_NOTE_MAX} as its opening, every section no
+ * heading names, and the rest by heading and size, carrying the quotes of only
+ * the sections it carries. Absent is a note that comes back whole.
+ */
+async function outlined(
+  note: Omit<NoteRead, "sections" | "more">,
+  blocks: readonly BlockView[],
+  headed: readonly { section: NoteSection; heading: string | undefined }[],
+  code: CodeHere | undefined,
+): Promise<ChatToolAnswer | undefined> {
+  const size = headed.reduce(
+    (sum, one) => sum + one.section.markdown.length,
+    0,
+  );
+  if (size <= WHOLE_NOTE_MAX) return undefined;
+  const opening = openingSection(blocks);
+  const carried = headed.map(
+    ({ heading }, at) => blocks[at] === opening || !askableHeading(heading),
+  );
+  const outline = headed
+    .flatMap(({ section, heading }, at) =>
+      carried[at] || heading === undefined
+        ? []
+        : [{ heading, size: section.markdown.length }],
+    )
+    .slice(0, MOST_SECTIONS_READ);
+  if (outline.length === 0) return undefined;
+  const quotes =
+    code === undefined
+      ? []
+      : quotesSaid(
+          await quotesIn(
+            blocks.filter((_, at) => carried[at]).map((block) => block.content),
+            code,
+          ),
+        ).slice(0, ABOUT_MAX);
+  const { quoted: _, ...unquoted } = note;
+  return noteAnswer(
+    {
+      ...unquoted,
+      ...(quotes.length === 0 ? {} : { quoted: quotes }),
+      outline,
+      read: NOTE_OUTLINE_READ,
+    },
+    headed.filter((_, at) => carried[at]).map(({ section }) => section),
+  );
+}
+
+/** Whether `sections` can name this heading. */
+function askableHeading(heading: string | undefined): heading is string {
+  return heading !== undefined && heading.length <= HEADING_MAX;
+}
+
 async function readAround(
   api: LocalApi,
   asked: ReadAroundArguments,
+  landOnCode: boolean,
+  code: CodeReader | undefined,
 ): Promise<ActAnswer> {
-  const read = await aroundOf(api, asked.note, asked.depth);
+  const read = await aroundOf(api, asked.note, asked.depth, landOnCode, code);
   if (!read) return trouble(NO_NOTE, "no_note");
   const answer = aroundAnswer(read.whole, read.around);
   if (answer.trouble) return { ...answer, refused: "too_much", touched: [] };
@@ -510,7 +770,12 @@ async function readAround(
   };
 }
 
-async function brief(api: LocalApi, asked: BriefArguments): Promise<ActAnswer> {
+async function brief(
+  api: LocalApi,
+  asked: BriefArguments,
+  landOnCode: boolean,
+  code: CodeReader | undefined,
+): Promise<ActAnswer> {
   if (
     (asked.notes ?? []).length === 0 &&
     (asked.about ?? []).length === 0 &&
@@ -518,30 +783,168 @@ async function brief(api: LocalApi, asked: BriefArguments): Promise<ActAnswer> {
   ) {
     return trouble(NOTHING_ASKED, "nothing_asked");
   }
-  const read = await briefOf(api, asked);
+  const read = await briefOf(api, asked, landOnCode, code);
   if ("missing" in read) return trouble(NO_NOTE, "no_note");
-  const answer = briefAnswer(read.asked, read.around, asked.budget);
+  const places =
+    landOnCode && asked.words !== undefined
+      ? await codePlacesFound(
+          api,
+          code,
+          asked.words,
+          MOST_BRIEF_CODE,
+          read.here,
+        )
+      : undefined;
+  const answer = (landOnCode ? shortBriefAnswer : briefAnswer)(
+    read.asked,
+    read.around,
+    asked.budget,
+    places ?? [],
+  );
   if (answer.trouble) return { ...answer, refused: "too_much", touched: [] };
-  const { notes, around } = JSON.parse(answer.said) as {
+  const { notes, around, also } = JSON.parse(answer.said) as {
     notes: unknown[];
-    around: unknown[];
+    around?: unknown[];
+    also?: unknown[];
   };
   return {
     ...answer,
-    facts: { act: "brief", count: notes.length, around: around.length },
+    facts: {
+      act: "brief",
+      count: notes.length,
+      around: (around ?? also ?? []).length,
+    },
     touched: [],
   };
 }
 
+async function relate(
+  api: LocalApi,
+  root: string,
+  asked: RelateArguments,
+): Promise<ActAnswer> {
+  if (asked.note === undefined && !describesAnything(asked)) {
+    return trouble(NOTHING_TO_RELATE, "nothing_to_relate");
+  }
+  const index = indexFor(root, await notesHere(api));
+  const subject =
+    asked.note === undefined
+      ? subjectOfDraft(index, {
+          ...(asked.title === undefined ? {} : { title: asked.title }),
+          sections: sectionsOf(asked.sections ?? []),
+          ...(asked.about === undefined ? {} : { about: asked.about }),
+          tags: tagsAmong(asked.tags ?? []),
+        })
+      : subjectOfNote(index, asked.note);
+  if (subject === undefined) return trouble(NO_NOTE, "no_note");
+  const related = relationsOf(index, subject, asked.limit);
+  return {
+    said: JSON.stringify(related),
+    facts: {
+      act: "relate",
+      ...(related.parents[0] === undefined
+        ? {}
+        : { parent: related.parents[0] }),
+      links: related.links.length,
+    },
+    touched: [],
+  };
+}
+
+async function findCode(
+  api: LocalApi,
+  asked: FindCodeArguments,
+  code: CodeReader | undefined,
+): Promise<ActAnswer> {
+  const found = await codePlacesFound(api, code, asked.words, asked.limit);
+  if (found === undefined) return trouble(NO_CODE, "no_code");
+  return {
+    said: JSON.stringify({ found, read: CODE_FOUND_READ }),
+    facts: { act: "find_code", count: found.length },
+    touched: [],
+  };
+}
+
+/** The places in the project's code `words` reach, each with the notes
+ *  explaining its file. Absent where there is no code to read. */
+async function codePlacesFound(
+  api: LocalApi,
+  code: CodeReader | undefined,
+  words: string,
+  limit: number,
+  read?: readonly NoteHere[],
+): Promise<CodeFoundPlace[] | undefined> {
+  const project = await api.projectFolder().catch(() => undefined);
+  const index =
+    project && code && (await code(project.root).catch(() => undefined));
+  if (!index) return undefined;
+  const hits = codeFound(index, words, limit);
+  const here = hits.length === 0 ? [] : (read ?? (await notesHere(api)));
+  return hits.map((hit) => {
+    const notes = notesExplaining(here, hit);
+    return {
+      place: placeOf(hit),
+      kind: hit.kind,
+      ...(hit.name === undefined ? {} : { name: hit.name }),
+      ...(notes.length === 0 ? {} : { notes }),
+    };
+  });
+}
+
+/** The notes whose anchors reach a hit's file, the closest anchor first. */
+function notesExplaining(
+  here: readonly NoteHere[],
+  hit: CodeHit,
+): NoteExplaining[] {
+  return here
+    .filter((held) => reaches(held.about, hit.path))
+    .map((held) => ({
+      held,
+      closest: Math.max(
+        ...held.about
+          .filter((at) => reaches([at], hit.path))
+          .map((at) => (at === hit.path ? Infinity : at.length)),
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        b.closest - a.closest || a.held.note.ref.localeCompare(b.held.note.ref),
+    )
+    .slice(0, MOST_NOTES_PER_PLACE)
+    .map(({ held: { note } }) => ({
+      note: note.ref,
+      title: note.title,
+      ...(note.address === undefined ? {} : { address: note.address }),
+    }));
+}
+
+function describesAnything(asked: RelateArguments): boolean {
+  return (
+    asked.title !== undefined ||
+    asked.about !== undefined ||
+    (asked.sections ?? []).length > 0 ||
+    (asked.tags ?? []).length > 0
+  );
+}
+
+/** Sections written in markdown, as the documents a note would hold. */
+function sectionsOf(markdown: readonly string[]): BlockDocument[] {
+  const aside = emptySidecars(ulid());
+  return markdown.map((one) => fromMarkdown(one, aside));
+}
+
 async function writeNote(
   api: LocalApi,
+  root: string,
   asked: WriteNoteArguments,
 ): Promise<ActAnswer> {
   if (asked.sections.length === 0) {
     return trouble(NOTHING_WRITTEN, "nothing_written");
   }
   const here = await notesHere(api);
-  const target = noteToWrite(here, asked.about);
+  const target = asked.start
+    ? here.find((held) => held.startedAbout === asked.about)?.note
+    : noteToWrite(here, asked.about);
   if (Array.isArray(target)) return trouble(severalReach(asked.about, target));
   const standing = target;
   if (
@@ -555,9 +958,19 @@ async function writeNote(
   const aside = emptySidecars(
     standing === undefined ? ulid() : splitOwnedRef(standing.ref).localId,
   );
-  const sections = asked.sections.map((markdown) =>
-    fromMarkdown(markdown, aside),
-  );
+  let sections: BlockDocument[];
+  try {
+    sections = await quotesTaken(
+      asked.sections.map((markdown) => fromMarkdown(markdown, aside)),
+      standing === undefined
+        ? []
+        : (await api.listBlocks(standing.ref)).map((block) => block.content),
+      await api.projectFolder().catch(() => undefined),
+    );
+  } catch (error) {
+    if (error instanceof QuoteRefused) return trouble(error.message);
+    throw error;
+  }
   try {
     // Before the writing, so that a number the graph refuses leaves the note
     // as it was rather than written at the number it already had.
@@ -570,7 +983,7 @@ async function writeNote(
           done: (await writeOnto(api, standing, sections, tags)).done,
         }
       : {
-          note: await startNote(api, here, asked, sections, tags),
+          ...(await startNote(api, root, here, asked, sections, tags)),
           done: "written",
         };
     const note = (await api.getNode(written.note)) ?? undefined;
@@ -593,20 +1006,24 @@ async function writeNote(
 }
 
 /**
- * A note this project has none of yet. Where the agent named nothing to write
- * it under, it hangs under the note about the nearest folder above it, and
- * otherwise under whatever the notes about this code already hang under —
- * docs/ARCHITECTURE.md § "Tooling" is the shape it joins.
+ * A note this project has none of yet, under the note it was told to spring
+ * out of, else where {@link placementOf} puts it — docs/ARCHITECTURE.md
+ * § "Asking a tool to write the notes" is the rule.
  */
 async function startNote(
   api: LocalApi,
+  root: string,
   here: readonly NoteHere[],
   asked: WriteNoteArguments,
   sections: readonly BlockDocument[],
   tags: readonly Tag[],
-): Promise<OwnedRef> {
+): Promise<{ note: OwnedRef; placed?: string }> {
   const { about, title } = asked;
-  const under = asked.under ?? noteOver(here, about) ?? branchOf(here);
+  const placing =
+    asked.under === undefined
+      ? placementOf(root, here, asked, sections, tags)
+      : undefined;
+  const under = asked.under ?? placing?.under;
   const note = await api.createNode({
     // Nothing to spring from opens a branch, so the rule numbers it and
     // everything written beneath it after.
@@ -627,18 +1044,82 @@ async function startNote(
     });
     after = block.ref;
   }
-  return note.ref;
+  return {
+    note: note.ref,
+    ...(placing === undefined ? {} : { placed: placing.placed }),
+  };
 }
 
-/** A note started about a place opens with an anchor to it where its sections
- *  reach it nowhere: the places a note is about are read back off its anchors
- *  and off nothing else, so one carrying none is about nowhere. */
+/**
+ * What a note started with no `under` springs out of, and the one line saying
+ * which rule chose it: the note most related to it where that one scores at
+ * least {@link PLACE_THRESHOLD}, else the note about the nearest folder above
+ * its place, else what the notes about this code already spring out of.
+ */
+function placementOf(
+  root: string,
+  here: readonly NoteHere[],
+  asked: WriteNoteArguments,
+  sections: readonly BlockDocument[],
+  tags: readonly Tag[],
+): { under?: OwnedRef; placed: string } {
+  const index = indexFor(root, here);
+  const subject = subjectOfDraft(index, {
+    title: asked.title ?? asked.about,
+    sections,
+    about: asked.about,
+    tags,
+  });
+  const [best] = relationsOf(index, subject, 1).parents;
+  if (best !== undefined && best.score >= PLACE_THRESHOLD) {
+    return {
+      under: best.note,
+      placed: `Placed under ${citedAs(best)}, the note most related to it (${best.score}): ${best.reasons.join("; ")}. Move it with move_note if it belongs elsewhere.`,
+    };
+  }
+  const closest =
+    best === undefined
+      ? ""
+      : ` The most related note, ${citedAs(best)}, scored ${best.score}, under the ${PLACE_THRESHOLD} it takes to place it there.`;
+  const titled = (ref: OwnedRef) =>
+    citedAs(here.find((held) => held.note.ref === ref)?.note ?? { title: "" });
+  const over = noteOver(here, asked.about);
+  if (over !== undefined) {
+    return {
+      under: over,
+      placed: `Placed under ${titled(over)}, the note about the nearest folder above ${asked.about}.${closest}`,
+    };
+  }
+  const branch = branchOf(here);
+  if (branch !== undefined) {
+    return {
+      under: branch,
+      placed: `Placed under ${titled(branch)}, which the notes about this code already spring out of.${closest}`,
+    };
+  }
+  return {
+    placed: `Started as a branch of its own: no note here is about a folder above ${asked.about}.${closest}`,
+  };
+}
+
+function citedAs(note: { title: string; address?: string }): string {
+  return note.address === undefined
+    ? `“${note.title}”`
+    : `“${note.title}” (${note.address})`;
+}
+
+/** A note started about a place opens with an anchor to it where no link in
+ *  its sections reaches it: the places a note is about are read back off its
+ *  anchors and off nothing else, so one carrying none is about nowhere. A quote
+ *  is not a link, so a note holding only quotes still opens with one. */
 function bodyAbout(
   about: string,
   sections: readonly BlockDocument[],
 ): BlockDocument[] {
   const reaches = sections.some((content) =>
-    anchorsOf(content).some((anchor) => anchor.path === about),
+    anchorsOf(content, { quoted: false }).some(
+      (anchor) => anchor.path === about,
+    ),
   );
   return reaches ? [...sections] : [pointingAt(about), ...sections];
 }

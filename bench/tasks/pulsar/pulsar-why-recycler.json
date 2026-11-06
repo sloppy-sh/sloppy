@@ -1,0 +1,109 @@
+{
+  "id": "pulsar-why-recycler",
+  "family": "why",
+  "prompt": "I'm adding a small holder object that is created once per read on a hot path in the managed ledger, and I was going to pool it with Netty's Recycler the way OpReadEntry is pooled. Should I? What is the project's position on Recycler in new code, and what is the reasoning behind it?",
+  "tools": "read",
+  "key": "No. PIP-443 (pip/pip-443.md, \"Stop using Netty Recycler in new code\", added 2025-09-29) makes the rule: new contributions don't use Netty Recycler; CODING.md repeats it (Pulsar runs on ZGC, where the Recycler often costs more CPU than it saves). The reasons: (1) performance — the Recycler is a thread-local pool that is only efficient when the object is taken and recycled on the same FastThreadLocalThread; a benchmark puts it about 7x slower than a plain heap allocation in that good case and 13x in the bad case; (2) it is error-prone — recycle() must be called by hand like free(), is skipped when an exception is thrown, throws when called twice, and an object shared between threads can be read after another thread recycled or reused it, leaving it silently inconsistent (#24697, #24725); (3) the benefit is unproven — modern collectors (Generational ZGC since Java 21) handle short-lived objects well, and on the read path the pooled OpReadEntry is wrapped in further heap-allocated callbacks anyway, so it saves one allocation of several. If heap usage really must be saved, cache a single object or a queue in a FastThreadLocal instead. Existing recyclable classes need not be removed, but may be where a recycler bug is hard to analyse or the class blocks a refactoring.",
+  "sources": [
+    {
+      "doc": "pip/pip-443.md",
+      "quote": "For new contributions, don't use Netty `Recycler`."
+    },
+    {
+      "doc": "pip/pip-443.md",
+      "quote": "From the results above, the performance is about 7x worse than an object from heap memory in the good case and 13x worse in the bad case."
+    },
+    {
+      "doc": "pip/pip-443.md",
+      "quote": "Compared to the performance overhead, the error-prone usage is a more serious issue."
+    },
+    {
+      "doc": "pip/pip-443.md",
+      "quote": "A more serious issue is that the object is shared among different threads and then `recycle()` are called twice, which will throw an exception for the 2nd recycle call."
+    },
+    {
+      "doc": "pip/pip-443.md",
+      "quote": "It's questionable if `Recycler` is still useful in modern Java versions."
+    },
+    {
+      "doc": "pip/pip-443.md",
+      "quote": "If you need to save heap memory usage, consider using `FastThreadLocal` to cache a single object or an object queue"
+    },
+    {
+      "doc": "pip/pip-443.md",
+      "quote": "For existing code, generally we should not pay efforts to remove recyclable classes."
+    },
+    {
+      "doc": "CODING.md",
+      "quote": "under ZGC the `Recycler` often *costs* more CPU than it saves. Don't add new `Recycler` usage."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(^|[.:!?\\n]\\s*)(\\W*(short answer|answer|recommendation|verdict)\\W*)?no\\b(?! (problem|issue|downside|reason))|(don'?t|do not|avoid|shouldn'?t|should not|must not|never|stop|wouldn'?t|would not|not (be )?(recommended|use))[^.\\n]{0,80}(recycler|pool)|recycler[^.\\n]{0,120}(not recommended|no longer recommended|discouraged|avoid|should not|shouldn'?t|must not|not (to )?be used|don'?t)|discourag|(stop|not) (using|adding|introducing)[^.\\n]{0,30}recycler|allocate (it )?(a )?(plain|normal|regular|ordinary)|plain (object|allocation|new)",
+        "source": {
+          "doc": "pip/pip-443.md",
+          "quote": "For new contributions, don't use Netty `Recycler`."
+        }
+      },
+      {
+        "pattern": "\\b7 ?(x|×|times)|\\b13 ?(x|×|times)|slower|overhead|costs? more cpu|more cpu|fastthreadlocalthread|benchmark",
+        "source": {
+          "doc": "pip/pip-443.md",
+          "quote": "From the results above, the performance is about 7x worse than an object from heap memory in the good case and 13x worse in the bad case."
+        }
+      },
+      {
+        "pattern": "error[- ]prone|bug[- ]prone|easy to get wrong|recycled? twice|twice|double[- ]recycl|recycl\\w* (more than )?once|after (it'?s |it is |being |another thread )?(recycled|reused)|use[- ]after[- ](recycle|free)|malloc|free\\(\\)|manual(ly)?|by hand|forget|another thread|other threads?|different threads?|cross-thread|corrupt",
+        "source": {
+          "doc": "pip/pip-443.md",
+          "quote": "A more serious issue is that the object is shared among different threads and then `recycle()` are called twice, which will throw an exception for the 2nd recycle call."
+        }
+      },
+      {
+        "pattern": "zgc|\\bg1\\b|generational|young[- ]gen|tlab|(modern|today'?s|newer|current|recent) (jvms?|java|gcs?|garbage)|(gc|garbage collect\\w*)[^.\\n]{0,60}(cheap|fast|efficient|handles?|good|well|free)|(cheap|fast|inexpensive)[^.\\n]{0,40}(allocat|gc|garbage)",
+        "source": {
+          "doc": "pip/pip-443.md",
+          "quote": "It's questionable if `Recycler` is still useful in modern Java versions."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "\\byes\\b[^.\\n]{0,30}\\b(use|pool)|go ahead (and )?(use|pool)|(it'?s|it is) (fine|ok|okay|a good idea|reasonable|safe) to (use|pool) (it|the recycler|recycler|netty)|you should (use|pool)|(should|recommended to|good idea to) (use|pool)[^.\\n]{0,20}(with )?(the )?(netty )?recycler",
+        "source": {
+          "doc": "pip/pip-443.md",
+          "quote": "For new contributions, don't use Netty `Recycler`."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says not to use Recycler in new code: the project's rule since PIP-443",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the performance reason: efficient only on the same FastThreadLocalThread, measured several times slower than a plain allocation",
+      "points": 1
+    },
+    {
+      "criterion": "Gives the correctness reason: manual recycle() skipped on exceptions, double recycle throws, an object shared across threads can be used after it is recycled or reused",
+      "points": 2
+    },
+    {
+      "criterion": "Says the benefit is unproven under modern GC (ZGC), and names the alternative (FastThreadLocal, or simply allocating)",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

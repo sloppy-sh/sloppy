@@ -1,0 +1,115 @@
+{
+  "id": "carbon-why-charliteral-difference",
+  "family": "why",
+  "tools": "read",
+  "prompt": "What type does subtracting one character literal from another, such as `'b' - 'a'`, have in Carbon, and why was it changed from what the character redesign first specified? Does the same now hold for subtracting two `char` values?",
+  "key": "Written in proposals/p007314-charliteral-difference-should-be-an-intliteral.md (landed in #7314 on 2026-06-09). The char redesign (p006710) made `CharLiteral - CharLiteral` an `i32`, the smallest power-of-two type that holds any difference of values in [0, 0x10FFFF]. It is now `Core.IntLiteral`, evaluated at compile time. Two reasons. Consistency: operations on literals yield literal types, so the difference can be a template argument of type Core.IntLiteral and converts implicitly to any integer type that can hold its value (`var offset_u8: u8 = 'b' - 'a';` works, `'a' - 'b'` into a u8 is an error) instead of being locked to i32 and needing explicit, possibly lossy casts. Layering: `i32` is not primitive but an alias for `Core.Int(32)` defined in core/prelude/types/int.carbon, so defining CharLiteral arithmetic in core/prelude/operators/arithmetic.carbon would make it depend on a type not yet defined, a circular dependency that the orphan rule would force to be solved by reversing the edge and defining all Core.Int operations in arithmetic.carbon; IntLiteral keeps the integer types self-contained. `char - char` is unchanged and still produces `i32` (i9, i16 or i32 are left to a future proposal).",
+  "sources": [
+    {
+      "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+      "quote": "Change the result type `CharLiteral - CharLiteral` from `i32` to `Core.IntLiteral`."
+    },
+    {
+      "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+      "quote": "In Carbon, operations on literals (like `IntLiteral - IntLiteral`) yield other literal types (such as `IntLiteral`)."
+    },
+    {
+      "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+      "quote": "should be implicitly convertible to any integer type (like `i64` or `u8`) depending on the value of the difference, rather than being locked to `i32`."
+    },
+    {
+      "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+      "quote": "However, `i32` is not a primitive type; it is a type alias for `Core.Int(32)`, which is defined in `core/prelude/types/int.carbon`."
+    },
+    {
+      "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+      "quote": "By producing `Core.IntLiteral`, we keep the integer types self-contained."
+    },
+    {
+      "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+      "quote": "This proposal does not consider making any changes to the type of `char - char`, which will therefore continue to produce `i32`."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "(core\\.)?int ?literal|integer literal( type)?",
+        "source": {
+          "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+          "quote": "Change the result type `CharLiteral - CharLiteral` from `i32` to `Core.IntLiteral`."
+        }
+      },
+      {
+        "pattern": "(redesign|p0?06710)[^.\\n]{0,80}\\bi32\\b|(was|were|used to|originally|previously|first|formerly|had been|had made|initially|old)[^.\\n]{0,80}\\bi32\\b|\\bi32\\b[^.\\n]{0,60}(before|originally|previously|at first|under the (char )?redesign|in (the )?(char|character) redesign|p0?06710)",
+        "source": {
+          "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+          "quote": "Change the result type `CharLiteral - CharLiteral` from `i32` to `Core.IntLiteral`."
+        }
+      },
+      {
+        "pattern": "consisten|other literal|(literal|literals)[^.\\n]{0,60}(yield|produce|give|return)[^.\\n]{0,30}literal|implicit\\w*[^.\\n]{0,30}conver|any integer type|\\b(u8|u16|i64|i8)\\b|template|(without|no need for|needing|require\\w*|avoid\\w*)[^.\\n]{0,30}(explicit )?cast|locked to",
+        "source": {
+          "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+          "quote": "should be implicitly convertible to any integer type (like `i64` or `u8`) depending on the value of the difference, rather than being locked to `i32`."
+        }
+      },
+      {
+        "pattern": "layer|circular|cycl|self-contained|int\\.carbon|arithmetic\\.carbon|(depend|rely)\\w*[^.\\n]{0,60}(i32|core\\.int|int\\(32\\)|integer type|prelude)|(i32|core\\.int)[^.\\n]{0,80}(not (a )?primitive|alias)",
+        "source": {
+          "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+          "quote": "However, `i32` is not a primitive type; it is a type alias for `Core.Int(32)`, which is defined in `core/prelude/types/int.carbon`."
+        }
+      },
+      {
+        "pattern": "char ?- ?char[^.\\n]{0,100}\\bi32\\b|\\bchar\\b[^.\\n]{0,40}(values?|subtraction|difference)?[^.\\n]{0,40}(still|continues? to|remains?|unchanged|stays?|keeps?)[^.\\n]{0,40}\\bi32\\b|(still|continues? to|remains?|stays?)[^.\\n]{0,20}(produce |yield |give |be |an? )*`?i32`?[^.\\n]{0,60}\\bchar\\b",
+        "source": {
+          "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+          "quote": "This proposal does not consider making any changes to the type of `char - char`, which will therefore continue to produce `i32`."
+        }
+      }
+    ],
+    "forbidden": [
+      {
+        "pattern": "char ?- ?char[^.\\n,;]{0,60}(?<!not )(?<!n't )(also |now )?(produces?|yields?|gives?|is|becomes?|returns?) (an? )?(`)?(core\\.)?int ?literal|\\b(both|also)\\b[^.\\n,;]{0,40}\\bchar\\b[^.\\n,;]{0,40}(core\\.)?int ?literal",
+        "source": {
+          "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+          "quote": "This proposal does not consider making any changes to the type of `char - char`, which will therefore continue to produce `i32`."
+        }
+      },
+      {
+        "pattern": "(literals?`?|'b' ?- ?'a'`?)\\s+(still |now |currently |also )?(produces?|yields?|gives?|is|has type|returns?|evaluates to) (an? |of type |type )?`?i32\\b",
+        "source": {
+          "doc": "proposals/p007314-charliteral-difference-should-be-an-intliteral.md",
+          "quote": "Change the result type `CharLiteral - CharLiteral` from `i32` to `Core.IntLiteral`."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the difference of two character literals is now Core.IntLiteral, where the char redesign had made it i32",
+      "points": 1
+    },
+    {
+      "criterion": "Gives the consistency reason: literal operations yield literal types, so the difference converts implicitly to any integer type that holds it (u8, i64) and can be a template argument, instead of being locked to i32",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the layering reason: i32 is Core.Int(32) from core/prelude/types/int.carbon, so CharLiteral arithmetic producing it would make the prelude's operators depend on a type defined later (a cycle the orphan rule makes awkward); IntLiteral keeps the integer types self-contained",
+      "points": 2
+    },
+    {
+      "criterion": "Says `char - char` is unchanged and still produces i32",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import { MemoryFiles } from '@sloppy/local';
 import { describe, expect, it } from 'vitest';
-import { fileAddress, filesIn, textIn } from './project-code.js';
+import { fileAddress, filesIn, quoteAt, quoteStanding, requoteAt, textIn } from './project-code.js';
 
 const held = (files: Record<string, string>): MemoryFiles => {
 	const project = new MemoryFiles({ root: '/home/ada/garden' });
@@ -67,5 +67,43 @@ describe('where a file is, for whatever opens files here', () => {
 		expect(fileAddress('C:\\Users\\ada\\garden', 'src/parser.ts')).toBe(
 			'file:///C%3A/Users/ada/garden/src/parser.ts'
 		);
+	});
+});
+
+describe('quoting code from the project', () => {
+	const PARSER = 'export function parse() {\n\treturn 1;\n}\nconst two = 2;\n';
+
+	it('quotes a run of lines, or the run a name opens, as the file has them', async () => {
+		const project = held({ 'src/parser.ts': PARSER });
+		const run = await quoteAt(project, {
+			path: 'src/parser.ts',
+			fragment: { kind: 'lines', from: 4, to: 4 }
+		});
+		expect(run).toMatchObject({ from: 4, to: 4, source: 'const two = 2;', language: 'ts' });
+		const named = await quoteAt(project, {
+			path: 'src/parser.ts',
+			fragment: { kind: 'symbol', name: 'parse' }
+		});
+		expect(named).toMatchObject({ from: 1, to: 4 });
+		expect(
+			await quoteAt(project, { path: 'src/parser.ts', fragment: { kind: 'symbol', name: 'gone' } })
+		).toBeUndefined();
+	});
+
+	it('reads a quote against the file as it is now, and quotes it again there', async () => {
+		const project = held({ 'src/parser.ts': PARSER });
+		const quote = await quoteAt(project, {
+			path: 'src/parser.ts',
+			fragment: { kind: 'lines', from: 4, to: 4 }
+		});
+		if (!quote) throw new Error('nothing quoted');
+		await project.write('src/parser.ts', new TextEncoder().encode(`// a\n${PARSER}`));
+		const now = await quoteStanding(project, quote);
+		expect(now).toEqual({ state: 'moved', now: { path: 'src/parser.ts', from: 5, to: 5 } });
+		if (now.state !== 'moved') return;
+		expect(await requoteAt(project, now.now, quote.language)).toMatchObject({
+			from: 5,
+			source: 'const two = 2;'
+		});
 	});
 });

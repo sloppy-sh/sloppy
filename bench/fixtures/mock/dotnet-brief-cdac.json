@@ -1,0 +1,26 @@
+{
+  "text": "Data contracts document runtime data structures so tools read process memory without an exact-match DAC/DBI (security, servicing, acquisition, cross-architecture). The runtime publishes a contract descriptor: globals, type layouts and contract versions. Versions are strings like c1, different not newer; incompatible changes need a new version, amendments must be compatible, and versions are fixed from the first RC. The reader version is advisory. See docs/design/datacontracts/datacontracts_design.md and reader-version-history.md.",
+  "timing": {
+    "api_ms": 2400,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2300
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

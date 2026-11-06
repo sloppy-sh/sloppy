@@ -1,0 +1,48 @@
+{
+  "id": "carbon-handoff-locked-cache-age",
+  "family": "handoff",
+  "prompt_a": "In toolchain/driver/runtimes_cache.h, raise MaxLockedEntryAge from 10 days to 30 days. The reason, which you know and nobody else working on this code does: the Brightwater build farm keeps one carbon build daemon alive for up to three weeks between restarts, holding its runtimes cache entry locked the whole time; at 10 days a concurrent compile evicted the entry the daemon was still using, and every link it ran afterwards failed with missing runtime files until the daemon was restarted.",
+  "prompt_b": "MaxLockedEntryAge in toolchain/driver/runtimes_cache.h is 30 days. Someone points out that no compile holds a runtimes entry locked for more than a few minutes, and wants 10 days back so abandoned locks stop pinning old entries. Is that safe? Recommend, and explain what decides the value.",
+  "reason": "The Brightwater build farm's long-lived build daemon holds its runtimes entry locked for up to three weeks; at 10 days a concurrent compile evicted it and every later link failed with missing runtime files until restart.",
+  "key": "Not safe: the Brightwater build farm keeps one carbon build daemon alive for up to three weeks between restarts, holding its runtimes cache entry locked the whole time; at 10 days a concurrent compile evicted the entry the daemon was still using, and every link it ran afterwards failed with missing runtime files until the daemon was restarted.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "brightwater|build farm",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "the Brightwater build farm keeps one carbon build daemon alive"
+        }
+      },
+      {
+        "pattern": "(three|3)[- ]weeks?|21 days|twenty-one days",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "for up to three weeks between restarts"
+        }
+      },
+      {
+        "pattern": "missing runtime|runtime (files|libraries)[^.\\n]{0,40}(missing|gone|absent|deleted|removed)",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "every link it ran afterwards failed with missing runtime files until the daemon was restarted"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends against 10 days, or only where no process holds a runtimes entry locked that long",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: a long-lived build daemon holds its entry locked for up to three weeks, and at 10 days another compile evicted it, so its links failed with missing runtime files until restart",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

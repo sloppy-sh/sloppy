@@ -1,0 +1,48 @@
+{
+  "id": "pulsar-handoff-consumer-race-retries",
+  "family": "handoff",
+  "prompt_a": "In pulsar-broker/src/main/java/org/apache/pulsar/broker/service/AbstractDispatcherSingleActiveConsumer.java, raise MAX_RETRY_COUNT_FOR_ADD_CONSUMER_RACE from 5 to 12. The reason, which you know and nobody else working on this code does: at Brightline Rail, exclusive consumers run in Kubernetes pods behind a network load balancer whose connection draining keeps the old pod's connection half-open for up to 10 seconds after a deploy; with 5 retries the new pod was refused as ConsumerBusy for the whole drain and their train-position feed stalled on every deploy.",
+  "prompt_b": "MAX_RETRY_COUNT_FOR_ADD_CONSUMER_RACE in AbstractDispatcherSingleActiveConsumer is 12. Upstream had 5, and a reviewer wants 5 back to keep this fork's diff with upstream small. Should we? Explain why it is 12.",
+  "reason": "At Brightline Rail, the load balancer's connection draining keeps the old exclusive consumer's connection half-open up to 10 s after a deploy; with 5 retries the new pod was refused and the feed stalled.",
+  "key": "No: at Brightline Rail exclusive consumers run in Kubernetes pods behind a network load balancer whose connection draining keeps the old pod's connection half-open for up to 10 seconds after a deploy; with 5 retries the new pod was refused as ConsumerBusy for the whole drain and the train-position feed stalled on every deploy. Twelve retries outlast the drain.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "brightline",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "at Brightline Rail"
+        }
+      },
+      {
+        "pattern": "drain|half.?open",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "connection draining keeps the old pod's connection half-open"
+        }
+      },
+      {
+        "pattern": "deploy|rollout|new pod|pod (is |was )?replaced",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "stalled on every deploy"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends keeping 12 rather than going back to 5",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: a load balancer's connection draining keeps the old consumer's connection half-open for up to 10 seconds after a deploy, so with 5 retries the new consumer is refused and the feed stalls",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

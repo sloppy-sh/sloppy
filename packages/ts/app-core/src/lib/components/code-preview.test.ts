@@ -1,6 +1,7 @@
 // The code a note points at, read where it stands.
 
-import type { CodeAnchor } from '@sloppy/types';
+import type { CodeAnchor, OwnedRef } from '@sloppy/types';
+import type { WhyHere } from '../code-provenance.js';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import CodePreview from './code-preview.svelte';
@@ -294,5 +295,146 @@ describe('a folder a note points at', () => {
 		show({ anchor: { path: 'gone' }, ...project });
 		await settled();
 		expect(screen()).toContain('nothing at this path');
+	});
+});
+
+describe('why this code', () => {
+	const NOTE_A = 'did:plc:ada/01JZ0000000000000000000001';
+	const NOTE_B = 'did:plc:ada/01JZ0000000000000000000002';
+	const SECTION = 'did:plc:ada/01JZ0000000000000000000009';
+	const LONG = Array.from({ length: 30 }, (_, i) =>
+		i === 19 ? 'export function discover() {' : `const line${i + 1} = ${i + 1};`
+	).join('\n');
+
+	function reaching(over: Partial<WhyHere> & Pick<WhyHere, 'anchor'>): WhyHere {
+		return {
+			ref: NOTE_A,
+			title: 'The parser',
+			address: '1a',
+			block: SECTION,
+			heading: 'What it reads',
+			text: 'It reads the notes first.\nThen the code.',
+			...over
+		};
+	}
+
+	function showWhy(
+		why: WhyHere[],
+		over: { anchor?: CodeAnchor; onOpenNote?: (note: OwnedRef) => void } = {}
+	): void {
+		mounted = mount(CodePreview, {
+			target,
+			props: {
+				open: true,
+				anchor: over.anchor ?? { path: 'src/parser.ts' },
+				read: async () => LONG,
+				why: async () => why,
+				...(over.onOpenNote ? { onOpenNote: over.onOpenNote } : {})
+			}
+		});
+		flushSync();
+	}
+
+	const chips = (at?: number) =>
+		[
+			...document.body.querySelectorAll<HTMLButtonElement>(
+				at === undefined
+					? '[data-why-rail] [data-why-chip]'
+					: `[data-why-at="${at}"] [data-why-chip]`
+			)
+		].map((one) => one.textContent?.replace(/\s+/g, ' ').trim());
+	const marked = () =>
+		[...document.body.querySelectorAll('[data-why-marked]')].map((line) =>
+			Number(line.firstElementChild?.textContent)
+		);
+
+	it('stands a chip for each note at the first line of the run it reaches, and marks the run', async () => {
+		showWhy([
+			reaching({ anchor: { path: 'src/parser.ts', fragment: { kind: 'lines', from: 4, to: 6 } } }),
+			reaching({
+				ref: NOTE_B,
+				title: 'Reading order',
+				address: '2',
+				anchor: { path: 'src/parser.ts', fragment: { kind: 'lines', from: 4, to: 5 } }
+			})
+		]);
+		await settled();
+
+		expect(screen()).toContain('Why this code');
+		expect(chips(4)).toEqual(['1a The parser', '2 Reading order']);
+		expect(marked()).toEqual([4, 5, 6]);
+	});
+
+	it('stands a note on a name at the line the name is on', async () => {
+		showWhy([
+			reaching({
+				anchor: { path: 'src/parser.ts', fragment: { kind: 'symbol', name: 'discover' } }
+			})
+		]);
+		await settled();
+
+		expect(chips(20)).toEqual(['1a The parser']);
+		expect(marked()[0]).toBe(20);
+	});
+
+	it('stands a note on the whole file at the head, marking no lines', async () => {
+		showWhy([reaching({ anchor: { path: 'src/parser.ts' } })]);
+		await settled();
+
+		expect(chips()).toEqual(['1a The parser · The whole file']);
+		expect(marked()).toEqual([]);
+	});
+
+	it('says at the head where a name the note gives is not in the file now', async () => {
+		showWhy([
+			reaching({ anchor: { path: 'src/parser.ts', fragment: { kind: 'symbol', name: 'parse' } } })
+		]);
+		await settled();
+
+		expect(chips()).toEqual(['1a The parser · “parse” is not in this file now']);
+	});
+
+	it('opens the section that holds the place in the code’s own place, and goes back', async () => {
+		const opened: OwnedRef[] = [];
+		showWhy(
+			[
+				reaching({ anchor: { path: 'src/parser.ts', fragment: { kind: 'lines', from: 4, to: 6 } } })
+			],
+			{ onOpenNote: (note) => opened.push(note) }
+		);
+		await settled();
+
+		document.body.querySelector<HTMLButtonElement>('[data-why-at="4"] [data-why-chip]')?.click();
+		flushSync();
+
+		expect(document.body.querySelector(`[data-why-section="${SECTION}"]`)).not.toBeNull();
+		expect(screen()).toContain('What it reads');
+		expect(screen()).toContain('It reads the notes first.');
+		expect(code()).toBe('');
+
+		button('Back to the code').click();
+		flushSync();
+		expect(code()).toContain('const line4 = 4;');
+
+		document.body.querySelector<HTMLButtonElement>('[data-why-at="4"] [data-why-chip]')?.click();
+		flushSync();
+		button('Open the note').click();
+		flushSync();
+		expect(opened).toEqual([NOTE_A]);
+	});
+
+	it('says so in one quiet line where nothing in the notes points at the file', async () => {
+		showWhy([]);
+		await settled();
+
+		expect(screen()).toContain('Nothing in the notes points here yet.');
+		expect(document.body.querySelectorAll('[data-why-chip]')).toHaveLength(0);
+	});
+
+	it('draws no rail where nothing says which notes reach the code', async () => {
+		show({});
+		await settled();
+
+		expect(screen()).not.toContain('Why this code');
 	});
 });

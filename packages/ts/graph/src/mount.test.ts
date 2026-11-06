@@ -2185,8 +2185,8 @@ describe("the sets reading", () => {
     return nearest;
   };
 
-  // Where the figure draws the combination a note carries, that is where it
-  // stands; where it draws that combination no place, the mark stands in a set
+  // Where the figure draws the combination a note carries with room left, that
+  // is where it stands; where it draws it no such place, the mark stands in a set
   // the note does carry all the same, and only a note carrying none of the
   // drawn tags stands outside every one of them.
   it("stands every mark in the region of the drawn tags it carries", async () => {
@@ -2207,8 +2207,7 @@ describe("the sets reading", () => {
       expect(places.has(region), where).toBe(true);
       if (carries === 0) expect(region, where).toBe(0);
       else expect(region & carries, where).toBeGreaterThan(0);
-      if (places.has(carries)) expect(region, where).toBe(carries);
-      else fallen += 1;
+      if (region !== carries) fallen += 1;
     }
     // The fallback is a fallback: most notes stand where their own tags put
     // them, or the figure is saying nothing about the field.

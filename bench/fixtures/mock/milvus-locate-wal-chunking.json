@@ -1,0 +1,26 @@
+{
+  "text": "SplitIntoChunks and ChunkAssembler in pkg/streaming/util/message/chunk.go; appendWithOptionalChunking in internal/streamingnode/server/wal/adaptor/wal_adaptor.go splits; internal/streamingnode/server/wal/adaptor/scanner_switchable.go reassembles; the switch is streaming.splitChunkSN.",
+  "timing": {
+    "api_ms": 2800,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2700
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 290,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}
