@@ -4,7 +4,9 @@
 	import { resolve } from '$app/paths';
 	import { buttonVariants } from '@sloppy/ui/button';
 	import { largeProjects } from '$lib/aggregate';
-	import { frontPoints, heroLine } from '$lib/front';
+	import { contextLine, frontPoints, heroStats } from '$lib/front';
+	import { FAMILY_LABEL, type FeaturedRun } from '$lib/questions/types';
+	import { modelOf } from '$lib/readings';
 	import { CONTACT, REPOSITORY } from '$lib/links';
 	import Aggregate from '$lib/sections/Aggregate.svelte';
 	import CrossProject from '$lib/sections/CrossProject.svelte';
@@ -16,7 +18,12 @@
 
 	const summary = $derived(data.summary);
 	const points = $derived(frontPoints(summary));
-	const hero = $derived(heroLine(summary));
+	const hero = $derived(contextLine(summary));
+	const stats = $derived(heroStats(summary));
+	const model = $derived(modelOf(summary, 'medium'));
+
+	const stepsSaid = (r: FeaturedRun) =>
+		`${r.steps} ${r.steps === 1 ? 'step' : 'steps'}${r.firstSession ? ' over two sessions' : ''}${r.subagentCalls ? ` +${r.subagentCalls} inside helpers` : ''}`;
 
 	const SETUP = `git clone ${REPOSITORY}
 cd sloppy && pnpm install && pnpm build:packages
@@ -31,10 +38,10 @@ cd your-repo && sloppy init`;
 </script>
 
 <svelte:head>
-	<title>Sloppy: same models, better outputs</title>
+	<title>Sloppy: better agent performance, for less</title>
 	<meta
 		name="description"
-		content="Sloppy keeps the reasons behind your code beside it. Your team owns them; coding agents read them before they change anything."
+		content="Coding agents cost less and answer at least as well with Sloppy, which keeps the reasons behind your code beside it. Every run behind the figures is published, step by step."
 	/>
 </svelte:head>
 
@@ -44,7 +51,21 @@ cd your-repo && sloppy init`;
 	<main>
 		<section id="top" class="pt-[clamp(3.5rem,10vw,7rem)]" aria-labelledby="headline">
 			<div class={container}>
-				<h1 id="headline" class="type-display max-w-[18ch]">Same models, better outputs.</h1>
+				<h1 id="headline" class="type-display max-w-[18ch]">Better agent performance, for less.</h1>
+				{#if stats.length}
+					<dl class="mt-10 grid max-w-3xl grid-cols-1 gap-6 sm:grid-cols-3">
+						{#each stats as stat (stat.label)}
+							<div class="flex flex-col-reverse gap-2 border-t pt-4">
+								<dt class="text-muted-foreground">{stat.label}</dt>
+								<dd
+									class="text-[clamp(2.5rem,1.6rem+3vw,3.5rem)] leading-none font-semibold tracking-tight tabular-nums"
+								>
+									{stat.value}
+								</dd>
+							</div>
+						{/each}
+					</dl>
+				{/if}
 				{#if hero}
 					<p class="mt-6 max-w-[52ch] text-lg leading-relaxed text-muted-foreground">{hero}</p>
 				{/if}
@@ -84,6 +105,72 @@ cd your-repo && sloppy init`;
 				<a href={resolve('/methodology')} class={link}>How we tested</a>
 			</p>
 		</Section>
+
+		{#if data.featured.length}
+			<Section id="evidence" title="What the agent did.">
+				<p class="type-body max-w-[62ch]">
+					Every run is published: what the agent was sent, every step it took, its answer and its
+					grades.
+				</p>
+				<div class="mt-8 overflow-x-auto">
+					<table class="w-full min-w-[40rem] text-sm tabular-nums">
+						<caption class="caption-bottom pt-3 text-left text-muted-foreground">
+							{model ?? 'One model'} throughout. Scores are each approach's mean over its runs; the steps
+							and the downloads are the run closest to that mean.
+						</caption>
+						<thead class="text-muted-foreground">
+							<tr class="border-b">
+								<th scope="col" class="py-2 pr-4 text-left font-normal">Question</th>
+								<th scope="col" class="px-2 py-2 text-right font-normal"
+									>Docs alone<span class="block text-xs">mean score, steps</span></th
+								>
+								<th scope="col" class="px-2 py-2 text-right font-normal"
+									>With Sloppy<span class="block text-xs">mean score, steps</span></th
+								>
+								<th scope="col" class="py-2 pl-4 text-left font-normal">The record</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each data.featured as row (row.task)}
+								<tr class="border-b border-border/60 align-top">
+									<th scope="row" class="py-3 pr-4 text-left font-normal">
+										<span class="block text-muted-foreground"
+											>{row.label} · {FAMILY_LABEL[row.family] ?? row.family}</span
+										>
+										<span class="block font-medium">{row.question}</span>
+									</th>
+									{#each [row.plain, row.sloppy] as run (run.runId)}
+										<td class="px-2 py-3 text-right">
+											<span class="block font-semibold">{run.score.toFixed(2)}</span>
+											<span class="block text-muted-foreground">{stepsSaid(run)}</span>
+										</td>
+									{/each}
+									<td class="py-3 pl-4">
+										<a
+											href="{resolve('/projects/[slug]/questions', { slug: row.slug })}#{row.task}"
+											class="{link} block">Answers</a
+										>
+										<span class="block text-muted-foreground">
+											Download:
+											<a
+												href={resolve('/runs/[id].json', { id: row.plain.runId })}
+												download
+												class={link}>docs alone</a
+											>,
+											<a
+												href={resolve('/runs/[id].json', { id: row.sloppy.runId })}
+												download
+												class={link}>with Sloppy</a
+											>
+										</span>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</Section>
+		{/if}
 
 		<Section id="start" title="Try it on your repo.">
 			<div class="grid gap-10 lg:grid-cols-12">

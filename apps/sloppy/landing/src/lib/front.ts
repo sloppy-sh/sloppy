@@ -2,7 +2,7 @@
 // large projects the aggregate averages.
 import { aggregate, largeProjects } from './aggregate';
 import { andList, inWords, verdicts, type Metric, type Verdict } from './readings';
-import { movedSaid as moved, scoreSaid } from './said';
+import { movedSaid as moved, percent, ratioSign, scoreSaid, scoreSign } from './said';
 import type { PageSummary } from './summary';
 
 /** What "better outputs" means, from the aggregate over the large projects. */
@@ -19,6 +19,35 @@ export function heroLine(summary: PageSummary): string | null {
 		input !== null && moved(input, 'read', 'fewer', 'more', 'as many') + ' tokens'
 	].filter((x): x is string => !!x);
 	return `On average across ${inWords(a.subjects.length)} large codebases, Claude Code with Sloppy ${andList(parts)}.`;
+}
+
+export interface HeroStat {
+	value: string;
+	label: string;
+}
+
+const signed = (sign: number, size: string) => `${sign > 0 ? '+' : sign < 0 ? '−' : ''}${size}`;
+
+/** Cost, new text read and answer quality against the docs alone, as the hero's three figures. */
+export function heroStats(summary: PageSummary): HeroStat[] {
+	const a = aggregate(summary, 'plain');
+	if (!a) return [];
+	const { cost, input } = a.ratio;
+	return [
+		cost !== null && { value: signed(ratioSign(cost), percent(cost)), label: 'cost per task' },
+		input !== null && { value: signed(ratioSign(input), percent(input)), label: 'new text read' },
+		{
+			value: signed(scoreSign(a.score), Math.abs(a.score).toFixed(3)),
+			label: 'answer quality, 0 to 1'
+		}
+	].filter((x): x is HeroStat => !!x);
+}
+
+/** What the hero's figures are measured over, from the same aggregate. */
+export function contextLine(summary: PageSummary): string | null {
+	const a = aggregate(summary, 'plain');
+	if (!a) return null;
+	return `On ${inWords(a.subjects.length)} large open-source codebases, against Claude Code with the docs alone — same model, same questions.`;
 }
 
 /** What a verdict is called leading a sentence, and after another clause. */

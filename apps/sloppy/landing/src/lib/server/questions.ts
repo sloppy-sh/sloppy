@@ -19,6 +19,7 @@ import {
 } from '$lib/questions/types';
 import { HIDDEN, unnamed } from './private';
 import { loadSummary } from './summary';
+import { traceOf } from './traces';
 
 /** The final test's seeds: the runs a chart counts for a project measured on its documents as kept. */
 export const FINAL_SEEDS = [30, 31, 32];
@@ -181,6 +182,7 @@ function load() {
 				0
 			);
 			const r = rs[at];
+			const trace = traceOf(r.run_id);
 			return {
 				condition: c,
 				runId: r.run_id,
@@ -192,7 +194,10 @@ function load() {
 				costUsd: costOf(r),
 				wallS: stagesOf(r).reduce((n, s) => n + s.timing.wall_ms, 0) / 1000,
 				items: latest(r, 'judge')?.items ?? [],
-				facts: factsOf(r.grade?.notes ?? '', task)
+				facts: factsOf(r.grade?.notes ?? '', task),
+				trace: trace?.steps ?? null,
+				firstSession: trace?.firstSession ?? 0,
+				subagentCalls: trace?.subagentCalls ?? 0
 			};
 		});
 		const gain = score.mcp - score.bare;

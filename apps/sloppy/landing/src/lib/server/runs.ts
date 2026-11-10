@@ -88,7 +88,7 @@ export function longSystems(): Map<string, string> {
 	return out;
 }
 
-function transcriptOf(runId: string): unknown[] | null {
+export function transcriptOf(runId: string): unknown[] | null {
 	const file = join(RESULTS, 'transcripts', `${runId}.jsonl.gz`);
 	if (!existsSync(file)) return null;
 	return gunzipSync(readFileSync(file))

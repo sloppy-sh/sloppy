@@ -1,6 +1,6 @@
 # Sloppy
 
-**Same models, better outputs.** On average across six large codebases, Claude Code with Sloppy scored slightly higher (+0.019) than with the docs alone, cost 20% less, was 2% faster, took 6% fewer round trips to the model and read 24% less new text.
+**Better agent performance, for less.** On average across six large codebases, Claude Code with Sloppy scored slightly higher (+0.019) than with the docs alone, cost 20% less, was 2% faster, took 6% fewer round trips to the model and read 24% less new text.
 
 Sloppy keeps the reasons behind your code beside it: a graph of notes, each placed under what it
 came out of and pointing at the code it explains, committed with the repository as markdown. The

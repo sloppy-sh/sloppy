@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { APPROACHES } from '$lib/approaches';
 	import { seconds, tokens } from '$lib/summary';
 	import {
 		CONDITIONS,
+		FAMILY_LABEL,
+		type Answer,
 		type Condition,
 		type Fact,
 		type QuestionDetail,
@@ -13,14 +16,6 @@
 	let { rows, labels }: { rows: QuestionRow[]; labels: Record<string, string> } = $props();
 
 	const approachOf = (c: Condition) => APPROACHES.find((a) => a.condition === c)!;
-
-	const FAMILY: Record<string, string> = {
-		why: 'Why',
-		locate: 'Where',
-		brief: 'Briefing',
-		drift: 'Drift check',
-		handoff: 'Handoff'
-	};
 
 	const FACT: Record<Fact['kind'], string> = {
 		missing: 'Facts check, left out:',
@@ -32,6 +27,25 @@
 	const gainSaid = (d: number) =>
 		Math.abs(d) < 0.0005 ? 'level' : `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(3)}`;
 	const dollars = (x: number | null) => (x === null ? '–' : `$${x.toFixed(2)}`);
+	const stepsSaid = (n: number) => `${n} ${n === 1 ? 'step' : 'steps'}`;
+
+	/** A handoff's steps under its two sessions; one session's under no heading. */
+	function sessionsOf(ans: Answer) {
+		const steps = ans.trace ?? [];
+		const f = ans.firstSession;
+		return f
+			? [
+					{ title: 'First session', start: 1, steps: steps.slice(0, f) },
+					{ title: 'Second session', start: f + 1, steps: steps.slice(f) }
+				]
+			: [{ title: null, start: 1, steps }];
+	}
+
+	onMount(() => {
+		const task = decodeURIComponent(location.hash.slice(1));
+		const target = task && document.getElementById(task)?.querySelector('details');
+		if (target) target.open = true;
+	});
 
 	let details: Record<string, QuestionDetail | 'loading' | 'failed'> = $state({});
 
@@ -49,7 +63,7 @@
 
 <ol class="divide-y border-y [overflow-wrap:anywhere]">
 	{#each rows as row (row.task)}
-		<li data-quoted>
+		<li id={row.task} data-quoted class="scroll-mt-16">
 			<details
 				class="group"
 				ontoggle={(e) => (e.currentTarget as HTMLDetailsElement).open && open(row.task)}
@@ -59,7 +73,7 @@
 				>
 					<span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
 						<span class="text-muted-foreground"
-							>{labels[row.project] ?? row.project} · {FAMILY[row.family] ?? row.family}</span
+							>{labels[row.project] ?? row.project} · {FAMILY_LABEL[row.family] ?? row.family}</span
 						>
 						<span class="font-medium tabular-nums">
 							Sloppy against docs alone: {gainSaid(row.gain)}
@@ -135,6 +149,39 @@
 										<dt class="text-muted-foreground">Time</dt>
 										<dd>{seconds(ans.wallS)}</dd>
 									</dl>
+									{#if ans.trace}
+										<details class="rounded-md border">
+											<summary class="cursor-pointer px-3 py-2 text-sm font-medium">
+												What it did · {stepsSaid(ans.trace.length)}{ans.subagentCalls
+													? ` +${ans.subagentCalls} inside helpers`
+													: ''}
+											</summary>
+											<div class="max-h-[24rem] overflow-y-auto border-t py-2 text-sm leading-snug">
+												{#each sessionsOf(ans) as session, k (k)}
+													{#if session.title}
+														<h5 class="px-3 pt-1 text-xs text-muted-foreground">{session.title}</h5>
+													{/if}
+													<ol
+														start={session.start}
+														class="list-decimal pr-3 pl-9 marker:text-muted-foreground"
+													>
+														{#each session.steps as step, i (i)}
+															<li class="py-0.5">
+																<span class="font-medium">{step.tool}</span>
+																{#if step.about}<span class="text-muted-foreground">
+																		{step.about}</span
+																	>{/if}
+															</li>
+														{/each}
+													</ol>
+												{/each}
+											</div>
+										</details>
+									{:else}
+										<p class="text-sm text-muted-foreground">
+											This run was made before its steps were kept.
+										</p>
+									{/if}
 									<details class="rounded-md border">
 										<summary class="cursor-pointer px-3 py-2 text-sm font-medium"
 											>The answer</summary
@@ -145,6 +192,11 @@
 											{ans.text}
 										</div>
 									</details>
+									<a
+										href={resolve('/runs/[id].json', { id: ans.runId })}
+										download
+										class="text-sm underline underline-offset-2">Download this run</a
+									>
 									{#if ans.items.length || ans.facts.length}
 										<div class="grid gap-2 text-sm">
 											<h4 class="font-medium">How it was graded</h4>
