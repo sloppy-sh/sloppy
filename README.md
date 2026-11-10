@@ -1,6 +1,6 @@
 # Sloppy
 
-**Same models, better outputs.** On average across six large codebases, Claude Code with Sloppy scored slightly higher (+0.024) than with the docs alone, cost 17% less, was 3% faster, took 10% fewer round trips to the model and read 7% more tokens.
+**Same models, better outputs.** On average across six large codebases, Claude Code with Sloppy scored slightly higher (+0.019) than with the docs alone, cost 20% less, was 2% faster, took 4% fewer round trips to the model and read 24% less new text.
 
 Sloppy keeps the reasons behind your code beside it: a graph of notes, each placed under what it
 came out of and pointing at the code it explains, committed with the repository as markdown. The
@@ -12,13 +12,22 @@ why before it changes anything.
 ## Built for large codebases
 
 On the six large open-source projects, whose reasons are spread across many design documents, Sloppy comes out
-marginally ahead on average: answers score slightly higher, at lower cost. On the
-small repositories the docs alone already reach the answers, so it has little to add.
+marginally ahead on average: answers score slightly higher, at lower cost. Three of the six are measured
+with their documents shaped the way [the practices](bench/WHERE-SLOPPY-HELPS.md) set out, which is how
+Sloppy is meant to be taken up; the rest are measured on their documents as they keep them today. On
+one of those three the shaping made every reader worse, which is why the practices are published with
+that result beside them rather than as advice. On the
+small repositories the docs alone already reach the answers, so it has little to add. A seventh project,
+with a quarter of the documents the six were chosen at, was measured because it was asked for; it has
+its own page and is in no average.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/bench-aggregate-dark.svg">
-  <img alt="With Sloppy against the docs alone and against subagents, averaged over the six large open-source projects: answer quality slightly higher; cost and round trips to the model lower, time about the same; tokens read 7% more against the docs alone and 4% fewer against subagents" src="docs/images/bench-aggregate-light.svg">
+  <img alt="With Sloppy against the docs alone and against subagents, averaged over the six large open-source projects: answer quality slightly higher; new text read, cost and round trips to the model all lower, time about the same" src="docs/images/bench-aggregate-light.svg">
 </picture>
+
+\* Text the model had not read before. The conversation it re-reads on every turn is billed at a
+fraction of the price, so counting that in would show more text read where the bill is lower.
 
 - **It helps most where the reasons can't be found by file name**: its first answer finds the
   document by the words it shares with the task, and the agent stops early.

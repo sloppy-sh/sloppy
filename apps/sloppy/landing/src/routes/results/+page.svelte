@@ -1,14 +1,22 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
-	import { aggregates, largeProjects } from '$lib/aggregate';
+	import { largeProjects } from '$lib/aggregate';
 	import { PROJECTS } from '$lib/projects';
 	import { oneLine } from '$lib/oneLine';
-	import { inWords, labelOf, METRICS, subjectsWithRuns, tiersWithRuns } from '$lib/readings';
+	import {
+		belowFloor,
+		inWords,
+		labelOf,
+		METRICS,
+		subjectsWithRuns,
+		tiersWithRuns
+	} from '$lib/readings';
 	import Aggregate from '$lib/sections/Aggregate.svelte';
 	import CrossProject from '$lib/sections/CrossProject.svelte';
 	import ModelTabs from '$lib/sections/ModelTabs.svelte';
 	import PageHead from '$lib/sections/PageHead.svelte';
+	import TokenNote from '$lib/sections/TokenNote.svelte';
 	import SiteFooter from '$lib/sections/SiteFooter.svelte';
 	import SiteHeader from '$lib/sections/SiteHeader.svelte';
 	import type { Tier } from '$lib/summary';
@@ -21,15 +29,18 @@
 	);
 
 	const large = $derived(largeProjects(summary));
-	/** Said only while it is true of the numbers above: more tokens read, less paid. */
-	const dearer = $derived(
-		aggregates(summary).some((a) => (a.ratio.input ?? 0) > 0 && (a.ratio.cost ?? 0) < 0)
-	);
 	const projects = $derived(
 		subjectsWithRuns(summary).flatMap((subject) => {
 			const project = PROJECTS.find((p) => p.subject === subject);
 			return project
-				? [{ project, label: labelOf(summary, subject), line: oneLine(summary, subject, tier) }]
+				? [
+						{
+							project,
+							label: labelOf(summary, subject),
+							line: oneLine(summary, subject, tier),
+							below: belowFloor(summary, subject)
+						}
+					]
 				: [];
 		})
 	);
@@ -48,23 +59,17 @@
 	<main>
 		<PageHead
 			trail={[{ label: 'Results' }]}
-			title="Results across {inWords(projects.length)} large projects."
+			title="Results across {inWords(large.length)} large projects."
 		/>
 
 		<section class="section-pad mx-auto max-w-6xl space-y-10 px-4 sm:px-8" aria-label="Charts">
 			<div>
 				<h2 class="type-h2">Averaged across the {inWords(large.length)}</h2>
 				<div class="mt-6"><Aggregate {summary} /></div>
-				{#if dearer}
-					<p class="type-body mt-6 max-w-[70ch] text-muted-foreground">
-						More tokens, less paid: re-reading the conversation is billed at a fraction of the
-						price, and with Sloppy an agent takes in less new text and writes shorter answers — the
-						parts that cost.
-					</p>
-				{/if}
+				<div class="mt-6"><TokenNote /></div>
 			</div>
 			<ModelTabs bind:tier {ran} />
-			<CrossProject {summary} {tier} metrics={METRICS} />
+			<CrossProject {summary} {tier} metrics={METRICS} only={large} />
 		</section>
 
 		<section class="section-pad border-t bg-card" aria-labelledby="by-project">
@@ -77,7 +82,11 @@
 								href={resolve('/projects/[slug]', { slug: p.project.slug })}
 								class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 py-4 hover:text-muted-foreground"
 							>
-								<span class="font-semibold">{p.label}</span>
+								<span class="font-semibold"
+									>{p.label}{#if p.below}<span class="font-normal text-muted-foreground">
+											· below the floor</span
+										>{/if}</span
+								>
 								<span class="text-muted-foreground">{p.line ?? 'Not run with this model.'} →</span>
 							</a>
 						</li>

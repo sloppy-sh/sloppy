@@ -5,7 +5,11 @@ import { ratioSign, scoreSign } from './said';
 import { timeOf, TIERS, type Group, type PageSummary, type Tier } from './summary';
 
 /** Sloppy as it ships; bench/README.md § "What counts as better". */
-const SETTING = 'lean';
+/**
+ * The reported comparison where a project has been measured under it, and the documents as the
+ * project keeps them everywhere else. bench/README.md § "The comparison that is reported".
+ */
+const SETTINGS = ['recommended', 'lean'] as const;
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 export const inWords = (n: number) => NUMBER_WORDS[n] ?? String(n);
@@ -47,6 +51,13 @@ const comparable = (g: Group | undefined): g is Group =>
 /** Repositories small enough that the docs alone already reach the answers: measured, and out of the site's scope. */
 export const SMALL_REPOS = ['syr', 'sloppy'];
 export const isSmallRepo = (subject: string) => SMALL_REPOS.includes(subject);
+
+/** Words of design documents a project was chosen by; bench/SURVEY.md § "The rule". */
+export const WORD_FLOOR = 350_000;
+
+/** A project measured because it was asked for, with fewer documents than the floor: on its own page, in no average. */
+export const belowFloor = (summary: PageSummary, subject: string) =>
+	(summary.subjects[subject]?.docs_words ?? Infinity) < WORD_FLOOR;
 
 /** The large open-source projects with runs for a tier, or for any, smallest documentation first. */
 export function subjectsWithRuns(summary: PageSummary, tier?: Tier): string[] {
@@ -99,16 +110,29 @@ export function groupOf(
 	tier: Tier,
 	a: Approach
 ): Group | undefined {
-	const g = summary.groups.find(
-		(g) =>
-			real(g) &&
-			g.subject === subject &&
-			g.tier === tier &&
-			g.setting === SETTING &&
-			g.condition === a.condition
-	);
-	return comparable(g) ? g : undefined;
+	for (const setting of SETTINGS) {
+		const g = summary.groups.find(
+			(x) =>
+				real(x) &&
+				x.subject === subject &&
+				x.tier === tier &&
+				x.setting === setting &&
+				x.condition === a.condition
+		);
+		if (comparable(g)) return g;
+	}
+	return undefined;
 }
+
+/** Whether a project was measured with its documents shaped the way the practices set out. */
+export const underRecommended = (summary: PageSummary, subject: string) =>
+	summary.groups.some(
+		(g) => g.subject === subject && g.setting === 'recommended' && g.condition === 'mcp'
+	);
+
+/** The projects measured that way, for a page that must say which. */
+export const recommendedProjects = (summary: PageSummary) =>
+	subjectsWithRuns(summary).filter((s) => underRecommended(summary, s));
 
 /** `claude-sonnet-5-5` reads as "Claude Sonnet 5.5". */
 export function modelLabel(id: string): string {
@@ -134,7 +158,7 @@ export const valueOf = (g: Group, metric: Metric): number | null =>
 	metric === 'score'
 		? g.score_mean
 		: metric === 'input'
-			? g.input_mean
+			? (g.fresh_mean ?? g.input_mean)
 			: metric === 'cost'
 				? g.cost_mean
 				: timeOf(g);

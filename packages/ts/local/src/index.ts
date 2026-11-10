@@ -24,6 +24,8 @@ export * from "./builds.js";
 export * from "./credentials.js";
 export * from "./api.js";
 export * from "./acts.js";
+export * from "./harness.js";
+export { landsOn } from "./brief.js";
 export { type NoteHere, notesHere } from "./here.js";
 export {
   indexOf,
@@ -34,3 +36,4 @@ export {
   subjectOfNote,
 } from "./relate.js";
 export * from "./snippets.js";
+export * from "./window.js";

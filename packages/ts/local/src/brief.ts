@@ -630,6 +630,22 @@ export function reachedByTask(
     .map((one) => one.held);
 }
 
+/**
+ * Whether a task's words land on a note as more than an incidental word: one
+ * of them is a word of its title or tags, or two are words of one section.
+ */
+export function landsOn(held: NoteHere, task: string): boolean {
+  const asked = taskWords(task);
+  const carries = (text: string) => {
+    const words = new Set(taskWords(text));
+    return asked.filter((word) => words.has(word)).length;
+  };
+  return (
+    carries(labelOf(held)) > 0 ||
+    held.blocks.some((block) => carries(writingOf(block)) >= 2)
+  );
+}
+
 /** The most sections of one note a brief that ends the search carries. */
 const MOST_REACHED_SECTIONS = 2;
 

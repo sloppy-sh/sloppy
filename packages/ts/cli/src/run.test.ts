@@ -1,7 +1,16 @@
-import { containerDataAt, MemoryFiles } from "@sloppy/local";
+import { AGENT_MD, containerDataAt, MemoryFiles } from "@sloppy/local";
 import { encodeText, graphFile, type VaultGraph } from "@sloppy/vault";
+import type { Window, WindowAsk } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { FINE, NOTHING_DONE, run, TO_FIX } from "./run.js";
+import {
+  FINE,
+  NOTHING_DONE,
+  parse,
+  run,
+  running,
+  type RunningWith,
+  TO_FIX,
+} from "./run.js";
 
 const DID = "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE";
 const A = "01J0000000000000000000000A";
@@ -165,5 +174,186 @@ describe("sloppy", () => {
     for (const { root, data } of asked) {
       expect(data).toBe(containerDataAt(root));
     }
+  });
+});
+
+const KEY = "sk-test-a-key-for-the-run-command";
+const WINDOW: Window = {
+  parts: [
+    {
+      kind: "instructions",
+      path: "AGENT.md",
+      tokens: 4,
+      text: "The reasons are in the notes.",
+    },
+  ],
+  budget: 16_000,
+  cut: [],
+};
+
+/** A provider answering each request with the next reply. */
+function replying(replies: unknown[][]): {
+  fetch: typeof globalThis.fetch;
+  bodies: { messages: { content: unknown }[] }[];
+} {
+  const bodies: { messages: { content: unknown }[] }[] = [];
+  const fetch = (async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(init.body as string));
+    return new Response(
+      JSON.stringify({
+        content: replies[bodies.length - 1] ?? [],
+        usage: { input_tokens: 1000, output_tokens: 100 },
+      }),
+    );
+  }) as typeof globalThis.fetch;
+  return { fetch, bodies };
+}
+
+async function ranAsking(
+  argv: string[],
+  files: MemoryFiles,
+  using: RunningWith,
+): Promise<Ran> {
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await running(
+    parse(["run", ...argv]),
+    {
+      cwd: "/project",
+      told: { out: (line) => out.push(line), err: (line) => err.push(line) },
+      filesAt: (root) => files.at(root),
+    },
+    argv.includes("--json"),
+    using,
+  );
+  return { code, out, err };
+}
+
+describe("sloppy run", () => {
+  const asks: WindowAsk[] = [];
+  const compose = () => async (ask: WindowAsk) => {
+    asks.push(ask);
+    return WINDOW;
+  };
+  const env = { ANTHROPIC_API_KEY: KEY };
+
+  it("puts the ask to the model, says each act as it happens, and ends on the answer", async () => {
+    const { fetch, bodies } = replying([
+      [{ type: "tool_use", id: "t1", name: "list_notes", input: {} }],
+      [{ type: "text", text: "One note, about nothing yet." }],
+    ]);
+
+    const { code, out } = await ranAsking(
+      ["what", "is", "here?"],
+      await wrote("Nothing to see."),
+      { compose, env, fetch },
+    );
+
+    expect(code).toBe(FINE);
+    expect(asks.at(-1)?.ask).toBe("what is here?");
+    expect(bodies[0].messages[0].content).toBe(
+      "what is here?\n\nThe reasons are in the notes.",
+    );
+    expect(out[0]).toBe("  Reading the notes");
+    expect(out).toContain("One note, about nothing yet.");
+    expect(out.join("\n")).not.toContain(KEY);
+  });
+
+  it("gathers the window from the project's own notes when none is handed it", async () => {
+    const { fetch, bodies } = replying([[{ type: "text", text: "Done." }]]);
+
+    const { code } = await ranAsking(
+      ["why", "is", "quince", "the", "stock?"],
+      await wrote("Quince stock keeps the apple tree small."),
+      { env, fetch },
+    );
+
+    expect(code).toBe(FINE);
+    const first = bodies[0].messages[0].content as string;
+    expect(first.startsWith("why is quince the stock?\n\n")).toBe(true);
+    expect(first).toContain("Quince stock keeps the apple tree small.");
+    expect(first).toContain(AGENT_MD.split("\n\n")[1].replaceAll("\n", " "));
+  });
+
+  it("exits non-zero when it stops before answering", async () => {
+    const asking = [
+      { type: "tool_use", id: "t", name: "list_tags", input: {} },
+    ];
+    const { fetch } = replying([asking, asking]);
+
+    const { code, out } = await ranAsking(
+      ["tidy", "up", "--turns", "1"],
+      await wrote("Nothing to see."),
+      { compose, env, fetch },
+    );
+
+    expect(code).toBe(TO_FIX);
+    expect(out.at(-2)).toContain("Give it more with --turns.");
+  });
+
+  it("names the option that is wrong, and not the one beside it", async () => {
+    const { code, err } = await ranAsking(
+      ["why?", "--turns", "abc", "--budget", "1"],
+      await wrote("Nothing."),
+      { compose, env },
+    );
+
+    expect(code).toBe(NOTHING_DONE);
+    expect(err).toEqual(["Say the most turns to take: --turns 10."]);
+  });
+
+  it("says a run that cost under a cent did not cost nothing", async () => {
+    const { fetch } = replying([[{ type: "text", text: "Done." }]]);
+
+    const { out } = await ranAsking(["why?"], await wrote("Nothing."), {
+      compose,
+      env,
+      fetch,
+    });
+
+    expect(out.at(-1)).toBe("It cost under a cent.");
+  });
+
+  it("asks for the key by where it is read from, and calls nothing without one", async () => {
+    const { fetch, bodies } = replying([]);
+
+    const { code, err } = await ranAsking(["why?"], await wrote("Nothing."), {
+      compose,
+      env: {},
+      fetch,
+    });
+
+    expect(code).toBe(NOTHING_DONE);
+    expect(err).toEqual([
+      "Set ANTHROPIC_API_KEY in the environment to run with this provider.",
+    ]);
+    expect(bodies).toHaveLength(0);
+  });
+
+  it("answers the whole run in JSON, with no key on it", async () => {
+    const { fetch } = replying([[{ type: "text", text: "Done." }]]);
+
+    const { out } = await ranAsking(
+      ["why?", "--json"],
+      await wrote("Nothing."),
+      {
+        compose,
+        env,
+        fetch,
+      },
+    );
+
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0])).toMatchObject({
+      command: "run",
+      stop: "answered",
+    });
+    expect(out[0]).not.toContain(KEY);
+  });
+
+  it("says what to do where it is given no ask", async () => {
+    const { code, err } = await ran(["run"], await wrote("Nothing."));
+    expect(code).toBe(NOTHING_DONE);
+    expect(err[0]).toMatch(/^Say what to do/);
   });
 });

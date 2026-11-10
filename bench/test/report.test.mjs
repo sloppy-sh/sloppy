@@ -106,13 +106,48 @@ test("a run whose tokens could not be told is in no token mean, and the table sa
   assert.match(row, /2\/2 +2 +1\.0000 +- +- +- +1\.0/);
 });
 
-test("a started run that did not finish ok scores 0 and counts as graded", () => {
+test("a started run that did not finish ok scores 0; one that never started is not scored", () => {
   const sha = "d".repeat(40);
   const good = newRecord({ ...run("ours", sha, 1), grade: { score: 1 } });
-  const failed = newRecord({ ...run("ours", sha, 1), status: "error" });
+  const failed = newRecord({
+    ...run("ours", sha, 1),
+    status: "error",
+    turns: 3,
+  });
   const [row] = summarize([good, failed]);
   assert.equal(row.graded, 2);
   assert.equal(row.score, 0.5);
+
+  const never = newRecord({
+    ...run("ours", sha, 1),
+    status: "error",
+    turns: 0,
+  });
+  const [alone] = summarize([good, never]);
+  assert.equal(alone.graded, 1, "the run that never answered is in no mean");
+  assert.equal(alone.score, 1);
+
+  const outage = newRecord({
+    ...run("ours", sha, 1),
+    status: "error",
+    turns: 2,
+    error:
+      "Claude Code stopped with success: API Error: Can't reach the API server (ENOTFOUND).",
+    timing: { wall_ms: 275_000 },
+  });
+  const [spared] = summarize([good, outage]);
+  assert.equal(
+    spared.started,
+    1,
+    "a run the provider failed is counted and in no mean",
+  );
+  assert.equal(spared.graded, 1);
+  assert.equal(spared.score, 1);
+  assert.equal(
+    spared.wall_s,
+    good.timing.wall_ms / 1000,
+    "its backoff is not the agent's time",
+  );
 });
 
 test("a grade appended after the run replaces the run-time grade for its grader only", () => {

@@ -5,6 +5,7 @@
 	import {
 		andList,
 		approachesRun,
+		belowFloor,
 		FAMILY,
 		inWords,
 		labelOf,
@@ -12,7 +13,8 @@
 		runsNote,
 		SMALL_REPOS,
 		subjectsWithRuns,
-		tiersWithRuns
+		tiersWithRuns,
+		WORD_FLOOR
 	} from '$lib/readings';
 	import PageHead from '$lib/sections/PageHead.svelte';
 	import SiteFooter from '$lib/sections/SiteFooter.svelte';
@@ -27,9 +29,12 @@
 			subject,
 			slug: PROJECTS.find((p) => p.subject === subject)?.slug,
 			label: labelOf(summary, subject),
-			facts: summary.subjects[subject]
+			facts: summary.subjects[subject],
+			below: belowFloor(summary, subject)
 		}))
 	);
+	const chosen = $derived(projects.filter((p) => !p.below));
+	const asked = $derived(projects.filter((p) => p.below).map((p) => p.label));
 	const approaches = $derived(approachesRun(summary));
 	const models = $derived(andList(tiersWithRuns(summary).map((t) => FAMILY[t])));
 
@@ -52,7 +57,11 @@
 		'The judge never sees which approach wrote an answer.',
 		'Runs are interleaved in a seeded order, so no approach gets the quiet hour.',
 		'Predictions were written down before the runs.',
-		`The ${inWords(projects.length)} projects were chosen by written rules: open-source code, and at least 350,000 words of design documents spread over many files.`,
+		`The ${inWords(chosen.length)} projects were chosen by written rules: open-source code, and at least ${count(WORD_FLOOR)} words of design documents spread over many files.${
+			asked.length
+				? ` ${andList(asked)} ${asked.length > 1 ? 'have' : 'has'} fewer, and ${asked.length > 1 ? 'were' : 'was'} measured because it was asked for: on ${asked.length > 1 ? 'their' : 'its'} own page, in no average.`
+				: ''
+		}`,
 		unpublished.length
 			? `Every run and transcript is published, except ${andList(unpublished)}.`
 			: 'Every run and transcript is published.'
@@ -102,7 +111,11 @@
 											<a class={link} href={resolve('/projects/[slug]', { slug: p.slug })}
 												>{p.label}</a
 											>
-										{:else}{p.label}{/if}
+										{:else}{p.label}{/if}{#if p.below}<span
+												class="font-normal text-muted-foreground"
+											>
+												· below the floor</span
+											>{/if}
 									</th>
 									<td class="px-2 py-2 text-right">{count(p.facts.code_lines)}</td>
 									<td class="px-2 py-2 text-right">{count(p.facts.docs_words)}</td>

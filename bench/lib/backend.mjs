@@ -11,13 +11,14 @@ export { BACKENDS, INSTALLED_BACKENDS, isInstalledBackend };
  * @property {string} prompt The task text, identical across conditions.
  * @property {'read' | 'write' | 'none'} tools `read` lets the agent read and search files; `write` adds editing files and running commands; `none` offers no tool at all, for a judge.
  * @property {{ command: string, args: string[] }} [mcp] The sloppy MCP server to offer, started in `cwd`; absent means none.
+ * @property {{ cli: string }} [harness] The Sloppy CLI whose runner composes the window and drives the model; absent everywhere but a harness condition.
  * @property {boolean} [subagents] Whether the agent may start subagents; a backend that cannot offer them answers `unsupported: ['subagents']`.
  * @property {string} [model] Model id; absent lets an installed agent use its own default.
  * @property {number} timeoutMs The backend stops the agent at this many milliseconds and answers `timeout`.
  * @property {number} budgetUsd USD left in the batch; a backend that can cap spend caps at this.
  * @property {string} taskId Task id; only the mock reads it.
  * @property {{ command: string, args: string[], provider?: string }} [agent] agents.json entry, for an installed backend.
- * @property {import('./config.mjs').ProviderSchema['_output']} [provider] providers.json entry, for `api`.
+ * @property {import('./config.mjs').ProviderSchema['_output']} [provider] providers.json entry, for `api` and `harness`.
  */
 
 /**
@@ -58,6 +59,7 @@ const REGISTRY = {
   "claude-code": () => import("../backends/claude-code.mjs"),
   codex: () => import("../backends/codex.mjs"),
   api: () => import("../backends/api.mjs"),
+  harness: () => import("../backends/harness.mjs"),
   mock: () => import("../backends/mock.mjs"),
 };
 

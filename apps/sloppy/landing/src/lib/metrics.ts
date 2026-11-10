@@ -4,7 +4,7 @@ import { dollars, score, seconds, tokens } from './summary';
 
 export const TITLE: Record<Metric, string> = {
 	score: 'Score',
-	input: 'Tokens',
+	input: 'Text read*',
 	cost: 'Cost',
 	time: 'Time'
 };
@@ -17,7 +17,7 @@ export const chartTitle = (metric: Metric, domain: [number, number]) =>
 
 export const CHART_TITLE: Record<Metric, string> = {
 	score: 'Answer quality, 0 to 1',
-	input: 'Tokens read per task',
+	input: 'New text read per task*',
 	cost: 'Cost per task, US dollars',
 	time: 'Seconds per task'
 };

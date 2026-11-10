@@ -73,8 +73,13 @@ export function resolveSha(subjectPath, rev = "HEAD") {
     .trim();
 }
 
-export function variantDir(workRoot, subjectName, variant, sha) {
-  return path.join(workRoot, `${subjectName}-${variant}-${sha.slice(0, 12)}`);
+/**
+ * One folder per variant, and per lane where a batch runs several at once. Lane 0 keeps the name a
+ * one-lane batch has always used, so a prepared copy is not thrown away by raising the lane count.
+ */
+export function variantDir(workRoot, subjectName, variant, sha, lane = 0) {
+  const at = `${subjectName}-${variant}-${sha.slice(0, 12)}`;
+  return path.join(workRoot, lane > 0 ? `${at}-lane${lane}` : at);
 }
 
 function readMarker(dir) {
@@ -145,11 +150,11 @@ export function prepareVariant(
   subjectPath,
   variant,
   sha,
-  { workRoot = defaultWorkRoot(), subject = loadSubject() } = {},
+  { workRoot = defaultWorkRoot(), subject = loadSubject(), lane = 0 } = {},
 ) {
   assertIsolated(workRoot);
   const fullSha = resolveSha(subjectPath, sha);
-  const dir = variantDir(workRoot, subject.name, variant, fullSha);
+  const dir = variantDir(workRoot, subject.name, variant, fullSha, lane);
   const listed = listedPaths(subject, variant);
   const marker = readMarker(dir);
   if (

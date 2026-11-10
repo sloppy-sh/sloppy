@@ -1,0 +1,78 @@
+{
+  "id": "metastate-brief-platform-data",
+  "family": "brief",
+  "prompt": "You are about to build a platform for this network that keeps its own database. Explain to a newcomer, as briefly as you can: where a user's data is meant to live and what your database may hold; how a change made on your platform reaches the user's vault and then the other platforms; what delivery guarantees your webhook receiver must cope with and how it should answer; and what a new kind of entity needs before you persist it. Say where each of these is written down.",
+  "tools": "read",
+  "key": "Data ownership (docs/docs/W3DS Basics/Data-Ownership-Rules.md, quoting Getting Started): users, groups and objects own their eVaults; the eVault is the source of truth and anything a platform stores is a projection of it, a cache and aggregator. The reconstructability test: if the platform database were dropped and rebuilt by replaying the eVaults, nothing a user would miss may be lost. Legitimate local-only state is operational: sessions and nonces, queues and outbox rows, rate limits, the (localId, globalId) mapping table, cached Registry resolutions, derived indexes. A stateless app that writes straight to eVaults needs no Web3 Adapter. Outbound (docs/docs/Infrastructure/Web3-Adapter.md, Mapping Rules): the platform detects its own changes and calls handleChange; the adapter maps local fields to the global ontology with a JSON mapping (schemaId, ownerEnamePath, localToUniversalMap), resolves the owner's eVault through the Registry, writes with storeMetaEnvelope or updateMetaEnvelopeById, and records the (localId, globalId) pair; data is always written to the owner's eVault. The eVault then commits an AwarenessOutbox event with the data and Awareness as a Service delivers it to every other subscribed platform's POST /api/webhook, excluding the originator; the receiver finds the mapping by schemaId, converts with fromGlobal, and creates or updates through the ID mapping (Webhook Controller Guide). Delivery (docs/docs/W3DS Protocol/Awareness-Protocol.md): at least once, so deduplicate on eventId, not on the MetaEnvelope id, which creates and updates share; ordered only per subscription and MetaEnvelope; retried with backoff for 24 hours, then dead-lettered; last write wins with no merge. Return 200 on success and also for an ontology you have no mapping for (it is a broadcast; a 4xx is retried and dead-lettered). Before persisting a new entity type: an ontology schemaId resolved from the Ontology service (docs/docs/Infrastructure/Ontology.md, GET /schemas), never invented, or a proposed one; an owner that resolves to an eName for every row; and a named write path to the eVault.",
+  "sources": [
+    {
+      "doc": "docs/docs/W3DS Basics/Data-Ownership-Rules.md",
+      "quote": "**The eVault is the source of truth. Anything a platform stores is a projection of it.**"
+    },
+    {
+      "doc": "docs/docs/W3DS Basics/Data-Ownership-Rules.md",
+      "quote": "**If the platform database were dropped and rebuilt by replaying the relevant eVaults, what would be lost?**"
+    },
+    {
+      "doc": "docs/docs/W3DS Basics/Data-Ownership-Rules.md",
+      "quote": "Before a new entity type is persisted anywhere, three things must be true:"
+    },
+    {
+      "doc": "docs/docs/Infrastructure/Web3-Adapter.md",
+      "quote": "The platform must detect changes (e.g. via ORM hooks, DB triggers, or application events) and call `handleChange({ data, tableName, participants })`."
+    },
+    {
+      "doc": "docs/docs/Infrastructure/Web3-Adapter.md",
+      "quote": "Data is always written to that owner's eVault."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Awareness-Protocol.md",
+      "quote": "Persist processed `eventId` values and acknowledge repeats without applying them twice. Do **not** deduplicate on `id`: create and later updates intentionally share the same MetaEnvelope id."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Awareness-Protocol.md",
+      "quote": "Log and **return HTTP 200**; do not return 4xx. AaaS has no 4xx short-circuit, so an error response is retried and then dead-lettered even though nothing was wrong."
+    },
+    {
+      "doc": "docs/docs/Infrastructure/Ontology.md",
+      "quote": "This endpoint is the only correct way to obtain a `schemaId`."
+    }
+  ],
+  "grader": {
+    "kind": "none"
+  },
+  "rubric": [
+    {
+      "criterion": "Where data lives: the eVault is the source of truth and the platform database a projection, held to the reconstructability test, with the operational state that may stay local (sessions, queues, the ID mapping table, caches, derived indexes)",
+      "points": 2
+    },
+    {
+      "criterion": "Outbound: the platform calls handleChange; the Web3 Adapter maps to the global ontology (schemaId, ownerEnamePath), writes to the owner's eVault and keeps the (localId, globalId) mapping; a stateless app needs no adapter",
+      "points": 1
+    },
+    {
+      "criterion": "Propagation: an awareness event committed with the data and delivered by the awareness service to the other platforms' /api/webhook, the originating platform excluded",
+      "points": 1
+    },
+    {
+      "criterion": "Receiver duties: at-least-once delivery, deduplicate on eventId not the envelope id, per-stream ordering only, 24-hour retry then dead letter, and return 200 even for an unknown ontology",
+      "points": 2
+    },
+    {
+      "criterion": "Before persisting: an ontology resolved from the Ontology service, an owner resolving to an eName for every row, and a write path to the eVault",
+      "points": 1
+    },
+    {
+      "criterion": "Names where each is written: Data Ownership Rules, Web3 Adapter, Awareness Protocol, Ontology (or notes carrying them)",
+      "points": 1
+    },
+    {
+      "criterion": "Brief, and says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

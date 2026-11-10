@@ -16,7 +16,17 @@ import {
   loadProviders,
   loadSubject,
 } from "./config.mjs";
-import { loadConditions, selectConditions } from "./condition.mjs";
+import {
+  loadConditions,
+  reachesSloppy,
+  selectConditions,
+} from "./condition.mjs";
+import {
+  CEILING_MS as HARNESS_CEILING_MS,
+  PROVIDER_KINDS as HARNESS_KINDS,
+  SERVES as HARNESS_SERVES,
+  reachable,
+} from "../backends/harness.mjs";
 import { BACKENDS, TOKEN_CLASSES } from "./kinds.mjs";
 import { planRuns, randomSeed } from "./order.mjs";
 import { computeCost, loadPrices } from "./prices.mjs";
@@ -31,6 +41,7 @@ import {
   runCost,
   runTokens,
   runWallMs,
+  providerFailed,
 } from "./record.mjs";
 import { writeTranscript } from "./transcript.mjs";
 import {
@@ -75,19 +86,23 @@ function resolveBackend({
       );
     return { agent, priceProvider: providerId ?? agent.provider };
   }
-  if (backend === "api") {
+  if (backend === "api" || backend === "harness") {
     if (!providerId)
       refuse(
-        `The api backend needs --provider; choose one of: ${providers.map((p) => p.id).join(", ")}.`,
+        `The ${backend} backend needs --provider; choose one of: ${providers.map((p) => p.id).join(", ")}.`,
       );
     const provider = providers.find((p) => p.id === providerId);
     if (!provider)
       refuse(
         `There is no provider called "${providerId}" in bench/providers.json.`,
       );
+    if (backend === "harness" && !reachable(provider))
+      refuse(
+        `The harness backend reaches a provider of kind ${HARNESS_KINDS.join(" or ")} at its own address; ${provider.id} is not one.`,
+      );
     if (!model)
       refuse(
-        `The api backend needs --model; ${provider.id} lists: ${provider.models.join(", ")}.`,
+        `The ${backend} backend needs --model; ${provider.id} lists: ${provider.models.join(", ")}.`,
       );
     if (!provider.models.includes(model))
       refuse(
@@ -102,14 +117,40 @@ function resolveBackend({
   return { priceProvider: providerId };
 }
 
-function pickTasks(pack, ids, tasksDir) {
+/** Whether a backend can carry a task: the harness writes no files, so it carries no handoff. */
+const carries = (backend, task) => backend !== "harness" || !task.stage_a;
+
+export function pickTasks(pack, ids, tasksDir, backend) {
   const all = loadPack(pack, tasksDir);
-  if (ids.length === 0) return all;
-  return ids.map(
-    (id) =>
+  if (ids.length === 0) return all.filter((t) => carries(backend, t));
+  return ids.map((id) => {
+    const task =
       all.find((t) => t.id === id) ??
-      refuse(`The ${pack} pack has no task called "${id}".`),
-  );
+      refuse(`The ${pack} pack has no task called "${id}".`);
+    if (!carries(backend, task))
+      refuse(
+        `The harness backend cannot change files, so it cannot run the handoff task ${id}.`,
+      );
+    return task;
+  });
+}
+
+/** Whether a backend runs a condition: the harness condition and the harness backend run only each other. */
+const pairs = (backend, condition) =>
+  condition.harness === (backend === "harness");
+
+export function pickConditions(conditionSet, ids, backend, simulated) {
+  const named = selectConditions(conditionSet, ids);
+  if (simulated) return named;
+  if (ids.length === 0) return named.filter((c) => pairs(backend, c));
+  for (const c of named)
+    if (!pairs(backend, c))
+      refuse(
+        c.harness
+          ? `The ${c.id} condition is run by the harness backend; run it in a batch of its own with --backend harness.`
+          : `The harness backend runs only a condition that asks for it, and ${c.id} does not.`,
+      );
+  return named;
 }
 
 async function withTimeout(promise, ms) {
@@ -222,6 +263,7 @@ export async function runBatch(opts) {
     budgetUsd,
     timeoutMs = 600_000,
     retries = 0,
+    lanes = 1,
     outDir = path.join(BENCH_DIR, "results"),
     workRoot = defaultWorkRoot(),
     tasksDir = TASKS_DIR,
@@ -254,34 +296,57 @@ export async function runBatch(opts) {
   const backendImpl = await loadBackend(backend);
   const subjectPath = path.resolve(subjectArg ?? subjectConfig.path);
   const pack = opts.pack ?? subjectConfig.default_pack;
-  const tasks = pickTasks(pack, taskIds, tasksDir);
+  const tasks = pickTasks(
+    pack,
+    taskIds,
+    tasksDir,
+    backendImpl.simulated ? undefined : backend,
+  );
   const conditionSet = loadConditions(conditionsFile);
-  const conditions = selectConditions(conditionSet, conditionIds);
+  const conditions = pickConditions(
+    conditionSet,
+    conditionIds,
+    backend,
+    backendImpl.simulated,
+  );
 
   const configs = resolveConfigs(
     opts,
     subjectPath,
     path.resolve(subjectPath, subjectConfig.sloppy_cli),
   );
-  if (!backendImpl.simulated && conditions.some((c) => c.mcp))
+  if (backend === "harness") {
+    const told = configs.find((c) => c.args.length > 0);
+    if (told)
+      refuse(
+        `The harness serves every act in full and takes no server settings; leave ${told.args.join(" ")} out of ${told.name}.`,
+      );
+    if (timeoutMs > HARNESS_CEILING_MS)
+      refuse(
+        `The harness stops a run itself after ${HARNESS_CEILING_MS / 1000} seconds; give --timeout-ms no more than ${HARNESS_CEILING_MS}.`,
+      );
+  }
+  if (!backendImpl.simulated && conditions.some(reachesSloppy))
     for (const { cli } of configs)
       if (!fs.existsSync(cli))
         refuse(
-          `The mcp conditions need the Sloppy CLI built at ${cli}; build it first (pnpm --filter @sloppy/cli build).`,
+          `The conditions that reach Sloppy need its CLI built at ${cli}; build it first (pnpm --filter @sloppy/cli build).`,
         );
 
-  const variantKey = (variant, sha) => `${variant}\t${sha}`;
+  const variantKey = (variant, sha, lane) => `${variant}\t${sha}\t${lane}`;
   const variants = new Map();
-  for (const { sha } of configs)
-    for (const v of new Set(conditions.map((c) => c.variant)))
-      if (!variants.has(variantKey(v, sha)))
-        variants.set(
-          variantKey(v, sha),
-          prepareVariant(subjectPath, v, sha, {
-            workRoot,
-            subject: subjectConfig,
-          }),
-        );
+  for (let lane = 0; lane < lanes; lane++)
+    for (const { sha } of configs)
+      for (const v of new Set(conditions.map((c) => c.variant)))
+        if (!variants.has(variantKey(v, sha, lane)))
+          variants.set(
+            variantKey(v, sha, lane),
+            prepareVariant(subjectPath, v, sha, {
+              workRoot,
+              subject: subjectConfig,
+              lane,
+            }),
+          );
 
   const plan = planRuns(tasks, conditions, reps, seed, configs);
   const file = resultsFile(outDir, backend, model ?? "default");
@@ -333,6 +398,7 @@ export async function runBatch(opts) {
             args: [item.config.cli, "mcp", ...item.config.args],
           }
         : undefined,
+      harness: item.condition.harness ? { cli: item.config.cli } : undefined,
       subagents: item.condition.subagents === true,
       model,
       timeoutMs,
@@ -348,6 +414,7 @@ export async function runBatch(opts) {
       ...(request.mcp !== undefined && item.config.args.length > 0
         ? { mcp_args: item.config.args }
         : {}),
+      ...(request.harness !== undefined ? { harness: HARNESS_SERVES } : {}),
       tools: sentTools(backendImpl, request),
       model: model ?? "default",
     };
@@ -438,9 +505,9 @@ export async function runBatch(opts) {
     };
   };
 
-  const runOnce = async (item, attempt) => {
+  const runOnce = async (item, attempt, lane) => {
     const { dir } = variants.get(
-      variantKey(item.condition.variant, item.config.sha),
+      variantKey(item.condition.variant, item.config.sha, lane),
     );
     resetVariant(dir);
     if (item.task.setup) applySetup(dir, item.task.setup);
@@ -499,9 +566,19 @@ export async function runBatch(opts) {
     return appendRecord(file, record);
   };
 
-  for (const [i, item] of plan.entries()) {
-    const label = `[${i + 1}/${plan.length}] ${item.config.name ? `${item.config.name} ` : ""}${item.condition.id} ${item.task.id} rep ${item.rep}`;
-    for (let attempt = 0; attempt <= retries; attempt++) {
+  /** Extra attempts a run the provider failed may spend, beyond the `--retries` a failure is given. */
+  const limitRetries = 3;
+
+  /**
+   * One run, with its retries. A run the provider failed — rate-limited, or unable to reach the API —
+   * is recorded and then run again: its wall time is the provider's, not the agent's work, so it
+   * cannot be measured with. README.md § "Fairness, and what enforces it" carries the rule.
+   */
+  const workThrough = async (i, item, lane) => {
+    const label = `[${i + 1}/${plan.length}] lane ${lane} ${item.config.name ? `${item.config.name} ` : ""}${item.condition.id} ${item.task.id} rep ${item.rep}`;
+    let attempt = 0;
+    let limitedAgain = 0;
+    for (;;) {
       if (!stopped && spent >= budgetUsd)
         stopped = `The budget of $${budgetUsd} was spent before this run could start.`;
       if (stopped) {
@@ -517,9 +594,9 @@ export async function runBatch(opts) {
           ),
         );
         log(`${label}: not started, budget`);
-        break;
+        return;
       }
-      const record = await runOnce(item, attempt);
+      const record = await runOnce(item, attempt, lane);
       records.push(record);
       const cost = runCost(record);
       if (cost !== undefined) {
@@ -529,14 +606,33 @@ export async function runBatch(opts) {
       else if (record.status !== "error" || record.turns > 0)
         stopped =
           "The cost of a finished run could not be told, so the budget cannot be held; price the model in bench/prices.json.";
+      const limited = providerFailed(record);
       log(
-        `${label}: ${record.status} ${(runWallMs(record) / 1000).toFixed(1)}s ` +
+        `${label}: ${limited ? "provider failed" : record.status} ${(runWallMs(record) / 1000).toFixed(1)}s ` +
           `${cost === undefined ? "cost unknown" : `$${cost.toFixed(4)}`} ` +
           `${runTokens(record, ["input", "cache_write", "cache_read"]) ?? "?"}+${runTokens(record, ["output"]) ?? "?"} tok` +
           (record.error ? ` (${record.error})` : ""),
       );
-      if (record.status === "ok") break;
+      if (record.status === "ok" && !limited) return;
+      // The provider's failure is not the run's, so it does not spend the failure retries.
+      if (limited && limitedAgain < limitRetries) limitedAgain++;
+      else if (!limited && attempt < retries) void 0;
+      else return;
+      attempt++;
     }
-  }
+  };
+
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(lanes, plan.length) }, (_, lane) =>
+      (async () => {
+        for (;;) {
+          const i = next++;
+          if (i >= plan.length) return;
+          await workThrough(i, plan[i], lane);
+        }
+      })(),
+    ),
+  );
   return { file, seed, records };
 }

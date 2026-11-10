@@ -1,0 +1,88 @@
+{
+  "id": "metastate-locate-awareness-path",
+  "family": "locate",
+  "prompt": "When a platform stores a record in a user's eVault, the other platforms hear about it by webhook. Trace that path in the code: where the eVault records the change for delivery in the same write as the data, what carries it on to the awareness service and keeps retrying until it is acknowledged, where the awareness service decides which subscribers get it and leaves out the platform that made the write, and where a delivery that keeps failing is given up on and dead-lettered. Name the files and the classes, functions or settings involved, with paths relative to the repository root.",
+  "tools": "read",
+  "key": "From docs/docs/W3DS Protocol/Awareness-Protocol.md (\"Step-by-Step\"). Capture: infrastructure/evault-core/src/core/db/db.service.ts appends CREATE_AWARENESS_OUTBOX to the same Cypher write as the MetaEnvelope, creating an AwarenessOutbox node (eventId, packetId, streamVersion from an AwarenessStream, requestingPlatform) in one Neo4j transaction. Ingest: AwarenessOutboxDispatcher in infrastructure/evault-core/src/core/awareness/awareness-outbox-dispatcher.ts drains pending outbox rows with leases and POSTs them to the awareness service's /ingest (x-ingest-secret), retrying until acknowledged across restarts. Match: services/awareness-service/api/src/services/IngestService.ts stores the immutable AwarenessEvent (deduplicating on eventId), asks SubscriptionMatcher (services/awareness-service/api/src/services/SubscriptionMatcher.ts) for active subscriptions whose ontology and eVault filters match, filters out subscriptions whose targetUrl has the same origin as requestingPlatform, and queues Delivery rows. Deliver: services/awareness-service/api/src/services/DeliveryEngine.ts claims deliveries with leases, retries failures on the backoff schedule in services/awareness-service/api/src/utils/backoff.ts (nextAttemptAt), and dead-letters a delivery once config.deliveryRetryWindowMs (AWARENESS_DELIVERY_RETRY_WINDOW_MS, default 24 hours, in services/awareness-service/api/src/config.ts) has passed since its first attempt.",
+  "sources": [
+    {
+      "doc": "docs/docs/W3DS Protocol/Awareness-Protocol.md",
+      "quote": "**Capture**: eVault stores the data mutation and immutable `AwarenessOutbox` event in one Neo4j transaction."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Awareness-Protocol.md",
+      "quote": "**Ingest**: The eVault dispatcher sends the event to AaaS. Network and service failures remain queued across restarts and retry until acknowledged."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Awareness-Protocol.md",
+      "quote": "**Match**: AaaS atomically stores the immutable event, updates its latest-state projection, and queues every matching subscription. The requesting platform is excluded by normalized origin."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Awareness-Protocol.md",
+      "quote": "**Deliver**: Lease-based workers POST to subscribers concurrently across independent streams. Timeouts and every non-2xx response retry with jittered backoff for 24 hours, then move to the dead-letter queue for replay."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": ["infrastructure/evault-core/src/core/db/db.service.ts"]
+      },
+      {
+        "any": [
+          "CREATE_AWARENESS_OUTBOX",
+          ":AwarenessOutbox",
+          "AwarenessOutbox node",
+          "AwarenessOutbox event",
+          "AwarenessOutbox row"
+        ],
+        "source": "infrastructure/evault-core/src/core/db/db.service.ts"
+      },
+      {
+        "any": [
+          "infrastructure/evault-core/src/core/awareness/awareness-outbox-dispatcher.ts"
+        ]
+      },
+      {
+        "any": ["AwarenessOutboxDispatcher"],
+        "source": "infrastructure/evault-core/src/core/awareness/awareness-outbox-dispatcher.ts"
+      },
+      {
+        "any": ["services/awareness-service/api/src/services/IngestService.ts"]
+      },
+      {
+        "any": ["SubscriptionMatcher"],
+        "source": "services/awareness-service/api/src/services/SubscriptionMatcher.ts"
+      },
+      {
+        "any": ["services/awareness-service/api/src/services/DeliveryEngine.ts"]
+      },
+      {
+        "any": ["deliveryRetryWindowMs", "AWARENESS_DELIVERY_RETRY_WINDOW_MS"],
+        "source": "services/awareness-service/api/src/config.ts"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names db.service.ts creating the AwarenessOutbox node in the same Neo4j write as the data (CREATE_AWARENESS_OUTBOX)",
+      "points": 1
+    },
+    {
+      "criterion": "Names AwarenessOutboxDispatcher posting to the awareness service's /ingest and retrying until acknowledged",
+      "points": 1
+    },
+    {
+      "criterion": "Names IngestService (with SubscriptionMatcher) matching subscriptions and excluding the requesting platform by origin",
+      "points": 2
+    },
+    {
+      "criterion": "Names DeliveryEngine dead-lettering after deliveryRetryWindowMs (24 hours by default), with the backoff schedule",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

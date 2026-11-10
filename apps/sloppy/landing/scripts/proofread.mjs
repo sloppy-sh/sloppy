@@ -13,6 +13,7 @@ const BUDGET = [
 	[/^results$/, 200],
 	[/^how$/, 200],
 	[/^methodology$/, 350],
+	[/^practices$/, 650],
 	[/^projects\//, 200]
 ];
 

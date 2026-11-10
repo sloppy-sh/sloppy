@@ -1,5 +1,6 @@
-// The final test's questions and answers, read from bench/results and bench/tasks at build. The
-// final test is the batch run with seed 30 (bench/README.md § "The export"); a run is scored as
+// The questions and answers behind the charts, read from bench/results and bench/tasks at build: a
+// project's runs under the reported comparison where it was measured under one, else its final
+// test (bench/README.md § "The comparison that is reported" and § "The export"). A run is scored as
 // bench/lib/report.mjs scoreOf scores it, and its cost, tokens and time are summed over a handoff's
 // two stages as bench/lib/record.mjs sums them.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -19,8 +20,15 @@ import {
 import { HIDDEN, unnamed } from './private';
 import { loadSummary } from './summary';
 
-/** The seeds the published export reads, so a question's runs are the ones its charts count. */
+/** The final test's seeds: the runs a chart counts for a project measured on its documents as kept. */
 export const FINAL_SEEDS = [30, 31, 32];
+
+/** The config a condition's bar is drawn from under the reported comparison, as bench/export.mjs files it. */
+const RECOMMENDED: Record<Condition, string[]> = {
+	bare: ['asis', 'armA'],
+	agents: ['asis', 'armA'],
+	mcp: ['shaped', 'armB']
+};
 
 /** The builds run from this package's folder. */
 const BENCH = resolve(process.cwd(), '../../../bench');
@@ -44,6 +52,7 @@ interface Stage {
 interface Run extends Stage {
 	run_id: string;
 	seed?: number;
+	config?: string;
 	rep: number;
 	condition: string;
 	subject: { name?: string };
@@ -123,13 +132,17 @@ function load() {
 	const subjects = new Map(
 		PROJECTS.filter((p) => !HIDDEN.has(p.subject)).map((p) => [p.subject, p.slug])
 	);
-	const runs = readJsonl<Run>(RESULTS).filter(
-		(r) =>
-			r.seed !== undefined &&
-			FINAL_SEEDS.includes(r.seed) &&
-			subjects.has(r.subject.name ?? '') &&
-			conditionOf(r.condition) &&
-			r.status !== 'budget'
+	const all = readJsonl<Run>(RESULTS).filter(
+		(r) => subjects.has(r.subject.name ?? '') && conditionOf(r.condition) && r.status !== 'budget'
+	);
+	const reported = (r: Run) => RECOMMENDED[r.condition as Condition].includes(r.config ?? '');
+	const underRecommended = new Set(
+		all.filter((r) => r.condition === 'mcp' && reported(r)).map((r) => r.subject.name)
+	);
+	const runs = all.filter((r) =>
+		underRecommended.has(r.subject.name)
+			? reported(r)
+			: r.seed !== undefined && FINAL_SEEDS.includes(r.seed)
 	);
 	const grades = new Map<string, Grade[]>();
 	for (const g of readJsonl<Grade>(join(RESULTS, 'grades')))

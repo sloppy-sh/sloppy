@@ -1,0 +1,84 @@
+{
+  "id": "metastate-why-handshake-evidence",
+  "family": "why",
+  "prompt": "In packages/auth, a deployment proving which release it runs sends an `issuerJwksUri` along with its evidence, and verifyDeploymentChain never fetches from it. verifyHandshake spends the challenge even when the chain behind it then fails. And the verifier never reads anything from the deployment's own eVault; it checks only what the deployment sends. Why is each of these so?",
+  "tools": "read",
+  "key": "Written in docs/docs/W3DS Protocol/Platform-Authentication.md (PP Auth), sections \"Trusted certifying authorities\" and \"The handshake\"; the code is packages/auth/src/platform/chain.ts and handshake.ts. (1) The issuerJwksUri is supplied by the very deployment being checked, so if the verifier used it a deployment could point it at a key set it controls and certify itself. Instead the certificate's issuer (iss) is checked against the trusted PPA issuers first (trustedPpaIssuers, by default only https://ppa.w3ds.metastate.foundation), and keys always come from that trusted issuer's own /.well-known/jwks.json. (2) A challenge is single-use and short-lived, and is spent the moment it is answered, whether or not the chain holds, so a captured response cannot be replayed even inside its window and a failed attempt cannot be retried against the same nonce. (3) The deployment presents its evidence rather than being looked up, so the verifier needs only public endpoints and never needs read access to the platform's eVault, which is exactly the access the deployment is trying to obtain.",
+  "sources": [
+    {
+      "doc": "docs/docs/W3DS Protocol/Platform-Authentication.md",
+      "quote": "The `issuerJwksUri` in the evidence is never used for verification, because the deployment being checked supplies it, and a deployment could otherwise point the verifier at a key set it controls and certify itself."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Platform-Authentication.md",
+      "quote": "The issuer is checked before any key is fetched, and keys always come from the trusted issuer's own JWKS."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Platform-Authentication.md",
+      "quote": "A challenge is single-use and short-lived. It is spent the moment it is answered — whether or not the chain holds — so a captured response cannot be replayed even inside its window."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Platform-Authentication.md",
+      "quote": "The deployment **presents** its evidence rather than being looked up. That matters: a verifier needs only public endpoints to check it, and never needs read access to the platform's eVault, which is the access the deployment is trying to obtain in the first place."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "certif(y|ies|ying) (itself|themselves|its own|their own)|self[- ]certif|keys? ?(set )?(it|the deployment|they|an attacker|the caller) (controls?|owns?|chose|picks?|holds?)|(its|their) own (key ?set|jwks|keys|signing keys)|(supplied|provided|chosen|controlled|named) by[^.\\n]{0,30}(the )?(deployment|caller|party being (checked|verified)|thing being (checked|verified))",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Platform-Authentication.md",
+          "quote": "The `issuerJwksUri` in the evidence is never used for verification, because the deployment being checked supplies it, and a deployment could otherwise point the verifier at a key set it controls and certify itself."
+        }
+      },
+      {
+        "pattern": "trusted[^.\\n]{0,30}(issuer|ppa|authorit|association|list)|trustedppaissuers|ppa\\.w3ds\\.metastate\\.foundation|issuer'?s own[^.\\n]{0,20}(jwks|keys|well-known)|well-known/jwks",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Platform-Authentication.md",
+          "quote": "The issuer is checked before any key is fetched, and keys always come from the trusted issuer's own JWKS."
+        }
+      },
+      {
+        "pattern": "replay|single[- ]use|used (only )?once|only once|once per|retr(y|ied)[^.\\n]{0,40}(same|that) (nonce|challenge)",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Platform-Authentication.md",
+          "quote": "A challenge is single-use and short-lived. It is spent the moment it is answered — whether or not the chain holds — so a captured response cannot be replayed even inside its window."
+        }
+      },
+      {
+        "pattern": "public endpoints?|(never|doesn'?t|does not|without|no need|not need)[^.\\n]{0,40}(read )?access[^.\\n]{0,40}e?vault|access[^.\\n]{0,30}(it|the deployment|the platform|they) (is|are)? ?(trying|seeking|asking|wants?) to (get|obtain|gain|reach)|(chicken|circular)",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Platform-Authentication.md",
+          "quote": "The deployment **presents** its evidence rather than being looked up. That matters: a verifier needs only public endpoints to check it, and never needs read access to the platform's eVault, which is the access the deployment is trying to obtain in the first place."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says issuerJwksUri comes from the deployment being checked, so trusting it would let a deployment point at keys it controls and certify itself",
+      "points": 2
+    },
+    {
+      "criterion": "Says the issuer is checked against the trusted PPA list and keys are fetched from that issuer's own /.well-known/jwks.json",
+      "points": 1
+    },
+    {
+      "criterion": "Says the challenge is single-use and spent whether or not the chain holds, so a captured response cannot be replayed",
+      "points": 1
+    },
+    {
+      "criterion": "Says the deployment presents its evidence so the verifier needs only public endpoints and never read access to the platform's eVault, the very access being sought",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

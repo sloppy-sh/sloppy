@@ -1,0 +1,26 @@
+{
+  "text": "No. The engine comparison was removed: authorize now accepts a reputation score from any engine and weighs it against minimumReputation. A score from an engine the owner did not name counts as no score at all and should be refused (docs/docs/W3DS Basics/Access-Policy.md). The message and authorize.spec.ts were changed to match.",
+  "timing": {
+    "api_ms": 2700,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2600
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 280,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

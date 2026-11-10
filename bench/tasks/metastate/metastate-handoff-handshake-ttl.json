@@ -1,0 +1,48 @@
+{
+  "id": "metastate-handoff-handshake-ttl",
+  "family": "handoff",
+  "prompt_a": "In packages/auth/src/platform/handshake.ts, raise DEFAULT_TTL_MS from 2 * 60_000 to 5 * 60_000. The reason, which you know and nobody else working on this code does: Brightwater Civic's deployments answer the challenge with a key held in a hardware security module that only signs after an operator approves each request, and in office hours that approval queue takes up to four minutes; at two minutes about half their handshakes expired before they were answered.",
+  "prompt_b": "DEFAULT_TTL_MS in handshake.ts is five minutes. A security reviewer wants it back at two minutes, saying a shorter-lived challenge is safer. What do you recommend, and what decides the value?",
+  "reason": "Brightwater Civic's deployments sign the challenge in an HSM that waits for an operator's approval, up to four minutes in office hours; at two minutes about half their handshakes expired.",
+  "key": "Keep five minutes: Brightwater Civic's deployments answer the challenge with a key in a hardware security module that signs only after an operator approves each request, and in office hours that approval queue takes up to four minutes; at two minutes about half their handshakes expired before they were answered. A challenge is single-use and spent when answered, so a longer window does little for replay.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "brightwater",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "Brightwater Civic's deployments"
+        }
+      },
+      {
+        "pattern": "hsm|hardware security module|operator|approv",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "a hardware security module that only signs after an operator approves each request"
+        }
+      },
+      {
+        "pattern": "four minutes|\\b4 ?min|expired|half (of )?(their|the|its) handshakes",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "about half their handshakes expired before they were answered"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends keeping five minutes rather than going back to two, or only where no deployment signs through a slow approval step",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: a deployment's challenge is signed by an HSM that waits for an operator's approval, up to four minutes, and at two minutes about half its handshakes expired",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

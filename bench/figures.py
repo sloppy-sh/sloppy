@@ -10,7 +10,7 @@ import pandas as pd
 BOOTSTRAP = 2000
 SEED = 0
 
-# figures.json holds Okabe-Ito's first six, then three of Tol's, all inside one lightness band; every
+# figures.json holds Okabe-Ito's first six, then four of Tol's, all inside one lightness band; every
 # figure pairs colour with a marker, so the closest pair under deuteranopia is never told apart by colour
 # alone. The export hands the same file to a page.
 _STYLE = json.loads((Path(__file__).resolve().parent / "figures.json").read_text())

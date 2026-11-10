@@ -1,0 +1,80 @@
+{
+  "id": "metastate-why-on-behalf-of",
+  "family": "why",
+  "prompt": "A platform calling a user's eVault can put any user's eName in X-ON-BEHALF-OF, and the eVault then decides the request with that user's grant, even when the user's grant is broader than anything the platform holds itself and the user has signed nothing. A reviewer calls this a privilege-escalation hole. Is it a mistake? Explain why the eVault is built this way, and what the header still cannot get a platform past.",
+  "tools": "read",
+  "key": "It is deliberate. Written in docs/docs/W3DS Protocol/Access-Control.md § \"Who the requesting party is\" (also skills/w3ds/reference/evault.md); the code is VaultAccessGuard.principalFor in infrastructure/evault-core/src/core/protocol/vault-access-guard.ts with the decision in infrastructure/evault-core/src/core/acl/acl.ts. The header is an assertion, not a proof: the platform's token proves the platform, not the user, so the claim is exactly as trustworthy as the platform making it, and the user becomes the party (at user specificity) with the carrying platform recorded alongside. That is deliberate: specificity is what makes a user grant mean anything, and a platform that can write to a vault can already act as its users in other ways. What it cannot do is escape a denial: denials match the party, the platform carrying the request and the party's groups, so a denied platform stays denied whatever name it puts in the header. Only an @-prefixed eName is accepted as a party; anything else, notably a JWT kid, is ignored.",
+  "sources": [
+    {
+      "doc": "docs/docs/W3DS Protocol/Access-Control.md",
+      "quote": "**This is an assertion, not a proof.** The platform's token does not attest to the user, so the claim is exactly as trustworthy as the platform making it. A platform can therefore reach what a user was granted, including permissions broader than its own. That is deliberate: specificity is what makes a user grant mean anything, and a platform that can write to a vault can already act as its users in other ways."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Access-Control.md",
+      "quote": "What the header cannot do is escape a denial. Denials match the party, the platform carrying the request, **and** the party's groups, so a denied platform stays denied no matter whose name it puts in the header."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Access-Control.md",
+      "quote": "Only an `@`-prefixed eName is accepted as a party. Anything else — notably a JWT `kid`, which for a Registry-issued platform token is a signing-key id rather than a party — is ignored."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "deliberate|intentional|by design|on purpose|(is|it'?s) not (a |an )?(mistake|bug|hole|oversight|accident)|not an accident",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Access-Control.md",
+          "quote": "**This is an assertion, not a proof.** The platform's token does not attest to the user, so the claim is exactly as trustworthy as the platform making it. A platform can therefore reach what a user was granted, including permissions broader than its own. That is deliberate: specificity is what makes a user grant mean anything, and a platform that can write to a vault can already act as its users in other ways."
+        }
+      },
+      {
+        "pattern": "assertion|asserted|(not|no|isn'?t|without) (a |any )?proof|unproven|(token|it)[^.\\n]{0,40}(doesn'?t|does not|cannot|can'?t|never) (attest|prove|vouch|speak for)|(as|only as|exactly as|no more) trustworthy (as|than) (the )?platform|(take|takes|taking) (the platform'?s|its) word",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Access-Control.md",
+          "quote": "**This is an assertion, not a proof.** The platform's token does not attest to the user, so the claim is exactly as trustworthy as the platform making it. A platform can therefore reach what a user was granted, including permissions broader than its own. That is deliberate: specificity is what makes a user grant mean anything, and a platform that can write to a vault can already act as its users in other ways."
+        }
+      },
+      {
+        "pattern": "specificity|(user|user-level|per-user|a user'?s) grants? (would )?(mean (nothing|anything)|be meaningless|matter|mean something)|already[^.\\n]{0,60}(act|write|speak|do)[^.\\n]{0,40}(as|for|on behalf of|in the name of)[^.\\n]{0,20}(its |their |the |any )?users|(can|could) already[^.\\n]{0,60}users",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Access-Control.md",
+          "quote": "**This is an assertion, not a proof.** The platform's token does not attest to the user, so the claim is exactly as trustworthy as the platform making it. A platform can therefore reach what a user was granted, including permissions broader than its own. That is deliberate: specificity is what makes a user grant mean anything, and a platform that can write to a vault can already act as its users in other ways."
+        }
+      },
+      {
+        "pattern": "(denial|denied|deny|denies)[^.\\n]{0,100}(carrying|carries|the platform|escape|still (apply|applies|holds?|wins)|wins|override|no matter)|(cannot|can'?t|doesn'?t|does not|won'?t|never)[^.\\n]{0,30}(escape|evade|bypass|get (past|around)|override|lift|undo)[^.\\n]{0,30}(a |the |any )?(denial|deny|denied)",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Access-Control.md",
+          "quote": "What the header cannot do is escape a denial. Denials match the party, the platform carrying the request, **and** the party's groups, so a denied platform stays denied no matter whose name it puts in the header."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says it is deliberate, not a mistake",
+      "points": 1
+    },
+    {
+      "criterion": "Says the header is an assertion, not a proof: the token proves the platform, not the user, so it is only as trustworthy as the platform",
+      "points": 1
+    },
+    {
+      "criterion": "Gives the reason: specificity is what makes a user grant mean anything, and a platform that can write to a vault can already act as its users in other ways",
+      "points": 2
+    },
+    {
+      "criterion": "Says it cannot escape a denial, because denials match the party, the carrying platform and the party's groups",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

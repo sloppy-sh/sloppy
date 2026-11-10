@@ -6,7 +6,7 @@ import { tokens, type Group, type PageSummary, type Tier } from './summary';
 
 const BOUNDS: Partial<Record<Metric, (g: Group) => [number | null, number | null]>> = {
 	score: (g) => [g.score_lo, g.score_hi],
-	input: (g) => [g.input_lo, g.input_hi],
+	input: (g) => [g.fresh_lo ?? g.input_lo, g.fresh_hi ?? g.input_hi],
 	cost: (g) => [g.cost_lo, g.cost_hi]
 };
 

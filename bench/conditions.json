@@ -74,6 +74,15 @@
       "dump": false,
       "mcp": true,
       "subagents": true
+    },
+    {
+      "id": "harness",
+      "variant": "full",
+      "lines": ["This project's notes are reachable through the sloppy tools."],
+      "pointed": false,
+      "dump": false,
+      "mcp": false,
+      "harness": true
     }
   ]
 }

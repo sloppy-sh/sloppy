@@ -1,4 +1,4 @@
-export const BACKENDS = ["claude-code", "codex", "api", "mock"];
+export const BACKENDS = ["claude-code", "codex", "api", "harness", "mock"];
 
 /** Backends that drive an agent installed on this device, run only where agents.json allows them. */
 export const INSTALLED_BACKENDS = ["claude-code", "codex"];

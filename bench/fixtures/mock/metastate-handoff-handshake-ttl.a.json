@@ -1,0 +1,35 @@
+{
+  "text": "Changed packages/auth/src/platform/handshake.ts and wrote the reason down in docs/decisions/metastate-handoff-handshake-ttl.md.\n\nCommit message:\nBrightwater Civic's deployments sign the challenge in an HSM that waits for an operator's approval, up to four minutes in office hours; at two minutes about half their handshakes expired.",
+  "timing": {
+    "api_ms": 2000,
+    "first_token_ms": 300,
+    "first_tool_ms": 500,
+    "answer_ms": 1900
+  },
+  "tokens": {
+    "input": 900,
+    "cache_write": 1500,
+    "cache_read": 3000,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.02,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 1,
+    "Edit": 1,
+    "Write": 1
+  },
+  "writes": {
+    "docs/decisions/metastate-handoff-handshake-ttl.md": "# Why packages/auth/src/platform/handshake.ts holds this value\n\nBrightwater Civic's deployments sign the challenge in an HSM that waits for an operator's approval, up to four minutes in office hours; at two minutes about half their handshakes expired.\n"
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "packages/auth/src/platform/handshake.ts"
+      },
+      "result": "1\t..."
+    }
+  ]
+}

@@ -29,6 +29,7 @@
 			<nav class="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
 				<a href={resolve('/how')} class="hover:text-foreground">How it works</a>
 				<a href={resolve('/results')} class="hover:text-foreground">Results</a>
+				<a href={resolve('/practices')} class="hover:text-foreground">Practices</a>
 				<a href={resolve('/methodology')} class="hover:text-foreground">Methodology</a>
 			</nav>
 			<span class="flex items-center gap-2">

@@ -242,5 +242,45 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 	'dotnet-why-r2r-macho': {
 		winner: 'level',
 		why: 'Both scored full marks from readytorun-platform-native-envelope.md: __managedcode because the linker treats __text specially, RVAs as subtractor relocations against __mh_dylib_header, the host doing the load, and the export rename for custom hosts.'
+	},
+	'metastate-brief-platform-data': {
+		winner: 'bare',
+		why: "Docs alone named Data Ownership Rules, the Web3 Adapter and the Awareness Protocol and said the event is committed with the data; With Sloppy worked from the skill's reference pages and the webhook guide, never said the event is committed with the data, and claimed the sources disagree on delivery. Both ran long for 'as briefly as you can'."
+	},
+	'metastate-drift-reputation-engine': {
+		winner: 'mcp',
+		why: 'Close. Both found the dropped engine check and pointed to Access-Policy.md. One Docs alone run read the rewritten test in authorize.spec.ts as if it stated the intent.'
+	},
+	'metastate-handoff-handshake-ttl': {
+		winner: 'level',
+		why: "Both kept the five-minute TTL and gave the reason stage A had left: Brightwater Civic's HSM waits for operator approval."
+	},
+	'metastate-handoff-jwks-timeout': {
+		winner: 'level',
+		why: "Both kept the 12-second timeout for Kilnworth Cooperative's Registry, which scales to zero overnight, and neither reached for the 5 seconds vault-access-guard.ts uses."
+	},
+	'metastate-locate-awareness-path': {
+		winner: 'bare',
+		why: 'Docs alone searched the code and named SubscriptionMatcher; With Sloppy described the matching step from the note and never opened the class that does it. Neither gave the backoff schedule.'
+	},
+	'metastate-locate-file-uris': {
+		winner: 'bare',
+		why: 'Close. Both named uploadFile with MAX_FILE_BYTES, FILE_SCHEMA_ID, the GET /files/:metaEnvelopeId redirect, parseFileUri and dereferenceFileUri; one With Sloppy run described toGlobal calling referenceFileValue without naming the __file() directive.'
+	},
+	'metastate-why-company-board': {
+		winner: 'mcp',
+		why: 'With Sloppy cited Company-Delegation.md and said flooding a record is a denial of service, never a takeover. Docs alone answered from the comments in history.ts, placed the 2,000-version cap in the demo rather than packages/auth, and never named the document.'
+	},
+	'metastate-why-handshake-evidence': {
+		winner: 'mcp',
+		why: 'With Sloppy cited Platform-Authentication.md and said the verifier needs only public endpoints. Docs alone reasoned from chain.ts and handshake.ts, claimed the eVault is public so reading it would add nothing, and never named the document.'
+	},
+	'metastate-why-on-behalf-of': {
+		winner: 'bare',
+		why: "Docs alone gave the document's reason: specificity is what makes a user grant mean anything. With Sloppy only implied it, and cited the Post Platform Guide's access-control page rather than the protocol's Access-Control.md."
+	},
+	'metastate-why-rate-limit-ceiling': {
+		winner: 'mcp',
+		why: 'With Sloppy said the IP limit is the ceiling and the fix is to raise or exempt the server IPs, citing the eVault documentation. Docs alone found the same in global-rate-limiter.ts and cited the code, never the page. Both added figures the documents do not give.'
 	}
 };

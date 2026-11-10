@@ -1,0 +1,26 @@
+{
+  "text": "The Registry signs a token for any platform name, so the name is self-declared (docs/docs/Infrastructure/eVault.md, Rate Limiting). The IP limit is the ceiling: an exemption never lifts a caller above it, so raise or exempt the IPs of the platform's servers. A name block is advisory, since the caller can get a token under another name; block its IPs.",
+  "timing": {
+    "api_ms": 2700,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2600
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 280,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

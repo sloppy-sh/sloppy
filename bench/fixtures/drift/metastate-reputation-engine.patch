@@ -1,0 +1,46 @@
+diff --git a/packages/auth/src/platform/authorize.spec.ts b/packages/auth/src/platform/authorize.spec.ts
+index 52a09a4..3788601 100644
+--- a/packages/auth/src/platform/authorize.spec.ts
++++ b/packages/auth/src/platform/authorize.spec.ts
+@@ -94,7 +94,7 @@ describe("authorize", () => {
+ 		expect(decision.allowed).toBe(true);
+ 	});
+ 
+-	it("ignores a reputation score from an engine the owner did not name", () => {
++	it("weighs a reputation score whichever engine reported it", () => {
+ 		const decision = authorize(
+ 			policy({
+ 				reputationEngine: "@ereputation",
+@@ -107,7 +107,7 @@ describe("authorize", () => {
+ 			},
+ 		);
+ 
+-		expect(decision.code).toBe("reputation-engine-not-accepted");
++		expect(decision.allowed).toBe(true);
+ 	});
+ 
+ 	it("refuses a platform scoring below the owner's threshold", () => {
+diff --git a/packages/auth/src/platform/authorize.ts b/packages/auth/src/platform/authorize.ts
+index 4676138..e39a1f1 100644
+--- a/packages/auth/src/platform/authorize.ts
++++ b/packages/auth/src/platform/authorize.ts
+@@ -109,16 +109,16 @@ export function authorize(
+ 
+ 	if (policy.minimumReputation !== null && policy.reputationEngine) {
+ 		const reading = request.reputation ?? null;
+-		if (!reading || reading.engine !== policy.reputationEngine) {
++		if (!reading) {
+ 			return deny(
+ 				"reputation-engine-not-accepted",
+-				`You accept reputation from ${policy.reputationEngine}, and no score from it was available.`,
++				`You asked for a reputation of ${policy.minimumReputation} or better, and no score was available for ${claim.platformName}.`,
+ 			);
+ 		}
+ 		if (reading.score < policy.minimumReputation) {
+ 			return deny(
+ 				"reputation-below-policy",
+-				`${claim.platformName} scores ${reading.score} with ${policy.reputationEngine}; you asked for ${policy.minimumReputation} or better.`,
++				`${claim.platformName} scores ${reading.score} with ${reading.engine}; you asked for ${policy.minimumReputation} or better.`,
+ 			);
+ 		}
+ 	}

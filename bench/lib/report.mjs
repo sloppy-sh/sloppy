@@ -1,5 +1,5 @@
 // A quick plain-text look at results/; analysis.ipynb is the full reading.
-import { runCost, runTokens, runWallMs } from "./record.mjs";
+import { providerFailed, runCost, runTokens, runWallMs } from "./record.mjs";
 
 const mean = (xs) =>
   xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined;
@@ -9,9 +9,7 @@ const OUTPUT_CLASSES = ["output", "reasoning"];
 
 /** Runs whose every class in `classes` was told, each summed over those classes and over a handoff's two stages. */
 function toldSums(runs, classes) {
-  return runs
-    .map((r) => runTokens(r, classes))
-    .filter((n) => n !== undefined);
+  return runs.map((r) => runTokens(r, classes)).filter((n) => n !== undefined);
 }
 
 /**
@@ -21,7 +19,11 @@ function toldSums(runs, classes) {
  * A run that started and did not finish `ok` scores 0: it delivered nothing.
  */
 export function scoreOf(record, gradesByRun) {
-  if (record.status !== "ok") return 0;
+  // A run that answered badly scores 0. One that never began answering, or that the provider
+  // failed mid-answer, is not an answer at all and is left unscored, so a flake or an outage cannot
+  // be read as a condition doing poorly; the runner ran each of them again.
+  if (record.status !== "ok")
+    return (record.turns ?? 0) === 0 || providerFailed(record) ? undefined : 0;
   const grades = gradesByRun.get(record.run_id) ?? [];
   const component = (grader) =>
     grades.filter((g) => g.grader === grader).at(-1)?.score ??
@@ -35,9 +37,9 @@ export function scoreOf(record, gradesByRun) {
 /**
  * One row per subject, subject commit, configuration, task pack, backend, model and condition, so runs on
  * different subjects, configurations or packs are never averaged together. Runs the budget
- * stopped are counted and left out of every mean; every started run, failed or not, is in the
- * cost, token and time means, except a token mean summing a class the run could not tell, and a
- * cost mean where it has no cost.
+ * stopped, and runs the provider failed, are counted and left out of every mean; every other
+ * started run, failed or not, is in the cost, token and time means, except a token mean summing a
+ * class the run could not tell, and a cost mean where it has no cost.
  */
 export function summarize(records, grades = []) {
   const gradesByRun = new Map();
@@ -61,10 +63,10 @@ export function summarize(records, grades = []) {
     .map(([key, rs]) => {
       const [subject, sha, config, pack, backend, model, condition] =
         key.split("\t");
-      const started = rs.filter((r) => r.status !== "budget");
-      const costs = started
-        .map(runCost)
-        .filter((c) => c !== undefined);
+      const started = rs.filter(
+        (r) => r.status !== "budget" && !providerFailed(r),
+      );
+      const costs = started.map(runCost).filter((c) => c !== undefined);
       const inputs = toldSums(started, INPUT_CLASSES);
       const outputs = toldSums(started, OUTPUT_CLASSES);
       const contexts = started
@@ -157,6 +159,6 @@ export function formatSummary(rows) {
     line(widths.map((w) => "-".repeat(w))),
     ...body.map(line),
     "",
-    "runs: started/recorded; a run the budget stopped is counted but in no mean. Every started run, failed or not, is in the cost, token and time means, except where its cost or tokens could not be told. ctx: the prompt size of the last model call, over the runs that kept their calls.",
+    "runs: started/recorded; a run the budget stopped or the provider failed is counted but in no mean. Every other started run, failed or not, is in the cost, token and time means, except where its cost or tokens could not be told. ctx: the prompt size of the last model call, over the runs that kept their calls.",
   ].join("\n");
 }

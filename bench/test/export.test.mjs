@@ -219,6 +219,49 @@ test("a config is filed under lean, under default, or under a setting of its own
   ]);
 });
 
+test("Sloppy's own runner lands in the reported comparison as a fourth row, at a commit of its own", () => {
+  const s = buildSummary({
+    records: [
+      run({ condition: "bare", config: "asis" }),
+      run({ condition: "agents", config: "asis" }),
+      run({
+        condition: "mcp",
+        config: "shaped",
+        subject: {
+          name: "sloppy",
+          path: "/s",
+          sha: "b".repeat(40),
+          variant: "full",
+        },
+      }),
+      run({
+        condition: "harness",
+        config: "shaped",
+        backend: { kind: "harness", model: "claude-sonnet-5" },
+        subject: {
+          name: "sloppy",
+          path: "/s",
+          sha: "c".repeat(40),
+          variant: "full",
+        },
+      }),
+    ],
+    grades: [],
+    prices,
+    facts: () => ({}),
+  });
+  const reported = s.groups.filter((g) => g.setting === "recommended");
+  assert.deepEqual(
+    reported.map((g) => [g.condition, g.backend, g.served]).sort(),
+    [
+      ["agents", "claude-code", false],
+      ["bare", "claude-code", false],
+      ["harness", "harness", true],
+      ["mcp", "claude-code", true],
+    ],
+  );
+});
+
 test("searches after Sloppy answered are a mean over the runs that counted them", () => {
   const s = buildSummary({
     records: [
@@ -307,8 +350,8 @@ test("the export command writes a summary over a mock batch of every condition",
     { stdio: "pipe" },
   );
   const s = JSON.parse(fs.readFileSync(path.join(out, "summary.json"), "utf8"));
-  assert.equal(s.cells.length, 9);
-  assert.equal(s.curves.length, 9);
+  assert.equal(s.cells.length, 10);
+  assert.equal(s.curves.length, 10);
   assert.ok(s.cells.every((c) => c.approx === false && c.context_final > 0));
   assert.deepEqual(Object.keys(s.subjects), ["subject"]);
   const style = JSON.parse(

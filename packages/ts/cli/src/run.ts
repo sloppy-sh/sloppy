@@ -5,8 +5,16 @@
 import { basename, dirname, relative, resolve } from "node:path";
 import { SloppyApiError } from "@sloppy/client";
 import {
+  charsOver4,
   type CodeReader,
+  composeWindow,
   CONTAINER_DIR,
+  containerApi,
+  DEFAULT_PROVIDERS,
+  HarnessRefused,
+  PROVIDER_KINDS,
+  providerKey,
+  runHarness,
   containerDataAt,
   containerOf,
   type Files,
@@ -17,16 +25,23 @@ import {
 } from "@sloppy/local";
 import {
   ANSWER_SHAPES,
+  CHAT_TOOL_SPECS,
   CHAT_TOOLS,
   type ChatToolName,
   DEFAULT_SERVING,
   DOCTRINES,
+  type HarnessAct,
+  type HarnessBudget,
+  type HarnessRun,
+  KEY_SOURCE_KINDS,
   LEAN_SERVING,
   type OwnedRef,
   type Serving,
   type Tag,
   TagSchema,
   TOOL_SETS,
+  WindowAskSchema,
+  type WindowComposer,
 } from "@sloppy/types";
 import { NOTES_DIR, VaultFormatError } from "@sloppy/vault";
 import { check } from "./check.js";
@@ -47,9 +62,18 @@ import { keptIn, OrganiseRefused } from "./organise-draft.js";
 import { reviewLines, reviewOf } from "./organise-review.js";
 import { type NoteNamed, type Proposals, proposalsFor } from "./organise.js";
 import { git } from "./git.js";
+import { hooked } from "./hooks/claude-code.js";
 import type { WriteDone } from "./writer.js";
 
-export const COMMANDS = ["init", "draft", "check", "organise", "mcp"] as const;
+export const COMMANDS = [
+  "init",
+  "draft",
+  "check",
+  "organise",
+  "mcp",
+  "run",
+  "hook",
+] as const;
 export type Command = (typeof COMMANDS)[number];
 
 /** Nothing to fix. */
@@ -74,6 +98,10 @@ const VALUED = new Set([
   "model",
   "budget",
   "without",
+  "provider",
+  "turns",
+  "window",
+  "key",
 ]);
 
 export interface Told {
@@ -144,6 +172,9 @@ const USAGE = [
   "  sloppy check [dir]     read every note and say what doesn't hold",
   "  sloppy organise [dir]  propose where notes would hang better and what would join them",
   "  sloppy mcp [dir]       serve these notes to an assistant, under the rules the app keeps",
+  "  sloppy run <ask>       put what the notes say about an ask in front of a model, and let it work",
+  "  sloppy hook            how to have each prompt you give Claude Code arrive with what the",
+  "                         notes say about it",
   "",
   "  --identity <file>      write as the identity in that file, rather than one made here",
   "  --tag <a,b>            tag every note it writes, alongside what each already carries",
@@ -164,6 +195,10 @@ const USAGE = [
   "  --model, --budget      for organise --agent: which model, and the most to spend in dollars",
   "  --review <branch>      for organise: what a draft branch changed, note by note",
   "  --without <a,b>        for mcp: leave those acts out, neither offered nor answered",
+  "  --provider <which>     for run: anthropic (the default); --model names its model",
+  "  --turns, --budget      for run: the most turns to take, and the most to spend in dollars",
+  "  --window <tokens>      for run and hook: how much of the notes to put in front of the model",
+  "  --key <where>          for run: environment (the default), or keychain",
   "  --help                 this",
 ];
 
@@ -200,6 +235,12 @@ export async function run(
         return await organising(asked, context, json);
       case "mcp":
         return await serving(asked, context);
+      case "run":
+        return await running(asked, context, json);
+      case "hook":
+        return await hooked(asked, context, (from) =>
+          projectAbove(context, from),
+        );
     }
   } catch (thrown) {
     return nothingDone(command, told, json, whyStopped(thrown));
@@ -755,4 +796,157 @@ function proposalLines(proposals: Proposals): string[] {
     "To have an agent judge them in a draft of their own: sloppy organise --agent claude-code",
   );
   return lines;
+}
+
+const composing =
+  (code: CodeReader) =>
+  (files: Files): WindowComposer =>
+  (ask) =>
+    composeWindow(containerApi(files), ask, charsOver4, code);
+
+/** What `run` reaches outside itself; absent is this machine's own. */
+export interface RunningWith {
+  compose?: (files: Files) => WindowComposer;
+  env?: Readonly<Record<string, string | undefined>>;
+  fetch?: typeof globalThis.fetch;
+}
+
+const DEFAULT_TURNS = 20;
+const DEFAULT_WINDOW = 16_000;
+const SAY_THE_ASK =
+  'Say what to do: sloppy run "why does the parser read twice?"';
+const NOT_TURNS = "Say the most turns to take: --turns 10.";
+export const NOT_A_WINDOW =
+  "Say how much of the notes to put in front of it: --window 16000.";
+
+/** Every turn's acts as they happen, then the answer, or why it stopped. */
+export async function running(
+  asked: Asked,
+  context: CliContext,
+  json: boolean,
+  using: RunningWith = {},
+): Promise<number> {
+  const { told } = context;
+  const refused = (line: string) => nothingDone("run", told, json, line);
+  if (asked.paths.length === 0) return refused(SAY_THE_ASK);
+  const ask = WindowAskSchema.safeParse({
+    ask: asked.paths.join(" "),
+    budget: windowAsked(asked),
+  });
+  if (!ask.success) {
+    return refused(
+      ask.error.issues[0]?.path[0] === "budget" ? NOT_A_WINDOW : SAY_THE_ASK,
+    );
+  }
+  const budget = runBudgetAsked(asked);
+  if (typeof budget === "string") return refused(budget);
+  const kind = oneOf(asked, "provider", PROVIDER_KINDS, "anthropic");
+  const provider = kind === undefined ? undefined : DEFAULT_PROVIDERS[kind];
+  if (provider === undefined) {
+    return refused(
+      sayWhich(
+        "provider",
+        PROVIDER_KINDS.filter((one) => DEFAULT_PROVIDERS[one] !== undefined),
+      ),
+    );
+  }
+  const source = oneOf(asked, "key", KEY_SOURCE_KINDS, "environment");
+  if (source === undefined) return refused(sayWhich("key", KEY_SOURCE_KINDS));
+  const named = asked.options.get("model");
+  const model = typeof named === "string" ? named : provider.model;
+  if (model === undefined) return refused("Say which model: --model <name>.");
+  const code = codeReader();
+  const compose = using.compose ?? composing(code);
+  const found = await projectAbove(context, folderNamed(context));
+  if (!found) return refused(NO_NOTES);
+  let key: string;
+  try {
+    key = providerKey(provider, source, using.env ?? process.env);
+  } catch (thrown) {
+    if (thrown instanceof HarnessRefused) return refused(thrown.message);
+    throw thrown;
+  }
+  const done = await runHarness({
+    files: found.files,
+    ask: ask.data,
+    compose: compose(found.files),
+    provider,
+    model,
+    key,
+    budget,
+    served: { code },
+    ...(using.fetch === undefined ? {} : { fetch: using.fetch }),
+    ...(json
+      ? {}
+      : {
+          onTurn: (turn) => {
+            for (const act of turn.acts) told.out(actLine(act));
+          },
+        }),
+  });
+  if (json) told.out(JSON.stringify({ command: "run", ...done }));
+  else for (const line of endLines(done)) told.out(line);
+  if (done.stop === "answered") return FINE;
+  return done.stop === "error" ? NOTHING_DONE : TO_FIX;
+}
+
+/** `--turns` and `--budget` as a run's budget, turns alone where neither was
+ *  named, and what to say where one named is not a limit. */
+function runBudgetAsked(asked: Asked): HarnessBudget | string {
+  const turns = countAsked(asked, "turns", undefined);
+  if (Number.isNaN(turns)) return NOT_TURNS;
+  const named = asked.options.has("budget");
+  const spend = named ? budgetAsked(asked) : undefined;
+  if (named && spend === undefined) return NOT_A_BUDGET;
+  if (spend === undefined) return { turns: turns ?? DEFAULT_TURNS };
+  return turns === undefined ? { spend } : { turns, spend };
+}
+
+/** `--window`, and NaN where it names no budget. */
+export function windowAsked(asked: Asked): number {
+  return countAsked(asked, "window", DEFAULT_WINDOW);
+}
+
+/** The whole number `--<name>` named, `fallback` where it named none, and NaN
+ *  where what it named is not one above 0. */
+function countAsked<Fallback extends number | undefined>(
+  asked: Asked,
+  name: string,
+  fallback: Fallback,
+): number | Fallback {
+  const said = asked.options.get(name);
+  if (said === undefined) return fallback;
+  const count = said === true ? Number.NaN : Number(said);
+  return Number.isInteger(count) && count > 0 ? count : Number.NaN;
+}
+
+function actLine(act: HarnessAct): string {
+  const known = CHAT_TOOLS.find((one) => one === act.act);
+  const label = known === undefined ? act.act : CHAT_TOOL_SPECS[known].label;
+  return act.outcome === "refused" ? `  ${label}: ${act.reason}` : `  ${label}`;
+}
+
+const STOPPED: Record<
+  Exclude<HarnessRun["stop"], "answered" | "error">,
+  string
+> = {
+  turns_spent:
+    "It took every turn it was given without answering. Give it more with --turns.",
+  spend_spent:
+    "It spent what it was given without answering. Give it more with --budget.",
+  act_refused: "It asked for something that could not be done, so it stopped.",
+};
+
+function endLines(done: HarnessRun): string[] {
+  const lines =
+    done.stop === "answered"
+      ? ["", (done.turns.at(-1)?.reply ?? "").trim()]
+      : [done.stop === "error" ? done.error : STOPPED[done.stop]];
+  const cost = done.turns.at(-1)?.spent.cost;
+  if (cost !== undefined) lines.push(costLine(cost));
+  return lines;
+}
+
+function costLine(cost: number): string {
+  return cost < 0.01 ? "It cost under a cent." : `It cost $${cost.toFixed(2)}.`;
 }

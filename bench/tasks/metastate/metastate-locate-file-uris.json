@@ -1,0 +1,94 @@
+{
+  "id": "metastate-locate-file-uris",
+  "family": "locate",
+  "prompt": "A platform keeps a user's avatar as a `w3ds://file` URI. Find in the code: where the eVault accepts the upload and enforces its size limit; where the identifier that the stored envelope is filed under is defined; where the eVault turns an envelope id back into the file over HTTP; where such a URI is parsed and resolved for a platform that uses the adapter; and where a mapped field is uploaded automatically on its way out to the eVault. Name the files and the functions, constants or routes involved, with paths relative to the repository root.",
+  "tools": "read",
+  "key": "From docs/docs/W3DS Protocol/File-URIs.md. The upload is the uploadFile mutation, declared in infrastructure/evault-core/src/core/protocol/typedefs.ts and resolved in infrastructure/evault-core/src/core/protocol/graphql-server.ts, which requires X-ENAME, rejects malformed base64 and caps the decoded size with MAX_FILE_BYTES (250 MB), and deletes the orphaned object if the envelope write fails. The envelope's ontology is FILE_SCHEMA_ID = \"w3ds-file-v1\" in infrastructure/evault-core/src/core/utils/w3ds-uri.ts. Over HTTP, GET /files/:metaEnvelopeId in infrastructure/evault-core/src/core/http/server.ts resolves the File MetaEnvelope and answers with a 302 redirect to its public URL. For platforms, infrastructure/web3-adapter/src/w3ds/uri.ts has parseFileUri (and buildFileUri, InvalidW3dsUriError) and infrastructure/web3-adapter/src/w3ds/resolver.ts has dereferenceFileUri, plus referenceFile / referenceFileValue, which upload a value and return its w3ds://file URI. infrastructure/web3-adapter/src/mapper/mapper.ts matches the __file() directive (FILE_DIRECTIVE_RE): on toGlobal it uploads through referenceFileValue, on fromGlobal it dereferences through dereferenceFileUri.",
+  "sources": [
+    {
+      "doc": "docs/docs/W3DS Protocol/File-URIs.md",
+      "quote": "Constraints: content must be valid base64 (malformed input is rejected) and the decoded size must not exceed **250 MB**."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/File-URIs.md",
+      "quote": "| **Defined in** | `evault-core/src/core/utils/w3ds-uri.ts` (`FILE_SCHEMA_ID`) | `services/ontology/schemas/file.json` |"
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/File-URIs.md",
+      "quote": "Resolves the File Meta Envelope and responds with a **302 redirect** to the file's public object-storage URL."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/File-URIs.md",
+      "quote": "The [Web3 Adapter](/docs/Infrastructure/Web3-Adapter) exposes a `__file()` mapping directive that automatically references files on `toGlobal` and dereferences them on `fromGlobal`."
+    }
+  ],
+  "grader": {
+    "kind": "files",
+    "names": [
+      {
+        "any": [
+          "infrastructure/evault-core/src/core/protocol/graphql-server.ts"
+        ]
+      },
+      {
+        "any": ["MAX_FILE_BYTES"],
+        "source": "infrastructure/evault-core/src/core/protocol/graphql-server.ts"
+      },
+      {
+        "any": ["infrastructure/evault-core/src/core/utils/w3ds-uri.ts"]
+      },
+      {
+        "any": ["FILE_SCHEMA_ID"],
+        "source": "infrastructure/evault-core/src/core/utils/w3ds-uri.ts"
+      },
+      {
+        "any": ["infrastructure/evault-core/src/core/http/server.ts"]
+      },
+      {
+        "any": ["/files/:metaEnvelopeId"],
+        "source": "infrastructure/evault-core/src/core/http/server.ts"
+      },
+      {
+        "any": ["parseFileUri"],
+        "source": "infrastructure/web3-adapter/src/w3ds/uri.ts"
+      },
+      {
+        "any": ["dereferenceFileUri"],
+        "source": "infrastructure/web3-adapter/src/w3ds/resolver.ts"
+      },
+      {
+        "any": ["infrastructure/web3-adapter/src/mapper/mapper.ts"]
+      },
+      {
+        "any": ["referenceFileValue", "referenceFile"],
+        "source": "infrastructure/web3-adapter/src/w3ds/resolver.ts"
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Names the uploadFile resolver in graphql-server.ts and its MAX_FILE_BYTES (250 MB) check",
+      "points": 1
+    },
+    {
+      "criterion": "Names FILE_SCHEMA_ID (w3ds-file-v1) in evault-core's w3ds-uri.ts",
+      "points": 1
+    },
+    {
+      "criterion": "Names GET /files/:metaEnvelopeId in evault-core's http/server.ts, redirecting to the public URL",
+      "points": 1
+    },
+    {
+      "criterion": "Names parseFileUri (w3ds/uri.ts) and dereferenceFileUri (w3ds/resolver.ts) in web3-adapter",
+      "points": 1
+    },
+    {
+      "criterion": "Names the __file() directive in web3-adapter's mapper.ts uploading through referenceFileValue on toGlobal",
+      "points": 1
+    },
+    {
+      "criterion": "Every path and name given exists and does what the answer says",
+      "points": 1
+    }
+  ]
+}

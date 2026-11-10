@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadConditions, selectConditions } from "../lib/condition.mjs";
+import {
+  loadConditions,
+  reachesSloppy,
+  selectConditions,
+} from "../lib/condition.mjs";
 import { buildPrompt, pointedLine } from "../lib/prompt.mjs";
 import { prepareVariant } from "../lib/subject.mjs";
 import { loadPack } from "../lib/task.mjs";
@@ -17,7 +21,7 @@ const crafted = testSubject();
 const docSite = testSubject(DOC_SITE_CONFIG, "doc-site");
 const [task] = loadPack("example");
 
-test("conditions.json holds the nine conditions, two of them offering subagents", () => {
+test("conditions.json holds the ten conditions, two of them offering subagents and one run by Sloppy's own runner", () => {
   assert.deepEqual(
     set.conditions.map((c) => c.id),
     [
@@ -30,6 +34,7 @@ test("conditions.json holds the nine conditions, two of them offering subagents"
       "mcp+pointed",
       "agents",
       "mcp+agents",
+      "harness",
     ],
   );
   assert.deepEqual(
@@ -48,6 +53,13 @@ test("conditions.json holds the nine conditions, two of them offering subagents"
   const { subagents: _d, id: _l, ...mcp } = byId.mcp;
   assert.deepEqual(mcpAgents, mcp);
   assert.deepEqual(
+    set.conditions.filter(reachesSloppy).map((c) => c.id),
+    ["notes-only", "mcp", "mcp+pointed", "mcp+agents", "harness"],
+  );
+  const { harness: _m, mcp: _n, id: _o, ...runner } = byId.harness;
+  const { harness: _p, mcp: _q, id: _r, ...served } = byId.mcp;
+  assert.deepEqual(runner, served);
+  assert.deepEqual(
     set.conditions.filter((c) => c.variant === "nodocs").map((c) => c.id),
     ["nodocs"],
   );
@@ -57,8 +69,14 @@ test("every condition gets the task text verbatim and the same opening", () => {
   const subject = makeSubject();
   const workRoot = tempDir();
   const dirs = {
-    full: prepareVariant(subject, "full", "HEAD", { workRoot, subject: crafted }).dir,
-    nodocs: prepareVariant(subject, "nodocs", "HEAD", { workRoot, subject: crafted }).dir,
+    full: prepareVariant(subject, "full", "HEAD", {
+      workRoot,
+      subject: crafted,
+    }).dir,
+    nodocs: prepareVariant(subject, "nodocs", "HEAD", {
+      workRoot,
+      subject: crafted,
+    }).dir,
   };
   const built = Object.fromEntries(
     set.conditions.map((condition) => [

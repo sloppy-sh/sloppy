@@ -1,0 +1,47 @@
+{
+  "text": "Keep 12 seconds. Kilnworth Cooperative's Registry is scaled to zero overnight and its first response after waking takes eight to ten seconds; at 5 s the first platform request each morning failed.",
+  "timing": {
+    "api_ms": 2700,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2600
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 280,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1,
+    "mcp__history__git_log": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "infrastructure/evault-core/src/core/auth/registry-token.ts"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "docs/decisions/metastate-handoff-jwks-timeout.md"
+      },
+      "result": "1\t..."
+    },
+    {
+      "name": "mcp__history__git_log",
+      "input": {},
+      "result": "commit ..."
+    }
+  ]
+}

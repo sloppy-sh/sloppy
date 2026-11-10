@@ -20,15 +20,10 @@ export interface Project {
 const turns: Reason = ({ sloppy, plain }) =>
 	`${Math.round(sloppy.turns_mean ?? 0)} round trips to the model against ${Math.round(plain.turns_mean ?? 0)}`;
 const tokensAre = (p: Pair, verdict: Verdict) => compare(p, 'input')?.verdict === verdict;
-/** Cost explained by the tokens read. Earlier turns read again are billed far below new text. */
 const cheaperReading: Partial<Record<Verdict, Reason>> = {
 	better: (p) =>
-		tokensAre(p, 'better')
-			? 'Fewer tokens read, so it costs less.'
-			: tokensAre(p, 'worse')
-				? 'The extra tokens are earlier turns read again, which is cheap; with Sloppy the agent took in less new text and wrote shorter answers, and those are what cost.'
-				: null,
-	worse: (p) => (tokensAre(p, 'worse') ? 'More tokens read, so it costs more.' : null)
+		tokensAre(p, 'better') ? 'Less new text read, and shorter answers written.' : null,
+	worse: (p) => (tokensAre(p, 'worse') ? 'More new text read, so it costs more.' : null)
 };
 /** One reason for a small score difference either way. */
 const slight = (said: string, ...verdicts: Verdict[]) =>
@@ -48,8 +43,8 @@ export const PROJECTS: Project[] = [
 					'level'
 				),
 				input: {
-					worse: () =>
-						"Files named for what they cover are found by a filename search; Sloppy's first answer adds to what the agent reads anyway."
+					better: () =>
+						"Sloppy's first answer lands on the document that answers, where a filename search opens several that do not."
 				},
 				cost: cheaperReading,
 				time: {
@@ -107,13 +102,13 @@ export const PROJECTS: Project[] = [
 		reasons: {
 			medium: {
 				score: slight(
-					"Close: ahead on where-questions, where Sloppy's first answer named files a search missed, and behind on the drift check — every approach found the same defect there, but the runs with Sloppy more often hedged over whether the document or the code was right.",
+					"Close: ahead on where-questions, where Sloppy's first answer named files a search missed; behind on the drift check, where its runs more often hedged over whether the document or the code was right.",
 					'better',
 					'level'
 				),
 				input: {
-					worse: () =>
-						"Documents named for their topics are found by a search either way; Sloppy's first answer and its notes are read on top."
+					better: () =>
+						'Topic-named documents are found either way, so the saving is the smallest here: the files a search opens before the right one.'
 				},
 				cost: cheaperReading
 			}
@@ -131,13 +126,35 @@ export const PROJECTS: Project[] = [
 					'better'
 				),
 				input: {
-					worse: () =>
-						"A proposal's topic is in its filename, so a search finds it; Sloppy's first answer is read on top."
+					better: () =>
+						"A proposal's topic is in its filename, so a search finds it; what Sloppy saves is the files opened before the right one."
 				},
 				cost: cheaperReading,
 				time: {
 					worse: () =>
 						'A long note is read in pieces, a step each, where a search opens the proposal whole in one.'
+				}
+			}
+		}
+	},
+	{
+		slug: 'metastate',
+		subject: 'metastate',
+		about:
+			'A prototype of personal data vaults with apps as interchangeable frontends. Its documents sit in a site by topic, each named for its subject.',
+		reasons: {
+			medium: {
+				score: {
+					better: () =>
+						"The why-answers cited the document; without Sloppy the agent answered from the code's comments and never named it. Behind on the briefing and one where-question."
+				},
+				input: {
+					better: () =>
+						'Topic-named documents are found either way; the saving is the code read instead.'
+				},
+				cost: cheaperReading,
+				time: {
+					worse: () => 'Fewer round trips, longer ones: a note is read in pieces.'
 				}
 			}
 		}
@@ -150,8 +167,8 @@ export const PROJECTS: Project[] = [
 		reasons: {
 			medium: {
 				input: {
-					worse: () =>
-						"Documents in a folder named for their component are found by listing it; Sloppy's first answer is read on top."
+					better: () =>
+						"Listing a component's folder finds its documents; Sloppy's first answer picks the one that answers instead of reading through them."
 				},
 				cost: cheaperReading,
 				time: {

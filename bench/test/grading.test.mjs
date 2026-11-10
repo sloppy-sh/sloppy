@@ -89,7 +89,9 @@ function craftedPack() {
       grader: {
         kind: "command",
         command: ["node", "--test", ".bench-hidden/a.check.mjs"],
-        hidden: { ".bench-hidden/a.check.mjs": path.join(checks, "a.check.mjs") },
+        hidden: {
+          ".bench-hidden/a.check.mjs": path.join(checks, "a.check.mjs"),
+        },
         timeout_ms: 60000,
       },
       rubric,
@@ -104,10 +106,13 @@ function craftedPack() {
     },
   ];
   const tasksDir = tempDir();
-  for (const t of tasks) write(tasksDir, `crafted/${t.id}.json`, JSON.stringify(t));
+  for (const t of tasks)
+    write(tasksDir, `crafted/${t.id}.json`, JSON.stringify(t));
   const fixtures = tempDir();
   const answers = {
-    "crafted-why": { text: "The ref identifies a note; the address is a label." },
+    "crafted-why": {
+      text: "The ref identifies a note; the address is a label.",
+    },
     "crafted-locate": { text: "a is in src/a.js." },
     "crafted-change": {
       text: "Done.",
@@ -163,17 +168,21 @@ test("every task of every subject's pack has a mock answer", () => {
         );
 });
 
-test("a drift grader gives its written right answers full marks, and its wrong ones and its own prompt a third at most", () => {
-  const written = JSON.parse(
-    fs.readFileSync(
-      path.join(BENCH_DIR, "test", "fixtures", "drift-answers.json"),
-      "utf8",
-    ),
+test("a drift or why grader gives its written right answers full marks, and its wrong ones and its own prompt a third at most", () => {
+  const written = ["drift", "why"].flatMap((family) =>
+    Object.entries(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(BENCH_DIR, "test", "fixtures", `${family}-answers.json`),
+          "utf8",
+        ),
+      ),
+    ).map(([id, cases]) => [id, cases, family]),
   );
-  for (const [id, cases] of Object.entries(written)) {
+  for (const [id, cases, family] of written) {
     const t = loadPack(cases.pack).find((x) => x.id === id);
     assert.ok(t, `${id} is not in ${cases.pack}'s pack`);
-    assert.equal(t.family, "drift");
+    assert.equal(t.family, family);
     assert.equal(t.grader.kind, "facts");
     const score = (text) =>
       gradeObjective({

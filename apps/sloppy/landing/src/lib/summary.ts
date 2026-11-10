@@ -2,7 +2,12 @@
 // part of it the pages ship. bench/README.md § "The export" is what each field means.
 
 export type Tier = 'small' | 'medium' | 'large';
-export type Setting = 'default' | 'lean';
+/**
+ * `recommended` is the reported comparison — the documents as a project keeps them for the two
+ * conditions without Sloppy, shaped for the one with it; bench/README.md carries the rule. A
+ * configuration measured on its own carries its own name here.
+ */
+export type Setting = 'default' | 'lean' | 'recommended' | (string & {});
 
 export const TIERS: Tier[] = ['small', 'medium', 'large'];
 
@@ -58,6 +63,10 @@ export interface Group {
 	input_mean: number | null;
 	input_lo: number | null;
 	input_hi: number | null;
+	/** Input the model had not been given before: the whole of it less the conversation it re-read. */
+	fresh_mean?: number | null;
+	fresh_lo?: number | null;
+	fresh_hi?: number | null;
 	cost_mean: number | null;
 	cost_lo: number | null;
 	cost_hi: number | null;

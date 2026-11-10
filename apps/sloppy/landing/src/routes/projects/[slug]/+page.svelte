@@ -7,6 +7,7 @@
 	import { PROJECTS, reasonFor } from '$lib/projects';
 	import {
 		approachesRun,
+		belowFloor,
 		BETTER,
 		compare,
 		FAMILY,
@@ -16,7 +17,9 @@
 		modelOf,
 		pairOf,
 		tiersWithRuns,
+		underRecommended,
 		valueOf,
+		WORD_FLOOR,
 		type Metric
 	} from '$lib/readings';
 	import { ratioSaid, scoreSaid } from '$lib/said';
@@ -24,6 +27,7 @@
 	import PageHead from '$lib/sections/PageHead.svelte';
 	import SiteFooter from '$lib/sections/SiteFooter.svelte';
 	import SiteHeader from '$lib/sections/SiteHeader.svelte';
+	import TokenNote from '$lib/sections/TokenNote.svelte';
 	import { count, tokens, type Tier } from '$lib/summary';
 
 	let { data } = $props();
@@ -45,6 +49,12 @@
 		]
 			.filter(Boolean)
 			.join(', ')
+	);
+
+	const floor = $derived(
+		belowFloor(summary, project.subject)
+			? ` Below the ${count(WORD_FLOOR)}-word floor: measured on request, in no average.`
+			: ''
 	);
 
 	const pair = $derived(pairOf(summary, project.subject, tier));
@@ -85,6 +95,11 @@
 		})
 	);
 	const model = $derived(modelOf(summary, tier) ?? FAMILY[tier]);
+	const basis = $derived(
+		underRecommended(summary, project.subject)
+			? "Sloppy's bar is this project's documents shaped the way the practices set out; the other two are its documents as it keeps them."
+			: "Every bar is this project's documents as it keeps them."
+	);
 </script>
 
 <svelte:head>
@@ -99,13 +114,15 @@
 	<SiteHeader isSample={data.isSample} />
 	<main>
 		<PageHead trail={[{ label: 'Results', href: resolve('/results') }, { label }]} title={label}>
-			<p>{project.about}{size ? ` ${size}.` : ''}</p>
+			<p>{project.about}{size ? ` ${size}.` : ''}{floor}</p>
 		</PageHead>
 
 		<section class="mx-auto max-w-6xl space-y-10 px-4 pt-12 pb-24 sm:px-8" aria-label="Results">
 			<div class="flex flex-wrap items-center justify-between gap-4">
 				<ModelTabs bind:tier {ran} />
-				<p class="text-sm text-muted-foreground" data-chart>{model}, Sloppy as it ships.</p>
+				<p class="text-sm text-muted-foreground" data-chart>
+					{model}, Sloppy as it ships. {basis}
+				</p>
 			</div>
 			<div class="grid gap-x-12 gap-y-14 md:grid-cols-2">
 				{#each blocks as b (b.metric)}
@@ -127,6 +144,7 @@
 					</article>
 				{/each}
 			</div>
+			<TokenNote />
 			<p>
 				<a
 					href={resolve('/projects/[slug]/questions', { slug: project.slug })}

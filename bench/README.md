@@ -43,8 +43,10 @@ For GitLab that is `doc/development`, `AGENTS.md`, `CLAUDE.md`, `.ai`, `README.m
 
 ### Conditions
 
-Nine conditions, identical in everything but how context reaches the agent and whether it may
-start subagents: the same model, the same tools, the same task text, a fresh session for each run.
+Ten conditions. All ten share the model, the task text and a fresh session for each run. The first
+nine are identical in everything but how context reaches the agent and whether it may start
+subagents, the same tools included; `harness` alone also differs in who runs the loop and in its
+tools, which are Sloppy's acts and nothing else (see "Backends").
 
 | id            | variant      | what is added                                                                                                                      |
 | ------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -57,13 +59,14 @@ start subagents: the same model, the same tools, the same task text, a fresh ses
 | `mcp+pointed` | `full`       | both of the above                                                                                                                  |
 | `agents`      | `full`       | nothing, and the agent may start subagents                                                                                         |
 | `mcp+agents`  | `full`       | what `mcp` adds, and the agent may start subagents                                                                                 |
+| `harness`     | `full`       | Sloppy's own runner composes the window and drives the model, plus the line `mcp` adds; run only by the `harness` backend          |
 
 They live in `conditions.json`. `subagents` is a condition's own field, false where absent: where it
 is true the agent is offered its harness's subagent tool on top of the task's tool set, and a backend
 that has none runs without it and records `unsupported: ["subagents"]` (see "Backends"), so such a
 run is `bare` or `mcp` under another name and is read as one. Every system prompt opens with the same `base_system` line, and
 the user prompt is the task text and nothing else. For GitLab the `pointed` line reads
-"AGENTS.md, doc/development/architecture.md and doc/development/cells/_index.md are this project's
+"AGENTS.md, doc/development/architecture.md and doc/development/cells/\_index.md are this project's
 documents of record; read what you need from them."
 
 ### Task families
@@ -112,7 +115,10 @@ from fewer than 5 reps per condition, is a tie. Equal on both is a tie and is re
 Every figure shows every condition that ran, including the ones where Sloppy loses. **A run that
 started and did not finish `ok` — it failed, timed out or ran out of budget mid-run — scores 0
 and stays in the cost and time it spent**, because it delivered nothing and the condition is
-judged on what it delivered; a run the budget never started is counted and in no mean.
+judged on what it delivered. Two kinds of run are counted and in no mean: one the budget never
+started, and one the provider failed — rate-limited, or unable to reach the API (`providerFailed`
+in `lib/record.mjs`, read from the failure alone) — whose time is backoff and whose answer is not
+the condition's; the runner runs it again.
 
 **The overall score** is one number per subject, backend, model tier, setting and condition,
 for a reader who wants an all-in-all answer, and it never replaces the comparisons above. It
@@ -209,10 +215,12 @@ name, so a copy pointing at another checkout of the same project records under t
 | `private`       | optional: `true` for a project that may not be quoted; see [The export](#the-export)                 |
 | `research`      | optional: research kept beside the documents, counted by the export and removed by no variant        |
 
-The subjects are six open-source projects: `gitlab`, `milvus`, `pulsar`, `llvm`, `carbon` and
-`dotnet`. None has a Sloppy CLI of its own, so each file's `path` and `sloppy_cli` are absolute
-paths on the developer's machine; edit them to yours. Each pack is `tasks/<name>/`, written against
-the commit its `README.md` names.
+The subjects are six open-source projects chosen by SURVEY.md § "The rule": `gitlab`, `milvus`,
+`pulsar`, `llvm`, `carbon` and `dotnet`; a seventh, `metastate`, has fewer documents than that rule
+asks and is measured because the developer asked for it, on its own page and in no average
+(SURVEY.md § "A seventh project"). None has a Sloppy CLI of its own, so each file's `path` and
+`sloppy_cli` are absolute paths on the developer's machine; edit them to yours. Each pack is
+`tasks/<name>/`, written against the commit its `README.md` names.
 
 To add a subject, write its file, run `node bench.mjs list` to see it load, and write it a task
 pack. **The task pack is per subject**: a key and its `sources` cite that subject's documents, and
@@ -243,6 +251,39 @@ same order. A heading met twice is numbered and a section past the size a write 
 continued under the same heading. It prints the notes written, the words and links carried and
 each file skipped with why.
 
+## The comparison that is reported
+
+Three numbers, always the same three, and they are what the pages draw; a fourth, Sloppy's own
+runner, is measured beside them on the same shaped documents:
+
+| Bar                 | What it is                                                                                                                                      |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Documents alone** | Claude Code on the project's documents as the project keeps them today.                                                                         |
+| **Subagents**       | The same documents, with subagents allowed.                                                                                                     |
+| **Sloppy**          | The recommended workflow: the documents shaped as `WHERE-SLOPPY-HELPS.md` sets out, carried into the container, read through the sloppy server. |
+| **Sloppy's runner** | The same shaped documents, with `sloppy run` composing the window for the task and driving the model: the `harness` condition.                  |
+
+**Sloppy's bar carries the shaping, because the shaping does not happen without Sloppy.** The
+practices came out of measuring it, a team adopting it adopts them, and nobody shapes three hundred
+documents as a standalone exercise. So the question the three bars answer is the one a team actually
+faces: what do we get if we take this up, against what we have now.
+
+A run of the shaped documents **without** the sloppy server is measured too, under its own config
+name, because it says how much of the gain is the writing rather than the tool. It is an attribution
+figure for `SURVEY.md` and it is **never a bar on a page** — there is no team that has shaped
+documents and no Sloppy.
+
+Both trees run in **one interleaved batch** under their own config names, so neither the hour nor the
+export can mix them, and `export.mjs` refuses to average two commits of one subject.
+
+**Carrying onto notes that are already there.** `write_note` onto a document's existing note lands only
+where the carrier is that note's author. A note started by `sloppy init`, or one that has gained another
+author, holds a carrier's writing out as an **offer** in `.sloppy/amendments/`, and the carrier still
+counts it as written. So a second carry over a container — the shaped tree over the unshaped one, say
+— must be made as the carrier's own notes: remove the document notes it wrote before, keep the system
+notes and the graph, and carry again, which writes them fresh. Read `.sloppy/amendments/` after any
+carry onto a container that already had notes; a file per document there means nothing landed.
+
 ## Fairness, and what enforces it
 
 | rule                                                | enforced by                                                                                                                                                                                                                                                                                      |
@@ -251,6 +292,7 @@ each file skipped with why.
 | Run order cannot favour a condition                 | `lib/order.mjs` shuffles every task × condition × config × rep from a seed, recorded on every record, so configs run in one batch share its hour                                                                                                                                                 |
 | A variant leaks nothing the condition does not give | `lib/subject.mjs` makes each variant a fresh repository with one commit: no history, no remote, no `bench/`, and it refuses a work folder under any folder holding `AI.md`, `CLAUDE.md`, `AGENTS.md`, `.sloppy` or `.mcp.json`                                                                   |
 | Every run starts from the same tree                 | the variant is reset to its snapshot before each run, ignored files included                                                                                                                                                                                                                     |
+| A provider's failure is not the run's               | a run the provider rate-limited or could not reach is recorded, run again without spending its retries, and left out of every score and mean (`providerFailed`); the failure is read, never the answer                                                                                           |
 | No quiet retries                                    | none unless `--retries` is given; each attempt is its own record, and the failed one stays                                                                                                                                                                                                       |
 | Spending stops where it was told to                 | `--budget-usd` is required; once spent, every run left is recorded with status `budget` and never started. A finished run whose cost cannot be told stops the batch, since the budget could no longer be held; a run killed at its time limit reports none and is charged the dearest run so far |
 | The judge cannot favour a condition                 | the runner hands the judge the task and the answer text alone, never the condition, the variant's folder or the run's tool calls                                                                                                                                                                 |
@@ -278,12 +320,12 @@ node bench.mjs run --backend <claude-code|codex|api|mock> --budget-usd <usd> [op
 | `--backend`    | which agent runs the tasks                                                              | required                        |
 | `--budget-usd` | the most the batch may spend, in USD                                                    | required                        |
 | `--model`      | model id; an installed agent uses its own default when absent                           | none                            |
-| `--provider`   | `providers.json` id; required for `api`                                                 | the agent's, from `agents.json` |
+| `--provider`   | `providers.json` id; required for `api` and `harness`                                   | the agent's, from `agents.json` |
 | `--subject`    | a subject's name in `subjects/`, or the path of a subject file                          | `subject.json` `default`        |
 | `--sha`        | the subject commit to make the variants from                                            | `HEAD`                          |
 | `--pack`       | the task pack                                                                           | the subject's `default_pack`    |
 | `--tasks`      | comma-separated task ids                                                                | every task in the pack          |
-| `--conditions` | comma-separated condition ids                                                           | all nine                        |
+| `--conditions` | comma-separated condition ids                                                           | every one the backend runs      |
 | `--reps`       | repetitions of each task × condition                                                    | 1                               |
 | `--seed`       | the seed the run order is drawn from                                                    | random, and recorded            |
 | `--timeout-ms` | how long one run may take                                                               | 600000                          |
@@ -471,7 +513,8 @@ items, and with the judge's own tokens and cost. `--judge-backend mock` gives fu
 answer with text and none to an empty one, so the whole pipeline runs without a model.
 
 A run's score is the mean of its objective and judge scores, whichever it has (`lib/report.mjs`
-`scoreOf`); a run that started and did not finish `ok` scores 0.
+`scoreOf`); a run that started and did not finish `ok` scores 0, unless it never began answering or
+the provider failed it, which leaves it unscored.
 
 ### Place tasks
 
@@ -633,8 +676,8 @@ The notebook's `show_run(run_id)` is the same reading.
 
 ## Backends
 
-`lib/backend.mjs` holds the interface and the registry, keyed by `claude-code`, `codex`, `api`
-and `mock`. A backend takes one request — the variant folder, the system prompt and the task
+`lib/backend.mjs` holds the interface and the registry, keyed by `claude-code`, `codex`, `api`,
+`harness` and `mock`. A backend takes one request — the variant folder, the system prompt and the task
 prompt, a tool set, the sloppy server where the condition offers it, the model, the timeout and
 the budget left — and answers with the text, a status, timings, tokens, any cost it reported,
 turns, tool and sloppy calls, and the files it changed. Every backend gets the same three tool
@@ -716,6 +759,19 @@ completion; each response is one entry in `iterations`, timed when it arrived. N
 time, since it does not stream. The loop has no subagents: under `agents` and `mcp+agents` it runs
 as under `bare` and `mcp` and records `unsupported: ["subagents"]`.
 
+**`harness`** is `sloppy run`, loaded from the CLI the config names (the `index.mjs` beside its
+`sloppy.mjs`) and driven with `--json`, at most 40 turns, against an `anthropic` provider in
+`providers.json` at its own address. It runs only the `harness` condition, and the `harness` condition
+runs only under it, so it is a batch of its own, with an hour and a run order of its own rather than
+the Claude Code bars'. It serves every act in full, and refuses a config that names server settings.
+It writes no files, so it leaves handoff tasks out of a pack and refuses one named. The runner stops a
+run itself after 600 seconds, so `--timeout-ms` may be no more than that. It reads the key from the
+variable the provider names. The system prompt is added to each request the runner makes, and each
+request is kept with its reply as the run's transcript. It offers Sloppy's acts and nothing else, so it records the task's tool set as
+`unsupported`, and subagents too where the condition allows them. Tokens are the runner's own per
+turn, each turn one entry in `iterations`; each act is counted in `mcp_calls` and kept as a `tool`
+event, which is what findability reads.
+
 To allow an installed agent, add it to `allow_installed` in `agents.json` (see "An agent
 installed on this device"); nothing installed runs before that. To add a provider, add an
 entry to `providers.json` with its kind, endpoint, the environment variable holding its key and
@@ -788,16 +844,16 @@ committed, and regenerated by this command whenever `results/` changes; nothing 
 `pnpm readme-figures` in `apps/sloppy/landing` redraws the root README's charts (`docs/images/bench-*.svg`) from it.
 The JSON is what a page is built from:
 
-| key            | holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `generated_at` | when it was written                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `subjects`     | per subject, from its repository at the commit of its latest run: `label`, `sha`, `code_files` and `code_lines` (every tracked file outside its documents, container, MCP config, research and `bench/`, symlinks left out), `docs_files`, `docs_words`, `notes` (files under the container's `notes/`), `commits`, `research_words`; nulls where the repository cannot be read                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `models`       | each backend and model that ran, with its tier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `conditions`   | each condition's `id`, `colour` and `marker` (a matplotlib code), in figures.json's order: the colours and shapes figures.py draws, for a page to draw with                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `cells`        | per subject, backend, model, config, condition and task: `n` started runs; `score_mean`, `score_best` and the 95% bootstrap interval of the mean (`score_lo`, `score_hi`, null under two runs); means of context, tokens, seconds, cost, turns and calls; `approx`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `curves`       | per subject, backend, model, config and condition, one point per started run: its `run_id`, task, rep, `context_tokens`, score, wall seconds, turns, cost, and `approx`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `groups`       | per subject, backend, model `tier`, `setting` and condition: the `models` behind it, `n` started and `scored` runs, each task's `n`, `scored`, mean `score`, `input` tokens and `cost`; then the mean over tasks, each task weighed the same, of score, tokens and cost with a 95% bootstrap interval drawn over tasks (`*_lo`, `*_hi`), the lowest and highest task score, mean turns, sloppy calls and subagents, and `runs_with_subagents`; `served`, whether the condition reaches the sloppy server. `setting` is `lean` under the config named lean, `default` under `full`, `default`, `shipped` (no config named) and `merged`, and the config's own name under any other, so a configuration of its own is never filed under either of the page's two; a condition that never reaches the sloppy server counts a run made under lean or default under both, and one made under any other config under that config's own |
-| `figures`      | `id`, `title`, `caption` and `file` (relative to the JSON) of each figure drawn; a figure with nothing to draw is left out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| key            | holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generated_at` | when it was written                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `subjects`     | per subject, from its repository at the commit of its latest run: `label`, `sha`, `code_files` and `code_lines` (every tracked file outside its documents, container, MCP config, research and `bench/`, symlinks left out), `docs_files`, `docs_words`, `notes` (files under the container's `notes/`), `commits`, `research_words`; nulls where the repository cannot be read                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `models`       | each backend and model that ran, with its tier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `conditions`   | each condition's `id`, `colour` and `marker` (a matplotlib code), in figures.json's order: the colours and shapes figures.py draws, for a page to draw with                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `cells`        | per subject, backend, model, config, condition and task: `n` started runs; `score_mean`, `score_best` and the 95% bootstrap interval of the mean (`score_lo`, `score_hi`, null under two runs); means of context, tokens, seconds, cost, turns and calls; `approx`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `curves`       | per subject, backend, model, config and condition, one point per started run: its `run_id`, task, rep, `context_tokens`, score, wall seconds, turns, cost, and `approx`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `groups`       | per subject, backend, model `tier`, `setting` and condition: the `models` behind it, `n` started and `scored` runs, each task's `n`, `scored`, mean `score`, `input` tokens (every class) and `fresh` (input less the conversation re-read) and `cost`; then the mean over tasks, each task weighed the same, of score, tokens (`input_*` for every class, `fresh_*` for the input the model had not been given before) and cost with a 95% bootstrap interval drawn over tasks (`*_lo`, `*_hi`), the lowest and highest task score, mean turns, sloppy calls and subagents, and `runs_with_subagents`; `served`, whether the condition reaches the sloppy server. `setting` is `lean` under the config named lean, `default` under `full`, `default`, `shipped` (no config named) and `merged`, and the config's own name under any other, so a configuration of its own is never filed under either of the page's two; a condition that never reaches the sloppy server counts a run made under lean or default under both, and one made under any other config under that config's own |
+| `figures`      | `id`, `title`, `caption` and `file` (relative to the JSON) of each figure drawn; a figure with nothing to draw is left out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 Every cell and group also carries `findability_n`, the runs whose findability is known, and the
 means `files_opened_mean`, `notes_opened_mean` and `opened_mean` over those runs (null where none
@@ -815,5 +871,5 @@ A subject marked `private` keeps its numbers and nothing a page could quote: it 
 `mcp_calls_mean` counts the sloppy calls of the agent and of its subagents. `searches_after_sloppy_mean`,
 in a cell and a group, is the mean over the runs that have a count (§ "Searches after Sloppy
 answered"), and a group's `runs_counted_after_sloppy` is how many those are. A run that did not finish
-`ok` scores 0 and is in every mean, as in § "What counts as better"; a run the budget never started is
-in none. A config left unnamed is `shipped`.
+`ok` scores 0 and is in every mean, as in § "What counts as better"; a run the budget never started, or
+the provider failed, is in none. A config left unnamed is `shipped`.

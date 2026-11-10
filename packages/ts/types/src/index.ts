@@ -23,6 +23,8 @@ export * from "./template.js";
 export * from "./code-anchor.js";
 export * from "./code-run.js";
 export * from "./code-snippet.js";
+export * from "./window.js";
+export * from "./harness.js";
 export * from "./chat.js";
 export * from "./chat-served.js";
 export * from "./draft.js";

@@ -1,0 +1,26 @@
+{
+  "text": "The eVault is the source of truth and your database a projection (Data-Ownership-Rules.md). handleChange sends local changes through the Web3 Adapter's mapping to the owner's eVault (Web3-Adapter.md); awareness delivers them to the other platforms' /api/webhook at least once: deduplicate on eventId, return 200 even for unknown ontologies (Awareness-Protocol.md). A new entity needs an ontology from the Ontology service, an owner eName and a write path.",
+  "timing": {
+    "api_ms": 2700,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2600
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 280,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

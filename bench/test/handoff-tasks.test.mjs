@@ -14,7 +14,15 @@ const CASES = JSON.parse(
     "utf8",
   ),
 );
-const SUBJECTS = ["gitlab", "milvus", "pulsar", "carbon", "llvm", "dotnet"];
+const SUBJECTS = [
+  "gitlab",
+  "milvus",
+  "pulsar",
+  "carbon",
+  "llvm",
+  "dotnet",
+  "metastate",
+];
 const handoffs = SUBJECTS.flatMap((s) =>
   loadPack(s).filter((t) => t.family === "handoff"),
 );

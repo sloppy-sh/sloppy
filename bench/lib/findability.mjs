@@ -11,7 +11,8 @@ const HISTORY = "mcp__history__";
 const CALLS = {
   "claude-code": claudeCodeCalls,
   api: apiCalls,
-  mock: mockCalls,
+  harness: toolEventCalls,
+  mock: toolEventCalls,
 };
 
 /**
@@ -213,7 +214,7 @@ function apiCalls(events) {
   return { list, cwd: undefined };
 }
 
-function mockCalls(events) {
+function toolEventCalls(events) {
   return {
     list: events
       .map(({ event }) => event)

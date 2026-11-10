@@ -1,0 +1,80 @@
+{
+  "id": "metastate-why-rate-limit-ceiling",
+  "family": "why",
+  "prompt": "One operator gives a busy platform an exemption from the per-minute request limit on their eVault, and that platform's servers still get 429 responses. Another operator blocks a misbehaving platform by its name, and its requests keep getting through. Why does the eVault's request limiter work this way, and what should each operator do instead?",
+  "tools": "read",
+  "key": "Written in docs/docs/Infrastructure/eVault.md § \"Rate Limiting\" (\"What a platform rule can and cannot do\"), and implemented in GlobalRateLimiter (infrastructure/evault-core/src/core/http/global-rate-limiter.ts) with verifyPlatform in infrastructure/evault-core/src/core/auth/registry-token.ts. Every request is first held to its IP's limit (the most specific IP rule, or the IP default); only a request carrying a valid Registry token is then also held to its platform's limit. The Registry signs a token for any platform name it is asked for, so a token proves it is genuine, not who sent it: the platform name is self-declared. Two consequences follow. The IP limit is the ceiling: a platform limit or exemption never lets a caller exceed its IP limit (an exempt platform skips only the platform step), so to give a platform more headroom the operator must raise or exempt the IPs of that platform's servers as well. And a platform block is advisory: a blocked caller can request a token under another name, so to stop it the operator must block its IPs; likewise anyone can send a token carrying another platform's name and use up that platform's budget, up to their own IP limit.",
+  "sources": [
+    {
+      "doc": "docs/docs/Infrastructure/eVault.md",
+      "quote": "The Registry signs a token for any platform name it is asked for, so a token proves it is genuine, not who sent it. The limiter verifies the signature and treats an invalid token as no platform at all, but the name itself is self-declared."
+    },
+    {
+      "doc": "docs/docs/Infrastructure/eVault.md",
+      "quote": "**The IP limit is the ceiling.** A platform limit or exemption never lets a caller exceed its IP limit. To give a platform more headroom, raise or exempt the IPs of its servers as well."
+    },
+    {
+      "doc": "docs/docs/Infrastructure/eVault.md",
+      "quote": "**A platform block is advisory.** A blocked caller can request a token under another name. Block its IPs to stop it. Likewise, anyone can send a token carrying another platform's name and use up that platform's budget, up to their own IP limit."
+    },
+    {
+      "doc": "docs/docs/Infrastructure/eVault.md",
+      "quote": "If the request carries a valid Registry token, it also counts against that platform's limit: its own rule, or the platform default. A **blocked** platform gets `403`; an **exempt** platform skips only this step."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "self[- ]?declared|(signs?|issues?|mints?|hands? out)[^.\\n]{0,40}(any|whatever|every) (platform )?name|(any|whatever) (platform )?name[^.\\n]{0,40}(asked|requested|wants)|proves?[^.\\n]{0,40}(genuine|authentic)[^.\\n]{0,40}not (who|which)|not (prove|establish|show)\\w*[^.\\n]{0,20}who (sent|is calling|the caller is)|(platform )?names? (is|are) (only |just |merely )?(claimed|asserted|unverified|not verified|self-chosen|chosen by the caller)",
+        "source": {
+          "doc": "docs/docs/Infrastructure/eVault.md",
+          "quote": "The Registry signs a token for any platform name it is asked for, so a token proves it is genuine, not who sent it. The limiter verifies the signature and treats an invalid token as no platform at all, but the name itself is self-declared."
+        }
+      },
+      {
+        "pattern": "ceiling|(never|cannot|can'?t|doesn'?t|does not|won'?t|no)[^.\\n]{0,50}(exceed|lift|raise|bypass|go (above|over|past|beyond))[^.\\n]{0,30}(the |its |their |a caller'?s )?(per[- ])?ip|(above|past|over|beyond) (the |its |their )?(per[- ])?ip limit|(platform (rule|limit|exemption)s?)[^.\\n]{0,40}only (narrow|tighten|lower)",
+        "source": {
+          "doc": "docs/docs/Infrastructure/eVault.md",
+          "quote": "**The IP limit is the ceiling.** A platform limit or exemption never lets a caller exceed its IP limit. To give a platform more headroom, raise or exempt the IPs of its servers as well."
+        }
+      },
+      {
+        "pattern": "(raise|increase|lift|exempt|bump|higher|loosen)\\w*[^.\\n]{0,60}\\b(ips?|ip addresses|addresses)\\b[^.\\n]{0,40}(server|platform|host|its|their)|(server|platform'?s|its|their)[^.\\n]{0,20}\\b(ips?|ip addresses)\\b[^.\\n]{0,40}(exempt|rais|increas|higher|own (ip )?rule)",
+        "source": {
+          "doc": "docs/docs/Infrastructure/eVault.md",
+          "quote": "**The IP limit is the ceiling.** A platform limit or exemption never lets a caller exceed its IP limit. To give a platform more headroom, raise or exempt the IPs of its servers as well."
+        }
+      },
+      {
+        "pattern": "advisory|(under|with|request\\w*|mint\\w*|get\\w*|obtain\\w*)[^.\\n]{0,40}(another|a different|a new|some other|any other) (platform )?name|block[^.\\n]{0,30}(its|their|the platform'?s|the caller'?s|those|the) (server )?(ips?|ip addresses|addresses)\\b",
+        "source": {
+          "doc": "docs/docs/Infrastructure/eVault.md",
+          "quote": "**A platform block is advisory.** A blocked caller can request a token under another name. Block its IPs to stop it. Likewise, anyone can send a token carrying another platform's name and use up that platform's budget, up to their own IP limit."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the platform name in a Registry token is self-declared: the Registry signs a token for any name, so a token proves it is genuine, not who sent it",
+      "points": 2
+    },
+    {
+      "criterion": "Says the IP limit is the ceiling: a platform limit or exemption never lets a caller exceed its IP limit, so headroom needs the platform's server IPs raised or exempted",
+      "points": 2
+    },
+    {
+      "criterion": "Says a platform block is advisory (a blocked caller can get a token under another name), so stopping it means blocking its IPs",
+      "points": 1
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}

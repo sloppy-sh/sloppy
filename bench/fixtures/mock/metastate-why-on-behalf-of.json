@@ -1,0 +1,26 @@
+{
+  "text": "Deliberate (W3DS Protocol/Access-Control.md). The header is an assertion, not a proof, as trustworthy as the platform; specificity is what makes a user grant mean anything, and a platform that can write to a vault can already act as its users. It cannot escape a denial: denials match the carrying platform too.",
+  "timing": {
+    "api_ms": 2700,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2600
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 280,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

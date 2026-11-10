@@ -4,10 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { NotAllowedError, runBackend } from "../lib/backend.mjs";
+import { scoreOf } from "../lib/report.mjs";
 import { planRuns, shuffle } from "../lib/order.mjs";
 import { readRecords, RecordSchema } from "../lib/record.mjs";
-import { RefusedError, runBatch } from "../lib/runner.mjs";
-import { parseConfig } from "../lib/config.mjs";
+import {
+  pickConditions,
+  pickTasks,
+  RefusedError,
+  runBatch,
+} from "../lib/runner.mjs";
+import { loadConditions } from "../lib/condition.mjs";
+import { loadPack } from "../lib/task.mjs";
+import { loadSubject, parseConfig, subjectNames } from "../lib/config.mjs";
 import {
   makeSubject,
   makeDocSiteSubject,
@@ -58,11 +66,11 @@ test("the same seed draws the same order, and another seed a different one", () 
   );
 });
 
-test("a mock batch over all nine conditions writes one valid record per run, in seeded order", async () => {
+test("a mock batch over all ten conditions writes one valid record per run, in seeded order", async () => {
   const subject = makeSubject();
   const a = await batch({ subject });
   const b = await batch({ subject });
-  assert.equal(a.records.length, 18);
+  assert.equal(a.records.length, 20);
   for (const r of readRecords(path.dirname(a.file))) RecordSchema.parse(r);
   const order = (res) => res.records.map((r) => `${r.condition}/${r.rep}`);
   assert.deepEqual(order(a), order(b));
@@ -83,7 +91,13 @@ test("a mock batch over all nine conditions writes one valid record per run, in 
     assert.deepEqual(r.output.files_changed, []);
     assert.deepEqual(
       Object.keys(r.mcp_calls).length > 0,
-      ["notes-only", "mcp", "mcp+pointed", "mcp+agents"].includes(r.condition),
+      ["notes-only", "mcp", "mcp+pointed", "mcp+agents", "harness"].includes(
+        r.condition,
+      ),
+    );
+    assert.deepEqual(
+      r.sent.harness,
+      r.condition === "harness" ? { profile: "full" } : undefined,
     );
     assert.equal(
       r.subagents_spawned,
@@ -218,6 +232,61 @@ test("the api backend refuses a provider whose key is not in the environment", a
     }),
     /Set BENCH_TEST_KEY/,
   );
+});
+
+test("the harness condition runs only under the harness backend, and the harness backend only it", async () => {
+  process.env.BENCH_TEST_KEY = "k";
+  const provider = (kind) => ({
+    provider: "p",
+    model: "m",
+    providers: [{ id: "p", kind, key_env: "BENCH_TEST_KEY", models: ["m"] }],
+  });
+  try {
+    await assert.rejects(
+      batch({
+        backend: "api",
+        ...provider("anthropic"),
+        conditions: ["harness"],
+      }),
+      /run it in a batch of its own with --backend harness/,
+    );
+    await assert.rejects(
+      batch({
+        backend: "harness",
+        ...provider("anthropic"),
+        conditions: ["bare"],
+      }),
+      /only a condition that asks for it, and bare does not/,
+    );
+    await assert.rejects(
+      batch({
+        backend: "harness",
+        ...provider("openai-compatible"),
+        conditions: ["harness"],
+      }),
+      /p is not one/,
+    );
+    await assert.rejects(
+      batch({
+        backend: "harness",
+        ...provider("anthropic"),
+        conditions: ["harness"],
+        configs: [{ name: "lean", sha: "HEAD", args: ["--profile=lean"] }],
+      }),
+      /takes no server settings; leave --profile=lean out of lean/,
+    );
+    await assert.rejects(
+      batch({
+        backend: "harness",
+        ...provider("anthropic"),
+        conditions: ["harness"],
+        timeoutMs: 600_001,
+      }),
+      /no more than 600000/,
+    );
+  } finally {
+    delete process.env.BENCH_TEST_KEY;
+  }
 });
 
 test("the objective grader sees the variant as the agent left it, and the judge sees only the answer", async () => {
@@ -633,4 +702,101 @@ test("a run killed at its time limit is charged the dearest run so far, and the 
     if (before === undefined) delete process.env.SLOPPY_BENCH_MOCK_FIXTURES;
     else process.env.SLOPPY_BENCH_MOCK_FIXTURES = before;
   }
+});
+
+test("lanes run a batch at once, each in its own copy, and every run is still recorded", async () => {
+  const workRoot = tempDir();
+  const lanes = 3;
+  const { records } = await batch({ lanes, reps: 2, workRoot });
+  const serial = await batch({ lanes: 1, reps: 2, workRoot: tempDir() });
+
+  assert.equal(records.length, serial.records.length);
+  assert.deepEqual(
+    records.map((r) => `${r.condition}\t${r.task.id}\t${r.rep}`).sort(),
+    serial.records.map((r) => `${r.condition}\t${r.task.id}\t${r.rep}`).sort(),
+    "the lanes work through the same plan a single lane does",
+  );
+  assert.ok(
+    records.every((r) => r.status === "ok"),
+    "no run is lost to two lanes sharing a folder",
+  );
+
+  const copies = fs
+    .readdirSync(workRoot)
+    .filter((name) => name.includes("-lane"))
+    .map((name) => name.slice(name.indexOf("-lane")))
+    .sort();
+  assert.deepEqual(
+    [...new Set(copies)],
+    ["-lane1", "-lane2"],
+    "lane 0 keeps the name one lane has always used; the rest get their own",
+  );
+});
+
+test("a limit is read from the failure, never from an answer that talks about rate limits", async () => {
+  const { records } = await batch({ reps: 1, lanes: 2 });
+  assert.ok(records.length > 0);
+  assert.ok(
+    records.every((r) => r.attempt === 0),
+    "a run that finished is never run again for what its answer happens to say",
+  );
+});
+
+test("a run that never began answering is unscored, where one that answered badly scores zero", () => {
+  const grades = new Map();
+  assert.equal(
+    scoreOf({ run_id: "a", status: "error", turns: 0 }, grades),
+    undefined,
+    "it never answered, so it is not an answer worth zero",
+  );
+  assert.equal(
+    scoreOf({ run_id: "b", status: "error", turns: 4, grade: {} }, grades),
+    0,
+    "it answered and delivered nothing",
+  );
+  assert.equal(
+    scoreOf(
+      {
+        run_id: "c",
+        status: "error",
+        turns: 4,
+        error:
+          "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND).",
+      },
+      grades,
+    ),
+    undefined,
+    "the provider failed it mid-answer, so it is no answer of the condition's",
+  );
+});
+
+test("a batch that names no conditions runs the ones its backend runs", () => {
+  const all = loadConditions();
+  const ids = (backend, simulated = false) =>
+    pickConditions(all, [], backend, simulated).map((c) => c.id);
+  assert.deepEqual(
+    ids("api"),
+    all.conditions.filter((c) => c.id !== "harness").map((c) => c.id),
+  );
+  assert.deepEqual(ids("claude-code"), ids("api"));
+  assert.deepEqual(ids("harness"), ["harness"]);
+  assert.equal(ids("mock", true).length, all.conditions.length);
+});
+
+test("the harness backend leaves handoff tasks out, and refuses one it is named", () => {
+  const pack = subjectNames()
+    .map((name) => loadSubject(name).default_pack)
+    .find((p) => loadPack(p).some((t) => t.stage_a));
+  assert.ok(pack, "some subject's pack carries a handoff task");
+  const every = pickTasks(pack, [], undefined, "api");
+  const handoff = every.find((t) => t.stage_a);
+  const carried = pickTasks(pack, [], undefined, "harness");
+  assert.deepEqual(
+    carried.map((t) => t.id),
+    every.filter((t) => !t.stage_a).map((t) => t.id),
+  );
+  assert.throws(
+    () => pickTasks(pack, [handoff.id], undefined, "harness"),
+    /cannot run the handoff task/,
+  );
 });

@@ -29,7 +29,7 @@ const FixtureSchema = z.object({
   tool_calls: z
     .record(z.string(), z.number().int().nonnegative())
     .default(() => ({})),
-  /** Added to the answer only where the request offers the sloppy MCP server. */
+  /** Added to the answer only where the request reaches Sloppy. */
   mcp_calls: z
     .record(z.string(), z.number().int().nonnegative())
     .default(() => ({})),
@@ -38,7 +38,7 @@ const FixtureSchema = z.object({
   error: z.string().optional(),
   /** Files the answer writes into the variant, by variant-relative path. */
   writes: z.record(z.string(), z.string()).default(() => ({})),
-  /** Calls the answer made, kept in its transcript for findability; sloppy acts only where the request offers the server. */
+  /** Calls the answer made, kept in its transcript for findability; sloppy acts only where the request reaches Sloppy. */
   calls: z
     .array(
       z.object({
@@ -98,6 +98,9 @@ export default {
   },
 };
 
+const reaches = (request) =>
+  request.mcp !== undefined || request.harness !== undefined;
+
 function answer(fixture, request) {
   const f = FixtureSchema.parse(fixture);
   for (const [rel, content] of Object.entries(f.writes)) {
@@ -114,7 +117,7 @@ function answer(fixture, request) {
     costReported: f.cost_reported,
     turns: f.turns,
     toolCalls: f.tool_calls,
-    mcpCalls: request.mcp ? f.mcp_calls : {},
+    mcpCalls: reaches(request) ? f.mcp_calls : {},
     subagentsSpawned: request.subagents ? f.subagents_spawned : 0,
     iterations: mockIterations(
       f.tokens,
@@ -128,7 +131,7 @@ function answer(fixture, request) {
     events: [
       { ms: 0, event: { type: "fixture", task: request.taskId } },
       ...f.calls
-        .filter((c) => request.mcp || !c.name.startsWith("mcp__sloppy__"))
+        .filter((c) => reaches(request) || !c.name.startsWith("mcp__sloppy__"))
         .map((c) => ({ ms: 0, event: { type: "tool", ...c } })),
       { ms: f.timing.answer_ms ?? 0, event: { type: "answer", text: f.text } },
     ],

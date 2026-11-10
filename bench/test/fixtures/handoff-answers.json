@@ -189,5 +189,35 @@
       "Revert it. Overflow only happens on network shares, which aren't supported anyway, and the Error event lets apps rescan.",
       "I'd keep 64 KB. Bulk operations such as builds or extracting archives create thousands of changes in a burst, and an 8 KB buffer overflows, raising InternalBufferOverflowException so events are lost."
     ]
+  },
+  "metastate-handoff-handshake-ttl": {
+    "pack": "metastate",
+    "sha": "b6966b60",
+    "file": "packages/auth/src/platform/handshake.ts",
+    "holds": "const DEFAULT_TTL_MS = 2 * 60_000;",
+    "novel": "Brightwater",
+    "right": [
+      "Keep five minutes. The commit says Brightwater Civic's deployments sign the challenge with a key in a hardware security module that waits for an operator to approve each request; in office hours that takes up to four minutes, and at two minutes about half their handshakes expired.",
+      "Don't shorten it. The comment above DEFAULT_TTL_MS explains it was raised for Brightwater Civic, whose HSM needs operator approval before it signs, up to 4 min at busy times; with two minutes half their handshakes expired. The challenge is single-use anyway, so the longer window costs little."
+    ],
+    "wrong": [
+      "Agree: two minutes is the library default for a reason, and a shorter-lived challenge narrows the window in which a captured response could be used.",
+      "Keep five minutes because slow mobile networks can delay a deployment's reply, and the challenge is single-use anyway."
+    ]
+  },
+  "metastate-handoff-jwks-timeout": {
+    "pack": "metastate",
+    "sha": "b6966b60",
+    "file": "infrastructure/evault-core/src/core/auth/registry-token.ts",
+    "holds": "const JWKS_FETCH_TIMEOUT_MS = 5000;",
+    "novel": "Kilnworth",
+    "right": [
+      "Keep 12 seconds. Kilnworth Cooperative runs its own Registry on a small VM that is scaled to zero overnight, and its first response after waking takes eight to ten seconds; at 5 s the first platform request of every morning failed with sign-in errors.",
+      "No. The note on registry-token.ts says it was raised for Kilnworth's self-hosted Registry, which scales to zero and needs 8-10 s to answer the first request after idle. Matching vault-access-guard.ts would bring their morning failures back."
+    ],
+    "wrong": [
+      "Agree: 5 seconds everywhere is more consistent, and a Registry that cannot answer in 5 seconds is down, so failing fast is better.",
+      "Keep 12 seconds because the JWKS response is large and slow networks need more time to download it."
+    ]
   }
 }

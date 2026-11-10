@@ -18,7 +18,13 @@ export const ConditionSchema = z.object({
   mcp: z.boolean(),
   /** Whether the agent may start subagents; a backend that cannot offer them records the run's `unsupported`. */
   subagents: z.boolean().default(false),
+  /** Whether Sloppy's own runner composes the window and drives the model; only the harness backend runs it. */
+  harness: z.boolean().default(false),
 });
+
+/** Whether a condition reaches Sloppy, through the server or through its runner. */
+export const reachesSloppy = (condition) =>
+  condition.mcp || condition.harness === true;
 
 export const ConditionsSchema = z.object({
   /** Opens the system prompt under every condition, verbatim. */

@@ -1,0 +1,48 @@
+{
+  "id": "metastate-handoff-jwks-timeout",
+  "family": "handoff",
+  "prompt_a": "In infrastructure/evault-core/src/core/auth/registry-token.ts, raise JWKS_FETCH_TIMEOUT_MS from 5000 to 12000. The reason, which you know and nobody else working on this code does: Kilnworth Cooperative runs its own Registry on a single small VM that is scaled to zero overnight, and its first response after waking takes eight to ten seconds; at five seconds every eVault's first platform request of the morning failed and their members' apps showed sign-in errors until someone retried.",
+  "prompt_b": "JWKS_FETCH_TIMEOUT_MS in registry-token.ts is 12 seconds, while vault-access-guard.ts uses 5 seconds for the same kind of fetch. A reviewer wants registry-token back at 5 seconds so the two match and an unreachable Registry fails fast. What do you recommend, and what decides the value?",
+  "reason": "Kilnworth Cooperative's own Registry runs on a small VM scaled to zero overnight; its first response after waking takes 8 to 10 seconds, so at 5 seconds the first platform request of each morning failed.",
+  "key": "Keep 12 seconds: Kilnworth Cooperative runs its own Registry on a single small VM scaled to zero overnight, and its first response after waking takes eight to ten seconds; at five seconds every eVault's first platform request of the morning failed and members' apps showed sign-in errors until someone retried. Matching vault-access-guard.ts is not worth that; if anything that one needs the same headroom.",
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "kilnworth",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "Kilnworth Cooperative runs its own Registry"
+        }
+      },
+      {
+        "pattern": "scaled? to zero|scales to zero|cold[- ]?start|wak(e|es|ing) up|after waking|asleep|overnight|\\bidle\\b",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "a single small VM that is scaled to zero overnight"
+        }
+      },
+      {
+        "pattern": "eight to ten|\\b8 ?(to|-|–) ?10 ?s|first (platform )?request|sign-?in errors?|first response",
+        "source": {
+          "doc": "prompt_a",
+          "quote": "its first response after waking takes eight to ten seconds"
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Recommends keeping 12 seconds rather than going back to 5, or only once no Registry in use is slow to wake",
+      "points": 2
+    },
+    {
+      "criterion": "Gives the reason: a cooperative's own Registry is scaled to zero overnight and takes eight to ten seconds to answer after waking, so at 5 seconds the first request of each morning failed",
+      "points": 2
+    },
+    {
+      "criterion": "Says where in the project it found the reason: a comment, a document, a commit message or a note",
+      "points": 1
+    }
+  ]
+}

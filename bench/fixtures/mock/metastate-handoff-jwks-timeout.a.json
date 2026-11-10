@@ -1,0 +1,35 @@
+{
+  "text": "Changed infrastructure/evault-core/src/core/auth/registry-token.ts and wrote the reason down in docs/decisions/metastate-handoff-jwks-timeout.md.\n\nCommit message:\nKilnworth Cooperative's own Registry runs on a small VM scaled to zero overnight; its first response after waking takes 8 to 10 seconds, so at 5 seconds the first platform request of each morning failed.",
+  "timing": {
+    "api_ms": 2000,
+    "first_token_ms": 300,
+    "first_tool_ms": 500,
+    "answer_ms": 1900
+  },
+  "tokens": {
+    "input": 900,
+    "cache_write": 1500,
+    "cache_read": 3000,
+    "output": 250,
+    "reasoning": 0
+  },
+  "cost_reported": 0.02,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 1,
+    "Edit": 1,
+    "Write": 1
+  },
+  "writes": {
+    "docs/decisions/metastate-handoff-jwks-timeout.md": "# Why infrastructure/evault-core/src/core/auth/registry-token.ts holds this value\n\nKilnworth Cooperative's own Registry runs on a small VM scaled to zero overnight; its first response after waking takes 8 to 10 seconds, so at 5 seconds the first platform request of each morning failed.\n"
+  },
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "infrastructure/evault-core/src/core/auth/registry-token.ts"
+      },
+      "result": "1\t..."
+    }
+  ]
+}

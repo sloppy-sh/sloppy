@@ -75,6 +75,7 @@ const RUN_OPTIONS = {
   "budget-usd": { type: "string" },
   "timeout-ms": { type: "string" },
   retries: { type: "string" },
+  lanes: { type: "string" },
   config: { type: "string" },
   configs: { type: "string" },
   out: { type: "string" },
@@ -105,6 +106,7 @@ async function run(argv) {
       v["budget-usd"] === undefined ? undefined : Number(v["budget-usd"]),
     timeoutMs: int("timeout-ms", v["timeout-ms"], undefined),
     retries: int("retries", v.retries, 0),
+    lanes: int("lanes", v.lanes, 3),
     outDir: v.out ? path.resolve(v.out) : undefined,
     config: v.config,
     configs: configsArg(v.configs),
@@ -330,7 +332,7 @@ const USAGE = `Usage: node bench.mjs <command>
 
   run     --backend <${BACKENDS.join("|")}> --budget-usd <usd> [--model] [--provider]
           [--subject] [--sha] [--pack] [--tasks a,b] [--conditions a,b] [--reps n]
-          [--seed n] [--timeout-ms n] [--retries n] [--config name]
+          [--seed n] [--timeout-ms n] [--retries n] [--lanes n] [--config name]
           [--configs name=sha[:cli][:--arg...],...] [--out dir]
   list    subjects, tasks, conditions, backends and providers
   report  [--out dir] [--run id [--full]]  a quick table of what results/ holds, or one run:

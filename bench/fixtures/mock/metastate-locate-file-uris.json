@@ -1,0 +1,26 @@
+{
+  "text": "uploadFile in infrastructure/evault-core/src/core/protocol/graphql-server.ts (MAX_FILE_BYTES); FILE_SCHEMA_ID in infrastructure/evault-core/src/core/utils/w3ds-uri.ts; GET /files/:metaEnvelopeId in infrastructure/evault-core/src/core/http/server.ts; parseFileUri and dereferenceFileUri in web3-adapter's w3ds/uri.ts and w3ds/resolver.ts; __file() in infrastructure/web3-adapter/src/mapper/mapper.ts uploads through referenceFileValue.",
+  "timing": {
+    "api_ms": 2700,
+    "first_token_ms": 300,
+    "first_tool_ms": 600,
+    "answer_ms": 2600
+  },
+  "tokens": {
+    "input": 990,
+    "cache_write": 2000,
+    "cache_read": 3900,
+    "output": 280,
+    "reasoning": 0
+  },
+  "cost_reported": 0.029,
+  "turns": 3,
+  "tool_calls": {
+    "Read": 2,
+    "Grep": 1
+  },
+  "mcp_calls": {
+    "search_notes": 1,
+    "read_note": 1
+  }
+}

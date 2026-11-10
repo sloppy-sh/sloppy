@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
+import { SERVES as HARNESS_SERVES } from "../backends/harness.mjs";
 import { loadBackend, sentTools } from "./backend.mjs";
 import { BACKENDS } from "./kinds.mjs";
 import { buildPrompt } from "./prompt.mjs";
@@ -99,6 +100,7 @@ export function reconstructSent({
     system: systemPrompt,
     prompt,
     mcp: condition.mcp === true,
+    ...(condition.harness === true ? { harness: HARNESS_SERVES } : {}),
     tools: sentTools(backend, {
       tools: task.tools,
       subagents: condition.subagents === true,

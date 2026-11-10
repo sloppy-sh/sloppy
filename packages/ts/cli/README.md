@@ -14,6 +14,8 @@ sloppy draft [paths…]  a note in detail per file named, never over somebody's 
 sloppy check [dir]     read every note and say what doesn't hold
 sloppy organise [dir]  propose where notes would hang better and what would join them
 sloppy mcp [dir]       serve these notes to an assistant, under the rules the app keeps
+sloppy run <ask>       put what the notes say about an ask in front of a model, and let it work
+sloppy hook            how to have each prompt you give Claude Code arrive with what the notes say about it
 ```
 
 `--json` answers in JSON instead of lines. `init` takes `--identity <file>` to write

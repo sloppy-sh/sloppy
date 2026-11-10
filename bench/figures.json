@@ -8,7 +8,8 @@
     "mcp",
     "mcp+pointed",
     "agents",
-    "mcp+agents"
+    "mcp+agents",
+    "harness"
   ],
   "palette": [
     "#0072B2",
@@ -19,7 +20,8 @@
     "#D55E00",
     "#882255",
     "#999933",
-    "#6A5ACD"
+    "#6A5ACD",
+    "#AA4499"
   ],
-  "markers": ["o", "s", "^", "D", "v", "P", "X", "*", "h"]
+  "markers": ["o", "s", "^", "D", "v", "P", "X", "*", "h", "p"]
 }

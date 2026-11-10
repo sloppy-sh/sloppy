@@ -108,6 +108,8 @@ export const SentSchema = z.object({
   mcp: z.boolean(),
   /** What the server was started with after `mcp`, such as `--profile=lean`; absent is nothing, or no server. */
   mcp_args: z.array(z.string()).optional(),
+  /** How Sloppy's own runner served the acts where it composed the window and drove the model; absent where it did not. */
+  harness: z.object({ profile: z.enum(["full"]) }).optional(),
   /** The tools the backend was told to offer, by its own names; the tool set's name where a backend names none. */
   tools: z.array(z.string()),
   /** The model asked for; `default` where none was named and an installed agent chose its own. */
@@ -296,6 +298,17 @@ export function runTokens(r, classes) {
 }
 
 /** Wall milliseconds over every stage. */
+/**
+ * A failure that is the provider's, never the run's: a rate limit, an overload, a quota, or the API
+ * unreachable. Only the failure is read, never the answer. The runner runs such a run again without
+ * spending its retries, and no score or mean counts it: its time is backoff and its answer absent.
+ */
+export const providerFailed = (r) =>
+  r.status !== "ok" &&
+  /rate limit|rate-limit|\b429\b|overloaded|too many requests|quota|usage limit|limit reached|can'?t reach the api|api server|unreachable|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|fetch failed/i.test(
+    r.error ?? "",
+  );
+
 export const runWallMs = (r) =>
   r.timing.wall_ms + (r.stage_a?.timing.wall_ms ?? 0);
 

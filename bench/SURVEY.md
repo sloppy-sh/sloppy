@@ -612,3 +612,453 @@ let a wrong answer reach 0.75. No run wrote that way.
 
 One more run was graded with these: a `dotnet-brief-cdac` run under the documents alone, `ok` with a
 full answer, that the judge had never been given. It is counted now rather than quietly dropped.
+
+### Charting the text that is new, not the text re-read (2026-11-06)
+
+The token charts counted every input class, including the conversation re-read on each turn, which
+made Sloppy look like it took in more while costing less — a contradiction that needed a paragraph to
+explain away. The export now carries `fresh_mean` beside `input_mean`: the same input less what was
+re-read. `input_mean` is unchanged, so every figure recorded above still means what it said.
+
+Charted that way the direction is one way on every project. New text read, Sloppy against the
+documents alone: Pulsar −9%, LLVM −11%, Carbon −14%, GitLab −19%, .NET runtime −20%, Milvus −43%;
+pooled −19% against the documents and −17% against subagents, beside cost −17% and −15%. The pages
+mark the number with an asterisk and say in a line what it leaves out, rather than arguing with their
+own charts.
+
+### The carry was incomplete on three subjects, and it cost no task its answer (2026-11-08)
+
+Counting the documents under each subject's configured doc folders against the notes that carry a
+`code:` link to them:
+
+| Subject      | Documents | Carried | Skipped | Carried | Words not carried |
+| ------------ | --------: | ------: | ------: | ------: | ----------------: |
+| Milvus       |       174 |     173 |       1 |   99.4% |             1,616 |
+| Pulsar       |       321 |     317 |       4 |   98.8% |             6,562 |
+| Carbon       |       286 |     282 |       4 |   98.6% |             1,941 |
+| GitLab       |       747 |     669 |      78 |   89.6% |            83,523 |
+| .NET runtime |       265 |     236 |      29 |   89.1% |            63,177 |
+| LLVM         |       758 |     564 |     194 |   74.4% |           723,427 |
+
+Milvus's one skip is `CLAUDE.md`, which is the instructions file and no note's business. LLVM is
+missing a quarter of its documents and 36% of its words, with whole folders at zero —
+`llvm/docs/CommandGuide` 0 of 63, `lldb/docs/use` 0 of 18, `llvm/docs/tutorial` 0 of 26,
+`mlir/docs/Tutorials` 0 of 22 — and 33 scattered singles beside carried siblings.
+
+**It is not the documents and not the carrier's rules.** Three of the skipped files
+(`CommandGuide/FileCheck.md`, `CodingStandards.md`, `tutorial/BuildingAJIT1.md`) were put in a
+scratch repository with a carried file as control and run through `carry-docs.mjs`: four notes
+written, nothing skipped. Nor is it size — the skipped files' median is 7.7 KB against 9.4 KB for the
+carried, which reach 280 KB. The skips are interleaved rather than a tail, so an unfinished run is
+the likeliest cause. The carrier prints each skip with its reason and that output was not kept.
+
+**No task lost its answer.** Every task in the three packs whose `sources` name a document has that
+document in the notes; the handoff tasks name none, working from a commit message. So the gap cannot
+explain LLVM's small margin, and re-running against a complete carry has nothing measurable to
+change. The defect is recorded, not corrected into the figures.
+
+**Note shape does not track the results either.** Words per note, by subject: Milvus median 397,
+Pulsar 374, GitLab 350, LLVM 588, Carbon 745, .NET runtime 824. LLVM does hold the largest notes —
+14 over 5,000 words, one of 30,654 — but Carbon and the .NET runtime carry larger notes at the median
+and both beat LLVM on score. What an agent actually reads is a section, and section sizes are alike
+everywhere: medians 38 to 119 words, 90th centiles 236 to 642. Folder notes carrying nothing but a
+link are 14% to 19% of every subject's notes, LLVM's 15% among them.
+
+## The two trees, written down before any of it ran (2026-11-08)
+
+> Added 2026-11-09: the sections below call these two trees "Arm A" and "Arm B". That was my
+> scaffolding for running them, not a thing the benchmark reports, and it is left here unedited
+> because these paragraphs were written before the runs. What is reported is the three bars in
+> README.md § "The comparison that is reported": the documents as a project keeps them, the same
+> documents with subagents, and Sloppy under the recommended workflow, which includes the shaping.
+> Later subjects name the two trees `asis` and `shaped`.
+
+Everything above is one measurement: documents carried **verbatim**, so both sides read the same
+words and any gain has to come from finding the right document sooner. It is a floor — what Sloppy
+does with documents nobody shaped for it. It says nothing about a project written for Sloppy from
+the start, and the practices the site now publishes were reasoned from how a note is found and read
+rather than measured.
+
+Arm B measures that second thing, and it is a **separate figure, never a correction to Arm A**.
+
+**The fork it has to avoid.** Improving only the notes would hand the Sloppy condition content the
+documents-alone condition cannot reach anywhere, and the number would stop meaning "Sloppy finds
+things" and start meaning "we wrote better documents for one side". So the shaping happens **in the
+tree**: every condition reads the shaped documents, and the notes are carried from them afterwards
+by the same script.
+
+**What "shaped" means.** Applied to every Markdown document under the subject's configured doc
+folders, in path order, by a writer that has not seen the task pack:
+
+1. The title states what the document decides, in the words somebody would ask in, and stays the
+   document's `#` heading.
+2. An opening paragraph under the title states the decision and its reason.
+3. A section heading says what its section answers, where the existing one does not.
+4. A `Covers:` line names the repository paths the document is about.
+5. One index per doc folder maps each document's title to its path.
+
+**Hard gates, fixed now.**
+
+- **Every quoted passage the graders cite must still resolve verbatim.** Pulsar's pack cites 75;
+  LLVM's 75. Checked automatically before a single run, and a failure stops the arm rather than
+  being written around.
+- No sentence of the original is deleted or reworded. Shaping is additive, plus titles and headings.
+- The writer never reads `bench/tasks/`, so no document is shaped towards a question.
+- Arm A stays reproducible at its pinned SHA; Arm B runs on its own branch and its own SHA, recorded
+  on every run.
+- Both arms are published, side by side, the way the two LLVM drift figures are.
+- **Whatever Arm B shows stands**, including a result that moves against Sloppy, and the shaping is
+  not revised after its result is seen.
+
+**The pilot is Pulsar**, and the reason is not cost alone. Pulsar is an underperformer (+0.017) whose
+documents already carry the one thing that solves findability — `pip/000-INDEX.md`, a table of every
+proposal's number and title, which its documents-alone runs read before going straight to the files
+that matter. Findability is therefore already paid for there, so whatever Arm B moves on Pulsar is
+attributable to the shape of the writing rather than to routing. It is also the smallest of the six
+by words of documents (388k against LLVM's 2.0M), so the pilot's cost is known before LLVM's turn.
+If the pilot moves nothing, that is the answer for the other underperformers too, and it is reported.
+
+**What the pilot can and cannot test, read off Pulsar's documents before shaping them.** Its
+proposals already satisfy two of the five: the title states the decision in askable words
+(`# PIP-462: Remove Etcd metadata store backend`) and the folder is indexed. What they do not have is
+a decision-first opening — `## Motivation` opens on context and reaches the decision at the end —
+headings that say what a section answers rather than naming a template slot (`Motivation`, `Goals`,
+`In Scope`), or a line naming the code. So the pilot tests practices 2, 3 and 4 on documents where 1
+and 5 are already paid for, which is a narrow and clean question: does a decision-first opening with
+answer-shaped headings and code pointers move anything by itself?
+
+It follows that a null result on Pulsar does **not** settle LLVM, and the sentence above claiming it
+would is withdrawn before any run. LLVM's headroom is different in kind: 67 of its documents open
+with no `#` heading at all, its titles are topic names, and the folder notes carry nothing but a
+link. LLVM gets its own shaping on all five, and its cost is 2.0M words against Pulsar's 388k.
+
+### Pulsar under the recommended workflow (2026-11-09)
+
+One batch, 182 runs, every one `ok`: both trees under their own config name, three conditions, three
+repetitions, interleaved from seed 41 across three lanes, judged blind. Sharing one batch is what
+makes the arms comparable; an earlier unpaired Arm B run of 90 is in `results/superseded/`.
+
+**Pulsar, the three bars** (README.md § "The comparison that is reported"):
+
+| Pulsar          | documents alone | subagents | Sloppy |
+| --------------- | --------------: | --------: | -----: |
+| answer quality  |           0.905 |     0.911 |  0.919 |
+| Sloppy's margin |          +0.014 |    +0.010 |      — |
+| new text read   |            −21% |       −7% |      — |
+| cost            |            −16% |       −8% |      — |
+
+**For attribution only, never a bar:** the shaped documents read _without_ the sloppy server score
+0.918, against 0.905 for the documents as they stand. So on this project most of the gain is in the
+writing, and Sloppy is what gets the writing done that way and then reads it. Sloppy's own score is
+0.922 unshaped and 0.919 shaped, so it was already taking what the unshaped documents held.
+
+Read that way: most of what Sloppy delivers on this project is reachable by writing the documents
+differently, and Sloppy is what gets a team to write them that way and then reads them. Sloppy's own
+score is the same on either tree, 0.922 and 0.919, so it was already taking what the unshaped
+documents held.
+
+**Every score difference here is inside its own noise, which is the honest headline.** The spread of
+the per-task difference is entirely run-to-run rather than task-to-task, and at three repetitions the
+standard error on a subject mean is 0.018. So +0.014, +0.010 and the −0.003 between the arms all
+carry intervals containing zero. What is firm is the token and cost direction, and that +0.017 against
+the documents alone reproduced to three decimals across two independent batches of the unshaped tree.
+
+### Arm B on LLVM, and the prediction is the opposite of Pulsar's result (2026-11-09)
+
+Written before the shaping starts. Lining the six up by how often the documents-alone agent already
+finds the answering document explains Pulsar's outcome and says LLVM should go the other way:
+
+| Subject      | Words of docs | Sloppy vs documents | Docs alone found it | How documents are named |
+| ------------ | ------------: | ------------------: | ------------------: | ----------------------- |
+| LLVM         |     2,007,751 |              +0.008 |             12 / 12 | by subject              |
+| Carbon       |       624,433 |              +0.016 |              9 / 12 | number and subject      |
+| Pulsar       |       385,509 |     +0.017 → +0.001 |              6 / 12 | by number, indexed      |
+| .NET runtime |       602,190 |              +0.034 |             12 / 12 | by subject              |
+| Milvus       |       495,839 |              +0.039 |              6 / 12 | by date                 |
+| GitLab       |     1,103,487 |              +0.044 |             10 / 12 | by subject              |
+
+**Why Pulsar closed.** Its documents-alone agent found the answering document in only 6 of 12 runs, so
+there was a large finding gap, and shaping filled it: `bare` rose 0.905 → 0.918 while Sloppy stayed
+where it was. The shaping did the work Sloppy had been doing.
+
+**Why LLVM should not.** Its documents-alone agent already finds the answering document **12 of 12**.
+There is no finding gap for shaping to close, so `bare` cannot rise the way Pulsar's did. What LLVM
+has instead is a matching problem on Sloppy's side: 67 of its documents open with no `#` heading at
+all and the rest are titled by topic, and a question is matched against titles and headings. Give
+those documents titles that state the decision and Sloppy's first answer should land where today it
+guesses.
+
+**So the prediction: on LLVM, shaping lifts Sloppy more than it lifts the documents alone, and the
+margin widens from +0.008.** If it closes the way Pulsar's did, the finding-gap account above is
+wrong and the honest reading becomes that shaped documents simply suit any reader and Sloppy adds
+little either way — which is reported as it stands. The same reasoning puts the .NET runtime with LLVM
+and Milvus with Pulsar, and those are the next two tests of it.
+
+The gates are the ones Arm B already runs under: shaping lands in the tree so every condition reads
+it, no sentence is reworded, `quote-gate.mjs` must still resolve every passage the graders cite, the
+writer never reads the task pack, and both trees run in one interleaved batch under their own config
+names so neither the hour nor the export can mix them.
+
+### LLVM under the recommended workflow: the margin widened, as predicted (2026-11-09)
+
+One batch, seed 42, both trees under their own config name, three conditions, three repetitions,
+interleaved across three lanes, judged blind. 179 runs finished of 189 attempted; the ten that failed
+were retried and 59 of the 60 task-cells hold three good runs, the last holding two.
+
+**LLVM, the three bars:**
+
+| LLVM            |         documents alone |                subagents | Sloppy |
+| --------------- | ----------------------: | -----------------------: | -----: |
+| answer quality  |                   0.944 |                    0.944 |  0.959 |
+| Sloppy's margin | +0.016 (0.002 to 0.029) | +0.016 (−0.004 to 0.035) |      — |
+| new text read   |                    −31% |                     −23% |      — |
+| cost            |                    −27% |                     −19% |      — |
+
+**That lower bound is the first in this record to sit above zero.** Against subagents the margin is
+the same +0.016 and its interval still contains zero.
+
+**For attribution only, never a bar:** the shaped documents without the sloppy server score 0.948
+against 0.944 as they stand — barely moved. So here the shaping helped Sloppy rather than the plain
+reader, which is the whole of why the margin widened.
+
+**The prediction held and the mechanism with it.** LLVM's documents-alone agent already finds the
+answering document 12 times in 12, so shaping had no finding gap to hand it: `bare` moved 0.944 to
+0.948 where Pulsar's moved 0.905 to 0.918. What the shaping fixed was on Sloppy's side of the
+comparison — 571 of 758 titles named a topic and now state what the document decides — so the margin
+widened instead of closing. Pulsar and LLVM are therefore the two ends of one rule rather than two
+contradictory results: shaping lifts whichever reader the project was failing, and on a project whose
+file names already answer the finding question, that reader is Sloppy.
+
+Two things recorded rather than tidied away:
+
+**Arm A here is not the published LLVM figure.** The container measured all year held 564 of LLVM's
+758 documents, from a carry that did not finish; this Arm A re-carries the same documents completely,
+because an arm whose documents are shaped must not also be the only arm with a complete corpus. With
+the full corpus the unshaped margin reads +0.004 where the published figure reads +0.008 — more
+documents to sift through, and no task's answer was ever missing either way.
+
+**Ten runs failed as "Claude Code exited with 0: no output", and none of them was an `mcp` run** —
+three each in the two `bare` cells, two each in the two `agents` cells, where chance would put about
+three in `mcp`. Every one reports zero turns, so the run never began answering, and they are spread
+across tasks rather than gathered on the hard ones; it reads as a start-up flake on the largest
+subject rather than anything about a condition. It is named here because a retried failure is a
+filtered sample, and only one side was filtered.
+
+### Carbon falsifies the rule, and the shaping made its documents worse (2026-11-10)
+
+180 runs, seed 43, all `ok`, 30 a cell, no failures. The rule said Carbon's margin should land between
+Pulsar's and LLVM's, since its documents-alone agent finds the answering document 9 times in 12
+against their 6 and 12. It did not.
+
+| Carbon, within seed 43 | documents | subagents | Sloppy | margin |
+| ---------------------- | --------: | --------: | -----: | -----: |
+| documents as kept      |     0.928 |     0.906 |  0.925 | −0.003 |
+| shaped                 |     0.904 |     0.899 |  0.898 | −0.005 |
+
+**Sloppy is level with the documents on either tree, and the shaping lowered all three conditions by
+0.02 to 0.03.** Reported as the three bars — the documents as the project keeps them against Sloppy
+under the recommended workflow — Carbon reads **−0.029 against the documents and −0.008 against
+subagents**, the only subject where Sloppy is behind. The six-project average falls from +0.027 to
+**+0.019** against the documents alone, with cost unchanged at −20%.
+
+**The shaping is not broken; it is unhelpful here.** Its titles read sensibly — "Proposals" became
+"Where accepted proposals live and how they are named", "Generics goals" became "Adopt a high-level
+goals document for generics" — and 80,071 non-heading lines came through untouched with all 75 grader
+quotes resolving. What Carbon did not have was headroom: its `Covers:` links rose 8% where Pulsar's
+and LLVM's nearly doubled, because its documents already named their code, and its titles were
+already short and indicative. One hypothesis for the drop, untested: a title that states a decision in
+a full sentence carries more words, so a question's own words are a smaller share of it, and matching
+gets worse rather than better. That is a guess about a mechanism and is written here as one.
+
+**So the practices are not free, and the record should stop implying they are.** On three projects the
+shaping helped two readers, one reader, and no reader respectively: Pulsar's plain agent gained most,
+LLVM's Sloppy gained, Carbon's everyone lost. The finding-rate account predicted the first two and
+failed on the third, so it is a partial rule at best and is withdrawn as a predictor. What survives
+all three is narrower and duller: **shaping changes who finds what, and whether it helps depends on
+what the documents already did.** Measuring it per project is the only way to know, which is an
+argument against publishing the practices as general advice and for publishing them as what was
+measured, project by project.
+
+### Where the gain is, by what the task asks (2026-11-10)
+
+Sloppy under the reported comparison against the documents alone, per task family, over the six
+projects as the pages draw them (three shaped, three as kept), from `results/summary.json`:
+
+| family  |   n | Sloppy vs documents |
+| ------- | --: | ------------------: |
+| why     |  24 |              +0.046 |
+| handoff |  12 |              +0.037 |
+| locate  |  12 |              +0.004 |
+| drift   |   6 |              −0.029 |
+| brief   |   6 |              −0.042 |
+
+It pays where the ask is _why_ something was decided and where a reason must survive from one
+agent to another with no shared memory. It pays nothing on _where is this code_, which a file-name
+search already answers. It loses on briefings, where the agent works from excerpts of several notes
+where reading one document whole would have served — the family a window composed to a budget would
+serve first. `WHERE-SLOPPY-HELPS.md` § "What doesn't help" has the mechanism: a tool answering "where
+in the code is this?" was offered in 60 runs and used once; agents rely on what their first call
+returns.
+
+## The fourth bar, written down before it runs (2026-11-10)
+
+The three bars measure Sloppy as served today: an agent that fishes for notes through the sloppy
+server. The fourth, the `harness` condition, measures `sloppy run`: Sloppy composes a window for the
+task to a budget — the note that best answers it whole, the chain it sprang from, the notes beside it
+in its tags, the lines of code its anchors point at — puts it in front of the model, and then applies
+Sloppy's own acts for it turn after turn. It reads the same shaped documents as the third bar, under
+the same task packs and the same blind judge, and it is reported as a fourth row of
+the same setting.
+
+**Where it runs first: Milvus and GitLab**, where finding was the binding constraint and the margins
+were largest. If composing a window does not move a subject where finding is what decides the score,
+it will not move one where it is not.
+
+**The prediction.** The fourth bar moves _brief_ above the third's −0.042 against the documents
+alone. _Brief_ is the family that loses because the agent works from excerpts of several notes where
+one document whole would have served, and a window that puts the best note in whole, and cuts it
+last, is built for exactly that. If _brief_ does not move, the window is not doing what it was
+written to do.
+
+**What would show it wrong.**
+
+- The fourth bar at or below the third on _brief_ and on _why_: composing is no better than fishing,
+  and the loop earns nothing on its own.
+- The fourth bar ahead only on cost: the window saves tokens without changing what the model gets
+  right. That is worth having, and it is not what a harness claims.
+
+**Four differences from the third bar besides who composes the window**, stated now so they are not
+discovered in the result. Any of them can move the number on its own, and none is corrected for.
+
+- Its model is driven through the provider's API rather than through Claude Code.
+- It is offered Sloppy's acts and nothing else — no file reading, searching or shell — so code
+  reaches it only as the lines in its window and what `find_code` answers. It leaves handoff tasks
+  out, since it cannot change a file.
+- It is served the `full` setting — every act, answers in full, no landing on code — where the third
+  bar's server starts `lean` unless its config names otherwise. Each record says which under
+  `sent.harness` and `sent.mcp_args`.
+- It runs in a batch of its own, so it does not share the third bar's hour or run order.
+
+**The result stands whichever way it goes**, as every result in this file does. It is written here
+beside this prediction, not in place of it.
+
+## A seventh project, written down before its pack is finished (2026-11-10)
+
+The developer asked for the MetaState prototype — Web 3 Data Spaces, a personal eVault with
+platforms as interchangeable frontends — to be documented in Sloppy and measured. It is written
+down here before the task pack exists, so that nothing about the setup is decided after a result.
+
+**It is under the floor.** 104 Markdown documents, 95,079 words, 264,637 lines of code. The six
+projects on the pages were chosen by a rule of at least 350,000 words of design documents; this one
+has a quarter of that. It is measured because the developer asked for it, and it is reported **as a
+seventh project, outside the six-project average**, until the developer says otherwise.
+
+**How its documents are named.** A Docusaurus site at `docs/docs/<Topic>/<name>.md` — W3DS Basics,
+W3DS Protocol, Infrastructure, Services, GitW3, Post Platform Guide — plus the agent skill's
+`skills/w3ds/reference/*.md` and the README under each system folder. Named by topic, so a file-name
+search finds most of them; the finding-rate rule that would have predicted a small margin from that
+was withdrawn on Carbon, so **no direction is predicted here**. What is predicted is the shape of the
+setup's own effect: the carry made 48 code links from documents as kept and 79 from the shaped ones,
+the smallest headroom of any subject so far, because these documents rarely name a repository path.
+
+**The two trees.** Documents as kept, with a container of 197 notes tagged by system: `sloppy/notes`
+at `3849c07a`. Shaped the way the practices set out — 91 of 93 titles rewritten, 10,181 lines preserved,
+88 `Covers:` paths all resolving — with its own container of 197 notes: `sloppy/shaped` at
+`533f327b`. Both run in one interleaved batch under the config names `asis` and `shaped`, three
+conditions, three repetitions, three lanes; the three bars read the documents and subagents from
+`asis` and Sloppy from `shaped`, as README.md § "The comparison that is reported" says.
+
+**What the container holds that the others did not.** Every note is tagged with the system it is about
+and the documentation's topic, read off the paths; the 41 notes a system hangs under are drawn large;
+the graph's face is the project's own `w3dslogo.svg`, kept in `media/`; and each platform's icon from
+`packages/platform-icons` is **offered** onto that platform's note rather than written there, because
+those notes were started by `sloppy init` as the device's writing and a tool's writing on a note it
+did not start is an offer. The first shaped carry was itself held out as 93 offers for the same reason
+and was redone as the carrier's own notes; the lesson is recorded in `carry-docs.mjs`'s README section.
+
+**The pack** is being written by a writer who has not seen either container, to the shape of the
+other six; its quotes are gated against both trees before anything runs. Whatever it shows stands.
+
+## The seventh project, measured (2026-11-10)
+
+The pack came back blind — ten tasks, 57 quoted passages resolving word for word in both trees —
+and ran as preregistered: one batch, seed 44, both trees under `asis` and `shaped`, three conditions,
+three repetitions, three lanes, 180 runs planned. Three things happened on the way that are written
+down here before the numbers, because each moved them.
+
+**A DNS outage, and what a provider's failure counts as.** For about five minutes around run 139 the
+API could not be resolved. Eleven records failed: four at a stage A's start (`turns` 0, unscored as
+always) and seven mid-answer, after one to four turns of real work. Five cells spent their one retry
+inside the outage and were run again afterwards, one `run --reps 1 --seed 44` each, so every cell has
+its three finished runs (191 records, 180 `ok`). Under the rule as it stood — a run that started and did
+not finish scores 0 and sits in every mean — the seven mid-answer records counted as answers worth zero,
+two of them in the subagents' `why-rate-limit-ceiling` cell and one in Sloppy's `why-company-board`,
+and their 180 to 275 seconds of DNS retries sat in the time means. That rule exists so a condition is
+judged on what it delivered; an outage is not something a condition delivered. The runner already
+treated a rate limit as the provider's failure and ran the run again without spending its retries;
+the API being unreachable is the same class, so `providerFailed` (`lib/record.mjs`) now names both,
+read from the failure alone, and the runner, `scoreOf` and the export all leave such a run unscored
+and out of every mean (README.md § "What counts as better"). Across every batch kept here, the
+seven records of this one are the only failed runs with turns the rule touches: LLVM's ten were never
+started and were unscored already.
+
+**The drift grader met the real answers.** Nine of the eighteen drift answers stated the planted
+change correctly and scored 0, for saying "a score of 99 from any engine passes" where the gate wanted
+"it accepts any engine", or stating the rule as the denial it calls for. Widened to those phrasings
+before judging, all eighteen score 1 and the suite's wrong answers score as before; the re-grades are
+appended, and the phrasings are in the fixture (`tasks/metastate/README.md` § "The drift task").
+
+**The subject file called the code documents.** `metastate.json` listed the four system folders among
+`docs` so the carry would read the READMEs under them, and the export, which counts every file under
+`docs` as a document, put the project at 1.5 million words — above the floor it was preregistered as
+under. The list now names the 93 documents the carry read: `docs/docs`, `skills/w3ds/reference`, the
+two root files, and the 32 READMEs and guides under the system folders, one by one. The export counts
+100 files and 89,534 words of documents and 683,689 lines of everything else; the
+preregistration's 104 and 95,079 were counted by hand with a different rule, and the export's count
+is the figure of record. Under the floor either way, and reported outside the average.
+
+**The three bars.** Documents as kept 0.925 [0.865, 0.976],
+subagents 0.921, Sloppy on the shaped documents 0.946
+[0.909, 0.976]: **+0.021** over the documents and
++0.024 over subagents, 30 runs a bar, inside the noise one project carries. Had the rules stood
+as written, the three would have read 0.925, 0.892 and 0.922; with the grader as written and the outage
+runs unscored, 0.925, 0.888 and 0.929. New text read 10,221 tokens against
+15,304 (**−33%**), cost $0.066 against $0.090
+(**−27%**), 7.0 round trips against 7.5, and 33.3 seconds a task against
+32.0: slower, by the pattern Carbon showed, a note read in pieces where a search opens the document
+whole. Sloppy's runs opened 8.1 files and notes a task against 10.7 files.
+
+| task                      | documents | subagents | Sloppy | Sloppy − documents |
+| ------------------------- | --------- | --------- | ------ | ------------------ |
+| `brief-platform-data`     | 0.93      | 0.93      | 0.82   | -0.10              |
+| `drift-reputation-engine` | 0.99      | 1.00      | 1.00   | +0.01              |
+| `handoff-handshake-ttl`   | 1.00      | 1.00      | 1.00   | +0.00              |
+| `handoff-jwks-timeout`    | 1.00      | 0.93      | 1.00   | +0.00              |
+| `locate-awareness-path`   | 0.99      | 0.99      | 0.90   | -0.09              |
+| `locate-file-uris`        | 0.99      | 0.98      | 0.98   | -0.00              |
+| `why-company-board`       | 0.73      | 0.84      | 0.95   | +0.22              |
+| `why-handshake-evidence`  | 0.80      | 0.83      | 0.94   | +0.14              |
+| `why-on-behalf-of`        | 0.97      | 0.97      | 0.90   | -0.07              |
+| `why-rate-limit-ceiling`  | 0.86      | 0.74      | 0.96   | +0.10              |
+
+The why-questions are where it gained, three of four: the documents-alone agent answered them from
+the code's comments, which repeat the reasons in part — `history.ts` for the company board,
+`chain.ts` for the handshake, `global-rate-limiter.ts` for the ceiling — and never named the document,
+which is half of what the judge asks for. It lost the briefing, as it has on most projects, working
+from the skill's reference pages instead of the protocol page, and it lost one where-question for a
+reason worth keeping: `Awareness-Protocol.md` says "matching subscriptions" and never names
+`SubscriptionMatcher`; a code search named the class, and Sloppy's three runs described the step from
+the note and never opened it.
+
+**Attribution, for this file and never for a page.** The shaped documents without the server scored
+0.950, +0.025 over the documents as kept: the shaping lifted the plain agent, as it did
+on Pulsar. The documents as kept with the server scored 0.959, the highest reading of the six
+and +0.013 over the reported Sloppy bar. So on this project the server is what moved the
+score and the shaping added nothing on top of it; all four readings are within one project's noise of
+each other, and the reported comparison stays the one README.md § "The comparison that is reported"
+defines.
+
+**What it says about the floor.** A project a quarter the size the six were chosen at, with
+topic-named documents a file-name search finds, still read +0.021, at a third less text. One
+project, inside noise; it stays a seventh, outside the average, and the floor stays a rule about what
+the average is made of rather than a prediction of where Sloppy helps.

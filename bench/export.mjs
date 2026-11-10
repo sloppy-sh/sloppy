@@ -3,11 +3,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { withAfterSloppy } from "./lib/after-sloppy.mjs";
-import { loadConditions } from "./lib/condition.mjs";
+import { loadConditions, reachesSloppy } from "./lib/condition.mjs";
 import { BENCH_DIR, loadSubject } from "./lib/config.mjs";
 import { loadPrices, tierFor } from "./lib/prices.mjs";
 import { privateSubjects, withoutPrivate } from "./lib/private.mjs";
 import {
+  providerFailed,
   readFindability,
   readGrades,
   readRecords,
@@ -69,6 +70,8 @@ export function bootstrapCi(values, seed = 0) {
 }
 
 const INPUT_CLASSES = ["input", "cache_write", "cache_read"];
+/** Input the model had not been given before: the whole of it less the conversation it re-read. */
+const FRESH_CLASSES = ["input", "cache_write"];
 const told = (r, classes) =>
   !classes.some((c) => r.tokens_unknown?.includes(c));
 
@@ -102,6 +105,7 @@ function runView(r, gradesByRun, foundByRun = new Map()) {
   return {
     record: r,
     subject: r.subject.name ?? "sloppy",
+    sha: r.subject.sha,
     backend: r.backend.kind,
     model: r.backend.model,
     config: r.config ?? "shipped",
@@ -114,6 +118,7 @@ function runView(r, gradesByRun, foundByRun = new Map()) {
     context_mean: ctx.mean,
     approx: ctx.approx,
     input_total: runTokens(r, INPUT_CLASSES),
+    input_fresh: runTokens(r, FRESH_CLASSES),
     output: runTokens(r, ["output", "reasoning"]),
     wall_s: runWallMs(r) / 1000,
     answer_s:
@@ -221,10 +226,27 @@ export const settingOf = (config) =>
  */
 const settingsOf = (view, served) => {
   const setting = settingOf(view.config);
+  const also = RECOMMENDED.has(`${setting}\t${served.has(view.condition)}`)
+    ? ["recommended"]
+    : [];
   if (served.has(view.condition) || !SETTINGS.includes(setting))
-    return [setting];
-  return SETTINGS;
+    return [setting, ...also];
+  return [...SETTINGS, ...also];
 };
+
+/**
+ * The reported comparison, README.md § "The comparison that is reported": the documents as a project
+ * keeps them for the conditions that do not reach the server, and the shaped documents for the one
+ * that does, because the shaping is part of taking Sloppy up. A run also counts under its own
+ * setting, which is what keeps the shaped documents read without the server measurable and off every
+ * page. The keys are `<setting>\t<reaches the server>`.
+ */
+const RECOMMENDED = new Set([
+  "asis\tfalse",
+  "shaped\ttrue",
+  "armA\tfalse",
+  "armB\ttrue",
+]);
 
 /**
  * One subject, model tier, setting and condition: its tasks' means, and the means over those tasks with a
@@ -249,6 +271,7 @@ function groupOf(key, vs, seed) {
       scored: scores.length,
       score: mean(scores),
       input: m("input_total"),
+      fresh: m("input_fresh"),
       wall: m("wall_s"),
       cost: m("cost"),
       ...finishedMeans(ts),
@@ -262,6 +285,7 @@ function groupOf(key, vs, seed) {
   const score = over("score", seed);
   const input = over("input", seed + 1);
   const cost = over("cost", seed + 2);
+  const fresh = over("fresh", seed + 3);
   const m = (field) => mean(defined(vs.map((v) => v[field])));
   const scored = defined(tasks.map((t) => t.score));
   return {
@@ -273,6 +297,7 @@ function groupOf(key, vs, seed) {
       ...t,
       score: round(t.score, 4),
       input: round(t.input, 0),
+      fresh: round(t.fresh, 0),
       wall: round(t.wall, 2),
       cost: round(t.cost, 6),
     })),
@@ -284,6 +309,9 @@ function groupOf(key, vs, seed) {
     input_mean: round(input.mean, 0),
     input_lo: round(input.lo, 0),
     input_hi: round(input.hi, 0),
+    fresh_mean: round(fresh.mean, 0),
+    fresh_lo: round(fresh.lo, 0),
+    fresh_hi: round(fresh.hi, 0),
     cost_mean: round(cost.mean, 6),
     cost_lo: round(cost.lo, 6),
     cost_hi: round(cost.hi, 6),
@@ -302,11 +330,37 @@ function groupOf(key, vs, seed) {
 
 const GROUP_KEYS = ["subject", "backend", "tier", "setting", "condition"];
 
+/**
+ * No group key carries the subject's sha, so two batches of one subject at different commits would
+ * be averaged into one row without saying so. A comparison between two trees must therefore give
+ * each its own config name, which `setting` keeps apart; this refuses the mistake rather than
+ * reporting its mean.
+ */
+function refuseMixedShas(groups, views) {
+  const shas = new Map();
+  for (const v of views) {
+    const key = GROUP_KEYS.map((k) => v[k]).join("\t");
+    shas.set(key, (shas.get(key) ?? new Set()).add(v.sha));
+  }
+  for (const [key, held] of shas)
+    if (held.size > 1) {
+      const [subject, , , setting, condition] = key.split("\t");
+      throw new Error(
+        `${subject} ${setting} ${condition} holds runs from ${held.size} commits of the subject ` +
+          `(${[...held].map((s) => s.slice(0, 10)).join(", ")}). Averaging them would hide which ` +
+          `tree each answer was given. Run each tree under its own --configs name, or export one ` +
+          `with --seeds.`,
+      );
+    }
+  return groups;
+}
+
 /** Every subject, model tier, setting and condition, a run counted under each setting `settingsOf` gives it. */
 export function groupsOf(views, served, weights = EQUAL_WEIGHTS) {
   const withSetting = views.flatMap((v) =>
     settingsOf(v, served).map((setting) => ({ ...v, setting })),
   );
+  refuseMixedShas(null, withSetting);
   const groups = groupBy(withSetting, GROUP_KEYS).map((vs, i) => ({
     ...groupOf(
       Object.fromEntries(GROUP_KEYS.map((k) => [k, vs[0][k]])),
@@ -553,7 +607,7 @@ export function buildSummary({
   now = new Date(),
   served = new Set(
     loadConditions()
-      .conditions.filter((c) => c.mcp)
+      .conditions.filter(reachesSloppy)
       .map((c) => c.id),
   ),
   found = [],
@@ -565,7 +619,7 @@ export function buildSummary({
     gradesByRun.set(g.run_id, [...(gradesByRun.get(g.run_id) ?? []), g]);
   const foundByRun = new Map(found.map((f) => [f.run_id, f]));
   const views = records
-    .filter((r) => r.status !== "budget")
+    .filter((r) => r.status !== "budget" && !providerFailed(r))
     .map((r) => runView(r, gradesByRun, foundByRun));
 
   const subjects = {};

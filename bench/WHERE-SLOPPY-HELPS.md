@@ -130,6 +130,28 @@ word. Then apply steps 1, 2 and 4 to the documents your team is asked about most
   steps above follow from how Sloppy finds and reads a note, but none was tested as a writing
   practice. Try them on the questions your team asks most and compare.
 
+## The index is the exception, and it is the lesson
+
+Pulsar is the one project whose documents are named worse than Milvus's — `pip-1.md` to
+`pip-486.md` says less than a date does — and it is where Sloppy spared the least. The reason is
+one committed file. `pip/000-INDEX.md` is a table of every proposal's number and title, and the
+transcripts show the documents-alone runs reading it and then going straight to what matters:
+across four runs, `pip-462.md` was touched 67 times and `pip-460.md` 27, against 14 for the index
+itself. Milvus has no such file — its `docs/design-docs/README.md` says the directory "contains
+Design Docs" and lists none, and no file in the repository references those documents by name — so
+its runs spread instead, the most-touched document reaching 9 mentions and the rest trailing off
+across `truncate_collection`, `shard_split`, `online-schema-evolution` and others that answered
+nothing.
+
+Counting what each run opened, Milvus falls from 11.1 files and notes to 6.5 with Sloppy, the
+largest drop of the six; Pulsar goes from 8.9 to 9.2, opening one note on top of the files it
+was going to read anyway.
+
+**So Sloppy's gain is the searching a project has not already done for its readers.** An index, or
+a file name that says what is inside, is a project paying that cost itself, and where it has, there
+is little left to win. The practices above are worth following for the documents' own sake; none of
+them is a reason to take your index away.
+
 ## Evidence
 
 All Sonnet through Claude Code, judged blind. Sloppy compared with the same agent using the docs
@@ -149,14 +171,14 @@ alone. Full method in [`bench/REPORT.md`](REPORT.md); every round in
 **How often the agent opened the answering document** on why-questions in the final test (12
 runs a side). The docs-alone column tracks Sloppy's gain, with one exception below:
 
-| Project      | How its documents are named     | Docs alone found it | Sloppy's first look found it¹ | Sloppy, cost |
-| ------------ | ------------------------------- | ------------------- | ----------------------------- | ------------ |
-| Milvus       | by date, `YYYYMMDD-…`           | 6 / 12              | 9 / 12                        | −37%         |
-| Pulsar       | by number, `pip-NNN.md`         | 6 / 12              | 9 / 12                        | −13%         |
-| Carbon       | number and subject, `pNNNNNN-…` | 9 / 12              | 12 / 12                       | −10%         |
-| GitLab       | by subject                      | 10 / 12             | —                             | −13%         |
-| LLVM         | by subject                      | 12 / 12             | 12 / 12                       | −11%         |
-| .NET runtime | by subject                      | 12 / 12             | 12 / 12                       | −17%         |
+| Project      | How its documents are named      | Docs alone found it | Sloppy's first look found it¹ | Sloppy, cost |
+| ------------ | -------------------------------- | ------------------- | ----------------------------- | ------------ |
+| Milvus       | by date, `YYYYMMDD-…`            | 6 / 12              | 9 / 12                        | −37%         |
+| Pulsar       | by number, `pip-NNN.md`, indexed | 6 / 12              | 9 / 12                        | −13%         |
+| Carbon       | number and subject, `pNNNNNN-…`  | 9 / 12              | 12 / 12                       | −10%         |
+| GitLab       | by subject                       | 10 / 12             | —                             | −13%         |
+| LLVM         | by subject                       | 12 / 12             | 12 / 12                       | −11%         |
+| .NET runtime | by subject                       | 12 / 12             | 12 / 12                       | −17%         |
 
 ¹ Whether the first call's result named the answering document's note by its title. GitLab's
 documents have no `#` title, so this couldn't be checked there. The cost column covers all of

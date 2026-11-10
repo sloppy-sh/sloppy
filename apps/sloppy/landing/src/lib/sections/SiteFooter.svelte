@@ -24,6 +24,7 @@
 			<a href={resolve('/')} class="hover:text-foreground">Home</a>
 			<a href={resolve('/how')} class="hover:text-foreground">How it works</a>
 			<a href={resolve('/results')} class="hover:text-foreground">Results</a>
+			<a href={resolve('/practices')} class="hover:text-foreground">Practices</a>
 			<a href={resolve('/methodology')} class="hover:text-foreground">Methodology</a>
 			<a href={resolve('/runs')} class="hover:text-foreground">Every run</a>
 		</p>

@@ -1,0 +1,84 @@
+{
+  "id": "metastate-why-company-board",
+  "family": "why",
+  "prompt": "A security reviewer reading packages/delegation is alarmed that anyone with write access can store new versions of a company's Role and Delegation records in its eVault. They ask three things: why the eVault does not refuse those writes, why a verifier stops reading a record's history after 2,000 versions, and why a Company record whose first version had no directors can never get a board, even when a later version adds directors and is signed by one of them. What is the answer to each?",
+  "tools": "read",
+  "key": "Written in docs/docs/W3DS Protocol/Company-Delegation.md (the opening, \"Company: born with its board\" and \"Limits and trade-offs\"); the code is packages/delegation (history.ts resolveBoard / board timeline, chain.ts) and packages/auth/src/delegated-signature.ts (HISTORY_PAGE 100 x MAX_HISTORY_PAGES 20). (1) The eVault enforces none of the delegation model: it stores whatever it is given, and all authority is decided by the verifier from signatures and the eVault's version history. Writes are not restricted; records that are not properly signed (unsigned, forged, copied or written back) are ignored as if absent, so they cost verification time but grant nothing. (2) Because anyone can add versions, the read is bounded: a verifier reads at most 2,000 versions of a record, so flooding a record with writes is a denial of service, never a takeover. (3) A board only counts if the Company record's very first version already carries one signed by one of its own directors; after that only a sitting director may change it. A record that started without directors can never acquire a board, so an existing company cannot be claimed by whoever adds directors first.",
+  "sources": [
+    {
+      "doc": "docs/docs/W3DS Protocol/Company-Delegation.md",
+      "quote": "**The eVault enforces none of this.** It stores whatever it is given, and all authority is decided by the verifier from signatures and the eVault's version history."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Company-Delegation.md",
+      "quote": "**eVault writes are not restricted.** Anyone with write access can store records in a company's eVault. They are ignored unless properly signed, but they cost verification time."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Company-Delegation.md",
+      "quote": "**History size:** a verifier reads at most 2,000 versions of any one record. Flooding a record with writes is a denial of service, never a takeover."
+    },
+    {
+      "doc": "docs/docs/W3DS Protocol/Company-Delegation.md",
+      "quote": "A board only counts if the Company record's **very first version** already carries one, signed by one of its own directors. A Company record that started without directors can never acquire a board, so an existing company cannot be claimed by whoever adds directors first."
+    }
+  ],
+  "grader": {
+    "kind": "facts",
+    "required": [
+      {
+        "pattern": "enforces? (none|nothing)|stores? (whatever|anything)|(e?vault|storage|store)[^.\\n]{0,40}(is not|isn'?t|is never|never acts as) (the |an )?(authority|arbiter|judge|gatekeeper)|(e?vault|storage)[^.\\n]{0,30}(doesn'?t|does not|never) (enforce|decide|judge|check)|(verifier|verifiers|the party verifying|whoever verifies)[^.\\n]{0,50}(decides?|determines?|works out|judges?|establish\\w*)|authority[^.\\n]{0,40}(signatures?|the verifier|verification)",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Company-Delegation.md",
+          "quote": "**The eVault enforces none of this.** It stores whatever it is given, and all authority is decided by the verifier from signatures and the eVault's version history."
+        }
+      },
+      {
+        "pattern": "(unsigned|forged|copied|improperly signed|not properly signed|badly signed|invalid(ly)? signed|without (a )?valid signatures?|bad signatures?|not signed by[^.\\n]{0,30})[^.\\n]{0,80}(ignored|skipped|disregarded|don'?t count|do not count|never count|count for nothing|absent|discarded|no effect|no authority|grant nothing)|(ignored|skipped|disregarded|discarded)[^.\\n]{0,40}unless[^.\\n]{0,30}sign",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Company-Delegation.md",
+          "quote": "**eVault writes are not restricted.** Anyone with write access can store records in a company's eVault. They are ignored unless properly signed, but they cost verification time."
+        }
+      },
+      {
+        "pattern": "denial[- ]of[- ]service|\\bdos\\b|never a takeover|not a takeover|(can'?t|cannot|never|not)[^.\\n]{0,30}(take ?over|seize|hijack|gain (control|authority))|(flood|spam)\\w*[^.\\n]{0,80}(slow|cost|expensive|time|dos|denial|bound|cap|limit|unbounded)",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Company-Delegation.md",
+          "quote": "**History size:** a verifier reads at most 2,000 versions of any one record. Flooding a record with writes is a denial of service, never a takeover."
+        }
+      },
+      {
+        "pattern": "(claim|hijack|take ?over|seize|capture|appropriat|usurp)\\w*[^.\\n]{0,60}(company|companies|board|existing)|(company|board)[^.\\n]{0,40}(claimed|hijacked|taken over|seized|captured|usurped)|whoever adds?[^.\\n]{0,30}directors?",
+        "source": {
+          "doc": "docs/docs/W3DS Protocol/Company-Delegation.md",
+          "quote": "A board only counts if the Company record's **very first version** already carries one, signed by one of its own directors. A Company record that started without directors can never acquire a board, so an existing company cannot be claimed by whoever adds directors first."
+        }
+      }
+    ]
+  },
+  "rubric": [
+    {
+      "criterion": "Says the eVault enforces none of this: it stores whatever it is given, and authority is decided by the verifier from signatures and version history",
+      "points": 2
+    },
+    {
+      "criterion": "Says writes that are not properly signed are ignored, costing verification time but granting nothing",
+      "points": 1
+    },
+    {
+      "criterion": "Says the 2,000-version bound makes flooding a record a denial of service, never a takeover",
+      "points": 1
+    },
+    {
+      "criterion": "Says a board must be in the first version, signed by one of its own directors, so an existing company cannot be claimed by whoever adds directors first",
+      "points": 2
+    },
+    {
+      "criterion": "Says nothing false about the project",
+      "points": 1
+    },
+    {
+      "criterion": "Names where the reason comes from — a document, a note or a file of this project — rather than asserting it; an answer that gives a reason with no source does not earn this.",
+      "points": 1
+    }
+  ]
+}
