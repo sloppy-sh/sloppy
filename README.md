@@ -1,6 +1,6 @@
 # Sloppy
 
-**Better agent performance, for less.** On average across six large codebases, Claude Code with Sloppy scored slightly higher (+0.019) than with the docs alone, cost 20% less, was 2% faster, took 6% fewer round trips to the model and read 24% less new text.
+**Better agent performance, for less.** On average across seven large codebases, Claude Code with Sloppy scored higher (+0.030) than with the docs alone, cost 18% less, was 2% faster, took 6% fewer round trips to the model and read 22% less new text.
 
 Sloppy keeps the reasons behind your code beside it: a graph of notes, each placed under what it
 came out of and pointing at the code it explains, committed with the repository as markdown. The
@@ -11,19 +11,19 @@ why before it changes anything.
 
 ## Built for large codebases
 
-On the six large open-source projects, whose reasons are spread across many design documents, Sloppy comes out
-marginally ahead on average: answers score slightly higher, at lower cost. Three of the six are measured
+On the seven open-source projects, whose reasons are spread across many design documents, Sloppy comes out
+marginally ahead on average: answers score slightly higher, at lower cost. Four of the seven are measured
 with their documents shaped the way [the practices](bench/WHERE-SLOPPY-HELPS.md) set out, which is how
 Sloppy is meant to be taken up; the rest are measured on their documents as they keep them today. On
 one of those three the shaping made every reader worse, which is why the practices are published with
 that result beside them rather than as advice. On the
-small repositories the docs alone already reach the answers, so it has little to add. A seventh project,
-with a quarter of the documents the six were chosen at, was measured because it was asked for; it has
-its own page and is in no average.
+small repositories the docs alone already reach the answers, so it has little to add. The seventh,
+with a quarter of the documents the first six were chosen at, was measured because it was asked for
+and counts with the rest; it is the one measured with a maintained graph rather than a carry.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/bench-aggregate-dark.svg">
-  <img alt="With Sloppy against the docs alone and against subagents, averaged over the six large open-source projects: answer quality slightly higher; new text read, cost and round trips to the model all lower, time about the same" src="docs/images/bench-aggregate-light.svg">
+  <img alt="With Sloppy against the docs alone and against subagents, averaged over the seven open-source projects: answer quality slightly higher; new text read, cost and round trips to the model all lower, time about the same" src="docs/images/bench-aggregate-light.svg">
 </picture>
 
 \* Text the model had not read before. The conversation it re-reads on every turn is billed at a
@@ -37,7 +37,7 @@ fraction of the price, so counting that in would show more text read where the b
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/bench-projects-dark.svg">
-  <img alt="Answer quality and cost per task on each of the six large open-source projects, smallest documentation first, for each way of working" src="docs/images/bench-projects-light.svg">
+  <img alt="Answer quality and cost per task on each of the seven open-source projects, smallest documentation first, for each way of working" src="docs/images/bench-projects-light.svg">
 </picture>
 
 How it was measured: [`bench/REPORT.md`](bench/REPORT.md) · each round:

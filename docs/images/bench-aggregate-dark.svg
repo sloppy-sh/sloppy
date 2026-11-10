@@ -19,10 +19,10 @@
 <line x1="590" x2="590" y1="66" y2="110" stroke="#3d444d" stroke-width="1" stroke-dasharray="2 3"/>
 <text x="590" y="125" fill="#9198a1" text-anchor="middle" font-size="11">+0.10</text>
 <text x="16" y="92" fill="#e6edf3">Score</text>
-<circle cx="462.5300000000001" cy="80.5" r="5.5" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
-<text x="744" y="85" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">slightly higher (+0.029)</text>
-<circle cx="462.26" cy="95.5" r="5.5" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
-<text x="744" y="100" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">slightly higher (+0.029)</text>
+<circle cx="464.6171428571429" cy="80.5" r="5.5" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
+<text x="744" y="85" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">higher (+0.030)</text>
+<circle cx="468.96285714285716" cy="95.5" r="5.5" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
+<text x="744" y="100" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">higher (+0.033)</text>
 <text x="16" y="150" fill="#e6edf3" font-weight="600" font-size="14">What an answer took</text>
 <text x="744" y="150" fill="#9198a1" text-anchor="end" font-size="12">Change against the other — lower is better</text>
 <line x1="230" x2="230" y1="164" y2="340" stroke="#3d444d" stroke-width="1" stroke-dasharray="2 3"/>
@@ -36,25 +36,25 @@
 <line x1="590" x2="590" y1="164" y2="340" stroke="#3d444d" stroke-width="1" stroke-dasharray="2 3"/>
 <text x="590" y="355" fill="#9198a1" text-anchor="middle" font-size="11">+10%</text>
 <text x="16" y="190" fill="#e6edf3">Cost</text>
-<rect x="322.6740590553039" y="172" width="177.32594094469607" height="13" rx="3" fill="#d95926"/>
-<text x="744" y="183" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">20% cheaper</text>
-<rect x="354.06960042002595" y="187" width="145.93039957997405" height="13" rx="3" fill="#199e70"/>
+<rect x="335.20601626181065" y="172" width="164.79398373818935" height="13" rx="3" fill="#d95926"/>
+<text x="744" y="183" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">18% cheaper</text>
+<rect x="353.31836145615887" y="187" width="146.68163854384113" height="13" rx="3" fill="#199e70"/>
 <text x="744" y="198" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">16% cheaper</text>
 <text x="16" y="234" fill="#e6edf3">Time</text>
-<rect x="479.7496397142881" y="216" width="20.250360285711906" height="13" rx="3" fill="#d95926"/>
+<rect x="480.6465852426907" y="216" width="19.35341475730928" height="13" rx="3" fill="#d95926"/>
 <text x="744" y="227" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">2% faster</text>
-<rect x="500" y="231" width="19.789107613976967" height="13" rx="3" fill="#199e70"/>
-<text x="744" y="242" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">2% slower</text>
+<rect x="500" y="231" width="22.661206533235486" height="13" rx="3" fill="#199e70"/>
+<text x="744" y="242" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">3% slower</text>
 <text x="16" y="278" fill="#e6edf3">Round trips to the model</text>
-<rect x="436.1079323195919" y="260" width="63.892067680408104" height="13" rx="3" fill="#d95926"/>
-<text x="744" y="271" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">7% fewer</text>
-<rect x="466.3035165525337" y="275" width="33.69648344746628" height="13" rx="3" fill="#199e70"/>
-<text x="744" y="286" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">4% fewer</text>
+<rect x="449.445076270038" y="260" width="50.55492372996201" height="13" rx="3" fill="#d95926"/>
+<text x="744" y="271" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">6% fewer</text>
+<rect x="479.6283663005621" y="275" width="20.371633699437893" height="13" rx="3" fill="#199e70"/>
+<text x="744" y="286" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">2% fewer</text>
 <text x="16" y="322" fill="#e6edf3">New text read*</text>
-<rect x="284.67255394996675" y="304" width="215.32744605003325" height="13" rx="3" fill="#d95926"/>
-<text x="744" y="315" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">24% fewer</text>
-<rect x="325.05523807847874" y="319" width="174.94476192152126" height="13" rx="3" fill="#199e70"/>
-<text x="744" y="330" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">19% fewer</text>
-<text x="16" y="380" fill="#9198a1" font-size="12">Averages across Pulsar, Milvus, .NET runtime, Carbon, GitLab and LLVM, each project weighing the same. Claude</text>
-<text x="16" y="396" fill="#9198a1" font-size="12">Sonnet 5.5, 630 runs.</text>
+<rect x="299.3367486460522" y="304" width="200.66325135394783" height="13" rx="3" fill="#d95926"/>
+<text x="744" y="315" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">22% fewer</text>
+<rect x="320.4233438860511" y="319" width="179.5766561139489" height="13" rx="3" fill="#199e70"/>
+<text x="744" y="330" fill="#e6edf3" text-anchor="end" font-variant-numeric="tabular-nums">20% fewer</text>
+<text x="16" y="380" fill="#9198a1" font-size="12">Averages across MetaState, Pulsar, Milvus, .NET runtime, Carbon, GitLab and LLVM, each project weighing the</text>
+<text x="16" y="396" fill="#9198a1" font-size="12">same. Claude Sonnet 5.5, 720 runs.</text>
 </svg>

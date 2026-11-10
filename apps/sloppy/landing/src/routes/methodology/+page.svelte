@@ -57,9 +57,9 @@
 		'The judge never sees which approach wrote an answer.',
 		'Runs are interleaved in a seeded order, so no approach gets the quiet hour.',
 		'Predictions were written down before the runs.',
-		`The ${inWords(chosen.length)} projects were chosen by written rules: open-source code, and at least ${count(WORD_FLOOR)} words of design documents spread over many files.${
+		`${cap(inWords(chosen.length))} of the ${inWords(projects.length)} projects were chosen by written rules: open-source code, and at least ${count(WORD_FLOOR)} words of design documents spread over many files.${
 			asked.length
-				? ` ${andList(asked)} ${asked.length > 1 ? 'have' : 'has'} fewer and ${asked.length > 1 ? 'were' : 'was'} measured on request: ${asked.length > 1 ? 'their' : 'its'} own page, no average.`
+				? ` ${andList(asked)} ${asked.length > 1 ? 'have' : 'has'} fewer and ${asked.length > 1 ? 'were' : 'was'} measured on request and counted too.`
 				: ''
 		}`,
 		unpublished.length

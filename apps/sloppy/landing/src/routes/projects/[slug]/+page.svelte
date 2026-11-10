@@ -53,7 +53,7 @@
 
 	const floor = $derived(
 		belowFloor(summary, project.subject)
-			? ` Below the ${count(WORD_FLOOR)}-word floor: measured on request, in no average.`
+			? ` Below the ${count(WORD_FLOOR)}-word floor the others were chosen by; measured on request.`
 			: ''
 	);
 

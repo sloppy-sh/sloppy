@@ -1296,3 +1296,12 @@ handed its answers either.
 developer's ruling that a maintained container is the workflow being measured; seed 44 stays in
 `results/` and in this file as the record of the thin carry. The export reads seeds 30, 31, 32, 41,
 42, 45 and 46. MetaState stays the seventh project, outside the six-project average.
+
+## MetaState counts (2026-11-10)
+
+The developer ruled, after reviewing seed 46, that MetaState goes on the graphs: it is in the
+average from here, the seventh project beside the six the floor chose, and the floor stays what it
+was — the rule the first six were chosen by, named on the methodology page beside the one project
+measured on request. The same methodology — an ownership map from the code, a maintainer's page per
+component, the graph by ownership — is to be applied to the other six, one batch each against their
+documents as kept.

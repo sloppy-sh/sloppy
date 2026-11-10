@@ -1,7 +1,7 @@
 // Sloppy against each other approach over the large projects, each project weighing the same.
 import { approach, type Approach } from './approaches';
 import { andList, FAMILY, groupOf, modelOf, nameOf, subjectsWithRuns } from './readings';
-import { belowFloor, isSmallRepo } from './readings';
+import { isSmallRepo } from './readings';
 export { isSmallRepo, SMALL_REPOS } from './readings';
 import type { RatioMetric } from './said';
 import { count, timeOf, type Group, type PageSummary, type Tier } from './summary';
@@ -45,7 +45,7 @@ export function aggregate(
 ): Aggregate | null {
 	const other = approach(against);
 	const pairs = subjectsWithRuns(summary, tier).flatMap((subject) => {
-		if (isSmallRepo(subject) || belowFloor(summary, subject)) return [];
+		if (isSmallRepo(subject)) return [];
 		const s = groupOf(summary, subject, tier, approach('sloppy'));
 		const o = groupOf(summary, subject, tier, other);
 		return s && o ? [{ subject, s, o }] : [];
@@ -79,7 +79,7 @@ export function aggregate(
 	};
 }
 
-/** The projects the aggregates average: large, and above the documentation floor; smallest documentation first. */
+/** The large projects the aggregates average, smallest documentation first. */
 export const largeProjects = (summary: PageSummary) => aggregate(summary, 'plain')?.subjects ?? [];
 
 /** Sloppy against the docs alone and against subagents, where each has runs. */
