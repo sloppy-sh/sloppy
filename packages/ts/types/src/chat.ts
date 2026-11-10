@@ -12,11 +12,21 @@ import { SnippetStandingSchema } from "./code-snippet.js";
 import { AddressSchema } from "./address.js";
 import {
   MARK_RADII,
-  type NodeAppearance,
+  MARK_SCALE_MAX,
+  MARK_SCALE_MIN,
+  PREVIEW_COVER_MAX,
+  PREVIEW_COVER_MIN,
+  PREVIEW_SIZES,
   RING_STYLES,
   RING_WEIGHTS,
 } from "./appearance.js";
 import { WRITE_DONE } from "./authority.js";
+import {
+  PICTURE_TRANSITIONS,
+  PICTURE_TURN_MAX,
+  PICTURE_TURN_MIN,
+  PICTURES_PER_SERIES,
+} from "./picture.js";
 import {
   OwnedRefSchema,
   PrincipalSchema,
@@ -593,14 +603,24 @@ export const StyleEdgeArgumentsSchema = z.object({
 });
 export type StyleEdgeArguments = z.infer<typeof StyleEdgeArgumentsSchema>;
 
-/** The channels of a note's look this act sets. The pictures a mark wears are
- *  the person's own uploads, so they are not among them. */
+/** What of a note's look this act sets, each of which it can take back off. */
 const MARK_CHANNELS = [
   "ring_weight",
   "ring_style",
   "mark_radius",
-] as const satisfies readonly (keyof NodeAppearance)[];
+  "mark_scale",
+  "picture",
+  "pictures",
+  "picture_every",
+  "picture_transition",
+  "picture_size",
+  "picture_cover",
+] as const;
 export type MarkChannel = (typeof MARK_CHANNELS)[number];
+
+/** A picture as an act names one: an image in the project, or one the notes
+ *  already hold under `media/`. */
+const PicturePathSchema = z.string().min(1).max(1024);
 
 export const StyleNoteArgumentsSchema = z.object({
   note: OwnedRefSchema.describe("The note, as a listing of them gives it."),
@@ -614,7 +634,7 @@ export const StyleNoteArgumentsSchema = z.object({
     .enum(RING_STYLES)
     .optional()
     .describe(
-      "How broken the ring is. A broken ring reads as a draft, and says nothing on a mark wearing no ring.",
+      "How broken the ring is. A broken ring reads as a draft; naming one on a mark wearing no ring gives it a regular ring to be seen on.",
     ),
   mark_radius: z
     .enum(MARK_RADII)
@@ -622,12 +642,59 @@ export const StyleNoteArgumentsSchema = z.object({
     .describe(
       "How big the mark is drawn. A mark is already as big as the thought folded under it and this multiplies that, so it is how much of the project the note answers for.",
     ),
+  mark_scale: z
+    .number()
+    .min(MARK_SCALE_MIN)
+    .max(MARK_SCALE_MAX)
+    .optional()
+    .describe(
+      "The same size said finely, as what the mark is multiplied by; it takes the place of mark_radius, and mark_radius of it.",
+    ),
+  picture: PicturePathSchema.optional().describe(
+    "A picture for the mark to wear, as a path to an image in the project or to one the notes already hold under media/ — a logo on the note about the component it belongs to. It takes the place of any pictures the mark wore.",
+  ),
+  pictures: z
+    .array(PicturePathSchema)
+    .min(1)
+    .max(PICTURES_PER_SERIES)
+    .optional()
+    .describe(
+      "Several pictures taking turns on the mark, named the way picture names one, first worn first. Name this or picture, not both.",
+    ),
+  picture_every: z
+    .int()
+    .min(PICTURE_TURN_MIN)
+    .max(PICTURE_TURN_MAX)
+    .optional()
+    .describe(
+      "Minutes one picture holds before the next takes its turn; says nothing on a mark wearing one picture.",
+    ),
+  picture_transition: z
+    .enum(PICTURE_TRANSITIONS)
+    .optional()
+    .describe(
+      "How one picture gives way to the next; says nothing on a mark wearing one picture.",
+    ),
+  picture_size: z
+    .enum(PREVIEW_SIZES)
+    .optional()
+    .describe(
+      "How much of the mark its picture covers; it takes the place of picture_cover, and says nothing on a mark with no picture.",
+    ),
+  picture_cover: z
+    .number()
+    .min(PREVIEW_COVER_MIN)
+    .max(PREVIEW_COVER_MAX)
+    .optional()
+    .describe(
+      "The same cover said finely, as the share of the mark's radius the picture covers; it takes the place of picture_size.",
+    ),
   off: z
     .array(z.enum(MARK_CHANNELS))
     .max(MARK_CHANNELS.length)
     .optional()
     .describe(
-      "What to take back off the mark. Naming all of them leaves it drawn as the graph draws an unstyled note; a picture on the mark is not one of these and stays.",
+      "What to take back off the mark. Naming all of them leaves it drawn as the graph draws an unstyled note.",
     ),
 });
 export type StyleNoteArguments = z.infer<typeof StyleNoteArgumentsSchema>;
@@ -900,7 +967,7 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
   },
   style_note: {
     description:
-      "Say how a note's mark is drawn on the canvas: the ring it wears inside its own edge, how broken that ring is, how big the mark is. Size says how much of the project the note answers for, and a broken ring says the reading is not finished. Shape only — the colour on the canvas answers the reader's own question and is never a note's to set. A look is read against the marks carrying none, so draw the few notes somebody should find from across the field and leave the rest plain.",
+      "Say how a note's mark is drawn on the canvas: the ring it wears inside its own edge, how broken that ring is, how big the mark is, and the pictures it wears — an image from the project, the way a person gives a component's note its logo, or several taking turns. Size says how much of the project the note answers for, and a broken ring says the reading is not finished. Shape and picture only — the colour on the canvas answers the reader's own question and is never a note's to set. A look is read against the marks carrying none, so draw the few notes somebody should find from across the field and leave the rest plain.",
     label: "Drawing a mark",
     arguments: StyleNoteArgumentsSchema,
     writes: true,

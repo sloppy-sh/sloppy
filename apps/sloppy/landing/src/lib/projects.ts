@@ -122,7 +122,7 @@ export const PROJECTS: Project[] = [
 		reasons: {
 			medium: {
 				score: slight(
-					"Where-questions gained most: Sloppy's first answer lists the files each note points at, so fewer were missed.",
+					'Each document names the component it governs, so a why-question reached the proposal from the code where a search stopped at the code.',
 					'better'
 				),
 				input: {
@@ -131,8 +131,7 @@ export const PROJECTS: Project[] = [
 				},
 				cost: cheaperReading,
 				time: {
-					worse: () =>
-						'A long note is read in pieces, a step each, where a search opens the proposal whole in one.'
+					worse: () => 'A long note is read in pieces where a search opens the proposal whole.'
 				}
 			}
 		}

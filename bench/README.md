@@ -252,7 +252,8 @@ H1 it opens with, else its front matter's title, else its file name; `about` its
 headings of the shallowest level below the title (level two or above) its sections, deeper ones
 kept inside them, and the text before the first of them, with front matter's title, status and
 date, an `Opening` section. Every repository file it names by a relative or root-relative path,
-in a link, an image, a code span or plain prose, becomes a code link. Each note hangs under a note
+in a link, an image, a code span or plain prose, becomes a code link, and so does every folder
+it names with a trailing slash. Each note hangs under a note
 for its folder, written first and titled by the folder's path unless a note about that folder is
 already there; a folder's note hangs under the project's root note. Every write names `under`,
 nothing is tagged, and documents go in path order, so the same input gives the same notes in the
@@ -260,17 +261,50 @@ same order. A heading met twice is numbered and a section past the size a write 
 continued under the same heading. It prints the notes written, the words and links carried and
 each file skipped with why.
 
+### Anchoring a project's documents
+
+`anchor-docs.mjs` points each document at the code it governs, before the carry, the way a
+maintainer would under WHERE-SLOPPY-HELPS.md § "Shaping your notes" practice 4:
+
+```
+node bench/anchor-docs.mjs <project dir> --rules <rules.json> [--dry-run]
+```
+
+The rules are the project's own, in `subjects/shaping/<name>.json`: the document roots, the code
+roots, a vocabulary of words per folder with where each was taken from, path rules that name a
+folder from a document's path, and the tag rules below. A folder is anchored where the document's
+path names it, or where its words occur at least `min_hits` times (default 3) outside code, comments,
+a generated table of contents and link targets; at most `max_anchors` (default 3), most-used first,
+each one a folder of the project the document does not already name. An anchored document gains one
+line, `Covers: <folder>/, …`, as a paragraph of its own after its title, leading comments and a line
+that is only a link; nothing else in it changes, and the run fails where an original line would.
+`--dry-run` prints the folders each document would gain and the totals.
+
+### Tagging carried notes
+
+`tag-notes.mjs` tags each carried document's note, after the carry, through
+`sloppy mcp --profile full`:
+
+```
+node bench/tag-notes.mjs <project dir> --rules <rules.json> [--dry-run] [--cli <sloppy.mjs>]
+```
+
+A note is found by the document its first block links. Every tag rule whose `match` meets the
+document's path gives its `tags`, `$1` filled from the match; every folder its `Covers:` line names
+under the code roots gives its last segment. Tags are lower-cased with `_` read as `-`. It prints the
+notes tagged and how many carry each tag.
+
 ## The comparison that is reported
 
 Three numbers, always the same three, and they are what the pages draw; a fourth, Sloppy's own
 runner, is measured beside them on the same shaped documents:
 
-| Bar                 | What it is                                                                                                                                      |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Documents alone** | Claude Code on the project's documents as the project keeps them today.                                                                         |
-| **Subagents**       | The same documents, with subagents allowed.                                                                                                     |
-| **Sloppy**          | The recommended workflow: the documents shaped as `WHERE-SLOPPY-HELPS.md` sets out, carried into the container, read through the sloppy server. |
-| **Sloppy's runner** | The same shaped documents, with `sloppy run` composing the window for the task and driving the model: the `harness` condition.                  |
+| Bar                 | What it is                                                                                                                                                                                                                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Documents alone** | Claude Code on the project's documents as the project keeps them today.                                                                                                                                                                                                                                      |
+| **Subagents**       | The same documents, with subagents allowed.                                                                                                                                                                                                                                                                  |
+| **Sloppy**          | The recommended workflow: the documents shaped as `WHERE-SLOPPY-HELPS.md` sets out — anchored to the code they govern and tagged by `anchor-docs.mjs` and `tag-notes.mjs`, titles rewritten only where they do not say what a document decides — carried into the container, read through the sloppy server. |
+| **Sloppy's runner** | The same shaped documents, with `sloppy run` composing the window for the task and driving the model: the `harness` condition.                                                                                                                                                                               |
 
 **Sloppy's bar carries the shaping, because the shaping does not happen without Sloppy.** The
 practices came out of measuring it, a team adopting it adopts them, and nobody shapes three hundred

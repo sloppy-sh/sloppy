@@ -60,7 +60,13 @@ the docs alone in every round.
 
 ## Shaping your notes
 
-Each step serves one thing Sloppy does. Most also make the documents better for people.
+Each step serves one thing Sloppy does. Most also make the documents better for people. Two
+cautions from the measurements, before the steps: on a project whose titles already said what each
+document decided, a model's rewrite of titles and openings into sentences lowered every reader, with
+and without Sloppy (SURVEY.md § "Carbon falsifies the rule"); the same project given only steps 4
+and 1's tags — one line per document naming the component it governs, a tag per note, nothing
+rewritten — came out ahead (§ "What the maintainer's shaping showed"). `bench/anchor-docs.mjs` and
+`bench/tag-notes.mjs` do that part deterministically. Shape what fails the test below and leave the rest.
 
 **1. Title every note with what it decides, in the words someone would ask in.** Sloppy matches a
 question's words against each note's title and tags together with its best-matching section. A file name

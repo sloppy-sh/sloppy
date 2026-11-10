@@ -7,7 +7,6 @@
 	import { MARK_PICTURE_PX } from '@sloppy/graph';
 	import {
 		isUnstyled,
-		MARK_RADIUS_SCALE,
 		MARK_SCALE_MAX,
 		MARK_SCALE_MIN,
 		type NodeAppearance,
@@ -16,11 +15,11 @@
 		PICTURES_PER_SERIES,
 		PREVIEW_COVER_MAX,
 		PREVIEW_COVER_MIN,
-		PREVIEW_SIZE_COVER,
 		resolveAppearance,
 		RING_STYLES,
 		RING_WEIGHTS,
-		seriesChannels
+		seriesChannels,
+		tidiedAppearance
 	} from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { refusedWith } from '$lib/refusal.js';
@@ -61,7 +60,6 @@
 	const saved = $derived(pending === undefined ? appearance : pending);
 	const shown = $derived(dragged === null ? saved : { ...(saved ?? {}), ...dragged });
 	const look = $derived(resolveAppearance(shown));
-	const unstyled = resolveAppearance(null);
 	const series = $derived(look.preview.pictures);
 	const pictures = shownPictures(
 		() => media,
@@ -106,46 +104,9 @@
 		}
 	]);
 
-	/**
-	 * A channel saying what a plain note already draws is stored as nothing set,
-	 * and one that says nothing at all — a ring style with no ring, a cadence for
-	 * a picture that never changes — is stored as nothing either. So a look that
-	 * draws like an unstyled note is stored as one. A token this build has no
-	 * renderer for is not one of those, and survives untouched.
-	 */
-	function tidied(next: NodeAppearance): NodeAppearance {
-		const tidy = { ...next };
-		if (tidy.ring_weight === unstyled.ringWeight) tidy.ring_weight = undefined;
-		if (tidy.ring_weight === undefined || tidy.ring_style === unstyled.ringStyle) {
-			tidy.ring_style = undefined;
-		}
-		if (tidy.mark_scale === unstyled.markScale) tidy.mark_scale = undefined;
-		if (stepped(MARK_RADIUS_SCALE, tidy.mark_radius) === unstyled.markScale) {
-			tidy.mark_radius = undefined;
-		}
-		if (tidy.preview === undefined || (tidy.preview_more ?? []).length === 0) {
-			tidy.preview_more = undefined;
-		}
-		if (tidy.preview === undefined || tidy.preview_cover === unstyled.previewCover) {
-			tidy.preview_cover = undefined;
-		}
-		if (
-			tidy.preview === undefined ||
-			stepped(PREVIEW_SIZE_COVER, tidy.preview_size) === unstyled.previewCover
-		) {
-			tidy.preview_size = undefined;
-		}
-		const still = tidy.preview === undefined || tidy.preview_more === undefined;
-		if (still || tidy.preview_every === unstyled.preview.every) tidy.preview_every = undefined;
-		if (still || tidy.preview_transition === unstyled.preview.transition) {
-			tidy.preview_transition = undefined;
-		}
-		return tidy;
-	}
-
 	async function set(next: NodeAppearance): Promise<void> {
 		const mine = ++asked;
-		const tidy = tidied(next);
+		const tidy = tidiedAppearance(next);
 		const whole = isUnstyled(tidy) ? null : tidy;
 		pending = whole;
 		trouble = null;
@@ -173,11 +134,6 @@
 
 	function pick(channel: keyof NodeAppearance, value: string | number): Promise<void> {
 		return set({ ...editable, [channel]: value });
-	}
-
-	/** What a step is worth, or nothing for one this build cannot draw. */
-	function stepped(ladder: Record<string, number>, step: string | undefined): number | undefined {
-		return step !== undefined && Object.hasOwn(ladder, step) ? ladder[step] : undefined;
 	}
 
 	/** A style says nothing with no ring to break, so choosing one gives the

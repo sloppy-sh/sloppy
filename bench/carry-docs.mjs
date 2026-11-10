@@ -7,7 +7,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CLI = path.resolve(HERE, "../packages/ts/cli/dist/sloppy.mjs");
@@ -37,7 +37,7 @@ function parseArguments(argv) {
 const posix = (p) => p.split(path.sep).join("/");
 
 /** Every file under the inputs, project-relative and sorted, with what was refused. */
-function documentsIn(project, inputs) {
+export function documentsIn(project, inputs) {
   const found = new Set();
   const skipped = [];
   const walk = (abs) => {
@@ -75,7 +75,7 @@ function byCodepoint(a, b) {
 }
 
 /** The repository's files, which are what a document can be linked to. */
-function repoFiles(project) {
+export function repoFiles(project) {
   try {
     const out = execFileSync(
       "git",
@@ -364,7 +364,7 @@ function parseList(lines, start) {
   };
 }
 
-const PATHLIKE = /^\/?(?:\.{1,2}\/)*[\w@+-][\w.@+-]*(?:\/[\w.@+-]+)*$/;
+const PATHLIKE = /^\/?(?:\.{1,2}\/)*[\w@+-][\w.@+-]*(?:\/[\w.@+-]+)*\/?$/;
 
 /** CommonMark reads an underscore inside a word as a letter; the container's markdown reads it
  *  as emphasis unless escaped. */
@@ -379,15 +379,26 @@ function outsideCode(text, change) {
     .join("");
 }
 
+/** Every folder holding one of `files`, spelled without a trailing slash. */
+export function foldersOf(files) {
+  const folders = new Set();
+  for (const file of files)
+    for (let at = file.indexOf("/"); at !== -1; at = file.indexOf("/", at + 1))
+      folders.add(file.slice(0, at));
+  return folders;
+}
+
 class Linker {
   constructor(files, docPath) {
     this.files = files;
+    this.folders = foldersOf(files);
     this.doc = docPath;
     this.dir = path.posix.dirname(docPath);
     this.linked = new Set();
   }
 
-  /** The repository file a relative name means here, or undefined. */
+  /** The repository file a relative name means here, or the folder a name ending in `/` does,
+   *  or undefined. */
   resolve(target) {
     let name = target.trim();
     if (
@@ -417,6 +428,11 @@ class Linker {
       if (this.files.has(at)) {
         this.linked.add(at);
         return /^L\d+(-L\d+)?$/.test(fragment) ? `${at}#${fragment}` : at;
+      }
+      const folder = at.replace(/\/$/, "");
+      if (at.endsWith("/") && this.folders.has(folder)) {
+        this.linked.add(folder);
+        return folder;
       }
     }
     return undefined;
@@ -516,7 +532,7 @@ class Linker {
   /** Plain prose naming a file by a path with a slash in it. */
   bare(text) {
     const named =
-      /(^|[\s(,;"'])((?:\.{1,2}\/)*[\w@+-][\w.@+-]*(?:\/[\w.@+-]+)+)/g;
+      /(^|[\s(,;"'])((?:\.{1,2}\/)*[\w@+-][\w.@+-]*(?:\/[\w.@+-]+)+\/?)/g;
     let out = "";
     let from = 0;
     for (const match of text.matchAll(named)) {
@@ -622,7 +638,7 @@ function plainHeading(text) {
     .trim();
 }
 
-function noteOf(rel, text, files) {
+export function noteOf(rel, text, files) {
   const { fields, body } = splitFrontMatter(text);
   const blocks = parseBlocks(body, rel.toLowerCase().endsWith(".mdx"));
   const linker = new Linker(files, rel);
@@ -896,4 +912,4 @@ async function main() {
   if (failed.length > 0) process.exitCode = 1;
 }
 
-await main();
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();

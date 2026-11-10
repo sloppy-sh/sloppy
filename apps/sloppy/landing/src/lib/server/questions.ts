@@ -21,14 +21,19 @@ import { HIDDEN, unnamed } from './private';
 import { loadSummary } from './summary';
 import { traceOf } from './traces';
 
-/** The final test's seeds: the runs a chart counts for a project measured on its documents as kept. */
-export const FINAL_SEEDS = [30, 31, 32];
+/**
+ * The seeds the published export reads (bench/results/README.md names the command), so a question's
+ * runs are the ones its charts count; the first three are the final test, the rest the batches
+ * under the reported comparison.
+ */
+export const PUBLISHED_SEEDS = [30, 31, 32, 41, 42, 44, 45];
+const FINAL_SEEDS = [30, 31, 32];
 
 /** The config a condition's bar is drawn from under the reported comparison, as bench/export.mjs files it. */
 const RECOMMENDED: Record<Condition, string[]> = {
 	bare: ['asis', 'armA'],
 	agents: ['asis', 'armA'],
-	mcp: ['shaped', 'armB']
+	mcp: ['shaped', 'maintainer', 'armB']
 };
 
 /** The builds run from this package's folder. */
@@ -134,7 +139,12 @@ function load() {
 		PROJECTS.filter((p) => !HIDDEN.has(p.subject)).map((p) => [p.subject, p.slug])
 	);
 	const all = readJsonl<Run>(RESULTS).filter(
-		(r) => subjects.has(r.subject.name ?? '') && conditionOf(r.condition) && r.status !== 'budget'
+		(r) =>
+			r.seed !== undefined &&
+			PUBLISHED_SEEDS.includes(r.seed) &&
+			subjects.has(r.subject.name ?? '') &&
+			conditionOf(r.condition) &&
+			r.status !== 'budget'
 	);
 	const reported = (r: Run) => RECOMMENDED[r.condition as Condition].includes(r.config ?? '');
 	const underRecommended = new Set(

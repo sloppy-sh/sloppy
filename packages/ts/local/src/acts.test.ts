@@ -14,6 +14,7 @@ import {
   FOUND_LINE_MAX,
   type ChatToolCall,
   GraphReadSchema,
+  type NodeView,
   HEADING_MAX,
   ListedNoteSchema,
   NeighbourhoodReadSchema,
@@ -1591,6 +1592,282 @@ describe("how a note is drawn", () => {
 
     expect(said.trouble).toBe(true);
   });
+});
+
+describe("the picture a mark wears", () => {
+  const LOGO = "assets/logo.png";
+  const LOGO_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2]);
+  const BADGE = "assets/badge.gif";
+  const BADGE_BYTES = new TextEncoder().encode("GIF89a-badge");
+  const FAKE = "assets/fake.png";
+
+  async function styled(note: OwnedRef, asked: Record<string, unknown>) {
+    return performChatCall(files, {
+      call: "c2",
+      act: "style_note",
+      arguments: { note, ...asked },
+    } as ChatToolCall);
+  }
+
+  async function lookOf(note: OwnedRef) {
+    return (await containerApi(files).getNode(note))?.appearance;
+  }
+
+  async function library(): Promise<string[]> {
+    return (await containerApi(files).ownPictures("block")).map(
+      (one) => one.upload_id,
+    );
+  }
+
+  async function aNote(): Promise<OwnedRef> {
+    return wrote(writes(PARSER, [ABOUT_THE_PARSER], { title: "The parser" }));
+  }
+
+  beforeEach(async () => {
+    await files.write(LOGO, LOGO_BYTES);
+    await files.write(BADGE, BADGE_BYTES);
+    await files.write(FAKE, new TextEncoder().encode("not a picture at all"));
+  });
+
+  it("puts an image from the project on the mark, kept among the notes' pictures", async () => {
+    const note = await aNote();
+
+    const said = await styled(note, { picture: LOGO });
+
+    expect(said.trouble).toBeUndefined();
+    const facts = said.facts as { act: "style_note"; note: NodeView };
+    const preview = facts.note.appearance?.preview as string;
+    expect((await lookOf(note))?.preview).toBe(preview);
+    expect(await library()).toEqual([preview]);
+    const vault = (await containerApi(files).projectFolder())?.at(".sloppy");
+    expect(await vault?.read(`media/${preview}.png`)).toEqual(LOGO_BYTES);
+  });
+
+  it("refuses a picture outside the project", async () => {
+    const note = await aNote();
+
+    for (const outside of ["../logo.png", "/etc/logo.png"]) {
+      const said = await styled(note, { picture: outside });
+      expect(said.trouble).toBe(true);
+      expect(said.said).toMatch(/not in the project/);
+    }
+    expect(await lookOf(note)).toBeUndefined();
+  });
+
+  it("refuses a file that does not open as a picture whatever its name, and one that is not there", async () => {
+    const note = await aNote();
+
+    const named = await styled(note, { picture: FAKE });
+    const code = await styled(note, { picture: PARSER });
+    const missing = await styled(note, { picture: "assets/gone.png" });
+
+    for (const refused of [named, code]) {
+      expect(refused.trouble).toBe(true);
+      expect(refused.said).toMatch(/does not open as a PNG/);
+    }
+    expect(missing.trouble).toBe(true);
+    expect(missing.said).toMatch(/no file at that path/);
+    expect(await library()).toEqual([]);
+  });
+
+  it("stores a picture as the kind its bytes open as", async () => {
+    const note = await aNote();
+    await files.write("assets/really-a-gif.png", BADGE_BYTES);
+
+    await styled(note, { picture: "assets/really-a-gif.png" });
+
+    const [stored] = await containerApi(files).ownPictures("block");
+    expect(stored?.mime_type).toBe("image/gif");
+  });
+
+  it("refuses one picture and a series named together", async () => {
+    const note = await aNote();
+
+    const said = await styled(note, { picture: LOGO, pictures: [BADGE] });
+
+    expect(said.trouble).toBe(true);
+    expect(await library()).toEqual([]);
+  });
+
+  it("takes the picture off and leaves it among the notes' pictures, as the Look tab does", async () => {
+    const note = await aNote();
+    await styled(note, { picture: LOGO, ring_weight: "heavy" });
+    const [kept] = await library();
+
+    const said = await styled(note, { off: ["picture"] });
+
+    expect(said.trouble).toBeUndefined();
+    expect(await lookOf(note)).toEqual({ ring_weight: "heavy" });
+    expect(await library()).toEqual([kept]);
+  });
+
+  it("lets go of the pictures a call stored when the look it was for is refused", async () => {
+    const note = await aNote();
+
+    const said = await styled(note, { pictures: [LOGO, FAKE] });
+
+    expect(said.trouble).toBe(true);
+    expect(await lookOf(note)).toBeUndefined();
+    expect(await library()).toEqual([]);
+  });
+
+  it("wears one already among the notes' pictures without storing it again", async () => {
+    const parser = await aNote();
+    const other = await wrote(
+      writes(READING_DOC, ["## Why\n\nWhat somebody new reads first."], {
+        title: "Reading",
+      }),
+    );
+    const said = await styled(parser, { picture: LOGO });
+    const preview = (said.facts as { note: NodeView }).note.appearance
+      ?.preview as string;
+
+    await styled(other, { picture: `media/${preview}.png` });
+
+    expect((await lookOf(other))?.preview).toBe(preview);
+    expect(await library()).toEqual([preview]);
+  });
+
+  it("puts a series on the mark, with how long each holds and how it gives way", async () => {
+    const note = await aNote();
+
+    await styled(note, {
+      pictures: [LOGO, BADGE],
+      picture_every: 30,
+      picture_transition: "slide",
+    });
+
+    const look = await lookOf(note);
+    expect(look?.preview_more).toHaveLength(1);
+    expect(look?.preview).not.toBe(look?.preview_more?.[0]);
+    expect(look).toMatchObject({
+      preview_every: 30,
+      preview_transition: "slide",
+    });
+  });
+
+  it("drops the turns where the mark wears one picture, as the Look tab does", async () => {
+    const note = await aNote();
+    await styled(note, {
+      pictures: [LOGO, BADGE],
+      picture_every: 30,
+      picture_transition: "slide",
+    });
+
+    await styled(note, { picture: LOGO });
+    const one = await lookOf(note);
+    const bare = await aNoteAbout(READING_DOC);
+    await styled(bare, { picture_every: 30, ring_weight: "heavy" });
+
+    expect(Object.keys(one ?? {})).toEqual(["preview"]);
+    expect(await lookOf(bare)).toEqual({ ring_weight: "heavy" });
+  });
+
+  it("takes the turns back off by name", async () => {
+    const note = await aNote();
+    await styled(note, {
+      pictures: [LOGO, BADGE],
+      picture_every: 30,
+      picture_transition: "zoom",
+    });
+
+    await styled(note, { off: ["picture_every", "picture_transition"] });
+
+    const look = await lookOf(note);
+    expect(look?.preview_every).toBeUndefined();
+    expect(look?.preview_transition).toBeUndefined();
+    expect(look?.preview_more).toHaveLength(1);
+  });
+
+  it("says a size finely or in steps, and one takes the other off", async () => {
+    const note = await aNote();
+
+    await styled(note, { mark_radius: "large" });
+    await styled(note, { mark_scale: 1.6 });
+    const fine = await lookOf(note);
+    await styled(note, { mark_radius: "huge" });
+    const stepped = await lookOf(note);
+    await styled(note, { mark_scale: 1 });
+    const plain = await lookOf(note);
+
+    expect(fine).toEqual({ mark_scale: 1.6 });
+    expect(stepped).toEqual({ mark_radius: "huge" });
+    expect(plain).toBeUndefined();
+  });
+
+  it("takes the fine size off by name", async () => {
+    const note = await aNote();
+    await styled(note, { mark_scale: 1.6, ring_weight: "hairline" });
+
+    await styled(note, { off: ["mark_scale"] });
+
+    expect(await lookOf(note)).toEqual({ ring_weight: "hairline" });
+  });
+
+  it("says a picture's cover finely or in steps, one taking the other off, and neither without a picture", async () => {
+    const note = await aNote();
+    const bare = await aNoteAbout(READING_DOC);
+
+    await styled(note, { picture: LOGO, picture_size: "large" });
+    const stepped = await lookOf(note);
+    await styled(note, { picture_cover: 0.7 });
+    const fine = await lookOf(note);
+    await styled(note, { picture_size: "small" });
+    const plain = await lookOf(note);
+    await styled(bare, { picture_cover: 0.7, ring_weight: "heavy" });
+
+    expect(stepped).toMatchObject({ preview_size: "large" });
+    expect(fine?.preview_size).toBeUndefined();
+    expect(fine?.preview_cover).toBe(0.7);
+    expect(plain?.preview_size).toBeUndefined();
+    expect(plain?.preview_cover).toBeUndefined();
+    expect(await lookOf(bare)).toEqual({ ring_weight: "heavy" });
+  });
+
+  it("takes a cover back off by name", async () => {
+    const note = await aNote();
+    await styled(note, { picture: LOGO, picture_cover: 0.7 });
+
+    await styled(note, { off: ["picture_cover"] });
+
+    expect((await lookOf(note))?.preview_cover).toBeUndefined();
+    expect((await lookOf(note))?.preview).toBeDefined();
+  });
+
+  it("gives a ring to a mark wearing none where a style is named, and stores the plain values as nothing", async () => {
+    const note = await aNote();
+
+    await styled(note, { ring_style: "dashed" });
+    const broken = await lookOf(note);
+    await styled(note, { ring_weight: "none" });
+
+    expect(broken).toEqual({ ring_weight: "regular", ring_style: "dashed" });
+    expect(await lookOf(note)).toBeUndefined();
+  });
+
+  // A look is not writing, so a picture lands on a note somebody else started.
+  it("puts the picture on a note somebody else started, not offered", async () => {
+    const theirs = await theirNote();
+
+    const said = await styled(theirs, { picture: LOGO });
+
+    expect(said.trouble).toBeUndefined();
+    expect((await lookOf(theirs))?.preview).toBeDefined();
+    const offered = await performChatCall(files, {
+      call: "c3",
+      act: "list_offers",
+      arguments: { note: theirs },
+    });
+    expect(OffersListedSchema.parse(JSON.parse(offered.said)).offers).toEqual(
+      [],
+    );
+  });
+
+  async function aNoteAbout(about: string): Promise<OwnedRef> {
+    return wrote(
+      writes(about, ["## Why\n\nSomething else."], { title: about }),
+    );
+  }
 });
 
 describe("putting a note in the bin", () => {

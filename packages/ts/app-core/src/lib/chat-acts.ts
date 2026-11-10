@@ -24,6 +24,9 @@ import {
 	type MarkChannel,
 	type MoveNoteArguments,
 	type NodeView,
+	PICTURE_TRANSITION_LABELS,
+	PICTURE_TURNS,
+	type PreviewSize,
 	type StyleEdgeArguments,
 	type StyleNoteArguments,
 	type Tag,
@@ -72,6 +75,15 @@ const TOO_MUCH_TOLD: Partial<Record<ChatToolCall['act'], string>> = {
 const RING = 'Ring';
 const RING_STYLE = 'Ring style';
 const SIZE = 'Size';
+const PICTURE = 'Picture';
+const PICTURE_TURN = 'Changes';
+const PICTURE_TRANSITION = 'Gives way by';
+const PICTURE_COVER = 'Covers';
+const PREVIEW_SIZE_LABELS: Record<PreviewSize, string> = {
+	small: 'Small',
+	medium: 'Medium',
+	large: 'Large'
+};
 
 /**
  * One of Sloppy's own acts, done and answered. The arguments arrived parsed;
@@ -153,9 +165,11 @@ function factsTold(call: ChatToolCall, facts: ActFacts): string {
 		case 'style_edge':
 			return lineTold(argumentsOf(call, 'style_edge'));
 		case 'style_note': {
-			const asked = argumentsOf(call, 'style_note');
-			const sets = [asked?.ring_weight, asked?.ring_style, asked?.mark_radius];
-			return sets.some((one) => one !== undefined)
+			const asked = argumentsOf(call, 'style_note') ?? {};
+			const sets = Object.entries(asked).filter(
+				([channel]) => channel !== 'note' && channel !== 'off'
+			);
+			return sets.some(([, one]) => one !== undefined)
 				? 'The mark is drawn differently.'
 				: 'Taken back off the mark.';
 		}
@@ -368,8 +382,44 @@ function markCard(note: NodeView, asked: StyleNoteArguments): ChatCard {
 	return chatCard('mark', heads(note), [
 		...cardRow(RING, set('ring_weight', asked.ring_weight, RING_WEIGHT_LABELS)),
 		...cardRow(RING_STYLE, set('ring_style', asked.ring_style, RING_STYLE_LABELS)),
-		...cardRow(SIZE, set('mark_radius', asked.mark_radius, MARK_RADIUS_LABELS))
+		...cardRow(SIZE, sizeSaid(asked, gone)),
+		...cardRow(PICTURE, picturesSaid(asked, gone)),
+		...cardRow(PICTURE_TURN, gone.has('picture_every') ? CARD_NONE : turnSaid(asked.picture_every)),
+		...cardRow(
+			PICTURE_TRANSITION,
+			set('picture_transition', asked.picture_transition, PICTURE_TRANSITION_LABELS)
+		),
+		...cardRow(PICTURE_COVER, coverSaid(asked, gone))
 	]);
+}
+
+function sizeSaid(asked: StyleNoteArguments, gone: ReadonlySet<MarkChannel>): string | undefined {
+	if (asked.mark_scale !== undefined) return `×${asked.mark_scale}`;
+	if (asked.mark_radius !== undefined) return MARK_RADIUS_LABELS[asked.mark_radius];
+	return gone.has('mark_radius') || gone.has('mark_scale') ? CARD_NONE : undefined;
+}
+
+function picturesSaid(
+	asked: StyleNoteArguments,
+	gone: ReadonlySet<MarkChannel>
+): string | undefined {
+	if (gone.has('picture') || gone.has('pictures')) return CARD_NONE;
+	const named = asked.pictures ?? (asked.picture === undefined ? [] : [asked.picture]);
+	return named.map((path) => path.split('/').pop()).join(', ') || undefined;
+}
+
+function turnSaid(minutes: number | undefined): string | undefined {
+	if (minutes === undefined) return undefined;
+	return (
+		PICTURE_TURNS.find((turn) => turn.value === minutes)?.label ??
+		(minutes === 1 ? 'Every minute' : `Every ${minutes} minutes`)
+	);
+}
+
+function coverSaid(asked: StyleNoteArguments, gone: ReadonlySet<MarkChannel>): string | undefined {
+	if (asked.picture_cover !== undefined) return `${Math.round(asked.picture_cover * 100)}%`;
+	if (asked.picture_size !== undefined) return PREVIEW_SIZE_LABELS[asked.picture_size];
+	return gone.has('picture_size') || gone.has('picture_cover') ? CARD_NONE : undefined;
 }
 
 function binCard(note: NodeView, about: readonly string[], going: number): ChatCard {

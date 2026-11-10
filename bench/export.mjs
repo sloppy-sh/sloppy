@@ -244,6 +244,7 @@ const settingsOf = (view, served) => {
 const RECOMMENDED = new Set([
   "asis\tfalse",
   "shaped\ttrue",
+  "maintainer\ttrue",
   "armA\tfalse",
   "armB\ttrue",
 ]);

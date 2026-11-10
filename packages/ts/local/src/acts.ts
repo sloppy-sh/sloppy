@@ -74,6 +74,7 @@ import {
   type StyleNoteArguments,
   type Tag,
   type TagNoteArguments,
+  tidiedAppearance,
   tagsAmong,
   tagsAnswer,
   ulid,
@@ -85,6 +86,8 @@ import {
   emptySidecars,
   fromMarkdown,
   GRAPH_FILE,
+  insideVault,
+  MEDIA_DIR,
   readGraphFile,
   type VaultGraph,
 } from "@sloppy/vault";
@@ -126,6 +129,7 @@ import {
 } from "./relate.js";
 import type { WritingHit } from "./search.js";
 import { QuoteRefused, quotesIn, quotesSaid, quotesTaken } from "./snippets.js";
+import { pictureKindOf } from "./vault-paths.js";
 import { writeOnto } from "./write-onto.js";
 
 const NO_NOTE =
@@ -146,6 +150,14 @@ const NOT_LINKED = "Those lines were left as they were.";
 const NOTHING_DRAWN = "That named nothing to draw and nothing to take off.";
 const NOT_LOOKED = "That line was left as it was.";
 const NOT_DRAWN = "That mark was left as it was.";
+const PICTURE_OUTSIDE =
+  "That picture is not in the project. Name an image inside it, as a path from the project's top.";
+const NO_PICTURE =
+  "There is no file at that path in the project. Find the image and name its path.";
+const NOT_A_PICTURE =
+  "That file does not open as a PNG, JPEG, GIF or WebP image, whatever its name says, so a mark cannot wear it. Name one that does.";
+const PICTURE_TWICE =
+  "That named one picture and a series of them. Name the pictures alone, with the one to wear first at the top.";
 const NOT_LISTED = "The bin could not be read.";
 const NOT_RESTORED = "That note was not taken out of the bin.";
 const NO_GRAPH = "There is no graph here to read.";
@@ -399,7 +411,7 @@ async function performed(
     case "style_edge":
       return await styleEdge(api, call.arguments);
     case "style_note":
-      return await styleNote(api, call.arguments);
+      return await styleNote(api, files, call.arguments);
     case "delete_note":
       return await deleteNote(api, call.arguments);
     case "list_tags":
@@ -1349,20 +1361,47 @@ function lookAsked(
   };
 }
 
-/** How a note's mark is drawn. A look with nothing left set leaves the note
- *  unstyled, which `lookWritten` in the store is what recognises. */
+/** How a note's mark is drawn, left exactly as the Look tab leaves the same
+ *  choices. A look with nothing left set leaves the note unstyled, which
+ *  `lookWritten` in the store is what recognises. */
 async function styleNote(
   api: LocalApi,
+  project: Files,
   asked: StyleNoteArguments,
 ): Promise<ActAnswer> {
-  const named = [asked.ring_weight, asked.ring_style, asked.mark_radius];
-  if (!saysAnything(named, asked.off)) {
+  const { note: _note, off, ...named } = asked;
+  if (!saysAnything(Object.values(named), off)) {
     return trouble(NOTHING_DRAWN, "nothing_drawn");
+  }
+  if (asked.picture !== undefined && asked.pictures !== undefined) {
+    return trouble(PICTURE_TWICE);
   }
   const note = await api.getNode(asked.note);
   if (!note) return trouble(NO_NOTE, "no_note");
-  const appearance = markAsked(note.appearance, asked);
+  const gone = new Set<string>(off ?? []);
+  const naming =
+    gone.has("picture") || gone.has("pictures")
+      ? undefined
+      : (asked.pictures ??
+        (asked.picture === undefined ? undefined : [asked.picture]));
+  const added: string[] = [];
   try {
+    let series: string[] | undefined;
+    if (naming !== undefined) {
+      series = [];
+      for (const path of naming) {
+        const picture = await pictureFor(api, project, path);
+        if ("refused" in picture) {
+          await letGo(api, added);
+          return trouble(picture.refused);
+        }
+        if (picture.added) added.push(picture.upload);
+        series.push(picture.upload);
+      }
+    }
+    const appearance = tidiedAppearance(
+      markAsked(note.appearance ?? {}, asked, gone, series),
+    );
     const written = await api.updateNode(asked.note, { appearance });
     return {
       said: await listedSaid(api, written),
@@ -1370,45 +1409,124 @@ async function styleNote(
       touched: [written.ref],
     };
   } catch (error) {
+    await letGo(api, added);
     return troubleWriting(error, NOT_DRAWN);
   }
 }
 
-/** The channels this act writes, taken off what the note carries so that what
- *  it leaves out is left out rather than written twice. */
-const MARK_SHAPE = [
-  "ring_weight",
-  "ring_style",
-  "mark_radius",
-  "mark_scale",
-] as const;
+/** Pictures this call stored for a look that was never written. */
+async function letGo(api: LocalApi, added: readonly string[]): Promise<void> {
+  for (const upload of added) await api.removePicture(upload).catch(() => {});
+}
 
+/** The stored picture `path` names: one the notes already hold under
+ *  `media/`, or the project's image there, added the way the Look tab adds
+ *  one. */
+async function pictureFor(
+  api: LocalApi,
+  project: Files,
+  path: string,
+): Promise<{ upload: string; added: boolean } | { refused: string }> {
+  const held = heldPicture(path);
+  if (held !== undefined && (await api.ownPicture(held).catch(() => null))) {
+    return { upload: held, added: false };
+  }
+  if (!insideVault(path)) return { refused: PICTURE_OUTSIDE };
+  const bytes = await project.read(path);
+  if (bytes === undefined) return { refused: NO_PICTURE };
+  const mimeType = pictureKindOf(bytes);
+  if (mimeType === undefined) return { refused: NOT_A_PICTURE };
+  const ticket = await api.createUpload({
+    role: "block",
+    filename: path.slice(path.lastIndexOf("/") + 1),
+    mime_type: mimeType,
+    size: bytes.byteLength,
+  });
+  await api.sendUpload(ticket, new Blob([bytes.slice().buffer as ArrayBuffer]));
+  const stored = await api.completeUpload({ upload_id: ticket.upload_id });
+  return { upload: stored.upload_id, added: true };
+}
+
+/** The upload a `media/<id>.<ext>` path names, or absent where it names none. */
+function heldPicture(path: string): string | undefined {
+  const prefix = `${MEDIA_DIR}/`;
+  if (!path.startsWith(prefix)) return undefined;
+  const name = path.slice(prefix.length);
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  return stem === "" || stem.includes("/") ? undefined : stem;
+}
+
+/**
+ * The look the note carries with what was asked laid over it. A step and a fine
+ * value say one channel two ways, so naming either takes the other off; and a
+ * ring style named on a mark wearing no ring gives it a regular one, the way
+ * choosing a style in the Look tab does.
+ */
 function markAsked(
-  held: NodeAppearance | undefined,
+  held: NodeAppearance,
   asked: StyleNoteArguments,
+  gone: ReadonlySet<string>,
+  series: readonly string[] | undefined,
 ): NodeAppearance {
-  const off = new Set<string>(asked.off ?? []);
-  const kept = <T>(
-    channel: string,
-    said: T | undefined,
-    was: T | undefined,
-  ): T | undefined => (off.has(channel) ? undefined : (said ?? was));
-  const weight = kept("ring_weight", asked.ring_weight, held?.ring_weight);
-  const style = kept("ring_style", asked.ring_style, held?.ring_style);
-  const radius = kept("mark_radius", asked.mark_radius, held?.mark_radius);
-  // A step and a fine size say one size two ways and the fine one is what
-  // draws, so a step named here takes it off.
-  const sized = asked.mark_radius !== undefined || off.has("mark_radius");
-  const scale = sized ? undefined : held?.mark_scale;
-  const pictures: NodeAppearance = { ...held };
-  for (const channel of MARK_SHAPE) delete pictures[channel];
-  return {
-    ...pictures,
-    ...(weight === undefined ? {} : { ring_weight: weight }),
-    ...(style === undefined ? {} : { ring_style: style }),
-    ...(radius === undefined ? {} : { mark_radius: radius }),
-    ...(scale === undefined ? {} : { mark_scale: scale }),
+  const look: NodeAppearance = { ...held };
+  const set = <K extends keyof NodeAppearance>(
+    key: K,
+    value: NodeAppearance[K] | undefined,
+  ): void => {
+    if (value !== undefined) look[key] = value;
   };
+  const clear = (...keys: (keyof NodeAppearance)[]): void => {
+    for (const key of keys) delete look[key];
+  };
+
+  set("ring_weight", asked.ring_weight);
+  set("ring_style", asked.ring_style);
+  if (
+    asked.ring_style !== undefined &&
+    asked.ring_weight === undefined &&
+    (look.ring_weight === undefined || look.ring_weight === "none")
+  ) {
+    look.ring_weight = "regular";
+  }
+  if (asked.mark_radius !== undefined) {
+    look.mark_radius = asked.mark_radius;
+    clear("mark_scale");
+  }
+  if (asked.mark_scale !== undefined) {
+    look.mark_scale = asked.mark_scale;
+    clear("mark_radius");
+  }
+  if (series !== undefined) {
+    clear("preview", "preview_more");
+    Object.assign(look, {
+      preview: series[0],
+      ...(series.length > 1 ? { preview_more: series.slice(1) } : {}),
+    });
+  }
+  set("preview_every", asked.picture_every);
+  set("preview_transition", asked.picture_transition);
+  if (asked.picture_size !== undefined) {
+    look.preview_size = asked.picture_size;
+    clear("preview_cover");
+  }
+  if (asked.picture_cover !== undefined) {
+    look.preview_cover = asked.picture_cover;
+    clear("preview_size");
+  }
+
+  if (gone.has("ring_weight")) clear("ring_weight");
+  if (gone.has("ring_style")) clear("ring_style");
+  if (gone.has("mark_radius")) clear("mark_radius", "mark_scale");
+  if (gone.has("mark_scale")) clear("mark_scale");
+  if (gone.has("picture") || gone.has("pictures")) {
+    clear("preview", "preview_more");
+  }
+  if (gone.has("picture_every")) clear("preview_every");
+  if (gone.has("picture_transition")) clear("preview_transition");
+  if (gone.has("picture_size")) clear("preview_size", "preview_cover");
+  if (gone.has("picture_cover")) clear("preview_cover");
+  return look;
 }
 
 async function deleteNote(

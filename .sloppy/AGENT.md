@@ -272,6 +272,13 @@ as marks get small. A ring on every note therefore says what a ring on none says
 graph nobody drew at all leaves the reader nowhere to start. Spend them, and spend them on
 few notes.
 
+A mark may also wear a picture — a component's logo on the note about that component, the
+way a maintainer would dress it — or several taking turns. Those are not fields to write by
+hand: through `sloppy mcp`, `style_note` takes the image's path in the project as
+`picture`, or a list as `pictures` with how long each holds and how it gives way, and
+how much of the mark it covers; `off` takes any of them back off. Everything else in
+`appearance` is `style_note`'s to set as well.
+
 **A convention for documenting runs.** What those three channels MEAN is above and is
 Sloppy's. What a run over somebody's code should SPEND them on is written nowhere else, so
 it is written here, so that one run's graph reads like the next one's:
@@ -441,4 +448,4 @@ enough, and the answer says where it went and why. What it writes lands in this 
 of the change. It writes none of what this file says is not yours: `checked` and
 `read_against`, who a note's owner is, anybody's identity or keys, commits and what
 signs them, and what anybody's profile says.
-<!-- sloppy:agent 6e4534ef -->
+<!-- sloppy:agent f19599b1 -->

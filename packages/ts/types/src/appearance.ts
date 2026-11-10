@@ -266,6 +266,63 @@ export function isUnstyled(
   );
 }
 
+/**
+ * A look as it is stored: a channel saying what a plain note already draws is
+ * stored as nothing set, and so is one that says nothing at all — a ring style
+ * with no ring, a cover with no picture, a cadence for a picture that never
+ * changes. A token this build has no renderer for survives untouched.
+ */
+export function tidiedAppearance(next: NodeAppearance): NodeAppearance {
+  const unstyled = resolveAppearance(null);
+  const tidy = { ...next };
+  if (tidy.ring_weight === unstyled.ringWeight) tidy.ring_weight = undefined;
+  if (
+    tidy.ring_weight === undefined ||
+    tidy.ring_style === unstyled.ringStyle
+  ) {
+    tidy.ring_style = undefined;
+  }
+  if (tidy.mark_scale === unstyled.markScale) tidy.mark_scale = undefined;
+  if (stepped(MARK_RADIUS_SCALE, tidy.mark_radius) === unstyled.markScale) {
+    tidy.mark_radius = undefined;
+  }
+  if (tidy.preview === undefined || (tidy.preview_more ?? []).length === 0) {
+    tidy.preview_more = undefined;
+  }
+  if (
+    tidy.preview === undefined ||
+    tidy.preview_cover === unstyled.previewCover
+  ) {
+    tidy.preview_cover = undefined;
+  }
+  if (
+    tidy.preview === undefined ||
+    stepped(PREVIEW_SIZE_COVER, tidy.preview_size) === unstyled.previewCover
+  ) {
+    tidy.preview_size = undefined;
+  }
+  const still = tidy.preview === undefined || tidy.preview_more === undefined;
+  if (still || tidy.preview_every === unstyled.preview.every) {
+    tidy.preview_every = undefined;
+  }
+  if (still || tidy.preview_transition === unstyled.preview.transition) {
+    tidy.preview_transition = undefined;
+  }
+  return Object.fromEntries(
+    Object.entries(tidy).filter(([, value]) => value !== undefined),
+  ) as NodeAppearance;
+}
+
+/** What a step is worth, or nothing for one this build cannot draw. */
+function stepped(
+  ladder: Record<string, number>,
+  step: string | undefined,
+): number | undefined {
+  return step !== undefined && Object.hasOwn(ladder, step)
+    ? ladder[step]
+    : undefined;
+}
+
 function known<T extends string>(
   values: readonly T[],
   token: string | undefined,

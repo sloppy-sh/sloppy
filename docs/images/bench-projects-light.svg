@@ -14,11 +14,11 @@
 <text x="48" y="177" fill="#59636e" text-anchor="end" font-size="11">0.9</text>
 <line x1="56" x2="710" y1="68" y2="68" stroke="#d1d9e0" stroke-dasharray="2 3"/>
 <text x="48" y="72" fill="#59636e" text-anchor="end" font-size="11">1.0</text>
-<polyline points="96,164.18000000000004 212.8,185.6 329.6,185.6 446.4,166.38500000000005 563.2,157.355 680,126.90500000000006" fill="none" stroke="#16916a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="96,164.18000000000004 212.8,185.6 329.6,185.6 446.4,155.99 563.2,157.355 680,126.90500000000006" fill="none" stroke="#16916a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="96" cy="164.18000000000004" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="212.8" cy="185.6" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="329.6" cy="185.6" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="446.4" cy="166.38500000000005" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="446.4" cy="155.99" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="563.2" cy="157.355" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="680" cy="126.90500000000006" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
 <polyline points="96,167.75 212.8,137.08999999999997 329.6,209.54000000000008 446.4,143.81000000000006 563.2,191.37500000000009 680,127.01000000000005" fill="none" stroke="#cf5a2b" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
@@ -28,11 +28,11 @@
 <circle cx="446.4" cy="143.81000000000006" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="563.2" cy="191.37500000000009" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="680" cy="127.01000000000005" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
-<polyline points="96,153.15499999999997 212.8,96.35000000000002 329.6,174.155 446.4,174.68000000000006 563.2,145.28000000000003 680,110.52499999999998" fill="none" stroke="#4064b9" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="96,153.15499999999997 212.8,96.35000000000002 329.6,174.155 446.4,113.25500000000002 563.2,145.28000000000003 680,110.52499999999998" fill="none" stroke="#4064b9" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="96" cy="153.15499999999997" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="212.8" cy="96.35000000000002" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="329.6" cy="174.155" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="446.4" cy="174.68000000000006" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="446.4" cy="113.25500000000002" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="563.2" cy="145.28000000000003" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="680" cy="110.52499999999998" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <text x="718" y="125.48000000000002" fill="#16916a" font-size="12" font-weight="600">Subagents allowed 0.94</text>
@@ -50,25 +50,25 @@
 <text x="48" y="384.5" fill="#59636e" text-anchor="end" font-size="11">$0.15</text>
 <line x1="56" x2="710" y1="328" y2="328" stroke="#d1d9e0" stroke-dasharray="2 3"/>
 <text x="48" y="332" fill="#59636e" text-anchor="end" font-size="11">$0.20</text>
-<polyline points="96,450.73029999999994 212.8,400.80175 329.6,442.73665 446.4,459.4915 563.2,460.17925 680,448.76365" fill="none" stroke="#16916a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="96,450.73029999999994 212.8,400.80175 329.6,442.73665 446.4,453.08755 563.2,460.17925 680,448.76365" fill="none" stroke="#16916a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="96" cy="450.73029999999994" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="212.8" cy="400.80175" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="329.6" cy="442.73665" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="446.4" cy="459.4915" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="446.4" cy="453.08755" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="563.2" cy="460.17925" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="680" cy="448.76365" r="4" fill="#16916a" stroke="#ffffff" stroke-width="1.5"/>
-<polyline points="96,440.5978 212.8,373.4482 329.6,442.27464999999995 446.4,457.19725000000005 563.2,464.04325000000006 680,439.37455" fill="none" stroke="#cf5a2b" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="96,440.5978 212.8,373.4482 329.6,442.27464999999995 446.4,457.93855 563.2,464.04325000000006 680,439.37455" fill="none" stroke="#cf5a2b" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="96" cy="440.5978" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="212.8" cy="373.4482" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="329.6" cy="442.27464999999995" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="446.4" cy="457.19725000000005" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="446.4" cy="457.93855" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="563.2" cy="464.04325000000006" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="680" cy="439.37455" r="4" fill="#cf5a2b" stroke="#ffffff" stroke-width="1.5"/>
-<polyline points="96,456.3688 212.8,435.1063 329.6,457.19620000000003 446.4,464.62284999999997 563.2,474.01615000000004 680,464.9893" fill="none" stroke="#4064b9" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="96,456.3688 212.8,435.1063 329.6,457.19620000000003 446.4,465.55315 563.2,474.01615000000004 680,464.9893" fill="none" stroke="#4064b9" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="96" cy="456.3688" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="212.8" cy="435.1063" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="329.6" cy="457.19620000000003" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="446.4" cy="464.62284999999997" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="446.4" cy="465.55315" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="563.2" cy="474.01615000000004" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <circle cx="680" cy="464.9893" r="4" fill="#4064b9" stroke="#ffffff" stroke-width="1.5"/>
 <text x="718" y="455.0425" fill="#16916a" font-size="12" font-weight="600">Subagents allowed $0.085</text>
@@ -81,7 +81,7 @@
 <text x="329.6" y="554" fill="#1f2328" text-anchor="middle" font-size="12">.NET runtime</text>
 <text x="329.6" y="569" fill="#59636e" text-anchor="middle" font-size="11">620k words</text>
 <text x="446.4" y="554" fill="#1f2328" text-anchor="middle" font-size="12">Carbon</text>
-<text x="446.4" y="569" fill="#59636e" text-anchor="middle" font-size="11">659k words</text>
+<text x="446.4" y="569" fill="#59636e" text-anchor="middle" font-size="11">628k words</text>
 <text x="563.2" y="554" fill="#1f2328" text-anchor="middle" font-size="12">GitLab</text>
 <text x="563.2" y="569" fill="#59636e" text-anchor="middle" font-size="11">1.1M words</text>
 <text x="680" y="554" fill="#1f2328" text-anchor="middle" font-size="12">LLVM</text>

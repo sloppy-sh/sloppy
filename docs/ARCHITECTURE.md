@@ -4229,9 +4229,10 @@ the advertised tools on every turn it takes, and for every answer on every turn 
   kept to its type, its choices and the bounds a plausible call could miss — the call is still
   checked against the whole — and leaves out `in`, which names nothing on a server for one
   project. Every request an agent sends carries them. Six are left out of the
-  list and still served to a caller that names them: `style_edge` and `style_note`, because how
-  a line or a mark is drawn on the canvas is a person's to decide and changes nothing an agent
-  reads; `list_bin` and `restore_note`, because taking a note back out is a person's, from the
+  list and still served to a caller that names them: `style_edge` and `style_note` — which sets
+  every channel of a mark the Look tab sets, its pictures from the project's images among
+  them — because how a line or a mark is
+  drawn on the canvas is a person's to decide and changes nothing an agent reads; `list_bin` and `restore_note`, because taking a note back out is a person's, from the
   bin they put it in; `list_offers`, because an offer waits on the person, never on the agent;
   and `read_graph`, because whether a write lands or is offered is what the write's own answer
   says. And six an agent all but never reached for, which the profile leaves to `--tools default`:

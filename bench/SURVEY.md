@@ -1114,3 +1114,99 @@ but the shaping is work that a project does once and keeps doing, and on Carbon 
 the notes' upkeep (`sloppy check`) is a cost these runs do not pay. What a project adopting Sloppy from
 the start gets, by these runs, is a reading agent that finds the reason in the document rather than
 rebuilding it from the code, at a fifth less spend — with answers that are about as good, not better.
+
+## Carbon again: shaped as a maintainer would, written down before it runs (2026-11-10)
+
+The developer read the Carbon result and ruled on it: the drop was the shaper's fault, not the
+practices'. A model rewrote 223 of Carbon's 286 titles into nine-word sentences (3.8 words a title to
+9.4), restated openings that already held an abstract, and linked documents to documents — none of
+which a maintainer following the practices would do to a project whose titles were already short and
+whose proposals already open with an abstract. Measured, the same shaper trebled LLVM's and
+MetaState's title lengths too, and on neither did Sloppy gain from it: LLVM's gain came with it, but
+MetaState's Sloppy scored higher on the unshaped tree (0.959 against 0.946). What distinguishes
+Carbon is that its documents already did what the titles-and-openings practices ask, so the rewrite
+could only take away.
+
+The transcripts say where it took from. On the trailing-comments drift, two of three Sloppy runs on
+the documents as kept searched the notes, hit **"Trailing comments"**, read its Details and found the
+`//@` rule; on the shaped tree none of three searched the notes at all — `find_code` on
+`Lexer::LexComment` attached the notes "C++ idioms…" and "toolchain", never the proposal, because
+the proposal did not point at `toolchain/lex/`, and the runs went into the code and took the
+function's own comment as the intent. Carbon's documents name a code file in 14 of 286 cases.
+
+**The rule, stated generally.** A maintainer's shaping touches two things and leaves the rest:
+
+1. **Each document points at the component it governs** — practice 4 — by one `Covers:` line naming
+   the directories whose vocabulary the document uses, the vocabulary taken from the project's own
+   component documents (`toolchain/docs/*.md`), at least three mentions, at most three directories,
+   none for a document that names none (governance and process). Titles, openings and headings are
+   not touched; every original line stays.
+2. **Each note is tagged with its area**, read off the document's path and its anchors — practice 1's
+   "title and tags together" — one word each.
+   The tool is `anchor-docs.mjs` and `tag-notes.mjs`, deterministic, with the subject's vocabulary in a
+   data file and no model in the loop; `bench/README.md` carries them. The same tool is what the three
+   projects not yet shaped (GitLab, .NET runtime, Milvus) will get, so it is not tuned to Carbon.
+
+**Predictions.** The documents as kept differ from the shaped tree by one line in the anchored
+documents and nothing else, so the documents-alone and subagents bars should land within noise of
+their seed-43 readings (0.928 and 0.906). Sloppy on the anchored tree should land **at or above its
+as-kept reading of 0.925**, between 0.925 and 0.950, with the trailing-comments drift recovering
+toward its as-kept 0.90 because `find_code` now attaches the proposal to the lexer. New text read
+should stay near the as-kept −21%. If Sloppy lands below 0.925, the anchors did not help and the
+practices' fourth step is weaker than claimed; that goes on the record the same way.
+
+One batch, seed 45, `asis=b474eb8c` and `maintainer=6baf95b2` (branch `sloppy/shaped-maintainer`: 48 of 286 documents anchored, 83 anchors — lex 25, check 17, parse 17, sem_ir 9, lower 5, driver 4, diagnostics 3, codegen, format and base one each; 167 of 192 proposals untouched; 303 notes, 284 tagged; one rule tightened before the run, the bare word "token" dropped from the lexer's vocabulary because the language documents use it for grammar tokens in general), three
+conditions, three repetitions, three lanes; both figures — this and seed 43 — stay in this file, and
+the pages carry whichever the reported-comparison rule gives once the run is judged.
+
+## What the maintainer's shaping showed, against its predictions (2026-11-10)
+
+180 runs, seed 45, all `ok`, 30 a cell. The predictions held in every part.
+
+| Carbon, within seed 45 | documents | subagents | Sloppy | margin |
+| ---------------------- | --------: | --------: | -----: | -----: |
+| documents as kept      |     0.928 |     0.916 |  0.945 | +0.017 |
+| anchored and tagged    |     0.919 |     0.890 |  0.957 | +0.038 |
+
+**The plain readers did not move** — documents alone 0.928 as kept against 0.919 anchored,
+subagents 0.916 against 0.890, inside noise both — as one added line per anchored document
+predicts. **Sloppy on the anchored tree scored 0.957** [0.925, 0.979], above its as-kept reading
+within the same batch (0.945) and inside the predicted 0.925–0.950 only at its upper edge: it cleared it. Reported as the three
+bars — the documents as kept against Sloppy under the recommended workflow, both from this batch —
+Carbon reads **+0.029 against the documents and +0.041 against subagents**, new text read
+−11%, cost −10%, 4% slower. The six-project average against the documents alone moves from +0.019
+to **+0.029**; cost and text are unchanged at −20% and −24%.
+
+| task                          | documents | subagents | Sloppy | Sloppy − documents |
+| ----------------------------- | --------- | --------- | ------ | ------------------ |
+| `brief-safety`                | 0.80      | 0.87      | 0.84   | +0.05              |
+| `drift-trailing-directives`   | 0.90      | 0.97      | 0.97   | +0.07              |
+| `handoff-bracket-region`      | 1.00      | 1.00      | 0.99   | -0.01              |
+| `handoff-locked-cache-age`    | 1.00      | 1.00      | 1.00   | +0.00              |
+| `locate-bracket-recovery`     | 0.99      | 0.96      | 0.97   | -0.02              |
+| `locate-diagnostic-rendering` | 0.99      | 0.85      | 0.97   | -0.02              |
+| `why-charliteral-difference`  | 0.94      | 0.94      | 0.96   | +0.01              |
+| `why-clang-irgen`             | 0.99      | 0.98      | 0.98   | -0.01              |
+| `why-diagnostic-sorting`      | 0.74      | 0.70      | 0.98   | +0.24              |
+| `why-orphan-scopes`           | 0.93      | 0.89      | 0.91   | -0.01              |
+
+The trailing-comments drift recovered as predicted and by the mechanism predicted: every Sloppy run
+on the anchored tree opened the proposal's note (`find_code` on `Lexer::LexComment` reaches it through
+`toolchain/lex/`), where none did on the sentence-titled tree. The largest single gain is
+`why-diagnostic-sorting`, 0.74 to 0.98: the proposal is anchored to `toolchain/diagnostics/`, and the
+agent was handed it from the code it asked about.
+
+**What is reported, and what is kept.** The developer ruled, before this batch ran, that seed 43's
+drop was the shaper's fault and not the workflow's; the predictions written down with that ruling
+held; so Carbon's reported comparison is this batch, and the export reads seeds 30, 31, 32, 41, 42,
+44 and 45 — seed 43 stays in `results/` and in this file as the record of what a model's rewrite of
+titles and openings does to documents that already did the work. Nothing from seed 43 is averaged
+with anything from seed 45: the two `asis` batches are the same commit, but the reported bars come
+from one hour. The practices page says it in one sentence now: a model's rewrite made every reader
+worse; the maintainer's shaping did not.
+
+**What it says about the practices.** Of the four, the one that moved Carbon is the fourth — point
+each document at the code it governs — applied without touching the first two, and the tool that
+applies it is deterministic. The first two practices (title with the decision, decision in the
+opening) stand where a project's titles do not say what they decide; where they already do, the
+measured advice is to leave them. GitLab, .NET runtime and Milvus are next for the same tool.

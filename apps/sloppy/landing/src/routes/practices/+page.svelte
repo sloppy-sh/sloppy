@@ -138,11 +138,11 @@
 					On briefings it can do worse, working from excerpts of several notes instead of one whole.
 				</p>
 				<p class="mt-4">
-					And on one project measured, doing all of this to documents that already did most of it
-					made every reader worse — with Sloppy, without, and with subagents alike. Its titles were
-					already short and its documents already named their code, and restating each decision as a
-					sentence left a question's own words a smaller share of what it matches. Try these on the
-					questions your team asks, and keep what measures better.
+					And on one project, a model's rewrite of titles and openings that already did most of this
+					made every reader worse — with Sloppy, without, and with subagents alike. The same project
+					shaped as a maintainer would — one line per document naming the component it governs, a
+					tag per note, titles untouched — came out ahead. Try these on the questions your team
+					asks, and keep what measures better.
 				</p>
 				<p class="mt-5">
 					<a class={link} href={resolve('/results')}>The results</a>

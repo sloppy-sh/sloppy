@@ -62,6 +62,35 @@ const EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
 };
 
+/** The opening bytes each picture kind this build writes is known by; WebP
+ *  carries its own name eight bytes in, after a container's. */
+const SIGNATURES: Record<string, readonly { at: number; bytes: number[] }[]> = {
+  "image/png": [
+    { at: 0, bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  ],
+  "image/jpeg": [{ at: 0, bytes: [0xff, 0xd8, 0xff] }],
+  "image/gif": [{ at: 0, bytes: [0x47, 0x49, 0x46, 0x38] }],
+  "image/webp": [
+    { at: 0, bytes: [0x52, 0x49, 0x46, 0x46] },
+    { at: 8, bytes: [0x57, 0x45, 0x42, 0x50] },
+  ],
+};
+
+/** The kind of picture `bytes` open as, among the kinds a vault writes, or
+ *  absent where they open as none of them. */
+export function pictureKindOf(bytes: Uint8Array): string | undefined {
+  const opens = (kind: string): boolean => {
+    const signature = SIGNATURES[kind] ?? [];
+    return (
+      signature.length > 0 &&
+      signature.every(({ at, bytes: wanted }) =>
+        wanted.every((byte, i) => bytes[at + i] === byte),
+      )
+    );
+  };
+  return Object.keys(EXTENSIONS).find(opens);
+}
+
 /** What a picture's file is called after the dot. */
 export function extensionFor(mimeType: string): string {
   return EXTENSIONS[mimeType] ?? "bin";

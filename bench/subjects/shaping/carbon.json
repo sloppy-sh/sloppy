@@ -1,0 +1,115 @@
+{
+  "doc_roots": [
+    "proposals",
+    "docs/design",
+    "toolchain/docs",
+    "docs/project/evolution.md",
+    "docs/project/faq.md",
+    "docs/project/goals.md",
+    "docs/project/difficulties_improving_cpp.md",
+    "docs/project/principles",
+    "AGENTS.md",
+    "README.md"
+  ],
+  "code_roots": ["toolchain/", "common/", "core/"],
+  "min_hits": 3,
+  "max_anchors": 3,
+  "vocabulary": [
+    {
+      "dir": "toolchain/lex/",
+      "words": "\\blexer'?s?\\b|\\blex(?:ing|ed|es)?\\b|\\btokeniz\\w*|\\bTokenizedBuffer\\b",
+      "from": "toolchain/docs/README.md \u00a7 High-level architecture (Lex, Lex::TokenizedBuffer); toolchain/docs/lex.md \u00a7 Overview and \u00a7 Bracket matching (lexing, the lexer, tokenized output, token); the bare word token is left out: the language documents use it for grammar tokens in general"
+    },
+    {
+      "dir": "toolchain/parse/",
+      "words": "\\bparser'?s?\\b|\\bparse trees?\\b|\\bparsing\\b|\\bParse::\\w+|\\bparse (?:stage|step|phase)\\b",
+      "from": "toolchain/docs/README.md \u00a7 High-level architecture (Parse, Parse::Tree) and \u00a7 Design patterns (the parser); toolchain/docs/parse.md \u00a7 Overview (parsing, parse tree, the parse stage)"
+    },
+    {
+      "dir": "toolchain/check/",
+      "words": "\\bsemantic analysis\\b|\\btype[- ]checking\\b|\\bcheck(?:ing)? (?:stage|step|phase)\\b|\\bCheck::\\w+",
+      "from": "toolchain/docs/check/README.md \u00a7 Overview (semantic analysis and type checking) and \u00a7 Postorder processing (the checking step, the check step); toolchain/docs/parse.md \u00a7 Overview (the check stage)"
+    },
+    {
+      "dir": "toolchain/sem_ir/",
+      "words": "\\bSemIR\\b|\\bsem[-_ ]ir\\b|\\bsemantic intermediate representation\\b|\\bsemantics IR\\b|\\bInst(?:Id|Block|BlockId|Kind)\\b",
+      "from": "toolchain/docs/check/README.md \u00a7 Overview (a semantic intermediate representation, or SemIR); toolchain/docs/lower.md \u00a7 Overview (InstId, InstBlockId, SemIR::InstBlock); toolchain/docs/idioms.md \u00a7 `.def` files (inst_kind)"
+    },
+    {
+      "dir": "toolchain/lower/",
+      "words": "\\blowering\\b|\\blowered\\b|\\bLLVM IR\\b|\\bLLVM modules?\\b|\\bIRBuilder\\b|--phase=lower",
+      "from": "toolchain/docs/lower.md \u00a7 Overview (lowering, LLVM IR, LLVM module, IRBuilder); toolchain/docs/README.md \u00a7 High-level architecture (Lower: transform the SemIR to an LLVM Module); toolchain/docs/driver.md \u00a7 Overview (--phase=lower)"
+    },
+    {
+      "dir": "toolchain/diagnostics/",
+      "words": "\\bdiagnostic (?:emitter|consumer|message|location|kind|output|rendering)s?\\b|\\bEmitter\\b|\\b(?:Sorting|Console|ErrorTracking|Stream)Consumer\\b|\\bCARBON_DIAGNOSTIC\\b|\\bdiagnostics? (?:are|is) (?:emitted|sorted|rendered|drawn)\\b",
+      "from": "toolchain/docs/diagnostics.md \u00a7 Emitters and \u00a7 Consumers (Emitter, Consumer, ConsoleConsumer, SortingConsumer, ErrorTrackingConsumer); toolchain/docs/diagnostics_rendering.md (diagnostic rendering, how a diagnostic is drawn). The bare word 'diagnostic' is left out: the language design documents use it for what any compiler reports"
+    },
+    {
+      "dir": "toolchain/driver/",
+      "words": "\\bthe driver\\b|\\bdriver'?s\\b|\\bcarbon (?:compile|link|format|language-server)\\b|\\bsubcommands?\\b|--dump-[\\w-]+|--phase\\b|\\bcommand[- ]line (?:flags?|options?|interface)\\b",
+      "from": "toolchain/docs/driver.md \u00a7 Overview (the driver provides commands; carbon compile --phase=lower; dump flags such as --dump-raw-sem-ir); toolchain/docs/diagnostics.md \u00a7 SortingConsumer (carbon compile --stream-errors)"
+    },
+    {
+      "dir": "toolchain/format/",
+      "words": "\\bformatter\\b|\\bcarbon format\\b|\\bautoformat\\w*|\\bcode formatting\\b",
+      "from": "toolchain/docs/parse.md \u00a7 Overview (a code formatter operating on the parse stage); the toolchain's format/formatter.h"
+    },
+    {
+      "dir": "toolchain/language_server/",
+      "words": "\\blanguage server\\b|\\bLSP\\b|\\bcarbon language-server\\b",
+      "from": "toolchain/docs/diagnostics_rendering.md (diagnostics from the language server, the tooling case met by the language server)"
+    },
+    {
+      "dir": "toolchain/codegen/",
+      "words": "\\bcodegen\\b|\\bcode generation\\b|\\bobject files?\\b",
+      "from": "toolchain/docs/README.md \u00a7 High-level architecture (CodeGen: transform the LLVM Module into an Object File)"
+    },
+    {
+      "dir": "toolchain/runtimes/",
+      "words": "\\bruntimes\\b|\\bruntime librar(?:y|ies)\\b|\\bcompiler-rt\\b|\\blibunwind\\b|\\blibc\\+\\+\\b",
+      "from": "the toolchain's runtimes/carbon_runtimes.bzl, which builds the runtime libraries a Carbon program links. The singular 'runtime' is left out: the design documents use it for run-time behaviour"
+    },
+    {
+      "dir": "toolchain/base/",
+      "words": "\\bValueStores?\\b|\\bvalue stores?\\b|\\bCanonicalValueStore\\b|\\b(?:IndexBase|IdBase)\\b|\\bflyweights?\\b|\\bvectorized storage\\b",
+      "from": "toolchain/docs/idioms.md \u00a7 Index types (IndexBase and IdBase in toolchain/base/index_base.h) and \u00a7 ValueStore (toolchain/base/value_store.h); toolchain/docs/README.md \u00a7 Design patterns (vectorized storage, flyweights)"
+    }
+  ],
+  "path_rules": [
+    {
+      "match": "^toolchain/docs/(\\w+)\\.md$",
+      "dir": "toolchain/$1/"
+    },
+    {
+      "match": "^toolchain/docs/(\\w+)/",
+      "dir": "toolchain/$1/"
+    }
+  ],
+  "tag_rules": [
+    {
+      "match": "^docs/design/([^/]+)/",
+      "tags": ["$1"]
+    },
+    {
+      "match": "^docs/design/[^/]+\\.md$",
+      "tags": ["design"]
+    },
+    {
+      "match": "^docs/project/principles/",
+      "tags": ["principles"]
+    },
+    {
+      "match": "^docs/project/",
+      "tags": ["project"]
+    },
+    {
+      "match": "^proposals/",
+      "tags": ["proposal"]
+    },
+    {
+      "match": "^toolchain/docs/",
+      "tags": ["toolchain"]
+    }
+  ]
+}
