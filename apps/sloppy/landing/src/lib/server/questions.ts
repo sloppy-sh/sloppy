@@ -26,14 +26,14 @@ import { traceOf } from './traces';
  * runs are the ones its charts count; the first three are the final test, the rest the batches
  * under the reported comparison.
  */
-export const PUBLISHED_SEEDS = [30, 31, 32, 41, 42, 44, 45];
+export const PUBLISHED_SEEDS = [30, 31, 32, 41, 42, 45, 46];
 const FINAL_SEEDS = [30, 31, 32];
 
 /** The config a condition's bar is drawn from under the reported comparison, as bench/export.mjs files it. */
 const RECOMMENDED: Record<Condition, string[]> = {
 	bare: ['asis', 'armA'],
 	agents: ['asis', 'armA'],
-	mcp: ['shaped', 'maintainer', 'armB']
+	mcp: ['shaped', 'maintainer', 'substance', 'armB']
 };
 
 /** The builds run from this package's folder. */

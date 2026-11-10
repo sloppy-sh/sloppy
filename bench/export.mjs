@@ -245,6 +245,7 @@ const RECOMMENDED = new Set([
   "asis\tfalse",
   "shaped\ttrue",
   "maintainer\ttrue",
+  "substance\ttrue",
   "armA\tfalse",
   "armB\ttrue",
 ]);

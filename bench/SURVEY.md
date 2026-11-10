@@ -1210,3 +1210,89 @@ each document at the code it governs — applied without touching the first two,
 applies it is deterministic. The first two practices (title with the decision, decision in the
 opening) stand where a project's titles do not say what they decide; where they already do, the
 measured advice is to leave them. GitLab, .NET runtime and Milvus are next for the same tool.
+
+## MetaState with substance, written down before it runs (2026-11-10)
+
+The developer opened MetaState's graph and ruled that it was not a container at all: a note per folder
+with nothing in it, documents hung by path, lines where a README happened to name a path. "If a human
+was making it, they would put something in it." The ruling goes further than this project — every
+container measured so far was a carry, documents copied one per note and linked, and the developer
+names that as the reason the margins have been small: the agent was handed a file search's worth of
+structure and nothing a maintainer knows. That is recorded as a standing correction; the six earlier
+containers are to be redone the same way once this one has been reviewed.
+
+**What the container now holds** (branch `sloppy/mine`, under the developer's own identity): an
+ownership map read from the code — six layers, a _shared records_ section under the protocol, a
+_shared components_ section under infrastructure, every document under the component it documents,
+Registry and Ontology moved to infrastructure, 536 labelled lines (uses, used by, reads and writes,
+specified by, implemented by, duplicates); and, being written now by seven workers reading the code, a
+maintainer's page per component — what it is, what it does, how it is built, what it talks to, the
+records it maps, its quirks and open questions — 63 components, every claim with a file path, plus a
+page per layer and section. The empty sub-folder shells init made are binned.
+
+**Predictions.** The documents as kept (`3849c07a`) are unchanged, so documents alone and subagents
+should land within noise of seed 44 (0.925 and 0.922). Sloppy, reading this container, should land
+**above its shaped reading of 0.946 and above the documents**; the gain should sit in the
+why-questions and the briefing, which are the questions a maintainer's page answers, and the drift and
+locate tasks should hold. New text read should fall further than seed 44's −33%, because a component's
+page answers what a search of its folder answered before. If Sloppy lands at or below 0.946, the
+substance did not reach the agent — the brief's excerpts, the matching, or the pages themselves — and
+that is the next thing to look at, not the numbers.
+
+One batch, seed 46, `asis=3849c07a` and `substance=e5a96d87` (branch `sloppy/mine`: 180 notes, 89 of them a written page, 132,700 words against the carry's 95,000; 81 pages from seven workers, eleven lines corrected to what the code does, 47 empty shells binned),
+three conditions, three repetitions, three lanes; judged blind; reported beside seed 44, with the
+developer reviewing MetaState before the other six are touched.
+
+## What the substantive container showed, against its predictions (2026-11-10)
+
+180 runs, seed 46, all `ok`, 30 a cell, judged blind.
+
+| MetaState, within seed 46                                           | documents | subagents |    Sloppy |     margin |
+| ------------------------------------------------------------------- | --------: | --------: | --------: | ---------: |
+| reported: documents as kept, Sloppy on the substantive container    |     0.917 |     0.900 | **0.955** | **+0.037** |
+| Sloppy on the thin container, same batch (attribution, never a bar) |           |           |     0.964 |     +0.046 |
+
+**Two predictions held, two did not.** Sloppy landed above its shaped reading (0.946) and above the
+documents, at 0.955 [0.930, 0.977] — **+0.037 over the documents and +0.055 over
+subagents**, the widest margin of any project, with the interval clear of the documents' mean. The gain
+sat in the why-questions as predicted (the judge's half: 0.834 for the documents to 0.912). The briefing
+did not gain (0.93 to 0.91), and new text read fell less, not more: −13% against the thin container's −33%,
+because a component's page is long and the agent reads it in pieces. Cost −10%, time −2%.
+
+| task                      | documents | subagents | Sloppy, substantive | Sloppy, thin |
+| ------------------------- | --------- | --------- | ------------------- | ------------ |
+| `brief-platform-data`     | 0.93      | 0.95      | 0.91                | 0.89         |
+| `drift-reputation-engine` | 0.90      | 0.83      | 0.99                | 1.00         |
+| `handoff-handshake-ttl`   | 1.00      | 1.00      | 1.00                | 1.00         |
+| `handoff-jwks-timeout`    | 1.00      | 1.00      | 1.00                | 1.00         |
+| `locate-awareness-path`   | 0.98      | 0.86      | 0.90                | 0.90         |
+| `locate-file-uris`        | 0.99      | 0.99      | 0.96                | 0.98         |
+| `why-company-board`       | 0.80      | 0.69      | 0.90                | 0.98         |
+| `why-handshake-evidence`  | 0.82      | 0.88      | 0.95                | 0.95         |
+| `why-on-behalf-of`        | 0.93      | 0.98      | 0.96                | 0.96         |
+| `why-rate-limit-ceiling`  | 0.83      | 0.80      | 0.96                | 0.98         |
+
+**What the pages did not do is beat the thin container.** Sloppy reading the bare carry, in the same
+batch, scored 0.964. On the facts graders the two are level (0.981 against 0.993); on the judge's
+half the thin container is ahead (0.947 against 0.935), and the items that separate them are the ones
+that ask _where the reason is written_: on `why-company-board` and `why-rate-limit-ceiling` the judge
+gave the substantive runs 0.60 and 0.73 for naming a source against 0.92 and 0.93 for the thin ones.
+Reading the answers, the substantive runs cite the component's page — "the eVault note says…" — where
+the thin runs cite `Company-Delegation.md` or `eVault.md`, which is what the judge's key names. The
+page is a secondary source and the judge is right to mark it down; and on `why-company-board` the
+substantive runs also said more that the key could not verify (0.53 against 0.70 on "nothing false"),
+some of it the page's own findings about the code. So the pages changed what the agent cites, from the
+document to the maintainer's account of it, and this task pack rewards the document.
+
+**What the pack cannot see.** Every question in it was written from the documents, so a container
+that carries the documents answers it, and a page that says what the documents do not — that the
+Registry signs a token for any name, that the adapter never syncs deletes, that profile edits never
+reach the eVault on five platforms — is not asked about. Those are the questions a maintainer actually
+has, and they are what the pages are for. A pack that asks them is the next thing to write, and it
+should be written from the code, not from the documents, so that the documents-alone agent is not
+handed its answers either.
+
+**What is reported.** MetaState's reported comparison is this batch (`substance=e5a96d87`), under the
+developer's ruling that a maintained container is the workflow being measured; seed 44 stays in
+`results/` and in this file as the record of the thin carry. The export reads seeds 30, 31, 32, 41,
+42, 45 and 46. MetaState stays the seventh project, outside the six-project average.

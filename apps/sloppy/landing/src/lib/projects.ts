@@ -145,15 +145,15 @@ export const PROJECTS: Project[] = [
 			medium: {
 				score: {
 					better: () =>
-						"The why-answers cited the document; without Sloppy the agent answered from the code's comments and never named it. Behind on the briefing and one where-question."
+						"Every component carries a maintainer's page, so the why-answers came from the component rather than the code's comments. Behind on the briefing and one where-question."
 				},
 				input: {
 					better: () =>
-						'Topic-named documents are found either way; the saving is the code read instead.'
+						"The pages are long and read in pieces, so the saving is smaller than a thin container's."
 				},
 				cost: cheaperReading,
 				time: {
-					worse: () => "Slower only to the first token: the Sloppy server's start-up here."
+					better: () => 'As fast; fewer files opened, one note more.'
 				}
 			}
 		}
