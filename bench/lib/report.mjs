@@ -1,5 +1,11 @@
 // A quick plain-text look at results/; analysis.ipynb is the full reading.
-import { providerFailed, runCost, runTokens, runWallMs } from "./record.mjs";
+import {
+  measured,
+  providerFailed,
+  runCost,
+  runTokens,
+  runWallMs,
+} from "./record.mjs";
 
 const mean = (xs) =>
   xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined;
@@ -36,10 +42,10 @@ export function scoreOf(record, gradesByRun) {
 
 /**
  * One row per subject, subject commit, configuration, task pack, backend, model and condition, so runs on
- * different subjects, configurations or packs are never averaged together. Runs the budget
- * stopped, and runs the provider failed, are counted and left out of every mean; every other
- * started run, failed or not, is in the cost, token and time means, except a token mean summing a
- * class the run could not tell, and a cost mean where it has no cost.
+ * different subjects, configurations or packs are never averaged together. A run the budget never
+ * started, one that never began answering and one the provider failed are counted and left out of
+ * every mean (`measured`); every other run, failed or not, is in the cost, token and time means,
+ * except a token mean summing a class the run could not tell, and a cost mean where it has no cost.
  */
 export function summarize(records, grades = []) {
   const gradesByRun = new Map();
@@ -63,9 +69,7 @@ export function summarize(records, grades = []) {
     .map(([key, rs]) => {
       const [subject, sha, config, pack, backend, model, condition] =
         key.split("\t");
-      const started = rs.filter(
-        (r) => r.status !== "budget" && !providerFailed(r),
-      );
+      const started = rs.filter(measured);
       const costs = started.map(runCost).filter((c) => c !== undefined);
       const inputs = toldSums(started, INPUT_CLASSES);
       const outputs = toldSums(started, OUTPUT_CLASSES);
@@ -159,6 +163,6 @@ export function formatSummary(rows) {
     line(widths.map((w) => "-".repeat(w))),
     ...body.map(line),
     "",
-    "runs: started/recorded; a run the budget stopped or the provider failed is counted but in no mean. Every other started run, failed or not, is in the cost, token and time means, except where its cost or tokens could not be told. ctx: the prompt size of the last model call, over the runs that kept their calls.",
+    "runs: measured/recorded; a run the budget stopped, one that never began answering, or one the provider failed is counted but in no mean. Every other run, failed or not, is in the cost, token and time means, except where its cost or tokens could not be told. ctx: the prompt size of the last model call, over the runs that kept their calls.",
   ].join("\n");
 }

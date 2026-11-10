@@ -59,7 +59,7 @@
 		'Predictions were written down before the runs.',
 		`The ${inWords(chosen.length)} projects were chosen by written rules: open-source code, and at least ${count(WORD_FLOOR)} words of design documents spread over many files.${
 			asked.length
-				? ` ${andList(asked)} ${asked.length > 1 ? 'have' : 'has'} fewer, and ${asked.length > 1 ? 'were' : 'was'} measured because it was asked for: on ${asked.length > 1 ? 'their' : 'its'} own page, in no average.`
+				? ` ${andList(asked)} ${asked.length > 1 ? 'have' : 'has'} fewer and ${asked.length > 1 ? 'were' : 'was'} measured on request: ${asked.length > 1 ? 'their' : 'its'} own page, no average.`
 				: ''
 		}`,
 		unpublished.length
@@ -128,8 +128,7 @@
 				<p class="mt-4">Models: {models}, through Claude Code. {runs}</p>
 				<p class="mt-4">
 					{cap(inWords(smallRepos.length))} small repositories, {andList(smallRepos)}, were measured
-					too. Their docs already reach the answers, so Sloppy did not help there, and they are left
-					out of this site;
+					too; their docs already reach the answers, so they are left out of this site, and
 					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- links off this site -->
 					<a class={link} href={REPORT}>the report has them</a>.
 				</p>
@@ -159,7 +158,8 @@
 					Every answer is read by a blind judge against a written checklist, and most also get
 					automatic checks for the facts or paths a right answer must have. The score, from 0 to 1,
 					is the judge's, averaged with the checks where there are any. Tokens, cost and time come
-					from each run's own record.
+					from each run's own record; cost is Claude Code's figure at list price, with its one-hour
+					cache.
 				</p>
 			</section>
 

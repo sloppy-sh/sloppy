@@ -309,6 +309,16 @@ export const providerFailed = (r) =>
     r.error ?? "",
   );
 
+/** A run that never began answering: nothing it could be measured by, and nothing it delivered. */
+export const neverStarted = (r) => r.status !== "ok" && (r.turns ?? 0) === 0;
+
+/**
+ * Whether a run is one the conditions are measured by. A run the budget never started, one that never
+ * began answering, and one the provider failed are counted in a batch and in no score or mean.
+ */
+export const measured = (r) =>
+  r.status !== "budget" && !neverStarted(r) && !providerFailed(r);
+
 export const runWallMs = (r) =>
   r.timing.wall_ms + (r.stage_a?.timing.wall_ms ?? 0);
 

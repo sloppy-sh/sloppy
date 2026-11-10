@@ -46,15 +46,15 @@
 <rect x="500" y="231" width="12.779686687916524" height="13" rx="3" fill="#16916a"/>
 <text x="744" y="242" fill="#1f2328" text-anchor="end" font-variant-numeric="tabular-nums">1% slower</text>
 <text x="16" y="278" fill="#1f2328">Round trips to the model</text>
-<rect x="460.9839629765344" y="260" width="39.01603702346563" height="13" rx="3" fill="#cf5a2b"/>
-<text x="744" y="271" fill="#1f2328" text-anchor="end" font-variant-numeric="tabular-nums">4% fewer</text>
-<rect x="489.8146663769224" y="275" width="10.18533362307761" height="13" rx="3" fill="#16916a"/>
-<text x="744" y="286" fill="#1f2328" text-anchor="end" font-variant-numeric="tabular-nums">1% fewer</text>
+<rect x="446.7404847156648" y="260" width="53.25951528433518" height="13" rx="3" fill="#cf5a2b"/>
+<text x="744" y="271" fill="#1f2328" text-anchor="end" font-variant-numeric="tabular-nums">6% fewer</text>
+<rect x="480.4193425783453" y="275" width="19.580657421654678" height="13" rx="3" fill="#16916a"/>
+<text x="744" y="286" fill="#1f2328" text-anchor="end" font-variant-numeric="tabular-nums">2% fewer</text>
 <text x="16" y="322" fill="#1f2328">New text read*</text>
 <rect x="280.364955822297" y="304" width="219.63504417770298" height="13" rx="3" fill="#cf5a2b"/>
 <text x="744" y="315" fill="#1f2328" text-anchor="end" font-variant-numeric="tabular-nums">24% fewer</text>
 <rect x="338.3307135085706" y="319" width="161.66928649142938" height="13" rx="3" fill="#16916a"/>
 <text x="744" y="330" fill="#1f2328" text-anchor="end" font-variant-numeric="tabular-nums">18% fewer</text>
 <text x="16" y="380" fill="#59636e" font-size="12">Averages across Pulsar, Milvus, .NET runtime, Carbon, GitLab and LLVM, each project weighing the same. Claude</text>
-<text x="16" y="396" fill="#59636e" font-size="12">Sonnet 5.5, 635 runs.</text>
+<text x="16" y="396" fill="#59636e" font-size="12">Sonnet 5.5, 630 runs.</text>
 </svg>

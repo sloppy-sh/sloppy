@@ -1062,3 +1062,55 @@ defines.
 topic-named documents a file-name search finds, still read +0.021, at a third less text. One
 project, inside noise; it stays a seventh, outside the average, and the floor stays a rule about what
 the average is made of rather than a prediction of where Sloppy helps.
+
+## A review of the three measures (2026-11-10)
+
+The developer asked whether the cost, time and new-text figures are computed correctly, before taking
+them as the gains a project gets from structuring its documents for Sloppy. Each was read back from the
+code and checked against the runs' own records.
+
+**Cost is Claude Code's own figure, and it is right.** Every published run's cost is `cost_usd.reported`,
+Claude Code's `total_cost_usd`; `prices.json` holds no `claude-sonnet-5-5` row, and could not price these
+runs anyway, because Claude Code writes the prompt cache at the one-hour rate, which the table does not
+hold. A least-squares fit of Claude Code's own per-model `costUSD` on its per-model usage over 401 runs
+recovers $2.00 input, $4.00 cache write, $0.100 cache read and $10.00 output a million tokens with
+R² = 1.00000 — Anthropic's published Sonnet 5.5 prices with the one-hour cache write (the cache read was
+cut from $0.20 to $0.10 on 2026-10-07, and Claude Code 2.1.311 bills the new price). Every cache write in
+the sample is at the one-hour rate; subagents' usage is in `modelUsage` and so in the cost. Most of what
+Sloppy saves is cache writes, which carry the premium, so the saving reads larger at this rate than at
+five minutes: over the six projects, **−19.6% as billed against −18.0% at the five-minute rate**
+(GitLab −13.5/−11.8, Milvus −37.5/−35.4, Pulsar −16.2/−14.9, LLVM −26.0/−24.3, Carbon −9.2/−7.6, .NET
+−15.6/−14.2; MetaState −26.5/−24.2). The pages say which basis they use.
+
+**Time is the wall clock around the agent's process, variant reset excluded.** `runOnce` resets the
+variant and applies the task's setup, then `started = performance.now()` brackets `runBackend` alone, so
+a run's time is Claude Code's start-up, its model calls and its tool calls — the Sloppy server's own
+start-up included, since Claude Code spawns it. A handoff's two stages are summed. The pages read
+`wall_ok`, over finished runs only. The first-token gap between Sloppy and the documents alone is within
+±0.6 s on six projects (GitLab +0.1, Milvus +0.3, Pulsar −0.3, LLVM −0.6, Carbon −0.4, .NET +0.6) and
++2.9 s on MetaState, which is the whole of its 4% — so the server's start-up is not a general cost, and
+MetaState's page now says that rather than guessing at long notes.
+
+**New text read is `input + cache_write`: the tokens a model priced as new.** Uncached input is a few
+tokens a run; nearly everything new is a cache write, and the conversation re-read each turn is
+`cache_read`, three to five times larger and billed at a twentieth. Two things to know when reading it.
+The system prompt and tool list are cache-read even on a run's first turn, because the previous run in
+the batch wrote them, which is the same for every condition. And total input processed is close to equal
+— on MetaState 59k with the documents, 60k with Sloppy, 73k with subagents — so what Sloppy changes is
+the mix: a third less written, somewhat more re-read, and 14% fewer output tokens. That mix is where the
+money is, and the asterisk on the pages says so.
+
+**One correction from the review.** A run that never began answering (a Claude Code start-up failure,
+ten on LLVM) was already out of the token and cost means — its tokens are marked unknown, not zero — but
+its `turns: 0` and its seconds of failed start-up were in the turns and `wall_s` means. `measured`
+(`lib/record.mjs`) now leaves such a run out of every mean, beside a budget-stopped run and a provider's
+failure. LLVM's documents-alone turns move from 6.25 to 6.90 and its subagents' from 6.22 to 6.63; the
+six-project round-trips figure reads 6% fewer where it read 4%; no score, token or cost figure moves.
+
+**What the numbers mean.** The quality gain is small — +0.019 over six projects, inside one project's
+noise on each, ahead on five of seven and behind on Carbon — and the cost and new-text savings are the
+robust part: lower on every project, by 9% to 38% as billed. They are not free. The carry is a script,
+but the shaping is work that a project does once and keeps doing, and on Carbon it lowered every reader;
+the notes' upkeep (`sloppy check`) is a cost these runs do not pay. What a project adopting Sloppy from
+the start gets, by these runs, is a reading agent that finds the reason in the document rather than
+rebuilding it from the code, at a fifth less spend — with answers that are about as good, not better.

@@ -115,10 +115,19 @@ from fewer than 5 reps per condition, is a tie. Equal on both is a tie and is re
 Every figure shows every condition that ran, including the ones where Sloppy loses. **A run that
 started and did not finish `ok` — it failed, timed out or ran out of budget mid-run — scores 0
 and stays in the cost and time it spent**, because it delivered nothing and the condition is
-judged on what it delivered. Two kinds of run are counted and in no mean: one the budget never
-started, and one the provider failed — rate-limited, or unable to reach the API (`providerFailed`
-in `lib/record.mjs`, read from the failure alone) — whose time is backoff and whose answer is not
-the condition's; the runner runs it again.
+judged on what it delivered. Three kinds of run are counted and in no mean (`measured` in
+`lib/record.mjs`): one the budget never started; one that never began answering, which has no
+tokens, time or turns to measure; and one the provider failed — rate-limited, or unable to reach
+the API (`providerFailed`, read from the failure alone) — whose time is backoff and whose answer is
+not the condition's; the runner runs it again.
+
+**What cost is.** Every published run's cost is the figure Claude Code itself reports at list price
+(`cost_usd.reported`), because Claude Code writes the prompt cache at the one-hour rate — for Claude
+Sonnet 5.5, $4 a million tokens against $2.50 at five minutes — which `prices.json` does not hold.
+Recovered from the runs' own usage, that schedule is $2 input, $4 cache write, $0.10 cache read and
+$10 output a million, Anthropic's published prices with the one-hour cache. Most of what Sloppy saves
+is cache writes, which carry the premium, so the saving reads larger at the one-hour rate than it
+would at five minutes; SURVEY.md § "A review of the three measures" gives both figures.
 
 **The overall score** is one number per subject, backend, model tier, setting and condition,
 for a reader who wants an all-in-all answer, and it never replaces the comparisons above. It
@@ -871,5 +880,5 @@ A subject marked `private` keeps its numbers and nothing a page could quote: it 
 `mcp_calls_mean` counts the sloppy calls of the agent and of its subagents. `searches_after_sloppy_mean`,
 in a cell and a group, is the mean over the runs that have a count (§ "Searches after Sloppy
 answered"), and a group's `runs_counted_after_sloppy` is how many those are. A run that did not finish
-`ok` scores 0 and is in every mean, as in § "What counts as better"; a run the budget never started, or
-the provider failed, is in none. A config left unnamed is `shipped`.
+`ok` scores 0 and is in every mean, as in § "What counts as better"; a run the budget never started, one
+that never began answering, or one the provider failed is in none. A config left unnamed is `shipped`.

@@ -92,9 +92,15 @@ test("the summary holds the contract's fields, and a record without its calls is
     condition: "mcp+agents",
   });
   const stopped = run({ rep: 3, status: "budget", turns: 0 });
+  const neverBegan = run({
+    rep: 4,
+    status: "error",
+    turns: 0,
+    error: "Claude Code exited with 0: no output.",
+  });
   const facts = (name, sha) => ({ label: name, sha, notes: 3 });
   const s = buildSummary({
-    records: [old, fresh, halfScore, stopped],
+    records: [old, fresh, halfScore, stopped, neverBegan],
     grades: [],
     prices,
     facts,

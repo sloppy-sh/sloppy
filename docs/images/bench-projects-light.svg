@@ -86,5 +86,5 @@
 <text x="563.2" y="569" fill="#59636e" text-anchor="middle" font-size="11">1.1M words</text>
 <text x="680" y="554" fill="#1f2328" text-anchor="middle" font-size="12">LLVM</text>
 <text x="680" y="569" fill="#59636e" text-anchor="middle" font-size="11">2.4M words</text>
-<text x="16" y="594" fill="#59636e" font-size="12">Projects, smallest documentation first: Pulsar, Milvus, .NET runtime, Carbon, GitLab and LLVM. Claude Sonnet 5.5, 635 runs; Sloppy as it ships.</text>
+<text x="16" y="594" fill="#59636e" font-size="12">Projects, smallest documentation first: Pulsar, Milvus, .NET runtime, Carbon, GitLab and LLVM. Claude Sonnet 5.5, 630 runs; Sloppy as it ships.</text>
 </svg>

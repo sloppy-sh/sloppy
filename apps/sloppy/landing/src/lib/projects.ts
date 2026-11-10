@@ -154,7 +154,7 @@ export const PROJECTS: Project[] = [
 				},
 				cost: cheaperReading,
 				time: {
-					worse: () => 'Fewer round trips, longer ones: a note is read in pieces.'
+					worse: () => "Slower only to the first token: the Sloppy server's start-up here."
 				}
 			}
 		}

@@ -8,7 +8,7 @@ import { BENCH_DIR, loadSubject } from "./lib/config.mjs";
 import { loadPrices, tierFor } from "./lib/prices.mjs";
 import { privateSubjects, withoutPrivate } from "./lib/private.mjs";
 import {
-  providerFailed,
+  measured,
   readFindability,
   readGrades,
   readRecords,
@@ -619,7 +619,7 @@ export function buildSummary({
     gradesByRun.set(g.run_id, [...(gradesByRun.get(g.run_id) ?? []), g]);
   const foundByRun = new Map(found.map((f) => [f.run_id, f]));
   const views = records
-    .filter((r) => r.status !== "budget" && !providerFailed(r))
+    .filter(measured)
     .map((r) => runView(r, gradesByRun, foundByRun));
 
   const subjects = {};
