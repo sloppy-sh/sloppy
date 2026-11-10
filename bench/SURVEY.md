@@ -1305,3 +1305,166 @@ was — the rule the first six were chosen by, named on the methodology page bes
 measured on request. The same methodology — an ownership map from the code, a maintainer's page per
 component, the graph by ownership — is to be applied to the other six, one batch each against their
 documents as kept.
+
+## Six maintained containers, written down before any of them runs (2026-11-10)
+
+The same methodology MetaState got, applied to the six projects the floor chose, before any batch
+runs. For each: an ownership map read from the code by one agent (layers, components with an owner,
+what each uses and is used by, the documents that shaped it); a fresh container on a branch
+`sloppy/maintained` beside the documents as kept, the documents carried one per note and hung under
+the component they document, the graph laid out by ownership with labelled lines; then a maintainer's
+page per component — what it is, what it does, how it is built, what it talks to, the documents that
+shaped it, its quirks and open questions — written by eight workers reading the code, every claim with
+a file path, with the lines they found wrong corrected; and a page per layer. The pages were written
+against the map, not against the task packs, which nobody writing a page had seen.
+
+| project      | documents as kept | maintained container                             |
+| ------------ | ----------------- | ------------------------------------------------ |
+| Carbon       | `b474eb8c`        | `c6d22481`: 337 notes, 46 pages, 588,000 words   |
+| Pulsar       | `90b5fcdd`        | `7221206c`: 374 notes, 52 pages, 382,000 words   |
+| Milvus       | `fad64304`        | `454015a2`: 253 notes, 65 pages, 485,000 words   |
+| .NET runtime | `5f21d6e3`        | `72b612ea`: 333 notes, 55 pages, 584,000 words   |
+| GitLab       | `91e491cf`        | `77baf831`: 911 notes, 60 pages, 1,020,000 words |
+| LLVM         | `13a10300`        | `93784921`: 876 notes, 63 pages, 1,854,000 words |
+
+The word counts are the carry plus the pages — Carbon's proposals alone are most of its — so they
+are not comparable with MetaState's 132,700; what matters is the pages, 44 to 65 a project against
+MetaState's 89.
+
+**Predictions, the same for all six.** The documents-as-kept trees are the commits the reported bars
+already read, so documents alone and subagents should land within noise of their reported readings:
+Carbon 0.928 and 0.916, Pulsar 0.905 and 0.908, Milvus 0.934 and 0.888, .NET runtime 0.865 and
+0.888, GitLab 0.882 and 0.915, LLVM 0.944 and 0.944. Sloppy on the maintained container should land
+**above the documents on every project** — that is the bar that is reported and the one a maintainer
+cares about — and **within noise of its reported reading** (Carbon 0.957, Pulsar 0.919, Milvus 0.973,
+.NET runtime 0.899, GitLab 0.926, LLVM 0.960) rather than clearly above it, because MetaState showed
+why: these packs were written from the documents, their keys name documents, and a page is a secondary
+source the judge is right to mark down when a run cites it in the document's place. Where Sloppy moves,
+it should move on the why-questions, as MetaState's did (its judge's half 0.834 to 0.912); the drift,
+locate and handoff tasks should hold. New text read should fall **less** than under the thin container
+— MetaState's −13% against −33% — because a component's page is long and the agent reads it in
+pieces; cost should fall less for the same reason. If Sloppy on a maintained container lands **below
+the documents** on a project, the pages hurt that project's agent, and the transcripts are read to say
+how before anything else is done; that result is reported, not set aside.
+
+**What is reported.** Under the developer's ruling that a maintained container is the workflow being
+measured, each project's reported comparison becomes its maintained batch once judged — documents as
+kept against Sloppy on the maintained container, both from one hour — whatever it shows. The earlier
+readings stay in `results/` and in this file. One batch a project, seeds 47 (Carbon), 48 (Pulsar), 49
+(Milvus), 50 (.NET runtime), 51 (GitLab) and 52 (LLVM), three conditions, three repetitions, three
+lanes, judged blind, two batches running at a time.
+
+## What the maintained containers showed, against their predictions (2026-11-11)
+
+One batch a project, 180 runs each, all `ok`, judged blind; the as-kept tree and the maintained
+container in the same hour. The table is the reported comparison per project; the thin carry read
+through Sloppy in the same batch is kept beside it as attribution, never a bar.
+
+| project, within its batch | documents | subagents |    Sloppy | margin | thin carry, same hour |
+| ------------------------- | --------: | --------: | --------: | -----: | --------------------: |
+| Carbon, seed 47           |     0.903 |     0.904 | **0.930** | +0.027 |                 0.948 |
+| Pulsar, seed 48           |     0.901 |     0.907 | **0.907** | +0.006 |                 0.879 |
+| Milvus, seed 49           |     0.943 |     0.938 | **0.976** | +0.033 |                 0.982 |
+| GitLab, seed 51           |     0.917 |     0.956 | **0.937** | +0.020 |                 0.938 |
+| .NET runtime, seed 50     |     0.865 |     0.845 | **0.885** | +0.020 |                 0.886 |
+| LLVM, seed 52             |     0.958 |     0.946 | **0.950** | −0.008 |                 0.957 |
+
+**Carbon: above the documents, below the thin carry, on one question.** Sloppy on the maintained
+container scored 0.930 [0.863, 0.979], +0.027 over the documents and +0.026 over subagents; cost
+−9%, new text read −8%, time −2%. The prediction held on both parts — above the documents, and inside
+the interval of its reported 0.957 — but the point is lower than the anchored tree's, and lower than
+the thin carry read in the same hour (0.948). One task carries the whole difference:
+`why-diagnostic-sorting`, 0.87 on the thin carry to 0.65 on the container, while the other nine are
+within 0.05 of each other. The transcripts say how. On both trees every run opened the same carried
+document note, the diagnostics page; the key's example — the arity error printed before the missing
+comma that caused it — is in the proposal, one document further. On the thin carry all three runs
+began with `brief`, whose window named the proposals, and two then read the proposal from the tree.
+On the container one run began with `brief`, read the proposal and scored 0.96; two began with
+`search_notes` and `find_code`, were handed the diagnostics note and the root note (which `find_code`
+returned three times in five, because the root reaches every layer's place), read the sorting code and
+the Consumers section, and stopped. So the pages did not hurt by what they said; the container's
+search surface put the component notes and the root ahead of the proposal, and an agent that did not
+ask for a brief stopped a document early. That is a mechanism to fix in `find_code` — a root or layer
+note that reaches a place through its sections should rank below a note about the place — and it is
+recorded here rather than fixed, because this pack is not what decides it. Carbon's reported margin
+moves from +0.029 (the anchored tree, seed 45) to +0.027.
+
+**Pulsar: level with the documents, and the container repaired what the thin carry lost.** Sloppy
+scored 0.907 [0.830, 0.965] against the documents' 0.901 and subagents' 0.907 — +0.006, inside noise,
+where the prediction was above the documents; cost −6%, new text read −7%, time −10%. It is the one project so
+far where the maintained container beat the thin carry in the same hour (0.907 against 0.879): the
+two tasks the carry lost, the scalable-topics briefing (0.56 to 0.68) and the V1-topic-name drift
+(0.92 to 1.00), came back to the documents' level. The briefing is still where Sloppy is behind
+(0.68 against the documents' 0.75), as on MetaState; the why-questions are level or a little ahead
+(`why-json-schema` 0.94 against 0.86). Pulsar's reported margin moves from +0.014 (the shaped tree,
+seed 41) to +0.006.
+
+**Milvus: the widest margin, and the cheapest.** Sloppy on the maintained container scored 0.976
+[0.947, 0.994] against the documents' 0.943 and subagents' 0.938 — +0.033 and +0.038 — at 35% less
+cost, 37% less new text read and 24% less time, the largest savings of any project because Milvus's
+documents-alone runs read the most. Both predictions held: above the documents, and within noise of
+the reported 0.973. The thin carry in the same hour scored 0.982, 0.006 above, inside noise. The gain
+is in the why-questions, as predicted — `why-metacache-by-id` 0.80 to 0.99 and `why-rg-shard-leaders`
+0.85 to 0.99 — and the briefing is level to a little behind (0.86 against 0.88). Milvus's reported
+margin moves from +0.039 (seeds 30–32) to +0.033.
+
+**GitLab: ahead of the documents, behind subagents.** Sloppy scored 0.937 [0.870, 0.978] against the
+documents' 0.917 (+0.020) and subagents' 0.956 (−0.019), at 17% less cost and 14% less new text, time
+level. Above the documents held; the reported reading (0.926) is inside the interval. The thin carry
+in the same hour read 0.938, level. One run of 180 is unscored: the judge's answer on an `asis`
+subagents run of the cells briefing was not JSON, and the run stays in the record without a grade.
+The pattern is the one every project shows: the state-propagation why-question gains +0.28 (0.65 to
+0.93; the thin carry had 1.00) and the cells briefing loses (0.78 to 0.68), with the rest level.
+GitLab's reported margin moves from +0.044 to +0.020, and subagents, which were behind Sloppy before
+(0.915 against 0.926), are ahead of it in this hour on the strength of two tasks — the briefing (0.89)
+and the state-propagation why (0.89), where the documents-alone agent scored 0.78 and 0.65.
+
+**.NET runtime: ahead, and the gain is not where it was predicted.** Sloppy scored 0.885 [0.792,
+0.964] against the documents' 0.865 and subagents' 0.845 — +0.020 and +0.040 — at 12% less cost and
+13% less new text, time level; the thin carry in the same hour read 0.886, level. Above the documents
+held, and the reported 0.899 is inside the interval. But the why-questions did not move, because on
+this pack every approach already answers them at the ceiling (0.97 to 1.00 all round); the gain is in
+the briefing (0.78 against 0.75) and the drift check (0.87 against 0.78). The transcripts say why:
+on the cDAC briefing the brief on the maintained tree put the component's page first and the agent
+read it before the code, where on the thin carry the brief handed it the contract documents and it
+read one and then the code; on the drift check the brief named the CoreLib and hostpolicy pages where
+the thin carry's brief surfaced unrelated notes. The two handoff tasks are noisy for every approach
+(0.36 to 0.85 across the six cells). The reported margin moves from +0.034 (seeds 30–31) to +0.020.
+
+**LLVM: the one project below the documents, by less than the noise.** Sloppy scored 0.950 [0.913,
+0.980] against the documents' 0.958 [0.936, 0.979] and subagents' 0.946 — −0.008 and +0.004 — at 12%
+less cost and 8% less new text, time level; the thin carry in the same hour read 0.957. The
+prediction that Sloppy lands above the documents on every project **failed here**, and the
+pre-registration says the transcripts are read first. They show no mechanism: LLVM's pack is at the
+ceiling for everybody (seven of ten tasks at 0.94 or above for all three bars), and the difference
+sits in two tasks whose runs lost on single judge items. On the drift check (0.93 against 0.97) one
+container run, having found the unit test, called the test "evidence the clipping is deliberate"
+instead of taking the document as the intent — the one thing that task asks — and lost 0.7 of a point
+on that item; the other two runs scored 0.94 and 0.97. On the gdb-remote handoff (0.82 against 0.89)
+one run of three named the commit as where it found the reason rather than the note the first agent
+left, and the three documents-alone runs scored 1.00. Nothing in either points at the pages or the
+map; the same two tasks were the thin carry's weakest too (the drift check 0.89 on it). Twenty LLVM
+runs stopped mid-answer with no result while this batch ran beside the .NET runtime's — each
+transcript ends in a rate-limit event — and every one is `turns` 0, unscored, and out of every mean;
+sixteen were run again inside the batch and the four cells left short afterwards, one at a time, so
+every cell has its three finished runs. LLVM's reported margin moves from +0.016 (the shaped tree,
+seed 42) to −0.008, and the site says so.
+
+**Across the seven, against the predictions.** Six of seven landed above their documents and one
+(LLVM) below by less than the noise, where the prediction was all seven; every one landed within
+noise of its reported reading, as predicted; the gain sat in the why-questions on Carbon, Milvus and
+GitLab, in the briefing and the drift check on the .NET runtime, and nowhere on Pulsar and LLVM;
+new text read fell less than under the thin carries, as predicted. What was not predicted and is
+the finding: **the maintained containers did not beat the thin carries.** In the same hour, the
+container read through Sloppy was above the bare carry on Pulsar (+0.028), level on GitLab, the .NET
+runtime and MetaState (±0.01), and below on Carbon (−0.018), Milvus (−0.006) and LLVM (−0.007). The
+pages change what the agent cites — the component's account in place of the document — and these
+packs were written from the documents, so they reward the document; the cases where the pages
+helped are the ones where the thin carry's `brief` had surfaced the wrong notes (the .NET runtime's
+drift check, Pulsar's briefing) and the container's layout put the right component first. The
+seven-project average under the reported comparison is now **+0.019 in answer quality (+2.1%), −14%
+cost and −16% new text read against the documents alone**, and +0.020, −16% and −18% against
+subagents — down from +0.030, −18% and −22% under the shaped trees, which is what the pages say from
+this export. The ruling stands — a maintained container is the workflow a team adopts, so it is what
+is measured — and the next pack, as the MetaState section says, should be written from the code
+rather than the documents, so that what a page knows and a document does not is asked about at all.

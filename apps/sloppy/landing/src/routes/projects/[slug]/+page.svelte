@@ -97,7 +97,7 @@
 	const model = $derived(modelOf(summary, tier) ?? FAMILY[tier]);
 	const basis = $derived(
 		underRecommended(summary, project.subject)
-			? "Sloppy's bar is this project's documents shaped the way the practices set out; the other two are its documents as it keeps them."
+			? "Sloppy's bar reads a maintained container: an ownership map of the code and a maintainer's page per component. The other two read the documents as the project keeps them."
 			: "Every bar is this project's documents as it keeps them."
 	);
 </script>

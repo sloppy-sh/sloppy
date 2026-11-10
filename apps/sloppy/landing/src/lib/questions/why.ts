@@ -8,8 +8,8 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: 'Docs alone named doc/development/fixed_items_model.md and the rule that static data gets fixed ids in code; With Sloppy left both out and barely said an organization must be movable between cells. Neither said Cells is GitLab.com-only.'
 	},
 	'gitlab-drift-state-precedence': {
-		winner: 'mcp',
-		why: 'Both found that unarchive now returns [:archived, :deletion_scheduled, :maintenance] and pointed to namespaces_state_propagation.md. Docs alone then wondered if the doc was stale and the change deliberate; With Sloppy treated the doc as the intent and the rewritten comments as untrustworthy.'
+		winner: 'bare',
+		why: 'Close. Both found that unarchive now returns [:archived, :deletion_scheduled, :maintenance] against namespaces_state_propagation.md, and two runs on each side leaned on the rewritten comments; the With Sloppy ones also hedged that the change might be a deliberate redesign.'
 	},
 	'gitlab-handoff-chatops-timeout': {
 		winner: 'level',
@@ -32,12 +32,12 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: 'Neither mentioned scoping uniqueness with the sharding key. With Sloppy also only implied that the verification service fixes drift, and its "three things claimed" framing was slightly off, so Docs alone kept a small lead.'
 	},
 	'gitlab-why-fixed-items': {
-		winner: 'mcp',
-		why: 'Close. Docs alone gave a path for the Plan model that could not be confirmed. With Sloppy cited fixed_items_model.md but not the Cells static-data doc. The two half-point losses nearly cancel out.'
+		winner: 'bare',
+		why: 'Docs alone scored full marks on every run. With Sloppy cited fixed_items_model.md but not the Cells static-data doc, and offered auto_generate_ids! without warning that auto-generated ids must not be stored.'
 	},
 	'gitlab-why-retention-strategy': {
-		winner: 'level',
-		why: 'Both covered the dead tuples, the table that never shrinks, the WAL and replica load, the near-free partition detach, and the 50 GB and narrow-table exceptions. Both cited data_retention_policy.md.'
+		winner: 'mcp',
+		why: 'Close. Both covered the dead tuples, the table that never shrinks, the WAL and replica load, the near-free partition detach and the exceptions from data_retention_policy.md; one Docs alone run added unsupported specifics such as a web_hook_logs example.'
 	},
 	'gitlab-why-state-propagation': {
 		winner: 'mcp',
@@ -48,24 +48,24 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: 'Both covered the bottleneck reason, the DataView and QueryView versions, the state machine, and that nothing serves production yet. With Sloppy called the Proxy two-phase and QueryNode delete path still planned, and tied the README \u00a71\u20132 citation to the reason only loosely.'
 	},
 	'milvus-drift-ewma-seed': {
-		winner: 'mcp',
-		why: 'Close. Both found it now seeds when the smoothed service time is 0 instead of on metricExpireInterval expiry, gave the 20-versus-4 outlier example, and cited the 20261019 look-aside balancer design doc. Neither warned that the comment and tests were rewritten. The gap is run-to-run.'
+		winner: 'bare',
+		why: 'Close. Both found it now seeds when the smoothed service time is 0, against the look-aside balancer design doc; one Docs alone run said the comment had been changed with the code, while one With Sloppy run never addressed the comment or tests at all.'
 	},
 	'milvus-handoff-aggregation-levels': {
 		winner: 'mcp',
 		why: "Both kept 5 for Nordwind Retail's five-level catalogue grouping. With Sloppy stated as fact that validation at five levels stays under 2 ms, while Docs alone dismissed that figure as unverified."
 	},
 	'milvus-handoff-pin-cleanup': {
-		winner: 'mcp',
-		why: 'Both kept 20 seconds because of the 6 to 9 second pin release on etcd spread across three zones. One Docs alone answer left out Ostrava and the availability zones, which cost it on the facts check.'
+		winner: 'level',
+		why: "Both scored full marks on every run: keep 20 seconds, because releasing a large snapshot's pins on etcd spread across three availability zones takes 6 to 9 seconds."
 	},
 	'milvus-locate-s3-auth-guard': {
-		winner: 'bare',
-		why: 'Close. Both named GuardedS3EndpointProvider, InstallS3EndpointAuthGuard and MinioChunkManager::PreCheck. With Sloppy also named a second test file, test_minio_endpoint_auth.cpp, and BuildS3Client helpers that could not be confirmed.'
+		winner: 'mcp',
+		why: 'Close. Both named GuardedS3EndpointProvider, InstallS3EndpointAuthGuard and MinioChunkManager::PreCheck, and both mentioned an unconfirmed second test file; one Docs alone run also hedged on ChunkManager.cpp call sites it had not checked.'
 	},
 	'milvus-locate-wal-chunking': {
-		winner: 'mcp',
-		why: "Close. Both named SplitIntoChunks, appendWithOptionalChunking, ChunkAssembler in scanner_switchable.go and streaming.splitChunkSN, off by default. Docs alone hedged on the produce-server guard; With Sloppy's extras (AssembleChunks, AdvanceTimeTick, proxy.splitChunk) all checked out."
+		winner: 'bare',
+		why: 'Close. Docs alone scored full marks on every run naming SplitIntoChunks, appendWithOptionalChunking and ChunkAssembler; two With Sloppy runs added unconfirmed extras such as service_param.go and IsChunkedPayload or hedged on the produce-server call.'
 	},
 	'milvus-why-autoid-upsert': {
 		winner: 'bare',
@@ -100,12 +100,12 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: 'Both found the Brightline Rail load-balancer drain of up to 10 seconds in the commit, then doubted it against internalAddConsumer. Docs alone went on to recommend reverting to 5; With Sloppy hedged instead of siding with the reviewer.'
 	},
 	'pulsar-locate-metadata-threads': {
-		winner: 'mcp',
-		why: 'Close, and the representative answers scored the same: both named the -event, -scheduler and -worker executors, chooseThread(path) and metadataStoreSerDesThreads, and both missed the -batch-flusher thread. One Docs-alone run slipped to 0.875.'
+		winner: 'bare',
+		why: 'Close. Every run named the -event, -scheduler and -worker executors and chooseThread(path) and missed the -batch-flusher thread; With Sloppy lost a little more for saying it had not read AbstractBatchedMetadataStore, though one Docs alone run left that class out.'
 	},
 	'pulsar-locate-topic-list-memory': {
-		winner: 'bare',
-		why: 'Close. Both named TopicListMemoryLimiter, ServerCnx, TopicListService, LookupProxyHandler and the two maxTopicListInFlight settings, but one With Sloppy run fell to 0.82; it worked from grep output without opening the files.'
+		winner: 'mcp',
+		why: 'Close. Both named TopicListMemoryLimiter, ServerCnx, TopicListService, LookupProxyHandler and the maxTopicListInFlight settings, and one run on each side gave the broker and proxy files without their full paths; the rest is noise.'
 	},
 	'pulsar-why-close-inactive': {
 		winner: 'mcp',
@@ -124,8 +124,8 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: "Close: both cited CODING.md and PIP-443 with the 7x and 13x benchmark. Docs alone lost a little for unverifiable extras, such as its claim that there is no metric for the Recycler's CPU cost."
 	},
 	'llvm-brief-clangir': {
-		winner: 'mcp',
-		why: 'With Sloppy covered the Microsoft EH lowering and personality functions, and said that sharing refactors are deferred, both from the CIR design documents. Docs alone left those out and added unverifiable claims, such as AArch64 not being done.'
+		winner: 'bare',
+		why: 'Close. Both named the four CIR documents and the mirroring of classic codegen; With Sloppy called the flatten pass LowerCFG rather than FlattenCFG, two of its runs left out cir.cleanup.scope, cir.try and the Itanium and Microsoft lowering, and it added counts it could not back.'
 	},
 	'llvm-drift-signature-never-writes': {
 		winner: 'bare',
@@ -136,8 +136,8 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: 'Both found the Harrowgate caching proxy and its 110-150 second cold fetches. With Sloppy kept firmly to 180 and cited commit c112fe045; Docs alone hedged that 90 was a fair revert, and one of its runs fell to 0.85.'
 	},
 	'llvm-handoff-gdb-remote-timeout': {
-		winner: 'mcp',
-		why: 'Close: both found the Velmora serial-over-IP bridge (about 1.5 s per round trip) in the commit and advised keeping 15 s. Both missed the 6-8 second attach figure in the facts check, and one Docs-alone run scored slightly lower.'
+		winner: 'bare',
+		why: 'Both found the Velmora serial-over-IP bridge in the commit and advised keeping 15 s. One Docs alone run also gave the 6-8 second attach figure the facts check looks for, which no With Sloppy run did.'
 	},
 	'llvm-locate-cir-abi-lowering': {
 		winner: 'mcp',
@@ -148,28 +148,28 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: "With Sloppy named CodeGenFunction::addInstToCurrentSourceAtom in Clang's CodeGen. Docs alone put addInstToCurrentSourceAtom on CGDebugInfo and missed the CodeGenFunction wrapper; both found mapAtomInstance, RemapSourceAtom and NextAtomGroup."
 	},
 	'llvm-why-ai-tool-policy': {
-		winner: 'bare',
-		why: 'Both representative answers scored full marks from llvm/docs/AIToolPolicy.md: human in the loop, extractive contributions, and good first issues kept for learning. One With Sloppy run dropped to 0.9; all three Docs-alone runs were perfect.'
+		winner: 'level',
+		why: 'Both scored full marks on every run from llvm/docs/AIToolPolicy.md: human in the loop, extractive contributions, and good first issues kept for learning.'
 	},
 	'llvm-why-fir-assert': {
-		winner: 'mcp',
-		why: 'Close: both explained the fir.if and cf.assert gaps from flang/docs/InlineRuntimeChecks.md, and both cited PR #223287 rather than #228502 and #231245. The small gap is run-to-run variance, with one Docs-alone run at 0.93.'
+		winner: 'bare',
+		why: 'Close: both explained the fir.if and cf.assert gaps from flang/docs/InlineRuntimeChecks.md. One Docs alone run was perfect, while every With Sloppy run tied the design to PR #223287 rather than #228502 and #231245 and never said nothing emits the op yet.'
 	},
 	'llvm-why-lfi-sandbox': {
-		winner: 'bare',
-		why: 'Close: both drew all three reasons from llvm/docs/LFI.md. With Sloppy added an unsupported claim that the assembler is the right place to enforce a safe instruction subset; Docs alone marked its own inference as inference.'
+		winner: 'level',
+		why: 'Both drew all three reasons from llvm/docs/LFI.md, including the uxtw guard against the base in x27, and each lost the same small amount for unverifiable line numbers and extras.'
 	},
 	'llvm-why-mlir-tokens': {
-		winner: 'level',
-		why: 'Both explained from mlir/docs/Tokens.md that a token must always lead back to the op it came from, why AnyType excludes tokens, the reuse of SSA def-use, and why tokens cannot cross IsolatedFromAbove.'
+		winner: 'mcp',
+		why: 'Close. Both explained from mlir/docs/Tokens.md why a token must lead back to the op it came from and why AnyType excludes tokens; one Docs alone run added an unsupported claim that FunctionOpInterface bars tokens from function signatures.'
 	},
 	'carbon-brief-safety': {
-		winner: 'mcp',
-		why: 'Close. With Sloppy stated the build modes and overhead targets cleanly (spatial 1-2%, temporal under 1%, no default RC or GC), while Docs alone opened by claiming the safety documents disagree and added a bounds-check opt-out the design does not describe.'
+		winner: 'level',
+		why: 'Level on average. Both named README.md, terminology.md and the p005914 proposal with the build modes and overhead targets; one Docs alone run claimed there are no overhead targets at all, while With Sloppy lost evenly across its runs for running long and not tying the why to a document.'
 	},
 	'carbon-drift-trailing-directives': {
-		winner: 'level',
-		why: 'Both found the missing is_trailing check before the //@ directive checks, cited proposals/p007441-trailing-comments.md as the rule and ignored the rewritten code comment; each had one run that scored lower.'
+		winner: 'mcp',
+		why: "With Sloppy found the missing is_trailing check against proposals/p007441-trailing-comments.md on all three runs. One Docs alone run took the function's rewritten comment, that a directive counts wherever the // falls, as the intent and missed the change."
 	},
 	'carbon-handoff-bracket-region': {
 		winner: 'level',
@@ -180,32 +180,32 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: 'Both found the Brightwater build daemon that holds its runtimes entry locked for up to three weeks, the eviction at 10 days and the failed links, citing the comment in runtimes_cache.h and the commit.'
 	},
 	'carbon-locate-bracket-recovery': {
-		winner: 'level',
-		why: 'Both named FixMismatchedBrackets, RegionSearch and BeamNode, the CloserRules/OpenerRules/AdvanceRules tables, Lexer::DiagnoseAndFixMismatchedBrackets with ErrorRecoveryBuffer, and mismatched_brackets_eval; both lost a little on line numbers that could not be confirmed.'
+		winner: 'mcp',
+		why: 'Close. Both named FixMismatchedBrackets, RegionSearch and BeamNode, the rule tables, Lexer::DiagnoseAndFixMismatchedBrackets and mismatched_brackets_eval; one With Sloppy run had nothing the judge could not confirm, where every Docs alone run lost a little on line numbers and helper names it admitted not checking.'
 	},
 	'carbon-locate-diagnostic-rendering': {
 		winner: 'mcp',
 		why: 'With Sloppy named Terminal::Buffer in common/terminal/buffer.h as what Renderer draws into. Docs alone said it draws into Terminal::OutputBufferRef in output_buffer_ref.h, missing the buffer type entirely.'
 	},
 	'carbon-why-charliteral-difference': {
-		winner: 'bare',
-		why: "Close, one run's worth. Both gave IntLiteral, the consistency and layering reasons and char - char staying i32; With Sloppy also claimed char - char was originally i32 to match the literal difference, which p007314 does not say."
+		winner: 'mcp',
+		why: "Close. Both gave IntLiteral, the consistency and layering reasons and char - char staying i32; one Docs alone run lost more for an arithmetic.md line citation and a quoted 'somewhat arbitrary' that could not be confirmed."
 	},
 	'carbon-why-clang-irgen': {
 		winner: 'mcp',
 		why: 'Both gave the progressive-lowering reason and all three rejected options from p006641 and clang_api.md. Docs alone added claims it could not back, such as a generate_ast.cpp line and Swift and LLDB comparisons, and one of its runs scored 0.87.'
 	},
 	'carbon-why-diagnostic-sorting': {
-		winner: 'mcp',
-		why: "With Sloppy used the proposal's F(1 2) missing-comma example and said ties at a scope's closing brace, like unused x and y, would otherwise be non-deterministic and break golden tests. Docs alone cited a TODO in scope_stack.cpp that does not appear to exist."
+		winner: 'bare',
+		why: 'Both explained last_byte_offset and the on-scope tie-break, and few runs said ties would make golden tests non-deterministic. Two With Sloppy runs also missed the consequence-before-cause reason against plain line and column order, which two Docs alone runs gave, so one near-perfect With Sloppy run could not lift its mean.'
 	},
 	'carbon-why-orphan-scopes': {
-		winner: 'bare',
-		why: "Docs alone scored 0.93 to 0.96 on every run, naming both holes and the same-file anchor rule. With Sloppy's typical answer was as good or better, but one of its three runs fell to 0.73, which pulled its mean down."
+		winner: 'mcp',
+		why: 'Close. With Sloppy had one perfect run naming both holes from proposals/p007140-orphan-rule-for-scopes.md, though another never named the generic-scope hole; Docs alone named both on every run but each added an unconfirmed details.md line citation.'
 	},
 	'dotnet-brief-cdac': {
-		winner: 'bare',
-		why: 'Docs alone stated the versioning rules more fully: string versions that are only different, never newer, and what is fixed from the first release candidate. With Sloppy was vaguer on versioning and added details it had not checked, such as a magic value and a cdac.h path.'
+		winner: 'mcp',
+		why: 'Both covered the descriptor, the string versions that are only different and never newer, and the advisory reader version, and both added an unverified reader-version-3 example. With Sloppy more often said which documents it had read for the reasons, datacontracts_design.md among them, where two Docs alone runs gave the documents only as places to look.'
 	},
 	'dotnet-drift-component-resolver-order': {
 		winner: 'mcp',
@@ -216,32 +216,32 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: "Docs alone recommended going back to 1 second and dismissed the Quillmere gateway's 1.4 to 2.2 second answer as one deployment's quirk. With Sloppy kept that reason in view: multi-gigabyte uploads due a 401 being sent in full, then sent again on retry."
 	},
 	'dotnet-handoff-watcher-buffer': {
-		winner: 'mcp',
-		why: "With Sloppy took the reason from the commit message: 2,000 to 3,000 renames in about a second overflowing 8 KB, Error raised, finished jobs never picked up. Docs alone's typical answer used its own estimates instead. Neither named Tarnwick, and both wavered on the recommendation."
+		winner: 'bare',
+		why: 'Both found the 2,000 to 3,000 renames in about a second overflowing 8 KB, and both wavered on the recommendation. One Docs alone run gave every fact the check looks for, render farm and finished jobs never picked up included, while one With Sloppy run leaned toward reverting and never said where it found the reason.'
 	},
 	'dotnet-locate-async-inlining': {
 		winner: 'mcp',
 		why: "With Sloppy gave full paths and named fgSetupAsyncFrameTransitionCall alongside fgInlineAppendAsyncFrameStatements. Docs alone left out fgSetupAsyncFrameTransitionCall and gave bare file names under a 'src/coreclr/jit/ unless noted' preface, so fginline.cpp and async.cpp were never given with their paths."
 	},
 	'dotnet-locate-external-memory-handles': {
-		winner: 'bare',
-		why: 'Close. Both named ExternalMemoryHandle, gcenv.ee.cpp, datadescriptor.inc, the cDAC contract files and DacRefWalker::WalkExternalMemoryHandles; With Sloppy said it had not opened externalmemoryhandle.cpp or DacRefWalker::Next, and lost a fraction on that.'
+		winner: 'level',
+		why: 'Both named ExternalMemoryHandle, gcenv.ee.cpp, datadescriptor.inc, the cDAC contract files and DacRefWalker::WalkExternalMemoryHandles, and each lost the same fraction for line numbers and extras such as dacvars.h that could not be confirmed.'
 	},
 	'dotnet-why-async-inlining': {
 		winner: 'bare',
 		why: 'Docs alone listed everything still not inlined: awaits that may suspend in try regions, and awaits into a non-async root. With Sloppy named only the try regions, and one of its runs dropped to 0.87.'
 	},
 	'dotnet-why-com-properties': {
-		winner: 'level',
-		why: 'Both scored full marks: getter then setter to match the built-in CCW layout, propputref existing only in type library metadata and IDispatch, init being a C#-only distinction, SYSLIB1091 for rejected shapes, and default-implemented properties for wrapping two methods.'
+		winner: 'bare',
+		why: 'Close. All runs gave getter then setter to match the built-in CCW layout, propputref living only in type library metadata and IDispatch, and SYSLIB1091; one With Sloppy run did not state the getter-before-setter order plainly enough for the facts check.'
 	},
 	'dotnet-why-illink-cache': {
-		winner: 'level',
-		why: 'Both found all three behaviours intended in task-cache.md, the runtime deliberately left out of the cache key, hits not replaying warnings, and arbitrary ExtraArgs bypassing the cache, and each lost the same small amount for claims beyond the doc.'
+		winner: 'mcp',
+		why: 'Close. Both found all three behaviours intended in task-cache.md; two With Sloppy runs scored full marks, while every Docs alone run lost a little for unverified extras such as Cache@2 advice and an illink-tasks.md citation.'
 	},
 	'dotnet-why-r2r-macho': {
-		winner: 'level',
-		why: 'Both scored full marks from readytorun-platform-native-envelope.md: __managedcode because the linker treats __text specially, RVAs as subtractor relocations against __mh_dylib_header, the host doing the load, and the export rename for custom hosts.'
+		winner: 'mcp',
+		why: 'Close. Both explained __managedcode and the subtractor relocations against __mh_dylib_header from readytorun-platform-native-envelope.md; two Docs alone runs added small unsupported claims, such as __mh_dylib_header being right only for dylibs.'
 	},
 	'metastate-brief-platform-data': {
 		winner: 'bare',
@@ -276,8 +276,8 @@ export const WHY: Record<string, { winner: 'mcp' | 'bare' | 'level'; why: string
 		why: 'With Sloppy cited Platform-Authentication.md and said the verifier needs only public endpoints. Docs alone reasoned from chain.ts and handshake.ts, claimed the eVault is public so reading it would add nothing, and never named the document.'
 	},
 	'metastate-why-on-behalf-of': {
-		winner: 'bare',
-		why: "Docs alone gave the document's reason: specificity is what makes a user grant mean anything. With Sloppy only implied it, and cited the Post Platform Guide's access-control page rather than the protocol's Access-Control.md."
+		winner: 'mcp',
+		why: "Both gave the document's reason. With Sloppy cited the access-control page's section on who the requesting party is, and one Docs alone run claimed group denials fail open and never said the behaviour is deliberate, which cost it on both checks."
 	},
 	'metastate-why-rate-limit-ceiling': {
 		winner: 'mcp',

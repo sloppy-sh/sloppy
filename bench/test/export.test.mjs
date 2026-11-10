@@ -232,7 +232,7 @@ test("Sloppy's own runner lands in the reported comparison as a fourth row, at a
       run({ condition: "agents", config: "asis" }),
       run({
         condition: "mcp",
-        config: "shaped",
+        config: "maintained",
         subject: {
           name: "sloppy",
           path: "/s",
@@ -242,7 +242,7 @@ test("Sloppy's own runner lands in the reported comparison as a fourth row, at a
       }),
       run({
         condition: "harness",
-        config: "shaped",
+        config: "maintained",
         backend: { kind: "harness", model: "claude-sonnet-5" },
         subject: {
           name: "sloppy",

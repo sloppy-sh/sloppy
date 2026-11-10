@@ -38,6 +38,8 @@
 	const approaches = $derived(approachesRun(summary));
 	const models = $derived(andList(tiersWithRuns(summary).map((t) => FAMILY[t])));
 
+	const cap = (s: string) => `${s[0].toUpperCase()}${s.slice(1)}`;
+
 	const TASKS = [
 		['Why', 'explain why the code is built the way it is, from the documents.'],
 		['Locate', 'find the files and functions where a rule lives.'],
@@ -67,7 +69,6 @@
 			: 'Every run and transcript is published.'
 	]);
 
-	const cap = (s: string) => `${s[0].toUpperCase()}${s.slice(1)}`;
 	const h2 = 'text-2xl font-semibold tracking-tight';
 	const link = 'underline underline-offset-2 hover:text-muted-foreground';
 </script>

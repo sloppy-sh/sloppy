@@ -38,7 +38,7 @@ export const PROJECTS: Project[] = [
 		reasons: {
 			medium: {
 				score: slight(
-					"Ahead on why-questions, behind on briefings, where it worked from Sloppy's excerpts instead of reading the one document whole.",
+					"Ahead on one why-question, where the component's page named the document that answers it; behind on the briefing, where it worked from excerpts instead of reading the one document whole.",
 					'better',
 					'level'
 				),
@@ -61,10 +61,11 @@ export const PROJECTS: Project[] = [
 			'A vector database. Its design documents are named by the date they were written, so a name rarely says what one answers.',
 		reasons: {
 			medium: {
-				score: {
-					better: () =>
-						'With Sloppy the reason came from the design document; without it, often rebuilt from the code.'
-				},
+				score: slight(
+					"With Sloppy the reason came from the component's page and the design document under it; without it, often rebuilt from the code.",
+					'better',
+					'level'
+				),
 				input: {
 					better: () =>
 						'Documents named by date are hard to find, so without Sloppy the agent read guides and code instead, sometimes never opening the one that answers.'
@@ -81,10 +82,11 @@ export const PROJECTS: Project[] = [
 			'A message broker. Its design proposals are named by number, so a name never says what one answers.',
 		reasons: {
 			medium: {
-				score: {
-					better: () =>
-						'Without Sloppy the agent often answered why-questions from the code alone; with it, from the proposal.'
-				},
+				score: slight(
+					'The why-questions came out the same from the proposals either way; the briefing is where Sloppy fell behind, working from excerpts instead of one document whole.',
+					'level',
+					'better'
+				),
 				input: {
 					better: () =>
 						"Where Sloppy's first answer named the classes, the agent searched for them instead of reading file after file, which saved more than the first answer added."
@@ -102,15 +104,20 @@ export const PROJECTS: Project[] = [
 		reasons: {
 			medium: {
 				score: slight(
-					"Close: ahead on where-questions, where Sloppy's first answer named files a search missed; behind on the drift check, where its runs more often hedged over whether the document or the code was right.",
-					'better',
-					'level'
+					'Within the spread: every approach answers these questions near the ceiling, and two runs made the difference.',
+					'worse',
+					'level',
+					'better'
 				),
 				input: {
 					better: () =>
 						'Topic-named documents are found either way, so the saving is the smallest here: the files a search opens before the right one.'
 				},
-				cost: cheaperReading
+				cost: cheaperReading,
+				time: {
+					worse: () => 'A second slower on average, within the spread.',
+					better: () => 'A second faster on average, within the spread.'
+				}
 			}
 		}
 	},
@@ -122,8 +129,9 @@ export const PROJECTS: Project[] = [
 		reasons: {
 			medium: {
 				score: slight(
-					'Each document names the component it governs, so a why-question reached the proposal from the code where a search stopped at the code.',
-					'better'
+					"Where the agent asked for a brief it reached the proposal; where it searched the notes it stopped at the component's page, a document short of the example it needed.",
+					'better',
+					'level'
 				),
 				input: {
 					better: () =>

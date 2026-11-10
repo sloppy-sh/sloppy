@@ -23,17 +23,17 @@ import { traceOf } from './traces';
 
 /**
  * The seeds the published export reads (bench/results/README.md names the command), so a question's
- * runs are the ones its charts count; the first three are the final test, the rest the batches
- * under the reported comparison.
+ * runs are the ones its charts count; the first three are the final test, the rest one batch a
+ * project under the reported comparison.
  */
-export const PUBLISHED_SEEDS = [30, 31, 32, 41, 42, 45, 46];
+export const PUBLISHED_SEEDS = [30, 31, 32, 46, 47, 48, 49, 50, 51, 52];
 const FINAL_SEEDS = [30, 31, 32];
 
 /** The config a condition's bar is drawn from under the reported comparison, as bench/export.mjs files it. */
 const RECOMMENDED: Record<Condition, string[]> = {
-	bare: ['asis', 'armA'],
-	agents: ['asis', 'armA'],
-	mcp: ['shaped', 'maintainer', 'substance', 'armB']
+	bare: ['asis'],
+	agents: ['asis'],
+	mcp: ['maintained', 'substance']
 };
 
 /** The builds run from this package's folder. */

@@ -236,18 +236,16 @@ const settingsOf = (view, served) => {
 
 /**
  * The reported comparison, README.md § "The comparison that is reported": the documents as a project
- * keeps them for the conditions that do not reach the server, and the shaped documents for the one
- * that does, because the shaping is part of taking Sloppy up. A run also counts under its own
- * setting, which is what keeps the shaped documents read without the server measurable and off every
- * page. The keys are `<setting>\t<reaches the server>`.
+ * keeps them for the conditions that do not reach the server, and the maintained container for the
+ * one that does, because the container is part of taking Sloppy up. A run also counts under its own
+ * setting, which is what keeps the container read without the server measurable and off every page.
+ * The keys are `<setting>\t<reaches the server>`; `substance` is the seventh project's maintained
+ * container under the name its batch ran as.
  */
 const RECOMMENDED = new Set([
   "asis\tfalse",
-  "shaped\ttrue",
-  "maintainer\ttrue",
+  "maintained\ttrue",
   "substance\ttrue",
-  "armA\tfalse",
-  "armB\ttrue",
 ]);
 
 /**

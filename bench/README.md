@@ -294,27 +294,60 @@ document's path gives its `tags`, `$1` filled from the match; every folder its `
 under the code roots gives its last segment. Tags are lower-cased with `_` read as `-`. It prints the
 notes tagged and how many carry each tag.
 
+### A maintained container
+
+`maintained/` builds the container a maintainer would keep, for a subject whose documents alone were
+carried before (SURVEY.md § "Six maintained containers"). It is three passes, two of them agents
+reading the code and one of them scripts:
+
+1. **The ownership map.** One agent reads the repository under `maintained/MAP-BRIEF.md` and writes
+   `subjects/maintained/<name>-architecture.json`: the layers, 25 to 45 components each with a kind,
+   an owner, what it uses and is used by, the evidence and the documents about it, and the graph —
+   a section or layer per group with a free place to start its note at, every document hung under
+   the component it documents, tags and labelled lines.
+2. **The container, laid out by the map.** `maintained/build-container.sh <name> <as-kept sha> <doc
+root>...` makes a worktree on `sloppy/maintained` from the upstream commit under the as-kept tree,
+   runs `sloppy init` and `carry-docs.mjs`, then `apply-map.mjs <project dir> <map.json>`: a note per
+   layer, section and component started at its place, every note moved under what it springs from,
+   tagged, the relations drawn as lines with their labels, and init's folder notes swept under the
+   nearest named place.
+3. **A page per component.** Writers, six components each, read the code under
+   `maintained/WRITER-BRIEF.md` and hand back JSON: six sections a component — what it is, what it
+   does, how it is built, what it talks to, the documents that shaped it, its quirks and open
+   questions — every claim with a `code:` path, tags, and `line_fixes` for the lines the map had
+   wrong by the code. `maintained/finish-container.sh <name> <pages dir>` writes them onto the notes
+   through `sloppy mcp` (`apply-substance.mjs`), applies the line fixes, bins the empty folder shells
+   nobody wrote into, and draws the layers large and a component's logo on its mark (`dress.mjs`).
+
+A page for a place that several notes reach and none was started about is refused by `write_note`;
+`write-direct.mjs <project dir> <pages dir> <about>...` writes those few into the vault file itself,
+block by block, and the notes read back through the server the same as the rest.
+The pages are the writers' and stay on the subject's branch, not here; the maps are here because
+they are what was built from.
+
 ## The comparison that is reported
 
 Three numbers, always the same three, and they are what the pages draw; a fourth, Sloppy's own
-runner, is measured beside them on the same shaped documents:
+runner, is measured beside them on the same container:
 
 | Bar                 | What it is                                                                                                                                                                                                                                                                                                   |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Documents alone** | Claude Code on the project's documents as the project keeps them today.                                                                                                                                                                                                                                      |
 | **Subagents**       | The same documents, with subagents allowed.                                                                                                                                                                                                                                                                  |
-| **Sloppy**          | The recommended workflow: the documents shaped as `WHERE-SLOPPY-HELPS.md` sets out — anchored to the code they govern and tagged by `anchor-docs.mjs` and `tag-notes.mjs`, titles rewritten only where they do not say what a document decides — carried into the container, read through the sloppy server. |
-| **Sloppy's runner** | The same shaped documents, with `sloppy run` composing the window for the task and driving the model: the `harness` condition.                                                                                                                                                                               |
+| **Sloppy**          | A maintained container (§ "A maintained container"): an ownership map read from the code, every document hung under the component it documents, a maintainer's page per component with every claim pointing at a file, the graph laid out by ownership with labelled lines — read through the sloppy server. |
+| **Sloppy's runner** | The same container, with `sloppy run` composing the window for the task and driving the model: the `harness` condition.                                                                                                                                                                                      |
 
-**Sloppy's bar carries the shaping, because the shaping does not happen without Sloppy.** The
-practices came out of measuring it, a team adopting it adopts them, and nobody shapes three hundred
-documents as a standalone exercise. So the question the three bars answer is the one a team actually
-faces: what do we get if we take this up, against what we have now.
+**Sloppy's bar carries the container, because the container does not exist without Sloppy.** A
+maintainer keeping their project's graph writes the map and the pages into it; a team adopting Sloppy
+adopts that work, and nobody writes sixty pages about their components as a standalone exercise. So
+the question the three bars answer is the one a team actually faces: what do we get if we take this
+up, against what we have now. The earlier shapings — titles rewritten, documents anchored to their
+code — stay in `results/` under their own config names and in `SURVEY.md`.
 
-A run of the shaped documents **without** the sloppy server is measured too, under its own config
-name, because it says how much of the gain is the writing rather than the tool. It is an attribution
-figure for `SURVEY.md` and it is **never a bar on a page** — there is no team that has shaped
-documents and no Sloppy.
+A run of the container **without** the sloppy server is measured too, under its own config name,
+because it says how much of the gain is the writing rather than the tool. It is an attribution figure
+for `SURVEY.md` and it is **never a bar on a page** — there is no team that has the pages and no
+Sloppy.
 
 Both trees run in **one interleaved batch** under their own config names, so neither the hour nor the
 export can mix them, and `export.mjs` refuses to average two commits of one subject.

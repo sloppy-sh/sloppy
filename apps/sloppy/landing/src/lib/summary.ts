@@ -4,8 +4,8 @@
 export type Tier = 'small' | 'medium' | 'large';
 /**
  * `recommended` is the reported comparison — the documents as a project keeps them for the two
- * conditions without Sloppy, shaped for the one with it; bench/README.md carries the rule. A
- * configuration measured on its own carries its own name here.
+ * conditions without Sloppy, the maintained container for the one with it; bench/README.md carries
+ * the rule. A configuration measured on its own carries its own name here.
  */
 export type Setting = 'default' | 'lean' | 'recommended' | (string & {});
 

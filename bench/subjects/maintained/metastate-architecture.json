@@ -1,0 +1,5705 @@
+{
+  "subject": "MetaState prototype @ 4066bb6d (branch sloppy/mine)",
+  "layers": [
+    {
+      "id": "protocol",
+      "title": "W3DS protocol",
+      "about": "docs/docs/W3DS Protocol",
+      "contains": [
+        "infrastructure/w3id",
+        "infrastructure/signature-validator",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/professionalProfile.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "services/ontology/schemas/socialMediaPost.json",
+        "services/ontology/schemas/file.json",
+        "services/ontology/schemas/fileSignature.json",
+        "services/ontology/schemas/charterSignature.json",
+        "services/ontology/schemas/poll.json",
+        "services/ontology/schemas/bookmark.json",
+        "ontology:reference",
+        "ontology:wishlist",
+        "ontology:vote-reputation-result",
+        "packages/delegation"
+      ]
+    },
+    {
+      "id": "infrastructure",
+      "title": "Core infrastructure",
+      "about": "docs/docs/Infrastructure",
+      "contains": [
+        "infrastructure/evault-core",
+        "infrastructure/web3-adapter",
+        "infrastructure/eid-wallet",
+        "infrastructure/blindvote",
+        "platforms/registry",
+        "services/ontology"
+      ]
+    },
+    {
+      "id": "services",
+      "title": "Ecosystem services",
+      "about": "docs/docs/Services",
+      "contains": [
+        "services/awareness-service",
+        "services/ppa",
+        "services/pp-auth-demo",
+        "services/w3ds-oidc-connector",
+        "services/search-engine",
+        "services/trust-score",
+        "notification-trigger"
+      ]
+    },
+    {
+      "id": "platforms",
+      "title": "Post-platforms",
+      "about": "docs/docs/Post Platform Guide",
+      "contains": [
+        "pattern:platform-scaffold",
+        "pattern:shadcn-kit",
+        "platforms/blabsy",
+        "platforms/pictique",
+        "platforms/profile-editor",
+        "platforms/file-manager",
+        "platforms/esigner",
+        "platforms/group-charter-manager",
+        "platforms/cerberus",
+        "platforms/evoting",
+        "platforms/ereputation",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/emover",
+        "platforms/calendar",
+        "platforms/enotary",
+        "platforms/marketplace"
+      ]
+    },
+    {
+      "id": "packages",
+      "title": "Shared packages",
+      "about": "packages/",
+      "contains": [
+        "packages/auth",
+        "packages/types",
+        "packages/wallet-sdk",
+        "packages/ui",
+        "packages/platform-icons",
+        "packages/w3ds-gateway"
+      ]
+    },
+    {
+      "id": "operations",
+      "title": "Operations, tooling and docs",
+      "about": "README.md",
+      "contains": [
+        "infrastructure/control-panel",
+        "infrastructure/dev-sandbox",
+        "services/webhook-inlet-test",
+        "packages/eslint-config",
+        "packages/typescript-config",
+        "docker",
+        "docker-compose.databases.yml",
+        "examples/company-delegation-demo",
+        "tests",
+        "docs",
+        "skills"
+      ]
+    }
+  ],
+  "components": [
+    {
+      "path": "infrastructure/evault-core",
+      "kind": "infrastructure",
+      "title": "eVault core (and the Provisioner)",
+      "one_line": "The personal data store every entity owns: multi-tenant GraphQL/HTTP eVault API plus the provisioning API that creates eVaults; emits awareness packets and push notifications.",
+      "owner": "infrastructure",
+      "layer": "infrastructure",
+      "used_by": [
+        "infrastructure/eid-wallet",
+        "infrastructure/dev-sandbox",
+        "infrastructure/control-panel",
+        "infrastructure/web3-adapter",
+        "packages/wallet-sdk",
+        "platforms/emover",
+        "platforms/calendar",
+        "services/search-engine",
+        "examples/company-delegation-demo",
+        "platforms/blabsy",
+        "platforms/pictique",
+        "platforms/cerberus",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/ereputation",
+        "platforms/esigner",
+        "platforms/evoting",
+        "platforms/file-manager",
+        "platforms/group-charter-manager",
+        "platforms/profile-editor"
+      ],
+      "depends_on": [
+        "infrastructure/w3id",
+        "infrastructure/signature-validator",
+        "platforms/registry",
+        "services/awareness-service",
+        "notification-trigger",
+        "platforms/emover"
+      ],
+      "evidence": [
+        "infrastructure/evault-core/package.json depends on w3id, signature-validator (workspace:*)",
+        "infrastructure/evault-core/src/core/db/db.service.ts:3 imports w3id",
+        "infrastructure/evault-core/src/services/BindingDocumentService.ts:4 imports signature-validator",
+        "infrastructure/evault-core/src/core/awareness/awareness-outbox-dispatcher.ts:205 AWARENESS_SERVICE_URL (pushes packets to AaaS)",
+        "infrastructure/evault-core/src/services/NotificationService.ts:134 NOTIFICATION_TRIGGER_URL (push notifications)",
+        "infrastructure/evault-core/src/core/protocol/graphql-server.ts:821 EMOVER_API_URL trusted to skip webhooks during migration",
+        "infrastructure/evault-core/src/core/auth/registry-token.ts:38 REGISTRY_URL",
+        "infrastructure/evault-core/src/index.ts:90 ProvisioningService (the Provisioner lives here)",
+        "infrastructure/eid-wallet/src/env.d.ts:7 PUBLIC_PROVISIONER_URL; infrastructure/dev-sandbox/src/routes/+page.svelte:24",
+        "platforms/calendar/api/src/services/EVaultService.ts:85 PUBLIC_EVAULT_SERVER_URI (talks to eVault GraphQL directly, no web3-adapter)",
+        "services/search-engine/src/index.js:15 EVAULT_BASE_URL"
+      ],
+      "docs": [
+        "docs/docs/Infrastructure/eVault.md",
+        "docs/docs/Infrastructure/eVault-Key-Delegation.md",
+        "infrastructure/evault-core/README.md",
+        "skills/w3ds/reference/evault.md"
+      ]
+    },
+    {
+      "path": "infrastructure/w3id",
+      "kind": "infrastructure",
+      "title": "W3ID library",
+      "one_line": "Library that creates and resolves W3IDs, the persistent identifiers for users, devices, eVaults and envelopes.",
+      "owner": "infrastructure",
+      "layer": "protocol",
+      "used_by": ["infrastructure/evault-core"],
+      "depends_on": [],
+      "evidence": [
+        "infrastructure/evault-core/package.json lists w3id workspace:*",
+        "infrastructure/evault-core/src/core/db/db.service.ts:3 imports w3id (10 files in evault-core)"
+      ],
+      "docs": ["infrastructure/w3id/README.md", "docs/docs/W3DS Basics/W3ID.md"]
+    },
+    {
+      "path": "infrastructure/signature-validator",
+      "kind": "shared-component",
+      "title": "signature-validator",
+      "one_line": "Library that verifies a signature against the public key bound to an eName, resolving the eVault and key-binding certificates through the Registry.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": [
+        "platforms/blabsy",
+        "platforms/calendar",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/enotary",
+        "platforms/ereputation",
+        "platforms/esigner",
+        "platforms/evoting",
+        "platforms/file-manager",
+        "platforms/group-charter-manager",
+        "platforms/pictique",
+        "infrastructure/evault-core",
+        "infrastructure/control-panel",
+        "packages/auth",
+        "services/awareness-service",
+        "services/pp-auth-demo",
+        "services/ppa"
+      ],
+      "depends_on": ["platforms/registry"],
+      "evidence": [
+        "infrastructure/signature-validator/src/index.ts:248 resolves eVault URL from the registry",
+        "platforms/blabsy/api/src/controllers/AuthController.ts:6 (and the same import in every platform AuthController: calendar:5, dreamsync:7, ecurrency:6, ereputation:6, esigner:7, evoting:7, file-manager:7, group-charter-manager:6, pictique:7)",
+        "platforms/enotary/src/lib/server/witness.ts:3",
+        "packages/auth/src/verify-login.ts:2",
+        "infrastructure/evault-core/src/services/BindingDocumentService.ts:4",
+        "infrastructure/control-panel/src/routes/api/auth/+server.ts:27",
+        "services/awareness-service/api/src/services/W3dsAuthService.ts:3",
+        "services/ppa/src/lib/server/w3ds.ts:5",
+        "services/pp-auth-demo/src/lib/server/chain.ts:19",
+        "cerberus does NOT import it: platforms/cerberus/client/package.json lists only web3-adapter"
+      ],
+      "docs": [
+        "infrastructure/signature-validator/README.md",
+        "docs/docs/W3DS Protocol/Authentication.md",
+        "docs/docs/W3DS Protocol/Signature-Formats.md"
+      ]
+    },
+    {
+      "path": "infrastructure/web3-adapter",
+      "kind": "shared-component",
+      "title": "Web3 Adapter",
+      "one_line": "Library each platform embeds to map its local tables to ontology schemas and sync them both ways with eVaults (mapping JSON + watcher + webhook).",
+      "owner": "shared",
+      "layer": "infrastructure",
+      "used_by": [
+        "platforms/blabsy",
+        "platforms/pictique",
+        "platforms/cerberus",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/ereputation",
+        "platforms/esigner",
+        "platforms/evoting",
+        "platforms/file-manager",
+        "platforms/group-charter-manager",
+        "platforms/profile-editor"
+      ],
+      "depends_on": [
+        "infrastructure/evault-core",
+        "platforms/registry",
+        "services/ontology"
+      ],
+      "evidence": [
+        "platforms/*/api/src/web3adapter/watchers/subscriber.ts:9 imports web3-adapter (cerberus, dreamsync, ecurrency, ereputation, esigner, evoting, file-manager, group-charter-manager, pictique)",
+        "platforms/blabsy/api/src/controllers/WebhookController.ts:2 imports web3-adapter",
+        "platforms/profile-editor/api/src/evault.ts:1 imports EVaultClient from web3-adapter",
+        "infrastructure/web3-adapter/src/evault/evault.ts:248 requests a platform token from registry /platforms/certification",
+        "infrastructure/web3-adapter/package.json:21 declares evault-core workspace:* but no source import of evault-core was found (only evault-core e2e imports web3-adapter dist: infrastructure/evault-core/src/e2e/evault-core.e2e.spec.ts:16)",
+        "dreamsync-api, ecurrency-api, ereputation-api import web3-adapter without declaring it in package.json (platforms/dreamsync/api/package.json)"
+      ],
+      "docs": [
+        "docs/docs/Infrastructure/Web3-Adapter.md",
+        "infrastructure/web3-adapter/MAPPING_RULES.md",
+        "docs/docs/Post Platform Guide/mapping-rules.md"
+      ]
+    },
+    {
+      "path": "infrastructure/eid-wallet",
+      "kind": "infrastructure",
+      "title": "eID Wallet",
+      "one_line": "Tauri mobile wallet that holds the user's keys, provisions eVaults, signs w3ds://auth and w3ds://sign requests, votes and recovers identities.",
+      "owner": "infrastructure",
+      "layer": "infrastructure",
+      "used_by": [],
+      "depends_on": [
+        "packages/wallet-sdk",
+        "infrastructure/blindvote",
+        "packages/platform-icons",
+        "platforms/registry",
+        "infrastructure/evault-core",
+        "platforms/marketplace",
+        "platforms/pictique",
+        "platforms/blabsy",
+        "platforms/enotary"
+      ],
+      "evidence": [
+        "infrastructure/eid-wallet/package.json depends on wallet-sdk, blindvote, @metastate-foundation/platform-icons",
+        "infrastructure/eid-wallet/src/lib/global/controllers/evault.ts:9 imports wallet-sdk; :14 writes the User ontology profile",
+        "infrastructure/eid-wallet/src/routes/(app)/scan-qr/scanLogic.ts:1066 imports blindvote",
+        "infrastructure/eid-wallet/src/lib/ui/PlatformAppCard/PlatformAppCard.svelte:3,46 imports platform-icons",
+        "infrastructure/eid-wallet/src/env.d.ts:6-7 PUBLIC_REGISTRY_URL, PUBLIC_PROVISIONER_URL",
+        "infrastructure/eid-wallet/src/lib/utils/marketplaceApps.ts:17 MARKETPLACE_URL",
+        "infrastructure/eid-wallet/src/routes/(public)/open-message/[globalId]/+page.svelte:48,60 opens messages in Pictique or Blabsy",
+        "infrastructure/eid-wallet/src/routes/(public)/recover/+page.svelte:64 notary recovery path (eNotary)",
+        "every platform and service that issues w3ds://auth relies on the wallet to sign it (git grep w3ds://auth: 12 platforms, awareness-service, ppa, pp-auth-demo, w3ds-oidc-connector)"
+      ],
+      "docs": [
+        "docs/docs/Infrastructure/eID-Wallet.md",
+        "infrastructure/eid-wallet/README.md",
+        "infrastructure/eid-wallet/PUSH_NOTIFICATIONS_SETUP.md",
+        "infrastructure/eid-wallet/docs/architecture/deepLink.md",
+        "infrastructure/eid-wallet/src/lib/i18n/README.md",
+        "skills/w3ds/reference/wallet.md"
+      ]
+    },
+    {
+      "path": "infrastructure/blindvote",
+      "kind": "shared-component",
+      "title": "BlindVote",
+      "one_line": "Pedersen-commitment voting library: private, publicly verifiable ballots.",
+      "owner": "shared",
+      "layer": "infrastructure",
+      "used_by": ["infrastructure/eid-wallet", "platforms/evoting"],
+      "depends_on": [],
+      "evidence": [
+        "infrastructure/eid-wallet/src/routes/(app)/scan-qr/scanLogic.ts:1066 imports blindvote",
+        "platforms/evoting/api/src/services/VoteService.ts:9 imports blindvote",
+        "platforms/evoting/api/package.json does not declare blindvote (undeclared workspace import)"
+      ],
+      "docs": ["infrastructure/blindvote/README.md"]
+    },
+    {
+      "path": "infrastructure/control-panel",
+      "kind": "infrastructure",
+      "title": "Control panel",
+      "one_line": "Admin SvelteKit app that monitors eVault pods, rate limits, references and notifications.",
+      "owner": "infrastructure",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [
+        "packages/types",
+        "infrastructure/signature-validator",
+        "platforms/registry",
+        "infrastructure/evault-core",
+        "platforms/ereputation",
+        "platforms/dreamsync",
+        "notification-trigger"
+      ],
+      "evidence": [
+        "infrastructure/control-panel/src/lib/server/evault.ts:3 imports @metastate-foundation/types",
+        "infrastructure/control-panel/src/routes/api/auth/+server.ts:27 imports signature-validator",
+        "infrastructure/control-panel/src/lib/server/evault-graphql.ts:1 PUBLIC_REGISTRY_URL",
+        "infrastructure/control-panel/src/lib/server/rate-limits.ts:2 PUBLIC_PROVISIONER_URL",
+        "infrastructure/control-panel/src/routes/api/references/+server.ts:3 PUBLIC_EREPUTATION_BASE_URL",
+        "infrastructure/control-panel/src/routes/actions/+page.svelte:7 hard-coded dreamsync /api/matches/trigger",
+        "infrastructure/control-panel/src/lib/services/notificationService.ts:2 NOTIFICATION_TRIGGER_URL"
+      ],
+      "docs": ["infrastructure/control-panel/README.md"]
+    },
+    {
+      "path": "infrastructure/dev-sandbox",
+      "kind": "infrastructure",
+      "title": "Dev sandbox",
+      "one_line": "Browser stand-in for the eID wallet: provisions an identity, creates its UserProfile, signs auth and sign requests.",
+      "owner": "infrastructure",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [
+        "packages/wallet-sdk",
+        "platforms/registry",
+        "infrastructure/evault-core",
+        "services/ontology"
+      ],
+      "evidence": [
+        "infrastructure/dev-sandbox/src/lib/WebCryptoAdapter.ts:1 imports wallet-sdk",
+        "infrastructure/dev-sandbox/src/routes/+page.svelte:22-24 ontology, registry, provisioner URLs",
+        "infrastructure/dev-sandbox/src/lib/userProfile.ts:19 writes the User ontology (same shape as the wallet: userProfile.ts:2)"
+      ],
+      "docs": [
+        "infrastructure/dev-sandbox/README.md",
+        "docs/docs/Post Platform Guide/dev-sandbox.md"
+      ]
+    },
+    {
+      "path": "platforms/registry",
+      "kind": "infrastructure",
+      "title": "Registry",
+      "one_line": "Core service that resolves eNames/W3IDs to eVaults, issues entropy, certifies platforms, signs key-binding certificates, lists known platforms and whitelists notaries. Filed under platforms/ but is core infrastructure.",
+      "owner": "platforms",
+      "layer": "infrastructure",
+      "used_by": [
+        "platforms/blabsy",
+        "platforms/calendar",
+        "platforms/cerberus",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/emover",
+        "platforms/enotary",
+        "platforms/ereputation",
+        "platforms/esigner",
+        "platforms/evoting",
+        "platforms/file-manager",
+        "platforms/group-charter-manager",
+        "platforms/pictique",
+        "platforms/profile-editor",
+        "infrastructure/evault-core",
+        "infrastructure/eid-wallet",
+        "infrastructure/dev-sandbox",
+        "infrastructure/control-panel",
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "services/awareness-service",
+        "services/ppa",
+        "services/pp-auth-demo",
+        "services/search-engine",
+        "services/trust-score",
+        "services/w3ds-oidc-connector"
+      ],
+      "depends_on": [],
+      "evidence": [
+        "README.md \"Core Services (Always Running) 4321 - Registry Service\"",
+        "docs/docs/Infrastructure/Registry.md sits under Infrastructure",
+        "platforms/registry/api/src/index.ts:278-292 GET /platforms returns the base URLs of 11 platforms (not calendar, enotary, marketplace, profile-editor)",
+        "platforms/registry/api/src/index.ts:296 notary whitelist used by the wallet for recovery",
+        "every platform AuthController reads PUBLIC_REGISTRY_URL, e.g. platforms/blabsy/api/src/controllers/AuthController.ts:100; platforms/profile-editor/api/src/env.ts:25",
+        "infrastructure/signature-validator/src/index.ts:248; infrastructure/web3-adapter/src/evault/evault.ts:248"
+      ],
+      "docs": [
+        "docs/docs/Infrastructure/Registry.md",
+        "platforms/registry/api/README.md",
+        "platforms/registry/api/REGISTRY_PROTOCOL.md",
+        "platforms/registry/api/src/migrations/README.md",
+        "skills/w3ds/reference/registry.md"
+      ]
+    },
+    {
+      "path": "services/ontology",
+      "kind": "infrastructure",
+      "title": "Ontology service",
+      "one_line": "Express server that serves the JSON schemas (schemaId → shape) every platform maps to; the schemas are the protocol's shared vocabulary.",
+      "owner": "services",
+      "layer": "infrastructure",
+      "used_by": [
+        "platforms/blabsy",
+        "platforms/pictique",
+        "platforms/cerberus",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/ereputation",
+        "platforms/esigner",
+        "platforms/evoting",
+        "platforms/file-manager",
+        "platforms/group-charter-manager",
+        "platforms/profile-editor",
+        "infrastructure/dev-sandbox",
+        "services/ppa",
+        "services/pp-auth-demo",
+        "services/awareness-service",
+        "infrastructure/web3-adapter"
+      ],
+      "depends_on": [],
+      "evidence": [
+        "services/ontology/package.json \"Service for serving JSON schemas\"",
+        "docs/docs/Infrastructure/Ontology.md sits under Infrastructure",
+        "each platform mapping names a schemaId from services/ontology/schemas (e.g. platforms/pictique/api/src/web3adapter/mappings/user.mapping.json)",
+        "infrastructure/dev-sandbox/src/routes/+page.svelte:22 PUBLIC_ONTOLOGY_URL",
+        "services/ppa/src/lib/server/env.ts:40",
+        "services/pp-auth-demo/src/lib/server/env.ts:41",
+        "services/awareness-service/portal/src/lib/ontology.ts:5"
+      ],
+      "docs": [
+        "docs/docs/Infrastructure/Ontology.md",
+        "skills/w3ds/reference/registry.md"
+      ]
+    },
+    {
+      "path": "services/ontology/schemas/user.json",
+      "kind": "shared-component",
+      "title": "User profile record (ontology User)",
+      "one_line": "The person's profile (displayName, username, avatar, banner, bio, location) held once in their eVault; every platform that has users reads and edits this same record.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": [
+        "platforms/blabsy",
+        "platforms/pictique",
+        "platforms/cerberus",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/ereputation",
+        "platforms/esigner",
+        "platforms/evoting",
+        "platforms/file-manager",
+        "platforms/group-charter-manager",
+        "platforms/profile-editor",
+        "infrastructure/eid-wallet",
+        "infrastructure/dev-sandbox",
+        "services/awareness-service"
+      ],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "schemaId 550e8400-e29b-41d4-a716-446655440000 = services/ontology/schemas/user.json",
+        "mapped by user.mapping.json in blabsy, pictique, cerberus, dreamsync, ecurrency, ereputation, esigner, evoting, file-manager, group-charter-manager (platforms/*/api/src/web3adapter/mappings/user.mapping.json)",
+        "platforms/profile-editor/api/src/ontology.ts:8 USER_ONTOLOGY; :59 mergeUserPayload",
+        "PATCH /api/users updateProfile: platforms/pictique/api/src/index.ts:153, platforms/dreamsync/api/src/index.ts:118, platforms/ecurrency/api/src/index.ts:103, platforms/ereputation/api/src/index.ts:98, platforms/evoting/api/src/index.ts:193",
+        "platforms/blabsy/client/src/components/user/user-edit-profile.tsx:123 updateUserData (synced out by blabsy api user.mapping.json)",
+        "infrastructure/eid-wallet/src/lib/global/controllers/evault.ts:14 and infrastructure/dev-sandbox/src/lib/userProfile.ts:19 create it at provisioning",
+        "platforms/profile-editor/api/src/aaas.ts:71 getProfileEnvelopes reads it back through Awareness-as-a-Service"
+      ],
+      "docs": []
+    },
+    {
+      "path": "services/ontology/schemas/professionalProfile.json",
+      "kind": "shared-component",
+      "title": "Professional profile record",
+      "one_line": "CV-style profile (headline, experience, education, skills, CV and video file ids) beside the User record.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": ["platforms/profile-editor", "platforms/dreamsync"],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "schemaId 550e8400-e29b-41d4-a716-446655440009",
+        "platforms/profile-editor/api/src/ontology.ts:9 PROFESSIONAL_PROFILE_ONTOLOGY",
+        "platforms/dreamsync/api/src/web3adapter/mappings/professional-profile.mapping.json:3",
+        "platforms/dreamsync/client/client/src/components/professional-profile-editor.tsx:30 a second professional-profile editor"
+      ],
+      "docs": []
+    },
+    {
+      "path": "services/ontology/schemas/chat.json",
+      "kind": "shared-component",
+      "title": "Group / chat record",
+      "one_line": "A group or chat with its participants; the record nine platforms map their `groups` table to.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": [
+        "platforms/blabsy",
+        "platforms/pictique",
+        "platforms/cerberus",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/ereputation",
+        "platforms/esigner",
+        "platforms/evoting",
+        "platforms/file-manager",
+        "platforms/group-charter-manager"
+      ],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "blabsy chat.mapping.json, pictique chat.mapping.json, and group.mapping.json in cerberus, dreamsync, ecurrency, ereputation, esigner, evoting, file-manager, group-charter-manager all name chat.json"
+      ],
+      "docs": []
+    },
+    {
+      "path": "services/ontology/schemas/message.json",
+      "kind": "shared-component",
+      "title": "Message record",
+      "one_line": "A chat/group message; every adapter-backed platform maps a messages table to it (platforms post system messages into shared groups).",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": [
+        "platforms/blabsy",
+        "platforms/pictique",
+        "platforms/cerberus",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/ereputation",
+        "platforms/esigner",
+        "platforms/evoting",
+        "platforms/file-manager",
+        "platforms/group-charter-manager"
+      ],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "message.mapping.json in all ten adapter platforms (platforms/*/api/src/web3adapter/mappings/message.mapping.json; cerberus under client/)",
+        "byte-identical MessageService in ecurrency, esigner, file-manager (api/src/services/MessageService.ts)"
+      ],
+      "docs": []
+    },
+    {
+      "path": "services/ontology/schemas/socialMediaPost.json",
+      "kind": "shared-component",
+      "title": "Social media post record",
+      "one_line": "A post or comment; Blabsy tweets and Pictique posts and comments are the same record.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": ["platforms/blabsy", "platforms/pictique"],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "platforms/blabsy/api/src/web3adapter/mappings/social-media-post.mapping.json (table tweet)",
+        "platforms/pictique/api/src/web3adapter/mappings/post.mapping.json, comment.mapping.json"
+      ],
+      "docs": []
+    },
+    {
+      "path": "services/ontology/schemas/file.json",
+      "kind": "shared-component",
+      "title": "File record",
+      "one_line": "A stored file; File Manager and eSigner map the same files table to it, and w3ds://file URIs resolve to it.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": ["platforms/file-manager", "platforms/esigner"],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "platforms/file-manager/api/src/web3adapter/mappings/file.mapping.json",
+        "platforms/esigner/api/src/web3adapter/mappings/file.mapping.json"
+      ],
+      "docs": []
+    },
+    {
+      "path": "services/ontology/schemas/fileSignature.json",
+      "kind": "shared-component",
+      "title": "File signature container record",
+      "one_line": "Signatures over a file, shared by File Manager and eSigner.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": ["platforms/file-manager", "platforms/esigner"],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "platforms/file-manager/api/src/web3adapter/mappings/signature.mapping.json",
+        "platforms/esigner/api/src/web3adapter/mappings/signature.mapping.json"
+      ],
+      "docs": []
+    },
+    {
+      "path": "services/ontology/schemas/charterSignature.json",
+      "kind": "shared-component",
+      "title": "Charter signature record",
+      "one_line": "A member's signature on a group charter, written by Group Charter Manager and read by Cerberus.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": ["platforms/group-charter-manager", "platforms/cerberus"],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "platforms/group-charter-manager/api/src/web3adapter/mappings/charter_signature.mapping.json",
+        "platforms/cerberus/client/src/web3adapter/mappings/charter_signature.mapping.json"
+      ],
+      "docs": []
+    },
+    {
+      "path": "services/ontology/schemas/poll.json",
+      "kind": "shared-component",
+      "title": "Poll record",
+      "one_line": "A poll; eVoting runs it and eReputation reads it for voting reputation.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": ["platforms/evoting", "platforms/ereputation"],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "platforms/evoting/api/src/web3adapter/mappings/poll.mapping.json",
+        "platforms/ereputation/api/src/web3adapter/mappings/poll.mapping.json"
+      ],
+      "docs": []
+    },
+    {
+      "path": "services/ontology/schemas/bookmark.json",
+      "kind": "shared-component",
+      "title": "Bookmark schema (used as voting observation / vote)",
+      "one_line": "Cerberus voting observations and eReputation votes both map to the schemaId of bookmark.json — a reuse the names do not suggest; unknown whether intended.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": ["platforms/cerberus", "platforms/ereputation"],
+      "depends_on": ["services/ontology"],
+      "evidence": [
+        "platforms/cerberus/client/src/web3adapter/mappings/voting_observation.mapping.json",
+        "platforms/ereputation/api/src/web3adapter/mappings/vote.mapping.json (both carry bookmark.json schemaId)"
+      ],
+      "docs": []
+    },
+    {
+      "path": "ontology:reference",
+      "kind": "shared-component",
+      "title": "Reference record (schemaId 550e8400-…-0010)",
+      "one_line": "A signed reference about a person or platform; Cerberus writes them, eReputation owns them, marketplace, PPA and the control panel read them. No schema file in services/ontology/schemas carries this id.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": [
+        "platforms/cerberus",
+        "platforms/ereputation",
+        "platforms/marketplace",
+        "services/ppa",
+        "services/pp-auth-demo",
+        "infrastructure/control-panel"
+      ],
+      "depends_on": ["platforms/ereputation"],
+      "evidence": [
+        "platforms/cerberus/client/src/web3adapter/mappings/reference.mapping.json",
+        "platforms/ereputation/api/src/web3adapter/mappings/reference.mapping.json",
+        "platforms/cerberus/client/src/services/ReferenceWriterService.ts:20",
+        "platforms/marketplace/client/server/routes.ts:33 /api/references/target/platform",
+        "services/ppa/src/lib/server/reputation.ts:9"
+      ],
+      "docs": []
+    },
+    {
+      "path": "ontology:wishlist",
+      "kind": "shared-component",
+      "title": "Wishlist record (schemaId 770e8400-…-0000)",
+      "one_line": "DreamSync wishes, also read by eReputation. No schema file in services/ontology/schemas carries this id.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": ["platforms/dreamsync", "platforms/ereputation"],
+      "depends_on": [],
+      "evidence": [
+        "platforms/dreamsync/api/src/web3adapter/mappings/wishlist.mapping.json",
+        "platforms/ereputation/api/src/web3adapter/mappings/wishlist.mapping.json",
+        "platforms/ereputation/api/src/index.ts:99 /api/users/me/wishlist"
+      ],
+      "docs": []
+    },
+    {
+      "path": "ontology:vote-reputation-result",
+      "kind": "shared-component",
+      "title": "Vote reputation result record (schemaId 660e8400-…-0102)",
+      "one_line": "Reputation-weighted vote results shared by eVoting and eReputation. No schema file carries this id.",
+      "owner": "shared",
+      "layer": "protocol",
+      "used_by": ["platforms/evoting", "platforms/ereputation"],
+      "depends_on": [],
+      "evidence": [
+        "platforms/evoting/api/src/web3adapter/mappings/vote-reputation-result.mapping.json",
+        "platforms/ereputation/api/src/web3adapter/mappings/vote-reputation-result.mapping.json"
+      ],
+      "docs": []
+    },
+    {
+      "path": "pattern:platform-scaffold",
+      "kind": "shared-component",
+      "title": "Post-platform scaffold (copied per platform, not a package)",
+      "one_line": "The AuthController (w3ds://auth + signature-validator + JWT), WebhookController (awareness packet → local row, ANCHR forward), web3adapter watcher/subscriber, PlatformEVaultService and MaintenanceBanner that each platform carries its own diverged copy of.",
+      "owner": "shared",
+      "layer": "platforms",
+      "used_by": [
+        "platforms/blabsy",
+        "platforms/calendar",
+        "platforms/cerberus",
+        "platforms/dreamsync",
+        "platforms/ecurrency",
+        "platforms/emover",
+        "platforms/ereputation",
+        "platforms/esigner",
+        "platforms/evoting",
+        "platforms/file-manager",
+        "platforms/group-charter-manager",
+        "platforms/pictique"
+      ],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry"
+      ],
+      "evidence": [
+        "controllers/AuthController.ts in 12 platforms, all with different md5 (e.g. platforms/blabsy/api/src/controllers/AuthController.ts, platforms/emover/api/src/controllers/AuthController.ts)",
+        "controllers/WebhookController.ts in 10 platforms, each posting to ANCHR_URL (platforms/blabsy/api/src/controllers/WebhookController.ts:93, platforms/pictique/api/src/controllers/WebhookController.ts:33)",
+        "web3adapter/watchers/subscriber.ts in 9 platforms, 356-660 lines, all diverged",
+        "services/PlatformEVaultService.ts in cerberus, dreamsync, ecurrency, esigner, file-manager (329-330 lines, all diverged)",
+        "MaintenanceBanner in blabsy (common/maintenance-banner.tsx), evoting, group-charter-manager, pictique reads registry status (platforms/evoting/client/src/components/MaintenanceBanner.tsx:20)",
+        "byte-identical api/src/utils/version.ts in blabsy, dreamsync, esigner, evoting, group-charter-manager, pictique"
+      ],
+      "docs": [
+        "docs/docs/Post Platform Guide/getting-started.md",
+        "docs/docs/Post Platform Guide/webhook-controller.md",
+        "docs/docs/Post Platform Guide/platform-evault-registration.md"
+      ]
+    },
+    {
+      "path": "pattern:shadcn-kit",
+      "kind": "shared-component",
+      "title": "Copied shadcn/React UI kit",
+      "one_line": "The same shadcn components copied byte-for-byte into the React clients of DreamSync, eReputation, Marketplace (and partly Calendar, Group Charter Manager, eVoting) instead of living in a package.",
+      "owner": "shared",
+      "layer": "platforms",
+      "used_by": [
+        "platforms/dreamsync",
+        "platforms/ereputation",
+        "platforms/marketplace",
+        "platforms/calendar",
+        "platforms/group-charter-manager",
+        "platforms/evoting"
+      ],
+      "depends_on": [],
+      "evidence": [
+        "client/client/src/components/ui/*.tsx byte-identical in dreamsync, ereputation, marketplace (~40 files, e.g. button.tsx, dialog.tsx, sidebar.tsx)",
+        "card.tsx, form.tsx, sheet.tsx also identical in group-charter-manager; client/components/ui/avatar.tsx identical in calendar",
+        "client/hooks/use-mobile.tsx identical in 6 platforms incl. evoting"
+      ],
+      "docs": []
+    },
+    {
+      "path": "platforms/blabsy",
+      "kind": "platform",
+      "title": "Blabsy",
+      "one_line": "Twitter-like social platform (Next.js + Firebase client, W3DS auth/webhook API).",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": [
+        "infrastructure/eid-wallet",
+        "platforms/dreamsync",
+        "packages/w3ds-gateway"
+      ],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/ontology",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold",
+        "services/ontology/schemas/socialMediaPost.json"
+      ],
+      "evidence": [
+        "platforms/blabsy/api/package.json depends on signature-validator, web3-adapter",
+        "platforms/blabsy/api/src/controllers/WebhookController.ts:2",
+        "platforms/blabsy/client/src/components/user/user-edit-profile.tsx:123 edits the profile",
+        "infrastructure/eid-wallet/src/routes/(public)/open-message/[globalId]/+page.svelte:60",
+        "platforms/dreamsync/api/src/services/MatchNotificationService.ts:468 links matches to Blabsy profiles",
+        "docker/Dockerfile.blabsy, docker/Dockerfile.blabsy-w3ds-auth-api"
+      ],
+      "docs": ["platforms/blabsy/client/README.md"]
+    },
+    {
+      "path": "platforms/pictique",
+      "kind": "platform",
+      "title": "Pictique",
+      "one_line": "Instagram-like social platform (SvelteKit client, Express API) with posts, comments, chats and profiles.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": [
+        "infrastructure/eid-wallet",
+        "platforms/dreamsync",
+        "packages/w3ds-gateway"
+      ],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/ontology",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold",
+        "services/ontology/schemas/socialMediaPost.json"
+      ],
+      "evidence": [
+        "platforms/pictique/api/package.json depends on signature-validator, web3-adapter",
+        "platforms/pictique/api/src/index.ts:153 PATCH /api/users updateProfile",
+        "infrastructure/eid-wallet/src/routes/(public)/open-message/[globalId]/+page.svelte:48",
+        "platforms/dreamsync/api/src/services/MatchNotificationService.ts:472",
+        "docker/Dockerfile.pictique, docker/Dockerfile.pictique-api"
+      ],
+      "docs": ["platforms/pictique/client/README.md"]
+    },
+    {
+      "path": "platforms/profile-editor",
+      "kind": "platform",
+      "title": "Profile Editor",
+      "one_line": "Standalone platform for editing a person's User and Professional Profile records in their eVault and discovering other public profiles. Nothing imports, embeds or links to it; what is shared is the profile record it edits, which ten other platforms also read and write.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": ["infrastructure/eid-wallet"],
+      "depends_on": [
+        "packages/auth",
+        "packages/ui",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/awareness-service",
+        "platforms/file-manager",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/professionalProfile.json"
+      ],
+      "evidence": [
+        "platforms/profile-editor/api/package.json depends on @metastate-foundation/auth, web3-adapter; client/package.json on @metastate-foundation/ui",
+        "platforms/profile-editor/api/src/controllers/auth.ts:6 imports @metastate-foundation/auth (the only platform that does)",
+        "platforms/profile-editor/api/src/evault.ts:1,12 EVaultClient(registryUrl)",
+        "platforms/profile-editor/api/src/env.ts:29 AWARENESS_SERVICE_URL; api/src/aaas.ts:71 getProfileEnvelopes",
+        "platforms/profile-editor/client/src/lib/utils/file-manager.ts:29 uploads CV/video through File Manager; api/src/env.ts:38-41 FILE_MANAGER JWT",
+        "platforms/profile-editor/api/src/ontology.ts:8-9 User + ProfessionalProfile ontologies",
+        "no reference to platforms/profile-editor from any other platform (git grep profile-editor outside the folder: only .env.example:115, platform-icons, eid-wallet PlatformAppCard.svelte:46, marketplace apps.json:76)",
+        "not in registry GET /platforms (platforms/registry/api/src/index.ts:278-292) nor in w3ds-gateway capabilities (packages/w3ds-gateway/src/capabilities.ts:35 lists only pictique, blabsy for User)"
+      ],
+      "docs": []
+    },
+    {
+      "path": "platforms/file-manager",
+      "kind": "platform",
+      "title": "File Manager",
+      "one_line": "Drive-like platform for files, folders, tags and signatures; also the file store Profile Editor uploads CVs and videos into.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": ["platforms/profile-editor", "packages/w3ds-gateway"],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/ontology",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold",
+        "services/ontology/schemas/file.json",
+        "services/ontology/schemas/fileSignature.json"
+      ],
+      "evidence": [
+        "platforms/profile-editor/client/src/lib/utils/file-manager.ts:4,29",
+        "platforms/file-manager/api/package.json depends on signature-validator, web3-adapter",
+        "platforms/file-manager/api/src/web3adapter/mappings/file.mapping.json"
+      ],
+      "docs": []
+    },
+    {
+      "path": "platforms/esigner",
+      "kind": "platform",
+      "title": "eSigner",
+      "one_line": "Document-signing platform; a fork of File Manager sharing its File and signature-container records.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": ["packages/w3ds-gateway"],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/ontology",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold",
+        "services/ontology/schemas/file.json",
+        "services/ontology/schemas/fileSignature.json"
+      ],
+      "evidence": [
+        "byte-identical with file-manager: api/src/controllers/UserController.ts, api/src/services/S3Service.ts, client/src/routes/+layout.svelte, client/src/lib/stores/toast.ts",
+        "platforms/esigner/api/src/services/SignatureService.ts:9 imports signature-validator"
+      ],
+      "docs": []
+    },
+    {
+      "path": "platforms/group-charter-manager",
+      "kind": "platform",
+      "title": "Group Charter Manager",
+      "one_line": "Platform where a group writes and signs its charter; its charters are read by Cerberus and eVoting.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": [
+        "platforms/cerberus",
+        "platforms/evoting",
+        "packages/w3ds-gateway"
+      ],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/ontology",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold",
+        "services/ontology/schemas/charterSignature.json"
+      ],
+      "evidence": [
+        "platforms/cerberus/client/src/services/CharterSignatureService.ts:199 PUBLIC_GROUP_CHARTER_BASE_URL",
+        "platforms/evoting/api/src/web3adapter/watchers/subscriber.ts:19 evoting's adapter declares platform = PUBLIC_GROUP_CHARTER_BASE_URL (likely a copy error: its writes are attributed to Group Charter Manager)",
+        "platforms/group-charter-manager/api/src/controllers/GroupController.ts:4 imports web3-adapter"
+      ],
+      "docs": ["platforms/group-charter-manager/client/README.md"]
+    },
+    {
+      "path": "platforms/cerberus",
+      "kind": "platform",
+      "title": "Cerberus",
+      "one_line": "Headless bot platform (no UI despite the client/ folder) that watches group chats, enforces charters with an LLM and writes references to eReputation.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": [],
+      "depends_on": [
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "platforms/group-charter-manager",
+        "platforms/ereputation",
+        "services/ontology/schemas/charterSignature.json",
+        "ontology:reference",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold"
+      ],
+      "evidence": [
+        "platforms/cerberus/client/package.json start = ts-node src/index.ts, depends only on web3-adapter",
+        "platforms/cerberus/client/src/services/OpenAIService.ts",
+        "platforms/cerberus/client/src/services/ReferenceWriterService.ts:20 PUBLIC_EREPUTATION_BASE_URL",
+        "platforms/cerberus/client/src/services/CharterSignatureService.ts:199",
+        "platforms/cerberus/client/src/services/PlatformEVaultService.ts:90-97 registry and provisioner"
+      ],
+      "docs": ["docs/docs/Post Platform Guide/platform-evault-registration.md"]
+    },
+    {
+      "path": "platforms/evoting",
+      "kind": "platform",
+      "title": "eVoting",
+      "one_line": "Voting platform for groups, with blind (Pedersen) ballots and charter-aware polls.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": ["infrastructure/eid-wallet", "packages/w3ds-gateway"],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/ontology",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold",
+        "infrastructure/blindvote",
+        "platforms/group-charter-manager",
+        "services/ontology/schemas/poll.json",
+        "ontology:vote-reputation-result"
+      ],
+      "evidence": [
+        "platforms/evoting/api/src/services/VoteService.ts:9 imports blindvote",
+        "platforms/evoting/api/src/web3adapter/watchers/subscriber.ts:19",
+        "infrastructure/eid-wallet/vite.config.js:48 NEXT_PUBLIC_EVOTING_BASE_URL"
+      ],
+      "docs": [
+        "platforms/evoting/client/README.md",
+        "platforms/evoting/api/scripts/README.md"
+      ]
+    },
+    {
+      "path": "platforms/ereputation",
+      "kind": "platform",
+      "title": "eReputation",
+      "one_line": "Reputation platform: signed references about people and platforms, voting reputation; the reference source Cerberus, Marketplace, PPA and the control panel read.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": [
+        "platforms/cerberus",
+        "platforms/marketplace",
+        "services/ppa",
+        "services/pp-auth-demo",
+        "infrastructure/control-panel",
+        "packages/w3ds-gateway"
+      ],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/ontology",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold",
+        "ontology:reference",
+        "services/ontology/schemas/poll.json",
+        "ontology:wishlist",
+        "ontology:vote-reputation-result"
+      ],
+      "evidence": [
+        "platforms/cerberus/client/src/services/ReferenceWriterService.ts:20",
+        "platforms/marketplace/client/server/routes.ts:5,33",
+        "services/ppa/src/lib/server/env.ts:45",
+        "services/pp-auth-demo/src/lib/server/env.ts:45",
+        "infrastructure/control-panel/src/routes/api/references/+server.ts:3"
+      ],
+      "docs": ["platforms/ereputation/client/README.md"]
+    },
+    {
+      "path": "platforms/dreamsync",
+      "kind": "platform",
+      "title": "DreamSync",
+      "one_line": "Matchmaking platform: wishlists and professional profiles matched by AI, with match notifications that link to Blabsy and Pictique.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": ["infrastructure/control-panel", "packages/w3ds-gateway"],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/ontology",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold",
+        "platforms/blabsy",
+        "platforms/pictique",
+        "services/ontology/schemas/professionalProfile.json",
+        "ontology:wishlist"
+      ],
+      "evidence": [
+        "platforms/dreamsync/api/src/services/MatchNotificationService.ts:468,472",
+        "platforms/dreamsync/api/src/services/AIMatchingService.ts",
+        "infrastructure/control-panel/src/routes/actions/+page.svelte:7"
+      ],
+      "docs": ["platforms/dreamsync/api/README.md"]
+    },
+    {
+      "path": "platforms/ecurrency",
+      "kind": "platform",
+      "title": "eCurrency",
+      "one_line": "Group currencies, accounts and ledgers stored as MetaEnvelopes; the worked example in the Post Platform Guide.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": ["packages/w3ds-gateway"],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/web3-adapter",
+        "platforms/registry",
+        "services/ontology",
+        "services/ontology/schemas/user.json",
+        "services/ontology/schemas/chat.json",
+        "services/ontology/schemas/message.json",
+        "pattern:platform-scaffold"
+      ],
+      "evidence": [
+        "platforms/ecurrency/api/src/web3adapter/mappings/currency.mapping.json, ledger.mapping.json",
+        "docs/docs/Post Platform Guide/getting-started.md Covers platforms/ecurrency/api/src/utils/jwt.ts"
+      ],
+      "docs": ["docs/docs/Post Platform Guide/ecurrency-accounts-and-ledger.md"]
+    },
+    {
+      "path": "platforms/emover",
+      "kind": "platform",
+      "title": "eMover",
+      "one_line": "Platform that migrates a person's eVault to another provider; eVault core trusts it to skip webhooks during migration.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": ["infrastructure/evault-core", "packages/w3ds-gateway"],
+      "depends_on": [
+        "infrastructure/evault-core",
+        "platforms/registry",
+        "infrastructure/signature-validator",
+        "pattern:platform-scaffold"
+      ],
+      "evidence": [
+        "infrastructure/evault-core/src/core/protocol/graphql-server.ts:821",
+        "platforms/emover/api/src/services/MigrationService.ts:16,18",
+        "platforms/emover/api/src/controllers/EvaultInfoController.ts:53 PROVISIONER_URL",
+        "platforms/emover/api/package.json declares no workspace dependency (no web3-adapter)"
+      ],
+      "docs": [
+        "platforms/emover/api/README.md",
+        "platforms/emover/client/README.md"
+      ]
+    },
+    {
+      "path": "platforms/calendar",
+      "kind": "platform",
+      "title": "Calendar",
+      "one_line": "Calendar platform whose events live in the eVault, written through GraphQL directly rather than through the web3-adapter.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": [],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "infrastructure/evault-core",
+        "platforms/registry",
+        "pattern:platform-scaffold"
+      ],
+      "evidence": [
+        "platforms/calendar/api/package.json depends only on signature-validator",
+        "platforms/calendar/api/src/services/EVaultService.ts:85",
+        "absent from registry /platforms, w3ds-gateway, platform-icons and README port list"
+      ],
+      "docs": ["platforms/calendar/client/README.md"]
+    },
+    {
+      "path": "platforms/enotary",
+      "kind": "platform",
+      "title": "eNotary",
+      "one_line": "Notary platform that witnesses identities and issues recovery codes the wallet accepts for eVault recovery.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": ["infrastructure/eid-wallet"],
+      "depends_on": [
+        "packages/types",
+        "infrastructure/signature-validator",
+        "platforms/registry"
+      ],
+      "evidence": [
+        "platforms/enotary/package.json depends on @metastate-foundation/types, signature-validator",
+        "platforms/enotary/src/lib/server/witness.ts:3-4",
+        "platforms/enotary/src/routes/api/recovery/issue/+server.ts:17",
+        "platforms/registry/api/src/index.ts:296 notary whitelist"
+      ],
+      "docs": []
+    },
+    {
+      "path": "platforms/marketplace",
+      "kind": "platform",
+      "title": "Marketplace",
+      "one_line": "App catalogue of W3DS platforms, linked from the wallet, showing eReputation references and AaaS data.",
+      "owner": "platforms",
+      "layer": "platforms",
+      "used_by": ["infrastructure/eid-wallet"],
+      "depends_on": [
+        "platforms/ereputation",
+        "services/awareness-service",
+        "ontology:reference",
+        "pattern:shadcn-kit"
+      ],
+      "evidence": [
+        "infrastructure/eid-wallet/src/lib/utils/marketplaceApps.ts:17",
+        "platforms/marketplace/client/server/routes.ts:5",
+        "platforms/marketplace/client/server/aaas.ts:18-27",
+        "platforms/marketplace/client/client/src/data/apps.json:76 lists Profile Editor as an app",
+        "README.md lists \"5001 Marketplace Service\" though the folder holds only client/"
+      ],
+      "docs": ["platforms/marketplace/client/README.md"]
+    },
+    {
+      "path": "services/awareness-service",
+      "kind": "service",
+      "title": "Awareness as a Service (AaaS)",
+      "one_line": "Single fan-out point for eVault awareness packets: ingests from eVault core, stores, gates and delivers to platforms; portal issues API keys.",
+      "owner": "services",
+      "layer": "services",
+      "used_by": [
+        "infrastructure/evault-core",
+        "platforms/marketplace",
+        "platforms/profile-editor",
+        "services/ppa",
+        "services/pp-auth-demo"
+      ],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "platforms/registry",
+        "services/ontology"
+      ],
+      "evidence": [
+        "infrastructure/evault-core/src/core/awareness/awareness-outbox-dispatcher.ts:205",
+        "platforms/marketplace/client/server/aaas.ts:18",
+        "platforms/profile-editor/api/src/env.ts:29",
+        "services/ppa/src/lib/server/env.ts:49",
+        "services/pp-auth-demo/src/lib/server/env.ts:33",
+        "services/awareness-service/api/src/services/W3dsAuthService.ts:3",
+        "services/awareness-service/api/src/config.ts:36"
+      ],
+      "docs": [
+        "services/awareness-service/README.md",
+        "docs/docs/Services/Awareness-as-a-Service.md"
+      ]
+    },
+    {
+      "path": "services/ppa",
+      "kind": "service",
+      "title": "Post Platforms Association (PPA)",
+      "one_line": "Reviewers vet platform releases and issue signed L1–L5 access decisions (certification).",
+      "owner": "services",
+      "layer": "services",
+      "used_by": ["packages/auth", "services/pp-auth-demo"],
+      "depends_on": [
+        "infrastructure/signature-validator",
+        "platforms/registry",
+        "services/ontology",
+        "services/awareness-service",
+        "platforms/ereputation"
+      ],
+      "evidence": [
+        "services/ppa/package.json depends on signature-validator",
+        "services/ppa/src/lib/server/env.ts:25-95",
+        "services/ppa/src/lib/server/reputation.ts:9",
+        "packages/auth/src/platform/chain.ts:148 verifies the PPA chain"
+      ],
+      "docs": ["services/ppa/README.md"]
+    },
+    {
+      "path": "services/pp-auth-demo",
+      "kind": "service",
+      "title": "PP Auth demonstrator",
+      "one_line": "Demo of platform authentication (PP Auth) and domain separation built on @metastate-foundation/auth.",
+      "owner": "services",
+      "layer": "services",
+      "used_by": [],
+      "depends_on": [
+        "packages/auth",
+        "infrastructure/signature-validator",
+        "platforms/registry",
+        "services/ontology",
+        "services/awareness-service",
+        "platforms/ereputation",
+        "services/ppa"
+      ],
+      "evidence": [
+        "services/pp-auth-demo/src/lib/ChainTrace.svelte:2 imports @metastate-foundation/auth",
+        "services/pp-auth-demo/src/lib/server/env.ts:23-45"
+      ],
+      "docs": ["docs/docs/Post Platform Guide/pp-auth-demonstrator.md"]
+    },
+    {
+      "path": "services/w3ds-oidc-connector",
+      "kind": "service",
+      "title": "W3DS OIDC Connector",
+      "one_line": "OpenID Connect provider whose login step is a W3DS wallet signature, so any OIDC IdP can offer Log in with W3DS.",
+      "owner": "services",
+      "layer": "services",
+      "used_by": [],
+      "depends_on": ["packages/auth", "platforms/registry"],
+      "evidence": [
+        "services/w3ds-oidc-connector/src/app.ts:4 imports @metastate-foundation/auth/ename",
+        "services/w3ds-oidc-connector/src/config.ts:74 REGISTRY_URL",
+        "docker/Dockerfile.w3ds-oidc-connector"
+      ],
+      "docs": [
+        "docs/docs/Services/OIDC-Connector.md",
+        "docs/docs/Services/OIDC-Developer-Portal.md",
+        "docs/docs/Services/OIDC-Provider-Guides.md"
+      ]
+    },
+    {
+      "path": "services/search-engine",
+      "kind": "service",
+      "title": "Search engine",
+      "one_line": "Searches cached registry entries and user profiles.",
+      "owner": "services",
+      "layer": "services",
+      "used_by": [],
+      "depends_on": ["platforms/registry", "infrastructure/evault-core"],
+      "evidence": [
+        "services/search-engine/src/index.js:14-15 REGISTRY_URL, EVAULT_BASE_URL"
+      ],
+      "docs": [
+        "services/search-engine/README.md",
+        "services/search-engine/examples.md"
+      ]
+    },
+    {
+      "path": "services/trust-score",
+      "kind": "service",
+      "title": "Trust score",
+      "one_line": "Deterministic 0–10 trust score per eName.",
+      "owner": "services",
+      "layer": "services",
+      "used_by": [],
+      "depends_on": ["platforms/registry"],
+      "evidence": [
+        "services/trust-score/src/userDataService.js:17-19 REGISTRY_URL"
+      ],
+      "docs": ["services/trust-score/README.md"]
+    },
+    {
+      "path": "services/webhook-inlet-test",
+      "kind": "tooling",
+      "title": "Webhook inlet (test)",
+      "one_line": "Tiny Express server that logs every webhook it receives.",
+      "owner": "services",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [],
+      "evidence": [
+        "services/webhook-inlet-test/index.js:9 app.all logs and 200s everything"
+      ],
+      "docs": []
+    },
+    {
+      "path": "notification-trigger",
+      "kind": "service",
+      "title": "Notification trigger",
+      "one_line": "Push-notification sender (APNS/FCM). Its README calls it a toy kept for testing, but eVault core and the control panel call it to deliver real pushes.",
+      "owner": "root",
+      "layer": "services",
+      "used_by": ["infrastructure/evault-core", "infrastructure/control-panel"],
+      "depends_on": [],
+      "evidence": [
+        "infrastructure/evault-core/src/services/NotificationService.ts:133-134",
+        "infrastructure/control-panel/src/lib/services/notificationService.ts:2",
+        "notification-trigger/README.md:3-5 \"toy platform … kept for testing\""
+      ],
+      "docs": ["notification-trigger/README.md"]
+    },
+    {
+      "path": "packages/auth",
+      "kind": "shared-component",
+      "title": "@metastate-foundation/auth",
+      "one_line": "Platform-authentication library: login verification, PP Auth release chains, delegated (company) signatures, eName normalisation. Described as shared by platform APIs but only Profile Editor among platforms uses it.",
+      "owner": "shared",
+      "layer": "packages",
+      "used_by": [
+        "platforms/profile-editor",
+        "services/pp-auth-demo",
+        "services/w3ds-oidc-connector",
+        "examples/company-delegation-demo"
+      ],
+      "depends_on": [
+        "packages/delegation",
+        "infrastructure/signature-validator",
+        "services/ppa"
+      ],
+      "evidence": [
+        "packages/auth/package.json description \"Shared authentication utilities for w3ds platform APIs\"; depends on delegation, signature-validator",
+        "platforms/profile-editor/api/src/controllers/auth.ts:6",
+        "services/pp-auth-demo/src/lib/ChainTrace.svelte:2",
+        "services/w3ds-oidc-connector/src/app.ts:4",
+        "examples/company-delegation-demo/src/demo.ts:12",
+        "packages/auth/src/delegated-signature.ts:17 imports delegation"
+      ],
+      "docs": [
+        "docs/docs/Post Platform Guide/pp-auth.md",
+        "docs/docs/W3DS Protocol/Platform-Authentication.md"
+      ]
+    },
+    {
+      "path": "packages/delegation",
+      "kind": "package",
+      "title": "@metastate-foundation/delegation",
+      "one_line": "Company signing delegation: scopes, signed payload formats and chain evaluation.",
+      "owner": "packages",
+      "layer": "protocol",
+      "used_by": ["packages/auth", "examples/company-delegation-demo"],
+      "depends_on": [],
+      "evidence": [
+        "packages/auth/src/delegated-signature.ts:17",
+        "examples/company-delegation-demo/src/demo.ts:20"
+      ],
+      "docs": [
+        "docs/docs/W3DS Protocol/Company-Delegation.md",
+        "docs/docs/Post Platform Guide/signing-for-a-company.md",
+        "skills/w3ds/reference/company-delegation.md"
+      ]
+    },
+    {
+      "path": "packages/types",
+      "kind": "package",
+      "title": "@metastate-foundation/types",
+      "one_line": "Shared W3DS types for binding documents and related structures.",
+      "owner": "packages",
+      "layer": "packages",
+      "used_by": ["infrastructure/control-panel", "platforms/enotary"],
+      "depends_on": [],
+      "evidence": [
+        "infrastructure/control-panel/src/lib/server/evault.ts:3",
+        "platforms/enotary/src/lib/server/evault.ts:5"
+      ],
+      "docs": []
+    },
+    {
+      "path": "packages/wallet-sdk",
+      "kind": "package",
+      "title": "wallet-sdk",
+      "one_line": "Bring-your-own-crypto SDK for provisioning, authentication and public-key sync; the wallet logic the eID wallet and dev sandbox share.",
+      "owner": "packages",
+      "layer": "packages",
+      "used_by": [
+        "infrastructure/eid-wallet",
+        "infrastructure/dev-sandbox",
+        "examples/company-delegation-demo"
+      ],
+      "depends_on": ["infrastructure/evault-core", "platforms/registry"],
+      "evidence": [
+        "infrastructure/eid-wallet/src/lib/global/controllers/evault.ts:9",
+        "infrastructure/dev-sandbox/src/lib/WebCryptoAdapter.ts:1",
+        "examples/company-delegation-demo/src/wallet.ts:1",
+        "packages/wallet-sdk/src/__tests__/provision.test.ts:23 calls /provision"
+      ],
+      "docs": ["docs/docs/Infrastructure/wallet-sdk.md"]
+    },
+    {
+      "path": "packages/ui",
+      "kind": "package",
+      "title": "@metastate-foundation/ui",
+      "one_line": "Svelte component library. Despite the generic name only Profile Editor uses it; the React platforms carry copied shadcn kits instead.",
+      "owner": "packages",
+      "layer": "packages",
+      "used_by": ["platforms/profile-editor"],
+      "depends_on": [],
+      "evidence": [
+        "platforms/profile-editor/client/package.json depends on @metastate-foundation/ui; 65 imports e.g. client/src/lib/components/layout/Header.svelte:4",
+        "packages/ui/src/lib/index.ts:11 comment \"used by profile-editor\""
+      ],
+      "docs": []
+    },
+    {
+      "path": "packages/platform-icons",
+      "kind": "package",
+      "title": "@metastate-foundation/platform-icons",
+      "one_line": "Brand icons keyed by platform subdomain (KNOWN_PLATFORM_ICONS); consumed only by the eID wallet.",
+      "owner": "packages",
+      "layer": "packages",
+      "used_by": ["infrastructure/eid-wallet"],
+      "depends_on": [],
+      "evidence": [
+        "packages/platform-icons/src/index.ts:10-24",
+        "infrastructure/eid-wallet/src/lib/ui/PlatformAppCard/PlatformAppCard.svelte:3"
+      ],
+      "docs": []
+    },
+    {
+      "path": "packages/w3ds-gateway",
+      "kind": "package",
+      "title": "w3ds-gateway",
+      "one_line": "Resolves an eName + schemaId to the platforms that can open it and shows an 'Open with…' chooser. No workspace package imports it (only test.html at the root).",
+      "owner": "packages",
+      "layer": "packages",
+      "used_by": [],
+      "depends_on": ["platforms/registry"],
+      "evidence": [
+        "packages/w3ds-gateway/src/capabilities.ts:11-21 platform URLs; :35-289 schema → platform table",
+        "test.html:35 the only consumer",
+        "packages/w3ds-gateway/package.json name has no @metastate-foundation scope"
+      ],
+      "docs": ["packages/w3ds-gateway/README.md"]
+    },
+    {
+      "path": "packages/eslint-config",
+      "kind": "tooling",
+      "title": "@repo/eslint-config",
+      "one_line": "Turborepo ESLint presets; no package depends on it.",
+      "owner": "packages",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [],
+      "evidence": [
+        "git grep \"@repo/eslint-config\" finds only its own package.json"
+      ],
+      "docs": ["packages/eslint-config/README.md"]
+    },
+    {
+      "path": "packages/typescript-config",
+      "kind": "tooling",
+      "title": "@repo/typescript-config",
+      "one_line": "Turborepo tsconfig presets; no package depends on it.",
+      "owner": "packages",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [],
+      "evidence": [
+        "git grep \"@repo/typescript-config\" finds only its own package.json"
+      ],
+      "docs": []
+    },
+    {
+      "path": "docker",
+      "kind": "tooling",
+      "title": "Dockerfiles",
+      "one_line": "Dockerfiles for the eight services that ship containers (blabsy, blabsy api, dev-sandbox, evault-core, pictique, pictique api, registry, oidc connector).",
+      "owner": "root",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [],
+      "evidence": ["docker/Dockerfile.*"],
+      "docs": ["README.md"]
+    },
+    {
+      "path": "docker-compose.databases.yml",
+      "kind": "tooling",
+      "title": "Database compose",
+      "one_line": "Postgres + Neo4j for local development; the only compose file in the repo (the profiles README describes are not present).",
+      "owner": "root",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [],
+      "evidence": [
+        "git ls-files finds no other docker-compose file",
+        "README.md \"Docker Compose Profiles\" socials/charter-blabsy/all"
+      ],
+      "docs": [
+        "README.md",
+        "docs/docs/Post Platform Guide/local-dev-quick-start.md"
+      ]
+    },
+    {
+      "path": "examples/company-delegation-demo",
+      "kind": "tooling",
+      "title": "Company delegation demo",
+      "one_line": "Runnable demo of signing for a company through directors, roles and delegations.",
+      "owner": "root",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [
+        "packages/auth",
+        "packages/delegation",
+        "packages/wallet-sdk",
+        "infrastructure/evault-core",
+        "platforms/registry"
+      ],
+      "evidence": [
+        "examples/company-delegation-demo/package.json",
+        "examples/company-delegation-demo/src/demo.ts:12-29"
+      ],
+      "docs": ["examples/company-delegation-demo/README.md"]
+    },
+    {
+      "path": "tests",
+      "kind": "tooling",
+      "title": "Staging load tests",
+      "one_line": "Load tests against staging Blabsy, Pictique, registry and provisioner.",
+      "owner": "root",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [
+        "platforms/blabsy",
+        "platforms/pictique",
+        "platforms/registry",
+        "infrastructure/evault-core"
+      ],
+      "evidence": ["tests/src/config/env.ts:24-43"],
+      "docs": ["tests/README.md"]
+    },
+    {
+      "path": "docs",
+      "kind": "docs",
+      "title": "Documentation site",
+      "one_line": "Docusaurus site at docs.w3ds.metastate.foundation: W3DS Basics, Protocol, Infrastructure, Services, GitW3, Post Platform Guide.",
+      "owner": "root",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": [],
+      "evidence": ["docs/docusaurus.config.ts", "docs/sidebars.ts"],
+      "docs": ["docs/README.md"]
+    },
+    {
+      "path": "skills",
+      "kind": "docs",
+      "title": "W3DS agent skill",
+      "one_line": "Agent skill (SKILL.md + reference pages) served from the docs site so coding agents stop guessing.",
+      "owner": "root",
+      "layer": "operations",
+      "used_by": [],
+      "depends_on": ["docs"],
+      "evidence": ["skills/w3ds/SKILL.md"],
+      "docs": [
+        "skills/README.md",
+        "skills/w3ds/SKILL.md",
+        "docs/docs/Post Platform Guide/ai-agent-skill.md"
+      ]
+    }
+  ],
+  "graph": {
+    "sections": [
+      {
+        "id": "layer:protocol",
+        "title": "W3DS protocol — identity, auth, signing, access, awareness, the shared records",
+        "parent": null,
+        "children": [
+          "infrastructure/w3id",
+          "packages/delegation",
+          "docs/docs/Getting Started/getting-started.md",
+          "docs/docs/W3DS Basics/Access-Policy.md",
+          "docs/docs/W3DS Basics/Binding-Documents.md",
+          "docs/docs/W3DS Basics/Data-Ownership-Rules.md",
+          "docs/docs/W3DS Basics/W3ID.md",
+          "docs/docs/W3DS Basics/eName.md",
+          "docs/docs/W3DS Basics/getting-started.md",
+          "docs/docs/W3DS Basics/glossary.md",
+          "docs/docs/W3DS Protocol/Access-Control.md",
+          "docs/docs/W3DS Protocol/Authentication.md",
+          "docs/docs/W3DS Protocol/Awareness-Protocol.md",
+          "docs/docs/W3DS Protocol/Company-Delegation.md",
+          "docs/docs/W3DS Protocol/File-URIs.md",
+          "docs/docs/W3DS Protocol/Platform-Authentication.md",
+          "docs/docs/W3DS Protocol/Signature-Formats.md",
+          "docs/docs/W3DS Protocol/Signing.md",
+          "skills/w3ds/reference/identity.md",
+          "skills/w3ds/reference/protocols.md"
+        ]
+      },
+      {
+        "id": "layer:infrastructure",
+        "title": "Core infrastructure — eVault, Registry, Ontology, wallet",
+        "parent": null,
+        "children": [
+          "infrastructure/evault-core",
+          "infrastructure/eid-wallet",
+          "platforms/registry",
+          "services/ontology",
+          "docs/docs/W3DS Basics/Links.md"
+        ]
+      },
+      {
+        "id": "layer:services",
+        "title": "Ecosystem services — AaaS, PPA, OIDC, search, trust",
+        "parent": null,
+        "children": [
+          "services/awareness-service",
+          "services/ppa",
+          "services/pp-auth-demo",
+          "services/w3ds-oidc-connector",
+          "services/search-engine",
+          "services/trust-score",
+          "notification-trigger"
+        ]
+      },
+      {
+        "id": "layer:platforms",
+        "title": "Post-platforms — interchangeable frontends over the same records",
+        "parent": null,
+        "children": [
+          "platforms/blabsy",
+          "platforms/pictique",
+          "platforms/profile-editor",
+          "platforms/file-manager",
+          "platforms/esigner",
+          "platforms/group-charter-manager",
+          "platforms/cerberus",
+          "platforms/evoting",
+          "platforms/ereputation",
+          "platforms/dreamsync",
+          "platforms/ecurrency",
+          "platforms/emover",
+          "platforms/calendar",
+          "platforms/enotary",
+          "platforms/marketplace"
+        ]
+      },
+      {
+        "id": "layer:packages",
+        "title": "Shared packages",
+        "parent": null,
+        "children": [
+          "packages/types",
+          "packages/wallet-sdk",
+          "packages/ui",
+          "packages/platform-icons",
+          "packages/w3ds-gateway"
+        ]
+      },
+      {
+        "id": "layer:operations",
+        "title": "Operations, tooling and the docs site",
+        "parent": null,
+        "children": [
+          "infrastructure/control-panel",
+          "infrastructure/dev-sandbox",
+          "services/webhook-inlet-test",
+          "packages/eslint-config",
+          "packages/typescript-config",
+          "docker",
+          "docker-compose.databases.yml",
+          "examples/company-delegation-demo",
+          "tests",
+          "docs",
+          "skills",
+          "QUICKSTART.md",
+          "README.md",
+          "docs/docs/Post Platform Guide/local-dev-quick-start.md",
+          "skills/w3ds/reference/dev-setup.md"
+        ]
+      },
+      {
+        "id": "section:shared-components",
+        "title": "Shared components — code more than one component runs",
+        "parent": "layer:infrastructure",
+        "children": [
+          "infrastructure/signature-validator",
+          "infrastructure/web3-adapter",
+          "infrastructure/blindvote",
+          "packages/auth"
+        ]
+      },
+      {
+        "id": "section:shared-records",
+        "title": "Shared records — the ontology records several platforms read and write",
+        "parent": "layer:protocol",
+        "children": [
+          "services/ontology/schemas/user.json",
+          "services/ontology/schemas/professionalProfile.json",
+          "services/ontology/schemas/chat.json",
+          "services/ontology/schemas/message.json",
+          "services/ontology/schemas/socialMediaPost.json",
+          "services/ontology/schemas/file.json",
+          "services/ontology/schemas/fileSignature.json",
+          "services/ontology/schemas/charterSignature.json",
+          "services/ontology/schemas/poll.json",
+          "services/ontology/schemas/bookmark.json",
+          "ontology:reference",
+          "ontology:wishlist",
+          "ontology:vote-reputation-result"
+        ]
+      },
+      {
+        "id": "section:platform-kit",
+        "title": "What every platform repeats — copied, not shared",
+        "parent": "layer:platforms",
+        "children": [
+          "pattern:platform-scaffold",
+          "pattern:shadcn-kit",
+          "docs/docs/Post Platform Guide/access-control.md",
+          "skills/w3ds/reference/platform.md",
+          "skills/w3ds/reference/w3ds-native.md"
+        ]
+      },
+      {
+        "id": "section:gitw3",
+        "title": "GitW3 — where platforms are built and released (code not in this repo)",
+        "parent": "layer:platforms",
+        "children": [
+          "docs/docs/GitW3/create-a-platform.md",
+          "docs/docs/GitW3/deploy-a-release.md",
+          "docs/docs/GitW3/overview.md",
+          "docs/docs/GitW3/platform-manifest-and-workspace.md",
+          "docs/docs/GitW3/port-an-existing-application.md",
+          "docs/docs/GitW3/releases-and-ppa.md",
+          "docs/docs/GitW3/sign-in-and-account.md",
+          "docs/docs/GitW3/troubleshooting.md",
+          "docs/docs/GitW3/work-with-repositories.md",
+          "skills/w3ds/reference/gitw3.md"
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "about": "infrastructure/evault-core",
+        "parent_about": "layer:infrastructure",
+        "tags": ["evault-core", "infrastructure", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/dev-sandbox",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/control-panel",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/wallet-sdk",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/emover",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/calendar",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/search-engine",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "examples/company-delegation-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/w3id",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "notification-trigger",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/emover",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/w3id",
+        "parent_about": "layer:protocol",
+        "tags": ["owner-infrastructure", "protocol", "w3id"],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/signature-validator",
+        "parent_about": "section:shared-components",
+        "tags": ["protocol", "shared", "signature-validator"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/calendar",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/enotary",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/control-panel",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/auth",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/pp-auth-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ppa",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/web3-adapter",
+        "parent_about": "section:shared-components",
+        "tags": ["infrastructure", "shared", "web3-adapter"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/eid-wallet",
+        "parent_about": "layer:infrastructure",
+        "tags": ["eid-wallet", "infrastructure", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "packages/wallet-sdk",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/blindvote",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "packages/platform-icons",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/marketplace",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/blabsy",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/enotary",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/blindvote",
+        "parent_about": "section:shared-components",
+        "tags": ["blindvote", "infrastructure", "shared"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/control-panel",
+        "parent_about": "layer:operations",
+        "tags": ["control-panel", "operations", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "packages/types",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "notification-trigger",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/dev-sandbox",
+        "parent_about": "layer:operations",
+        "tags": ["dev-sandbox", "operations", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "packages/wallet-sdk",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/registry",
+        "parent_about": "layer:infrastructure",
+        "tags": ["infrastructure", "owner-platforms", "registry"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/calendar",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/emover",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/enotary",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/dev-sandbox",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/control-panel",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ppa",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/pp-auth-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/search-engine",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/trust-score",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/w3ds-oidc-connector",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology",
+        "parent_about": "layer:infrastructure",
+        "tags": ["infrastructure", "ontology", "owner-services"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/dev-sandbox",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ppa",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/pp-auth-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/user.json",
+        "parent_about": "section:shared-records",
+        "tags": ["profile", "protocol", "shared", "user"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/dev-sandbox",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/professionalProfile.json",
+        "parent_about": "section:shared-records",
+        "tags": ["professionalprofile", "profile", "protocol", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/chat.json",
+        "parent_about": "section:shared-records",
+        "tags": ["chat", "protocol", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/message.json",
+        "parent_about": "section:shared-records",
+        "tags": ["message", "protocol", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/socialMediaPost.json",
+        "parent_about": "section:shared-records",
+        "tags": ["protocol", "shared", "socialmediapost"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/file.json",
+        "parent_about": "section:shared-records",
+        "tags": ["file", "protocol", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/fileSignature.json",
+        "parent_about": "section:shared-records",
+        "tags": ["filesignature", "protocol", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/charterSignature.json",
+        "parent_about": "section:shared-records",
+        "tags": ["chartersignature", "protocol", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/poll.json",
+        "parent_about": "section:shared-records",
+        "tags": ["poll", "protocol", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ontology/schemas/bookmark.json",
+        "parent_about": "section:shared-records",
+        "tags": ["bookmark", "protocol", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "ontology:reference",
+        "parent_about": "section:shared-records",
+        "tags": ["protocol", "reference", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/marketplace",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ppa",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/pp-auth-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/control-panel",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "ontology:wishlist",
+        "parent_about": "section:shared-records",
+        "tags": ["protocol", "shared", "wishlist"],
+        "links": [
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "ontology:vote-reputation-result",
+        "parent_about": "section:shared-records",
+        "tags": ["protocol", "shared", "vote-reputation-result"],
+        "links": [
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "pattern:platform-scaffold",
+        "parent_about": "section:platform-kit",
+        "tags": ["platform-scaffold", "platforms", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/calendar",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/emover",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/esigner",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "pattern:shadcn-kit",
+        "parent_about": "section:platform-kit",
+        "tags": ["platforms", "shadcn-kit", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/marketplace",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/calendar",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "platforms/blabsy",
+        "parent_about": "layer:platforms",
+        "tags": ["blabsy", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/socialMediaPost.json",
+            "label": "reads and writes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/pictique",
+        "parent_about": "layer:platforms",
+        "tags": ["owner-platforms", "pictique", "platforms"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/socialMediaPost.json",
+            "label": "reads and writes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/profile-editor",
+        "parent_about": "layer:platforms",
+        "tags": [
+          "owner-platforms",
+          "platforms",
+          "profile",
+          "profile-editor",
+          "user"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/auth",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "packages/ui",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/professionalProfile.json",
+            "label": "reads and writes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/file-manager",
+        "parent_about": "layer:platforms",
+        "tags": ["file-manager", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/file.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/fileSignature.json",
+            "label": "reads and writes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/esigner",
+        "parent_about": "layer:platforms",
+        "tags": ["esigner", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/file.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/fileSignature.json",
+            "label": "reads and writes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/group-charter-manager",
+        "parent_about": "layer:platforms",
+        "tags": ["group-charter-manager", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/evoting",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/charterSignature.json",
+            "label": "reads and writes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/cerberus",
+        "parent_about": "layer:platforms",
+        "tags": ["cerberus", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/charterSignature.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "ontology:reference",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/evoting",
+        "parent_about": "layer:platforms",
+        "tags": ["evoting", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/blindvote",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/poll.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "ontology:vote-reputation-result",
+            "label": "reads and writes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/ereputation",
+        "parent_about": "layer:platforms",
+        "tags": ["ereputation", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/cerberus",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/marketplace",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ppa",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/pp-auth-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/control-panel",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          },
+          {
+            "to_about": "ontology:reference",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/poll.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "ontology:wishlist",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "ontology:vote-reputation-result",
+            "label": "reads and writes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/dreamsync",
+        "parent_about": "layer:platforms",
+        "tags": ["dreamsync", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "infrastructure/control-panel",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/blabsy",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/professionalProfile.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "ontology:wishlist",
+            "label": "reads and writes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/ecurrency",
+        "parent_about": "layer:platforms",
+        "tags": ["ecurrency", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/chat.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/message.json",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/emover",
+        "parent_about": "layer:platforms",
+        "tags": ["emover", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/calendar",
+        "parent_about": "layer:platforms",
+        "tags": ["calendar", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "copies",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/enotary",
+        "parent_about": "layer:platforms",
+        "tags": ["enotary", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/types",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/marketplace",
+        "parent_about": "layer:platforms",
+        "tags": ["marketplace", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "ontology:reference",
+            "label": "reads and writes",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:shadcn-kit",
+            "label": "copies",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/awareness-service",
+        "parent_about": "layer:services",
+        "tags": ["awareness-service", "owner-services", "services"],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/marketplace",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/ppa",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/pp-auth-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ppa",
+        "parent_about": "layer:services",
+        "tags": ["owner-services", "ppa", "services"],
+        "links": [
+          {
+            "to_about": "packages/auth",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/pp-auth-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/pp-auth-demo",
+        "parent_about": "layer:services",
+        "tags": ["owner-services", "pp-auth-demo", "services"],
+        "links": [
+          {
+            "to_about": "packages/auth",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/ereputation",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ppa",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/w3ds-oidc-connector",
+        "parent_about": "layer:services",
+        "tags": ["owner-services", "services", "w3ds-oidc-connector"],
+        "links": [
+          {
+            "to_about": "packages/auth",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/search-engine",
+        "parent_about": "layer:services",
+        "tags": ["owner-services", "search-engine", "services"],
+        "links": [
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/trust-score",
+        "parent_about": "layer:services",
+        "tags": ["owner-services", "services", "trust-score"],
+        "links": [
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/webhook-inlet-test",
+        "parent_about": "layer:operations",
+        "tags": ["operations", "owner-services", "webhook-inlet-test"],
+        "links": []
+      },
+      {
+        "about": "notification-trigger",
+        "parent_about": "layer:services",
+        "tags": ["notification-trigger", "owner-root", "services"],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/control-panel",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "packages/auth",
+        "parent_about": "section:shared-components",
+        "tags": ["auth", "packages", "shared"],
+        "links": [
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/pp-auth-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "services/w3ds-oidc-connector",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "examples/company-delegation-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "packages/delegation",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ppa",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "packages/delegation",
+        "parent_about": "layer:protocol",
+        "tags": ["delegation", "owner-packages", "protocol"],
+        "links": [
+          {
+            "to_about": "packages/auth",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "examples/company-delegation-demo",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "packages/types",
+        "parent_about": "layer:packages",
+        "tags": ["owner-packages", "packages", "types"],
+        "links": [
+          {
+            "to_about": "infrastructure/control-panel",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "platforms/enotary",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "packages/wallet-sdk",
+        "parent_about": "layer:packages",
+        "tags": ["owner-packages", "packages", "wallet-sdk"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/dev-sandbox",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "examples/company-delegation-demo",
+            "label": "used by",
+            "direction": "from"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "packages/ui",
+        "parent_about": "layer:packages",
+        "tags": ["owner-packages", "packages", "ui"],
+        "links": [
+          {
+            "to_about": "platforms/profile-editor",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "packages/platform-icons",
+        "parent_about": "layer:packages",
+        "tags": ["owner-packages", "packages", "platform-icons"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "used by",
+            "direction": "from"
+          }
+        ]
+      },
+      {
+        "about": "packages/w3ds-gateway",
+        "parent_about": "layer:packages",
+        "tags": ["owner-packages", "packages", "w3ds-gateway"],
+        "links": [
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "packages/eslint-config",
+        "parent_about": "layer:operations",
+        "tags": ["eslint-config", "operations", "owner-packages"],
+        "links": []
+      },
+      {
+        "about": "packages/typescript-config",
+        "parent_about": "layer:operations",
+        "tags": ["operations", "owner-packages", "typescript-config"],
+        "links": []
+      },
+      {
+        "about": "docker",
+        "parent_about": "layer:operations",
+        "tags": ["docker", "operations", "owner-root"],
+        "links": []
+      },
+      {
+        "about": "docker-compose.databases.yml",
+        "parent_about": "layer:operations",
+        "tags": ["compose", "operations", "owner-root"],
+        "links": []
+      },
+      {
+        "about": "examples/company-delegation-demo",
+        "parent_about": "layer:operations",
+        "tags": ["company-delegation-demo", "operations", "owner-root"],
+        "links": [
+          {
+            "to_about": "packages/auth",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "packages/delegation",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "packages/wallet-sdk",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "tests",
+        "parent_about": "layer:operations",
+        "tags": ["operations", "owner-root", "tests"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/pictique",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/registry",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs",
+        "parent_about": "layer:operations",
+        "tags": ["docs", "operations", "owner-root"],
+        "links": []
+      },
+      {
+        "about": "skills",
+        "parent_about": "layer:operations",
+        "tags": ["operations", "owner-root", "skills"],
+        "links": [
+          {
+            "to_about": "docs",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "QUICKSTART.md",
+        "parent_about": "layer:operations",
+        "tags": ["operations", "owner-root"],
+        "links": [
+          {
+            "to_about": "docs/docs/Post Platform Guide/local-dev-quick-start.md",
+            "label": "points to",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "README.md",
+        "parent_about": "layer:operations",
+        "tags": ["compose", "docker", "operations", "owner-root"],
+        "links": [
+          {
+            "to_about": "docker-compose.databases.yml",
+            "label": "describes",
+            "direction": "to"
+          },
+          {
+            "to_about": "docker",
+            "label": "describes",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/README.md",
+        "parent_about": "docs",
+        "tags": ["docs", "operations", "owner-root"],
+        "links": [
+          {
+            "to_about": "docs",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Getting Started/getting-started.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "owner-docs", "protocol"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/GitW3/create-a-platform.md",
+        "parent_about": "section:gitw3",
+        "tags": ["docs", "gitw3", "owner-docs", "platforms"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/GitW3/deploy-a-release.md",
+        "parent_about": "section:gitw3",
+        "tags": ["auth", "docs", "gitw3", "owner-docs", "platforms"],
+        "links": [
+          {
+            "to_about": "packages/auth",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/GitW3/overview.md",
+        "parent_about": "section:gitw3",
+        "tags": ["docs", "gitw3", "owner-docs", "platforms"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/GitW3/platform-manifest-and-workspace.md",
+        "parent_about": "section:gitw3",
+        "tags": ["docs", "gitw3", "marketplace", "owner-docs", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/marketplace",
+            "label": "publishes to",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/GitW3/port-an-existing-application.md",
+        "parent_about": "section:gitw3",
+        "tags": ["docs", "gitw3", "owner-docs", "platforms"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/GitW3/releases-and-ppa.md",
+        "parent_about": "section:gitw3",
+        "tags": ["docs", "gitw3", "owner-docs", "platforms", "ppa"],
+        "links": [
+          {
+            "to_about": "services/ppa",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/GitW3/sign-in-and-account.md",
+        "parent_about": "section:gitw3",
+        "tags": [
+          "awareness-service",
+          "docs",
+          "gitw3",
+          "owner-docs",
+          "platforms",
+          "user"
+        ],
+        "links": [
+          {
+            "to_about": "services/awareness-service",
+            "label": "uses",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/user.json",
+            "label": "reads",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/GitW3/troubleshooting.md",
+        "parent_about": "section:gitw3",
+        "tags": ["docs", "gitw3", "owner-docs", "platforms"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/GitW3/work-with-repositories.md",
+        "parent_about": "section:gitw3",
+        "tags": ["docs", "gitw3", "owner-docs", "platforms"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/Infrastructure/Ontology.md",
+        "parent_about": "services/ontology",
+        "tags": ["docs", "infrastructure", "ontology", "owner-services"],
+        "links": [
+          {
+            "to_about": "services/ontology",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Infrastructure/Registry.md",
+        "parent_about": "platforms/registry",
+        "tags": ["docs", "infrastructure", "owner-platforms", "registry"],
+        "links": [
+          {
+            "to_about": "platforms/registry",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Infrastructure/Web3-Adapter.md",
+        "parent_about": "infrastructure/web3-adapter",
+        "tags": ["docs", "infrastructure", "shared", "web3-adapter"],
+        "links": [
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Infrastructure/eID-Wallet.md",
+        "parent_about": "infrastructure/eid-wallet",
+        "tags": [
+          "docs",
+          "eid-wallet",
+          "infrastructure",
+          "owner-infrastructure"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Infrastructure/eVault-Key-Delegation.md",
+        "parent_about": "infrastructure/evault-core",
+        "tags": [
+          "docs",
+          "evault-core",
+          "infrastructure",
+          "owner-infrastructure"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Infrastructure/eVault.md",
+        "parent_about": "infrastructure/evault-core",
+        "tags": [
+          "docs",
+          "evault-core",
+          "infrastructure",
+          "owner-infrastructure"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Infrastructure/wallet-sdk.md",
+        "parent_about": "packages/wallet-sdk",
+        "tags": ["docs", "owner-packages", "packages", "wallet-sdk"],
+        "links": [
+          {
+            "to_about": "packages/wallet-sdk",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/access-control.md",
+        "parent_about": "section:platform-kit",
+        "tags": ["docs", "platform-scaffold", "platforms", "shared"],
+        "links": [
+          {
+            "to_about": "docs/docs/W3DS Protocol/Access-Control.md",
+            "label": "specified by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/ai-agent-skill.md",
+        "parent_about": "skills",
+        "tags": ["docs", "operations", "owner-root", "skills"],
+        "links": [
+          {
+            "to_about": "skills",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/dev-sandbox.md",
+        "parent_about": "infrastructure/dev-sandbox",
+        "tags": ["dev-sandbox", "docs", "operations", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "infrastructure/dev-sandbox",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/ecurrency-accounts-and-ledger.md",
+        "parent_about": "platforms/ecurrency",
+        "tags": ["docs", "ecurrency", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/getting-started.md",
+        "parent_about": "pattern:platform-scaffold",
+        "tags": [
+          "docs",
+          "ecurrency",
+          "platform-scaffold",
+          "platforms",
+          "shared",
+          "signature-validator"
+        ],
+        "links": [
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "example",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/local-dev-quick-start.md",
+        "parent_about": "layer:operations",
+        "tags": ["docs", "operations", "owner-docs"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/mapping-rules.md",
+        "parent_about": "infrastructure/web3-adapter",
+        "tags": ["docs", "infrastructure", "shared", "web3-adapter"],
+        "links": [
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/web3-adapter/MAPPING_RULES.md",
+            "label": "duplicates",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/platform-evault-registration.md",
+        "parent_about": "pattern:platform-scaffold",
+        "tags": [
+          "cerberus",
+          "docs",
+          "platform-scaffold",
+          "platforms",
+          "shared"
+        ],
+        "links": [
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/cerberus",
+            "label": "example",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/pp-auth-demonstrator.md",
+        "parent_about": "services/pp-auth-demo",
+        "tags": ["docs", "owner-services", "pp-auth-demo", "services"],
+        "links": [
+          {
+            "to_about": "services/pp-auth-demo",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/pp-auth.md",
+        "parent_about": "packages/auth",
+        "tags": ["auth", "docs", "packages", "shared"],
+        "links": [
+          {
+            "to_about": "packages/auth",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/signing-for-a-company.md",
+        "parent_about": "packages/delegation",
+        "tags": [
+          "auth",
+          "company-delegation-demo",
+          "delegation",
+          "docs",
+          "owner-packages",
+          "protocol"
+        ],
+        "links": [
+          {
+            "to_about": "packages/delegation",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "packages/auth",
+            "label": "about",
+            "direction": "to"
+          },
+          {
+            "to_about": "examples/company-delegation-demo",
+            "label": "about",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Post Platform Guide/webhook-controller.md",
+        "parent_about": "pattern:platform-scaffold",
+        "tags": [
+          "docs",
+          "ecurrency",
+          "platform-scaffold",
+          "platforms",
+          "shared"
+        ],
+        "links": [
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/ecurrency",
+            "label": "example",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Services/Awareness-as-a-Service.md",
+        "parent_about": "services/awareness-service",
+        "tags": ["awareness-service", "docs", "owner-services", "services"],
+        "links": [
+          {
+            "to_about": "services/awareness-service",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Services/OIDC-Connector.md",
+        "parent_about": "services/w3ds-oidc-connector",
+        "tags": ["docs", "owner-services", "services", "w3ds-oidc-connector"],
+        "links": [
+          {
+            "to_about": "services/w3ds-oidc-connector",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Services/OIDC-Developer-Portal.md",
+        "parent_about": "services/w3ds-oidc-connector",
+        "tags": ["docs", "owner-services", "services", "w3ds-oidc-connector"],
+        "links": [
+          {
+            "to_about": "services/w3ds-oidc-connector",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/Services/OIDC-Provider-Guides.md",
+        "parent_about": "services/w3ds-oidc-connector",
+        "tags": ["docs", "owner-services", "services", "w3ds-oidc-connector"],
+        "links": [
+          {
+            "to_about": "services/w3ds-oidc-connector",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Basics/Access-Policy.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "owner-docs", "ppa", "protocol"],
+        "links": [
+          {
+            "to_about": "services/ppa",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Basics/Binding-Documents.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "evault-core", "owner-docs", "protocol", "types"],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "implemented by",
+            "direction": "to"
+          },
+          {
+            "to_about": "packages/types",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Basics/Data-Ownership-Rules.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "owner-docs", "protocol", "web3-adapter"],
+        "links": [
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "implemented by",
+            "direction": "to"
+          },
+          {
+            "to_about": "section:shared-records",
+            "label": "about",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Basics/Links.md",
+        "parent_about": "layer:infrastructure",
+        "tags": [
+          "docs",
+          "evault-core",
+          "infrastructure",
+          "ontology",
+          "owner-docs",
+          "registry"
+        ],
+        "links": [
+          {
+            "to_about": "platforms/registry",
+            "label": "about",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "about",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "about",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Basics/W3ID.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "owner-docs", "protocol", "w3id"],
+        "links": [
+          {
+            "to_about": "infrastructure/w3id",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Basics/eName.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "owner-docs", "protocol"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/W3DS Basics/getting-started.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "owner-docs", "protocol"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/W3DS Basics/glossary.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "owner-docs", "protocol"],
+        "links": []
+      },
+      {
+        "about": "docs/docs/W3DS Protocol/Access-Control.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "evault-core", "owner-docs", "protocol"],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Protocol/Authentication.md",
+        "parent_about": "layer:protocol",
+        "tags": [
+          "docs",
+          "eid-wallet",
+          "owner-docs",
+          "platform-scaffold",
+          "protocol",
+          "signature-validator"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "implemented by",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "implemented by",
+            "direction": "to"
+          },
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Protocol/Awareness-Protocol.md",
+        "parent_about": "layer:protocol",
+        "tags": [
+          "awareness-service",
+          "docs",
+          "evault-core",
+          "owner-docs",
+          "platform-scaffold",
+          "protocol"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "implemented by",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/awareness-service",
+            "label": "implemented by",
+            "direction": "to"
+          },
+          {
+            "to_about": "pattern:platform-scaffold",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Protocol/Company-Delegation.md",
+        "parent_about": "layer:protocol",
+        "tags": ["auth", "delegation", "docs", "owner-docs", "protocol"],
+        "links": [
+          {
+            "to_about": "packages/delegation",
+            "label": "implemented by",
+            "direction": "to"
+          },
+          {
+            "to_about": "packages/auth",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Protocol/File-URIs.md",
+        "parent_about": "layer:protocol",
+        "tags": [
+          "docs",
+          "evault-core",
+          "file",
+          "file-manager",
+          "owner-docs",
+          "protocol"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "implemented by",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology/schemas/file.json",
+            "label": "about",
+            "direction": "to"
+          },
+          {
+            "to_about": "platforms/file-manager",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Protocol/Platform-Authentication.md",
+        "parent_about": "layer:protocol",
+        "tags": ["auth", "docs", "owner-docs", "ppa", "protocol"],
+        "links": [
+          {
+            "to_about": "packages/auth",
+            "label": "implemented by",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ppa",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Protocol/Signature-Formats.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "owner-docs", "protocol", "signature-validator"],
+        "links": [
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "docs/docs/W3DS Protocol/Signing.md",
+        "parent_about": "layer:protocol",
+        "tags": ["docs", "eid-wallet", "owner-docs", "protocol"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "implemented by",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "examples/company-delegation-demo/README.md",
+        "parent_about": "examples/company-delegation-demo",
+        "tags": ["company-delegation-demo", "operations", "owner-root"],
+        "links": [
+          {
+            "to_about": "examples/company-delegation-demo",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/blindvote/README.md",
+        "parent_about": "infrastructure/blindvote",
+        "tags": ["blindvote", "infrastructure", "shared"],
+        "links": [
+          {
+            "to_about": "infrastructure/blindvote",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/control-panel/README.md",
+        "parent_about": "infrastructure/control-panel",
+        "tags": ["control-panel", "operations", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "infrastructure/control-panel",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/dev-sandbox/README.md",
+        "parent_about": "infrastructure/dev-sandbox",
+        "tags": [
+          "dev-sandbox",
+          "operations",
+          "owner-infrastructure",
+          "wallet-sdk"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/dev-sandbox",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "packages/wallet-sdk",
+            "label": "uses",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/eid-wallet/PUSH_NOTIFICATIONS_SETUP.md",
+        "parent_about": "infrastructure/eid-wallet",
+        "tags": ["eid-wallet", "infrastructure", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/eid-wallet/README.md",
+        "parent_about": "infrastructure/eid-wallet",
+        "tags": ["eid-wallet", "infrastructure", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/eid-wallet/docs/architecture/deepLink.md",
+        "parent_about": "infrastructure/eid-wallet",
+        "tags": ["eid-wallet", "infrastructure", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/eid-wallet/src/lib/i18n/README.md",
+        "parent_about": "infrastructure/eid-wallet",
+        "tags": ["eid-wallet", "infrastructure", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/evault-core/README.md",
+        "parent_about": "infrastructure/evault-core",
+        "tags": ["evault-core", "infrastructure", "owner-infrastructure"],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/signature-validator/README.md",
+        "parent_about": "infrastructure/signature-validator",
+        "tags": ["protocol", "shared", "signature-validator"],
+        "links": [
+          {
+            "to_about": "infrastructure/signature-validator",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/w3id/README.md",
+        "parent_about": "infrastructure/w3id",
+        "tags": ["owner-infrastructure", "protocol", "w3id"],
+        "links": [
+          {
+            "to_about": "infrastructure/w3id",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "infrastructure/web3-adapter/MAPPING_RULES.md",
+        "parent_about": "infrastructure/web3-adapter",
+        "tags": ["infrastructure", "shared", "web3-adapter"],
+        "links": [
+          {
+            "to_about": "infrastructure/web3-adapter",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "notification-trigger/README.md",
+        "parent_about": "notification-trigger",
+        "tags": ["notification-trigger", "owner-root", "services"],
+        "links": [
+          {
+            "to_about": "notification-trigger",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "packages/eslint-config/README.md",
+        "parent_about": "packages/eslint-config",
+        "tags": ["eslint-config", "operations", "owner-packages"],
+        "links": [
+          {
+            "to_about": "packages/eslint-config",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "packages/w3ds-gateway/README.md",
+        "parent_about": "packages/w3ds-gateway",
+        "tags": ["owner-packages", "packages", "w3ds-gateway"],
+        "links": [
+          {
+            "to_about": "packages/w3ds-gateway",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/blabsy/client/README.md",
+        "parent_about": "platforms/blabsy",
+        "tags": ["blabsy", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/blabsy",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/calendar/client/README.md",
+        "parent_about": "platforms/calendar",
+        "tags": ["calendar", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/calendar",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/dreamsync/api/README.md",
+        "parent_about": "platforms/dreamsync",
+        "tags": ["dreamsync", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/dreamsync",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/emover/api/README.md",
+        "parent_about": "platforms/emover",
+        "tags": ["emover", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/emover",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/emover/client/README.md",
+        "parent_about": "platforms/emover",
+        "tags": ["emover", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/emover",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/ereputation/client/README.md",
+        "parent_about": "platforms/ereputation",
+        "tags": ["ereputation", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/ereputation",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/evoting/api/scripts/README.md",
+        "parent_about": "platforms/evoting",
+        "tags": ["evoting", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/evoting",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/evoting/client/README.md",
+        "parent_about": "platforms/evoting",
+        "tags": ["evoting", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/evoting",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/group-charter-manager/client/README.md",
+        "parent_about": "platforms/group-charter-manager",
+        "tags": ["group-charter-manager", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/group-charter-manager",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/marketplace/client/README.md",
+        "parent_about": "platforms/marketplace",
+        "tags": ["marketplace", "owner-platforms", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/marketplace",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/pictique/client/README.md",
+        "parent_about": "platforms/pictique",
+        "tags": ["owner-platforms", "pictique", "platforms"],
+        "links": [
+          {
+            "to_about": "platforms/pictique",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/registry/api/README.md",
+        "parent_about": "platforms/registry",
+        "tags": ["infrastructure", "owner-platforms", "registry"],
+        "links": [
+          {
+            "to_about": "platforms/registry",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/registry/api/REGISTRY_PROTOCOL.md",
+        "parent_about": "platforms/registry",
+        "tags": ["infrastructure", "owner-platforms", "registry"],
+        "links": [
+          {
+            "to_about": "platforms/registry",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "platforms/registry/api/src/migrations/README.md",
+        "parent_about": "platforms/registry",
+        "tags": ["infrastructure", "owner-platforms", "registry"],
+        "links": [
+          {
+            "to_about": "platforms/registry",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/awareness-service/README.md",
+        "parent_about": "services/awareness-service",
+        "tags": ["awareness-service", "owner-services", "services"],
+        "links": [
+          {
+            "to_about": "services/awareness-service",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/ppa/README.md",
+        "parent_about": "services/ppa",
+        "tags": ["owner-services", "ppa", "services"],
+        "links": [
+          {
+            "to_about": "services/ppa",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/search-engine/README.md",
+        "parent_about": "services/search-engine",
+        "tags": ["owner-services", "search-engine", "services"],
+        "links": [
+          {
+            "to_about": "services/search-engine",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/search-engine/examples.md",
+        "parent_about": "services/search-engine",
+        "tags": ["owner-services", "search-engine", "services"],
+        "links": [
+          {
+            "to_about": "services/search-engine",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "services/trust-score/README.md",
+        "parent_about": "services/trust-score",
+        "tags": ["owner-services", "services", "trust-score"],
+        "links": [
+          {
+            "to_about": "services/trust-score",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/README.md",
+        "parent_about": "skills",
+        "tags": ["operations", "owner-root", "skill", "skills"],
+        "links": [
+          {
+            "to_about": "skills",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/SKILL.md",
+        "parent_about": "skills",
+        "tags": ["operations", "owner-root", "skill", "skills"],
+        "links": [
+          {
+            "to_about": "skills",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/company-delegation.md",
+        "parent_about": "packages/delegation",
+        "tags": ["delegation", "owner-packages", "protocol", "skill"],
+        "links": [
+          {
+            "to_about": "packages/delegation",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/dev-setup.md",
+        "parent_about": "layer:operations",
+        "tags": ["operations", "owner-docs", "skill"],
+        "links": [
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/evault.md",
+        "parent_about": "infrastructure/evault-core",
+        "tags": [
+          "evault-core",
+          "infrastructure",
+          "owner-infrastructure",
+          "skill"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/evault-core",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/gitw3.md",
+        "parent_about": "section:gitw3",
+        "tags": ["gitw3", "owner-docs", "platforms", "skill"],
+        "links": [
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/identity.md",
+        "parent_about": "layer:protocol",
+        "tags": ["owner-docs", "protocol", "skill"],
+        "links": [
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/platform.md",
+        "parent_about": "section:platform-kit",
+        "tags": ["platform-scaffold", "platforms", "shared", "skill"],
+        "links": [
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/protocols.md",
+        "parent_about": "layer:protocol",
+        "tags": ["owner-docs", "protocol", "skill"],
+        "links": [
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/registry.md",
+        "parent_about": "platforms/registry",
+        "tags": [
+          "infrastructure",
+          "ontology",
+          "owner-platforms",
+          "registry",
+          "skill"
+        ],
+        "links": [
+          {
+            "to_about": "platforms/registry",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "services/ontology",
+            "label": "about",
+            "direction": "to"
+          },
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/w3ds-native.md",
+        "parent_about": "section:platform-kit",
+        "tags": ["platform-scaffold", "platforms", "shared", "skill"],
+        "links": [
+          {
+            "to_about": "section:shared-records",
+            "label": "about",
+            "direction": "to"
+          },
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "skills/w3ds/reference/wallet.md",
+        "parent_about": "infrastructure/eid-wallet",
+        "tags": [
+          "eid-wallet",
+          "infrastructure",
+          "owner-infrastructure",
+          "skill"
+        ],
+        "links": [
+          {
+            "to_about": "infrastructure/eid-wallet",
+            "label": "documents",
+            "direction": "to"
+          },
+          {
+            "to_about": "skills/w3ds/SKILL.md",
+            "label": "part of",
+            "direction": "to"
+          }
+        ]
+      },
+      {
+        "about": "tests/README.md",
+        "parent_about": "tests",
+        "tags": ["operations", "owner-root", "tests"],
+        "links": [
+          {
+            "to_about": "tests",
+            "label": "documents",
+            "direction": "to"
+          }
+        ]
+      }
+    ]
+  }
+}
