@@ -23,6 +23,8 @@ export interface Aggregate {
 	runs: { sloppy: number; other: number };
 	/** Sloppy's mean score less the other's, 0 to 1. */
 	score: number;
+	/** Sloppy's mean score over the other's, less one: 0.02 is 2% higher. */
+	scoreRatio: number;
 	/** Sloppy's value over the other's, less one: -0.16 is 16% less. */
 	ratio: Record<AggregateMetric, number | null>;
 }
@@ -49,7 +51,8 @@ export function aggregate(
 		return s && o ? [{ subject, s, o }] : [];
 	});
 	const score = mean(pairs.map(({ s, o }) => s.score_mean! - o.score_mean!));
-	if (score === null) return null;
+	const scoreRatio = mean(pairs.map(({ s, o }) => s.score_mean! / o.score_mean! - 1));
+	if (score === null || scoreRatio === null) return null;
 	const ratioOf = (m: AggregateMetric) => {
 		const rs = pairs.flatMap(({ s, o }) => {
 			const a = VALUE[m](s);
@@ -66,6 +69,7 @@ export function aggregate(
 			other: pairs.reduce((n, { o }) => n + o.n, 0)
 		},
 		score,
+		scoreRatio,
 		ratio: {
 			cost: ratioOf('cost'),
 			time: ratioOf('time'),

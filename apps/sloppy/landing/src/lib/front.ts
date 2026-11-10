@@ -2,7 +2,7 @@
 // large projects the aggregate averages.
 import { aggregate, largeProjects } from './aggregate';
 import { andList, inWords, verdicts, type Metric, type Verdict } from './readings';
-import { movedSaid as moved, percent, ratioSign, scoreSaid, scoreSign } from './said';
+import { movedSaid as moved, percent, ratioSign, scoreSaid } from './said';
 import type { PageSummary } from './summary';
 
 /** What "better outputs" means, from the aggregate over the large projects. */
@@ -36,10 +36,7 @@ export function heroStats(summary: PageSummary): HeroStat[] {
 	return [
 		cost !== null && { value: signed(ratioSign(cost), percent(cost)), label: 'cost per task' },
 		input !== null && { value: signed(ratioSign(input), percent(input)), label: 'new text read' },
-		{
-			value: signed(scoreSign(a.score), Math.abs(a.score).toFixed(3)),
-			label: 'answer quality, 0 to 1'
-		}
+		{ value: signed(ratioSign(a.scoreRatio), percent(a.scoreRatio)), label: 'answer quality' }
 	].filter((x): x is HeroStat => !!x);
 }
 
