@@ -7,6 +7,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { ownedRefFrom, recordIdFromOwnedRef, splitOwnedRef } from "./codecs.js";
 import {
+  asPrincipal,
   DidSyrSchema,
   DomainSchema,
   MailtoSchema,
@@ -14,6 +15,7 @@ import {
   PrincipalSchema,
   principalScheme,
   StoreRefSchema,
+  W3idSchema,
 } from "./common.js";
 
 const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -106,7 +108,8 @@ describe("widening what an identifier may be", () => {
         fc.string({ maxLength: 40 }).filter((held) => {
           return (
             !held.startsWith("did:syr:z") &&
-            !held.toLowerCase().startsWith("mailto:")
+            !held.toLowerCase().startsWith("mailto:") &&
+            !held.toLowerCase().startsWith("w3id:")
           );
         }),
         (held) => {
@@ -270,6 +273,101 @@ describe("a domain said on its own", () => {
       expect(MailtoSchema.safeParse(`mailto:alice@${host}`).success).toBe(
         false,
       );
+    }
+  });
+});
+
+const hex = (length: number): fc.Arbitrary<string> =>
+  fc.stringMatching(new RegExp(`^[0-9a-fA-F]{${length}}$`));
+
+/** A UUID as RFC 4122 spells one, in either case. */
+const uuid: fc.Arbitrary<string> = fc
+  .tuple(hex(8), hex(4), hex(4), hex(4), hex(12))
+  .map((parts) => parts.join("-"));
+
+describe("a W3ID as an identifier", () => {
+  it("is taken, and comes back lowercased", () => {
+    fc.assert(
+      fc.property(uuid, (id) => {
+        const spelled = `w3id:@${id}`;
+        expect(PrincipalSchema.parse(spelled)).toBe(spelled.toLowerCase());
+        expect(principalScheme(spelled)).toBe("w3id");
+        expect(W3idSchema.parse(spelled.toUpperCase())).toBe(
+          spelled.toLowerCase(),
+        );
+      }),
+    );
+  });
+
+  it("is what a person types as @ and the UUID, and nothing they type is two people", () => {
+    fc.assert(
+      fc.property(uuid, (id) => {
+        const canonical = `w3id:@${id.toLowerCase()}`;
+        expect(asPrincipal(`@${id}`)).toBe(canonical);
+        expect(asPrincipal(`  @${id.toUpperCase()} `)).toBe(canonical);
+        expect(asPrincipal(canonical)).toBe(canonical);
+      }),
+    );
+  });
+
+  it("carries through a ref, and splits where a ref always split", () => {
+    fc.assert(
+      fc.property(uuid, ulid, (id, localId) => {
+        const owner = `w3id:@${id.toLowerCase()}`;
+        const ref = OwnedRefSchema.parse(`w3id:@${id}/${localId}`);
+        expect(ref).toBe(`${owner}/${localId}`);
+        expect(splitOwnedRef(ref)).toEqual({ owner, localId });
+      }),
+    );
+  });
+
+  it("can never be mistaken for another scheme, or another for it", () => {
+    fc.assert(
+      fc.property(uuid, didSyr, mailto, (id, did, spelled) => {
+        const w3id = `w3id:@${id}`;
+        expect(DidSyrSchema.safeParse(w3id).success).toBe(false);
+        expect(MailtoSchema.safeParse(w3id).success).toBe(false);
+        expect(W3idSchema.safeParse(did).success).toBe(false);
+        expect(W3idSchema.safeParse(spelled).success).toBe(false);
+      }),
+    );
+  });
+
+  it("normalises once and then stays put", () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(
+          uuid.map((id) => `w3id:@${id}`),
+          mailto,
+          didSyr,
+        ),
+        (spelled) => {
+          const once = PrincipalSchema.parse(spelled);
+          expect(PrincipalSchema.parse(once)).toBe(once);
+          expect(asPrincipal(once)).toBe(once);
+        },
+      ),
+    );
+  });
+
+  it("is refused where it is malformed", () => {
+    for (const held of [
+      "w3id:",
+      "w3id:@",
+      "w3id:00000000-0000-5000-8000-000000000001",
+      "w3id:@00000000-0000-5000-8000-00000000000",
+      "w3id:@00000000-0000-5000-8000-0000000000012",
+      "w3id:@000000000000500080000000000000001",
+      "w3id:@0000000g-0000-5000-8000-000000000001",
+      "w3id:@00000000-0000-5000-8000-000000000001/x",
+      "w3id:@{00000000-0000-5000-8000-000000000001}",
+      "w3id://00000000-0000-5000-8000-000000000001",
+      "@00000000-0000-5000-8000-000000000001",
+    ]) {
+      expect(PrincipalSchema.safeParse(held).success).toBe(false);
+    }
+    for (const typed of ["", "@", "@nobody", "alice@example.com", "w3id:@x"]) {
+      expect(asPrincipal(typed)).toBeUndefined();
     }
   });
 });

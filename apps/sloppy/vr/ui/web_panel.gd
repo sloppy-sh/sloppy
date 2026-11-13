@@ -54,6 +54,9 @@ var carries_itself := false
 var title := ""
 ## The page's id with the plugin; 0 where there is none.
 var id := 0
+## A page the plugin already holds, shown instead of making one; set before
+## the panel enters the tree.
+var page_given := 0
 
 var _engine: Object
 var _face: MeshInstance3D
@@ -152,8 +155,6 @@ func shown() -> Texture2D:
 
 
 func _open_with_plugin() -> void:
-	id = _next_id
-	_next_id += 1
 	_engine.connect("page_loaded", _page_loaded)
 	_engine.connect("navigating", _navigating)
 	_engine.connect("message", _message)
@@ -165,7 +166,15 @@ func _open_with_plugin() -> void:
 		_engine.connect("frame", _frame)
 	else:
 		_engine.connect("pixels", _pixels)
-	_engine.create(id, pixels.x, pixels.y, frames)
+	id = page_given if page_given != 0 else _new_page()
+
+
+## A page made with the plugin at the panel's size; answers its id.
+func _new_page() -> int:
+	var page := _next_id
+	_next_id += 1
+	_engine.create(page, pixels.x, pixels.y, frames)
+	return page
 
 
 func _open_fallback() -> void:

@@ -17,7 +17,7 @@ import {
   type BlockDocument,
   citedNotes,
   CommitIdSchema,
-  PrincipalSchema,
+  asPrincipal,
   type OwnedRef,
   OwnedRefSchema,
   type SnippetStanding,
@@ -81,10 +81,17 @@ interface Holds {
   safeParse(value: unknown): { success: boolean };
 }
 
+/** A principal as a hand may write one in a note's file — `asPrincipal`. */
+const Named: Holds = {
+  safeParse: (value) => ({
+    success: typeof value === "string" && asPrincipal(value) !== undefined,
+  }),
+};
+
 const FIELDS: readonly (readonly [string, Holds, string])[] = [
   ["parent", OwnedRefSchema, "`parent` doesn't name a note."],
   ["address", AddressSchema, "`address` isn't an address."],
-  ["owner", PrincipalSchema, "`owner` doesn't name anybody."],
+  ["owner", Named, "`owner` doesn't name anybody."],
   ["created", TimestampSchema, "`created` isn't a time."],
   ["updated", TimestampSchema, "`updated` isn't a time."],
   ["checked", CommitIdSchema, "`checked` doesn't name a commit."],
@@ -92,8 +99,8 @@ const FIELDS: readonly (readonly [string, Holds, string])[] = [
 
 const LISTS: readonly (readonly [string, Holds, string])[] = [
   ["aliases", AddressSchema, "isn't an address"],
-  ["authors", PrincipalSchema, "doesn't name anybody"],
-  ["contributors", PrincipalSchema, "doesn't name anybody"],
+  ["authors", Named, "doesn't name anybody"],
+  ["contributors", Named, "doesn't name anybody"],
   ["links", OwnedRefSchema, "doesn't name a note"],
 ];
 

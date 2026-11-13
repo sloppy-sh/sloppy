@@ -54,6 +54,7 @@ import {
   TagsSchema,
   type UpdateNodeRequestSchema,
   withAuthor,
+  withAuthorsNamed,
 } from "@sloppy/types";
 import type { z } from "zod";
 import { MediaService } from "../media/media.service";
@@ -392,9 +393,10 @@ export class NodeService {
     if (fields.length > 0 && !writable(note, did)) throw gatedElsewhere();
     const writes = fields.some((field) => !recordsAReading(field));
     const joined = writes ? withAuthor(note, did) : note;
+    const named = withAuthorsNamed(joined, request.authors ?? []);
     const updated = await this.nodes.patch(did, ref, {
       ...request,
-      ...(joined === note ? {} : { authors: joined.authors }),
+      ...(named === note ? {} : { authors: named.authors }),
       ...(request.edges === undefined
         ? {}
         : { edges: linesWritten(request.edges) }),

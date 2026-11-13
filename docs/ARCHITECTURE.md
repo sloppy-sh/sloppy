@@ -387,6 +387,19 @@ row, the vault's front matter, the archive, a published snapshot and a pulled co
 - `contributors` — everybody whose offered change the owner has taken in, in the order they
   were taken. Absent, and empty, are none.
 
+**A person may also name somebody among `authors`** — `UpdateNodeRequest.authors`, a W3ID
+beside a `did:syr` (§ "Who a person is") — for writing that reached the note some other way, a
+note signed elsewhere. Naming only adds: the named join after everybody the note carries
+(`withAuthorsNamed`), nobody already in the list is taken off, and the writer joins as any
+landed write joins them. It is a write like any other, so the gate below holds it. Taking an
+author off is not a write this protocol has.
+
+**What a note was written with is not who wrote it.** `written_with`, a list of
+`{ agent }` — a model id such as `claude-fable-5.2`, kept as data — says which agents the
+writing was done with. An agent is not a principal and never enters `authors`, and nothing
+offers or lands differently because of it. Absent, and empty, are none named. It rides the
+hosted row, the vault's front matter and the archive; a published snapshot does not carry it.
+
 `created_by` keeps meaning what it always meant: whose rows these are, and what the purge
 sweeps by.
 
@@ -470,8 +483,9 @@ row here, and that DID is the graph owner's.
 ## Who a person is
 
 A person Sloppy names is a **principal**, and a principal is a URI whose scheme says how it
-is read. There are two: `did:syr:z…`, a syr identity whose method-specific part IS an Ed25519
-public key, and `mailto:alice@example.com`, an email address. `PrincipalSchema` in
+is read. There are three: `did:syr:z…`, a syr identity whose method-specific part IS an Ed25519
+public key; `mailto:alice@example.com`, an email address; and `w3id:@<uuid>`, a MetaState W3ID
+— the eName the W3DS registry resolves to the eVault that serves its profile. `PrincipalSchema` in
 `@sloppy/types`' `common.ts` is the union, and a third way of being named is an arm of it —
 never a second field beside the first, and never a boolean (AI.md § "Provider-Agnostic Data
 Shapes").
@@ -490,6 +504,16 @@ labels of letters, digits and hyphens. A quoted local part (`"alice smith"@…`)
 literal (`alice@[192.0.2.1]`) and a single-label domain (`alice@localhost`) are all refused —
 the binding this scheme resolves through needs a real domain to ask. `/` is refused because it
 separates the halves of a ref, and `%` because it would give one address two spellings.
+
+**A `w3id:` is `@` and an RFC 4122 UUID, lowercased on the way in**, since the UUID is
+case-insensitive. A person writes one as `@<uuid>` alone, and `asPrincipal` reads that — in a
+form and in a note's front matter — as the `w3id:` it names. The desk resolves one for a face
+and a name, and for nothing else: the registry's `/resolve`, then the profile the eVault holds
+in public, fetched by the desk and never by a page, the picture carried as bytes. A profile
+that is not public is shown unnamed, and so is one whose store did not answer within ten
+seconds a hop, asked again after five minutes; an answer is otherwise kept for the session, in
+the people store, which every surface reads. Nothing here verifies a W3ID's signature yet; who it is,
+not what it signed, is all a surface draws.
 
 **A ref is `<principal>/<ulid>`.** Each half is held to its own schema rather than to one
 regex spanning both, and the split is at the LAST `/`. A row's key is the same two halves as
@@ -2057,6 +2081,14 @@ is the client half: it resolves a minted path against the host this shell reache
 sends anything absolute — a look-alike from a peer included — to the asset route unsigned,
 where it is refused rather than fetched.
 
+**A W3ID author's face reaches no page from where it lives.** The desk fetches the profile and
+its picture itself, outside any page (`AppRuntime.reachOut`, `app-core/src/lib/w3id.ts`), and
+hands a surface the bytes. **This is the one place the device asks somebody else's store
+directly**: there is no instance between them to proxy through, so the registry, the author's
+eVault and the store their picture is kept in see the device's address and the W3ID asked
+about, and nothing of the reader or the notes. A shell with no `reachOut` — the web app — asks
+nobody, and a W3ID author shows unnamed there (§ "Who a person is").
+
 `GET /api/proxy` fetches what the signature names and nothing a caller typed, so a route
 that has to be public (an `<img>` carries no credential) is still not somewhere a stranger
 can aim this instance. It refuses anything the far end answers with that is not one of the
@@ -2954,15 +2986,17 @@ strokes are the record and the SVG is what a viewer that has never heard of Slop
 
 **One note is one file, and its sections are marked in the body.** The front matter is the
 note as the protocol holds it: `ref`, `parent`, `address`, `aliases`, `owner`, `authors`,
-`contributors`, `tags`, `links`, `edges`, `title`, `created`, `updated`, `checked`,
-`read_against`, `appearance`.
+`contributors`, `written_with`, `tags`, `links`, `edges`, `title`, `created`, `updated`,
+`checked`, `read_against`, `appearance`.
 Absent `parent`
 is a branch or an independent note; absent `address` is a note with none; absent `aliases`,
 `tags`, `links` or `contributors` is none of them; absent `owner` is an open note; absent
 `checked` is a note nobody has confirmed against the code, and absent `read_against` is one
 read against no file of it (§ "A project's container"). `read_against` is a list of blocks,
 one entry per place the note points at, its fields written `path` and `digest`; an entry a
-hand got wrong costs that entry alone, the way a look does. **Absent
+hand got wrong costs that entry alone, the way a look does. `written_with` is a list of blocks
+the same way, one `agent` each, and absent is none named. A principal a hand writes as `@<uuid>`
+is read as the W3ID it names. **Absent
 `authors` is the ref's own owner alone**, and that is the one case the file leaves out — a note
 only its own author has written into and a note written before anybody else could write into
 one are the same bytes, which is what keeps the round trip lossless (§ "Whose writing a note
@@ -4346,7 +4380,12 @@ shows is read whole: `asset/read` (`ASSET_READ`, `params` `{ note, path }`, queu
 in `read_note` names it — one of its pictures, or one of its drawings as the SVG the vault keeps
 beside the strokes — and refuses any other path with `NO_SUCH_ASSET` and a picture over 4 MB
 (`ASSET_MOST`) with `ASSET_TOO_LARGE`, so nothing of the folder is reachable that the note does
-not show. There is no port, no host
+not show. Whose writing a note carries comes with it: `FieldNote.authors` and `read_note`'s
+`authors`, absent where it is the ref's owner alone. `author/read` (`AUTHOR_READ`, `params`
+`{ principal }`, unqueued) answers who one of them is, `AuthorRead` — a `name` and `handle`
+where the profile gives them and a `picture`, a PNG no more than 128 pixels on its longer side,
+base64 — from the desk's own cache after the first time; a profile that is not public is
+refused `NOT_PUBLIC`, and one the desk could not reach `UNREACHED`. There is no port, no host
 and no address in any of it: what a headset holds is the desk's endpoint id, and the network
 finds where that is.
 
@@ -4495,7 +4534,7 @@ engine is `chat-engine.svelte.ts`; the methods are `serving/chat.ts`.
 never a headset, so the one server a headset is tested against is `serve.rs` itself: the
 headset's tests start `examples/desk.rs` in the native shell's crate, which runs `serve.rs`'s
 listener with a fixed code and answers `projects/list`, `look/read`, `look/list`, `field/list`,
-`picture/read`, `asset/read`, `tools/call`, `speech/hear` and the chat's methods from canned
+`picture/read`, `asset/read`, `author/read`, `tools/call`, `speech/hear` and the chat's methods from canned
 answers, sending a canned turn as `chat/event`s and a `view/show` after a `chat/say`; a desk
 started `mute` has no speech set up.
 
@@ -4513,7 +4552,10 @@ publishes them and of nothing else: the list at most once a day while the Skies 
 small picture shown once, and a sky the person chooses once — nothing of the notes or the person
 goes with them, and what comes back is kept on the headset (`room/skies.gd`). **The web pages a reader
 opens from a note** are fetched by the headset from the sites they name, as any browser does;
-nothing of the notes goes to those sites.
+nothing of the notes goes to those sites. **The authors a reader opens** are asked about by the
+desk: the W3ID of each, of the W3DS registry the person set under Settings → People, and then of
+that author's eVault, for the profile it shows in public and its picture. Nothing of the reader
+or the notes goes with it, and a headset asks only the desk.
 
 **The headset derives everything it draws.** `apps/sloppy/vr` is a Godot 4.4 project in
 GDScript (mobile renderer, OpenXR, the Godot OpenXR Vendors plugin for Meta), outside the pnpm

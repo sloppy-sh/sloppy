@@ -93,10 +93,14 @@ export class NoteWriter {
       request.appearance === undefined
         ? writing
         : styled(writing, lookWritten(request.appearance));
-    const joined =
+    const lines =
       request.edges === undefined
         ? held
         : lined(held, edgeLooksWritten(request.edges));
+    const joined =
+      request.authors === undefined
+        ? lines
+        : this.graph.named(lines, request.authors);
     return this.put({
       ...joined,
       ...(request.title === undefined ? {} : { title: request.title }),
@@ -716,6 +720,7 @@ function writesTheNote(request: UpdateNodeRequest): boolean {
     request.tags !== undefined ||
     request.links !== undefined ||
     request.edges !== undefined ||
+    request.authors !== undefined ||
     request.appearance !== undefined
   );
 }

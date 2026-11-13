@@ -2,8 +2,8 @@
 ## six panels round the controller, each a `Page`, the one facing them chosen
 ## from with the other hand's pointer, a swipe of this hand's stick turning the
 ## next one to them — DESIGN.md § "The field in a room". Here (the desk's
-## projects, leaving this one, letting the desk go), the room (its light, and moving
-## the field), the note open now, which the other hand's grip pulls off and
+## projects, leaving this one, letting the desk go, and the browser), the room
+## (its light, and moving the field), the note open now, which the other hand's grip pulls off and
 ## leaves in the room, or puts back, the look (following the desk's, and this
 ## headset's own look, face and density), how the field is drawn
 ## (`ui/field_panel.gd`), and the desk's chat (`ui/chat.gd`), its thread held
@@ -26,6 +26,7 @@ const LooksPanel := preload("res://ui/looks_panel.gd")
 const Chat := preload("res://ui/chat.gd")
 const Settings := preload("res://field/settings.gd")
 const Dressing := preload("res://ui/theme.gd")
+const Browser := preload("res://ui/browser_panel.gd")
 
 enum Pane { READING, ROOM, NOTE, LOOK, FIELD, CHAT }
 
@@ -69,6 +70,10 @@ const DESK := "Desk"
 const PROJECTS := "Projects"
 const LEAVE := "Leave project"
 const DISCONNECT := "Disconnect"
+const WEB := "Web"
+const BROWSER := "Browser"
+const CLOSE_BROWSER := "Close browser"
+const BRING_BROWSER := "Bring browser here"
 const ROOM_TITLE := "Room"
 const LIGHT := "Light"
 const MOVING := "Moving"
@@ -210,6 +215,7 @@ func _ready() -> void:
 		transform = Transform3D(toward_eyes * Basis(Vector3.RIGHT, Vector3.BACK, Vector3.DOWN), ON_SCREEN)
 	_rest = transform
 	add_to_group(FieldPanel.GROUP)
+	add_to_group(Browser.WATCHING)
 	add_child(_spin)
 	_chat.named = _named_in_view
 	add_child(_chat)
@@ -546,8 +552,27 @@ func _draw_reading() -> void:
 	if project != "":
 		desk.append(Page.choice(LEAVE, "log-out", _leave))
 	desk.append(Page.choice(DISCONNECT, "unplug", _disconnect))
-	var page := Page.new(HERE, [{"heading": DESK, "rows": desk}], project_name if project != "" else "", WIDTH)
+	var browser := Browser.of(get_tree())
+	var web: Array = [Page.choice(CLOSE_BROWSER if browser != null else BROWSER, "globe", _browser)]
+	if browser != null and browser.away:
+		web.append(Page.choice(BRING_BROWSER, "move", _bring_browser))
+	var page := Page.new(HERE, [{"heading": DESK, "rows": desk}, {"heading": WEB, "rows": web}], project_name if project != "" else "", WIDTH)
 	_lay(panel, [page, _words])
+
+
+func browser_changed() -> void:
+	_draw_reading()
+
+
+func _browser() -> void:
+	if Browser.of(get_tree()) != null:
+		Browser.close_in(get_tree())
+	else:
+		Browser.open_blank(self)
+
+
+func _bring_browser() -> void:
+	Browser.bring_here(self)
 
 
 func _draw_room() -> void:

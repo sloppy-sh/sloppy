@@ -15,6 +15,7 @@
 	import Palette from '@lucide/svelte/icons/palette';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import UserRound from '@lucide/svelte/icons/user-round';
+	import Users from '@lucide/svelte/icons/users';
 	import { type Effect, SCREEN_LEAST, SCREEN_MOST, type Texture } from '@sloppy/types';
 	import { ChoicePill, DESK_FROM_PX, DeskNavParts, PersonChip, scrollFade } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
@@ -29,6 +30,7 @@
 	import LookFile from '../components/look-file.svelte';
 	import LookPicker from '../components/look-picker.svelte';
 	import OpenHere from '../components/open-here.svelte';
+	import PeopleSettings from '../components/people-settings.svelte';
 	import AiSettings from '../components/ai-settings.svelte';
 	import WhatHappened from '../components/what-happened.svelte';
 	import { graphHere } from '../graph-here.svelte.js';
@@ -121,6 +123,8 @@
 	 *  the only surface this one is reached from. */
 	const wayOut = $derived(session.ready && !navShows());
 
+	const looksPeopleUp = runtime.reachOut() !== undefined;
+
 	/** What this page holds, in the order it holds it — the contents beside it
 	 *  on a desk and across its head on a phone. A section nothing shows is in
 	 *  neither. */
@@ -145,6 +149,7 @@
 					]),
 		...(offersCopy ? [{ id: 'your-writing', name: 'Your writing', icon: Download }] : []),
 		...(chat.reaches ? [{ id: 'an-assistant', name: 'An assistant', icon: Sparkles }] : []),
+		...(looksPeopleUp ? [{ id: 'people', name: 'People', icon: Users }] : []),
 		{ id: 'a-headset', name: 'A headset', icon: Glasses },
 		{ id: 'what-went-wrong', name: 'When something goes wrong', icon: LifeBuoy },
 		...(session.onDevice ? [] : [{ id: 'you', name: 'You', icon: UserRound }])
@@ -571,6 +576,15 @@
 				<section id="an-assistant" tabindex="-1" class="space-y-3">
 					<h2 class="text-sm font-medium">An assistant</h2>
 					<AiSettings />
+				</section>
+			{/if}
+		{/if}
+
+		{#if looksPeopleUp}
+			{#if standing === 'people'}
+				<section id="people" tabindex="-1" class="space-y-3">
+					<h2 class="text-sm font-medium">People</h2>
+					<PeopleSettings />
 				</section>
 			{/if}
 		{/if}

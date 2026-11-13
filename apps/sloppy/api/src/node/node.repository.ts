@@ -149,9 +149,8 @@ const BULK_WRITABLE = ["tags", "appearance", "authors"] as const;
 /** What a PATCH may carry; the immutable columns are absent by type. A `null`
  *  clears its column — see {@link replacement}.
  *
- * `authors` is here for the service rather than for a request: no request
- * names it, and what writes it is {@link withAuthor} over the note that was
- * there. */
+ * `authors` is the list a person wrote, or {@link withAuthor} over the note
+ * that was there where they wrote anything else. */
 export type NodePatch = Partial<
   Pick<
     Node,

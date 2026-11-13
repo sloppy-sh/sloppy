@@ -52,6 +52,7 @@
 		type NodeAppearance,
 		type NodeView,
 		type OwnedRef,
+		type Principal,
 		type PullView,
 		type StoreRef,
 		type Tag as TagName,
@@ -96,6 +97,7 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import CiteCode from '../components/cite-code.svelte';
 	import CodePreview from '../components/code-preview.svelte';
+	import AddAuthor from '../components/add-author.svelte';
 	import NoteAuthor from '../components/note-author.svelte';
 	import NoteOwner from '../components/note-owner.svelte';
 	import OfferChange from '../components/offer-change.svelte';
@@ -300,6 +302,7 @@
 		copy?: string;
 		address?: string;
 		owner?: string;
+		author?: string;
 		checked?: string;
 	}
 	const refusals = new SvelteMap<OwnedRef, Refusals>();
@@ -334,7 +337,8 @@
 				'publish',
 				'copy',
 				'address',
-				'owner'
+				'owner',
+				'author'
 			] as const) {
 				if (refusals.get(of)?.[act] !== undefined) refuse(of, act, null);
 			}
@@ -904,6 +908,29 @@
 			);
 		} finally {
 			writingOwner = false;
+		}
+	}
+
+	let addingAuthor = $state(false);
+
+	async function addAuthor(author: Principal): Promise<boolean> {
+		const of = ref;
+		refuse(of, 'author', null);
+		addingAuthor = true;
+		try {
+			await graphHistory.lineToWriteOn();
+			await nodes.update(of, { authors: [author] });
+			acknowledge('Author added.');
+			return true;
+		} catch (error) {
+			refuse(
+				of,
+				'author',
+				serverMessage(error) ?? 'Sloppy could not save that. Try again in a moment.'
+			);
+			return false;
+		} finally {
+			addingAuthor = false;
 		}
 	}
 
@@ -2598,6 +2625,14 @@
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 				{#if showsAuthor}
 					<NoteAuthor note={node} />
+				{/if}
+				{#if !gated && viewerDid !== ''}
+					<AddAuthor
+						authors={authorsOf(node)}
+						busy={addingAuthor}
+						refused={refused.author ?? null}
+						onadd={addAuthor}
+					/>
 				{/if}
 				{#if node.owner === viewerDid && viewerDid !== ''}
 					<button

@@ -122,6 +122,9 @@ export function rowsFor(
         ...(note.contributors?.length
           ? { contributors: note.contributors }
           : {}),
+        ...(note.written_with?.length
+          ? { written_with: note.written_with }
+          : {}),
         title: note.title,
         tags: TagsSchema.catch([]).parse(note.tags),
         links: note.links,

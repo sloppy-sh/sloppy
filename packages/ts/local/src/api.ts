@@ -2343,6 +2343,7 @@ function alike(a: VaultNote, b: VaultNote): boolean {
       a.aliases,
       a.appearance ?? null,
       whoseWriting(a),
+      a.written_with ?? [],
     ]) ===
     JSON.stringify([
       b.tags,
@@ -2351,6 +2352,7 @@ function alike(a: VaultNote, b: VaultNote): boolean {
       b.aliases,
       b.appearance ?? null,
       whoseWriting(b),
+      b.written_with ?? [],
     ])
   );
 }

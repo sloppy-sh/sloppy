@@ -226,6 +226,28 @@ describe("the notes a project has", () => {
   });
 });
 
+describe("whose writing a note read whole carries", () => {
+  const W3ID = "w3id:@00000000-0000-5000-8000-000000000001";
+
+  it("names the authors where they are anybody but the graph's own, and never an agent", async () => {
+    const note = await wrote(writes(PARSER, [ABOUT_THE_PARSER]));
+    const readNote = async () =>
+      NoteReadSchema.parse(
+        JSON.parse(
+          await answer({ call: "c2", act: "read_note", arguments: { note } }),
+        ),
+      );
+
+    expect((await readNote()).authors).toBeUndefined();
+
+    const api = containerApi(files);
+    const owner = (await api.getNode(note))?.created_by;
+    await api.updateNode(note, { authors: [owner as string, W3ID] });
+
+    expect((await readNote()).authors).toEqual([owner, W3ID]);
+  });
+});
+
 describe("reading a note against the code", () => {
   it("says where the code under each of its anchors stands", async () => {
     const note = await wrote(

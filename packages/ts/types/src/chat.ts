@@ -1260,6 +1260,9 @@ export type OutlinedSection = z.infer<typeof OutlinedSectionSchema>;
 /** One note read whole, or as much of it as one answer carries —
  *  {@link noteAnswer} is what composes one. */
 export const NoteReadSchema = ListedNoteSchema.extend({
+  /** Whose writing the note carries, in the order they first wrote into it.
+   *  **Absent is the ref's owner alone.** */
+  authors: z.array(PrincipalSchema).optional(),
   /** The looks this note sets on its lines, one per note at the other end.
    *  **Absent is a note that sets none**, which is a line drawn as the graph
    *  draws it — and the other end may still set one. */

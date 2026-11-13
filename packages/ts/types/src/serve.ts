@@ -106,6 +106,10 @@ export interface FieldNote {
   links: FieldLink[];
   /** **Absent is a mark that wears no picture**; present, {@link PICTURE_READ} answers it. */
   picture?: true;
+  /** Whose writing the note carries, in the order they first wrote into it.
+   *  **Absent is the ref's owner alone**, as `authorsOf` reads it; present,
+   *  {@link AUTHOR_READ} answers each. */
+  authors?: string[];
 }
 
 /**
@@ -150,6 +154,31 @@ export interface AssetAsked {
 export interface AssetRead {
   bytes: string;
   mime: string;
+}
+
+/** The serve-level method that answers who somebody a note names as an author
+ *  is, as {@link AuthorRead}: `params` {@link AuthorAsked}. Unqueued. */
+export const AUTHOR_READ = "author/read";
+
+/** The most pixels an {@link AUTHOR_READ} face is on its longer side. */
+export const AUTHOR_FACE_LONGEST = 128;
+
+export interface AuthorAsked {
+  /** A principal, as a note's `authors` names it. */
+  principal: string;
+}
+
+/**
+ * The answer to {@link AUTHOR_READ}. **Absent `name` is somebody whose profile
+ * names nobody**, drawn by what the note calls them; absent `picture` is a face
+ * drawn as the look's plain disc. `picture` is PNG, base64, no more than
+ * {@link AUTHOR_FACE_LONGEST} on its longer side. A profile that is not public
+ * is refused `NOT_PUBLIC`, and one that could not be reached `UNREACHED`.
+ */
+export interface AuthorRead {
+  name?: string;
+  handle?: string;
+  picture?: string;
 }
 
 /** A pairing code: {@link SERVE_CODE_LENGTH} decimal digits, leading zeroes kept. */
@@ -232,7 +261,8 @@ export interface ServeCall {
 /**
  * One message a headset sends: a JSON-RPC 2.0 request or notification, the MCP
  * methods `sloppy mcp` answers plus {@link PROJECTS_LIST}, {@link FIELD_LIST},
- * {@link LOOK_READ}, {@link PICTURE_READ}, {@link ASSET_READ} and {@link SERVE_PAIR}.
+ * {@link LOOK_READ}, {@link PICTURE_READ}, {@link ASSET_READ}, {@link AUTHOR_READ}
+ * and {@link SERVE_PAIR}.
  */
 export interface ServeMessage {
   jsonrpc: "2.0";
@@ -283,6 +313,10 @@ export const SERVE_REFUSALS = {
   NO_SUCH_ASSET: -32040,
   /** The picture is larger than {@link ASSET_MOST}. */
   ASSET_TOO_LARGE: -32041,
+  /** The author's profile is not public. */
+  NOT_PUBLIC: -32050,
+  /** The author's profile could not be reached. */
+  UNREACHED: -32051,
 } as const;
 export type ServeRefusal = keyof typeof SERVE_REFUSALS;
 
@@ -296,6 +330,9 @@ export const SPEECH_UNREADABLE_SAID =
   "That could not be heard. Hold the button and try again.";
 export const NO_SUCH_ASSET_SAID = "That picture is not in this note.";
 export const ASSET_TOO_LARGE_SAID = "That picture is too large to show here.";
+export const NOT_PUBLIC_SAID = "This person's profile is not public.";
+export const UNREACHED_SAID =
+  "This person's profile could not be reached. Try again later.";
 
 /** Turns a reader's voice into words: `params` {@link SpeechHear}, answered
  *  {@link SpeechHeard}. */

@@ -4,6 +4,7 @@
 // docs/ARCHITECTURE.md § "Asking a tool to write the notes".
 
 import {
+  authorsBeyondRef,
   ABOUT_MAX,
   anchorsOf,
   type AnchorStanding,
@@ -251,6 +252,7 @@ export async function noteRead(
   const written = quoted === "all" ? contents : quotesLeftOut(contents, quotes);
   return {
     ...asListed(note, about),
+    ...authorsNamed(note),
     ...(note.edges === undefined || note.edges.length === 0
       ? {}
       : { edges: [...note.edges] }),
@@ -272,6 +274,12 @@ export async function noteRead(
       ? {}
       : { code: followingMoves(await codePlacesIn(contents, code), quotes) }),
   };
+}
+
+/** Whose writing a note carries, where that is anybody but its ref's owner. */
+function authorsNamed(note: NodeView): Pick<NoteRead, "authors"> {
+  const authors = authorsBeyondRef(note);
+  return authors === undefined ? {} : { authors };
 }
 
 /** The places a note points at, a quote whose code moved named where it is now. */

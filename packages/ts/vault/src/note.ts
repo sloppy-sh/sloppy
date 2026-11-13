@@ -3,13 +3,14 @@
 import {
   type Address,
   AddressSchema,
+  asPrincipal,
+  authorsBeyondRef,
   type BlockDocument,
   type BlockView,
   type CodeReading,
   CodeReadingSchema,
   CommitIdSchema,
   type Principal,
-  PrincipalSchema,
   type EdgeLook,
   EdgeLookSchema,
   isUnstyled,
@@ -25,6 +26,8 @@ import {
   type Timestamp,
   TimestampSchema,
   UlidSchema,
+  type WrittenWith,
+  WrittenWithSchema,
 } from "@sloppy/types";
 import {
   type FrontBlock,
@@ -85,6 +88,8 @@ export interface VaultNote {
   authors?: Principal[];
   /** Whose offered change its owner has taken in. Absent is none. */
   contributors?: Principal[];
+  /** The agents its writing was done with. Absent is none named. */
+  written_with?: WrittenWith[];
   tags: string[];
   links: OwnedRef[];
   /** The looks its author set on the lines out of it, one per note at the other
@@ -153,6 +158,7 @@ export function noteToVault(
     ["owner", note.owner],
     ["authors", writtenAuthors(note)],
     ["contributors", [...(note.contributors ?? [])]],
+    ["written_with", writtenWithEntries(note.written_with)],
     ["tags", [...note.tags]],
     ["links", [...note.links]],
     ["edges", edgeEntries(note.edges)],
@@ -245,7 +251,7 @@ export function vaultToNote(files: NoteSource): VaultNote {
   const parent = OwnedRefSchema.safeParse(frontString(front, "parent"));
   const look = NodeAppearanceSchema.safeParse(frontBlock(front, "appearance"));
   const address = AddressSchema.safeParse(frontString(front, "address"));
-  const owner = PrincipalSchema.safeParse(frontString(front, "owner"));
+  const owner = asPrincipal(frontString(front, "owner") ?? "");
   const checked = CommitIdSchema.safeParse(frontString(front, "checked"));
   const authors = named(frontList(front, "authors"));
   const contributors = named(frontList(front, "contributors"));
@@ -260,9 +266,10 @@ export function vaultToNote(files: NoteSource): VaultNote {
     aliases: frontList(front, "aliases").filter(
       (held) => AddressSchema.safeParse(held).success,
     ),
-    ...(owner.success ? { owner: owner.data } : {}),
+    ...(owner === undefined ? {} : { owner }),
     ...(authors.length > 0 ? { authors } : {}),
     ...(contributors.length > 0 ? { contributors } : {}),
+    ...writtenWithRead(front),
     tags: frontList(front, "tags"),
     links: refs(frontList(front, "links")),
     ...edgesRead(front),
@@ -290,8 +297,8 @@ function refs(held: readonly string[]): OwnedRef[] {
  *  carries in some other casing lands here in the one everything compares. */
 function named(held: readonly string[]): Principal[] {
   return held.flatMap((one) => {
-    const parsed = PrincipalSchema.safeParse(one);
-    return parsed.success ? [parsed.data] : [];
+    const principal = asPrincipal(one);
+    return principal === undefined ? [] : [principal];
   });
 }
 
@@ -299,11 +306,7 @@ function named(held: readonly string[]): Principal[] {
  *  owner alone — the one case the file leaves out, so a note written before the
  *  list and a note only its author has written into are the same file. */
 function writtenAuthors(note: NodeView): Principal[] {
-  const authors = note.authors ?? [];
-  const [first] = authors;
-  return authors.length === 1 && first === splitOwnedRef(note.ref).owner
-    ? []
-    : [...authors];
+  return authorsBeyondRef(note) ?? [];
 }
 
 /** The look as one block under the note's own fields. A look with every channel
@@ -365,6 +368,27 @@ export function readingsOf(
     }),
   );
   return readings.length === 0 ? {} : { read_against: readings };
+}
+
+/** Each agent as one entry under `written_with`. A note written with none
+ *  writes none. */
+export function writtenWithEntries(
+  agents: readonly WrittenWith[] | undefined,
+): FrontEntries | undefined {
+  if (agents === undefined || agents.length === 0) return undefined;
+  return agents.map((one) => new Map([["agent", one.agent]]));
+}
+
+/** The agents a file names. One a hand got wrong costs that one and not the
+ *  note. */
+export function writtenWithRead(
+  front: ReadonlyMap<string, FrontValue>,
+): Pick<VaultNote, "written_with"> {
+  const agents = frontEntries(front, "written_with").flatMap((entry) => {
+    const one = WrittenWithSchema.safeParse(entry);
+    return one.success ? [one.data] : [];
+  });
+  return agents.length === 0 ? {} : { written_with: agents };
 }
 
 /** The looks a file holds. One a hand got wrong costs that look and not the

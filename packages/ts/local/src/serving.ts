@@ -7,6 +7,7 @@ import {
   type AnswerShape,
   CHAT_TOOL_SPECS,
   CHAT_TOOLS,
+  authorsBeyondRef,
   type ChatToolAnswer,
   type ChatToolName,
   ChatToolCallSchema,
@@ -459,6 +460,11 @@ export function fieldPage(
     : { notes: page };
 }
 
+function authorsField(note: NodeView): Pick<FieldNote, "authors"> {
+  const authors = authorsBeyondRef(note);
+  return authors === undefined ? {} : { authors };
+}
+
 function asField(note: NodeView): FieldNote {
   return {
     note: note.ref,
@@ -466,6 +472,7 @@ function asField(note: NodeView): FieldNote {
     ...(note.address === undefined ? {} : { address: note.address }),
     ...(note.parent === undefined ? {} : { parent: note.parent }),
     tags: [...note.tags],
+    ...authorsField(note),
     ...(resolveAppearance(note.appearance).preview.pictures.length > 0
       ? { picture: true as const }
       : {}),

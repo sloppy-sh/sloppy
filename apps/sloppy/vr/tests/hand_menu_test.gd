@@ -74,7 +74,8 @@ func _run() -> void:
 	var here: Node3D = menu._faces[HandMenu.Pane.READING]
 	_check(_label(here, "Read") == null and _label(here, "Field") == null and _label(here, "Sets") == null, "the arrangements are the field panel's alone, not here")
 	_check(_label(here, HandMenu.LEAVE) == null, "and with no project in hand there is none to leave")
-	for heading in [[HandMenu.Pane.READING, HandMenu.DESK], [HandMenu.Pane.ROOM, HandMenu.LIGHT], [HandMenu.Pane.ROOM, HandMenu.MOVING], [HandMenu.Pane.LOOK, HandMenu.FOLLOWING], [HandMenu.Pane.LOOK, HandMenu.COLOURS_AND_TYPE], [HandMenu.Pane.LOOK, HandMenu.PANELS_HEADING], [HandMenu.Pane.CHAT, HandMenu.THREADS]]:
+	_check(_label(here, HandMenu.BROWSER) != null and _label(here, HandMenu.BRING_BROWSER) == null, "the browser is opened from here, and with none open there is none to bring")
+	for heading in [[HandMenu.Pane.READING, HandMenu.DESK], [HandMenu.Pane.READING, HandMenu.WEB], [HandMenu.Pane.ROOM, HandMenu.LIGHT], [HandMenu.Pane.ROOM, HandMenu.MOVING], [HandMenu.Pane.LOOK, HandMenu.FOLLOWING], [HandMenu.Pane.LOOK, HandMenu.COLOURS_AND_TYPE], [HandMenu.Pane.LOOK, HandMenu.PANELS_HEADING], [HandMenu.Pane.CHAT, HandMenu.THREADS]]:
 		_check(_label(menu._faces[heading[0]], heading[1]) != null, "rows stand under %s" % heading[1])
 	_check(_label(menu._faces[HandMenu.Pane.ROOM], HandMenu.VANTAGE) != null, "the vantage is the room's, with where the reader stands")
 	_press_tab(false)

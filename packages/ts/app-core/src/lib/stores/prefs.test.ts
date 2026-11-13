@@ -12,7 +12,8 @@ import {
 	MOST_VIEWS,
 	asOrigin,
 	prefs,
-	storedOrigin
+	storedOrigin,
+	W3ID_REGISTRY
 } from './prefs.svelte.js';
 
 const GARDEN = '/Users/me/Garden';
@@ -497,7 +498,8 @@ describe('the saved look', () => {
 				speechAgent: 'a parrot',
 				speechModel: { groq: 'a model from later', whisper_cpp: '', parrot: 'polly' },
 				speechProgramModel: 42,
-				origin: 'nowhere at all/ /'
+				origin: 'nowhere at all/ /',
+				w3idRegistry: 'javascript:alert(1)'
 			})
 		);
 		prefs.init();
@@ -543,8 +545,25 @@ describe('the saved look', () => {
 			speechAgent: null,
 			speechModel: { groq: 'a model from later' },
 			speechProgramModel: null,
-			origin: null
+			origin: null,
+			w3idRegistry: W3ID_REGISTRY
 		});
+	});
+
+	it('looks W3ID authors up where it was told to, kept as an origin', () => {
+		prefs.init();
+		expect(prefs.current.w3idRegistry).toBe('https://registry.w3ds.metastate.foundation');
+		prefs.set('w3idRegistry', 'https://registry.example.org');
+		prefs.init();
+		expect(prefs.current.w3idRegistry).toBe('https://registry.example.org');
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({ w3idRegistry: 'registry.example.org/resolve?w3id=x' })
+		);
+		prefs.init();
+		expect(prefs.current.w3idRegistry).toBe('https://registry.example.org');
+		prefs.set('w3idRegistry', 'not a place');
+		expect(prefs.current.w3idRegistry).toBe(W3ID_REGISTRY);
 	});
 
 	it("keeps this computer's own speech recognition chosen across a restart", () => {

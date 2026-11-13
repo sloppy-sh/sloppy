@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { AddressSchema, RootAddressSchema } from "./address.js";
 import { CodeReadingsSchema } from "./code-anchor.js";
+import { splitOwnedRef } from "./codecs.js";
 import { NodeAppearanceSchema, WrittenAppearanceSchema } from "./appearance.js";
 import {
   OwnedEntitySchema,
@@ -27,6 +28,19 @@ export const CommitIdSchema = z.string().min(1).max(128);
 /** Long enough for a sentence somebody titles a note with, short enough to
  *  read beside the others in a list. */
 export const NODE_TITLE_MAX = 512;
+
+/** Long enough for what an agent calls itself. */
+export const WRITTEN_WITH_AGENT_MAX = 128;
+
+/**
+ * One agent a note was written with, by what it calls itself — a model id like
+ * `claude-fable-5.2`, kept as data. Provenance, never authorship: an agent is
+ * not a principal and never enters `authors`.
+ */
+export const WrittenWithSchema = z.object({
+  agent: z.string().trim().min(1).max(WRITTEN_WITH_AGENT_MAX),
+});
+export type WrittenWith = z.infer<typeof WrittenWithSchema>;
 
 export const NodeSchema = OwnedEntitySchema.extend({
   /**
@@ -72,6 +86,12 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * taken. Absent, and empty, are none.
    */
   contributors: z.array(PrincipalSchema).optional(),
+  /**
+   * The agents its writing was done with, in the order they were named.
+   * **Absent, and empty, are none named.** Nothing offers or lands
+   * differently because of it.
+   */
+  written_with: z.array(WrittenWithSchema).optional(),
   title: z.string().max(NODE_TITLE_MAX).default(""),
   tags: TagsSchema.default([]),
   /**
@@ -203,6 +223,21 @@ export function authorsOf(
 }
 
 /**
+ * Whose writing a note carries, where that is anything but its ref's owner
+ * alone — the one case a file and the wire leave out. `undefined` is that case.
+ */
+export function authorsBeyondRef(
+  note: Pick<Node, "authors"> & { ref: OwnedRef },
+): Principal[] | undefined {
+  const authors = note.authors ?? [];
+  const [first] = authors;
+  if (authors.length === 0) return undefined;
+  return authors.length === 1 && first === splitOwnedRef(note.ref).owner
+    ? undefined
+    : [...authors];
+}
+
+/**
  * What a write by `writer` does to this note: it `lands`, or it is `offered` to
  * the owner as an amendment. AI.md § "The Genealogy Is the Protocol".
  */
@@ -247,6 +282,18 @@ export function withAuthor<
   const authors = authorsOf(note);
   if (authors.includes(writer)) return note;
   return { ...note, authors: [...authors, writer] };
+}
+
+/**
+ * The note with `named` among its authors, after everybody it carries already.
+ * Naming only adds: nobody already in the list is taken off.
+ */
+export function withAuthorsNamed<
+  T extends Pick<Node, "created_by" | "authors">,
+>(note: T, named: readonly Principal[]): T {
+  const held = authorsOf(note);
+  const authors = [...new Set([...held, ...named])];
+  return authors.length === held.length ? note : { ...note, authors };
 }
 
 /**
@@ -445,6 +492,13 @@ export const UpdateNodeRequestSchema = z.object({
    * field on this request is a contributor's to write either.
    */
   owner: PrincipalSchema.nullable().optional(),
+  /**
+   * Principals to name among whose writing the note carries — a delta that only
+   * adds, after everybody it carries already ({@link withAuthorsNamed}); nobody
+   * is taken off. Held to the gate any write is, and the writer joins as any
+   * landed write joins them. Absent, and empty, name nobody.
+   */
+  authors: z.array(PrincipalSchema).optional(),
   /** `null` takes the look back off and leaves the note unstyled; absent leaves
    *  whatever look it has alone. */
   appearance: WrittenAppearanceSchema.nullable().optional(),

@@ -104,17 +104,39 @@ export const DomainSchema = z
   .regex(new RegExp(`^${DOMAIN}$`), "Enter a domain, like example.com");
 export type Domain = z.infer<typeof DomainSchema>;
 
+/** The UUID a W3ID is spelled around, as RFC 4122 writes one: hex in groups of
+ *  8, 4, 4, 4 and 12. */
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+/**
+ * Somebody who goes by a MetaState W3ID — `w3id:@` and a UUID, the eName the
+ * W3DS registry resolves. docs/ARCHITECTURE.md § "Who a person is".
+ *
+ * **Lowercased on the way in**: a W3ID's UUID is case-insensitive, and a
+ * principal is compared byte for byte. Somebody typing one writes `@<uuid>`
+ * alone, which {@link asPrincipal} takes.
+ */
+export const W3idSchema = z
+  .string()
+  .max(42)
+  .toLowerCase()
+  .regex(
+    new RegExp(`^w3id:@${UUID}$`),
+    "Expected a w3id: identifier, e.g. w3id:@0f6b…",
+  );
+export type W3id = z.infer<typeof W3idSchema>;
+
 /**
  * Which scheme an identifier is in. Adding a way for somebody to be named is a
  * value here and an arm of {@link PrincipalSchema} — never a second field
  * beside the first, and never a boolean; AI.md § "Provider-Agnostic Data
  * Shapes".
  */
-export const PrincipalSchemeSchema = z.enum(["did:syr", "mailto"]);
+export const PrincipalSchemeSchema = z.enum(["did:syr", "mailto", "w3id"]);
 export type PrincipalScheme = z.infer<typeof PrincipalSchemeSchema>;
 
 /**
- * Somebody a graph can name: a syr identity, or an email address.
+ * Somebody a graph can name: a syr identity, an email address, or a W3ID.
  *
  * Each scheme is recognised and checked on its own terms — a malformed
  * `mailto:` is refused as firmly as a malformed DID — and a string in neither
@@ -123,17 +145,33 @@ export type PrincipalScheme = z.infer<typeof PrincipalSchemeSchema>;
  * swept by. What a scheme can be RESOLVED or VERIFIED through is a separate
  * question, asked of a `KeyBinding` and of a `VouchResolver`.
  */
-export const PrincipalSchema = z.union([DidSyrSchema, MailtoSchema], {
-  error:
-    "Expected an identifier, e.g. did:syr:z6Mkt9… or mailto:alice@example.com",
-});
+export const PrincipalSchema = z.union(
+  [DidSyrSchema, MailtoSchema, W3idSchema],
+  {
+    error:
+      "Expected an identifier, e.g. did:syr:z6Mkt9…, mailto:alice@example.com or w3id:@0f6b…",
+  },
+);
 export type Principal = z.infer<typeof PrincipalSchema>;
 
 /** Which scheme a principal is in, or `undefined` where it is in none. */
 export function principalScheme(value: string): PrincipalScheme | undefined {
   if (DidSyrSchema.safeParse(value).success) return "did:syr";
   if (MailtoSchema.safeParse(value).success) return "mailto";
+  if (W3idSchema.safeParse(value).success) return "w3id";
   return undefined;
+}
+
+/**
+ * What a person typed as somebody, as the principal it names, or `undefined`
+ * where it names nobody. A bare `@<uuid>` is the way a W3ID is written down,
+ * so it is read as one; everything else must already say its scheme.
+ */
+export function asPrincipal(typed: string): Principal | undefined {
+  const held = typed.trim();
+  const spelled = held.startsWith("@") ? `w3id:${held}` : held;
+  const parsed = PrincipalSchema.safeParse(spelled);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Crockford base32, as `ulid()` emits it. */

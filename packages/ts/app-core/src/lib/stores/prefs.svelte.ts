@@ -230,7 +230,13 @@ export interface Prefs {
 	 *  § "Deployment modes". Null is the one the app came with, which is what
 	 *  the shell names. */
 	origin: string | null;
+	/** Where a W3ID author is looked up, as an origin — docs/ARCHITECTURE.md
+	 *  § "Who a person is". Settings → People. */
+	w3idRegistry: string;
 }
+
+/** Where a W3ID author is looked up until somebody names another. */
+export const W3ID_REGISTRY = 'https://registry.w3ds.metastate.foundation';
 
 /** Which groups of the desk column stand open. */
 export interface ColumnGroups {
@@ -486,7 +492,8 @@ function defaults(): Prefs {
 		speechAgent: null,
 		speechModel: {},
 		speechProgramModel: null,
-		origin: null
+		origin: null,
+		w3idRegistry: W3ID_REGISTRY
 	};
 }
 
@@ -926,7 +933,8 @@ class PrefsStore {
 				: null,
 			speechModel: speechModelsIn(saved.speechModel),
 			speechProgramModel: pathIn(saved.speechProgramModel),
-			origin: asOrigin(saved.origin)
+			origin: asOrigin(saved.origin),
+			w3idRegistry: asOrigin(saved.w3idRegistry) ?? W3ID_REGISTRY
 		};
 		this.apply();
 	}
@@ -1017,6 +1025,7 @@ class PrefsStore {
 		// A screen back at rest is a screen this device says nothing about, so it
 		// is not carried on to the next one either.
 		if (key === 'screens') next.screens = screensIn(value, undefined);
+		if (key === 'w3idRegistry') next.w3idRegistry = asOrigin(value) ?? W3ID_REGISTRY;
 		// A name arrived with one look, so another look has none until it says so.
 		if (key === 'look' && value !== this.#current.look) next.lookName = null;
 		// A graph, the canvas beside it, the pictures under them and how each

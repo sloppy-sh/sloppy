@@ -11,11 +11,19 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
-import { initRuntime, runtime } from '../runtime.js';
+import { initRuntime, runtime, updateRuntime } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { identity } from '../stores/identity.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
-import { DENSITIES, EFFECTS, FACE_ROLES, FACES, prefs, STYLES } from '../stores/prefs.svelte.js';
+import {
+	DENSITIES,
+	EFFECTS,
+	FACE_ROLES,
+	FACES,
+	prefs,
+	STYLES,
+	W3ID_REGISTRY
+} from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { whatHappened } from '../stores/what-happened.svelte.js';
@@ -24,7 +32,7 @@ import { aGraphFolder } from '../browser-files.test-support.js';
 import { graphHere } from '../graph-here.svelte.js';
 import Settings from './settings.svelte';
 import SettingsInChrome from './settings-in-chrome.test-support.svelte';
-import { standIn } from './settings.test-support.js';
+import { sectionsOffered, standIn } from './settings.test-support.js';
 
 const STORED: ProfileView = {
 	did: DID,
@@ -773,5 +781,65 @@ describe('a headset', () => {
 		expect(target.querySelector('#a-headset')?.textContent).toContain(
 			'Serving to a headset is done from the Sloppy app on a computer or tablet.'
 		);
+	});
+});
+
+describe('people', () => {
+	afterEach(() => {
+		updateRuntime({ reachOut: undefined });
+	});
+
+	function keepRegistry(typed: string): void {
+		const field = target.querySelector<HTMLInputElement>('#w3id-registry');
+		if (!field) throw new Error('Nowhere to say where people are looked up');
+		field.value = typed;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		flushSync();
+		field.form?.requestSubmit();
+		flushSync();
+	}
+
+	it('is not offered where this device cannot look anybody up', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+		expect(sectionsOffered()).not.toContain('People');
+	});
+
+	it('names the service people are looked up through, and keeps another', async () => {
+		updateRuntime({ reachOut: async () => new Response('') });
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+		standIn('People');
+
+		const field = target.querySelector<HTMLInputElement>('#w3id-registry');
+		expect(field?.value).toBe(W3ID_REGISTRY);
+		expect(target.querySelector('#people')?.textContent).toContain(
+			'Which service names the people whose profiles you see.'
+		);
+
+		keepRegistry('names.example.org');
+		expect(prefs.current.w3idRegistry).toBe('https://names.example.org');
+		prefs.init();
+		expect(prefs.current.w3idRegistry).toBe('https://names.example.org');
+
+		button('Use the one Sloppy came with').click();
+		flushSync();
+		expect(prefs.current.w3idRegistry).toBe(W3ID_REGISTRY);
+	});
+
+	it('keeps nothing that is not a web address', async () => {
+		updateRuntime({ reachOut: async () => new Response('') });
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+		standIn('People');
+
+		keepRegistry('ftp://names.example.org');
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain(
+			"That doesn't look like a web address."
+		);
+		expect(prefs.current.w3idRegistry).toBe(W3ID_REGISTRY);
 	});
 });

@@ -69,6 +69,7 @@ func _run() -> void:
 	var bare: Array = field.get("notes", []).filter(func(one): return one.get("picture") != true)
 	_check(not bare.is_empty() and await _client.picture("", bare[0].note) == null, "and none for a mark that wears none")
 	await _shows_pictures(field)
+	await _names_authors(field)
 	var written: Dictionary = await _client.call_act("", "write_note", {"about": "a.ts", "sections": ["It."]})
 	_check(written.has("error"), "writes nothing")
 	var second: Array = field.get("notes", []).filter(func(one): return one.has("parent"))
@@ -107,6 +108,25 @@ func _shows_pictures(field: Dictionary) -> void:
 	_check(drawn and image.get_size() == Vector2i(4, 2), "reads a picture a note's writing shows: %s" % [shown])
 	var other: Dictionary = await _client.asset("", note, "media/elsewhere")
 	_check(other.get("code") == -32040 and other.has("error"), "and is refused one it does not: %s" % [other])
+
+
+## Who wrote a note, as the field lists them and the desk names them.
+func _names_authors(field: Dictionary) -> void:
+	var leaf: Array = field.get("notes", []).filter(func(one): return one.has("parent"))
+	var authors: Array = leaf[0].get("authors", []) if leaf.size() == 1 else []
+	_check(authors.size() == 1, "the field says who wrote a note another wrote: %s" % [leaf])
+	var root: Array = field.get("notes", []).filter(func(one): return not one.has("parent"))
+	_check(root.size() == 1 and not root[0].has("authors"), "and says nothing of one its owner wrote alone")
+	if authors.is_empty():
+		return
+	var who: Dictionary = await _client.author("", authors[0])
+	var face := Image.new()
+	var drawn: bool = face.load_png_from_buffer(Marshalls.base64_to_raw(str(who.get("picture", "")))) == OK
+	_check(who.get("name") == "Ada" and drawn and face.get_width() <= 128, "names an author, with a face: %s" % [who.keys()])
+	var hidden: Dictionary = await _client.author("", "w3id:@00000000-0000-5000-8000-000000000002")
+	_check(hidden.get("code") == -32050 and hidden.get("error") == "This person's profile is not public.", "says one is not public: %s" % [hidden])
+	var gone: Dictionary = await _client.author("", "w3id:@00000000-0000-5000-8000-000000000009")
+	_check(gone.get("code") == -32051 and str(gone.get("error", "")).begins_with("This person's profile could not be reached"), "and one could not be reached: %s" % [gone])
 
 
 ## What a headset asks of a desk beyond its notes: hearing, the chat,

@@ -364,6 +364,33 @@ describe("the field a headset reads", () => {
     expect(listed.notes.filter((note) => note.parent).length).toBe(299);
   });
 
+  it("names whose writing a note carries where that is anybody but its owner", () => {
+    const OWNER = "did:syr:z6MkOwnerOwnerOwnerOwnerOwner";
+    const W3ID = "w3id:@00000000-0000-5000-8000-000000000001";
+    const at = (ulid: string, authors?: string[]) =>
+      ({
+        ref: `${OWNER}/${ulid}`,
+        title: "",
+        tags: [],
+        links: [],
+        ...(authors === undefined ? {} : { authors }),
+      }) as unknown as NodeView;
+
+    const { notes } = fieldPage([
+      at("01M75GHRBNNE3RZVF65TTT9EP1"),
+      at("01M75GHRBNNE3RZVF65TTT9EP2", [OWNER]),
+      at("01M75GHRBNNE3RZVF65TTT9EP3", [OWNER, W3ID]),
+      at("01M75GHRBNNE3RZVF65TTT9EP4", [W3ID]),
+    ]);
+
+    expect(notes.map((note) => note.authors)).toEqual([
+      undefined,
+      undefined,
+      [OWNER, W3ID],
+      [W3ID],
+    ]);
+  });
+
   it("pages a graph past the most one answer carries", () => {
     const notes = Array.from(
       { length: FIELD_PAGE + 3 },

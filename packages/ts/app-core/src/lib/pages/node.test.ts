@@ -13,6 +13,7 @@ import { citedNotes, MARK_SCALE_MAX, rebaseAddress, REFERENCE_NOTE_ATTR } from '
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deviceStore } from '../device-store.js';
+import { updateRuntime } from '../runtime.js';
 import { drafts } from '../stores/drafts.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
@@ -3062,5 +3063,87 @@ describe('reading it full-page', () => {
 		await settle();
 
 		expect(document.body.querySelector('button[aria-label="Fill the page"]')).toBeNull();
+	});
+});
+
+describe('naming an author', () => {
+	const ENAME = '@0f6b4a1e-2c3d-4e5f-8a9b-0c1d2e3f4a5b';
+	const AUTHOR = `w3id:${ENAME}`;
+
+	beforeEach(() => {
+		updateRuntime({
+			reachOut: async (url: string) =>
+				url.includes('/resolve')
+					? Response.json({ uri: 'http://203.0.113.7:4000' })
+					: Response.json({
+							data: {
+								metaEnvelopes: {
+									edges: [{ node: { parsed: { displayName: 'Ada Lovelace', username: 'ada' } } }]
+								}
+							}
+						})
+		});
+	});
+
+	afterEach(() => {
+		updateRuntime({ reachOut: undefined });
+	});
+
+	async function openOwn(): Promise<void> {
+		session.adopt(VIEWER, 'a-session');
+		stubViewport(PHONE);
+		await nodes.create({});
+		mounted = mount(NoteOnSurface, { target, props: { opened: FIRST, fresh: false } });
+		flushSync();
+		await settle();
+	}
+
+	function type(said: string): void {
+		const field = document.body.querySelector<HTMLInputElement>('#add-author');
+		if (!field) throw new Error('Nowhere to type an author');
+		field.value = said;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		flushSync();
+		field.form?.requestSubmit();
+	}
+
+	it('adds somebody typed as @ and their W3ID, and names them beside the writer', async () => {
+		const sent: unknown[] = [];
+		api.on(`PATCH ${path(FIRST)}`, (_url, init) => {
+			const request = JSON.parse(String(init?.body)) as { authors?: string[] };
+			sent.push(request);
+			return { ...node(1, '1'), authors: [DID, ...(request.authors ?? [])] };
+		});
+		await openOwn();
+
+		button('Add an author').click();
+		await settle();
+		type(ENAME);
+		await until(() => sent.length === 1);
+		await until(() => (document.body.textContent ?? '').includes('Ada Lovelace'));
+
+		expect(sent[0]).toEqual({ authors: [AUTHOR] });
+		expect(document.body.textContent).toContain('Written by');
+		expect(nodes.get(FIRST)?.authors).toEqual([DID, AUTHOR]);
+	});
+
+	it('says how to write somebody it cannot read as anybody, and writes nothing', async () => {
+		await openOwn();
+		button('Add an author').click();
+		await settle();
+		type('ada lovelace');
+		await settle();
+
+		expect(document.body.textContent).toContain('as @ and their W3ID');
+		expect(api.countOf(`PATCH ${path(FIRST)}`)).toBe(0);
+	});
+
+	it('offers no way to take an author off', async () => {
+		api.on(`GET ${path(FIRST)}`, () => ({ ...node(1, '1'), authors: [DID, AUTHOR] }));
+		await openOwn();
+		await until(() => (document.body.textContent ?? '').includes('Ada Lovelace'));
+
+		const text = document.body.textContent ?? '';
+		expect(text).not.toMatch(/Remove (this )?author|Take .* off/);
 	});
 });

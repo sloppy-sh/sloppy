@@ -11,6 +11,8 @@ const Room := preload("res://room/room.gd")
 const Dressing := preload("res://ui/theme.gd")
 const FakeWebView := preload("res://tests/fake_web_view.gd")
 const WAIT := 10.0
+const ADA := "w3id:@00000000-0000-5000-8000-000000000001"
+const UNSEEN := "w3id:@00000000-0000-5000-8000-000000000002"
 const TABLE := "| Kind | Count |\n| --- | --- |\n| seed | 3 |"
 
 var _failed := 0
@@ -129,6 +131,7 @@ func _reads_pages() -> void:
 	_check(body.text.contains("[b]The file[/b]") or body.text.contains("The file"), "with no plugin a note reads as text, as it did: %s" % body.text)
 	_check(plain.get_node_or_null("Reading") == null, "and no page is made")
 	plain.queue_free()
+	await _names_authors(NotePanel, first, leaf, named)
 
 	_check(FileAccess.file_exists("res://web/dist/index.html"), "the page is built (tools/build-web.sh)")
 	var fake := FakeWebView.new()
@@ -225,6 +228,54 @@ func _reads_pages() -> void:
 	await process_frame
 	WebPanel.engine_override = null
 	client.close()
+
+
+## Under the title, who wrote the note: a face and a name, or the plain disc
+## and the desk's words where it could not name them.
+func _names_authors(NotePanel: PackedScene, first: Dictionary, leaf: Dictionary, named: Dictionary) -> void:
+	const AUTHORS := "Page/Sheet/Margin/Column/Authors/"
+	var panel: Node3D = NotePanel.instantiate()
+	root.add_child(panel)
+	panel.dress(Room.ink(), Room.paper())
+	var said: Label = panel.get_node(AUTHORS + "Name")
+	var face: TextureRect = panel.get_node(AUTHORS + "Face")
+	var disc: Control = panel.get_node(AUTHORS + "Disc")
+	var letter: Label = panel.get_node(AUTHORS + "Disc/Letter")
+
+	panel.open("", leaf.note, leaf, false, named)
+	await _until(func(): return said.text == "Ada")
+	_check(said.text == "Ada" and face.visible and not disc.visible and face.texture != null, "a note another wrote names them, with their face: %s" % said.text)
+	var square := Image.create(8, 6, false, Image.FORMAT_RGB8)
+	square.fill(Color.WHITE)
+	var cut: Image = panel.rounded(square)
+	_check(cut.get_size() == Vector2i(6, 6) and cut.get_pixel(0, 0).a == 0.0 and cut.get_pixel(3, 3).a == 1.0 and cut.get_pixel(0, 3).a > 0.0, "a face is cut round from its middle")
+	var head: Control = panel.get_node("Page/Sheet/Margin/Column/Head")
+	var row: Control = panel.get_node("Page/Sheet/Margin/Column/Authors")
+	_check(row.get_index() == head.get_index() + 1, "under the title")
+
+	panel.open("", first.note, first, false, named)
+	await _until(func(): return said.text == "Sam")
+	_check(said.text == "Sam" and disc.visible and not face.visible and letter.text == "S", "a note its owner wrote alone names the owner, on the plain disc: %s" % said.text)
+
+	var several := first.duplicate()
+	several["authors"] = [UNSEEN, ADA, "mailto:sam@example.org"]
+	panel.open("", first.note, several, false, named)
+	await _until(func(): return said.text.begins_with("Ada"))
+	_check(said.text == "Ada and 2 more" and face.visible, "several are the one named and how many more: %s" % said.text)
+
+	var hidden := first.duplicate()
+	hidden["authors"] = [UNSEEN]
+	panel.open("", first.note, hidden, false, named)
+	await _until(func(): return said.text.contains("not public"))
+	_check(said.text == "This person's profile is not public." and disc.visible and letter.text == "", "a profile that is not public is said so: %s" % said.text)
+
+	var gone := first.duplicate()
+	gone["authors"] = ["w3id:@00000000-0000-5000-8000-000000000009"]
+	panel.open("", first.note, gone, false, named)
+	await _until(func(): return said.text.contains("could not be reached"))
+	_check(said.text.begins_with("This person's profile could not be reached"), "one that could not be reached is said so: %s" % said.text)
+	_check(not said.text.contains("00000000") and not said.text.contains("w3id"), "and nobody is shown by their identifier")
+	panel.queue_free()
 
 
 ## What the page was last asked to draw.

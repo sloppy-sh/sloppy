@@ -1,11 +1,12 @@
 import { serverOnly, type SloppyApi } from '@sloppy/client';
-import type { ProfileView } from '@sloppy/types';
+import { NOT_PUBLIC_SAID, type ProfileView, UNREACHED_SAID, type W3id } from '@sloppy/types';
 import { nameOr } from '@sloppy/ui';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetApi } from '../api.js';
-import { initRuntime } from '../runtime.js';
+import { initRuntime, updateRuntime } from '../runtime.js';
 import { DID, useFakeApi, type FakeApi } from './fake-api.test-support.js';
-import { people } from './people.svelte.js';
+import { people, UNREACHED_FOR_MS } from './people.svelte.js';
+import { prefs, W3ID_REGISTRY } from './prefs.svelte.js';
 
 const PEER = 'did:syr:z6MkjChhrJfLm9WGVUAnyLPnfPGmZDcyDKNsBTsAsn7RkAqB';
 
@@ -178,5 +179,121 @@ describe('who somebody is', () => {
 		answer(ME);
 		await asked;
 		expect(people.me).toBeNull();
+	});
+});
+
+describe('somebody named by a W3ID', () => {
+	const AUTHOR: W3id = 'w3id:@0f6b4a1e-2c3d-4e5f-8a9b-0c1d2e3f4a5b';
+	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+	let store: () => Response | Promise<Response>;
+	let reached: string[];
+
+	beforeEach(() => {
+		reached = [];
+		store = () =>
+			Response.json({
+				data: {
+					metaEnvelopes: {
+						edges: [
+							{
+								node: {
+									parsed: {
+										displayName: 'Ada Lovelace',
+										username: 'ada',
+										avatarUrl: 'https://pictures.example.org/ada.png'
+									}
+								}
+							}
+						]
+					}
+				}
+			});
+		updateRuntime({
+			reachOut: async (url: string) => {
+				reached.push(url);
+				if (url.includes('/resolve')) return Response.json({ uri: 'http://203.0.113.7:4000' });
+				if (url.endsWith('.png'))
+					return new Response(PNG, { headers: { 'content-type': 'image/png' } });
+				return store();
+			}
+		});
+	});
+
+	afterEach(() => {
+		updateRuntime({ reachOut: undefined });
+		prefs.set('w3idRegistry', W3ID_REGISTRY);
+		vi.useRealTimers();
+	});
+
+	it('names them from their own profile, with their face, and never asks the API', async () => {
+		people.resolve(AUTHOR);
+		await settle();
+
+		const held = people.of(AUTHOR);
+		expect(held?.displayName).toBe('Ada Lovelace');
+		expect(held?.handle).toBe('ada');
+		expect(held?.identity).toBe(AUTHOR);
+		expect(held?.avatar).toMatch(/^data:image\/png;base64,/);
+		expect(api.countOf(asked(AUTHOR))).toBe(0);
+		expect(reached[0]).toBe(
+			`${W3ID_REGISTRY}/resolve?w3id=${encodeURIComponent('@0f6b4a1e-2c3d-4e5f-8a9b-0c1d2e3f4a5b')}`
+		);
+	});
+
+	it('asks once a session, however many surfaces name them', async () => {
+		people.resolve(AUTHOR);
+		people.resolve(AUTHOR);
+		await settle();
+		people.resolve(AUTHOR);
+		await settle();
+		expect(reached.filter((url) => url.includes('/resolve'))).toHaveLength(1);
+	});
+
+	it('holds somebody whose profile is not public unnamed, and says so', async () => {
+		store = () => Response.json({ errors: [{ message: 'Authentication required' }] });
+		people.resolve(AUTHOR);
+		await settle();
+
+		expect(people.of(AUTHOR)).toBeNull();
+		expect(people.unplaced(AUTHOR)).toBe(true);
+		expect(people.said(AUTHOR)).toBe(NOT_PUBLIC_SAID);
+	});
+
+	it('asks again for somebody unreached once five minutes have passed', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		store = () => Promise.reject(new TypeError('connection refused'));
+		people.resolve(AUTHOR);
+		await settle();
+		expect(people.said(AUTHOR)).toBe(UNREACHED_SAID);
+
+		people.resolve(AUTHOR);
+		await settle();
+		expect(reached.filter((url) => url.includes('/resolve'))).toHaveLength(1);
+
+		vi.setSystemTime(Date.now() + UNREACHED_FOR_MS + 1);
+		store = () =>
+			Response.json({
+				data: { metaEnvelopes: { edges: [{ node: { parsed: { displayName: 'Ada' } } }] } }
+			});
+		people.resolve(AUTHOR);
+		await settle();
+		expect(people.of(AUTHOR)?.displayName).toBe('Ada');
+	});
+
+	it('asks wherever Settings → People names', async () => {
+		prefs.set('w3idRegistry', 'https://names.example.org');
+		people.resolve(AUTHOR);
+		await settle();
+		expect(reached[0]).toMatch(/^https:\/\/names\.example\.org\/resolve\?/);
+	});
+
+	it('leaves them unnamed, with nothing said, on a device that cannot ask', async () => {
+		updateRuntime({ reachOut: undefined });
+		people.resolve(AUTHOR);
+		await settle();
+
+		expect(people.unplaced(AUTHOR)).toBe(true);
+		expect(people.said(AUTHOR)).toBeNull();
+		expect(reached).toHaveLength(0);
 	});
 });

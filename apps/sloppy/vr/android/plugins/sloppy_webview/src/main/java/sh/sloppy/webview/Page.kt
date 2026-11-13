@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.KeyCharacterMap
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.ViewGroup
@@ -159,6 +160,14 @@ internal class Page(
         for (event in events) web.dispatchKeyEvent(event)
     }
 
+    /** [name] as [Keys] names it; a name it does not know presses nothing. */
+    fun key(name: String) {
+        val code = Keys.code(name) ?: return
+        val now = SystemClock.uptimeMillis()
+        web.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0))
+        web.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, code, 0))
+    }
+
     fun resize(width: Int, height: Int) {
         val was = reader
         reader = newReader(width, height)
@@ -289,6 +298,7 @@ internal class Page(
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, false)
         view.addJavascriptInterface(Host(), "sloppy")
+        view.addJavascriptInterface(Typing(), "sloppyTyping")
         view.webViewClient = Client()
         view.webChromeClient = Chrome()
     }
@@ -298,6 +308,12 @@ internal class Page(
         fun send(json: String) {
             if (trusted) says.message(id, json)
         }
+    }
+
+    /** Heard from any page, since all it can say is whether a text field has focus. */
+    private inner class Typing {
+        @JavascriptInterface
+        fun focus(on: Boolean) = says.message(id, Keys.typing(on))
     }
 
     private inner class Client : WebViewClient() {

@@ -1274,6 +1274,14 @@ ask.
   has, "with C" after it where somebody's offer was taken in. One person who wrote their own
   note is the ordinary case and reads as it always has — an author's own graph does not
   announce the author on every note.
+- **Somebody named by a W3ID stands beside everybody else**, with the face and name their own
+  profile makes public, and meeting them shows that profile and the identity to copy — nothing
+  else, since nothing of theirs is published here. One whose profile is not public, or could not
+  be reached, stands unnamed, and meeting them says which in one sentence.
+- **"Add an author" names somebody whose writing reached the note some other way**, typed as
+  they are known: `did:syr:…`, `mailto:…`, or `@` and their W3ID. It is offered where a write
+  lands, and naming only adds — there is no taking an author off, so the sheet says an author
+  stays.
 - **Its details say who gates it, and let the right person change that.** An open note says
   nothing about gating: a line about something the product is not doing to you is worse than
   silence. A note with an owner says so, and only the graph's owner and the note's own owner
@@ -2446,8 +2454,23 @@ reader has a body. docs/ARCHITECTURE.md § "A headset beside the desk" is how it
   right hand draws a note's tables, coloured code, diagrams and pictures in the look, as the desk
   draws them. A link to a note opens that note in the same panel. A link to the web opens the page
   ahead of the reader at reading distance, with its title, Back and Close over it; they can take
-  hold of it and leave it anywhere in the room, and a second link opens in it rather than beside
-  it. Where no page can be drawn, the note reads as plain text.
+  hold of it and leave it anywhere in the room, and a second link opens in a tab of its own there
+  rather than beside it or over what was open. Where no page can be drawn, the note reads as plain
+  text.
+- **The web is a row away.** "Browser" on the palette's Here panel opens a page ahead of the
+  reader to search the web from, with keys below it leaning toward them like a laptop's — a key
+  types where the trigger chooses it, Enter searches DuckDuckGo or goes to the address typed, and a
+  field on any page brings the keys up — the two going together wherever the reader takes them,
+  and "Bring browser here" standing them before the reader again; no controller button is spent on it.
+  The browser holds pages as tabs along its bar, the one showing filled, each with its close; "New
+  tab" opens the page to search from in another, a search or a link followed stays in its tab, and
+  closing the last tab closes the browser. Twelve is the most, and the thirteenth asks the reader to
+  close one. "Pull out" stands the tab showing beside the browser as a page of its own, with its own
+  Back, address and keys, carried and closed on its own, for reading two side by side.
+- **A note names who wrote it, under its title.** The first author the desk can name stands
+  there with their face, or the look's plain disc and their first letter where they have none,
+  and "and 2 more" where others wrote beside them; where nobody can be named, the line says
+  their profile is not public or could not be reached, and never shows what they are identified by.
 - **Quiet, still.** No gamification, no celebration, no motion the reader did not cause. The
   field moves when somebody takes hold of it.
 

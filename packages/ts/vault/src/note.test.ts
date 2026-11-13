@@ -818,3 +818,120 @@ describe("the looks a note sets on its lines", () => {
     expect(held.title).toBe("What I meant: a note");
   });
 });
+
+describe("whose writing a note carries, in every kind of name, and what it was written with", () => {
+  const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const hex = (length: number) =>
+    fc.stringMatching(new RegExp(`^[0-9a-fA-F]{${length}}$`));
+  const didSyr = fc
+    .stringMatching(new RegExp(`^[${BASE58}]{1,40}$`))
+    .map((rest) => `did:syr:z${rest}`);
+  const mailto = fc
+    .tuple(
+      fc.stringMatching(/^[a-z0-9][a-z0-9._+-]{0,10}[a-z0-9]$/),
+      fc.stringMatching(/^[a-z0-9]{1,10}$/),
+      fc.stringMatching(/^[a-z]{2,6}$/),
+    )
+    .filter(([local]) => !local.includes(".."))
+    .map(([local, host, tld]) => `mailto:${local}@${host}.${tld}`);
+  const w3id = fc
+    .tuple(hex(8), hex(4), hex(4), hex(4), hex(12))
+    .map((parts) => `w3id:@${parts.join("-")}`);
+  const principal = fc.oneof(didSyr, mailto, w3id);
+  const agent = fc
+    .string({ minLength: 1, maxLength: 60 })
+    .filter(
+      (held) => held.trim() === held && held !== "" && !/[\p{Cc}]/u.test(held),
+    );
+
+  it("carries a W3ID, an address and a DID alike, each spelled the one way", () => {
+    fc.assert(
+      fc.property(
+        fc
+          .uniqueArray(principal, {
+            minLength: 1,
+            maxLength: 5,
+            selector: (one) => one.toLowerCase(),
+          })
+          .filter((held) => !(held.length === 1 && held[0] === OWNER)),
+        fc.array(
+          agent.map((name) => ({ agent: name })),
+          { maxLength: 4 },
+        ),
+        (authors, writtenWith) => {
+          const { files } = noteToVault(
+            note({
+              authors,
+              ...(writtenWith.length > 0 ? { written_with: writtenWith } : {}),
+            }),
+            [],
+            [],
+          );
+          const read = vaultToNote({
+            markdown: decodeText(files.get(notePath(NOTE)) as Uint8Array),
+          });
+          expect(read.authors).toEqual(
+            authors.map((one) =>
+              one.startsWith("did:syr:") ? one : one.toLowerCase(),
+            ),
+          );
+          expect(read.written_with).toEqual(
+            writtenWith.length > 0 ? writtenWith : undefined,
+          );
+        },
+      ),
+      { numRuns: 1000 },
+    );
+  });
+
+  it("writes the agents as entries under the authors, and none where there are none", () => {
+    const W3ID = "w3id:@00000000-0000-5000-8000-000000000001";
+    const { files } = noteToVault(
+      note({
+        authors: [W3ID, OWNER],
+        written_with: [{ agent: "claude-fable-5.2" }],
+      }),
+      [],
+      [],
+    );
+    expect(decodeText(files.get(notePath(NOTE)) as Uint8Array)).toContain(
+      [
+        "authors:",
+        `  - ${W3ID}`,
+        `  - ${OWNER}`,
+        "written_with:",
+        "  - agent: claude-fable-5.2",
+        "tags:",
+      ].join("\n"),
+    );
+    const bare = decodeText(
+      noteToVault(note(), [], []).files.get(notePath(NOTE)) as Uint8Array,
+    );
+    expect(bare).not.toContain("written_with");
+  });
+
+  it("reads a W3ID a hand wrote as @ and its UUID, and drops an agent left nameless", () => {
+    const read = vaultToNote({
+      markdown: [
+        "---",
+        `ref: ${OWNER}/${NOTE}`,
+        "authors:",
+        "  - @00000000-0000-5000-8000-000000000001",
+        "  - W3ID:@ABCDEF01-2345-6789-ABCD-EF0123456789",
+        "written_with:",
+        '  - agent: ""',
+        "  - agent:   ",
+        "  - agent: claude-fable-5.2",
+        "  - model: nobody",
+        "title: Kept",
+        "---",
+        "",
+      ].join("\n"),
+    });
+    expect(read.authors).toEqual([
+      "w3id:@00000000-0000-5000-8000-000000000001",
+      "w3id:@abcdef01-2345-6789-abcd-ef0123456789",
+    ]);
+    expect(read.written_with).toEqual([{ agent: "claude-fable-5.2" }]);
+  });
+});

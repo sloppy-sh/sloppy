@@ -3,7 +3,7 @@
 # pinned to, with its licence beside them; icons/README.md names them.
 set -eu
 RELEASE="1.72.0"
-GLYPHS="arrow-left blend bookmark bookmark-minus chevron-down chevron-right chevron-up circle eye folder-open git-branch hand heading image layout-panel-top link log-out message-square monitor moon network palette pen-line plus rows-3 sparkles spline square sun sun-dim telescope type undo-2 unfold-horizontal unplug zoom-in"
+GLYPHS="arrow-big-up arrow-left blend bookmark bookmark-minus chevron-down chevron-right chevron-up circle corner-down-left delete eye folder-open git-branch globe hand heading image keyboard-off layout-panel-top link log-out message-square monitor moon move network palette pen-line plus rows-3 sparkles spline square square-arrow-out-up-right sun sun-dim telescope type undo-2 unfold-horizontal unplug x zoom-in"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 held="$(mktemp -d)"
 trap 'rm -rf "$held"' EXIT

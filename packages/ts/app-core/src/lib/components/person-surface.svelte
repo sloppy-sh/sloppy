@@ -1,8 +1,16 @@
 <script lang="ts">
 	// Meeting somebody a surface named: what they publish, and whether the reader
 	// follows them or holds any of it — PRODUCT.md § Users, "The peer".
-	import { type OwnedRef, peerOrigin, splitOwnedRef } from '@sloppy/types';
-	import { PersonSheet } from '@sloppy/ui';
+	import { type OwnedRef, peerOrigin, principalScheme, splitOwnedRef } from '@sloppy/types';
+	import {
+		IdentityLine,
+		nameOf,
+		PersonAvatar,
+		PersonHeader,
+		PersonSheet,
+		ResponsiveModal,
+		unnamedPerson
+	} from '@sloppy/ui';
 	import { untrack } from 'svelte';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
@@ -12,6 +20,7 @@
 	let { did = $bindable() }: { did: string | null } = $props();
 
 	let open = $state(false);
+	let openW3id = $state(false);
 	/** Whom the sheet is about, which trails {@link did}: the instance to ask is
 	 *  read off the reader's follows and regions, and those arrive first. */
 	let met = $state<string | null>(null);
@@ -37,6 +46,17 @@
 		// Meeting yourself is nothing to open a sheet on.
 		if (who === null || who === session.viewer?.did) {
 			open = false;
+			openW3id = false;
+			return;
+		}
+		// Somebody named by a W3ID publishes nowhere this app reads, so there is
+		// only who they are to show.
+		if (principalScheme(who) === 'w3id') {
+			untrack(() => {
+				people.resolve(who);
+				met = who;
+				openW3id = true;
+			});
 			return;
 		}
 		untrack(() => {
@@ -49,6 +69,43 @@
 		});
 	});
 </script>
+
+{#if met !== null && principalScheme(met) === 'w3id'}
+	{@const shown = person ?? unnamedPerson(met)}
+	{@const said = people.said(met)}
+	<ResponsiveModal
+		bind:open={
+			() => openW3id,
+			(showing) => {
+				openW3id = showing;
+				if (!showing) did = null;
+			}
+		}
+		title={nameOf(shown)}
+		headed={false}
+	>
+		<div class="space-y-6 px-2 pt-4 pb-2">
+			{#if person}
+				<PersonHeader {person} />
+			{:else}
+				<div class="flex items-center gap-3">
+					<PersonAvatar person={shown} size={48} />
+					<div class="min-w-0 flex-1 space-y-0.5">
+						<p class="truncate text-lg font-semibold tracking-tight">{nameOf(shown)}</p>
+						{#if said}
+							<p class="text-sm text-muted-foreground">{said}</p>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
+			<section class="space-y-2 border-t border-border pt-4">
+				<h3 class="text-sm font-medium">Their identity</h3>
+				<IdentityLine identity={met.slice('w3id:'.length)} label="Copy their identity" />
+			</section>
+		</div>
+	</ResponsiveModal>
+{/if}
 
 <PersonSheet
 	bind:open={

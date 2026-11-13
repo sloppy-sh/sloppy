@@ -17,26 +17,27 @@ been built.
 
 ## What Godot calls
 
-| Method | |
-| --- | --- |
-| `create(id, width, height, path)` | a page `width` × `height` pixels; `path` is `"pixels"` or `"buffer"` |
-| `destroy(id)`, `resize(id, width, height)` | |
-| `load_url(id, url)`, `load_html(id, html, base_url)` | `base_url` is where the html's relative links read from |
-| `evaluate(id, js)` | |
-| `go_back(id) -> bool` | whether there was a page to go back to |
-| `touch(id, x, y, phase)` | `phase` is `"down"`, `"move"` or `"up"`; pixels from the top left |
-| `scroll(id, dx, dy)` | pixels the content moves, positive rightward and downward |
-| `text(id, typed)` | typed into what has focus |
-| `allow(request, yes)` | the answer to a `navigating` signal |
+| Method                                               |                                                                      |
+| ---------------------------------------------------- | -------------------------------------------------------------------- |
+| `create(id, width, height, path)`                    | a page `width` × `height` pixels; `path` is `"pixels"` or `"buffer"` |
+| `destroy(id)`, `resize(id, width, height)`           |                                                                      |
+| `load_url(id, url)`, `load_html(id, html, base_url)` | `base_url` is where the html's relative links read from              |
+| `evaluate(id, js)`                                   |                                                                      |
+| `go_back(id) -> bool`                                | whether there was a page to go back to                               |
+| `touch(id, x, y, phase)`                             | `phase` is `"down"`, `"move"` or `"up"`; pixels from the top left    |
+| `scroll(id, dx, dy)`                                 | pixels the content moves, positive rightward and downward            |
+| `text(id, typed)`                                    | typed into what has focus                                            |
+| `key(id, name)`                                      | `"Enter"` or `"Backspace"`, pressed in what has focus                |
+| `allow(request, yes)`                                | the answer to a `navigating` signal                                  |
 
-| Signal | |
-| --- | --- |
-| `page_loaded(id, url, title)` | |
-| `navigating(id, request, url)` | the page wants to go to `url`; Godot answers `allow(request, yes)` while handling it |
-| `message(id, json)` | the page called `window.sloppy.send(json)` |
-| `failed(id, url, said)` | `said` is the engine's own words, for logs, never for a reader |
-| `pixels(id, width, height, bytes)` | a frame, RGBA8, on the `pixels` path |
-| `frame(id, buffer)` | a frame's `AHardwareBuffer*`, on the `buffer` path |
+| Signal                             |                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------ |
+| `page_loaded(id, url, title)`      |                                                                                      |
+| `navigating(id, request, url)`     | the page wants to go to `url`; Godot answers `allow(request, yes)` while handling it |
+| `message(id, json)`                | the page called `window.sloppy.send(json)`                                           |
+| `failed(id, url, said)`            | `said` is the engine's own words, for logs, never for a reader                       |
+| `pixels(id, width, height, bytes)` | a frame, RGBA8, on the `pixels` path                                                 |
+| `frame(id, buffer)`                | a frame's `AHardwareBuffer*`, on the `buffer` path                                   |
 
 A page asks before going anywhere in its main frame. The UI thread waits up to 750 ms for the
 answer; no answer keeps the page where it is. A frame inside a page may go to http(s), `about:`,
@@ -45,6 +46,10 @@ answer; no answer keeps the page where it is. A frame inside a page may go to ht
 `window.sloppy` is the plugin's JavaScript interface, present in every page a view loads, but only
 a page of ours is heard: one under `file:///android_asset/`, or the html last given to
 `load_html` at its `base_url`. A site a reader opens can call it and is ignored.
+
+`window.sloppyTyping.focus(on)` is heard from any page, because all it can say is whether a text
+field has focus: it arrives as `message(id, '{"kind":"typing","on":…}')`. The browser panel
+evaluates a listener that calls it after each page loads.
 
 ## How a page is drawn
 

@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUTHOR_FACE_LONGEST,
+  AUTHOR_READ,
+  type AuthorAsked,
+  type AuthorRead,
+  type FieldNote,
   isServeCode,
   makeServeCode,
+  NOT_PUBLIC_SAID,
   SERVE_ALPN,
   SERVE_CODE_LENGTH,
   SERVE_FIRST_LINE_MS,
   SERVE_PAIR_WINDOW_MS,
   SERVE_REACHES,
+  SERVE_REFUSALS,
+  UNREACHED_SAID,
 } from "./serve.js";
 
 describe("a pairing code", () => {
@@ -33,5 +41,37 @@ describe("what every place serving agrees on", () => {
     expect(SERVE_PAIR_WINDOW_MS).toBe(120_000);
     expect(SERVE_FIRST_LINE_MS).toBe(10_000);
     expect(SERVE_REACHES).toEqual(["local", "anywhere"]);
+  });
+});
+
+describe("who an author is, asked of the desk", () => {
+  it("is its own method, refused in words a person can act on", () => {
+    expect(AUTHOR_READ).toBe("author/read");
+    expect(AUTHOR_FACE_LONGEST).toBe(128);
+    expect(SERVE_REFUSALS.NOT_PUBLIC).toBe(-32050);
+    expect(SERVE_REFUSALS.UNREACHED).toBe(-32051);
+    const codes = Object.values(SERVE_REFUSALS);
+    expect(new Set(codes).size).toBe(codes.length);
+    for (const said of [NOT_PUBLIC_SAID, UNREACHED_SAID]) {
+      expect(said).not.toMatch(/evault|registry|ontology|ename|w3id|envelope/i);
+    }
+  });
+
+  it("is answered in the shape a headset reads, every field optional", () => {
+    const named: AuthorRead = { name: "Ada", handle: "ada", picture: "iVBOR" };
+    const unnamed: AuthorRead = {};
+    const asked: AuthorAsked = {
+      principal: "w3id:@00000000-0000-5000-8000-000000000001",
+    };
+    const field: FieldNote = {
+      note: "did:syr:z6Mk/01M75GHRF2M14C1GBX3ENP3SRD",
+      title: "a.ts",
+      tags: [],
+      links: [],
+      authors: [asked.principal],
+    };
+    expect(Object.keys(named)).toEqual(["name", "handle", "picture"]);
+    expect(unnamed).toEqual({});
+    expect(field.authors).toEqual([asked.principal]);
   });
 });

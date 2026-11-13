@@ -69,6 +69,11 @@ static func slider(text: String, glyph: Variant, value: float, span: Vector2, sh
 	return {"kind": "slider", "text": text, "glyph": glyph, "value": value, "span": span, "shown": shown, "on_value": on_value}
 
 
+## A square a row tall choosing `on_pick`, bearing only the glyph `glyph`.
+static func mark(glyph: String, on_pick: Callable) -> Dictionary:
+	return {"kind": "mark", "glyph": glyph, "on_pick": on_pick}
+
+
 ## Quiet words, as many lines as they take.
 static func words(quiet: String) -> Dictionary:
 	return {"kind": "words", "text": quiet}
@@ -195,6 +200,8 @@ func _made(given: Dictionary) -> Node3D:
 			return _buttons(given.choices)
 		"slider":
 			return _slider_row(given)
+		"mark":
+			return _mark(given)
 	return _choice_row(given)
 
 
@@ -279,6 +286,16 @@ func _choice_row(given: Dictionary) -> Node3D:
 		_row_words(row, told, to - _wide(told, LETTERS), room - after, Pieces.QUIET)
 	said.set_meta("room", room)
 	Pieces.choose(row, given.get("chosen", false))
+	return row
+
+
+func _mark(given: Dictionary) -> Node3D:
+	var row := _card(ROW, given.on_pick, "")
+	var shown := _sprite(Pieces.glyph(given.glyph, GLYPH_PIXELS), GLYPH)
+	shown.position = Vector3(ROW * 0.5, -ROW * 0.5, 0.002)
+	shown.set_meta("tint", "ink")
+	shown.modulate = Pieces.INK
+	row.add_child(shown)
 	return row
 
 

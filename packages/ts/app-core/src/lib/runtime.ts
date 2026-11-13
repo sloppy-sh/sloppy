@@ -755,6 +755,9 @@ export interface AppRuntime {
 	 *  the address its own webview loads a file from — nothing it holds is
 	 *  somebody else's to leak. */
 	assetSrc?(src: string): string;
+	/** A fetch the device makes itself, to a service that answers no webview.
+	 *  Absent → nobody named by a W3ID is looked up, and they show unnamed. */
+	reachOut?(url: string, init: RequestInit): Promise<Response>;
 }
 
 const TOKEN_KEY = 'sloppy_token';
@@ -876,5 +879,6 @@ export const runtime = {
 	askPlace: (): AppRuntime['askPlace'] => current.askPlace,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,
-	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc
+	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc,
+	reachOut: (): AppRuntime['reachOut'] => current.reachOut
 };

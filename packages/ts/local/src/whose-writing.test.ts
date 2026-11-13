@@ -173,6 +173,74 @@ describe("whose writing a note carries", () => {
     expect(await again.listBlocks(note.ref)).toHaveLength(1);
   });
 
+  it("names a W3ID beside a DID, takes nobody off, and the file keeps it", async () => {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    const W3ID = "w3id:@00000000-0000-5000-8000-000000000001";
+
+    const named = await held.api.updateNode(note.ref, {
+      authors: [W3ID, held.did, W3ID],
+    });
+    expect(named.authors).toEqual([held.did, W3ID]);
+
+    await held.api.updateNode(note.ref, { authors: [BOB] });
+    await held.api.updateNode(note.ref, { authors: [] });
+    expect((await read(held).getNode(note.ref))?.authors).toEqual([
+      held.did,
+      W3ID,
+      BOB,
+    ]);
+  });
+
+  it("joins the writer beside the authors they name on an open note", async () => {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    const W3ID = "w3id:@00000000-0000-5000-8000-000000000001";
+
+    await writingAs(held, BOB).updateNode(note.ref, { authors: [W3ID] });
+    expect((await read(held).getNode(note.ref))?.authors).toEqual([
+      held.did,
+      BOB,
+      W3ID,
+    ]);
+  });
+
+  it("offers a list of authors written on somebody else's note rather than landing it", async () => {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    await held.api.updateNode(note.ref, { owner: held.did });
+
+    await expect(
+      writingAs(held, BOB).updateNode(note.ref, { authors: [BOB] }),
+    ).rejects.toThrow("Offer your change instead");
+    expect((await read(held).getNode(note.ref))?.authors).toBeUndefined();
+  });
+
+  it("keeps the agents a file says it was written with through a write", async () => {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    const path = `/graphs/one/notes/${note.ref.slice(note.ref.lastIndexOf("/") + 1)}.md`;
+    const file = decodeText(held.store.get(path) as Uint8Array);
+    held.store.set(
+      path,
+      encodeText(
+        file.replace(
+          /^title: /m,
+          "written_with:\n  - agent: claude-fable-5.2\ntitle: ",
+        ),
+      ),
+    );
+
+    const again = read(held);
+    expect((await again.getNode(note.ref))?.written_with).toEqual([
+      { agent: "claude-fable-5.2" },
+    ]);
+    await again.updateNode(note.ref, { title: "Seeds, again" });
+    expect(decodeText(held.store.get(path) as Uint8Array)).toContain(
+      "written_with:\n  - agent: claude-fable-5.2\n",
+    );
+  });
+
   it("writes a new note under the person writing it", async () => {
     const held = await opened();
 

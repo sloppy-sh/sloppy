@@ -6,6 +6,10 @@ the headset to open. `../tools/build-web.sh` builds it into `dist/index.html` â€
 script, styles and faces inside it, so a view can be handed it from any base and it asks nothing
 of the network.
 
+`start.html` beside it is the headset's browser's page to search from: one field, in the look the
+browser fills in, which says `{ kind: "search", q }` when Enter is pressed in it. It is shipped as
+it is, with nothing to build.
+
 ## What the headset says to it
 
 `sloppy.render(json)`, with

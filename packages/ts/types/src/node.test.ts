@@ -8,6 +8,7 @@ import {
   siblingAddress,
 } from "./address.js";
 import {
+  authorsBeyondRef,
   authorsOf,
   CreateNodeRequestSchema,
   liesInARun,
@@ -19,6 +20,7 @@ import {
   SetAddressRequestSchema,
   UpdateNodeRequestSchema,
   withAuthor,
+  withAuthorsNamed,
   writeOutcome,
 } from "./node.js";
 
@@ -252,6 +254,24 @@ describe("whose writing a note carries", () => {
     expect(authorsOf(withAuthor(first, CAI))).toEqual([DID, BOB, CAI]);
   });
 
+  it("names authors after everybody a note carries, and never takes one off", () => {
+    const W3ID = "w3id:@00000000-0000-5000-8000-000000000001";
+    const people = [DID, BOB, CAI, W3ID];
+    const lists = people.flatMap((a) =>
+      people.flatMap((b) => [[], [a], [a, b], [b, a, a]]),
+    );
+    for (const held of lists) {
+      for (const named of lists) {
+        const note = open({ authors: [...new Set(held)] });
+        const after = authorsOf(withAuthorsNamed(note, named));
+        expect(after.slice(0, authorsOf(note).length)).toEqual(authorsOf(note));
+        expect(new Set(after)).toEqual(new Set([...authorsOf(note), ...named]));
+        expect(after).toHaveLength(new Set(after).size);
+      }
+    }
+    expect(withAuthorsNamed(open(), [DID])).toEqual(open());
+  });
+
   it("lands a write on an open note, and on the owner's own", () => {
     expect(writeOutcome(open(), BOB)).toBe("lands");
     expect(writeOutcome(open({ owner: BOB }), BOB)).toBe("lands");
@@ -265,6 +285,62 @@ describe("whose writing a note carries", () => {
     // `withAuthor` is not what does it.
     expect(withAuthor(owned, CAI)).toBe(owned);
     expect(authorsOf(owned)).toEqual([BOB]);
+  });
+});
+
+describe("a W3ID among the authors, and the agents a note was written with", () => {
+  const ADA = "w3id:@00000000-0000-5000-8000-000000000001";
+  const REF = `${DID}/${ULID}`;
+
+  it("parses a row written before either, unchanged", () => {
+    const before = parseNode(row("1"));
+    expect(before.written_with).toBeUndefined();
+    expect(before.authors).toBeUndefined();
+  });
+
+  it("names a W3ID beside a DID, spelled the one way", () => {
+    const note = parseNode({
+      ...row("1"),
+      authors: [DID, ADA.toUpperCase().replace("W3ID", "w3id")],
+      written_with: [{ agent: " claude-fable-5.2 " }],
+    });
+    expect(note.authors).toEqual([DID, ADA]);
+    expect(note.written_with).toEqual([{ agent: "claude-fable-5.2" }]);
+  });
+
+  it("refuses an agent among the authors, and a nameless agent", () => {
+    expect(
+      NodeSchema.safeParse({ ...row("1"), authors: ["claude-fable-5.2"] })
+        .success,
+    ).toBe(false);
+    expect(
+      NodeSchema.safeParse({ ...row("1"), written_with: [{ agent: "  " }] })
+        .success,
+    ).toBe(false);
+  });
+
+  it("leaves out only the ref's owner alone", () => {
+    expect(authorsBeyondRef({ ref: REF })).toBeUndefined();
+    expect(authorsBeyondRef({ ref: REF, authors: [] })).toBeUndefined();
+    expect(authorsBeyondRef({ ref: REF, authors: [DID] })).toBeUndefined();
+    expect(authorsBeyondRef({ ref: REF, authors: [ADA] })).toEqual([ADA]);
+    expect(authorsBeyondRef({ ref: REF, authors: [DID, ADA] })).toEqual([
+      DID,
+      ADA,
+    ]);
+  });
+
+  it("is a list a person writes whole, with no agent in it", () => {
+    expect(UpdateNodeRequestSchema.parse({ authors: [ADA] })).toEqual({
+      authors: [ADA],
+    });
+    expect(
+      UpdateNodeRequestSchema.safeParse({ authors: ["claude-fable-5.2"] })
+        .success,
+    ).toBe(false);
+    expect(
+      UpdateNodeRequestSchema.parse({ written_with: [{ agent: "x" }] }),
+    ).toEqual({});
   });
 });
 

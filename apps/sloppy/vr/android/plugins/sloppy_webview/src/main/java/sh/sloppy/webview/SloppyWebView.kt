@@ -77,6 +77,10 @@ class SloppyWebView(godot: Godot) : GodotPlugin(godot), PageSays {
     @UsedByGodot
     fun text(id: Int, typed: String) = onUi { pages[id]?.text(typed) }
 
+    /** [name] is "Enter" or "Backspace", pressed in what has focus. */
+    @UsedByGodot
+    fun key(id: Int, name: String) = onUi { pages[id]?.key(name) }
+
     /** The answer to a `navigating` signal's [request]. */
     @UsedByGodot
     fun allow(request: Int, yes: Boolean) = answers.answer(request, yes)

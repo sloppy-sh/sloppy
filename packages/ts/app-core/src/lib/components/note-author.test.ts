@@ -1,6 +1,7 @@
-import type { ProfileView, PublishedPublication } from '@sloppy/types';
+import { NOT_PUBLIC_SAID, type ProfileView, type PublishedPublication } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { updateRuntime } from '../runtime.js';
 import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
 import { peers } from '../stores/peers.svelte.js';
 import { people } from '../stores/people.svelte.js';
@@ -285,5 +286,91 @@ describe('who wrote the note', () => {
 		await settle();
 		expect(target.textContent).toContain('Ada Lovelace');
 		expect(api.countOf(asked(DID))).toBe(0);
+	});
+});
+
+describe('an author named by a W3ID', () => {
+	const ENAME = '@0f6b4a1e-2c3d-4e5f-8a9b-0c1d2e3f4a5b';
+	const AUTHOR = `w3id:${ENAME}`;
+	let profile: () => Response;
+
+	beforeEach(() => {
+		profile = () =>
+			Response.json({
+				data: {
+					metaEnvelopes: {
+						edges: [
+							{
+								node: {
+									parsed: {
+										displayName: 'Ada Lovelace',
+										username: 'ada',
+										bio: 'Notes on the engine.',
+										avatarUrl: 'https://pictures.example.org/ada.png'
+									}
+								}
+							}
+						]
+					}
+				}
+			});
+		updateRuntime({
+			reachOut: async (url: string) => {
+				if (url.includes('/resolve')) return Response.json({ uri: 'http://203.0.113.7:4000' });
+				if (url.endsWith('.png'))
+					return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+						headers: { 'content-type': 'image/png' }
+					});
+				return profile();
+			}
+		});
+	});
+
+	afterEach(() => {
+		updateRuntime({ reachOut: undefined });
+	});
+
+	it('stands beside a syr author with their face and name', async () => {
+		show(PEER, { authors: [PEER, AUTHOR] });
+		await settle();
+
+		expect(target.textContent).toContain('Written by');
+		expect(target.textContent).toContain('Charles Babbage');
+		expect(target.textContent).toContain('Ada Lovelace');
+		const faces = [...target.querySelectorAll('img')].map((one) => one.getAttribute('src'));
+		expect(faces.some((src) => src?.startsWith('data:image/png;base64,'))).toBe(true);
+	});
+
+	it('meets them as their profile says, with the name they go by to copy', async () => {
+		show(PEER, { authors: [PEER, AUTHOR] });
+		await settle();
+		const chip = [...target.querySelectorAll('button')].find((one) =>
+			one.textContent?.includes('Ada Lovelace')
+		);
+		chip?.click();
+		await settle();
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('@ada');
+		expect(text).toContain('Notes on the engine.');
+		expect(text).toContain(ENAME);
+		expect(text).not.toContain(AUTHOR);
+		expect(text).not.toContain('Follow');
+		expect(api.calls.some((call) => call.startsWith('GET /peers/publications'))).toBe(false);
+	});
+
+	it('says so where their profile is not public', async () => {
+		profile = () => Response.json({ errors: [{ message: 'Authentication required' }] });
+		show(PEER, { authors: [PEER, AUTHOR] });
+		await settle();
+		const chip = [...target.querySelectorAll('button')].find(
+			(one) => !one.textContent?.includes('Charles Babbage')
+		);
+		chip?.click();
+		await settle();
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('Somebody');
+		expect(text).toContain(NOT_PUBLIC_SAID);
 	});
 });

@@ -22,6 +22,7 @@ import {
 import { ulid } from '@sloppy/types';
 import { Refusal } from '@sloppy/ui';
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
+import { fetch as reachOut } from '@tauri-apps/plugin-http';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { tauriBuilds } from './build';
 import { tauriChat } from './chat';
@@ -323,6 +324,7 @@ export function initNativeRuntime(): void {
 		// so consent comes back over the scheme this app is registered for.
 		signInRedirect: () => SIGN_IN_CALLBACK,
 		saveFile: tauriSaveFile(),
+		reachOut: (url, init) => reachOut(url, init),
 		...(device
 			? {
 					createApi: () => fresh(device),

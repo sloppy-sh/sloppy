@@ -281,6 +281,13 @@ describe("a write on an open note somebody else's writing is in", () => {
     expect(written[0].authors).toEqual([OTHER, DID]);
   });
 
+  it("names the authors a person names after everybody it carries, the writer joining, nobody taken off", async () => {
+    const { service, written } = patching();
+    const W3ID = "w3id:@00000000-0000-5000-8000-000000000001";
+    await service.update(DID, ref, { authors: [W3ID, W3ID] }, undefined);
+    expect(written[0].authors).toEqual([OTHER, DID, W3ID]);
+  });
+
   it("joins nobody where the request only says what it was read against", async () => {
     const { service, written } = patching();
     const readings = [{ path: "src/a.ts", digest: `sha256:${"a".repeat(64)}` }];

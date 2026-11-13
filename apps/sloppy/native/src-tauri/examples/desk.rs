@@ -2,7 +2,8 @@
 //! only and announced nowhere, showing a fixed code for as long as it runs —
 //! or none, where the code is `-` — and answering every paired line from a
 //! canned project of two notes, worn in Graphite, the first wearing a picture
-//! and the second showing one in its writing,
+//! and the second showing one in its writing and written by somebody with a
+//! name and a face,
 //! with five looks to choose from —
 //! the one server the headset is tested against. It hears every recording as
 //! "take me to the second note" unless it is `mute`, keeps one chat thread,
@@ -34,6 +35,13 @@ const PICTURE: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAAF0lEQVR4nGM4oaHxX0PjxH8YzYDMAdEAFNUQueTTVycAAAAASUVORK5CYII=";
 /// The one picture the second note's writing shows, as its markdown names it.
 const LEAF_PICTURE: &str = "media/01M75GHRQ9V2K7D4X8C3B6N5MA";
+/// The author `author/read` answers with a name and a face.
+const ADA: &str = "w3id:@00000000-0000-5000-8000-000000000001";
+/// The author whose profile `author/read` says is not public.
+const UNSEEN: &str = "w3id:@00000000-0000-5000-8000-000000000002";
+/// A face four pixels square, as `author/read` answers one.
+const FACE: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR42mM4URHwHxkzkC4AAGyHKPEW/lxUAAAAAElFTkSuQmCC";
 const NOTHING_BY_THAT_NAME: &str =
     "There is nothing here by that name. Everything that can be asked for is in the list of tools.";
 const THREAD: &str = "01M75GHRJ8T3S9Q4W6E2Y7Z1AB";
@@ -58,6 +66,11 @@ const SPEECH_UNREADABLE: (i32, &str) = (
 );
 const ANSWERING: (i32, &str) = (-32020, "The assistant is still answering. Stop it first.");
 const NO_SUCH_ASSET: (i32, &str) = (-32040, "That picture is not in this note.");
+const NOT_PUBLIC: (i32, &str) = (-32050, "This person's profile is not public.");
+const UNREACHED: (i32, &str) = (
+    -32051,
+    "This person's profile could not be reached. Try again later.",
+);
 /// How many events a `chat/say` sends after its answer.
 const TURN_EVENTS: u32 = 4;
 
@@ -173,10 +186,24 @@ impl Project {
                 note["links"] = json!([]);
                 if note["note"] == format!("{OWNER}/{ROOT}") {
                     note["picture"] = json!(true);
+                } else {
+                    note["authors"] = json!([ADA]);
                 }
                 note
             })
             .collect()
+    }
+
+    /// Who an author is, as `author/read` answers it: the desk's own owner by
+    /// name alone, Ada with a face, the other author not public, and anybody
+    /// else not reached.
+    fn author(params: &Value) -> Value {
+        match params.get("principal").and_then(Value::as_str) {
+            Some(OWNER) => json!({ "result": { "name": "Sam" } }),
+            Some(ADA) => json!({ "result": { "name": "Ada", "handle": "ada", "picture": FACE } }),
+            Some(UNSEEN) => refused(NOT_PUBLIC),
+            _ => refused(UNREACHED),
+        }
     }
 
     /// The picture a note's mark wears, as `picture/read` answers it.
@@ -230,6 +257,9 @@ impl Project {
                     .notes()
                     .into_iter()
                     .find(|note| note["note"] == asked)?;
+                if asked == format!("{OWNER}/{LEAF}") {
+                    note["authors"] = json!([ADA]);
+                }
                 note["sections"] = json!([
                     { "markdown": format!("## The file\n\nIt sprang from [[{OWNER}/{ROOT}]].\n\n![The seed]({LEAF_PICTURE})") },
                 ]);
@@ -362,6 +392,7 @@ impl Project {
                 json!({ "result": Self::picture(params.get("note").and_then(Value::as_str)) })
             }
             Some("asset/read") => Self::asset(&params),
+            Some("author/read") => Self::author(&params),
             Some("initialize") => json!({ "result": {
                 "protocolVersion": "2025-06-18",
                 "capabilities": { "tools": {} },

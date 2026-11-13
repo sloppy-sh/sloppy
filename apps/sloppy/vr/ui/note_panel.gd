@@ -23,6 +23,9 @@ const NOTHING := "Nothing is written in this note yet."
 const PULLED := "Pulled from another graph"
 const MORE := "%d more sections are not shown here."
 const OF := "%d of %d"
+const AND_MORE := "%s and %d more"
+## What a surface calls somebody nobody here can put a name to, as the desk does.
+const SOMEBODY := "Somebody"
 ## Pixels the body moves for a second of the stick leaned all the way.
 const SCROLL := 900.0
 ## The page a section is drawn by, built by tools/build-web.sh.
@@ -66,11 +69,17 @@ var _tall := 0.0
 var _pictures := {}
 var _on_page := false
 var _pressing_page := false
+## Whose writing the note carries, as last asked of the desk.
+var _writers: Array = []
 
 @onready var _page: SubViewport = $Page
 @onready var _face: MeshInstance3D = $Face
 @onready var _title: Label = $Page/Sheet/Margin/Column/Head/Title
 @onready var _about: Label = $Page/Sheet/Margin/Column/About
+@onready var _disc: PanelContainer = $Page/Sheet/Margin/Column/Authors/Disc
+@onready var _letter: Label = $Page/Sheet/Margin/Column/Authors/Disc/Letter
+@onready var _portrait: TextureRect = $Page/Sheet/Margin/Column/Authors/Face
+@onready var _author: Label = $Page/Sheet/Margin/Column/Authors/Name
 @onready var _body: RichTextLabel = $Page/Sheet/Margin/Column/Body
 @onready var _where: Label = $Page/Sheet/Margin/Column/Foot/Where
 @onready var _before: Button = $Page/Sheet/Margin/Column/Foot/Before
@@ -87,6 +96,7 @@ func _ready() -> void:
 	$Page/Sheet/Margin/Column/Head/Close.pressed.connect(close)
 	_before.pressed.connect(func(): _turn(-1))
 	_next.pressed.connect(func(): _turn(1))
+	_dress_disc()
 	_paged = WebPanel.engine() != null and FileAccess.file_exists(PAGE)
 	if _paged:
 		_body.resized.connect(_fit_page)
@@ -99,6 +109,7 @@ func dress(ink: Color, paper: Color) -> void:
 	_ink = ink
 	_paper = paper
 	$Page/Sheet.theme = Dressing.pack(Room.panels(), Room.look(), ink, paper)
+	_dress_disc()
 	if not _asked.is_empty():
 		_asked.look = _look()
 		_render()
@@ -113,6 +124,7 @@ func open(project: String, ref: String, listed: Dictionary, pulled: bool, named:
 	_pictures = {}
 	_title.text = named(listed)
 	_about.text = _carried(listed.get("tags", []), pulled)
+	_name_authors(_authors_of(ref, listed))
 	_saying(READING)
 	_where.text = ""
 	_before.disabled = true
@@ -124,6 +136,8 @@ func open(project: String, ref: String, listed: Dictionary, pulled: bool, named:
 		_saying(str(read.get("error", read.get("said", ""))))
 		return
 	_title.text = named(read)
+	if read.has("authors") and _authors_of(ref, read) != _writers:
+		_name_authors(_authors_of(ref, read))
 	_pages.clear()
 	for section in read.get("sections", []):
 		_pages.append({"markdown": str(section.get("markdown", ""))})
@@ -146,6 +160,83 @@ static func named(note: Dictionary) -> String:
 	if address != "" and title != "":
 		return "%s  %s" % [address, title]
 	return title if title != "" else address
+
+
+## Whose writing `note` carries: its `authors`, or where it names none, whoever
+## the ref says wrote it.
+static func _authors_of(ref: String, note: Dictionary) -> Array:
+	var authors = note.get("authors")
+	if authors is Array and not authors.is_empty():
+		return authors.map(func(one): return str(one))
+	return [ref.substr(0, ref.rfind("/"))]
+
+
+## Asks the desk who wrote the note, one author at a time until one is named,
+## and draws the first named with how many others wrote beside them.
+func _name_authors(authors: Array) -> void:
+	_writers = authors
+	_draw_author("", null)
+	var ref := _ref
+	var first_said := ""
+	for principal in authors:
+		var who: Dictionary = await Client.author(_project, principal)
+		if not is_inside_tree() or ref != _ref or _writers != authors:
+			return
+		var called := str(who.get("name", who.get("handle", ""))).strip_edges()
+		if who.has("error") or called == "":
+			if first_said == "":
+				first_said = str(who.get("error", SOMEBODY))
+			continue
+		var more := authors.size() - 1
+		_draw_author(AND_MORE % [called, more] if more > 0 else called, _face_of(who.get("picture")), called)
+		return
+	var others := authors.size() - 1
+	_draw_author(AND_MORE % [first_said, others] if first_said == SOMEBODY and others > 0 else first_said, null)
+
+
+## The author line: `said` beside `face`, or beside the plain disc carrying the
+## first letter of `called`.
+func _draw_author(said: String, face: Texture2D, called := "") -> void:
+	_author.text = said
+	_portrait.texture = face
+	_portrait.visible = face != null
+	_disc.visible = face == null
+	_letter.text = called.left(1).to_upper()
+
+
+static func _face_of(picture: Variant) -> Texture2D:
+	if not picture is String:
+		return null
+	var image := Image.new()
+	if image.load_png_from_buffer(Marshalls.base64_to_raw(picture)) != OK:
+		return null
+	return ImageTexture.create_from_image(rounded(image))
+
+
+## `image` cut to the circle inside its middle square, its edge softened by a pixel.
+static func rounded(image: Image) -> Image:
+	var side := mini(image.get_width(), image.get_height())
+	var square := image.get_region(Rect2i((image.get_width() - side) >> 1, (image.get_height() - side) >> 1, side, side))
+	square.convert(Image.FORMAT_RGBA8)
+	var middle := side / 2.0
+	for y in side:
+		for x in side:
+			var outside := Vector2(x + 0.5, y + 0.5).distance_to(Vector2(middle, middle)) - middle
+			if outside > -1.0:
+				var pixel := square.get_pixel(x, y)
+				pixel.a *= clampf(-outside, 0.0, 1.0)
+				square.set_pixel(x, y, pixel)
+	return square
+
+
+## The plain disc is the sheet's own words, faintly.
+func _dress_disc() -> void:
+	var disc := StyleBoxFlat.new()
+	disc.bg_color = _author.get_theme_color("font_color")
+	disc.bg_color.a = 0.16
+	disc.set_corner_radius_all(int(_disc.custom_minimum_size.x / 2.0))
+	disc.anti_aliasing = true
+	_disc.add_theme_stylebox_override("panel", disc)
 
 
 static func _carried(tags: Array, pulled: bool) -> String:

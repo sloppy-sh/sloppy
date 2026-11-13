@@ -32,6 +32,7 @@ import {
   resolveAppearance,
   ulid,
   withAuthor,
+  withAuthorsNamed,
 } from "@sloppy/types";
 import {
   type EmojiDrawing,
@@ -555,6 +556,9 @@ export class LocalGraph {
       ...(note.contributors === undefined
         ? {}
         : { contributors: [...note.contributors] }),
+      ...(note.written_with === undefined
+        ? {}
+        : { written_with: note.written_with.map((one) => ({ ...one })) }),
       published: false,
       ...(note.checked === undefined ? {} : { checked: note.checked }),
       ...(note.read_against === undefined
@@ -685,6 +689,15 @@ export class LocalGraph {
     const { created_by: _whose, ...held } = withAuthor(
       { ...note, created_by: this.did },
       writer,
+    );
+    return held;
+  }
+
+  /** The note with `named` among its authors — {@link withAuthorsNamed}. */
+  named(note: StoredNote, named: readonly Principal[]): StoredNote {
+    const { created_by: _whose, ...held } = withAuthorsNamed(
+      { ...note, created_by: this.did },
+      named,
     );
     return held;
   }

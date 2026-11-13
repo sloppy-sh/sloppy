@@ -25,6 +25,8 @@ const LONGEST_WAIT := 30.0
 const SLOW_ASK := 30.0
 ## How long one of a note's pictures may take before it is given up.
 const PICTURE_WAIT := 30.0
+## How long naming one of a note's authors may take before it is given up.
+const AUTHOR_WAIT := 30.0
 
 const LOST := "The desk stopped answering. Check Sloppy is still serving, and try again."
 const NOT_A_DESK := "That is not a desk this headset can reach. Check what you entered."
@@ -177,6 +179,12 @@ func picture(project: String, note: String) -> Image:
 ## `{bytes, mime}` with `bytes` base64, or `{error, code}` with the desk's words.
 func asset(project: String, note: String, path: String) -> Dictionary:
 	return _result(await _ask("asset/read", {"note": note, "path": path}, project, PICTURE_WAIT))
+
+
+## Who `principal`, one of a note's authors, is: `{name?, handle?, picture?}`
+## with `picture` base64 PNG, or `{error, code}` with the desk's words.
+func author(project: String, principal: String) -> Dictionary:
+	return _result(await _ask("author/read", {"principal": principal}, project, AUTHOR_WAIT))
 
 
 ## One of Sloppy's acts asked of `project` ("" is the desk's first): the JSON

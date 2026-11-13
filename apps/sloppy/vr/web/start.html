@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Search the web</title>
+    <!-- The headset's browser opens on this page; ui/browser_panel.gd fills in the look and the address it was on. -->
+    <style>
+      :root {
+        --ink: #1c1b19;
+        --paper: #f6f4ef;
+        --card: #ffffff;
+        --edge: #d9d5cc;
+      }
+      /* look */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: system-ui, sans-serif;
+      }
+      form {
+        display: flex;
+        justify-content: center;
+        padding: 30vh 8vw 0;
+      }
+      input {
+        box-sizing: border-box;
+        width: 100%;
+        font: inherit;
+        font-size: 30px;
+        padding: 18px 22px;
+        border: 2px solid var(--edge);
+        border-radius: 12px;
+        background: var(--card);
+        color: var(--ink);
+        outline: none;
+      }
+      input:focus {
+        border-color: var(--ink);
+      }
+      input::placeholder {
+        color: var(--ink);
+        opacity: 0.55;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="search" autocomplete="off">
+      <input
+        id="q"
+        type="search"
+        placeholder="Search the web"
+        aria-label="Search the web"
+        enterkeyhint="search"
+        autofocus
+      />
+    </form>
+    <script>
+      const field = document.getElementById("q");
+      field.value = /* was */ "";
+      field.focus();
+      field.select();
+      document.getElementById("search").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const q = field.value.trim();
+        if (q && window.sloppy)
+          window.sloppy.send(JSON.stringify({ kind: "search", q }));
+      });
+    </script>
+  </body>
+</html>

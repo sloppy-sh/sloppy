@@ -1,5 +1,6 @@
 ## Stands in for the web view plugin in the tests: answers as the plugin does,
-## a frame later, with a flat page, and keeps every call made of it.
+## a frame later, with a flat page, and keeps every call made of it. A page given
+## as html answers Enter as the browser's page to search from does.
 extends RefCounted
 
 signal page_loaded(id: int, url: String, title: String)
@@ -21,6 +22,8 @@ var fails := false
 var answers := {}
 var _sizes := {}
 var _visited := {}
+var _typed := {}
+var _html := {}
 var _request := 0
 
 
@@ -42,11 +45,14 @@ func resize(id: int, width: int, height: int) -> void:
 
 func load_url(id: int, url: String) -> void:
 	calls.append(["load_url", id, url])
+	_html[id] = false
 	_load(id, url)
 
 
 func load_html(id: int, html: String, base_url: String) -> void:
 	calls.append(["load_html", id, html, base_url])
+	_html[id] = true
+	_typed[id] = ""
 	_load(id, base_url if base_url != "" else "about:blank")
 
 
@@ -76,6 +82,16 @@ func scroll(id: int, dx: float, dy: float) -> void:
 
 func text(id: int, typed: String) -> void:
 	calls.append(["text", id, typed])
+	_typed[id] = _typed.get(id, "") + typed
+
+
+func key(id: int, name: String) -> void:
+	calls.append(["key", id, name])
+	var held: String = _typed.get(id, "")
+	if name == "Backspace":
+		_typed[id] = held.left(-1)
+	elif name == "Enter" and _html.get(id, false):
+		message.emit.call_deferred(id, JSON.stringify({"kind": "search", "q": held}))
 
 
 func allow(request: int, yes: bool) -> void:
