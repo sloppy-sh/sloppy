@@ -1,5 +1,12 @@
 import { serverOnly, type SloppyApi } from '@sloppy/client';
-import { NOT_PUBLIC_SAID, type ProfileView, UNREACHED_SAID, type W3id } from '@sloppy/types';
+import {
+	NOT_PUBLIC_SAID,
+	type ProfileView,
+	UNREACHED_SAID,
+	UNRESOLVED_ENAME,
+	type W3id
+} from '@sloppy/types';
+import { DEFAULT_AVATAR } from '@sloppy/ui';
 import { nameOr } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetApi } from '../api.js';
@@ -249,12 +256,13 @@ describe('somebody named by a W3ID', () => {
 		expect(reached.filter((url) => url.includes('/resolve'))).toHaveLength(1);
 	});
 
-	it('holds somebody whose profile is not public unnamed, and says so', async () => {
+	it('holds somebody whose profile is not public as an unresolvable eName with the plain avatar, and says so', async () => {
 		store = () => Response.json({ errors: [{ message: 'Authentication required' }] });
 		people.resolve(AUTHOR);
 		await settle();
 
-		expect(people.of(AUTHOR)).toBeNull();
+		expect(people.of(AUTHOR)?.displayName).toBe(UNRESOLVED_ENAME);
+		expect(people.of(AUTHOR)?.avatar).toBe(DEFAULT_AVATAR);
 		expect(people.unplaced(AUTHOR)).toBe(true);
 		expect(people.said(AUTHOR)).toBe(NOT_PUBLIC_SAID);
 	});

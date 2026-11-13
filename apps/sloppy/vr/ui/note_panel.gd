@@ -10,6 +10,7 @@ const Room := preload("res://room/room.gd")
 const Dressing := preload("res://ui/theme.gd")
 const WebPanel := preload("res://ui/web_panel.gd")
 const Browser := preload("res://ui/browser_panel.gd")
+const Pieces := preload("res://ui/pieces.gd")
 
 signal closed
 ## A hand's grip took hold of the page, and let it go.
@@ -26,6 +27,8 @@ const OF := "%d of %d"
 const AND_MORE := "%s and %d more"
 ## What a surface calls somebody nobody here can put a name to, as the desk does.
 const SOMEBODY := "Somebody"
+## What the desk names an author whose profile cannot be read.
+const UNRESOLVED := "Unresolvable eName"
 ## Pixels the body moves for a second of the stick leaned all the way.
 const SCROLL := 900.0
 ## The page a section is drawn by, built by tools/build-web.sh.
@@ -183,24 +186,28 @@ func _name_authors(authors: Array) -> void:
 		if not is_inside_tree() or ref != _ref or _writers != authors:
 			return
 		var called := str(who.get("name", who.get("handle", ""))).strip_edges()
-		if who.has("error") or called == "":
-			if first_said == "":
-				first_said = str(who.get("error", SOMEBODY))
+		if who.has("error") or called == "" or called == UNRESOLVED:
+			if first_said == "" or first_said == SOMEBODY:
+				first_said = UNRESOLVED if called == UNRESOLVED else str(who.get("error", SOMEBODY))
 			continue
 		var more := authors.size() - 1
 		_draw_author(AND_MORE % [called, more] if more > 0 else called, _face_of(who.get("picture")), called)
 		return
 	var others := authors.size() - 1
-	_draw_author(AND_MORE % [first_said, others] if first_said == SOMEBODY and others > 0 else first_said, null)
+	var said := AND_MORE % [first_said, others] if first_said in [SOMEBODY, UNRESOLVED] and others > 0 else first_said
+	_draw_author(said, null, "", first_said == UNRESOLVED)
 
 
-## The author line: `said` beside `face`, or beside the plain disc carrying the
+## The author line: `said` beside `face`, the plain avatar where `unresolved`, or
+## beside the plain disc carrying the
 ## first letter of `called`.
-func _draw_author(said: String, face: Texture2D, called := "") -> void:
+func _draw_author(said: String, face: Texture2D, called := "", unresolved := false) -> void:
 	_author.text = said
-	_portrait.texture = face
-	_portrait.visible = face != null
-	_disc.visible = face == null
+	var silhouette := face == null and unresolved
+	_portrait.texture = face if face != null else (Pieces.glyph("user", 96) if silhouette else null)
+	_portrait.modulate = Color.WHITE if face != null else _letter.get_theme_color("font_color")
+	_portrait.visible = _portrait.texture != null
+	_disc.visible = not _portrait.visible
 	_letter.text = called.left(1).to_upper()
 
 

@@ -266,14 +266,14 @@ func _names_authors(NotePanel: PackedScene, first: Dictionary, leaf: Dictionary,
 	var hidden := first.duplicate()
 	hidden["authors"] = [UNSEEN]
 	panel.open("", first.note, hidden, false, named)
-	await _until(func(): return said.text.contains("not public"))
-	_check(said.text == "This person's profile is not public." and disc.visible and letter.text == "", "a profile that is not public is said so: %s" % said.text)
+	await _until(func(): return said.text == "Unresolvable eName")
+	_check(said.text == "Unresolvable eName" and face.visible and not disc.visible, "a profile that cannot be read is named as an unresolvable eName, with the plain avatar: %s" % said.text)
 
 	var gone := first.duplicate()
 	gone["authors"] = ["w3id:@00000000-0000-5000-8000-000000000009"]
 	panel.open("", first.note, gone, false, named)
-	await _until(func(): return said.text.contains("could not be reached"))
-	_check(said.text.begins_with("This person's profile could not be reached"), "one that could not be reached is said so: %s" % said.text)
+	await _until(func(): return said.text == "Unresolvable eName")
+	_check(said.text == "Unresolvable eName" and face.visible, "and so is one that could not be reached: %s" % said.text)
 	_check(not said.text.contains("00000000") and not said.text.contains("w3id"), "and nobody is shown by their identifier")
 	panel.queue_free()
 

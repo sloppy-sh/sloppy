@@ -37,8 +37,6 @@ const PICTURE: &str =
 const LEAF_PICTURE: &str = "media/01M75GHRQ9V2K7D4X8C3B6N5MA";
 /// The author `author/read` answers with a name and a face.
 const ADA: &str = "w3id:@00000000-0000-5000-8000-000000000001";
-/// The author whose profile `author/read` says is not public.
-const UNSEEN: &str = "w3id:@00000000-0000-5000-8000-000000000002";
 /// A face four pixels square, as `author/read` answers one.
 const FACE: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR42mM4URHwHxkzkC4AAGyHKPEW/lxUAAAAAElFTkSuQmCC";
@@ -66,11 +64,6 @@ const SPEECH_UNREADABLE: (i32, &str) = (
 );
 const ANSWERING: (i32, &str) = (-32020, "The assistant is still answering. Stop it first.");
 const NO_SUCH_ASSET: (i32, &str) = (-32040, "That picture is not in this note.");
-const NOT_PUBLIC: (i32, &str) = (-32050, "This person's profile is not public.");
-const UNREACHED: (i32, &str) = (
-    -32051,
-    "This person's profile could not be reached. Try again later.",
-);
 /// How many events a `chat/say` sends after its answer.
 const TURN_EVENTS: u32 = 4;
 
@@ -195,14 +188,13 @@ impl Project {
     }
 
     /// Who an author is, as `author/read` answers it: the desk's own owner by
-    /// name alone, Ada with a face, the other author not public, and anybody
-    /// else not reached.
+    /// name alone, Ada with a face, and anybody whose profile cannot be read as
+    /// the desk names them.
     fn author(params: &Value) -> Value {
         match params.get("principal").and_then(Value::as_str) {
             Some(OWNER) => json!({ "result": { "name": "Sam" } }),
             Some(ADA) => json!({ "result": { "name": "Ada", "handle": "ada", "picture": FACE } }),
-            Some(UNSEEN) => refused(NOT_PUBLIC),
-            _ => refused(UNREACHED),
+            _ => json!({ "result": { "name": "Unresolvable eName" } }),
         }
     }
 

@@ -331,6 +331,8 @@ export const SPEECH_UNREADABLE_SAID =
 export const NO_SUCH_ASSET_SAID = "That picture is not in this note.";
 export const ASSET_TOO_LARGE_SAID = "That picture is too large to show here.";
 export const NOT_PUBLIC_SAID = "This person's profile is not public.";
+/** What an author is called where their profile cannot be read. */
+export const UNRESOLVED_ENAME = "Unresolvable eName";
 export const UNREACHED_SAID =
   "This person's profile could not be reached. Try again later.";
 

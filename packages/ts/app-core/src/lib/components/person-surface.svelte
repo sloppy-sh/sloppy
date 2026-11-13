@@ -85,7 +85,7 @@
 		headed={false}
 	>
 		<div class="space-y-6 px-2 pt-4 pb-2">
-			{#if person}
+			{#if person && !said}
 				<PersonHeader {person} />
 			{:else}
 				<div class="flex items-center gap-3">

@@ -6,7 +6,7 @@ import {
 	type Principal,
 	type ProfileView,
 	SERVE_REFUSALS,
-	UNREACHED_SAID,
+	UNRESOLVED_ENAME,
 	type W3id
 } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -86,17 +86,11 @@ describe('who a note’s author is, read for a headset', () => {
 		expect((await ask(ADA)).result).toEqual({ name: 'Ada' });
 	});
 
-	it('says a profile is not public, or could not be reached, in the person’s words', async () => {
+	it('names a profile that is not public, or could not be reached, as an unresolvable eName', async () => {
 		const ask = aDesk(knowing({ [HIDDEN]: 'not-public' }));
 
-		expect((await ask(HIDDEN)).error).toEqual({
-			code: SERVE_REFUSALS.NOT_PUBLIC,
-			message: NOT_PUBLIC_SAID
-		});
-		expect((await ask(GONE)).error).toEqual({
-			code: SERVE_REFUSALS.UNREACHED,
-			message: UNREACHED_SAID
-		});
+		expect((await ask(HIDDEN)).result).toEqual({ name: UNRESOLVED_ENAME });
+		expect((await ask(GONE)).result).toEqual({ name: UNRESOLVED_ENAME });
 		expect((await ask('nobody at all')).error).toMatchObject({
 			code: SERVE_REFUSALS.UNREACHED
 		});
@@ -165,7 +159,7 @@ describe('an author named the way the desk names them', () => {
 		profile = () => Response.json({ errors: [{ message: 'Authentication required' }] });
 		const ask = aDesk(deskAuthors);
 
-		expect((await ask(ADA)).error).toMatchObject({ code: SERVE_REFUSALS.NOT_PUBLIC });
+		expect((await ask(ADA)).result).toEqual({ name: UNRESOLVED_ENAME });
 		expect(people.said(ADA as W3id)).toBe(NOT_PUBLIC_SAID);
 	});
 

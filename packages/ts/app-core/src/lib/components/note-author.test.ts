@@ -1,4 +1,9 @@
-import { NOT_PUBLIC_SAID, type ProfileView, type PublishedPublication } from '@sloppy/types';
+import {
+	NOT_PUBLIC_SAID,
+	type ProfileView,
+	type PublishedPublication,
+	UNRESOLVED_ENAME
+} from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { updateRuntime } from '../runtime.js';
@@ -359,7 +364,7 @@ describe('an author named by a W3ID', () => {
 		expect(api.calls.some((call) => call.startsWith('GET /peers/publications'))).toBe(false);
 	});
 
-	it('says so where their profile is not public', async () => {
+	it('names them as an unresolvable eName where their profile is not public, and says why', async () => {
 		profile = () => Response.json({ errors: [{ message: 'Authentication required' }] });
 		show(PEER, { authors: [PEER, AUTHOR] });
 		await settle();
@@ -370,7 +375,7 @@ describe('an author named by a W3ID', () => {
 		await settle();
 
 		const text = document.body.textContent ?? '';
-		expect(text).toContain('Somebody');
+		expect(text).toContain(UNRESOLVED_ENAME);
 		expect(text).toContain(NOT_PUBLIC_SAID);
 	});
 });

@@ -48,7 +48,9 @@ export {
 	isNamed,
 	nameOf,
 	nameOr,
-	unnamedPerson
+	unnamedPerson,
+	unresolvedPerson,
+	DEFAULT_AVATAR
 } from './components/identity/person.js';
 export type { Person, PictureRole } from './components/identity/person.js';
 

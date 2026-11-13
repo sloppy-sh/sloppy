@@ -124,9 +124,7 @@ func _names_authors(field: Dictionary) -> void:
 	var drawn: bool = face.load_png_from_buffer(Marshalls.base64_to_raw(str(who.get("picture", "")))) == OK
 	_check(who.get("name") == "Ada" and drawn and face.get_width() <= 128, "names an author, with a face: %s" % [who.keys()])
 	var hidden: Dictionary = await _client.author("", "w3id:@00000000-0000-5000-8000-000000000002")
-	_check(hidden.get("code") == -32050 and hidden.get("error") == "This person's profile is not public.", "says one is not public: %s" % [hidden])
-	var gone: Dictionary = await _client.author("", "w3id:@00000000-0000-5000-8000-000000000009")
-	_check(gone.get("code") == -32051 and str(gone.get("error", "")).begins_with("This person's profile could not be reached"), "and one could not be reached: %s" % [gone])
+	_check(hidden.get("name") == "Unresolvable eName" and not hidden.has("picture"), "names one whose profile cannot be read as an unresolvable eName: %s" % [hidden])
 
 
 ## What a headset asks of a desk beyond its notes: hearing, the chat,

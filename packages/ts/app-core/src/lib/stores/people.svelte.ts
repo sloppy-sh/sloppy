@@ -11,9 +11,10 @@ import {
 	principalScheme,
 	type ProfileView,
 	UNREACHED_SAID,
+	UNRESOLVED_ENAME,
 	type W3id
 } from '@sloppy/types';
-import type { Person } from '@sloppy/ui';
+import { type Person, unresolvedPerson } from '@sloppy/ui';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { pictureSrc } from '../asset-src.js';
@@ -160,7 +161,10 @@ class PeopleStore {
 		)
 			.then((answer) => {
 				if (at === this.#epoch) {
-					const person = typeof answer === 'object' ? personOfW3id(principal, answer) : null;
+					const person =
+						typeof answer === 'object'
+							? personOfW3id(principal, answer)
+							: unresolvedPerson(principal, UNRESOLVED_ENAME);
 					this.#w3ids.set(principal, { registry, answer, person, at: Date.now() });
 				}
 				return answer;

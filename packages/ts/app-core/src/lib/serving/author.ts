@@ -12,6 +12,7 @@ import {
 	principalScheme,
 	SERVE_REFUSALS,
 	UNREACHED_SAID,
+	UNRESOLVED_ENAME,
 	type W3id
 } from '@sloppy/types';
 import { runtime } from '../runtime.js';
@@ -48,7 +49,7 @@ function base64(bytes: Uint8Array): string {
 }
 
 async function answered(who: Who, sources: AuthorSources): Promise<AuthorRead> {
-	if (typeof who === 'string') throw refused(who);
+	if (typeof who === 'string') return { name: UNRESOLVED_ENAME };
 	const picture = who.avatar && (await sources.scaled(who.avatar).catch(() => undefined));
 	return {
 		...(who.name ? { name: who.name } : {}),

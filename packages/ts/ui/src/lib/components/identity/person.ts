@@ -44,6 +44,26 @@ export function nameOr(person: Person | null | undefined): string {
 	return person ? nameOf(person) : 'Somebody';
 }
 
+/** A plain silhouette, for somebody whose own picture cannot be read. */
+export const DEFAULT_AVATAR =
+	'data:image/svg+xml;utf8,' +
+	encodeURIComponent(
+		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#8a8a8f"/><circle cx="32" cy="25" r="11" fill="#e6e6ea"/><path d="M12 58c2-12 10-18 20-18s18 6 20 18z" fill="#e6e6ea"/></svg>'
+	);
+
+/** Somebody named by an identity whose profile cannot be read, called `name`
+ *  and shown with {@link DEFAULT_AVATAR}. */
+export function unresolvedPerson(identity: string, name: string): Person {
+	return {
+		identity,
+		displayName: name,
+		handle: null,
+		bio: null,
+		avatar: DEFAULT_AVATAR,
+		banner: null
+	};
+}
+
 /** Somebody a surface has to draw before anybody could say who they are. */
 export function unnamedPerson(identity: string): Person {
 	return {
