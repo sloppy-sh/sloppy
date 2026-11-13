@@ -264,16 +264,38 @@ static func picture(bytes: PackedByteArray, named := "") -> Image:
 	return image if read == OK and not image.is_empty() else null
 
 
-## Every sky offered: the night first, the published ones, then the person's
-## own. A catalogue fetched within the day is read again rather than asked
-## for; where the publisher cannot be reached, the published skies already on
-## the headset are all of them and `offline` says so.
-func catalogue() -> Array[Choice]:
+## Every sky offered: the night first, the `saved` ones (`Room.saved`), the
+## rest of the published ones, then the person's own. A catalogue fetched
+## within the day is read again rather than asked for; where the publisher
+## cannot be reached, the published skies already on the headset are all of
+## them and `offline` says so. A saved sky is offered whether or not it is on
+## the headset.
+func catalogue(saved: Array = []) -> Array[Choice]:
 	var skies: Array[Choice] = [night()]
+	var keys := {}
+	for one in saved:
+		var sky := remembered(str(one.get("key", "")), str(one.get("name", "")))
+		if sky != null and not keys.has(sky.key):
+			keys[sky.key] = true
+			skies.append(sky)
 	var published := await _published()
-	skies.append_array(published)
+	for sky in published:
+		if not keys.has(sky.key):
+			skies.append(sky)
 	skies.append_array(own())
 	return skies
+
+
+## The published sky kept as `key`, as much of it as the headset knows, called
+## `named` where it knows nothing more; null where `key` is no published sky.
+static func remembered(key: String, named: String) -> Choice:
+	if not key.begins_with(PUBLISHED + ":"):
+		return null
+	var id := key.substr(PUBLISHED.length() + 1)
+	var held = _read_json(kept_path())
+	if held is Dictionary and held.get(id) is Dictionary:
+		return Choice.published(held[id])
+	return Choice.new(PUBLISHED, named if named != "" else id, id)
 
 
 ## Fetch `sky`'s panorama to the headset once, 2k where `sharper`; "" when it is

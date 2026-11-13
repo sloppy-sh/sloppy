@@ -132,6 +132,26 @@ export type PictureRead =
   | { picture: string; width: number; height: number }
   | { picture: null };
 
+/** The serve-level method that answers a picture a note's writing shows, as
+ *  {@link AssetRead}: `params` {@link AssetAsked}. */
+export const ASSET_READ = "asset/read";
+
+/** The most bytes a {@link ASSET_READ} answer carries, before base64. */
+export const ASSET_MOST = 4 * 1024 * 1024;
+
+export interface AssetAsked {
+  /** The note's ref. */
+  note: string;
+  /** The picture's path exactly as the note's markdown names it in `read_note`'s answer. */
+  path: string;
+}
+
+/** The answer to {@link ASSET_READ}: the file as it is kept, base64, and its type. */
+export interface AssetRead {
+  bytes: string;
+  mime: string;
+}
+
 /** A pairing code: {@link SERVE_CODE_LENGTH} decimal digits, leading zeroes kept. */
 export type ServeCode = string;
 
@@ -212,7 +232,7 @@ export interface ServeCall {
 /**
  * One message a headset sends: a JSON-RPC 2.0 request or notification, the MCP
  * methods `sloppy mcp` answers plus {@link PROJECTS_LIST}, {@link FIELD_LIST},
- * {@link LOOK_READ}, {@link PICTURE_READ} and {@link SERVE_PAIR}.
+ * {@link LOOK_READ}, {@link PICTURE_READ}, {@link ASSET_READ} and {@link SERVE_PAIR}.
  */
 export interface ServeMessage {
   jsonrpc: "2.0";
@@ -259,6 +279,10 @@ export const SERVE_REFUSALS = {
   ANSWERING: -32020,
   /** The desk has no chat agent set up. */
   NO_AGENT: -32021,
+  /** The path names no picture the note's own writing shows. */
+  NO_SUCH_ASSET: -32040,
+  /** The picture is larger than {@link ASSET_MOST}. */
+  ASSET_TOO_LARGE: -32041,
 } as const;
 export type ServeRefusal = keyof typeof SERVE_REFUSALS;
 
@@ -270,6 +294,8 @@ export const SPEECH_TOO_LONG_SAID =
   "That was too long to hear in one go. Hold the button for a minute at most.";
 export const SPEECH_UNREADABLE_SAID =
   "That could not be heard. Hold the button and try again.";
+export const NO_SUCH_ASSET_SAID = "That picture is not in this note.";
+export const ASSET_TOO_LARGE_SAID = "That picture is too large to show here.";
 
 /** Turns a reader's voice into words: `params` {@link SpeechHear}, answered
  *  {@link SpeechHeard}. */

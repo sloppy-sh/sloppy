@@ -1,8 +1,8 @@
 ## What the reader can do from the field, held on the left hand as a palette:
 ## six panels round the controller, each a `Page`, the one facing them chosen
 ## from with the other hand's pointer, a swipe of this hand's stick turning the
-## next one to them — DESIGN.md § "The field in a room". Here (the graph, Sets,
-## the desk's projects, letting the desk go), the room (its light, and moving
+## next one to them — DESIGN.md § "The field in a room". Here (the desk's
+## projects, leaving this one, letting the desk go), the room (its light, and moving
 ## the field), the note open now, which the other hand's grip pulls off and
 ## leaves in the room, or puts back, the look (following the desk's, and this
 ## headset's own look, face and density), how the field is drawn
@@ -65,11 +65,9 @@ const LET_GO_AFTER := 0.3
 const FOLLOW_AGAIN := 0.2
 
 const HERE := "Here"
-const READ := "Read"
-const FIELD := "Field"
-const SETS := "Sets"
 const DESK := "Desk"
 const PROJECTS := "Projects"
+const LEAVE := "Leave project"
 const DISCONNECT := "Disconnect"
 const ROOM_TITLE := "Room"
 const LIGHT := "Light"
@@ -544,16 +542,11 @@ func _draw_reading() -> void:
 		_words.get_parent().remove_child(_words)
 	_clear(panel)
 	var view := Views.current()
-	var page := Page.new(HERE, [
-		{"heading": READ, "rows": [
-			Page.choice(FIELD, "network", _to_graph, view == "graph"),
-			Page.choice(SETS, "blend", _to_sets, view == "sets"),
-		]},
-		{"heading": DESK, "rows": [
-			Page.choice(PROJECTS, "folder-open", _to_projects, view == "projects"),
-			Page.choice(DISCONNECT, "unplug", _disconnect),
-		]},
-	], project_name if project != "" else "", WIDTH)
+	var desk: Array = [Page.choice(PROJECTS, "folder-open", _to_projects, view == "projects")]
+	if project != "":
+		desk.append(Page.choice(LEAVE, "log-out", _leave))
+	desk.append(Page.choice(DISCONNECT, "unplug", _disconnect))
+	var page := Page.new(HERE, [{"heading": DESK, "rows": desk}], project_name if project != "" else "", WIDTH)
 	_lay(panel, [page, _words])
 
 
@@ -894,6 +887,19 @@ func _to_projects() -> void:
 		return
 	_sets_from_graph = false
 	Views.show("projects")
+
+
+## The project put down: its note and the chat's thread closed, and the
+## desk's projects stood before the reader, wherever they have gone, to choose another.
+func _leave() -> void:
+	if is_instance_valid(note):
+		note.close()
+	_chat.close_thread()
+	_sets_from_graph = false
+	project = ""
+	project_name = ""
+	Views.show("projects")
+	_bring_back()
 
 
 func _disconnect() -> void:

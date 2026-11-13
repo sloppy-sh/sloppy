@@ -68,6 +68,7 @@ func _run() -> void:
 		_check(picture != null and picture.get_size() == Vector2i(4, 2), "reads the picture a mark wears")
 	var bare: Array = field.get("notes", []).filter(func(one): return one.get("picture") != true)
 	_check(not bare.is_empty() and await _client.picture("", bare[0].note) == null, "and none for a mark that wears none")
+	await _shows_pictures(field)
 	var written: Dictionary = await _client.call_act("", "write_note", {"about": "a.ts", "sections": ["It."]})
 	_check(written.has("error"), "writes nothing")
 	var second: Array = field.get("notes", []).filter(func(one): return one.has("parent"))
@@ -89,6 +90,23 @@ func _run() -> void:
 	_client.close()
 	print("link_test: %s" % ("FAILED %d" % _failed if _failed > 0 else "passed"))
 	quit(1 if _failed > 0 else 0)
+
+
+## The pictures a note's writing shows, as its markdown names them.
+func _shows_pictures(field: Dictionary) -> void:
+	var leaf: Array = field.get("notes", []).filter(func(one): return one.has("parent"))
+	var note: String = leaf[0].note if leaf.size() == 1 else ""
+	var read: Dictionary = await _client.call_act("", "read_note", {"note": note})
+	var named := RegEx.create_from_string("!\\[[^\\]]*\\]\\(([^)\\s]+)\\)").search(
+		str(read.get("sections", [{}])[0].get("markdown", "")))
+	var path := named.get_string(1) if named != null else ""
+	var shown: Dictionary = await _client.asset("", note, path)
+	var image := Image.new()
+	var drawn: bool = shown.get("mime") == "image/png" \
+		and image.load_png_from_buffer(Marshalls.base64_to_raw(str(shown.get("bytes", "")))) == OK
+	_check(drawn and image.get_size() == Vector2i(4, 2), "reads a picture a note's writing shows: %s" % [shown])
+	var other: Dictionary = await _client.asset("", note, "media/elsewhere")
+	_check(other.get("code") == -32040 and other.has("error"), "and is refused one it does not: %s" % [other])
 
 
 ## What a headset asks of a desk beyond its notes: hearing, the chat,

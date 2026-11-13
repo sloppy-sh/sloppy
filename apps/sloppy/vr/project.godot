@@ -26,6 +26,10 @@ driver/enable_input=true
 
 window/vsync/vsync_mode=0
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/sloppy_webview/plugin.cfg")
+
 [physics]
 
 common/physics_ticks_per_second=72

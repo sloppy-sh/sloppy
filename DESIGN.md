@@ -2428,8 +2428,12 @@ reader has a body. docs/ARCHITECTURE.md § "A headset beside the desk" is how it
 - **Sets are places in the room.** The Sets reading draws the tags in front of the reader as
   translucent regions, each in its slot's hue, and stands each note among the tags it
   carries. Pointing at a place lights its notes and dims the rest — highlight, not filter,
-  exactly as on the canvas. It is moved through as the field is — walked, flown, turned,
-  tilted, taken hold of, brought back, glided to a sought note, its nearest titles standing —
+  exactly as on the canvas. It stands at the field's own size, its places reaching as far
+  as the field's third shell does inside and the smallest of them wide enough to stand in,
+  and the reader arrives inside it as they arrive inside the field. Its marks are the
+  field's size, and the near ones wear their pictures as the field's do, dimmed with their
+  marks while another place is lit. It is moved through as the field is — walked, flown,
+  turned, tilted, taken hold of, brought back, glided to a sought note, its nearest titles standing —
   arrived in out of the same veil with the places coming up one after another, and seen whole
   from a vantage of its own.
 - **Chrome is at the hand, never in the field.** What the reader can do is held on the
@@ -2438,6 +2442,12 @@ reader has a body. docs/ARCHITECTURE.md § "A headset beside the desk" is how it
 - **A citation names the note it cites.** A note read in a panel cites another by its ref; the
   panel shows the cited note's address and title where the field in front of the reader holds
   it, and says only "a note" where it does not.
+- **A note reads as it does on the desk, and its links open in the room.** The panel at the
+  right hand draws a note's tables, coloured code, diagrams and pictures in the look, as the desk
+  draws them. A link to a note opens that note in the same panel. A link to the web opens the page
+  ahead of the reader at reading distance, with its title, Back and Close over it; they can take
+  hold of it and leave it anywhere in the room, and a second link opens in it rather than beside
+  it. Where no page can be drawn, the note reads as plain text.
 - **Quiet, still.** No gamification, no celebration, no motion the reader did not cause. The
   field moves when somebody takes hold of it.
 
@@ -2455,14 +2465,19 @@ surroundings" stands the field in the room the reader is in, darkened a little b
 bright wall does not wash it out, and "Night sky" hangs it in a dark sky of stars with a faint band
 across it, the same stars in the same places every time, turning once an hour so it is felt rather
 than seen, and dim enough that the marks stay the brightest thing there. Under the night the room
-panel names the sky and offers "Skies": a page of the skies the night can be — those stars first,
-then the open and night skies Poly Haven publishes free, each with its small picture and its name,
-and under "Your skies" any panorama the person has put in its skies folder — the one the page names, which they
+panel names the sky and offers "Skies": a page of the skies the night can be — under "Saved" the
+published skies the reader saved, first and in the order they saved them, then those stars, then
+the open and night skies Poly Haven publishes free, each with its small picture and its name, four
+at a time with "Previous skies" and "More skies" to turn the page both ways and a quiet line saying
+which of how many it shows, and under "Your skies" any panorama the person has put in its skies folder — the one the page names, which they
 reach by connecting the headset to a computer — a photograph of space as readily as of a place. Choosing a published sky fetches it to the headset
 once and fades the night over to it; it turns once an hour as the stars do, and is drawn dimmed —
 "Dim" takes up to all of its light off it, 40 in a hundred until somebody moves it — so the marks
-stay the brightest thing there. "Sharper" fetches a finer copy of the one chosen, and the page
-credits who photographed it. Which sky, how dim, and every sky fetched are kept on the headset; with
+stay the brightest thing there. "Save" keeps the one chosen under Saved, so it is never hunted for
+in the list again, and "Unsave" lets it go back among the rest. "Sharper" fetches a finer copy of
+the one chosen, and the page credits who photographed it. Which sky, how dim, which are saved, and
+every sky fetched are kept on the headset; a saved sky is offered even with no network, and
+choosing one no longer on the headset fetches it again; with
 no network, the skies already on it are the list, and the page says the rest need the network. In
 the last three the look's ink is worked out again against the dark
 — its ink or its paper, whichever stands further from it, lightened until it clears 7:1 — and its
@@ -2483,10 +2498,16 @@ its middle a step ahead and no mark at their eyes, the room fogged so only what 
 over two and a half seconds the fog draws back to the whole expanse while the field turns an
 eighth about them into place. A stick moved ends that at once. Everything a
 body could do is on the two sticks. The pointing hand's stick turns the field about them as it
-leans across — slowly for a small lean, a quarter turn a second leaned all the way — and tilts it
-about them as it leans ahead or back, over the top and under for as long as it is held, so a
-reader in a chair looks up a branch, or all the way round, without craning; taking hold of the field still turns and moves it, and
-both hands still scale it. The other stick walks, ahead and back and aside, and inside the field
+leans across, the way a globe turns under a hand — leaned right, what is on their right comes
+round to the front — slowly for a small lean, a quarter turn a second leaned all the way, and
+tilts it about them as it leans ahead or back, over the top and under for as long as it is held,
+so a reader in a chair looks up a branch, or all the way round, without craning. The right grip
+takes hold of the field and turns and moves it with the hand. The left grip spins it about its
+own middle where it stands: a hand moved sideways spins it about its upright, moved up or down
+spins it over towards or away from the reader, and a twist of the wrist rolls it about the line
+from their eyes to it, the way the hand went — the first centimetre of movement, or a small twist,
+chooses which, and that holds until the grip is let go; half a metre of hand is a whole turn, and
+a twist turns it as far as the wrist did. Both grips scale it between the hands. The other stick walks, ahead and back and aside, and inside the field
 flies where they look, up and down too. A hand that shakes is steadied as much as the reader asks
 — off, a little or a lot — in the stick's lean and the grip's hold alike: a tremor is averaged
 away while a movement held longer than that comes through whole. The choice stands on the room
@@ -2508,8 +2529,9 @@ opened from a mark brings it up. While it is away the whole of that hand's stick
 panels stand round the controller, each a little wider than a hand and a hand's breadth and a half
 out from it, its words facing out, and every one is the same page: a title, one quiet line saying
 how things stand now, and rows under small headings in the groups a person would name them by —
-"Here" (the project being read; _Read_: Field, Sets; _Desk_: Projects, Disconnect; and under them
-what the hand is hearing), "Room" (_Light_: the look's paper, Dark, Night sky with its sky and
+"Here" (the project being read; _Desk_: Projects, Leave project, Disconnect; and under them what
+the hand is hearing — the arrangements are the Field panel's alone, and "Leave project" puts the
+project down, closing its note and its thread, and stands the desk's projects before the reader), "Room" (_Light_: the look's paper, Dark, Night sky with its sky and
 Skies, My surroundings; _Moving_: Bring it back, Vantage or Back in, Steady hands), "Note" (the
 note open now), "Look" (_Following_: Follow the desk; _Colours and type_: Look, Face, Density;
 _Panels_), "Field" (below) and "Chat" (below). Every row is one height and stands one gap from the

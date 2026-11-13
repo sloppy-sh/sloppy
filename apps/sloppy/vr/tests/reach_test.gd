@@ -24,6 +24,7 @@ func _initialize() -> void:
 	_the_stage_comes_to_the_eyes()
 	_walking_shares_the_stick_with_a_facing_palette()
 	_turns_finer_near_the_middle_of_the_stick()
+	_leaning_right_brings_the_right_round_to_the_front()
 	_steadying_pulls_a_reading_toward_the_last()
 	_arrives_inside_clear_of_every_mark()
 	_stands_ahead_at_its_own_size()
@@ -130,6 +131,17 @@ func _turns_finer_near_the_middle_of_the_stick() -> void:
 	var half := absf(Reach.turn_by((1.0 + Reach.TURN_FROM) * 0.5, 1.0))
 	_check(half > 0.0 and half < Reach.TURN_RATE * 0.5, "half a lean turns at less than half the rate: %.3f" % half)
 	_check(absf(Reach.turn_by(0.9, 1.0)) > absf(Reach.turn_by(0.6, 1.0)), "and further leaned turns faster")
+
+
+func _leaning_right_brings_the_right_round_to_the_front() -> void:
+	var eye := Vector3(0.0, SEATED, 0.0)
+	var on_the_right := Transform3D(Basis(), eye + Vector3(1.0, 0.0, 0.0))
+	var by := Reach.across_turn(1.0, 0.25)
+	var after := Reach.turned(on_the_right, eye, by).origin - eye
+	_check(after.z < 0.0 and after.x < 1.0, "leaned right, what was on the reader's right comes round toward the front: %s" % after)
+	var ahead := Reach.turned(Transform3D(Basis(), eye + Vector3(0.0, 0.0, -1.0)), eye, by).origin - eye
+	_check(ahead.x < 0.0, "and what was ahead goes off to the left, as a globe turns under a hand: %s" % ahead)
+	_check(is_equal_approx(Reach.across_turn(-1.0, 0.25), -by), "leaned left, the other way")
 
 
 func _a_lean_more_ahead_than_across_tilts_rather_than_turns() -> void:
@@ -260,9 +272,11 @@ func _the_stick_turns_as_it_leans_and_tilts_over_the_top() -> void:
 	for _i in 5:
 		await process_frame
 	var after_ten := _turned_by(field)
+	var gone_left := field.global_position.x < 0.0
 	_hold(KEY_RIGHT, false)
 	_check(after_five > 0.0 and after_five < Reach.TURN_RATE * 0.5, "a lean held turns the field a little at a time: %.3f" % after_five)
 	_check(after_ten > after_five, "and goes on turning while it is held: %.3f" % after_ten)
+	_check(gone_left, "the right arrow brings the right round to the front, so what was ahead goes left")
 	for _i in 2:
 		await process_frame
 	var resting := _turned_by(field)

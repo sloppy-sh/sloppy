@@ -5,14 +5,19 @@
 
 import type { DidSyr, NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { MARK_SCALE_MAX } from "@sloppy/types";
-import { describe, expect, it, vi } from "vitest";
-import { DRAWN_SETS_MOST, type DrawnNode } from "./contract.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  DRAWN_SETS_MOST,
+  type DrawnNode,
+  type GraphPictures,
+} from "./contract.js";
 import { buildModel, LEAF_RADIUS, MAX_RADIUS } from "./model.js";
 import { buildPalette } from "./palette.js";
 import {
   FakeApplication,
-  type FakeContainer,
+  FakeContainer,
   FakeGraphics,
+  type FakeSprite,
   FakeText,
   worldOf,
 } from "./pixi.test-support.js";
@@ -584,5 +589,118 @@ describe("the fold over a crowded region", () => {
     expect(fold.depth).toBe(1);
     expect(fold.fill).toBe(palette.depth(1));
     expect(fold.fill).not.toBe(palette.depth(5));
+  });
+});
+
+// DESIGN.md § "Sets — the tags as places": the marks are the genealogy's own,
+// the author's picture included, so switching readings never takes one away.
+describe("a mark's picture in the sets reading", () => {
+  const PICTURED = 30;
+  const pictured: DrawnNode[] = field.map((entry) =>
+    entry.node.ref === refOf(PICTURED)
+      ? {
+          ...entry,
+          node: {
+            ...entry.node,
+            appearance: { preview: "upload-1" },
+          } as NodeView,
+        }
+      : entry,
+  );
+
+  beforeAll(() => {
+    vi.stubGlobal(
+      "Image",
+      class {
+        width = 400;
+        height = 400;
+        crossOrigin: string | null = null;
+        src = "";
+        async decode(): Promise<void> {}
+      },
+    );
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          beginPath: () => {},
+          arc: () => {},
+          clip: () => {},
+          drawImage: () => {},
+          getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+        }),
+      }),
+    });
+  });
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The one picture on the canvas once `entries` are drawn in `reading` and
+   *  the reader has come close to the mark wearing it, and what was asked. */
+  async function drawnIn(reading: "genealogy" | "sets") {
+    const asked: string[] = [];
+    const pictures: GraphPictures = {
+      async read(preview) {
+        asked.push(preview);
+        return { src: `blob:${preview}`, release: () => {} };
+      },
+    };
+    const scene = await GraphScene.create({} as HTMLCanvasElement, {
+      fonts: { ui: "ui", heading: "heading", address: "mono" },
+      palette,
+      resolution: 2,
+      pictures,
+    });
+    const app = FakeApplication.latest as FakeApplication;
+    const notes = pictured.map((entry) => ({
+      ref: entry.node.ref,
+      graph: OWNER as OwnedRef,
+      tags: entry.tags,
+      created_at: entry.node.created_at,
+    }));
+    const model =
+      reading === "sets"
+        ? buildModel(pictured, {
+            arrangement: "sets",
+            sets: packSets({
+              notes,
+              fields: [],
+              selection: TAGS,
+              spacing: SETS_STEP,
+              most: 400,
+              gutter: 900,
+            }),
+            selection: TAGS,
+            palette,
+          })
+        : buildModel(pictured, { selection: TAGS, palette });
+    scene.setModel(model, true);
+    scene.viewport.lookAt({ x: 0, y: 0, scale: 1 });
+    scene.centreOn(refOf(PICTURED));
+    for (let frame = 0; frame < 4; frame++) {
+      await new Promise((done) => setTimeout(done, 0));
+      scene.invalidate();
+      app.tick();
+    }
+    const layer = worldOf(app).children.find(
+      (child) => child.constructor === FakeContainer,
+    ) as FakeContainer;
+    const sprites = (layer.children as FakeSprite[]).map(
+      ({ visible, width }) => ({ visible, width }),
+    );
+    scene.destroy();
+    return { asked, sprites };
+  }
+
+  it("is worn there as the genealogy wears it", async () => {
+    const genealogy = await drawnIn("genealogy");
+    const sets = await drawnIn("sets");
+
+    expect(sets.asked).toEqual(["upload-1"]);
+    expect(sets.sprites).toHaveLength(1);
+    expect(sets.sprites[0].visible).toBe(true);
+    expect(sets.sprites[0].width).toBeCloseTo(genealogy.sprites[0].width, 6);
   });
 });

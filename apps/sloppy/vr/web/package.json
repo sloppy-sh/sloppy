@@ -1,0 +1,42 @@
+{
+  "name": "@sloppy/vr-web",
+  "version": "0.0.1",
+  "description": "The page the headset reads a note in: markdown drawn in the look, every link live.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "postinstall": "node scripts/hide-from-godot.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "paint": "node scripts/paint.mjs"
+  },
+  "dependencies": {
+    "@sloppy/types": "workspace:*",
+    "hast-util-to-html": "^9.0.5",
+    "katex": "0.16.47",
+    "mermaid": "11.17.2",
+    "rehype-katex": "^7.0.1",
+    "rehype-sanitize": "^6.0.0",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "shiki": "^4.4.3",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/hast": "^3.0.4",
+    "@types/mdast": "^4.0.4",
+    "@types/node": "^24.10.1",
+    "jsdom": "^30.0.1",
+    "playwright": "1.58.2",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "^4.1.11"
+  }
+}

@@ -170,6 +170,13 @@ static func turn_by(lean: float, delta: float) -> float:
 	return -signf(lean) * past * past * TURN_RATE * delta
 
 
+## Radians the field turns about the upright through the reader in `delta`
+## seconds with the stick leaned `lean` across: leaned right it turns left
+## about them, bringing what is on their right round to the front.
+static func across_turn(lean: float, delta: float) -> float:
+	return -turn_by(lean, delta)
+
+
 func _process(delta: float) -> void:
 	if field == null or camera == null:
 		return
@@ -185,7 +192,7 @@ func _process(delta: float) -> void:
 	_lean = Steady.lean(_lean, lean, settings.steadying(), delta)
 	var eye := camera.global_position
 	if absf(_lean.x) >= absf(_lean.y):
-		var by := turn_by(_lean.x, delta)
+		var by := across_turn(_lean.x, delta)
 		if by != 0.0:
 			moved.emit()
 			field.global_transform = turned(field.global_transform, eye, by)

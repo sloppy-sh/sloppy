@@ -1,7 +1,8 @@
 //! A desk for the headset's tests: `serve.rs`'s own listener, on this network
 //! only and announced nowhere, showing a fixed code for as long as it runs —
 //! or none, where the code is `-` — and answering every paired line from a
-//! canned project of two notes, worn in Graphite, the first wearing a picture,
+//! canned project of two notes, worn in Graphite, the first wearing a picture
+//! and the second showing one in its writing,
 //! with five looks to choose from —
 //! the one server the headset is tested against. It hears every recording as
 //! "take me to the second note" unless it is `mute`, keeps one chat thread,
@@ -31,6 +32,8 @@ const SHOWN_FOR: Duration = Duration::from_secs(24 * 60 * 60);
 /// A PNG four pixels by two, as `picture/read` answers one.
 const PICTURE: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAAF0lEQVR4nGM4oaHxX0PjxH8YzYDMAdEAFNUQueTTVycAAAAASUVORK5CYII=";
+/// The one picture the second note's writing shows, as its markdown names it.
+const LEAF_PICTURE: &str = "media/01M75GHRQ9V2K7D4X8C3B6N5MA";
 const NOTHING_BY_THAT_NAME: &str =
     "There is nothing here by that name. Everything that can be asked for is in the list of tools.";
 const THREAD: &str = "01M75GHRJ8T3S9Q4W6E2Y7Z1AB";
@@ -54,6 +57,7 @@ const SPEECH_UNREADABLE: (i32, &str) = (
     "That could not be heard. Hold the button and try again.",
 );
 const ANSWERING: (i32, &str) = (-32020, "The assistant is still answering. Stop it first.");
+const NO_SUCH_ASSET: (i32, &str) = (-32040, "That picture is not in this note.");
 /// How many events a `chat/say` sends after its answer.
 const TURN_EVENTS: u32 = 4;
 
@@ -184,6 +188,17 @@ impl Project {
         }
     }
 
+    /// A picture the note's writing shows, as `asset/read` answers it.
+    fn asset(params: &Value) -> Value {
+        let note = params.get("note").and_then(Value::as_str);
+        let path = params.get("path").and_then(Value::as_str);
+        if note == Some(format!("{OWNER}/{LEAF}").as_str()) && path == Some(LEAF_PICTURE) {
+            json!({ "result": { "bytes": PICTURE, "mime": "image/png" } })
+        } else {
+            refused(NO_SUCH_ASSET)
+        }
+    }
+
     fn act(&self, name: &str, arguments: &Value) -> Option<Value> {
         match name {
             "read_graph" => Some(json!({ "name": self.name, "owner": OWNER, "ownership": "open" })),
@@ -216,7 +231,7 @@ impl Project {
                     .into_iter()
                     .find(|note| note["note"] == asked)?;
                 note["sections"] = json!([
-                    { "markdown": format!("## The file\n\nIt sprang from [[{OWNER}/{ROOT}]].") },
+                    { "markdown": format!("## The file\n\nIt sprang from [[{OWNER}/{ROOT}]].\n\n![The seed]({LEAF_PICTURE})") },
                 ]);
                 Some(note)
             }
@@ -346,6 +361,7 @@ impl Project {
             Some("picture/read") => {
                 json!({ "result": Self::picture(params.get("note").and_then(Value::as_str)) })
             }
+            Some("asset/read") => Self::asset(&params),
             Some("initialize") => json!({ "result": {
                 "protocolVersion": "2025-06-18",
                 "capabilities": { "tools": {} },

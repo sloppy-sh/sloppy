@@ -21,6 +21,10 @@ const Grab := preload("res://interaction/grab.gd")
 const Walk := preload("res://interaction/walk.gd")
 const Reach := preload("res://interaction/reach.gd")
 const FieldPanel := preload("res://ui/field_panel.gd")
+const Graph := preload("res://views/graph.gd")
+const Labels := preload("res://field/labels.gd")
+const Lod := preload("res://field/lod.gd")
+const Settings := preload("res://field/settings.gd")
 
 ## How much of its hue a place is, at rest, lit and pointed at, and while
 ## another is lit.
@@ -28,12 +32,8 @@ const PLACE_ALPHA := 0.16
 const PLACE_LIT := 0.3
 const PLACE_POINTED := 0.24
 const PLACE_DIM := 0.06
-## In the places' own units.
-const MARK := 0.014
-## In metres: how wide Sets stands when the reader arrives or brings it back,
-## and how far ahead of their eyes its near side is.
-const STANDING_ACROSS := 4.0
-const STANDING_NEAR := 0.6
+## How much larger than a title a place's name reads.
+const NAME_LARGER := 2.0
 ## Seconds a glide to a note, out to the vantage or back from it takes.
 const GLIDING := 1.2
 ## Radians a second Sets turns about its own middle seen from the vantage.
@@ -48,6 +48,8 @@ static var _left_as := {}
 
 var lit := ""
 var project := ""
+## How this reader has the field drawn, which Sets draws its marks and pictures by.
+var settings = Settings.shared()
 
 var _places: Dictionary = {}
 var _notes: Dictionary = {}
@@ -70,8 +72,15 @@ var _right: XRController3D
 var _origin_was := Transform3D()
 var _walk: Node
 var _reach: Node
-## In the places' own units: how far the farthest of them reaches from their middle.
+## In Sets' own units: how far the farthest place or note reaches from their middle.
 var _radius := 0.0
+## In Sets' own units: a mark's radius, the field's own.
+var _mark := 0.0
+## Where every note stands in Sets' own units, by ref: `{position}`.
+var _laid := {}
+var _asked := {}
+var _asking := 0
+var _pictures: Array[int] = []
 var _settle_in := 0.0
 ## A glide under way: `{from, to, done, holds}`; `holds` keeps it going whatever
 ## the reader does. Empty while none is.
@@ -228,13 +237,8 @@ func _draw(placed: Dictionary) -> void:
 		region.material_override = paint
 		region.position = place.centre
 		region.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var named := Pieces.words(tag.to_upper(), 0.5, Pieces.SIZE + 8, Hues.INK)
-		named.font = Room.font("heading")
-		named.outline_size = 8
-		named.outline_modulate = Room.paper()
-		named.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		named.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		named.position = Vector3(0.0, place.radius + 0.03, 0.0)
+		var named := _name(tag)
+		named.position = Vector3(0.0, place.radius, 0.0)
 		region.add_child(named)
 		var shape := SphereShape3D.new()
 		shape.radius = place.radius
@@ -244,24 +248,28 @@ func _draw(placed: Dictionary) -> void:
 		_steps[region] = order.find(tag)
 		_steps[named] = order.find(tag)
 		_radius = maxf(_radius, place.centre.length() + place.radius)
-	_marks = Notes.new(MARK)
+	_mark = Lod.MARK_RADIUS * Graph.LARGER * settings.size
+	_laid = placed.notes
+	_marks = Notes.new(_mark)
 	_marks.pointed.connect(_pointed_at)
 	_marks.chosen.connect(_open)
 	_field.add_child(_marks)
+	var ball := SphereMesh.new()
+	ball.radius = _mark
+	ball.height = _mark * 2.0
+	ball.radial_segments = 12
+	ball.rings = 6
 	for ref in placed.notes:
 		var note: Dictionary = placed.notes[ref]
 		var slot: int = placed.places[note.tags[0]].slot if not note.tags.is_empty() else 0
 		var mark := MeshInstance3D.new()
-		var ball := SphereMesh.new()
-		ball.radius = MARK
-		ball.height = MARK * 2.0
-		ball.radial_segments = 12
-		ball.rings = 6
 		mark.mesh = ball
 		mark.position = note.position
 		_marks.add_child(mark)
 		_marks.add(ref, note.position)
 		_notes[ref] = {"mark": mark, "tags": note.tags, "slot": slot}
+		if _listed.get(ref, {}).get("picture") == true:
+			_marks.pictured[ref] = true
 		_steps[mark] = Arrival.step_of(note.tags, order)
 		_radius = maxf(_radius, note.position.length())
 	_targets.append(_marks)
@@ -271,10 +279,10 @@ func _draw(placed: Dictionary) -> void:
 		said.append(_named.get(ref, ""))
 	_titles = Titles.new()
 	add_child(_titles)
-	_titles.build(_field, _marks.local, said, MARK, Room.ink(), Room.paper())
+	_titles.build(_field, _marks.local, said, _mark, Room.ink(), Room.paper(), _marks.wearing)
 	var held: Dictionary = _left_as.get(project, {})
 	if held.is_empty():
-		_field.global_transform = standing(_camera.global_transform, _radius)
+		_field.global_transform = standing(_camera.global_transform, _laid)
 		_arrive(order.size() + (1 if _steps.values().has(order.size()) else 0))
 	else:
 		_origin.global_transform = held.origin
@@ -282,12 +290,27 @@ func _draw(placed: Dictionary) -> void:
 
 
 ## Where Sets stands for `eyes` when the reader arrives or brings it back, its
-## places reaching `radius` from their middle in their own units: STANDING_ACROSS
-## wide, its middle at their height, its near side STANDING_NEAR ahead of them.
-static func standing(eyes: Transform3D, radius: float) -> Transform3D:
-	var size := STANDING_ACROSS / (2.0 * maxf(radius, Reach.SMALLEST_RADIUS))
-	var middle := eyes.origin + Reach.ahead(eyes.basis) * (STANDING_ACROSS / 2.0 + STANDING_NEAR)
-	return Transform3D(Reach.facing(eyes.basis).scaled(Vector3.ONE * size), middle)
+## notes standing as `laid` puts them: at its own size about the reader, as the
+## field stands inside.
+static func standing(eyes: Transform3D, laid: Dictionary) -> Transform3D:
+	return Reach.arrival(eyes, laid)
+
+
+## A place's name, lettered as a place is (DESIGN.md § Typography).
+func _name(tag: String) -> Label3D:
+	var named := Label3D.new()
+	named.text = tag.to_upper()
+	named.font = Room.font("heading")
+	named.font_size = Labels.FONT_SIZE
+	named.pixel_size = Labels.LETTER_AT_1M / Labels.FONT_SIZE
+	named.outline_size = Labels.OUTLINE * 2
+	named.modulate = Hues.INK
+	named.outline_modulate = Room.paper()
+	named.alpha_cut = Label3D.ALPHA_CUT_OPAQUE_PREPASS
+	named.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	named.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	named.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	return named
 
 
 ## `field` turned by `angle` about the upright line through its own middle.
@@ -303,7 +326,7 @@ func bring_back() -> void:
 	_stand_at_vantage({})
 	_glide = {}
 	_let_seeking_go()
-	_field.global_transform = standing(_camera.global_transform, _radius)
+	_field.global_transform = standing(_camera.global_transform, _laid)
 
 
 ## Whether the reader is seeing the whole of Sets from the vantage.
@@ -440,8 +463,44 @@ func _process(delta: float) -> void:
 	if _settle_in <= 0.0:
 		_settle_in = SETTLE_EVERY
 		_titles.choose(eye, -_camera.global_basis.z)
+		_wear_near(_marks.distances(eye))
 	_titles.follow(eye)
 	_marks.face(eye)
+	_name_places(eye)
+
+
+## Each place's name read at one apparent size, NAME_LARGER than a title's.
+func _name_places(eye: Vector3) -> void:
+	var larger := _field.global_basis.get_scale().x
+	for tag in _places:
+		var named: Label3D = _places[tag].named
+		var size := Labels.apparent(named.global_position.distance_to(eye)) * NAME_LARGER
+		named.scale = Vector3.ONE * size / maxf(larger, 1e-6)
+
+
+## The pictures of every near mark that wears one, by the field's own rule
+## (`views/graph.gd`), asked of the desk the first time each comes near.
+func _wear_near(distances: PackedFloat32Array) -> void:
+	if _marks.pictured.is_empty():
+		return
+	var only := distances.duplicate()
+	for at in only.size():
+		if not _marks.pictured.has(_marks.refs[at]):
+			only[at] = INF
+	_pictures = Lod.worn(only, _pictures, Graph.PICTURES_WITHIN, Graph.PICTURES_BEYOND)
+	for at in Lod.to_ask(_pictures, _asked, _asking, Graph.PICTURES_MOST):
+		_asked[at] = true
+		_fetch_picture(_marks.refs[at])
+	_marks.show_pictures(_pictures if settings.pictures else [])
+
+
+func _fetch_picture(ref: String) -> void:
+	_asking += 1
+	var picture: Image = await Client.picture(project, ref)
+	_asking -= 1
+	if is_inside_tree() and picture != null:
+		var pulled := _owner != "" and not ref.begins_with(_owner + "/")
+		_marks.wear(ref, picture, Hues.of(_notes[ref].slot), Room.paper(), pulled)
 
 
 ## Everything standing drawn again in what the room is dressed in now.
@@ -459,6 +518,7 @@ func _redress() -> void:
 	_shade()
 	if _marks != null:
 		_titles.dress(Room.ink(), Room.paper())
+		_marks.dress(Room.paper(), func(ref: String) -> Color: return Hues.of(_notes[ref].slot))
 		if _marks.sought != "":
 			_marks.seek(_marks.sought, Hues.of(_notes[_marks.sought].slot))
 	if is_instance_valid(_panel):
@@ -504,8 +564,9 @@ func _open(ref: String, pointer: Node3D) -> void:
 	_panel.dress(Room.ink(), Room.paper())
 	_targets.push_front(_panel)
 	_panel.closed.connect(_targets.erase.bind(_panel))
-	var pulled := _owner != "" and not ref.begins_with(_owner + "/")
-	_panel.open(project, ref, _listed.get(ref, {}), pulled, _named)
+	_panel.notes = _listed
+	_panel.pulled_of = func(other: String) -> bool: return _owner != "" and not other.begins_with(_owner + "/")
+	_panel.open(project, ref, _listed.get(ref, {}), _panel.pulled_of.call(ref), _named)
 
 
 func _beside(hand: XRController3D) -> Vector3:
@@ -533,10 +594,15 @@ func named() -> Dictionary:
 func _shade() -> void:
 	for tag in _places:
 		_shade_place(tag)
+	var dimmed := {}
 	for ref in _notes:
 		var note: Dictionary = _notes[ref]
 		var dim: bool = lit != "" and not note.tags.has(lit)
 		note.mark.material_override = _mark_paint(note.slot, dim)
+		if dim:
+			dimmed[ref] = true
+	if _marks != null:
+		_marks.dim(dimmed)
 
 
 func _shade_place(tag: String) -> void:

@@ -1,0 +1,33 @@
+/* The faces the headset carries (../../fonts/README.md), drawn into the page. */
+@font-face {
+  font-family: "Inter";
+  src: url("../../fonts/inter.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  src: url("../../fonts/atkinson-hyperlegible.woff2") format("woff2");
+}
+@font-face {
+  font-family: "OpenDyslexic";
+  src: url("../../fonts/opendyslexic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Code";
+  src: url("../../fonts/fira-code.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("../../fonts/cascadia-code.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Victor Mono";
+  src: url("../../fonts/victor-mono.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Iosevka";
+  src: url("../../fonts/iosevka.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../../fonts/jetbrains-mono.woff2") format("woff2");
+}

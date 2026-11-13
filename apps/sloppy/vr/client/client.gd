@@ -23,6 +23,8 @@ const FIRST_WAIT := 1.0
 const LONGEST_WAIT := 30.0
 ## How long hearing a recording may take before it is given up.
 const SLOW_ASK := 30.0
+## How long one of a note's pictures may take before it is given up.
+const PICTURE_WAIT := 30.0
 
 const LOST := "The desk stopped answering. Check Sloppy is still serving, and try again."
 const NOT_A_DESK := "That is not a desk this headset can reach. Check what you entered."
@@ -169,6 +171,12 @@ func picture(project: String, note: String) -> Image:
 	if image.load_png_from_buffer(Marshalls.base64_to_raw(held)) != OK:
 		return null
 	return image
+
+
+## A picture `note`'s writing shows at `path`, as its markdown names it:
+## `{bytes, mime}` with `bytes` base64, or `{error, code}` with the desk's words.
+func asset(project: String, note: String, path: String) -> Dictionary:
+	return _result(await _ask("asset/read", {"note": note, "path": path}, project, PICTURE_WAIT))
 
 
 ## One of Sloppy's acts asked of `project` ("" is the desk's first): the JSON

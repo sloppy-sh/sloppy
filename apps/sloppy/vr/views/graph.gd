@@ -606,7 +606,15 @@ func _open(ref: String, pointer: Node3D) -> void:
 	_panel.dress(_palette.ink, _palette.paper)
 	_targets.push_front(_panel)
 	_panel.closed.connect(_targets.erase.bind(_panel))
+	_panel.notes = _notes
+	_panel.pulled_of = func(other: String) -> bool: return _marks.pulled.has(other)
+	_panel.followed.connect(_followed)
 	_panel.open(project, ref, _notes.get(ref, {}), _marks.pulled.has(ref), _named)
+
+
+func _followed(ref: String) -> void:
+	_opened = ref
+	_focus()
 
 
 ## `target` is reached by this view's pointers before the field, until it closes.

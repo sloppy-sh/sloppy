@@ -42,6 +42,8 @@ var served := {}
 var kept: Dictionary = Look.NOTHING_CHOSEN.merged(SKY_CHOSEN).merged({"panels": LOOK_PANELS})
 ## The library of skies the night is chosen from.
 var skies := Skies.new()
+## The published skies the reader saved to come back to, `{key, name}` each, in the order saved.
+var saved: Array = []
 
 var _night: Sky
 var _drift: Tween
@@ -132,6 +134,8 @@ func _ready() -> void:
 		kind = maxi(0, KINDS.find(file.get_value("room", "kind", KINDS[0]))) as Kind
 		for axis in kept:
 			kept[axis] = file.get_value("sky" if SKY_CHOSEN.has(axis) else "look", axis, kept[axis])
+		var held = file.get_value("sky", "saved", [])
+		saved = held.filter(func(one): return one is Dictionary and one.has("key")) if held is Array else []
 	_wear()
 	var client := get_node_or_null("/root/Client")
 	var views := get_node_or_null("/root/Views")
@@ -183,6 +187,18 @@ func choose_sky(key: String) -> void:
 	_fade.tween_callback(_apply)
 	_fade.tween_property(environment, "background_energy_multiplier", 1.0, SKY_FADE / 2.0)
 	changed.emit(kind)
+
+
+## Keep `sky` among the saved, or let it go from them where `on` is false.
+func save_sky(sky: Skies.Choice, on := true) -> void:
+	saved = saved.filter(func(one): return one.key != sky.key)
+	if on:
+		saved.append({"key": sky.key, "name": sky.name})
+	_keep("sky", "saved", saved)
+
+
+func is_saved(key: String) -> bool:
+	return saved.any(func(one): return one.key == key)
 
 
 ## Take `dim` (0 to 100) off a photographed sky, and keep it.

@@ -4340,7 +4340,13 @@ note of the named project's graph, compact and unbounded by a chat answer, paged
 `picture/read` (`PICTURE_READ`, `params.note`) answers that picture as a PNG no more than 256
 pixels on its longer side, base64, or `{ picture: null }`. The serving loop asks the page that
 serves for the picture made small (`PictureShrink`, a canvas in the desk app), so a surface
-that cannot draw answers null rather than sending the picture whole. There is no port, no host
+that cannot draw answers null rather than sending the picture whole. A picture a note's writing
+shows is read whole: `asset/read` (`ASSET_READ`, `params` `{ note, path }`, queued, app-core's
+`serving/asset.ts`) answers `{ bytes, mime }`, base64, for a `path` exactly as that note's markdown
+in `read_note` names it — one of its pictures, or one of its drawings as the SVG the vault keeps
+beside the strokes — and refuses any other path with `NO_SUCH_ASSET` and a picture over 4 MB
+(`ASSET_MOST`) with `ASSET_TOO_LARGE`, so nothing of the folder is reachable that the note does
+not show. There is no port, no host
 and no address in any of it: what a headset holds is the desk's endpoint id, and the network
 finds where that is.
 
@@ -4489,7 +4495,7 @@ engine is `chat-engine.svelte.ts`; the methods are `serving/chat.ts`.
 never a headset, so the one server a headset is tested against is `serve.rs` itself: the
 headset's tests start `examples/desk.rs` in the native shell's crate, which runs `serve.rs`'s
 listener with a fixed code and answers `projects/list`, `look/read`, `look/list`, `field/list`,
-`picture/read`, `tools/call`, `speech/hear` and the chat's methods from canned
+`picture/read`, `asset/read`, `tools/call`, `speech/hear` and the chat's methods from canned
 answers, sending a canned turn as `chat/event`s and a `view/show` after a `chat/say`; a desk
 started `mute` has no speech set up.
 
@@ -4505,7 +4511,9 @@ does from the desk, and goes to the assistant the person chose for the chat. The
 none of it. **The night room's published skies** are asked for from the headset, of the place that
 publishes them and of nothing else: the list at most once a day while the Skies page is open, each
 small picture shown once, and a sky the person chooses once — nothing of the notes or the person
-goes with them, and what comes back is kept on the headset (`room/skies.gd`).
+goes with them, and what comes back is kept on the headset (`room/skies.gd`). **The web pages a reader
+opens from a note** are fetched by the headset from the sites they name, as any browser does;
+nothing of the notes goes to those sites.
 
 **The headset derives everything it draws.** `apps/sloppy/vr` is a Godot 4.4 project in
 GDScript (mobile renderer, OpenXR, the Godot OpenXR Vendors plugin for Meta), outside the pnpm

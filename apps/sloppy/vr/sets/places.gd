@@ -8,11 +8,17 @@ const Field := preload("res://field/field.gd")
 
 ## The most places drawn at once: one per hue slot (`DRAWN_SETS_MOST`).
 const MOST := 8
-## In metres: a place one note carries, and how it grows with the cube root of
-## the notes carrying it, so its volume follows its count.
+## In metres: how far the places reach from their middle, as far as the field's
+## third shell stands inside it, and the least a place is across, so the
+## reader can stand in the smallest.
+const REACHES := Field.FIRST + 2.0 * Field.STEP
+const STANDABLE := 1.2
+## Every length below is in the figure's own units, before it is brought to
+## the field's size. A place one note carries, and how it grows with the cube
+## root of the notes carrying it, so its volume follows its count.
 const SMALLEST := 0.12
 const GROWTH := 0.07
-## In metres: the least room between two places that share no note.
+## The least room between two places that share no note.
 const GAP := 0.1
 ## How deep two places sink into each other, as a share of the distance at which
 ## they touch: the least for one note shared, the most for every note of the smaller.
@@ -21,7 +27,7 @@ const SINK_MOST := 0.6
 const SEED_RADIUS := 0.7
 const STEPS := 400
 const STEP_RATE := 0.25
-## In metres: how far inside a place a note stands, and how far past the
+## How far inside a place a note stands, and how far past the
 ## outermost place a note in none stands.
 const INSET := 0.03
 const EDGE := 0.25
@@ -42,8 +48,9 @@ static func drawn(notes: Array, counts: Dictionary = {}) -> Array[String]:
 
 ## `{places: {tag: {centre: Vector3, radius: float, notes: int, slot: int}},
 ## notes: {ref: {position: Vector3, tags: Array[String]}}}` for `notes`, each
-## `{note, tags}` as `field/list` answers it. `slot` is the hue slot, 1 to 8,
-## in the ranking's order; a note's `tags` are the drawn ones it carries, in it.
+## `{note, tags}` as `field/list` answers it, in metres. `slot` is the hue slot,
+## 1 to 8, in the ranking's order; a note's `tags` are the drawn ones it carries,
+## in it.
 static func place(notes: Array, counts: Dictionary = {}) -> Dictionary:
 	var tags := drawn(notes, counts)
 	var carried := _counted(notes)
@@ -58,7 +65,27 @@ static func place(notes: Array, counts: Dictionary = {}) -> Dictionary:
 			"slot": at + 1,
 		}
 	_settle(tags, places, _shared(notes, tags), carried)
-	return {"places": places, "notes": _stand_notes(notes, tags, places)}
+	var stood := _stand_notes(notes, tags, places)
+	var times := _to_size(tags, places)
+	for tag in tags:
+		places[tag].centre *= times
+		places[tag].radius *= times
+	for ref in stood:
+		stood[ref].position *= times
+	return {"places": places, "notes": stood}
+
+
+## How many times larger the figure is drawn than it was laid out: its places
+## reaching REACHES, and larger still where that leaves one under STANDABLE across.
+static func _to_size(tags: Array[String], places: Dictionary) -> float:
+	if tags.is_empty():
+		return REACHES / (SMALLEST + EDGE)
+	var outermost := 0.0
+	var smallest := INF
+	for tag in tags:
+		outermost = maxf(outermost, places[tag].centre.length() + places[tag].radius)
+		smallest = minf(smallest, places[tag].radius)
+	return maxf(REACHES / outermost, STANDABLE / (2.0 * smallest))
 
 
 static func _counted(notes: Array) -> Dictionary:

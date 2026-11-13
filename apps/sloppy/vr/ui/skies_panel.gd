@@ -1,6 +1,7 @@
 ## The room panel's Skies page: the skies the night can be, each with its small
-## picture, the person's own under their heading, how dim a photographed one is
-## drawn, and fetching it sharper — DESIGN.md § "The field in a room". Laid on
+## picture, the saved ones first and the person's own under their headings, the
+## published ones a page at a time, how dim a photographed one is drawn,
+## saving it, and fetching it sharper — DESIGN.md § "The field in a room". Laid on
 ## a `Page` from its own top-left corner downward, `width` across.
 extends Node3D
 
@@ -12,10 +13,15 @@ const TITLE := "Skies"
 const NOW := "Now: %s"
 const FINDING := "Finding skies…"
 const NEED_THE_NETWORK := "The rest need the network."
+const SAVED := "Saved"
 const PUBLISHED := "Published"
 const YOUR_SKIES := "Your skies"
 const NONE_OF_YOUR_OWN := "Connect this headset to a computer and put a panorama in %s, and it is listed here."
 const MORE := "More skies"
+const PREVIOUS := "Previous skies"
+const WHERE := "%d–%d of %d"
+const SAVE := "Save"
+const UNSAVE := "Unsave"
 const DIM := "Dim"
 const SHARPER := "Sharper"
 const FETCHING := "%s  %d%%"
@@ -61,7 +67,7 @@ func _ask() -> void:
 	if _asking or room == null:
 		return
 	_asking = true
-	_skies = await room.skies.catalogue()
+	_skies = await room.skies.catalogue(room.saved)
 	_asking = false
 	if is_inside_tree():
 		_redraw()
@@ -79,15 +85,23 @@ func _redraw() -> void:
 	_rows.clear()
 	var room := _room()
 	var shown: Skies.Choice = room.sky_shown() if room != null else Skies.night()
-	var published: Array = _skies.filter(func(sky): return sky.source == Skies.PUBLISHED)
+	var saved: Array = _skies.filter(func(sky): return sky.source == Skies.PUBLISHED and room != null and room.is_saved(sky.key))
+	var published: Array = _skies.filter(func(sky): return sky.source == Skies.PUBLISHED and not saved.has(sky))
 	var own: Array = _skies.filter(func(sky): return sky.source == Skies.OWN)
-	if _from >= published.size():
-		_from = 0
+	var last := maxi(0, published.size() - 1)
+	_from = clampi(_from, 0, last - last % AT_ONCE)
+	var groups: Array = []
+	if not saved.is_empty():
+		groups.append({"heading": SAVED, "rows": saved.map(func(sky): return _sky_row(sky, shown))})
 	var first: Array = [_sky_row(Skies.night(), shown, "sparkles")]
+	if _from > 0:
+		first.append(Page.choice(PREVIOUS, "chevron-up", _page_by.bind(-AT_ONCE)))
 	for sky in published.slice(_from, _from + AT_ONCE):
 		first.append(_sky_row(sky, shown))
+	if _from + AT_ONCE < published.size():
+		first.append(Page.choice(MORE, "chevron-down", _page_by.bind(AT_ONCE)))
 	if published.size() > AT_ONCE:
-		first.append(Page.choice(MORE, "chevron-down", _more.bind(published.size())))
+		first.append(Page.words(WHERE % [_from + 1, mini(_from + AT_ONCE, published.size()), published.size()]))
 	for said in [FINDING if _skies.is_empty() else "", NEED_THE_NETWORK if room != null and room.skies.offline else "", _failed]:
 		if said != "":
 			first.append(Page.words(said))
@@ -99,12 +113,15 @@ func _redraw() -> void:
 	var drawn: Array = []
 	if shown.source != Skies.NIGHT and room != null:
 		drawn.append(Page.slider(DIM, "sun-dim", float(room.kept.dim), Vector2(0.0, 100.0), func(dim): return "%d%%" % roundi(dim), _dim))
-	if shown.source == Skies.PUBLISHED:
+	if shown.source == Skies.PUBLISHED and room != null:
+		var keeping: bool = room.is_saved(shown.key)
+		drawn.append(Page.choice(UNSAVE if keeping else SAVE, "bookmark-minus" if keeping else "bookmark", _save.bind(shown, not keeping)))
 		if not Skies.is_sharper(shown):
 			drawn.append(Page.choice(SHARPER, "zoom-in", _sharper.bind(shown)))
 		drawn.append(Page.words(Skies.CREDIT % ", ".join(shown.authors)))
 	drawn.append(Page.back(func(): if back.is_valid(): back.call()))
-	_page = Page.new(TITLE, [{"heading": PUBLISHED, "rows": first}, {"heading": YOUR_SKIES, "rows": yours}, {"rows": drawn}], NOW % shown.name, width)
+	groups.append_array([{"heading": PUBLISHED, "rows": first}, {"heading": YOUR_SKIES, "rows": yours}, {"rows": drawn}])
+	_page = Page.new(TITLE, groups, NOW % shown.name, width)
 	for key in _page.keyed:
 		_rows[key][0] = _page.keyed[key]
 	add_child(_page)
@@ -157,8 +174,15 @@ func _sharper(sky: Skies.Choice) -> void:
 	_redraw()
 
 
-func _more(count: int) -> void:
-	_from = (_from + AT_ONCE) % count
+func _page_by(skies: int) -> void:
+	_from = maxi(0, _from + skies)
+	_redraw()
+
+
+func _save(sky: Skies.Choice, on: bool) -> void:
+	var room := _room()
+	if room != null:
+		room.save_sky(sky, on)
 	_redraw()
 
 

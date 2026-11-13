@@ -1,6 +1,7 @@
 ## The titles of the notes nearest the reader in Sets, the one pointed at and the
 ## one sought, each read at one apparent size whatever its distance and stood
-## above its mark, toward the eyes — DESIGN.md § "The field in a room".
+## above its mark, or the picture it wears, toward the eyes — DESIGN.md § "The
+## field in a room".
 ## Kept outside the field's scale.
 extends Node3D
 
@@ -27,6 +28,7 @@ var _field: Node3D
 var _local: Array[Vector3] = []
 var _said: Array[String] = []
 var _mark_radius := 0.0
+var _wearing := Callable()
 var _shown: Array[int] = []
 var _pinned := -1
 var _pointing := -1
@@ -36,12 +38,14 @@ var _paper: Color
 
 
 ## Title the marks standing at `local` in `field`'s own units, each `mark_radius`
-## there, `said` being what each is called.
-func build(field: Node3D, local: Array[Vector3], said: Array[String], mark_radius: float, ink: Color, paper: Color) -> void:
+## there, `said` being what each is called. `wearing(at)` is how far the picture
+## the `at`th mark wears reaches in those units, 0 while it wears none.
+func build(field: Node3D, local: Array[Vector3], said: Array[String], mark_radius: float, ink: Color, paper: Color, wearing := Callable()) -> void:
 	_field = field
 	_local = local
 	_said = said
 	_mark_radius = mark_radius
+	_wearing = wearing
 	_ink = ink
 	_paper = paper
 	for _i in most + 2:
@@ -104,7 +108,7 @@ func choose(eye: Vector3, ahead: Vector3) -> void:
 
 func follow(eye: Vector3) -> void:
 	var place := _field.global_transform
-	var radius := _mark_radius * place.basis.get_scale().x
+	var larger := place.basis.get_scale().x
 	var titled: Array[int] = _shown.duplicate()
 	for held in [_pointing, _pinned]:
 		if held >= 0 and held < _local.size() and not titled.has(held):
@@ -123,7 +127,8 @@ func follow(eye: Vector3) -> void:
 		var held := at == _pointing or at == _pinned
 		var mark := place * _local[at]
 		label.text = _said[at].left(LONGEST) + ("…" if _said[at].length() > LONGEST else "")
-		label.global_position = stood(mark, eye, radius)
+		var worn: float = _wearing.call(at) if _wearing.is_valid() else 0.0
+		label.global_position = stood(mark, eye, maxf(_mark_radius, worn) * larger)
 		label.scale = Vector3.ONE * apparent(distances[slot]) * (HELD_LARGER if held else 1.0)
 		var alpha := 1.0 if held else Lod.title_alpha(distances[slot], nearest, farthest)
 		label.modulate = Color(_ink, alpha)

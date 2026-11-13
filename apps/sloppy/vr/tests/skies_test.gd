@@ -69,6 +69,13 @@ func _run() -> void:
 	_asked.clear()
 	offered = await skies.catalogue()
 	_check(_asked.is_empty() and offered.size() == 6, "within the day it is read from the headset, not asked for")
+	var saved := [{"key": "polyhaven:harbour_night", "name": "Harbour Night"}, {"key": "polyhaven:gone_sky", "name": "Gone Sky"}]
+	offered = await skies.catalogue(saved)
+	var keys: Array = offered.map(func(sky): return sky.key)
+	_check(keys == [Skies.NIGHT, "polyhaven:harbour_night", "polyhaven:gone_sky", "polyhaven:quiet_meadow_night", "polyhaven:high_noon_hills", "polyhaven:pure_cloud", "own:Aurora Over Ice.png"],
+		"the saved skies come straight after the stars, in the order saved, and are not offered twice: %s" % [keys])
+	_check(offered[2].name == "Gone Sky" and offered[2].id == "gone_sky", "a saved sky the catalogue no longer lists is still offered, by the name it was saved under")
+	_check(Skies.remembered("own:Aurora Over Ice.png", "Aurora") == null and Skies.remembered(Skies.NIGHT, "") == null, "only a published sky is saved")
 	var cached: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Skies.catalogue_path()))
 	cached.at = Time.get_unix_time_from_system() - 2.0 * Skies.CATALOGUE_KEPT_FOR
 	FileAccess.open(Skies.catalogue_path(), FileAccess.WRITE).store_string(JSON.stringify(cached))

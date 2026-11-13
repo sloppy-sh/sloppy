@@ -3,7 +3,9 @@
 build/
 *.apk
 *.aab
-android/
+/android/*
+# The web view plugin's sources are kept; tools/build-webview.sh builds it.
+!/android/plugins/
 # The vendors plugin is fetched, never kept here — tools/fetch-vendors.sh.
 addons/godotopenxrvendors/
 # What rust/build.sh makes.

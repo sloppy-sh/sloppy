@@ -66,12 +66,15 @@ func _run() -> void:
 	_check(menu.visible, "and comes back")
 
 	_check(menu.showing == HandMenu.Pane.READING, "it opens on reading")
-	_check(_choosable(menu, HandMenu.FIELD) and not _choosable(menu, "Bring it back"), "only the panel facing the reader is chosen from")
+	_check(_choosable(menu, HandMenu.PROJECTS) and not _choosable(menu, "Bring it back"), "only the panel facing the reader is chosen from")
 	_check(Fit.chosen(_label(menu, HandMenu.PROJECTS), Room.ink()), "the reading in front is the one chosen")
 	var titles := [HandMenu.HERE, HandMenu.ROOM_TITLE, HandMenu.NOTE_TITLE, HandMenu.LOOK_TITLE, load("res://ui/field_panel.gd").TITLE, HandMenu.CHAT_TITLE]
 	for pane in HandMenu.PANELS:
 		_check(_label(menu._faces[pane], titles[pane]) != null, "the %s panel opens with its title" % titles[pane])
-	for heading in [[HandMenu.Pane.READING, HandMenu.READ], [HandMenu.Pane.READING, HandMenu.DESK], [HandMenu.Pane.ROOM, HandMenu.LIGHT], [HandMenu.Pane.ROOM, HandMenu.MOVING], [HandMenu.Pane.LOOK, HandMenu.FOLLOWING], [HandMenu.Pane.LOOK, HandMenu.COLOURS_AND_TYPE], [HandMenu.Pane.LOOK, HandMenu.PANELS_HEADING], [HandMenu.Pane.CHAT, HandMenu.THREADS]]:
+	var here: Node3D = menu._faces[HandMenu.Pane.READING]
+	_check(_label(here, "Read") == null and _label(here, "Field") == null and _label(here, "Sets") == null, "the arrangements are the field panel's alone, not here")
+	_check(_label(here, HandMenu.LEAVE) == null, "and with no project in hand there is none to leave")
+	for heading in [[HandMenu.Pane.READING, HandMenu.DESK], [HandMenu.Pane.ROOM, HandMenu.LIGHT], [HandMenu.Pane.ROOM, HandMenu.MOVING], [HandMenu.Pane.LOOK, HandMenu.FOLLOWING], [HandMenu.Pane.LOOK, HandMenu.COLOURS_AND_TYPE], [HandMenu.Pane.LOOK, HandMenu.PANELS_HEADING], [HandMenu.Pane.CHAT, HandMenu.THREADS]]:
 		_check(_label(menu._faces[heading[0]], heading[1]) != null, "rows stand under %s" % heading[1])
 	_check(_label(menu._faces[HandMenu.Pane.ROOM], HandMenu.VANTAGE) != null, "the vantage is the room's, with where the reader stands")
 	_press_tab(false)
@@ -210,6 +213,7 @@ func _run() -> void:
 	await process_frame
 	_check(menu.note == null and _label(menu, HandMenu.EMPTY_NOTE) != null, "a note closed leaves the palette's place for one")
 
+	await _leaving_a_project(menu, views, camera)
 	await _holds_still(menu, scene)
 	pointer.free()
 	if kept.is_empty():
@@ -227,6 +231,30 @@ func _run() -> void:
 func _check_words_fit(under: Node, what: String) -> void:
 	for failure in Fit.words_fit(under, what):
 		_check(false, failure)
+
+
+## Leave project closes the note and stands the desk's projects before the
+## reader, the project forgotten.
+func _leaving_a_project(menu: Node3D, views: Node, camera: Camera3D) -> void:
+	HandMenu.project = "garden"
+	HandMenu.project_name = "Garden"
+	menu._draw_reading()
+	await process_frame
+	var here: Node3D = menu._faces[HandMenu.Pane.READING]
+	var rows: Array = here.find_children("*", "Label3D", true, false).filter(func(said): return not said.is_queued_for_deletion()).map(func(said): return said.text)
+	var leave_at := rows.find(HandMenu.LEAVE)
+	_check(leave_at > rows.find(HandMenu.PROJECTS) and leave_at < rows.find(HandMenu.DISCONNECT), "reading a project, Leave project stands between Projects and Disconnect: %s" % [rows])
+	var note: Node3D = PANEL.instantiate()
+	menu.hold(note)
+	await process_frame
+	views.stage.global_transform = Transform3D(Basis(), Vector3(3.0, 0.0, -2.0))
+	_pick(here, HandMenu.LEAVE)
+	await process_frame
+	_check(HandMenu.project == "" and HandMenu.project_name == "", "leaving forgets the project")
+	_check(menu.note == null and (not is_instance_valid(note) or note.is_queued_for_deletion()), "and closes its note")
+	_check(views.current() == "projects", "and the desk's projects are listed")
+	_check(views.stage.global_transform.is_equal_approx(load("res://interaction/reach.gd").stage_before(camera.global_transform)), "before the reader, wherever they are")
+	_check(_label(menu._faces[HandMenu.Pane.READING], HandMenu.LEAVE) == null, "with no project left to leave")
 
 
 ## Under the night, the room panel names its sky and turns to the Skies page: a
@@ -273,6 +301,7 @@ func _the_skies_page(menu: Node3D, room: Node) -> void:
 	_check(_label(panel, Skies.CREDIT % "A. Walker") != null, "credited to who made it")
 	_check(_label(panel, SkiesPanelWords.SHARPER) != null and _label(panel, "%s  %d%%" % [SkiesPanelWords.DIM, 40]) != null, "with Sharper and how dim it is drawn")
 	_check_words_fit(panel, "the Skies page, a sky chosen")
+	await _saving_and_paging_skies(menu, room, panel, SkiesPanelWords)
 	_pick(panel, Page.BACK)
 	await process_frame
 	var named := _label(panel, HandMenu.SKIES)
@@ -283,6 +312,47 @@ func _the_skies_page(menu: Node3D, room: Node) -> void:
 	await process_frame
 	_clear(Skies.dir)
 	Skies.dir = "user://skies"
+
+
+## A chosen published sky is saved, standing first under Saved, and unsaved;
+## the published skies page both ways and say where they are.
+func _saving_and_paging_skies(menu: Node3D, room: Node, panel: Node3D, Words: GDScript) -> void:
+	const Skies := preload("res://room/skies.gd")
+	_check(_label(panel, Words.SAVED) == null and _label(panel, Words.UNSAVE) == null, "nothing is saved before the reader saves it")
+	_pick(panel, Words.SAVE)
+	await process_frame
+	var meadow := _sky_row(menu, "polyhaven:quiet_meadow_night")
+	var saved := _label(panel, Words.SAVED)
+	var published := _label(panel, Words.PUBLISHED)
+	_check(room.is_saved("polyhaven:quiet_meadow_night") and _label(panel, Words.UNSAVE) != null, "the chosen sky is saved, and can be unsaved")
+	var down := func(piece: Node3D) -> float: return (panel.global_transform.affine_inverse() * piece.global_position).y if piece != null else 0.0
+	_check(saved != null and published != null and meadow != null and down.call(saved) > down.call(meadow) and down.call(meadow) > down.call(published), "it stands first, under Saved")
+	_check_words_fit(panel, "the Skies page, a sky saved")
+	_pick(panel, Words.UNSAVE)
+	await process_frame
+	_check(not room.is_saved("polyhaven:quiet_meadow_night") and _label(panel, Words.SAVED) == null and _label(panel, Words.SAVE) != null, "unsaved, it goes back among the published")
+
+	var looks: Node3D = menu._skies_panel
+	var many: Array = [Skies.night()]
+	for at in 9:
+		many.append(Skies.Choice.published({"id": "sky_%d" % at, "name": "Sky %d" % at}))
+	looks._skies = many
+	looks._from = 0
+	looks._redraw()
+	await process_frame
+	_check(_label(panel, Words.WHERE % [1, 4, 9]) != null and _label(panel, Words.MORE) != null and _label(panel, Words.PREVIOUS) == null, "the first page says where it is, with more after it and none before")
+	_check_words_fit(panel, "the Skies page, paged")
+	_pick(panel, Words.MORE)
+	await process_frame
+	_check(_label(panel, Words.WHERE % [5, 8, 9]) != null and _label(panel, Words.PREVIOUS) != null and _label(panel, Words.MORE) != null, "More skies turns to the next, and Previous skies is offered")
+	_pick(panel, Words.MORE)
+	await process_frame
+	_check(_label(panel, Words.WHERE % [9, 9, 9]) != null and _label(panel, Words.MORE) == null and _label(panel, "Sky 8") != null, "the last page has no more after it, and does not go round")
+	_pick(panel, Words.PREVIOUS)
+	await process_frame
+	_check(_label(panel, Words.WHERE % [5, 8, 9]) != null and _label(panel, "Sky 4") != null, "Previous skies turns back")
+	looks.refresh()
+	await _wait(0.3)
 
 
 ## Against the test desk's five canned looks: the collection kept once a desk

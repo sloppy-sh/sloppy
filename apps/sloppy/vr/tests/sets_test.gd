@@ -1,7 +1,8 @@
 ## The Sets reading over generated graphs: where it stands each place and note,
-## arriving in it, and moving through it as the field is moved — walking,
-## turning, a glide to a note, the vantage and back. Run from apps/sloppy/vr with
-## `Godot --headless --script res://tests/sets_test.gd`; it exits 1 on a failure.
+## at the field's size, arriving in it, and moving through it as the field is
+## moved — walking, turning, a glide to a note, the vantage and back — and a
+## pictured mark wearing its picture against the desk `tests/run.sh` names in
+## SLOPPY_DESK. Run by `tests/run.sh`; it exits 1 on a failure.
 extends SceneTree
 
 const Places := preload("res://sets/places.gd")
@@ -9,6 +10,11 @@ const Arrival := preload("res://sets/arrival.gd")
 const Titles := preload("res://sets/titles.gd")
 const Reach := preload("res://interaction/reach.gd")
 const Hues := preload("res://sets/hues.gd")
+const Field := preload("res://field/field.gd")
+const Lod := preload("res://field/lod.gd")
+const Settings := preload("res://field/settings.gd")
+const Marks := preload("res://field/marks.gd")
+const WAIT := 10.0
 const STEP := 1.0 / 60.0
 const OWNER := "did:syr:z6MkSetsTestOwner"
 const TAGS := ["seed", "soil", "water", "light", "root", "leaf", "flower", "fruit", "bark", "moss"]
@@ -26,6 +32,7 @@ func _initialize() -> void:
 	_stands_tags_that_share_notes_nearer_than_tags_that_share_none()
 	_overlaps_places_that_share_and_parts_those_that_do_not(notes, placed)
 	_sizes_a_place_by_its_notes(placed)
+	_spans_the_field_with_places_to_stand_in(placed)
 	_stands_each_note_among_its_tags(placed)
 	_stands_a_note_in_none_at_the_edge(placed)
 	_schedules_the_arrival()
@@ -142,6 +149,18 @@ func _sizes_a_place_by_its_notes(placed: Dictionary) -> void:
 				_check(a.radius > b.radius, "%s carried by more is larger than %s" % [one, two])
 
 
+func _spans_the_field_with_places_to_stand_in(placed: Dictionary) -> void:
+	var reach := 0.0
+	for tag in placed.places:
+		var place: Dictionary = placed.places[tag]
+		reach = maxf(reach, place.centre.length() + place.radius)
+		_check(place.radius * 2.0 >= Places.STANDABLE - 1e-4, "%s is wide enough to stand in: %.2f m" % [tag, place.radius * 2.0])
+	_check(reach >= Field.FIRST + 2.0 * Field.STEP - 1e-4, "the places reach as far as the field's third shell: %.2f m" % reach)
+	_check(reach < (Field.FIRST + 2.0 * Field.STEP) * 2.0, "and about that far, not a room away: %.2f m" % reach)
+	var one: Dictionary = Places.place([{"note": "a", "tags": ["ash"]}]).places
+	_check(is_equal_approx(one.ash.radius, Field.FIRST + 2.0 * Field.STEP), "one place alone spans the field: %.2f m" % one.ash.radius)
+
+
 func _stands_each_note_among_its_tags(placed: Dictionary) -> void:
 	var among := 0
 	var exactly := 0
@@ -228,6 +247,7 @@ func _in_the_room(notes: Array) -> void:
 	_brings_it_back(view, camera)
 	view.queue_free()
 	await process_frame
+	await _wears_a_picture(room)
 	_done()
 
 
@@ -268,10 +288,14 @@ func _arrives_veiled(view: Node3D, environment: Environment, placed: Dictionary)
 func _stands_ahead_to_walk_into(view: Node3D, camera: Camera3D) -> void:
 	var eyes := camera.global_transform
 	var field: Transform3D = view._field.global_transform
-	var across: float = 2.0 * view._radius * field.basis.get_scale().x
-	_check(is_equal_approx(across, view.STANDING_ACROSS), "Sets stands its full width across: %f" % across)
-	var middle: Vector3 = eyes.origin + Reach.ahead(eyes.basis) * (view.STANDING_ACROSS / 2.0 + view.STANDING_NEAR)
-	_check(field.origin.is_equal_approx(middle), "ahead of the eyes at their height")
+	_check(is_equal_approx(field.basis.get_scale().x, 1.0), "Sets stands at its own size: %f" % field.basis.get_scale().x)
+	_check(field.is_equal_approx(Reach.arrival(eyes, view._laid)), "about the reader, as the field stands inside")
+	var nearest := INF
+	for ref in view._laid:
+		nearest = minf(nearest, (field * view._laid[ref].position).distance_to(eyes.origin))
+	_check(nearest > view._mark * 2.0, "no mark in the reader's face: %.2f m" % nearest)
+	var size: float = Lod.MARK_RADIUS * view.Graph.LARGER * Settings.shared().size
+	_check(is_equal_approx(view._marks.mark_radius, size), "its marks drawn at the field's size: %f" % view._marks.mark_radius)
 	_check(view._walk.fly and view._walk.origin == view._origin, "the left stick flies the reader through it")
 	_check(view._reach.field == view._field, "the right stick turns and tilts it")
 
@@ -323,8 +347,9 @@ func _glides_to_a_note(view: Node3D, camera: Camera3D) -> void:
 	var eyes := camera.global_transform
 	var want := eyes.origin + Reach.ahead(eyes.basis) * Reach.NEAR
 	_check((view._field.global_transform * local).is_equal_approx(want), "the note stands within reach ahead")
-	var said: Label3D = view._titles._pool[0]
-	_check(said.visible and said.text == view._named[ref], "its title stands: %s" % said.text)
+	var titled: Array = view._titles._pool.filter(func(one: Label3D) -> bool: return one.visible and one.text == view._named[ref])
+	_check(not titled.is_empty(), "its title stands")
+	var said: Label3D = titled[0] if not titled.is_empty() else view._titles._pool[0]
 	_check(is_equal_approx(said.scale.x, Titles.apparent(Reach.NEAR) * Titles.HELD_LARGER), "read larger than the rest")
 	view.seek(ref)
 	view._moved()
@@ -385,5 +410,73 @@ func _stands_at_the_vantage_and_comes_back(view: Node3D, camera: Camera3D) -> vo
 func _brings_it_back(view: Node3D, camera: Camera3D) -> void:
 	view._field.global_transform = Transform3D(Basis(Vector3.RIGHT, 1.0), Vector3(3.0, -1.0, 2.0))
 	view.bring_back()
-	_check(view._field.global_transform.is_equal_approx(view.standing(camera.global_transform, view._radius)),
+	_check(view._field.global_transform.is_equal_approx(view.standing(camera.global_transform, view._laid)),
 		"Bring it back stands Sets as it arrived")
+
+
+## The desk's notes stood in Sets: the one the desk says wears a picture wears
+## the one it answers with, edged in its set's hue, and takes it off when
+## pictures are hidden; the one wearing none has nothing to wear.
+func _wears_a_picture(room: Node3D) -> void:
+	var ticket := OS.get_environment("SLOPPY_DESK")
+	var code := OS.get_environment("SLOPPY_DESK_CODE")
+	if ticket == "" or code == "":
+		_check(false, "a desk is named")
+		return
+	var client := root.get_node("Client")
+	client.connect_to(ticket)
+	await _until(func(): return client.state in [client.State.OPEN, client.State.UNPAIRED])
+	if client.state == client.State.UNPAIRED:
+		client.connect_to(ticket, code)
+		await _until(func(): return client.state == client.State.OPEN)
+	_check(client.state == client.State.OPEN, "reaches the desk")
+	var listed: Array = (await client.field("")).get("notes", [])
+	var worn: Array = listed.filter(func(one): return one.get("picture") == true)
+	var bare: Array = listed.filter(func(one): return one.get("picture") != true)
+	_check(worn.size() == 1 and not bare.is_empty(), "the desk has a note wearing a picture and one wearing none")
+	if worn.is_empty() or bare.is_empty():
+		return
+	var kept := FileAccess.get_file_as_bytes(Settings.KEPT) if FileAccess.file_exists(Settings.KEPT) else PackedByteArray()
+	var settings = Settings.shared()
+	settings.set_pictures(true)
+	var notes: Array = []
+	for note in listed:
+		var tagged: Dictionary = note.duplicate()
+		tagged.tags = ["seed"]
+		notes.append(tagged)
+	var view: Node3D = load("res://views/sets.tscn").instantiate()
+	room.get_node("Stage").add_child(view)
+	view.project = ""
+	view._stand_in()
+	for note in notes:
+		view._listed[note.note] = note
+		view._named[note.note] = str(note.get("title", ""))
+	view._draw(Places.place(notes))
+	var pictured: String = worn[0].note
+	_check(view._marks.pictured.has(pictured) and not view._marks.pictured.has(bare[0].note), "the marks the desk says wear pictures are the ones to wear them")
+	await _until(func(): return view._marks.showing_picture(pictured))
+	_check(view._marks.showing_picture(pictured), "a near pictured mark in Sets wears its picture")
+	var disc: MeshInstance3D = view._marks._discs.get(pictured)
+	if disc != null:
+		var paint := disc.material_override as ShaderMaterial
+		var picture: Texture2D = paint.get_shader_parameter("picture")
+		_check(picture != null and picture.get_size() == Vector2(4, 2), "the one the desk answers with")
+		_check(Color(paint.get_shader_parameter("rim"), 1.0).is_equal_approx(Hues.of(view._notes[pictured].slot)), "edged in its set's hue")
+		_check(is_equal_approx((disc.mesh as QuadMesh).size.x, view._mark * 2.0 * Marks.DISC_WIDER), "as wide on its mark as the field wears one")
+	_check(not view._marks.showing_picture(bare[0].note), "a mark with none wears nothing")
+	settings.set_pictures(false)
+	await _until(func(): return not view._marks.showing_picture(pictured))
+	_check(not view._marks.showing_picture(pictured), "and takes it off when pictures are hidden")
+	if kept.is_empty():
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.KEPT))
+	else:
+		FileAccess.open(Settings.KEPT, FileAccess.WRITE).store_buffer(kept)
+	view.queue_free()
+	await process_frame
+
+
+func _until(holds: Callable) -> void:
+	var waited := 0.0
+	while not holds.call() and waited < WAIT:
+		await process_frame
+		waited += 1.0 / 60.0

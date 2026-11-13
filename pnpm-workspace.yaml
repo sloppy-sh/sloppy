@@ -11,6 +11,8 @@ packages:
   # directory the moment the native shell lands, so the glob is narrow from day
   # one rather than after the first slow build.
   - "apps/*/*"
+  # The page the headset reads a note in, which sits inside the Godot project.
+  - "apps/sloppy/vr/web"
   - "packages/ts/*"
 # Rust lives in apps/sloppy/native/src-tauri. Cargo manages it; pnpm never
 # sees it.

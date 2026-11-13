@@ -110,9 +110,13 @@ func _run() -> void:
 		fruit.get_meta("pick").call()
 		_check(sets.lit == "", "pointing again lets go")
 
-	_pick(menu, "Field")
+	_pick(menu, "Inside")
 	await _frames(2)
-	_check(views.current() == "graph", "the hand menu turns back to the graph")
+	_check(views.current() == "graph", "the field panel turns back to the graph")
+
+	_pick(menu, "Leave project")
+	await _frames(2)
+	_check(views.current() == "projects" and menu.project == "", "leaving the project lists the desk's projects again, the project put down")
 
 	client._closed("The desk stopped serving this headset.")
 	await _frames(2)
