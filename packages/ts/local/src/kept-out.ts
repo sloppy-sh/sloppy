@@ -3,7 +3,7 @@
 
 import { decodeText, encodeText } from "@sloppy/vault";
 import { ATTACHED_KEPT_OUT } from "./container.js";
-import { BIN_DIR, BIN_FILE } from "./vault-paths.js";
+import { BIN_DIR, BIN_FILE, PAIRED_FILE } from "./vault-paths.js";
 import { CREDENTIALS_FILE } from "./credentials.js";
 import type { Files } from "./files.js";
 import { GIT_DEFAULTS_FILE } from "./git-defaults.js";
@@ -34,6 +34,7 @@ export const KEPT_OUT = [
   "sloppy-identity*",
   `/${BIN_FILE}`,
   `/${BIN_DIR}/`,
+  `/${PAIRED_FILE}`,
   ATTACHED_KEPT_OUT,
 ];
 

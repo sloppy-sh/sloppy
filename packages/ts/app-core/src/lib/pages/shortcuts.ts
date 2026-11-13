@@ -58,3 +58,11 @@ export function typedIntoWriting(event: KeyboardEvent): boolean {
 	const at = event.target;
 	return at instanceof Element && at.closest(WRITING) !== null;
 }
+
+const CONTROLS = 'button, a[href], select, summary, [role="button"], [role="menuitem"]';
+
+/** Whether the keystroke landed on a control that answers Enter itself. */
+export function onAControl(event: KeyboardEvent): boolean {
+	const at = event.target;
+	return at instanceof Element && at.closest(CONTROLS) !== null;
+}

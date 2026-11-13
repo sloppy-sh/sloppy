@@ -10,3 +10,4 @@ sloppy-identity*
 /.sloppy/bin.json
 /.sloppy/bin/
 /attached/
+/.sloppy/paired.json

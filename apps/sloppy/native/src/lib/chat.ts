@@ -29,6 +29,7 @@ import {
 	type ChatSpend,
 	type ChatToolAnswer,
 	ChatToolAnswerSchema,
+	HEADSET_CHAT_BRIEF,
 	type SloppyToolCall,
 	SloppyToolCallSchema,
 	type SloppyToolName,
@@ -275,8 +276,11 @@ class TauriChat implements ChatAccess {
 			agent,
 			cwd,
 			thread: of,
-			tools: asked.role === undefined ? advertisedChatTools() : advertisedBuildTools(asked.role),
-			brief: asked.brief ?? chatBrief(asked.thread.places),
+			tools:
+				asked.role === undefined
+					? advertisedChatTools('answer-first', false, asked.surface)
+					: advertisedBuildTools(asked.role),
+			brief: asked.brief ?? briefFor(asked),
 			places: asked.thread.places.map((place) => place.root),
 			resume: asked.thread.session !== undefined,
 			web: asked.reachesWeb ?? true,
@@ -601,6 +605,11 @@ function aboutTheWindow(id: string, detail: 'summary' | 'full'): unknown {
 }
 
 const THE_WINDOW_IN_WORDS = '/context';
+
+function briefFor(asked: ChatAsked): string {
+	const brief = chatBrief(asked.thread.places);
+	return asked.surface === 'headset' ? `${brief}\n\n${HEADSET_CHAT_BRIEF}` : brief;
+}
 
 /** `here` is the folder holding the code the notes are about, `drafts` is where
  *  the copy of it a chat is started in comes from, and `builds` is where a

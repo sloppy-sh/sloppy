@@ -1,0 +1,9 @@
+{
+	"quiet_meadow_night": {"name": "Quiet Meadow Night", "categories": ["outdoor", "nature", "night", "skies"], "attributes": {"sky_view": "open", "environment": "outdoor"}, "authors": {"A. Walker": "All"}, "download_count": 50, "thumbnail_url": "https://cdn.example/thumbs/quiet_meadow_night.png"},
+	"harbour_night": {"name": "Harbour Night", "categories": ["outdoor", "urban", "night"], "attributes": {"sky_view": "open"}, "authors": {"B. Rowe": "All", "C. Lake": "Photography"}, "download_count": 10, "thumbnail_url": "https://cdn.example/thumbs/harbour_night.png"},
+	"high_noon_hills": {"name": "High Noon Hills", "categories": ["outdoor", "skies", "clear"], "attributes": {"sky_view": "open"}, "authors": {"A. Walker": "All"}, "download_count": 1000, "thumbnail_url": "https://cdn.example/thumbs/high_noon_hills.png"},
+	"pure_cloud": {"name": "Pure Cloud", "categories": ["skies", "pure skies"], "authors": {"D. Moss": "All"}, "download_count": 5, "thumbnail_url": "https://cdn.example/thumbs/pure_cloud.png"},
+	"courtyard_skies": {"name": "Courtyard Skies", "categories": ["outdoor", "skies"], "attributes": {"sky_view": "obstructed"}, "authors": {"E. Fern": "All"}, "download_count": 900},
+	"station_hall_night": {"name": "Station Hall Night", "categories": ["indoor", "night"], "attributes": {"environment": "indoor"}, "authors": {"F. Ash": "All"}, "download_count": 800},
+	"studio_soft": {"name": "Studio Soft", "categories": ["studio", "artificial light"], "authors": {"G. Oak": "All"}, "download_count": 700}
+}

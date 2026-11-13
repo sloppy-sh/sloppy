@@ -30,6 +30,15 @@ export interface LayoutStart {
   nodes: LayoutNodeInput[];
   edges: LayoutEdgeInput[];
   /**
+   * How many times larger than the genealogy lays it out this field is drawn.
+   * Every position and distance above is already times it, and a mark's radius
+   * is not. 1 is the field as laid out; anything not above 0 is read as 1.
+   */
+  spread: number;
+  /** The energy the settle starts at, in (0, 1]. Absent is 1: a field laid out
+   *  afresh rather than one carried on from where it stands. */
+  alpha?: number;
+  /**
    * Run to convergence and answer once. DESIGN.md § Motion: reduced motion
    * jumps to the converged positions, and must never mean an unsettled graph.
    */

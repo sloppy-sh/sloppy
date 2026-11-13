@@ -65,6 +65,17 @@ describe("the keys this device holds", () => {
     expect(sealer.asked.at(-1)).toBe(`open ${keyIdentifier("openai")}`);
   });
 
+  it("holds a key for an agent that hears as it does for one that answers", async () => {
+    const { files, sealer } = device();
+    const keys = new DeviceAiKeys(files, sealer);
+    await keys.hold("groq", "gsk-heard");
+
+    expect(await keys.held()).toEqual([
+      { provider: "groq", backing: "hardware" },
+    ]);
+    expect(await keys.open("groq")).toBe("gsk-heard");
+  });
+
   it("replaces a provider's key, forgets one, and refuses nothing at all", async () => {
     const { files, sealer } = device();
     const keys = new DeviceAiKeys(files, sealer);

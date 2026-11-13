@@ -45,19 +45,30 @@ export interface SeededNote {
   depth: number;
 }
 
-/** Seed every note, by ref. */
+/** The room a reader may put between the marks: every distance the layout
+ *  decides, times this. `least` is the field as the genealogy lays it out. */
+export const FIELD_SPREAD = { least: 1, most: 2.5 } as const;
+
+/** `value` as a spread the layout can lay out at; anything else is 1. */
+export function fieldSpread(value: number | undefined): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+/** Seed every note, by ref, with every distance times `spread`. */
 export function seedField(
   notes: Iterable<SeededNote>,
+  spread = 1,
 ): ReadonlyMap<OwnedRef, SeedPoint> {
   const held = [...notes];
   const byRef = new Map(held.map((note) => [note.ref, note]));
   const ordinals = runOrdinals(held, byRef);
-  const radius = ringRadius(
-    held.filter((note) => onTheRing(note, byRef)).length,
-  );
+  const radius =
+    ringRadius(held.filter((note) => onTheRing(note, byRef)).length) * spread;
   const placed = new Map<OwnedRef, Placed>();
 
-  for (const note of held) place(note, byRef, ordinals, radius, placed);
+  for (const note of held) {
+    place(note, byRef, ordinals, radius, spread, placed);
+  }
 
   return new Map(
     [...placed].map(([ref, under]) => [ref, under.point] as const),
@@ -85,6 +96,7 @@ function place(
   byRef: ReadonlyMap<OwnedRef, SeededNote>,
   ordinals: ReadonlyMap<OwnedRef, Ordinal>,
   radius: number,
+  spread: number,
   placed: Map<OwnedRef, Placed>,
 ): Placed {
   // Walked rather than recursed: a chain as deep as the field is long would
@@ -112,6 +124,7 @@ function place(
             from,
             under.parent as OwnedRef,
             ordinals.get(under.ref) ?? { at: 1, of: 1 },
+            spread,
           ),
     );
   }
@@ -119,7 +132,12 @@ function place(
   return placed.get(note.ref) as Placed;
 }
 
-function leanOff(from: Placed, parent: OwnedRef, ordinal: Ordinal): Placed {
+function leanOff(
+  from: Placed,
+  parent: OwnedRef,
+  ordinal: Ordinal,
+  spread: number,
+): Placed {
   const depth = from.depth + 1;
   const width = fanWidth(ordinal.of);
   // The run turns as one, by its parent's own sector and only as far as its fan
@@ -128,7 +146,7 @@ function leanOff(from: Placed, parent: OwnedRef, ordinal: Ordinal): Placed {
   const turn = signedUnit(refSector(parent)) * (1 - width);
   const lean = spreadAt(depth) * (fanOffset(ordinal.at, ordinal.of) + turn);
   const outward = from.point.outward + lean;
-  const step = STEP_FIRST * STEP_DECAY ** (depth - 2);
+  const step = STEP_FIRST * STEP_DECAY ** (depth - 2) * spread;
   return {
     point: {
       x: from.point.x + Math.cos(outward) * step,
@@ -261,17 +279,21 @@ export function seedBox(seeds: Iterable<SeedPoint>): SeedBox {
  * The first does not move, so putting another graph up never shifts the one
  * being read. DESIGN.md § "Several graphs on one canvas".
  */
-export function placeFields(boxes: readonly SeedBox[]): FieldPlacement[] {
+export function placeFields(
+  boxes: readonly SeedBox[],
+  spread = 1,
+): FieldPlacement[] {
   const placed: FieldPlacement[] = [];
   let cursor: number | null = null;
   for (const box of boxes) {
-    const dx: number = cursor === null ? 0 : cursor + FIELD_GUTTER - box.minX;
+    const dx: number =
+      cursor === null ? 0 : cursor + FIELD_GUTTER * spread - box.minX;
     placed.push({
       dx,
       minX: box.minX + dx,
       maxX: box.maxX + dx,
       nameX: (box.minX + box.maxX) / 2 + dx,
-      nameY: box.minY - FIELD_NAME_RISE,
+      nameY: box.minY - FIELD_NAME_RISE * spread,
     });
     cursor = box.maxX + dx;
   }

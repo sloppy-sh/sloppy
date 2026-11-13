@@ -1,0 +1,7 @@
+"$schema" = "schemas/schema.json"
+[default]
+description = """
+Every speech command: whether this computer can hear and record, whether the
+person has let it, asking them, recording, and hearing a recording.
+"""
+permissions = ["allow-available", "allow-authorization", "allow-request-authorization", "allow-transcribe", "allow-microphone", "allow-request-microphone", "allow-start-recording", "allow-stop-recording"]

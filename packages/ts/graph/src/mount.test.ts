@@ -10,7 +10,9 @@ import {
 } from "vitest";
 import type {
   GraphField,
+  GraphHiddenLines,
   GraphHoverAt,
+  GraphLines,
   GraphMenuAt,
   GraphPickMarks,
   GraphReadingMarks,
@@ -20,7 +22,7 @@ import type {
 } from "./contract.js";
 import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
-import type { BuiltModel } from "./model.js";
+import { type BuiltModel, lineCounts } from "./model.js";
 import {
   membershipOf,
   SETS_STEP,
@@ -29,8 +31,13 @@ import {
   setsSpacingTier,
   type SetsStanding,
 } from "./sets/pack.js";
-import type { LayoutCommand, LayoutEvent } from "./layout/protocol.js";
-import { drawnSetsOf } from "./contract.js";
+import { LayoutEngine } from "./layout/engine.js";
+import type {
+  LayoutCommand,
+  LayoutEvent,
+  LayoutStart,
+} from "./layout/protocol.js";
+import { drawnSetsOf, UNLABELLED_LINE } from "./contract.js";
 import type { GraphHandle, GraphMountOptions } from "./mount.js";
 import type { Bounds } from "./viewport.js";
 import { MAX_SCALE, Viewport } from "./viewport.js";
@@ -104,6 +111,20 @@ class StandInScene {
     this.reading = reading;
   }
 
+  /** The lines the canvas was last told the reader turned off. */
+  hidden: GraphHiddenLines | undefined = undefined;
+
+  setHiddenLines(hidden: GraphHiddenLines | undefined): void {
+    this.hidden = hidden;
+  }
+
+  /** The mark the canvas was last told a pointer rests on. */
+  pointed: string | null = null;
+
+  setPointed(ref: string | null): void {
+    this.pointed = ref;
+  }
+
   /** The region a held mark is over, which a drag lights and a drop clears. */
   drop: SetsStanding | null = null;
   /** Every region the canvas was told to light, in order, so a test can read
@@ -175,6 +196,19 @@ class StandInScene {
     return this.online;
   }
 
+  /** Lines bundled with {@link online}, which the next tap finds beside it. */
+  cord: [string, string][] = [];
+
+  bundleAt(): [string, string][] {
+    return this.online === null ? [] : [this.online, ...this.cord];
+  }
+
+  lit: readonly (readonly [string, string])[] | null = null;
+
+  setLit(lit: readonly (readonly [string, string])[] | null): void {
+    this.lit = lit;
+  }
+
   hitTest(world: { x: number; y: number }): string | null {
     this.hitAt = world;
     return this.under;
@@ -185,7 +219,11 @@ class StandInScene {
   }
 
   snapshot() {
-    return new Map<string, { x: number; y: number }>();
+    return new Map(
+      (this.model?.order ?? []).map(
+        (ref, index) => [ref, this.positionOf(index)] as const,
+      ),
+    );
   }
 
   positionOf(index: number) {
@@ -210,8 +248,15 @@ class StandInScene {
     this.positions[index * 2] = world.x;
     this.positions[index * 2 + 1] = world.y;
   }
-  setPositions(positions: Float32Array): void {
+  /** Whether the last positions handed over ended a settle. */
+  settled: boolean | null = null;
+  setPositions(positions: Float32Array, settled = true): void {
     this.positions.set(positions);
+    this.settled = settled;
+  }
+  bundle: number | null = null;
+  setBundling(strength: number | null): void {
+    this.bundle = strength;
   }
   setPalette(): void {}
   /** The zoom a frame of the whole field lands on, for the tests that read the
@@ -451,6 +496,14 @@ async function mount(
     expanded,
     opened,
     retags,
+    /** The settle the layout was last asked to run. */
+    lastStart: (): LayoutStart => {
+      const start = [...sent]
+        .reverse()
+        .find((command) => command.kind === "start");
+      if (!start) throw new Error("nothing was asked to settle");
+      return start;
+    },
     /** Settles the layout has been asked to run. */
     starts: (): number =>
       sent.filter((command) => command.kind === "start").length,
@@ -578,6 +631,22 @@ async function mount(
     carry(ref: string, path: readonly { x: number; y: number }[]): void {
       dragAlong(ref, path);
       letGo(path[path.length - 1]);
+    },
+    /** The layout answering its last settle with `positions`, settled. */
+    answerWith(positions: Float32Array): void {
+      const start = [...sent]
+        .reverse()
+        .find((command) => command.kind === "start");
+      if (!start) throw new Error("nothing was asked to settle");
+      worker.onmessage?.({
+        data: {
+          kind: "positions",
+          epoch: start.epoch,
+          positions,
+          alpha: 0,
+          settled: true,
+        },
+      } as MessageEvent<LayoutEvent>);
     },
     /** The layout answering the settle it was last asked to run. */
     answer(settled = false): void {
@@ -868,6 +937,79 @@ describe("selecting tags", () => {
 
     graph.handle.update({ ...graph.props, selection: [] });
     expect(graph.scene.selecting).toBe(false);
+  });
+
+  // DESIGN.md § Edges, "Bundled along the tree": a view choice the canvas is
+  // told, which moves nothing and so starts no settle.
+  it("tells the scene how tightly to bundle, and to stop", async () => {
+    const graph = await mount();
+    expect(graph.scene.bundle).toBeNull();
+    const before = graph.starts();
+
+    graph.handle.update({ ...graph.props, bundle: 0.6 });
+    expect(graph.scene.bundle).toBe(0.6);
+    graph.handle.update({ ...graph.props, bundle: undefined });
+    expect(graph.scene.bundle).toBeNull();
+    expect(graph.starts()).toBe(before);
+  });
+
+  // DESIGN.md § Edges, "Room between marks": the field slides out from where it
+  // stands and settles as the same field drawn larger.
+  it("gives the marks more room without moving any off its bearing", async () => {
+    const graph = await mount();
+    const settle = (start: LayoutStart): Float32Array => {
+      const engine = new LayoutEngine(start);
+      engine.settle();
+      return new Float32Array(engine.positions());
+    };
+    const first = graph.lastStart();
+    expect(first.spread).toBe(1);
+    const standing = settle(first);
+    graph.answerWith(standing);
+
+    graph.handle.update({ ...graph.props, spread: 2.5 });
+    const roomier = graph.lastStart();
+    expect(roomier.spread).toBe(2.5);
+    expect(roomier.epoch).toBeGreaterThan(first.epoch);
+    roomier.nodes.forEach((node, at) => {
+      expect(node.x).toBeCloseTo(standing[at * 2] * 2.5, 2);
+      expect(node.y).toBeCloseTo(standing[at * 2 + 1] * 2.5, 2);
+    });
+
+    expect(roomier.alpha).toBeLessThan(0.1);
+
+    const settled = settle(roomier);
+    const reach = Math.max(
+      ...roomier.nodes.map((node) => Math.hypot(node.x, node.y)),
+    );
+    for (let at = 0; at < roomier.nodes.length; at++) {
+      const [x, y] = [standing[at * 2], standing[at * 2 + 1]];
+      const [far, wide] = [settled[at * 2], settled[at * 2 + 1]];
+      expect(
+        Math.abs(Math.hypot(far, wide) - Math.hypot(x, y) * 2.5),
+      ).toBeLessThan(reach / 100);
+      const turn = Math.atan2(wide, far) - Math.atan2(y, x);
+      expect(Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn)))).toBeLessThan(
+        0.02,
+      );
+    }
+  });
+
+  it("tells the scene whether the positions it hands over ended the settle", async () => {
+    const graph = await mount();
+    graph.answer(false);
+    expect(graph.scene.settled).toBe(false);
+    graph.answer(true);
+    expect(graph.scene.settled).toBe(true);
+  });
+
+  it("hands the model what is folded, so links into a fold are drawn to it", async () => {
+    const graph = await mount();
+    const carried: ReadonlyMap<string, number>[] = [];
+    graph.model().graph.forEachEdge((_edge, attributes) => {
+      if (attributes.carries !== undefined) carried.push(attributes.carries);
+    });
+    expect(carried.length).toBeGreaterThan(0);
   });
 
   it("still settles again when what is drawn actually moves", async () => {
@@ -1949,6 +2091,60 @@ describe("a tap that landed on a line", () => {
     expect(lines).toEqual([]);
   });
 
+  it("hands over the whole bundle a tap landed on, the tapped line first", async () => {
+    const bundles: (readonly [OwnedRef, OwnedRef][])[] = [];
+    const { graph, pair } = await canvas({
+      onEdge: (_from, _to, bundle) => bundles.push(bundle),
+    });
+    const [, , third] = graph.model().order;
+    const other: [string, string] = [pair[0], third];
+    graph.scene.cord = [other];
+    graph.tapPaper(pair);
+    expect(bundles).toEqual([[pair, other]]);
+  });
+
+  it("says when a tap found bare paper, and only then", async () => {
+    let bare = 0;
+    const { graph, pair } = await canvas({ onPaper: () => (bare += 1) });
+    graph.tapPaper(pair);
+    expect(bare).toBe(0);
+    graph.tapPaper(null);
+    expect(bare).toBe(1);
+  });
+
+  it("says bare paper while notes are being chosen, and not while pointing", async () => {
+    let bare = 0;
+    const { graph, pair } = await canvas({
+      chosen: new Set<OwnedRef>(),
+      onPaper: () => (bare += 1),
+    });
+    graph.tapPaper(pair);
+    expect(bare).toBe(0);
+    graph.tapPaper(null);
+    expect(bare).toBe(1);
+
+    graph.handle.update({
+      ...graph.props,
+      chosen: undefined,
+      picking: {
+        from: pair[0] as OwnedRef,
+        taken: new Set(),
+        onPick: () => {},
+      },
+    });
+    graph.tapPaper(null);
+    expect(bare).toBe(1);
+  });
+
+  it("hands the scene the lines the host lit, and none once it lets go", async () => {
+    const { graph, pair } = await canvas();
+    const lit = [pair as [OwnedRef, OwnedRef]];
+    graph.handle.update({ ...graph.props, litEdges: lit });
+    expect(graph.scene.lit).toEqual(lit);
+    graph.handle.update({ ...graph.props, litEdges: undefined });
+    expect(graph.scene.lit).toBeNull();
+  });
+
   it("stays quiet while the canvas is being asked something else", async () => {
     const { graph, lines, pair } = await canvas({
       chosen: new Set<OwnedRef>(),
@@ -2657,5 +2853,63 @@ describe("the sets reading", () => {
 
     graph.handle.update(graph.props);
     expect(graph.handle.viewport()).toEqual(read);
+  });
+});
+
+describe("the lines a reader can turn off", () => {
+  it("counts the lines it has to draw, and says so only when the count changes", async () => {
+    const told: GraphLines[] = [];
+    const graph = await mount({ onLines: (lines) => told.push(lines) });
+    expect(told).toHaveLength(1);
+    expect(told[0]).toEqual(lineCounts(graph.model().graph));
+
+    graph.handle.update({ ...graph.props, ground: "dots" });
+    expect(told).toHaveLength(1);
+
+    const [from, to] = graph.model().order;
+    const nodes = graph.props.nodes.map((node) =>
+      node.ref === from ? { ...node, links: [...node.links, to] } : node,
+    );
+    graph.handle.update({ ...graph.props, nodes });
+    expect(told).toHaveLength(2);
+    expect(told[1].kinds.link).toBe(told[0].kinds.link + 1);
+    expect(told[1].labels.get(UNLABELLED_LINE)).toBe(
+      (told[0].labels.get(UNLABELLED_LINE) ?? 0) + 1,
+    );
+
+    graph.handle.update({
+      ...graph.props,
+      nodes,
+      edgeLooks: [{ from, to, label: "uses" }],
+    });
+    expect(told).toHaveLength(3);
+    expect(told[2].labels.get("uses")).toBe(1);
+    expect(told[2]).toEqual(lineCounts(graph.model().graph));
+  });
+
+  it("hands the canvas the lines turned off", async () => {
+    const hidden: GraphHiddenLines = {
+      kinds: new Set(["genealogy"]),
+      labels: new Set(["uses"]),
+    };
+    const graph = await mount({ hiddenLines: hidden });
+    expect(graph.scene.hidden).toBe(hidden);
+
+    graph.handle.update({ ...graph.props, hiddenLines: undefined });
+    expect(graph.scene.hidden).toBeUndefined();
+  });
+
+  it("tells the canvas which mark a pointer rests on, and when it leaves", async () => {
+    const graph = await mount({ onHover: () => {} });
+    const ref = graph.model().order[0];
+
+    graph.rest(ref);
+    expect(graph.scene.pointed).toBe(ref);
+    graph.rest(null);
+    expect(graph.scene.pointed).toBeNull();
+
+    graph.rest(ref);
+    graph.handle.update({ ...graph.props, chosen: new Set<OwnedRef>() });
+    expect(graph.scene.pointed).toBeNull();
   });
 });

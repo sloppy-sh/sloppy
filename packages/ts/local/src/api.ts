@@ -63,6 +63,7 @@ import {
   type OwnInstance,
   type OwnedMediaAsset,
   type OwnedRef,
+  resolveAppearance,
   type PeerIdentity,
   type ProfileView,
   type ProposeAmendmentRequest,
@@ -1542,6 +1543,20 @@ export class LocalApi implements SloppyApi {
       if (path) return { src: graph.files.url(path), release: () => {} };
     }
     throw absent("That picture is not here.");
+  }
+
+  /** The first picture a note's mark wears, as it was added. Absent where it
+   *  wears none, or its bytes are not on this device. */
+  async markPicture(
+    ref: OwnedRef,
+  ): Promise<{ bytes: Uint8Array; mime_type: string } | undefined> {
+    const note = await this.getNode(ref);
+    const [upload] = resolveAppearance(note?.appearance).preview.pictures;
+    if (upload === undefined) return undefined;
+    return this.devicePicture(upload).then(
+      ({ said, bytes }) => ({ bytes, mime_type: said.mime_type }),
+      () => undefined,
+    );
   }
 
   // ── Profile ──────────────────────────────────────────────────────────────

@@ -33,7 +33,10 @@ import {
   CHAT_THREAD_NAME_MAX,
   CHAT_TOOL_SPECS,
   CHAT_TOOLS,
+  HEADSET_ONLY_TOOLS,
+  headsetOnly,
   OUTSIDE_THE_APP_TOOLS,
+  servedInTheApp,
   ChatActDoneSchema,
   chatAgentName,
   chatAgentReach,
@@ -182,6 +185,7 @@ describe("the acts Sloppy hands an agent", () => {
     for (const act of [
       "list_notes",
       "search_notes",
+      "find_note",
       "read_note",
       "list_tags",
       "list_bin",
@@ -201,7 +205,7 @@ describe("the acts Sloppy hands an agent", () => {
     expect(answerFirst).toEqual(advertisedChatTools("answer-first"));
     for (const doctrine of DOCTRINES) {
       const advertised = advertisedChatTools(doctrine);
-      expect(advertised).toHaveLength(19);
+      expect(advertised).toHaveLength(20);
       for (const one of advertised) {
         expect(one.description.length).toBeLessThanOrEqual(ACT_WORDS_MAX);
       }
@@ -219,7 +223,9 @@ describe("the acts Sloppy hands an agent", () => {
   it("advertises every act once, as a JSON Schema object", () => {
     const advertised = advertisedChatTools("answer-first", true);
 
-    expect(advertised.map((one) => one.name)).toEqual([...CHAT_TOOLS]);
+    expect(advertised.map((one) => one.name)).toEqual(
+      CHAT_TOOLS.filter((act) => !headsetOnly(act)),
+    );
     for (const one of advertised) {
       expect(one.description).toBe(CHAT_TOOL_SPECS[one.name].description);
       expect(one.arguments.type).toBe("object");
@@ -227,11 +233,27 @@ describe("the acts Sloppy hands an agent", () => {
     }
   });
 
-  it("leaves out of the app's chat only the acts served outside it", () => {
+  it("leaves out of the app's chat only the acts served outside it, and those a headset is served", () => {
     expect(advertisedChatTools().map((one) => one.name)).toEqual(
-      CHAT_TOOLS.filter((act) => !OUTSIDE_THE_APP_TOOLS.includes(act as never)),
+      CHAT_TOOLS.filter(
+        (act) =>
+          !OUTSIDE_THE_APP_TOOLS.includes(act as never) && !headsetOnly(act),
+      ),
     );
     expect([...OUTSIDE_THE_APP_TOOLS]).toEqual(["find_code"]);
+    expect([...HEADSET_ONLY_TOOLS]).toEqual(["show_note"]);
+  });
+
+  it("serves show_note only to a session opened from a headset, and never outside the app", () => {
+    const named = (tools: { name: string }[]) => tools.map((one) => one.name);
+
+    expect(
+      named(advertisedChatTools("answer-first", false, "headset")),
+    ).toEqual(CHAT_TOOLS.filter(servedInTheApp));
+    expect(
+      named(advertisedChatTools("answer-first", true, "headset")),
+    ).not.toContain("show_note");
+    expect(CHAT_TOOL_SPECS.show_note.writes).toBe(false);
   });
 
   it("tells the agent what every argument of every act is for", () => {
@@ -260,6 +282,7 @@ describe("the acts Sloppy hands an agent", () => {
       "search_notes.words",
       "search_notes.detail",
       "search_notes.in",
+      "find_note.said",
       "read_note.note",
       "read_note.sections",
       "read_note.quoted",

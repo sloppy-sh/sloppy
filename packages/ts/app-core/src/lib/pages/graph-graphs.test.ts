@@ -266,6 +266,39 @@ describe('which graph you are in', () => {
 		expect(field().dataset.wallpaper).toBe('moss');
 	});
 
+	// DESIGN.md § Edges, "Lines a reader can turn off": kept per graph, the way
+	// the picture under it is.
+	it('draws each graph with its own lines turned off', async () => {
+		await open();
+		prefs.setLinesOff(HOME, { kinds: new Set(['genealogy']), labels: new Set(['uses']) });
+		await settle();
+		expect(field().dataset.linesOff).toBe('genealogy label:uses');
+
+		await openGraphs();
+		button('Garden').click();
+		await settle();
+
+		expect(field().dataset.linesOff).toBe('');
+	});
+
+	it('turns a kind of line off from a sheet on a phone, and keeps it', async () => {
+		held = held.map((note, at) => (at === 0 ? { ...note, links: [held[1].ref] } : note));
+		await open();
+		labelled('Lines').click();
+		await settle();
+		expect(inSheet()).toContain('Drawn by hand');
+		expect(inSheet()).toContain('No label');
+
+		const handLinks = [...document.body.querySelectorAll<HTMLLabelElement>('label')]
+			.find((row) => row.textContent?.includes('Drawn by hand'))
+			?.querySelector<HTMLButtonElement>('[role="switch"]');
+		handLinks?.click();
+		await settle();
+
+		expect(field().dataset.linesOff).toBe('link');
+		expect([...prefs.linesOff(HOME).kinds]).toEqual(['link']);
+	});
+
 	it('moves into another one, and draws that one instead', async () => {
 		await open();
 		await openGraphs();

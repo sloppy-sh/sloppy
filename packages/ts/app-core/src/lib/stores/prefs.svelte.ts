@@ -12,7 +12,13 @@
  * the same commit.
  */
 
-import { GRAPH_GROUNDS, type GraphGround } from '@sloppy/graph';
+import {
+	BUNDLE_STRENGTH,
+	FIELD_SPREAD,
+	GRAPH_GROUNDS,
+	type GraphGround,
+	type GraphHiddenLines
+} from '@sloppy/graph';
 import { UNDRESSED_TOKENS, type SchemeDressing } from '@sloppy/ui';
 import {
 	CHAT_AGENTS,
@@ -33,8 +39,12 @@ import {
 	LOOK_ID,
 	LOOK_NAME_MAX,
 	namesAFace,
+	EDGE_KINDS,
+	type EdgeKind,
 	type OwnedRef,
 	OwnedRefSchema,
+	SPEECH_AGENTS,
+	type SpeechAgent,
 	STYLES,
 	type Style,
 	type Tag,
@@ -131,6 +141,13 @@ export interface Prefs {
 	tags: Tag[];
 	/** The paper the graph is drawn on — DESIGN.md § "The ground". */
 	ground: GraphGround;
+	/** Whether hand-drawn lines are bundled along the tree, and how tightly in
+	 *  [0, 1] — DESIGN.md § Edges, "Bundled along the tree". */
+	bundleLines: boolean;
+	bundleStrength: number;
+	/** The room between the marks on every graph, in `FIELD_SPREAD` — DESIGN.md
+	 *  § Edges, "Room between marks". */
+	fieldSpread: number;
 	/** The graph the reader is in. Null is the one they started with, which is
 	 *  also what a ref belonging to somebody else falls back to. */
 	graph: OwnedRef | null;
@@ -140,6 +157,9 @@ export interface Prefs {
 	/** The picture behind that paper, per graph — DESIGN.md § "The wallpaper".
 	 *  A graph with no entry has none. */
 	wallpapers: Record<OwnedRef, WallpaperPrefs>;
+	/** The lines the reader turned off, per graph — DESIGN.md § Edges, "Lines a
+	 *  reader can turn off". A graph with no entry draws every line. */
+	linesOff: Record<OwnedRef, LinesOff>;
 	/** How each folder was last being read, by its root, so a tab comes back as
 	 *  it was left — DESIGN.md § Persistence. A folder with no entry starts
 	 *  clean. */
@@ -179,7 +199,7 @@ export interface Prefs {
 	tagOrder: 'count' | 'name';
 	/** Which groups of that column stand open. Both may, and they share what
 	 *  it has left. */
-	columnGroups: { history: boolean; tags: boolean };
+	columnGroups: ColumnGroups;
 	/** Whether Sloppy offers to work with an assistant at all. Off is the app
 	 *  without one, and nothing about one is put in front of anybody. */
 	aiOffered: boolean;
@@ -196,10 +216,33 @@ export interface Prefs {
 	/** Whether the assistant may look things up on the web while it answers.
 	 *  On until somebody turns it off. */
 	chatReachesWeb: boolean;
+	/** What turns a reader's voice into words when a headset is spoken to —
+	 *  docs/ARCHITECTURE.md § "A headset beside the desk". Null is none, and a
+	 *  headset is told where to set one up. */
+	speechAgent: SpeechAgent | null;
+	/** Which model each speech agent is asked to hear with. **An agent with no
+	 *  entry is asked for the first `SPEECH_ENDPOINTS` names.** */
+	speechModel: Partial<Record<SpeechAgent, string>>;
+	/** The model file a `program` speech agent hears with, as this platform
+	 *  spells a path. Null is none chosen. */
+	speechProgramModel: string | null;
 	/** The Sloppy this device talks to, as an origin — docs/ARCHITECTURE.md
 	 *  § "Deployment modes". Null is the one the app came with, which is what
 	 *  the shell names. */
 	origin: string | null;
+}
+
+/** Which groups of the desk column stand open. */
+export interface ColumnGroups {
+	history: boolean;
+	tags: boolean;
+	lines: boolean;
+}
+
+/** {@link GraphHiddenLines} as it is kept. */
+export interface LinesOff {
+	kinds: EdgeKind[];
+	labels: string[];
 }
 
 const KEY = 'sloppy_prefs';
@@ -415,9 +458,13 @@ function defaults(): Prefs {
 		css: '',
 		tags: [],
 		ground: 'dots',
+		bundleLines: false,
+		bundleStrength: BUNDLE_STRENGTH,
+		fieldSpread: FIELD_SPREAD.least,
 		graph: null,
 		alsoOnCanvas: [],
 		wallpapers: {},
+		linesOff: {},
 		views: {},
 		seenAs: 'graph',
 		recordsWhatHappens: false,
@@ -427,7 +474,7 @@ function defaults(): Prefs {
 		deskNavOpen: true,
 		deskNavWidth: null,
 		tagOrder: 'count',
-		columnGroups: { history: false, tags: true },
+		columnGroups: { history: false, tags: true, lines: false },
 		density: 'auto',
 		autosave: false,
 		autosaveMinutes: 5,
@@ -436,6 +483,9 @@ function defaults(): Prefs {
 		chatModel: {},
 		chatInBackground: false,
 		chatReachesWeb: true,
+		speechAgent: null,
+		speechModel: {},
+		speechProgramModel: null,
 		origin: null
 	};
 }
@@ -598,12 +648,43 @@ function oneNumberOf<T extends number>(value: unknown, allowed: readonly T[], fa
 	return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
-function groupsIn(value: unknown): { history: boolean; tags: boolean } {
+function groupsIn(value: unknown): ColumnGroups {
 	const held = (typeof value === 'object' && value !== null ? value : {}) as Record<
 		string,
 		unknown
 	>;
-	return { history: held.history === true, tags: held.tags !== false };
+	return { history: held.history === true, tags: held.tags !== false, lines: held.lines === true };
+}
+
+/** What a stored entry still says: kinds this build knows, and labels as
+ *  written. An entry that turns nothing off is no entry. */
+function linesOffIn(value: unknown): Record<OwnedRef, LinesOff> {
+	if (typeof value !== 'object' || value === null) return {};
+	const out: Record<OwnedRef, LinesOff> = {};
+	for (const [graph, held] of Object.entries(value as Record<string, unknown>)) {
+		const entry = (typeof held === 'object' && held !== null ? held : {}) as Record<
+			string,
+			unknown
+		>;
+		const kinds = Array.isArray(entry.kinds)
+			? EDGE_KINDS.filter((kind) => (entry.kinds as unknown[]).includes(kind))
+			: [];
+		const labels = Array.isArray(entry.labels)
+			? [...new Set(entry.labels.filter((label): label is string => typeof label === 'string'))]
+			: [];
+		if (kinds.length > 0 || labels.length > 0) out[graph as OwnedRef] = { kinds, labels };
+	}
+	return out;
+}
+
+function unitIn(value: unknown, fallback: number): number {
+	return typeof value === 'number' && value >= 0 && value <= 1 ? value : fallback;
+}
+
+function spreadIn(value: unknown, fallback: number): number {
+	return typeof value === 'number' && value >= FIELD_SPREAD.least && value <= FIELD_SPREAD.most
+		? value
+		: fallback;
 }
 
 function widthIn(value: unknown): number | null {
@@ -633,6 +714,27 @@ function modelsIn(value: unknown): Partial<Record<ChatAgent, string>> {
 			out[agent] = picked;
 	}
 	return out;
+}
+
+function speechModelsIn(value: unknown): Partial<Record<SpeechAgent, string>> {
+	if (typeof value !== 'object' || value === null) return {};
+	const held = value as Record<string, unknown>;
+	const out: Partial<Record<SpeechAgent, string>> = {};
+	for (const agent of SPEECH_AGENTS) {
+		const picked = held[agent];
+		if (typeof picked === 'string' && picked.trim() !== '' && picked.length <= CHAT_MODEL_MAX)
+			out[agent] = picked;
+	}
+	return out;
+}
+
+/** Longer than any path a platform spells. */
+const PATH_MAX = 4_096;
+
+function pathIn(value: unknown): string | null {
+	return typeof value === 'string' && value.trim() !== '' && value.length <= PATH_MAX
+		? value
+		: null;
 }
 
 function refIn(value: unknown): OwnedRef | null {
@@ -792,9 +894,13 @@ class PrefsStore {
 			css: rulesIn(saved.css),
 			tags: tagsIn(saved.tags),
 			ground: oneOf(saved.ground, GRAPH_GROUNDS, base.ground),
+			bundleLines: saved.bundleLines === true,
+			bundleStrength: unitIn(saved.bundleStrength, base.bundleStrength),
+			fieldSpread: spreadIn(saved.fieldSpread, base.fieldSpread),
 			graph: refIn(saved.graph),
 			alsoOnCanvas: refsIn(saved.alsoOnCanvas),
 			wallpapers: sanitizeWallpapers(saved.wallpapers),
+			linesOff: linesOffIn(saved.linesOff),
 			views: viewsIn(saved.views),
 			seenAs: seenAsIn(saved.seenAs, saved.walking),
 			recordsWhatHappens: saved.recordsWhatHappens === true,
@@ -815,6 +921,11 @@ class PrefsStore {
 			chatModel: modelsIn(saved.chatModel),
 			chatInBackground: saved.chatInBackground === true,
 			chatReachesWeb: saved.chatReachesWeb !== false,
+			speechAgent: SPEECH_AGENTS.includes(saved.speechAgent as SpeechAgent)
+				? (saved.speechAgent as SpeechAgent)
+				: null,
+			speechModel: speechModelsIn(saved.speechModel),
+			speechProgramModel: pathIn(saved.speechProgramModel),
 			origin: asOrigin(saved.origin)
 		};
 		this.apply();
@@ -830,6 +941,19 @@ class PrefsStore {
 		if (next === null) delete wallpapers[graph];
 		else wallpapers[graph] = next;
 		this.set('wallpapers', wallpapers);
+	}
+
+	/** The lines turned off on one graph. */
+	linesOff(graph: OwnedRef): GraphHiddenLines {
+		const held = this.#current.linesOff[graph];
+		return { kinds: new Set(held?.kinds ?? []), labels: new Set(held?.labels ?? []) };
+	}
+
+	setLinesOff(graph: OwnedRef, next: GraphHiddenLines): void {
+		const linesOff = { ...this.#current.linesOff };
+		if (next.kinds.size === 0 && next.labels.size === 0) delete linesOff[graph];
+		else linesOff[graph] = { kinds: [...next.kinds], labels: [...next.labels] };
+		this.set('linesOff', linesOff);
 	}
 
 	/** How that folder was last being read, or null where nothing was kept for

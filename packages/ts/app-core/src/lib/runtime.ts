@@ -28,11 +28,17 @@ import type {
 	BuildStanding,
 	ChatAgent,
 	ChatEvent,
+	ChatSurface,
 	ChatThread,
 	ChatToolAnswer,
 	DidSyr,
 	OwnedRef,
+	ServeCall,
+	ServeReach,
+	Serving,
 	SloppyToolCall,
+	SpeechAsked,
+	SpeechHeard,
 	StandingDraft,
 	Ulid
 } from '@sloppy/types';
@@ -149,6 +155,93 @@ export interface TabsAccess {
 }
 
 /**
+ * The folders open here served read-only to a headset —
+ * docs/ARCHITECTURE.md § "A headset beside the desk". The shell keeps the
+ * desk's key, pairs headsets and carries lines; what each line is answered
+ * with is app-core's, through `servingProjects` in `@sloppy/local`.
+ *
+ * Every act here REJECTS with words for the person in its message.
+ */
+export interface ServeAccess {
+	/** Serve as far as `reach`, showing no code; `relay` is one a person named
+	 *  for `anywhere`. Starting while serving at the same reach answers what is
+	 *  already served; at another, serves anew. */
+	start(reach: ServeReach, relay?: string): Promise<Serving>;
+	/** Show a fresh code in place of any shown before, accepted for
+	 *  `SERVE_PAIR_WINDOW_MS` or until one headset pairs by it. REJECTS with
+	 *  words where nothing is served. */
+	pair(): Promise<Serving>;
+	/** Let every headset go and stop serving; serving nothing is not a failure. */
+	stop(): Promise<void>;
+	/** What is served now; undefined while nothing is. */
+	status(): Promise<Serving | undefined>;
+	/** Forget a paired headset by its id, so it pairs by the code again. */
+	forget(id: string): Promise<void>;
+	/** Told every line a paired headset sends. Returns the disposer. */
+	calls(on: (call: ServeCall) => void): () => void;
+	/** One line back on `connection`; a connection since closed is not a failure. */
+	answer(connection: string, line: string): Promise<void>;
+	/** One line on `connection` that answers nothing it sent — a
+	 *  `ServeNotification`; a connection since closed is not a failure. */
+	notify(connection: string, line: string): Promise<void>;
+	/** Told once each connection a headset was on has gone, by the id its
+	 *  calls came with. Returns the disposer. */
+	closed(on: (connection: string) => void): () => void;
+}
+
+/**
+ * Turning a recording into words on this device, with the speech agent the
+ * person chose — docs/ARCHITECTURE.md § "A headset beside the desk". Nothing of
+ * the recording is kept.
+ */
+export interface SpeechAccess {
+	/** What `wav` says: `SPEECH_RATE` a second, mono, 16-bit PCM. REJECTS with
+	 *  words for the person, the agent's own where it said some. */
+	hear(asked: SpeechAsked, wav: Uint8Array): Promise<SpeechHeard>;
+}
+
+/** What a `program` speech agent needs on this device, as Settings → AI asks. */
+export interface SpeechProgramAccess {
+	/** Whether the program is on this device. */
+	present(): Promise<boolean>;
+	/** A model file the person picks, as this platform spells its path.
+	 *  Undefined is none picked. */
+	pickModel(): Promise<string | undefined>;
+}
+
+/** What the person has said about this computer's own speech recognition
+ *  hearing them; `undecided` is not asked yet. */
+export type SpeechSystemAllowed = 'authorized' | 'denied' | 'restricted' | 'undecided';
+
+/** This computer's own speech recognition and microphone, as Settings → AI,
+ *  the chat's composer and a headset ask. */
+export interface SpeechSystemAccess {
+	/** Whether this computer has a recogniser the person could allow. */
+	present(): Promise<boolean>;
+	/** What the person said about the recogniser, without asking them. */
+	allowed(): Promise<SpeechSystemAllowed>;
+	/** Asks the person about the recogniser the first time only, and answers
+	 *  what they said. */
+	authorize(): Promise<SpeechSystemAllowed>;
+	/** What the person said about the microphone, without asking them. */
+	microphone(): Promise<SpeechSystemAllowed>;
+	/** Asks the person about the microphone the first time only, and answers
+	 *  what they said. */
+	allowMicrophone(): Promise<SpeechSystemAllowed>;
+}
+
+/** Recording the person from this device's microphone, one recording at a
+ *  time. */
+export interface SpeechRecorderAccess {
+	/** Starts recording, asking the person first where they were never asked.
+	 *  REJECTS with words for the person. */
+	start(): Promise<void>;
+	/** The recording so far, ended: a WAV of mono 16-bit PCM at `SPEECH_RATE`,
+	 *  at most `SPEECH_LONGEST_MS` of it. REJECTS with words for the person. */
+	stop(): Promise<Uint8Array>;
+}
+
+/**
  * A draft of the notes: a copy of the folder that a chat writes into, standing
  * apart from the one somebody has open until they merge it or discard it —
  * docs/ARCHITECTURE.md § "Asking a tool to write the notes".
@@ -179,8 +272,9 @@ export interface DraftAccess {
 	 *  is one, and otherwise a new one whose notes are the folder's as they
 	 *  stand, kept as the draft's first version — so
 	 *  {@link StandingDraft.from} is that version and not whichever one the
-	 *  folder was last kept at. */
-	start(id: Ulid): Promise<StandingDraft>;
+	 *  folder was last kept at. `root` is the folder to copy, as the platform
+	 *  spells one; **absent is the one in front of somebody**. */
+	start(id: Ulid, root?: string): Promise<StandingDraft>;
 	/** The draft gone, both halves of it, with nothing of it left behind. The
 	 *  folder in front of somebody is untouched either way, and a draft that is
 	 *  not there is not a failure. */
@@ -356,6 +450,10 @@ export interface ChatAsked {
 	/** Whether the agent may read the web while it answers. **Absent is that
 	 *  it may.** Fixed for the session: a change reaches the next one opened. */
 	reachesWeb?: boolean;
+	/** Where the person is talking from, which decides the acts the session is
+	 *  served — `HEADSET_ONLY_TOOLS` in `@sloppy/types` only on `headset`, with
+	 *  `HEADSET_CHAT_BRIEF` beside the chat's own brief. **Absent is `desk`.** */
+	surface?: ChatSurface;
 	/** What the conversation was so far, in words, for an agent that cannot pick
 	 *  the one asked for up: the shell says it before the first thing said,
 	 *  into the conversation it opens in that one's place, and nowhere else.
@@ -555,6 +653,25 @@ export interface AppRuntime {
 	 *  a time, and nothing about tabs is put in front of anybody.
 	 *  {@link TabsAccess} declares every act. */
 	tabs?: TabsAccess;
+	/** Serving the folders open here to a headset — a shell that defines it
+	 *  also defines {@link AppRuntime.vault} and {@link AppRuntime.placeFiles}.
+	 *  Absent → this platform cannot listen on the network, and the surface
+	 *  says serving is done from the Sloppy app on a computer or tablet.
+	 *  {@link ServeAccess} declares every act. */
+	serve?: ServeAccess;
+	/** Turning a reader's voice into words on this device. Absent → this
+	 *  platform cannot, and a headset asking is told the desk has no speech set
+	 *  up. {@link SpeechAccess} declares every act. */
+	speech?: SpeechAccess;
+	/** Hearing with a program on this device. Absent → no program can hear
+	 *  here, and it is not offered. */
+	speechProgram?: SpeechProgramAccess;
+	/** Hearing with this computer's own recogniser. Absent → this platform has
+	 *  none, and it is not offered. */
+	speechSystem?: SpeechSystemAccess;
+	/** Recording from this device's microphone. Absent → nothing here records,
+	 *  and the chat offers no microphone of its own. */
+	speechRecorder?: SpeechRecorderAccess;
 	/** The identities this device holds, and the three ways one arrives —
 	 *  a shell that defines it also defines {@link AppRuntime.vault}. Absent →
 	 *  this platform keeps no identity of its own, so nothing about holding,
@@ -741,6 +858,11 @@ export const runtime = {
 	webOrigin: (): string | undefined => current.webOrigin?.(),
 	vault: (): VaultAccess | undefined => current.vault,
 	tabs: (): TabsAccess | undefined => current.tabs,
+	serve: (): ServeAccess | undefined => current.serve,
+	speech: (): SpeechAccess | undefined => current.speech,
+	speechProgram: (): SpeechProgramAccess | undefined => current.speechProgram,
+	speechSystem: (): SpeechSystemAccess | undefined => current.speechSystem,
+	speechRecorder: (): SpeechRecorderAccess | undefined => current.speechRecorder,
 	identities: (): IdentityAccess | undefined => current.identities,
 	history: (): History | undefined => current.history?.(),
 	project: async (): Promise<Files | undefined> => current.project?.(),

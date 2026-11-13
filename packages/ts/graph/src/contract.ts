@@ -5,7 +5,9 @@
 import {
   assignTagHueSlots,
   type DidSyr,
+  EDGE_KINDS,
   type EdgeDirection,
+  type EdgeKind,
   type EdgeStroke,
   type NodeView,
   type OwnedRef,
@@ -61,6 +63,64 @@ export function edgeLooksByPair(
     if (!byPair.has(key)) byPair.set(key, look);
   }
   return byPair;
+}
+
+/** The row a hand link nobody labelled is counted under and turned off by. */
+export const UNLABELLED_LINE = "";
+
+/**
+ * The lines a reader turned off: every line of a kind in `kinds`, and every
+ * hand link whose label is in `labels` — {@link UNLABELLED_LINE} for the ones
+ * with none. A label names a relation on a hand link only; the same words on
+ * another kind of line turn nothing off. DESIGN.md § "Lines a reader can turn
+ * off".
+ */
+export interface GraphHiddenLines {
+  kinds: ReadonlySet<EdgeKind>;
+  labels: ReadonlySet<string>;
+}
+
+/** Whether a line of `kind` labelled `label` is one {@link GraphHiddenLines}
+ *  turned off. Absent hides nothing. */
+export function lineHidden(
+  hidden: GraphHiddenLines | undefined,
+  kind: EdgeKind,
+  label: string | undefined,
+): boolean {
+  if (hidden === undefined) return false;
+  if (hidden.kinds.has(kind)) return true;
+  return kind === "link" && hidden.labels.has(label || UNLABELLED_LINE);
+}
+
+/**
+ * The lines the canvas has to draw, by what they are, hidden ones included:
+ * how many of each kind, and how many hand links carry each label — most first,
+ * then by name, with {@link UNLABELLED_LINE} for the ones that carry none.
+ */
+export interface GraphLines {
+  kinds: Readonly<Record<EdgeKind, number>>;
+  labels: ReadonlyMap<string, number>;
+}
+
+/** No lines at all — what a canvas with nothing on it counts. */
+export function noLines(): GraphLines {
+  return {
+    kinds: Object.fromEntries(EDGE_KINDS.map((kind) => [kind, 0])) as Record<
+      EdgeKind,
+      number
+    >,
+    labels: new Map(),
+  };
+}
+
+/** Whether two counts say the same thing, label order included. */
+export function sameLines(a: GraphLines, b: GraphLines): boolean {
+  if (EDGE_KINDS.some((kind) => a.kinds[kind] !== b.kinds[kind])) return false;
+  if (a.labels.size !== b.labels.size) return false;
+  const theirs = [...b.labels];
+  return [...a.labels].every(
+    ([label, count], at) => theirs[at][0] === label && theirs[at][1] === count,
+  );
 }
 
 /** The notes a picking canvas outlines, so a tap is answered before it lands. */
@@ -375,6 +435,29 @@ export interface GraphSurfaceProps {
    */
   edgeLooks?: readonly GraphEdgeLook[];
   /**
+   * The lines the reader turned off, which draw nothing at all and answer no
+   * tap — not dimmed, because hiding is the reader's choice and not a question
+   * of the graph. Absent turns nothing off. A line a difference strikes is
+   * that comparison's answer and is drawn whatever is turned off.
+   */
+  hiddenLines?: GraphHiddenLines;
+  /**
+   * The lines the canvas has to draw, counted afresh whenever what it draws
+   * changes and raised only when the count does — what a host lists the
+   * reader's switches off. Absent asks for no count.
+   */
+  onLines?: (lines: GraphLines) => void;
+  /**
+   * How tightly hand links are bundled along the tree, in [0, 1] — DESIGN.md
+   * § Edges, "Bundled along the tree". Absent draws every line straight.
+   */
+  bundle?: number;
+  /**
+   * The room between the marks, as a factor on every distance the layout
+   * decides — DESIGN.md § Edges, "Room between marks". Absent is 1.
+   */
+  spread?: number;
+  /**
    * The tags the reader selected, in the order they selected them — which lead
    * the ranking the hues go out in ({@link drawnSetsOf}), so selecting a tag
    * brings it to the first slot rather than being how colour arrives.
@@ -478,17 +561,33 @@ export interface GraphSurfaceProps {
   wallpaper?: GraphWallpaper;
   onOpenNode: (ref: OwnedRef) => void;
   /**
+   * The lines lit to be read before they are edited — DESIGN.md § Edges: each
+   * drawn in full ink with every other line receding, the marks at its ends
+   * orbited as a chosen mark is and titled, and one caption saying how many
+   * are lit where more than one is. Absent, and empty, light nothing.
+   */
+  litEdges?: readonly (readonly [OwnedRef, OwnedRef])[];
+  /**
    * A tap that landed on a LINE rather than on a mark, naming the two notes it
    * joins in the order the canvas drew it. The pair is unordered as far as the
    * answer goes — a look on either note is the line's — so a host opening a
-   * sheet reads both ends.
+   * sheet reads both ends. `bundle` is every line the tap landed on: this one
+   * first, then every hand link bundled through the same stretch of the tree.
    *
    * Absent leaves a tap on a line doing nothing, which is every canvas today.
    * It stays quiet while {@link GraphSurfaceProps.picking}, a chosen set or a
    * {@link GraphSurfaceProps.difference} is up: those already say what a tap
    * means.
    */
-  onEdge?: (from: OwnedRef, to: OwnedRef) => void;
+  onEdge?: (
+    from: OwnedRef,
+    to: OwnedRef,
+    bundle: readonly [OwnedRef, OwnedRef][],
+  ) => void;
+  /** A tap on bare paper: no mark under it and no line within reach. Said
+   *  while notes are being chosen too; quiet while the canvas is pointing or
+   *  comparing, and wherever {@link onEdge} is not given. */
+  onPaper?: () => void;
   /** Draw this mega-node's subtree instead of folding it. */
   onExpand: (ref: OwnedRef) => void;
   /** Fold this node's subtree into a mega-node. */
@@ -592,7 +691,7 @@ export function drawnRefs(
 
 /** Where a ref is drawn: itself, or the mega-node it folded into. A ref outside
  *  `nodes` is left as it is. */
-function drawnAs(
+export function drawnAs(
   nodes: readonly NodeView[],
   collapsed: ReadonlySet<OwnedRef>,
 ): (ref: OwnedRef) => OwnedRef {

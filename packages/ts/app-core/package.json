@@ -11,7 +11,8 @@
 		"!dist/**/*.spec.*"
 	],
 	"sideEffects": [
-		"**/*.css"
+		"**/*.css",
+		"**/serving/served.js"
 	],
 	"exports": {
 		".": {

@@ -37,6 +37,7 @@ sloppy/
 │       ├── api/     @sloppy/api     — NestJS backend (hosted & self-hostable)
 │       ├── web/     @sloppy/web     — SvelteKit SPA shell
 │       ├── native/  @sloppy/native  — Tauri + SvelteKit shell (iOS, iPadOS, Android, desktop)
+│       ├── vr/                      — Godot 4.4 headset client (Quest); not a pnpm package
 │       └── landing/ @sloppy/landing — sloppy.sh, prerendered from bench/results
 ├── packages/
 │   └── ts/
@@ -3523,7 +3524,8 @@ relation themselves has offloaded nothing, and what holds it is the person readi
 rather than a narrower vocabulary. So: the notes this project already has, with their addresses,
 titles, tags, the lines drawn between them by hand, what each springs out of and, where
 asked, the places they are about, narrowed to a place or to tags where asked; the notes some
-words reach, with the line that matched and, where asked, the writing around it; one of them
+words reach, with the line that matched and, where asked, the writing around it; the notes a
+description fits, best first, as somebody would say it rather than as search terms; one of them
 read whole or by the sections named, with its headings, the looks it sets on its lines and
 where the code under each of its anchors stands; one read whole with the
 notes around it; a brief for a task; where a note, or one about to be written, would best
@@ -3534,7 +3536,7 @@ written about a place;
 a note carried under or after another; tags put on a note and taken off it; the number a
 person cites a note by, written or taken off; a line drawn between two notes and taken
 off; what a line says and how it and a mark are drawn; a note put in the bin, and one taken
-back out. Ten of those nineteen read and nine write, and `chatToolWrites` is the one
+back out. Eleven of those twenty read and nine write, and `chatToolWrites` is the one
 statement of which is which — every surface that needs to know asks it rather than listing
 names.
 
@@ -4131,12 +4133,15 @@ under the container's own folder and is kept out of the history with everything 
 is this device's alone (`KEPT_OUT` in `@sloppy/local`). A file past the bound is refused in those
 words — too big to send — and never by a number nobody chose.
 
-**Voice is the system keyboard's, and Sloppy builds no recorder.** The composer is a text field,
-so dictation is already on it wherever the keyboard has it, and what somebody dictates goes
-through the same keyboard they dictate into everywhere else rather than through anything of ours.
-What is missing is only that somebody knows it is there, which is a hint where it helps them find
-it — a microphone of our own would be a second, worse way to do what the keyboard already does,
-and a transcription seam nobody asked for.
+**Voice is the keyboard's wherever the keyboard dictates, and the desk's own microphone where the
+computer can hear.** The composer is a text field, so dictation is on it wherever the keyboard
+has it. A computer's keyboard often has none, so where the shell records (`SpeechRecorderAccess`,
+`speechRecorder` on `AppRuntime`: the speech plugin's `start_recording` / `stop_recording`, a WAV
+in the shape a headset sends, a minute at most) and the desk can hear, the composer has a
+microphone: what it records is heard by the same speech agent a headset's voice is
+(§ "A headset beside the desk"), and the words land in the composer, never sent on their own.
+The first recording asks the person about the microphone; Settings → AI says whether this
+computer may listen and hear, and asks on the spot.
 
 **How much detail somebody wants is part of what they said.** There is no depth field: the
 point of putting an agent behind this rather than a template engine is that it reads the
@@ -4167,7 +4172,10 @@ it once for everyone working in it: this one commits a `.mcp.json` at its root n
 `sloppy` server, so an assistant opened here finds the notes without being told where they
 are.
 
-**It serves the one vocabulary through the one implementation.** The acts are the nineteen
+**It serves the one vocabulary through the one implementation.** The loop that reads a
+message and answers it is `serveMcp` in `@sloppy/local` (`serving.ts`), the one the desk
+serves a headset with (§ "A headset beside the desk"); the command adds only
+reading its own input. The acts are the twenty
 § "Asking a tool to write the notes" lists — `CHAT_TOOLS` and `CHAT_TOOL_SPECS` in
 `@sloppy/types`, advertised by `advertisedChatTools` — with the same words to the agent and
 the same arguments, and what each one does is the code in `@sloppy/local` the app's chat
@@ -4189,7 +4197,7 @@ compare them as configurations, and `--profile lean` is all three.** `sloppy mcp
 lean; `--profile full` is none of them — every act, in the chat's words, answered as the chat
 reads it — and is what the app's own chat is served. Lean is the default because the benchmark
 in `bench/` found it scoring within its noise of full on every model and project it ran both
-on, for fewer tokens. `Serving` and
+on, for fewer tokens. `ServingShape` and
 `servedChatTools` in `@sloppy/types` (`chat-served.ts`) are the vocabulary; an agent pays for
 the advertised tools on every turn it takes, and for every answer on every turn after it.
 
@@ -4223,7 +4231,7 @@ the advertised tools on every turn it takes, and for every answer on every turn 
   graph named by its ULID alone — and a ULID it is called with read back as that note — a
   section as its markdown without emphasis, escapes or link targets into code, where the code
   under each anchor stands written after its lines, and nothing empty except an empty listing.
-  `terse.ts` in `@sloppy/cli` is the whole of it; an answer in words is left as it is.
+  `terse.ts` in `@sloppy/local` is the whole of it; an answer in words is left as it is.
 - **`--tools core` advertises the acts ordinary work reaches for, `find_code` among them, in
   a sentence each**, an argument described only where its name does not say it and its schema
   kept to its type, its choices and the bounds a plausible call could miss — the call is still
@@ -4307,6 +4315,227 @@ under it (§ Tooling), so what the command wrote is in the graph the next time t
 comes back, by the same path a `git pull` takes. Both write as the container, so what it
 reads there is by a writer it already knows rather than a second identity, and nothing has
 to be running for an assistant to write a note.
+
+## A headset beside the desk
+
+**A person turns on serving at their desk and reads the folders they have open there from a
+headset** — on the same network by default, from anywhere if they choose. The headset lists
+the projects served, draws one as a field in the room (DESIGN.md § "The field in a room"), and
+opens a note on the palette held in the other hand. They can speak to the desk's own chat from
+it, which takes them to a note they describe. Nothing is written from the headset but
+what the chat writes into its thread's draft, as it does from the desk.
+
+**One transport everywhere: an iroh connection, dialled by the desk's key.** The desk and the
+headset each hold an iroh endpoint — a QUIC endpoint whose address is an
+ed25519 public key — and a headset connects with the ALPN `sloppy/serve/1` (`SERVE_ALPN`),
+opens one bidirectional stream, and sends one JSON-RPC message per line on it. The messages
+are `initialize`, `tools/list` and `tools/call`, exactly as § "An assistant outside the app"
+answers them, and three things a network adds: a serve-level `projects/list` answering
+`{ projects: [{ id, name }] }`, a top-level `project` on any other message naming which served
+project it is asked of, absent being the first, and `pair`. `ServeMessage`, `ServedProject`,
+`Serving`, `PairedHeadset` and `ServeCall` in `@sloppy/types` (`serve.ts`) are the wire.
+A headset reads the field with `field/list` (`FIELD_LIST`, answered as `FieldListed`): every
+note of the named project's graph, compact and unbounded by a chat answer, paged by `after` and
+`next` only past 5,000 notes; a note whose mark wears a picture says `picture: true`, and
+`picture/read` (`PICTURE_READ`, `params.note`) answers that picture as a PNG no more than 256
+pixels on its longer side, base64, or `{ picture: null }`. The serving loop asks the page that
+serves for the picture made small (`PictureShrink`, a canvas in the desk app), so a surface
+that cannot draw answers null rather than sending the picture whole. There is no port, no host
+and no address in any of it: what a headset holds is the desk's endpoint id, and the network
+finds where that is.
+
+**A headset pairs by a code once, and by its key after.** A desk keeps its own key in its
+private data, made once, so it is the same desk every time it serves; it keeps the ids of the
+headsets it has paired beside it (`paired.json`) and lets a person forget one. A connection
+from a headset it has paired is let straight in. **A desk shows no code at rest**: a person
+asks for one with "Pair a headset" (`ServeAccess.pair`, the `serve_pair` command), and the six
+digits it makes are accepted for two minutes (`SERVE_PAIR_WINDOW_MS`) or until one headset
+pairs by them, whichever comes first, `Serving.pairing` carrying the code and when it closes
+while it is open; asking again replaces it. From a headset not paired before, the first line
+must come within ten seconds (`SERVE_FIRST_LINE_MS`) and be
+`{"method":"pair","params":{"code":"NNNNNN"}}`, with what the headset calls itself in
+`params.name` if it likes. It is answered `{ paired: true }` and the headset is remembered;
+the wrong code, a code while none is shown, any other line or the ten seconds running out is
+answered in words with error `-32001` and the connection is let go. Any other first line is
+refused with `data: { pairing }` (`ServeNotPaired`) saying whether a code is shown now, so the
+headset puts up its keypad only where something could be typed into it and otherwise says to
+ask the desk for a code. `serveProjects` in `@sloppy/local` (`pairingAnswer`) is that rule over
+any transport that carries lines, and tells the headset it paired only once the transport has
+remembered it; `serve.rs` holds the same rule and the same words, because the desk answers
+`pair` before a line ever reaches the webview. A headset remembers the desks it has paired the
+same way, in its own `user://`.
+
+**How far a desk reaches is the person's choice, kept per device: `local` or `anywhere`
+(`ServeReach`).** Whether it serves is kept beside it: serving turned on starts again at that
+reach when Sloppy opens, serving the folders then open, until the person turns it off; a
+pairing code never outlives the session that showed it.
+
+- **`local`, the default**: no relay, no port mapping, and no lookup but mDNS on this network,
+  which announces the desk under the service `sloppy` with its name — the machine's name,
+  which `Serving.name` carries so the desk's settings can say it — so a headset finds it by
+  name. Nothing leaves the local network.
+- **`anywhere`** adds a relay: the n0 public relays by default, or one a person names (a
+  self-hosted `iroh-relay`, on a VPS or behind a VPN). The desk then also shows a ticket, its
+  whole endpoint address as one string, as text and as a QR for a headset not on this
+  network; mDNS still finds it on the network it is on. With the public relays the desk
+  also publishes where it is to n0's public address book, under its id and never its name,
+  so a paired headset finds it again after its relay changes; with a relay a person named it
+  publishes nothing, and the ticket is what carries the way to it.
+
+Every connection is end to end encrypted by iroh in both reaches: **a relay sees that the desk
+and a headset talked, never what they said**, and the public relays and address book learn the
+desk's id and where it is reachable. The surface where the reach is chosen says that, once.
+
+**One loop answers every line, wherever it is served from.** `servingProjects` in
+`@sloppy/local` (`serving.ts`) holds one `serveMcp` loop per project, so each project answers
+its own queued lines in the order they came and two projects never wait on each other, and a
+line is taken with the answer it goes back to and the connection it came on, so several
+connections share it. **The loop dispatches by a table of methods** (`ServeMethod`: `handle(params,
+project, connection)` answering the result or throwing `ServeRefused` with a code and words for
+the person, and `queued`, whether it waits behind the project's earlier lines): `projects/list`
+and `look/read` unqueued and answered whichever project is named, `field/list` and
+`picture/read` queued, and the MCP messages the fallback, queued. A surface adds methods beside
+those through `ServingOptions.methods`, never replacing one; the desk's are registered in
+app-core's `serving/` (`registerServeMethods`), one file a capability. A method reaches the
+connection it was asked on (`ServeCaller`) and can send it a line that answers nothing —
+a notification, `ServeNotification` — until the loop is told the connection has gone
+(`closed`). **Everything served
+this way is read-only twice over**: every act `CHAT_TOOL_SPECS` marks as writing is left out,
+neither advertised nor answered (`WRITING_ACTS`), and every act runs against `placeApi`'s
+reading store, so nothing any act does lands and a folder holding no graph is said rather than
+started. The transport beside it differs by place and carries lines, nothing more:
+
+- **The desk app.** `src-tauri/src/serve.rs` in the native shell runs the endpoint (the `iroh`
+  crate, `iroh-mdns-address-lookup`, `iroh-tickets`), keeps `serve.key` and `paired.json` in
+  the app's data folder under `serve/`, pairs, and hands each paired line to the webview as a
+  `serve:call` event `{ connection, line }`, and tells it when a paired connection has gone with
+  `serve:closed { connection }`; the webview answers with `serve_answer(connection, line)`, which
+  carries a notification the same way (`ServeAccess.answer` and `ServeAccess.notify`). `serve_start(reach, relay?)`, `serve_stop`,
+  `serve_status` and `serve_forget(id)` are the rest. `ServeAccess` on `AppRuntime` is the
+  seam, `tauriServe` in the shell implements it, and `serving` in app-core's
+  `stores/serving.svelte.ts` serves every open tab's folder by its folder's name — the one
+  folder open, on a shell holding no tabs — again whenever the tabs change, and reads what is
+  served each second. The web shell declares no `ServeAccess`, and the surface says serving is
+  done from the Sloppy app on a computer or tablet.
+- **The headset.** `IrohLink`, a GDExtension in Rust (`apps/sloppy/vr/rust/`), is the endpoint:
+  it listens for desks with mDNS and announces nothing, dials an id or a ticket, and carries
+  lines on Godot signals. On Android it holds the Wi-Fi multicast lock, without which the radio
+  drops the answers that name a desk, from when it starts listening or dials an id until a link
+  is open.
+
+**Speaking to the desk.** A headset records the reader's voice while a button is held and the
+desk turns it into words and carries its chat. Every one of
+these is a method beside the notes, in `@sloppy/types`' `serve.ts`, refused with
+`SERVE_REFUSALS` and words for the person:
+
+- **`speech/hear { audio, language? }` → `{ said }`**, unqueued. `audio` is a WAV, base64, at
+  16 kHz (`SPEECH_RATE`), mono, 16-bit, no longer than a minute (`SPEECH_LONGEST_MS`): the
+  headset resamples what its microphone gives to that before it sends it (`interaction/voice.gd`),
+  and the transport carries it as one line like any other. The desk hears it with the speech
+  agent the person chose in its AI settings (`SPEECH_AGENTS`: the computer's own recogniser
+  (`system`), a `program` on the desk, or an endpoint a key the desk holds opens —
+  `speechAgentReach`, `SPEECH_ENDPOINTS`), through `SpeechAccess` on `AppRuntime`, which the
+  native shell implements and the web shell does not. **Where the person chose none, the desk
+  hears with its own recogniser wherever the computer has one** (`speechChosen`), so a desk hears
+  with nothing set up; `NO_SPEECH` is only a desk where nothing can. The system agent is the
+  vendored `tauri-plugin-speech` (`src-tauri/vendor/`): on macOS `SFSpeechRecognizer` on a file
+  removed when it answers, held to on-device recognition — a Mac whose recogniser would send
+  the voice to Apple counts as having none — and on every other platform today `available()` is
+  false and Settings → AI says this computer cannot hear yet.
+  `SpeechSystemAccess` (`speechSystem` on `AppRuntime`) answers whether it is here and whether
+  the person has allowed it; the first recording it hears asks them, once, and a refusal is
+  `SPEECH_FAILED` with where in the system's settings to allow it. A program agent is `whisper-cli`, found where a chat's program is (or named by
+  `SLOPPY_SPEECH_PROGRAM`), run on a model file the person picks and handed the recording as a
+  file that is removed when it answers; a key agent's key is held by `DeviceAiKeys` beside the
+  chat's, under the agent's name, and opened by the shell for the one recording it goes with.
+  Which agent hears, and the sentences it is refused in, is `hear` in app-core's `hearing.ts`,
+  shared with the desk's own composer.
+  `src-tauri/src/speech.rs` is told an endpoint and a key, never which provider. Refused `NO_SPEECH` where none is set up, saying where to set it up; `SPEECH_TOO_LONG`,
+  `SPEECH_UNREADABLE`, and `SPEECH_FAILED` with the agent's own sentence where it gave one.
+- **The chat**, all unqueued, so a turn never holds up the field: `chat/threads` → the threads
+  about the served folder, newest first, the archived last, each saying whether it is answering
+  now; `chat/open { thread? }` → `{ thread: { id, name, turns } }`, the last forty turns
+  (`CHAT_OPEN_TURNS`) with each said block cut at 4,000 characters (`CHAT_SAID_CUT`), absent
+  `thread` starting one that is kept and named on its first `chat/say`, and the connection
+  hearing the thread from then; `chat/say { thread, said }` → `{}` at once, the answer arriving
+  as `chat/event { thread, event }` notifications, `event` exactly the desk's `ChatEvent`;
+  `chat/stop` and `chat/close`. Refused `ANSWERING` under the desk's own rule of one thread
+  answering at a time where the person has not let the chat go on in the background, and
+  `NO_AGENT` where the desk has no assistant.
+- **`view/show { note, title, address? }`**, a notification: the assistant took the reader to a
+  note. A session opened from a headset (`ChatAsked.surface: 'headset'`) is served
+  `show_note`, the one act in `HEADSET_ONLY_TOOLS`, and told the reader is standing in the graph
+  and to find the note they ask for with `find_note` (`HEADSET_CHAT_BRIEF`) — the act every
+  surface has that ranks the notes a description fits from their titles, tags, addresses and
+  writing (`find.ts` in `@sloppy/local`), so a spoken "take me to the one about…" is one call
+  rather than a guess at search terms. `show_note` answers what the reader is now looking at, and whoever serves
+  the headset sends `view/show` to the connection driving that thread. A desk session, a build
+  and `sloppy mcp` are never served it, and the served acts refuse it by name.
+
+**The chat a headset speaks to is the desk's chat.** The live sessions belong to one engine in
+app-core that the chat panel and the serving loop both read: it opens them through
+`ChatAccess`, runs their acts on the thread's draft, writes their turns to the thread file as
+the panel does, and tells every listener every event — the panel for the thread it shows, a
+connection for each thread it opened. The panel keeps what is the panel's: the thread in front
+of the person, what is selected, and the panels. So a thread started from a headset is in the
+desk's list, answers there as answering, and holds what was said when the headset comes off.
+A headset's thread works in a draft of the folder the headset is reading, whichever folder is
+in front of the desk, and the headset closing it or going leaves it the way the panel leaves a
+thread: its conversation waits for whoever comes back to it, unless chats go on in the
+background, and is not left at all while the desk or another headset still has it open. The
+engine is `chat-engine.svelte.ts`; the methods are `serving/chat.ts`.
+
+**Only the desk serves.** A terminal serves an assistant (§ "An assistant outside the app") and
+never a headset, so the one server a headset is tested against is `serve.rs` itself: the
+headset's tests start `examples/desk.rs` in the native shell's crate, which runs `serve.rs`'s
+listener with a fixed code and answers `projects/list`, `look/read`, `look/list`, `field/list`,
+`picture/read`, `tools/call`, `speech/hear` and the chat's methods from canned
+answers, sending a canned turn as `chat/event`s and a `view/show` after a `chat/say`; a desk
+started `mute` has no speech set up.
+
+**What leaves the device** is the notes of the folders served — what the read acts answer,
+their code included where `find_code` and `read_note` quote it — and the look the desk is
+wearing, to a headset paired with the code, until serving is turned off; in `anywhere`, through
+a relay that cannot read them. Nothing is listening while it is off. **Speaking adds exactly
+two things.** The reader's voice while the button is held goes to the desk, which turns it into
+words with the speech agent the person chose — on the desk where it is the computer's own
+recogniser or a program there, to that provider where it is one a key opens — and keeps no copy
+of it. What is said in a chat lands in the desk's thread files and the thread's draft, as it
+does from the desk, and goes to the assistant the person chose for the chat. The headset keeps
+none of it. **The night room's published skies** are asked for from the headset, of the place that
+publishes them and of nothing else: the list at most once a day while the Skies page is open, each
+small picture shown once, and a sky the person chooses once — nothing of the notes or the person
+goes with them, and what comes back is kept on the headset (`room/skies.gd`).
+
+**The headset derives everything it draws.** `apps/sloppy/vr` is a Godot 4.4 project in
+GDScript (mobile renderer, OpenXR, the Godot OpenXR Vendors plugin for Meta), outside the pnpm
+workspace; its README says how it and its extension are built and deployed. Four autoloads carry it: `Client`
+(`IrohLink` underneath, one request id per call, pairing where the desk asks for the code,
+reconnecting with backoff, the desks paired remembered in `user://`, a line the desk sends
+unasked said as `heard(method, params)`), `Views` (one view in front at a time, `res://views/<name>.tscn`, with a stack for
+back), `Field`, and `Voice` (the microphone while a button is held, made into the recording the
+desk hears, kept nowhere). `Field.derive` places every note from `field/list`'s answer alone — what it
+sprang out of and its ref — in the arrangement the reader chose (DESIGN.md § "The field in a
+room"), so no coordinate is ever sent and a label moves no mark. Positions and folds are this
+reader's for this session and are kept nowhere; how they have the field drawn — the
+arrangement, the room between marks, mark size, titles, pictures and the lines turned off
+per graph — is kept on the headset (`user://field.cfg`) and sent nowhere.
+
+**The headset draws in the desk's look.** A serve-level `look/read` (`LOOK_READ`) answers
+`LookServed`: what the desk's look file carries of the look it wears (DESIGN.md § "A look is a
+file") — its name, the look it is laid on, its palette where it carries one, its style, density,
+effects and three faces — from `lookServed` in app-core's `look-file.ts`, which the serving store
+hands `servingProjects` as `look`; a server given none answers that it shares no look. The room
+asks it each time the desk is reached and each time a project's field is shown, so the next field
+wears a change made on the desk. `look/look.gd` carries Sloppy's own five looks' tokens as a
+table, held to `app.css` by `look_test`, so one of them arrives as its id; reads a palette's
+`#hex` and `oklch()` tokens over the look under it; and works the ink out again for a room that is
+not the look's own paper. The faces are the app's own files, bundled in `apps/sloppy/vr/fonts/`
+with their licences. What the headset chose over the desk's look and the room it stands in are
+kept in its `user://room.cfg`, and nothing is written back to the desk. Beside it, `look/list`
+(`LOOK_LIST`, app-core's `serving/look.ts`, unqueued) answers every look the desk could wear as
+`LooksListed` — Sloppy's own five with the colours `app.css` paints them in, then every scheme the
+desk's picker offers through `dressed()` — so a scheme reads the same on the headset as on the desk.
 
 ## Building from the notes
 

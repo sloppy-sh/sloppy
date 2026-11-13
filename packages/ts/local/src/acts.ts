@@ -67,6 +67,7 @@ import {
   type RelatedNote,
   type RestoreNoteArguments,
   type SearchDetail,
+  type ShowNoteArguments,
   sectionHeading,
   type SnippetStanding,
   splitOwnedRef,
@@ -109,6 +110,7 @@ import {
 } from "./code-index.js";
 import { containerDataAt, containerOf } from "./container.js";
 import { type Files, keepingDataAt } from "./files.js";
+import { notesFitting } from "./find.js";
 import { LocalGraph } from "./graph.js";
 import {
   asListed,
@@ -219,13 +221,17 @@ export type ActFacts =
       act:
         | "list_notes"
         | "search_notes"
+        | "find_note"
         | "list_tags"
         | "list_bin"
         | "list_offers"
         | "find_code";
       count: number;
     }
-  | { act: "read_note" | "number_note" | "style_note"; note: NodeView }
+  | {
+      act: "read_note" | "number_note" | "style_note" | "show_note";
+      note: NodeView;
+    }
   | {
       act: "write_note";
       done: WriteDone;
@@ -396,6 +402,14 @@ async function performed(
       );
       return counted(foundAnswer(hits), "search_notes", hits.length);
     }
+    case "find_note": {
+      const fitting = await notesFitting(api, call.arguments.said);
+      return {
+        said: JSON.stringify(fitting),
+        facts: { act: "find_note", count: fitting.found.length },
+        touched: [],
+      };
+    }
     case "read_note":
       return await readNote(api, call.arguments, landOnCode, served.code);
     case "write_note":
@@ -432,7 +446,24 @@ async function performed(
       return await relate(api, files.root, call.arguments);
     case "find_code":
       return await findCode(api, call.arguments, served.code);
+    case "show_note":
+      return await showNote(api, call.arguments);
   }
+}
+
+/** Says what the reader is shown; whoever serves a headset carries them there. */
+async function showNote(
+  api: LocalApi,
+  asked: ShowNoteArguments,
+): Promise<ActAnswer> {
+  const note = await api.getNode(asked.note);
+  if (!note) return trouble(NO_NOTE, "no_note");
+  const where = note.address === undefined ? "" : ` (${note.address})`;
+  return {
+    said: `The reader is now looking at «${note.title}»${where}.`,
+    facts: { act: "show_note", note },
+    touched: [],
+  };
 }
 
 /** A listing, answered with how many it held where it held them all. */

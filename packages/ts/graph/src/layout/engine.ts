@@ -48,15 +48,23 @@ export class LayoutEngine {
   private readonly neighbours: number[][];
   private frozen: Particle[] = [];
   private frozenAround: number | null = null;
+  /**
+   * The simulation runs on the field as laid out at a spread of 1 and is drawn
+   * this many times larger. d3's quadtrees are not scale-invariant, so scaling
+   * the forces instead would settle a spread field into a different shape.
+   */
+  private readonly spread: number;
 
   constructor(start: LayoutStart) {
+    const spread = start.spread > 0 ? start.spread : 1;
+    this.spread = spread;
     this.particles = start.nodes.map((node, index) => ({
       index,
-      x: node.x,
-      y: node.y,
+      x: node.x / spread,
+      y: node.y / spread,
       radius: node.radius,
-      anchorX: node.anchorX,
-      anchorY: node.anchorY,
+      anchorX: node.anchorX / spread,
+      anchorY: node.anchorY / spread,
       anchorStrength: node.anchorStrength,
     }));
     this.buffer = new Float32Array(this.particles.length * 2);
@@ -64,7 +72,7 @@ export class LayoutEngine {
     const springs: Spring[] = start.edges.map((edge) => ({
       source: edge.source,
       target: edge.target,
-      distance: edge.distance,
+      distance: edge.distance / spread,
       strength: edge.strength,
     }));
 
@@ -110,6 +118,7 @@ export class LayoutEngine {
       .alphaMin(ALPHA_MIN)
       .alphaDecay(ALPHA_DECAY)
       .velocityDecay(VELOCITY_DECAY)
+      .alpha(start.alpha ?? 1)
       .stop();
   }
 
@@ -149,8 +158,8 @@ export class LayoutEngine {
     if (!particle) return;
     if (held) {
       this.freezeBeyond(index);
-      particle.fx = x;
-      particle.fy = y;
+      particle.fx = x / this.spread;
+      particle.fy = y / this.spread;
       if (this.simulation.alpha() < DRAG_ALPHA) {
         this.simulation.alpha(DRAG_ALPHA);
       }
@@ -202,8 +211,8 @@ export class LayoutEngine {
   /** `[x0, y0, x1, y1, …]`. The array is reused; copy it to keep it. */
   positions(): Float32Array {
     for (const particle of this.particles) {
-      this.buffer[particle.index * 2] = particle.x ?? 0;
-      this.buffer[particle.index * 2 + 1] = particle.y ?? 0;
+      this.buffer[particle.index * 2] = (particle.x ?? 0) * this.spread;
+      this.buffer[particle.index * 2 + 1] = (particle.y ?? 0) * this.spread;
     }
     return this.buffer;
   }

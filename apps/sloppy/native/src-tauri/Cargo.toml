@@ -14,6 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # The webview's side of the bridge, so the commands are exercised the way the
 # page calls them rather than only as functions.
 tauri = { version = "2.11.2", features = ["test"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
@@ -45,12 +46,18 @@ chrono = { version = "0.4", default-features = false, features = ["std", "now"] 
 # § "Asking a tool to write the notes". A path while it is being built here;
 # it becomes a version before this ships.
 tauri-plugin-crypto-hw = { path = "vendor/tauri-plugin-crypto-hw" }
+# The computer's own speech recognition, which hears a headset with nothing set
+# up — docs/ARCHITECTURE.md § "A headset beside the desk". macOS today.
+tauri-plugin-speech = { path = "vendor/tauri-plugin-speech" }
 # The sign-in round trip: out through opener, back through deep-link.
 tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"
 # An identity store answers only the origins it was set up for, and a webview is
 # never one of them, so what this app asks of one is asked from out here.
 tauri-plugin-http = "2"
+# A speech agent a key opens is asked over HTTPS. The same client the http
+# plugin already builds, with nothing added to it.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 # Where a graph lives is a folder somebody picks, and an identity another device
 # wrote is a file they pick.
 tauri-plugin-dialog = "2"
@@ -62,6 +69,16 @@ tauri-plugin-fs = "2"
 # it needs no async runtime beside Tauri's and no TLS: the socket is the
 # loopback, bound to a port the machine chooses.
 tiny_http = "0.12"
+# Serving the open folders to a headset is an iroh endpoint the headset dials by
+# this desk's key, found on this network by mDNS — docs/ARCHITECTURE.md § "A
+# headset beside the desk". Tauri already runs tokio; `gethostname` names the
+# desk and `getrandom` makes the pairing code.
+tokio = { version = "1", features = ["net", "sync", "rt", "macros", "time", "io-util"] }
+iroh = "=1.4.1"
+iroh-mdns-address-lookup = "=0.6.1"
+iroh-tickets = "=1.0.0"
+gethostname = "1.1"
+getrandom = "0.2"
 
 # A program the app starts reads the project by starting programs of its own, so
 # ending one signals the whole group rather than the program alone —

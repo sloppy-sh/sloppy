@@ -20,7 +20,9 @@ import {
   type Files,
   LocalApi,
   type NoteHere,
+  NO_NOTES_HERE,
   notesHere,
+  serveMcp,
   placeApi,
 } from "@sloppy/local";
 import {
@@ -36,7 +38,7 @@ import {
   KEY_SOURCE_KINDS,
   LEAN_SERVING,
   type OwnedRef,
-  type Serving,
+  type ServingShape,
   type Tag,
   TagSchema,
   TOOL_SETS,
@@ -49,7 +51,7 @@ import { codeReader } from "./code-reader.js";
 import { containerAt, heldAt } from "./folder.js";
 import { draft } from "./draft.js";
 import { init, InitRefused } from "./init.js";
-import { NO_NOTES_HERE, ownVersion, serveMcp } from "./mcp.js";
+import { ownVersion } from "./mcp.js";
 import { NodeFiles } from "./node-files.js";
 import {
   DEFAULT_BUDGET_USD,
@@ -495,7 +497,7 @@ const PROFILES = ["lean", "full"] as const;
  *  The words to say where one names something there is none of. */
 function servingAsked(
   asked: Asked,
-): (Serving & { without: ChatToolName[] }) | string {
+): (ServingShape & { without: ChatToolName[] }) | string {
   const profile = oneOf(asked, "profile", PROFILES, "lean");
   if (profile === undefined) return sayWhich("profile", PROFILES);
   const from = profile === "full" ? DEFAULT_SERVING : LEAN_SERVING;

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { BUNDLE_STRENGTH, FIELD_SPREAD } from '@sloppy/graph';
 import type { OwnedRef } from '@sloppy/types';
 import type { SchemeDressing, SchemeTokens } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -443,6 +444,27 @@ describe('the saved look', () => {
 		}
 	});
 
+	// DESIGN.md § Edges, "Bundled along the tree": a view choice kept on the
+	// device, like the ground.
+	it('keeps whether hand-drawn lines are bundled, and how tightly', () => {
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({ bundleLines: true, bundleStrength: 0.4 })
+		);
+		prefs.init();
+		expect(prefs.current.bundleLines).toBe(true);
+		expect(prefs.current.bundleStrength).toBe(0.4);
+	});
+
+	// DESIGN.md § Edges, "Room between marks": kept on the device for every graph.
+	it('keeps how much room the marks are given, and starts them at none', () => {
+		prefs.init();
+		expect(prefs.current.fieldSpread).toBe(FIELD_SPREAD.least);
+		localStorage.setItem('sloppy_prefs', JSON.stringify({ fieldSpread: 1.8 }));
+		prefs.init();
+		expect(prefs.current.fieldSpread).toBe(1.8);
+	});
+
 	it('falls back to a default rather than trusting a value it does not know', () => {
 		localStorage.setItem(
 			'sloppy_prefs',
@@ -460,6 +482,9 @@ describe('the saved look', () => {
 				css: 'x'.repeat(65_537),
 				tags: 'seed',
 				ground: 'graph paper',
+				bundleLines: 'yes',
+				bundleStrength: 3,
+				fieldSpread: 9,
 				graph: 'not a ref',
 				alsoOnCanvas: ['neither is this'],
 				wallpapers: 'a picture',
@@ -469,6 +494,9 @@ describe('the saved look', () => {
 				chatWidth: 'narrow',
 				deskNavWidth: 'as wide as it was',
 				chatModel: { claude_code: 'a model from later', nobody: 'opus' },
+				speechAgent: 'a parrot',
+				speechModel: { groq: 'a model from later', whisper_cpp: '', parrot: 'polly' },
+				speechProgramModel: 42,
 				origin: 'nowhere at all/ /'
 			})
 		);
@@ -485,9 +513,13 @@ describe('the saved look', () => {
 			css: '',
 			tags: [],
 			ground: 'dots',
+			bundleLines: false,
+			bundleStrength: BUNDLE_STRENGTH,
+			fieldSpread: FIELD_SPREAD.least,
 			graph: null,
 			alsoOnCanvas: [],
 			wallpapers: {},
+			linesOff: {},
 			views: {},
 			seenAs: 'graph',
 			recordsWhatHappens: false,
@@ -497,7 +529,7 @@ describe('the saved look', () => {
 			deskNavOpen: true,
 			deskNavWidth: null,
 			tagOrder: 'count',
-			columnGroups: { history: false, tags: true },
+			columnGroups: { history: false, tags: true, lines: false },
 			density: 'auto',
 			autosave: false,
 			autosaveMinutes: 5,
@@ -508,8 +540,21 @@ describe('the saved look', () => {
 			chatModel: { claude_code: 'a model from later' },
 			chatInBackground: false,
 			chatReachesWeb: true,
+			speechAgent: null,
+			speechModel: { groq: 'a model from later' },
+			speechProgramModel: null,
 			origin: null
 		});
+	});
+
+	it("keeps this computer's own speech recognition chosen across a restart", () => {
+		prefs.init();
+		prefs.set('speechAgent', 'system');
+		prefs.init();
+		expect(prefs.current.speechAgent).toBe('system');
+		prefs.set('speechAgent', null);
+		prefs.init();
+		expect(prefs.current.speechAgent).toBeNull();
 	});
 
 	// PRODUCT.md § "Accessibility & Inclusion": reading the graph as an outline
@@ -564,6 +609,42 @@ describe('the saved look', () => {
 		prefs.setWallpaper(home, null);
 		expect(prefs.wallpaper(home)).toBeNull();
 		expect(prefs.current.wallpapers).toEqual({});
+	});
+
+	// DESIGN.md § Edges, "Lines a reader can turn off": what one graph draws says
+	// nothing about another, and it is waiting the next time the app opens.
+	it('keeps the lines turned off per graph, across a restart', () => {
+		const home = `${DID}/00000000000000000000000000` as OwnedRef;
+		const garden = ref(20);
+		prefs.init();
+		prefs.setLinesOff(home, { kinds: new Set(['genealogy']), labels: new Set(['uses', '']) });
+		prefs.init();
+		expect(prefs.linesOff(home)).toEqual({
+			kinds: new Set(['genealogy']),
+			labels: new Set(['uses', ''])
+		});
+		expect(prefs.linesOff(garden)).toEqual({ kinds: new Set(), labels: new Set() });
+
+		prefs.setLinesOff(home, { kinds: new Set(), labels: new Set() });
+		expect(prefs.current.linesOff).toEqual({});
+	});
+
+	it('keeps only the kinds of line it knows from what was stored', () => {
+		const home = `${DID}/00000000000000000000000000` as OwnedRef;
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({
+				linesOff: {
+					[home]: { kinds: ['genealogy', 'telepathy', 7], labels: ['uses', 3, 'uses'] },
+					[ref(20)]: 'everything',
+					[ref(21)]: { kinds: ['nothing'] }
+				}
+			})
+		);
+		prefs.init();
+		expect(prefs.current.linesOff).toEqual({
+			[home]: { kinds: ['genealogy'], labels: ['uses'] }
+		});
 	});
 
 	// The order the tags were selected in is what assigns their hues, so a

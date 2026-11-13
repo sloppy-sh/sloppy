@@ -8,7 +8,8 @@
  * unless they asked for chats to go on answering wherever they are; one that
  * goes on stands until its turn is done and is let go of there. A thread
  * answering out of sight arrives in its own record and writes into its own
- * draft, so nothing of it lands in the thread somebody is reading.
+ * draft, so nothing of it lands in the thread somebody is reading. The records
+ * themselves are `chat-engine.svelte.ts`'s, which a headset speaks into too.
  *
  * Every act LANDS: a thread works in a draft of the notes that is its own, so
  * nothing here waits on the person and nothing of theirs changes while it
@@ -30,23 +31,17 @@ import {
 	type ChatAgent,
 	chatAgentName,
 	type ChatAttachment,
-	type ChatBlock,
 	type ChatCallId,
 	type ChatEvent,
 	type ChatModel,
 	chatModels,
 	type ChatPlace,
-	type ChatSessionId,
 	type ChatSpend,
 	type ChatThread,
 	type ChatToolAnswer,
-	type ChatToolCall,
-	type ChatToolName,
-	chatToolWrites,
 	type ChatTurn,
 	toolsForRole,
 	type ContextUsage,
-	contextTogether,
 	isChatToolCall,
 	MAX_TURNS_PER_SESSION,
 	MOST_ATTACHED_PER_TURN,
@@ -54,26 +49,33 @@ import {
 	type OwnedRef,
 	placeNamed,
 	type SloppyToolCall,
-	spentTogether,
-	type StandingDraft,
 	threadNameFrom,
 	ulid,
 	type Ulid,
 	type WriteNoteArguments
 } from '@sloppy/types';
-import { SvelteMap } from 'svelte/reactivity';
+import {
+	type BuildHeard,
+	cameTo,
+	chatEngine,
+	type ChatKeeping,
+	type Live,
+	PlaceRefused,
+	Session,
+	withAttached
+} from '../chat-engine.svelte.js';
 import { serveChatCall } from '../chat-acts.js';
-import { carriedOver, placesKey, threadAsMarkdown, withCarried, withPlaces } from '../chat-said.js';
-import { runtime, type ChatLive } from '../runtime.js';
+import { carriedOver, threadAsMarkdown } from '../chat-said.js';
+import { runtime } from '../runtime.js';
 import { seam } from '../seam.svelte.js';
 import { chatDraft } from './chat-draft.svelte.js';
 import { wordsFor } from './errors.js';
 import { prefs } from './prefs.svelte.js';
 import { doingIn, troubleIn, whatHappened } from './what-happened.svelte.js';
 
+export type { BuildHeard, ChatKeeping } from '../chat-engine.svelte.js';
+
 const UNSTARTED = 'Sloppy could not start a chat just now. Try again.';
-const UNSAID = 'Sloppy could not send that just now. Try again.';
-const MODEL_UNKNOWN = "That model isn't one this assistant knows. Pick another.";
 const UNKEPT = 'Sloppy could not keep that just now. Try again.';
 const UNATTACHED = 'Sloppy could not put that where the chat can read it. Try again.';
 const TOO_MANY = `You can put ${MOST_ATTACHED_PER_TURN} things in front of it at once.`;
@@ -86,10 +88,6 @@ const UNREACHED_PLACE = 'Sloppy cannot read that folder from here. Choose anothe
 const SETTLE_FIRST =
 	'Some of what that thread wrote has to be settled against your own notes first. Read the draft.';
 
-/** Said once, quietly, where a conversation goes on without what came before
- *  it: the agent's own session was not there to pick up. */
-const PICKED_UP = 'The assistant is going on from a summary of this thread.';
-
 /** And where the places changed under a conversation that is standing. */
 const PLACES_MOVED =
 	'The next thing you say starts the assistant again, so it can read what you changed.';
@@ -98,21 +96,10 @@ const PLACES_MOVED =
  *  waiting on it. */
 const NO_PROJECT = 'There is no project open here, so there are no notes to work on.';
 const NO_GRAPH = 'There are no notes open here to work on.';
-const NO_PLACE =
-	'There is no place here by that name. Name one you were given, or leave it out to read this project.';
-const PLACE_UNREAD = 'That place cannot be read from here.';
-const NO_NOTES_THERE = 'There are no notes in that place. Read its files with your own tools.';
-const NOT_IN_A_CHAT =
-	'That act belongs to a build. Here there is only this conversation and these notes.';
 const NOT_THIS_SESSION =
 	'That act is not one this session does. The acts you were given are the whole of what you can call here.';
 const NO_BUILD_WORK =
 	'The copy of the project you are working in cannot be read from here, so there is nothing to act on.';
-
-/** A reading act asked for a place it cannot have. The agent reads these
- *  words and acts on them, so one is answered rather than thrown past the
- *  shell, which has no words of its own for what went wrong. */
-class PlaceRefused extends Error {}
 
 /** What a file with no name of its own is called. */
 const UNNAMED = 'A file';
@@ -134,42 +121,9 @@ export type ChatAgents = readonly ChatAgent[] | 'untold' | null;
  */
 export type DraftOnDelete = 'merge' | 'discard';
 
-/**
- * An answer somebody asked to keep as a note, waiting on their say-so. It is
- * the person's own act, so nothing the agent's turn does answers it.
- *
- * `arguments` is carried untouched; a surface parses it against the act's own
- * schema before drawing any of it.
- */
-export interface ChatKeeping {
-	call: ChatCallId;
-	act: ChatToolName;
-	arguments: unknown;
-	/** Where the turn whose answer it would keep stands. */
-	at: number;
-}
-
 /** The words of a person's turn, without what was attached. */
 function saidOf(turn: ChatTurn): string {
 	return turn.blocks.flatMap((block) => (block.kind === 'said' ? [block.said] : [])).join('\n');
-}
-
-function agentTurn(conversation?: Ulid): ChatTurn {
-	return {
-		from: 'agent',
-		blocks: [],
-		at: new Date().toISOString(),
-		...(conversation === undefined ? {} : { conversation })
-	};
-}
-
-/** What the agent is told about what was put in front of it, which is where to
- *  read it. */
-function withAttached(said: string, attached: readonly ChatAttachment[]): string {
-	if (attached.length === 0) return said;
-	const lines = attached.map((one) => `- ${one.name} — ${one.path}`).join('\n');
-	const says = `Attached, in this project:\n${lines}`;
-	return said === '' ? says : `${said}\n\n${says}`;
 }
 
 /** What the attachment lines take of what one turn carries, so the composer
@@ -178,27 +132,11 @@ function roomTaken(attached: readonly ChatAttachment[]): number {
 	return withAttached('', attached).length;
 }
 
-/** What an act came to, for the record: whether it worked and how much it left
- *  different — never what it read, wrote or answered with. */
-function cameTo(done: ChatActDone): string {
-	if (done.trouble === true)
-		return `did not work${done.told === undefined ? '' : `: ${done.told}`}`;
-	const left = done.touched?.length ?? 0;
-	return left === 0 ? 'is done' : `is done, leaving ${left} note${left === 1 ? '' : 's'} different`;
-}
-
 /** The same thread, out of the archive. */
 function liveAgain(thread: ChatThread): ChatThread {
 	const held = { ...thread };
 	delete held.archived_at;
 	return held;
-}
-
-/** Whose turn a block is arriving into: the thread's own conversation, which
- *  names none, or one of a build's sessions, which names its own. */
-interface Writing {
-	writingTurn: ChatTurn | null;
-	conversation?: Ulid;
 }
 
 /** What a build asks for one of its sessions: which build — and so which
@@ -212,15 +150,6 @@ export interface BuildAsked {
 	brief: string;
 }
 
-/** What one of a build's sessions tells the store running the build. What it
- *  SAID is on the thread; these are what a build acts on. */
-export type BuildHeard =
-	| { heard: 'context'; usage: ContextUsage }
-	| { heard: 'ended'; spent?: ChatSpend }
-	/** The conversation is over, whichever way it ended. `said` is why it could
-	 *  not go on, in words for the person; absent is one that simply ended. */
-	| { heard: 'over'; said?: string };
-
 /** One of a build's sessions, as the build holds it. */
 export interface BuildSessionLive {
 	say(said: string): Promise<void>;
@@ -228,103 +157,6 @@ export interface BuildSessionLive {
 	 *  An agent this shell cannot ask is not a failure. */
 	askContext(): Promise<void>;
 	close(): Promise<void>;
-}
-
-/** One conversation of a build, on the build's own thread. A build runs several
- *  at once, so what a chat keeps on its thread — the handle, the turn being
- *  written into — each of these keeps for itself. */
-class Session {
-	handle: ChatLive | null = null;
-	/** The agent's turn this conversation is writing into; `null` is one not
-	 *  writing. It is the turn ITSELF rather than where it stands, because
-	 *  another conversation's turn lands between them. */
-	writingTurn: ChatTurn | null = null;
-	/** An event that lands after this session was let go of is not an event
-	 *  about whatever was opened in its place. */
-	epoch = 0;
-
-	constructor(
-		readonly conversation: Ulid,
-		readonly role: BuildRole,
-		readonly cwd: string,
-		readonly serve: (call: BuildToolCall) => Promise<ChatActDone>,
-		readonly heard: (what: BuildHeard) => void
-	) {}
-}
-
-/**
- * One thread's conversation and everything arriving in it. A thread read again
- * is read off its own record, so a thread answering while somebody is
- * elsewhere goes on filling its own.
- */
-class Live {
-	/** The thread as it was last kept, which every write to it is made from. */
-	thread: ChatThread;
-	/** What the shell answered `open` with. Absent is a thread with nothing
-	 *  standing, which the next thing said opens one for. */
-	handle: ChatLive | null = null;
-	/** The draft this thread's writing lands in, once it has one. */
-	draft: StandingDraft | null = null;
-	turns = $state.raw<readonly ChatTurn[]>([]);
-	/** The places the standing conversation was opened with, which is what an
-	 *  act naming one is answered against. */
-	places: readonly ChatPlace[] = [];
-	context = $state.raw<ContextUsage | null>(null);
-	standing = $state(false);
-	running = $state(false);
-	/** The agent's turn this thread's own conversation is writing into; `null`
-	 *  is one not writing. */
-	writingTurn: ChatTurn | null = null;
-	/** The sessions a build is running on this thread, by conversation. EMPTY
-	 *  is every chat, and a build whose sessions are all over. */
-	readonly sessions = new SvelteMap<Ulid, Session>();
-	keeping = $state.raw<ChatKeeping | null>(null);
-	keepSettling = $state(false);
-	stopping = $state(false);
-	/** What each of Sloppy's own acts came to, for the person — the agent read
-	 *  its own half and this is the rest of it. */
-	readonly done = new SvelteMap<ChatCallId, ChatActDone>();
-	/** What came of keeping a turn's answer, by where that turn stands. */
-	readonly kept = new SvelteMap<number, ChatActDone>();
-	attached = $state.raw<readonly ChatAttachment[]>([]);
-	trouble = $state.raw<string | null>(null);
-	says = $state.raw<string | null>(null);
-	/** Which model the standing conversation was opened with, so a person who
-	 *  picks another is told the one in front of them still answers. */
-	openedWith = $state.raw<string | undefined>(undefined);
-	/** Which agent the standing conversation was opened with. */
-	openedAs: ChatAgent | undefined = undefined;
-	/** Whether the agent has written anything in the standing conversation,
-	 *  which is what tells a model it refused from any other way one dies. */
-	answered = false;
-	/** An earlier conversation to carry into the next one, where the person
-	 *  moved this thread to another agent. */
-	carrying: string | null = null;
-	/** The places the standing conversation has been told it may read, as
-	 *  {@link placesKey}; `null` is one that has not been told. */
-	placesTold: string | null = null;
-	/** The conversation this thread asked to be picked up; `started` says
-	 *  whether it was. Undefined is a conversation of the agent's own, whose
-	 *  brief told it everything a picked-up one has to be told in words. */
-	asked: ChatSessionId | undefined = undefined;
-	/** Whether `started` has said which conversation answers. The first one
-	 *  decides; a later one is the same conversation begun again after making
-	 *  room. */
-	introduced = false;
-	/** The agent and model the last conversation died under, for the person to
-	 *  be offered another. */
-	failed = $state.raw<{ agent: ChatAgent; model?: string } | null>(null);
-	spentTurn = $state.raw<ChatSpend | undefined>(undefined);
-	spentSession = $state.raw<ChatSpend | undefined>(undefined);
-	/** An event that lands after this conversation was let go of is not an event
-	 *  about the one standing in its place. */
-	epoch = 0;
-
-	constructor(thread: ChatThread) {
-		this.thread = thread;
-		this.turns = thread.turns;
-		this.spentSession = thread.spent;
-	}
 }
 
 class ChatStore {
@@ -345,12 +177,13 @@ class ChatStore {
 	#places = $state.raw<readonly ChatPlace[]>([]);
 	/** One record per thread with a conversation of its own: the thread in front
 	 *  of somebody, and every thread still answering out of their sight. */
-	readonly #live = new SvelteMap<Ulid, Live>();
 	/** What went wrong where there is no thread to say it about. */
 	#trouble = $state.raw<string | null>(null);
-	/** The writes to the chats this device holds, in the order they were asked
-	 *  for. */
-	#writes: Promise<void> = Promise.resolve();
+
+	constructor() {
+		chatEngine.readBy((id) => this.#current?.id === id);
+		chatEngine.onKept((thread) => this.#listed(thread));
+	}
 
 	/** Whether this device can chat at all. Absent everywhere but the shell that
 	 *  can reach an agent, which is what keeps the offer off the web. */
@@ -403,7 +236,7 @@ class ChatStore {
 	/** Whether a thread is being answered while somebody is reading another one.
 	 *  Only ever true while chats go on answering wherever the reader is. */
 	answeringAway(id: Ulid): boolean {
-		return id !== this.#current?.id && this.#live.get(id)?.running === true;
+		return id !== this.#current?.id && chatEngine.live(id)?.running === true;
 	}
 
 	/** What the chat has spent, where the agent says: the last turn, and the
@@ -684,7 +517,7 @@ class ChatStore {
 			return false;
 		}
 		const reading = this.#current?.id === id;
-		const live = this.#live.get(id);
+		const live = chatEngine.live(id);
 		// One draft is read and settled at a time, so settling one while a turn
 		// writes into another would settle whichever of the two is in hand.
 		if (this.running || live?.running === true) {
@@ -699,7 +532,7 @@ class ChatStore {
 		const gone = (await this.#draftGoes(id, draft)) && (await this.#threadGoes(id));
 		if (gone) {
 			this.#threads = this.#threads.filter((one) => one.id !== id);
-			this.#live.delete(id);
+			chatEngine.forget(id);
 		}
 		if (gone && reading) await this.#readNext();
 		else await chatDraft.standingFor(this.#current?.id);
@@ -788,94 +621,12 @@ class ChatStore {
 			this.#tell(wordsFor(error) ?? UNSTARTED);
 			return;
 		}
-		const epoch = live.epoch;
-		live.trouble = null;
-		live.says = null;
-		live.failed = null;
-		live.running = true;
-		live.writingTurn = null;
-		live.attached = [];
-		const blocks: ChatBlock[] = [
-			...(said === '' ? [] : [{ kind: 'said' as const, said }]),
-			...(attached.length === 0 ? [] : [{ kind: 'attached' as const, attached: [...attached] }])
-		];
-		const before = live.turns;
-		live.turns = [...live.turns, { from: 'person', blocks, at: new Date().toISOString() }];
-		const opening = !live.standing;
-		if (opening) {
-			const agent = this.agent;
-			const model = this.model;
-			live.places = [...this.#places];
-			try {
-				// The agent runs where the draft is, so the copy exists before the
-				// conversation that works in it.
-				await this.#writesInto(live);
-			} catch (error) {
-				whatHappened.put('trouble', `the chat would not start: ${troubleIn(error)}`);
-				if (epoch !== live.epoch) return;
-				live.trouble = wordsFor(error) ?? UNSTARTED;
-				live.running = false;
-				return;
-			}
-			const thread = live.thread;
-			const session =
-				thread.session !== undefined && thread.agent === agent ? thread.session : undefined;
-			live.asked = session;
-			live.placesTold = this.#placesOpenedWith(live, session);
-			if (session === undefined && before.length > 0) live.carrying ??= carriedOver(before);
-			// The shell says this only into a conversation opened in place of one
-			// the agent would not pick up; a conversation picked up has it already.
-			const carried = session !== undefined && before.length > 0 ? carriedOver(before) : undefined;
-			let handle: ChatLive;
-			try {
-				handle = await access.open(
-					{
-						...(agent === undefined ? {} : { agent }),
-						...(model === undefined ? {} : { model }),
-						thread: {
-							id: thread.id,
-							...(session === undefined ? {} : { session }),
-							places: [...live.places]
-						},
-						reachesWeb: prefs.current.chatReachesWeb,
-						...(carried === undefined ? {} : { carried })
-					},
-					(event) => this.#heard(live, epoch, event),
-					(call) => this.#serve(live, call)
-				);
-			} catch (error) {
-				whatHappened.put('trouble', `the chat would not start: ${troubleIn(error)}`);
-				if (epoch !== live.epoch) return;
-				live.trouble = wordsFor(error) ?? UNSTARTED;
-				live.running = false;
-				return;
-			}
-			if (epoch !== live.epoch) {
-				// Let go of while it was still starting, so nothing points at it.
-				void handle.close().catch(() => {});
-				return;
-			}
-			live.handle = handle;
-			live.standing = true;
-			live.openedWith = model;
-			live.openedAs = agent;
-			await this.#keepFor(live, {
-				...(agent === undefined ? {} : { agent }),
-				...(model === undefined ? {} : { model })
-			});
-		}
-		const carried = live.carrying ?? '';
-		live.carrying = null;
-		try {
-			await live.handle?.say(
-				withCarried(carried, this.#namingPlaces(live, withAttached(said, attached)))
-			);
-		} catch (error) {
-			whatHappened.put('trouble', `the agent was not told: ${troubleIn(error)}`);
-			if (epoch !== live.epoch) return;
-			live.trouble = wordsFor(error) ?? UNSAID;
-			live.running = false;
-		}
+		await chatEngine.say(live, said, {
+			...(this.agent === undefined ? {} : { agent: this.agent }),
+			...(this.model === undefined ? {} : { model: this.model }),
+			places: this.#places,
+			attached
+		});
 	}
 
 	/**
@@ -890,7 +641,7 @@ class ChatStore {
 		let project: Files;
 		try {
 			live = this.#liveFor(await this.#threadNow());
-			project = await this.#writesInto(live);
+			project = await chatEngine.writesInto(live);
 		} catch (error) {
 			return wordsFor(error) ?? UNATTACHED;
 		}
@@ -923,7 +674,7 @@ class ChatStore {
 		const live = this.#reading;
 		if (!live) return;
 		live.attached = live.attached.filter((one) => one.path !== path);
-		const project = await this.#written(live);
+		const project = await chatEngine.written(live);
 		await project?.remove(path).catch(() => {});
 	}
 
@@ -949,7 +700,7 @@ class ChatStore {
 		if (!allowed) return;
 		live.keepSettling = true;
 		try {
-			const done = await this.#act(live, {
+			const done = await chatEngine.act(live, {
 				call: keeping.call,
 				act: 'write_note',
 				arguments: keeping.arguments as WriteNoteArguments
@@ -966,14 +717,7 @@ class ChatStore {
 	 *  and the next thing said goes on with it. */
 	async stop(): Promise<void> {
 		const live = this.#reading;
-		if (!live?.handle || live.stopping) return;
-		whatHappened.put('turn', 'an end to the turn was asked for');
-		live.stopping = true;
-		try {
-			await live.handle.stop();
-		} finally {
-			live.stopping = false;
-		}
+		if (live) await chatEngine.stop(live);
 	}
 
 	/**
@@ -991,11 +735,11 @@ class ChatStore {
 
 	/** Every thread standing out of sight waits for its reader again, which is
 	 *  what asking for chats to wait means for the ones already standing. One
-	 *  still answering finishes first and is let go of as its turn ends. */
+	 *  still answering finishes first and is let go of as its turn ends, and
+	 *  one a headset has open is in front of its reader already. */
 	leaveTheOthers(): void {
-		const reading = this.#current?.id;
-		for (const live of [...this.#live.values()]) {
-			if (live.thread.id === reading || live.running) continue;
+		for (const live of chatEngine.all()) {
+			if (chatEngine.held(live.thread.id) || live.running) continue;
 			this.#letGoOutOfSight(live);
 		}
 	}
@@ -1007,7 +751,7 @@ class ChatStore {
 
 	clear(): void {
 		void this.#unwrittenGoes(this.#letThreadGo());
-		for (const live of [...this.#live.values()]) {
+		for (const live of chatEngine.all()) {
 			this.#letBuildGo(live);
 			this.#leave(live);
 		}
@@ -1121,10 +865,10 @@ class ChatStore {
 	/** A build's thread gone, with every session of it: what it said goes with
 	 *  it, and nothing of the person's is touched. */
 	async buildGone(build: Ulid): Promise<void> {
-		const live = this.#live.get(build);
+		const live = chatEngine.live(build);
 		if (live) {
 			this.#letBuildGo(live);
-			if (!live.standing) this.#live.delete(build);
+			if (!live.standing) chatEngine.forget(build);
 		}
 		const reading = this.#current?.id === build;
 		this.#threads = this.#threads.filter((one) => one.id !== build);
@@ -1136,7 +880,7 @@ class ChatStore {
 	 *  it keeps. A build's thread is written before its first session opens, so
 	 *  a run that has not listed the threads yet still finds it. */
 	async #threadRead(id: Ulid): Promise<ChatThread | undefined> {
-		const held = this.#threads.find((one) => one.id === id) ?? this.#live.get(id)?.thread;
+		const held = this.#threads.find((one) => one.id === id) ?? chatEngine.live(id)?.thread;
 		if (held) return held;
 		try {
 			return await runtime.threads()?.read(id);
@@ -1172,7 +916,7 @@ class ChatStore {
 				whatHappened.put('turn', `a build session opened with ${event.tools.length} tools`);
 				break;
 			case 'block':
-				this.#block(live, session, event.at, event.block);
+				chatEngine.block(live, session, event.at, event.block);
 				break;
 			case 'context':
 				session.heard({ heard: 'context', usage: event.usage });
@@ -1243,16 +987,11 @@ class ChatStore {
 	/** The record of the thread in front of somebody. */
 	get #reading(): Live | undefined {
 		const id = this.#current?.id;
-		return id === undefined ? undefined : this.#live.get(id);
+		return id === undefined ? undefined : chatEngine.live(id);
 	}
 
-	/** The thread's own record, made where it has none. */
 	#liveFor(thread: ChatThread): Live {
-		const held = this.#live.get(thread.id);
-		if (held) return held;
-		const live = new Live(thread);
-		this.#live.set(thread.id, live);
-		return live;
+		return chatEngine.liveFor(thread);
 	}
 
 	/** What went wrong, in words meant for the person: on the thread in front of
@@ -1273,18 +1012,20 @@ class ChatStore {
 	 * and left behind holds nothing of this run.
 	 */
 	#leave(live: Live): void {
-		if (!prefs.current.chatInBackground) {
+		const listened = chatEngine.listened(live.thread.id);
+		if (!prefs.current.chatInBackground && !listened) {
 			this.#letSessionGo(live);
 			this.#letBuildGo(live);
 		}
-		if (!live.standing && live.sessions.size === 0) this.#live.delete(live.thread.id);
+		if (!live.standing && live.sessions.size === 0 && !listened) chatEngine.forget(live.thread.id);
 	}
 
-	/** A thread nobody is reading that has nothing left to answer: its
-	 *  conversation let go of, and its record with it. */
 	#letGoOutOfSight(live: Live): void {
-		this.#letSessionGo(live);
-		if (live.sessions.size === 0) this.#live.delete(live.thread.id);
+		chatEngine.letGoOutOfSight(live);
+	}
+
+	#letSessionGo(live: Live): void {
+		chatEngine.letSessionGo(live);
 	}
 
 	/** Whether the thread in front of somebody holds them there: it is being
@@ -1363,7 +1104,7 @@ class ChatStore {
 			places: [...this.#places],
 			turns: []
 		};
-		this.#live.set(thread.id, new Live(thread));
+		chatEngine.liveFor(thread);
 		this.#current = thread;
 		this.#unwritten = thread.id;
 		return thread;
@@ -1376,32 +1117,24 @@ class ChatStore {
 		await this.#keepFor(live, changed);
 	}
 
-	/** One thread's own record, changed and kept — which is what an event
-	 *  arriving in a thread nobody is reading writes through. */
+	/** One thread's own record, changed and kept. */
 	async #keepFor(live: Live, changed: Partial<ChatThread>): Promise<void> {
-		await this.#keep({ ...live.thread, ...changed, updated_at: new Date().toISOString() });
+		await chatEngine.keepFor(live, changed);
 	}
 
-	/** One at a time, in the order they were asked for: two of them are a turn
-	 *  ending and a session saying what it is, and the later write carries what
-	 *  the earlier one did. */
 	async #keep(thread: ChatThread): Promise<void> {
-		const live = this.#live.get(thread.id);
-		if (live) live.thread = thread;
+		await chatEngine.keep(thread);
+	}
+
+	/** A thread as it is kept: listed where it is about the folder in front of
+	 *  somebody, wherever it was said into. */
+	#listed(thread: ChatThread): void {
 		// A thread answering about another folder is kept all the same; what is
 		// LISTED is the folder in front of somebody.
 		if (thread.graph === this.#of && thread.project === this.#project)
 			this.#threads = [thread, ...this.#threads.filter((one) => one.id !== thread.id)];
 		if (this.#current?.id === thread.id) this.#current = thread;
 		if (this.#unwritten === thread.id) this.#unwritten = null;
-		const threads = runtime.threads();
-		if (!threads) return;
-		this.#writes = this.#writes
-			.then(() => threads.write(thread))
-			.catch((error: unknown) => {
-				whatHappened.put('trouble', `the chat was not kept: ${troubleIn(error)}`);
-			});
-		await this.#writes;
 	}
 
 	async #placesNow(places: readonly ChatPlace[]): Promise<void> {
@@ -1468,256 +1201,6 @@ class ChatStore {
 		this.#places = [];
 		this.#trouble = null;
 		return unwritten;
-	}
-
-	#letSessionGo(live: Live): void {
-		if (live.standing) {
-			void live.handle?.close().catch(() => {});
-			// A turn cut off part way through has what arrived so far on screen,
-			// and the thread is where somebody finds it again.
-			if (live.running) void this.#keepFor(live, { turns: [...live.turns] });
-		}
-		live.epoch += 1;
-		live.handle = null;
-		live.standing = false;
-		live.running = false;
-		live.writingTurn = null;
-		live.keeping = null;
-		live.keepSettling = false;
-		this.#letAttachedGo(live);
-		live.openedWith = undefined;
-		live.openedAs = undefined;
-		live.answered = false;
-		live.asked = undefined;
-		live.introduced = false;
-		live.spentTurn = undefined;
-		live.placesTold = null;
-		live.trouble = null;
-		live.says = null;
-	}
-
-	/** What was put in front of a conversation that is being let go was never
-	 *  said, so nothing reads it again and it comes off where it was put. */
-	#letAttachedGo(live: Live): void {
-		const held = live.attached;
-		live.attached = [];
-		if (held.length === 0) return;
-		void this.#written(live)
-			.then((project) => Promise.all(held.map((one) => project?.remove(one.path))))
-			.catch(() => {});
-	}
-
-	/** What the conversation now standing has been told about its places: the
-	 *  set the brief names for one Sloppy OPENED, and nothing for one picked
-	 *  up, which never reads that brief. */
-	#placesOpenedWith(live: Live, session: ChatSessionId | undefined): string | null {
-		return session === undefined ? placesKey(live.places) : null;
-	}
-
-	/** What is said, with the places this thread reads named to the agent where
-	 *  what its conversation was told is not the set in front of the person. */
-	#namingPlaces(live: Live, said: string): string {
-		const key = placesKey(live.places);
-		if (key === live.placesTold) return said;
-		live.placesTold = key;
-		return live.places.length === 0 ? said : withPlaces(live.places, said);
-	}
-
-	#heard(live: Live, epoch: number, event: ChatEvent): void {
-		if (epoch !== live.epoch) return;
-		switch (event.event) {
-			case 'started': {
-				live.standing = true;
-				const named = this.models.find((one) => one.model === event.model)?.name;
-				whatHappened.put(
-					'turn',
-					`the chat opened with ${named ?? 'whatever the agent answers with'}, and the agent has ${event.tools.length} tools`
-				);
-				if (!live.introduced) {
-					live.introduced = true;
-					if (live.asked !== undefined && live.asked !== event.session) {
-						whatHappened.put('turn', 'the conversation was not picked up where it was left');
-						live.says = PICKED_UP;
-						live.asked = undefined;
-					}
-				} else {
-					// Begun again after making room: what it was told in words went
-					// with the rest, and the brief is still its own.
-					live.placesTold = this.#placesOpenedWith(live, live.asked);
-				}
-				void this.#keepFor(live, { session: event.session });
-				break;
-			}
-			case 'block':
-				live.answered = true;
-				this.#block(live, live, event.at, event.block);
-				break;
-			case 'context':
-				live.context = contextTogether(live.context ?? undefined, event.usage);
-				break;
-			case 'ended':
-				whatHappened.put(
-					'turn',
-					event.stopped === true ? 'the turn was stopped' : 'the turn ended'
-				);
-				live.running = false;
-				live.writingTurn = null;
-				if (event.spent !== undefined) {
-					live.spentTurn = event.spent;
-					live.spentSession = spentTogether(live.spentSession, event.spent);
-				}
-				live.turns = live.turns.slice(-MAX_TURNS_PER_SESSION);
-				void this.#keepFor(live, {
-					turns: [...live.turns],
-					...(live.spentSession === undefined ? {} : { spent: live.spentSession })
-				});
-				void chatDraft.keepWhatTheTurnWrote(live.draft ?? undefined);
-				// A thread answering out of sight was left to finish, and it has:
-				// what it said is on the thread, and the next thing said there
-				// picks the conversation up by its session.
-				if (live.thread.id !== this.#current?.id) this.#letGoOutOfSight(live);
-				break;
-			case 'over': {
-				if (event.said === undefined) whatHappened.put('turn', 'the chat is over');
-				else whatHappened.put('trouble', 'the chat could not go on');
-				const refusedModel =
-					event.said !== undefined && !live.answered && live.openedWith !== undefined;
-				if (event.said !== undefined && live.openedAs !== undefined) {
-					live.failed = {
-						agent: live.openedAs,
-						...(live.openedWith === undefined ? {} : { model: live.openedWith })
-					};
-				}
-				// What the agent had written when it ended is on screen; the thread
-				// is where somebody finds it again.
-				if (live.running) void this.#keepFor(live, { turns: [...live.turns] });
-				live.handle = null;
-				live.standing = false;
-				live.running = false;
-				live.writingTurn = null;
-				live.openedWith = undefined;
-				live.openedAs = undefined;
-				live.answered = false;
-				live.asked = undefined;
-				live.introduced = false;
-				live.trouble = refusedModel ? MODEL_UNKNOWN : (event.said ?? null);
-				break;
-			}
-		}
-	}
-
-	/**
-	 * A block already at this place in the turn underway is that block grown.
-	 * `into` is whose turn that is — the thread's own conversation, or one of a
-	 * build's sessions, which is why the turn is held rather than its place: a
-	 * build runs several at once and each one's turn stays its own.
-	 */
-	#block(live: Live, into: Writing, at: number, block: ChatBlock): void {
-		const turns = [...live.turns];
-		let where = into.writingTurn === null ? -1 : turns.indexOf(into.writingTurn);
-		if (where < 0) {
-			where = turns.length;
-			turns.push(agentTurn(into.conversation));
-		}
-		const turn = turns[where];
-		const blocks = [...turn.blocks];
-		if (at < blocks.length) blocks[at] = block;
-		else blocks.push(block);
-		const grown = { ...turn, blocks };
-		turns[where] = grown;
-		into.writingTurn = grown;
-		live.turns = turns;
-	}
-
-	/**
-	 * Where this thread's acts and the files put in front of it are written: the
-	 * draft it keeps one in, and the project itself where this device keeps
-	 * none. A turn beginning is what starts a draft, so this starts one where
-	 * the thread has none. REJECTS in words the agent reads.
-	 */
-	async #writesInto(live: Live): Promise<Files> {
-		const drafts = seam().chat()?.drafts;
-		if (!drafts) {
-			const project = await runtime.project();
-			if (!project) throw new Error(NO_PROJECT);
-			return project;
-		}
-		// The draft somebody is looking at is the thread in front of them; a
-		// thread answering out of their sight writes into its own and moves
-		// nothing of theirs.
-		const reading = live.thread.id === this.#current?.id;
-		const draft =
-			live.draft ??
-			(await (reading ? chatDraft.start(live.thread.id) : chatDraft.started(live.thread.id)));
-		live.draft = draft;
-		return drafts.files(draft);
-	}
-
-	/** The same folder, for taking something back off it: a draft that is not
-	 *  standing holds nothing to take off, so this starts none. */
-	async #written(live: Live): Promise<Files | undefined> {
-		const drafts = seam().chat()?.drafts;
-		if (!drafts) return await runtime.project();
-		return live.draft ? drafts.files(live.draft) : undefined;
-	}
-
-	/**
-	 * Where one act reads or writes, and whether that folder is one this chat
-	 * only reads. A writing act lands in this thread's own draft, whatever it
-	 * says; a reading act answers for the place it names, and for this project
-	 * where it names none. A place it cannot have is answered in words the
-	 * agent reads.
-	 */
-	async #filesFor(live: Live, call: ChatToolCall): Promise<{ files: Files; reading: boolean }> {
-		const place = chatToolWrites(call.act) ? undefined : this.#placeNamed(live, call);
-		if (!place) return { files: await this.#writesInto(live), reading: false };
-		if (place.graph === undefined) throw new PlaceRefused(NO_NOTES_THERE);
-		const files = seam().placeFiles()?.(place.root);
-		if (!files) throw new PlaceRefused(PLACE_UNREAD);
-		return { files, reading: true };
-	}
-
-	/** The place a reading act asks for, or none where it asks for this
-	 *  project. A place this thread's conversation was not given is answered as
-	 *  such. */
-	#placeNamed(live: Live, call: ChatToolCall): ChatPlace | undefined {
-		const named = 'in' in call.arguments ? call.arguments.in : undefined;
-		if (named === undefined || named === '') return undefined;
-		const place = live.places.find((one) => one.name === named);
-		if (!place) throw new PlaceRefused(NO_PLACE);
-		return place;
-	}
-
-	/** One of Sloppy's own acts, done here and answered to the agent. What the
-	 *  act lays out for the PERSON is held here; the agent reads `said` and
-	 *  nothing else. */
-	async #serve(live: Live, call: SloppyToolCall): Promise<ChatToolAnswer> {
-		if (!isChatToolCall(call)) return { said: NOT_IN_A_CHAT, trouble: true };
-		const done = await this.#act(live, call);
-		live.done.set(call.call, done);
-		return { said: done.said, ...(done.trouble === undefined ? {} : { trouble: done.trouble }) };
-	}
-
-	async #act(live: Live, call: ChatToolCall): Promise<ChatActDone> {
-		whatHappened.put('act', `${doingIn(call.act)} began`, call.call);
-		try {
-			const where = await this.#filesFor(live, call);
-			const done: ChatActDone = await serveChatCall(where.files, call, where.reading);
-			whatHappened.put(
-				done.trouble === true ? 'trouble' : 'act',
-				`${doingIn(call.act)} ${cameTo(done)}`,
-				call.call
-			);
-			return done;
-		} catch (error) {
-			whatHappened.put(
-				'trouble',
-				`${doingIn(call.act)} did not answer: ${troubleIn(error)}`,
-				call.call
-			);
-			if (error instanceof PlaceRefused) return { said: error.message, trouble: true };
-			throw error;
-		}
 	}
 }
 

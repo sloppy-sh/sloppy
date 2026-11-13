@@ -4,7 +4,7 @@
  * a file" is the doc of record for the shape and for what an absent field means.
  */
 
-import { cssIsSafe, type Look, LOOK_NAME_MAX, LookSchema } from '@sloppy/types';
+import { cssIsSafe, type Look, LOOK_NAME_MAX, LookSchema, type LookServed } from '@sloppy/types';
 import { dressed, type Scheme, type SchemeDressing, schemes } from '@sloppy/ui';
 import {
 	BUILT_IN_LOOKS,
@@ -152,16 +152,10 @@ export function rulesWithheld(css: string): boolean {
 export async function lookNow(withPreferences: boolean): Promise<Look> {
 	const held = prefs.current;
 	const look: Look = {
-		...(await standing()),
-		style: held.style,
-		density: held.density,
-		effect: [...held.effects],
+		...(await lookServed()),
 		reach: held.screenReach,
-		screens: screensOf(held.screens),
-		fonts: { ...held.fonts }
+		screens: screensOf(held.screens)
 	};
-	const paint = prefs.dressing?.tokens;
-	if (paint !== undefined && Object.keys(paint).length > 0) look.palette = { ...paint };
 	if (held.css !== '' && !rulesWithheld(held.css)) look.css = held.css;
 	if (withPreferences) {
 		const taking = carried();
@@ -169,6 +163,22 @@ export async function lookNow(withPreferences: boolean): Promise<Look> {
 			Object.entries(held).filter(([key]) => taking.includes(key))
 		);
 	}
+	return look;
+}
+
+/** The look as this device wears it, for a headset beside it to draw with —
+ *  docs/ARCHITECTURE.md § "A headset beside the desk". */
+export async function lookServed(): Promise<LookServed> {
+	const held = prefs.current;
+	const look: LookServed = {
+		...(await standing()),
+		style: held.style,
+		density: held.density,
+		effect: [...held.effects],
+		fonts: { ...held.fonts }
+	};
+	const paint = prefs.dressing?.tokens;
+	if (paint !== undefined && Object.keys(paint).length > 0) look.palette = { ...paint };
 	return look;
 }
 

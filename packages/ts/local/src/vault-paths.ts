@@ -22,6 +22,10 @@ export const BIN_FILE = `${SLOPPY_DIR}/bin.json`;
 export const MEDIA_FILE = `${SLOPPY_DIR}/media.json`;
 /** Whether each shortcode draws as an emoji or as a sticker. */
 export const EMOJI_FILE = `${SLOPPY_DIR}/emoji.json`;
+/** The key a desk serving this folder to a headset is dialled by. */
+export const SERVE_KEY_FILE = `${SLOPPY_DIR}/serve.key`;
+/** The headsets a desk serving this folder lets in with no code. */
+export const PAIRED_FILE = `${SLOPPY_DIR}/paired.json`;
 
 export function binPath(ulid: string): string {
   return `${BIN_DIR}/${ulid}.md`;

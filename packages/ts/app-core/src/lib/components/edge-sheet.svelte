@@ -21,7 +21,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { api } from '../api.js';
-	import { lineBetween } from '../edge-look.js';
+	import { lineBetween, type LineAmong } from '../edge-look.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { offers } from '../stores/offers.svelte.js';
@@ -32,13 +32,16 @@
 		open = false,
 		onOpenChange,
 		from,
-		to
+		to,
+		among
 	}: {
 		open?: boolean;
 		onOpenChange?: (open: boolean) => void;
 		/** The note the reader came from. */
 		from: NodeView;
 		to: NodeView;
+		/** Where this line stands among those lit with it; absent where it was lit alone. */
+		among?: LineAmong;
 	} = $props();
 
 	// Read once: a sheet is opened on one line, and the graph moving underneath
@@ -129,7 +132,12 @@
 		});
 </script>
 
-<ResponsiveModal {open} {onOpenChange} title="This line" description="Between {here} and {there}.">
+<ResponsiveModal
+	{open}
+	{onOpenChange}
+	title={among ? `${among.at} of ${among.of} lines` : 'This line'}
+	description="Between {here} and {there}."
+>
 	<div class="space-y-5 px-2 pt-4 pb-2">
 		<div class="space-y-2">
 			<p class="px-1 text-xs text-muted-foreground" id="edge-words">Words on the line</p>

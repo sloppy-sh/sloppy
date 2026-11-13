@@ -26,13 +26,17 @@ import {
   drawnNodes,
   drawnSetsOf,
   type GraphEdgeLook,
+  UNLABELLED_LINE,
 } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import { MAX_DENSITY } from "./density.js";
 import { applyLod } from "./lod.js";
 import {
   buildModel,
+  carriedCount,
+  foldedLinks,
   LEAF_RADIUS,
+  lineCounts,
   MARK_PICTURE_PX,
   markPictureSide,
   WIDEST_RADIUS,
@@ -760,6 +764,153 @@ describe("the two ways of connecting two notes", () => {
   });
 });
 
+// DESIGN.md § Edges, "Lines into a folded branch": a hand link reaching into a
+// fold is drawn to the mark standing for that branch, once per pair, counted.
+describe("hand links into a folded branch", () => {
+  const under = (address: string, parent: NodeView): NodeView => ({
+    ...note(address),
+    parent: parent.ref,
+    origin: parent.ref,
+  });
+  const one = note("1");
+  const oneA = under("1a", one);
+  const oneB = under("1b", one);
+  const oneA1 = under("1a1", oneA);
+  const two = note("2");
+  const twoA = under("2a", two);
+  const three = note("3");
+  const region = (links: Record<string, readonly NodeView[]>): NodeView[] =>
+    [one, oneA, oneB, oneA1, two, twoA, three].map((node) => ({
+      ...node,
+      links: (links[node.address ?? ""] ?? []).map((to) => to.ref),
+    }));
+  const model = (
+    nodes: readonly NodeView[],
+    collapsed: ReadonlySet<OwnedRef>,
+  ) =>
+    buildModel(drawnNodes(nodes, collapsed), {
+      selection: [],
+      palette,
+      folds: { nodes, collapsed },
+    });
+  const carried = (
+    built: ReturnType<typeof buildModel>,
+    a: NodeView,
+    b: NodeView,
+  ) => {
+    const edge = built.graph.undirectedEdge(a.ref, b.ref);
+    return edge === undefined ? undefined : built.graph.getEdgeAttributes(edge);
+  };
+
+  it("counts each pair of drawn marks once, whichever note holds the link", () => {
+    const nodes = region({
+      "1a": [three],
+      "1a1": [three],
+      "1b": [three, twoA],
+      "3": [oneA],
+    });
+    expect(
+      foldedLinks(nodes, new Set([one.ref, two.ref])).map(
+        ({ a, b, labels }) => [a, b, carriedCount(labels)],
+      ),
+    ).toEqual([
+      [one.ref, three.ref, 3],
+      [one.ref, two.ref, 1],
+    ]);
+  });
+
+  it("draws nothing for a link with both ends inside one fold", () => {
+    const nodes = region({ "1a": [oneB], "1a1": [one] });
+    expect(foldedLinks(nodes, new Set([one.ref]))).toEqual([]);
+  });
+
+  it("stands for nothing while nothing is folded", () => {
+    expect(foldedLinks(region({ "1a": [three] }), new Set())).toEqual([]);
+  });
+
+  it("draws one hand link to the mark standing for the branch, carrying the count", () => {
+    const nodes = region({ "1a": [three], "1a1": [three], "1b": [three] });
+    const built = model(nodes, new Set([one.ref]));
+    expect(built.graph.hasNode(oneA.ref)).toBe(false);
+    expect(carried(built, one, three)).toMatchObject({
+      kind: "link",
+      carries: new Map([[UNLABELLED_LINE, 3]]),
+    });
+  });
+
+  it("counts the link the two drawn marks have themselves", () => {
+    const nodes = region({ "1": [three], "1a": [three] });
+    expect(carried(model(nodes, new Set([one.ref])), one, three)).toMatchObject(
+      { kind: "link", carries: new Map([[UNLABELLED_LINE, 2]]) },
+    );
+  });
+
+  it("counts the links a fold stands for by the relation each names", () => {
+    const nodes = region({ "1": [three], "1a": [three], "1a1": [three] });
+    const edgeLooks = [
+      { from: oneA.ref, to: three.ref, label: "uses" },
+      { from: oneA1.ref, to: three.ref, label: "uses" },
+      { from: one.ref, to: three.ref, label: "used by" },
+    ];
+    const built = buildModel(drawnNodes(nodes, new Set([one.ref])), {
+      selection: [],
+      palette,
+      edgeLooks,
+      folds: { nodes, collapsed: new Set([one.ref]) },
+    });
+    expect(carried(built, one, three)?.carries).toEqual(
+      new Map([
+        ["uses", 2],
+        ["used by", 1],
+      ]),
+    );
+    // The Lines panel counts what the cord stands for, so folding the branch
+    // moves no relation's count.
+    const opened = buildModel(drawnNodes(nodes, new Set()), {
+      selection: [],
+      palette,
+      edgeLooks,
+    });
+    const folded = lineCounts(built.graph);
+    const whole = lineCounts(opened.graph);
+    expect(folded.labels).toEqual(whole.labels);
+    expect(folded.kinds.link).toBe(whole.kinds.link);
+  });
+
+  it("draws the links themselves again once the branch is opened", () => {
+    const nodes = region({ "1a": [three], "1a1": [three] });
+    const opened = model(nodes, new Set());
+    expect(carried(opened, oneA, three)).toMatchObject({ kind: "link" });
+    expect(carried(opened, oneA, three)).not.toHaveProperty("carries");
+    expect(carried(opened, oneA1, three)).not.toHaveProperty("carries");
+  });
+
+  it("leaves the line the run draws beside a fold as it was", () => {
+    const nodes = region({ "1a": [three] });
+    const built = model(nodes, new Set([one.ref]));
+    expect(carried(built, one, two)).toMatchObject({ kind: "run" });
+    expect(carried(built, one, two)).not.toHaveProperty("carries");
+  });
+
+  it("draws no link into a fold where the host did not hand the region", () => {
+    const nodes = region({ "1a": [three] });
+    const built = buildModel(drawnNodes(nodes, new Set([one.ref])), {
+      selection: [],
+      palette,
+    });
+    expect(carried(built, one, three)).toBeUndefined();
+  });
+
+  it("names each mark's drawn parent, the tree a line is bundled along", () => {
+    const nodes = region({});
+    const built = model(nodes, new Set([oneA.ref]));
+    const at = (node: NodeView) => built.order.indexOf(node.ref);
+    expect(built.parents[at(oneA)]).toBe(at(one));
+    expect(built.parents[at(twoA)]).toBe(at(two));
+    expect(built.parents[at(one)]).toBe(-1);
+  });
+});
+
 /** A root of the corpus owner's, addressed by hand. */
 function note(address: string, graph?: OwnedRef): NodeView {
   const ref =
@@ -1338,5 +1489,53 @@ describe("a look set on a line", () => {
         "distance",
       );
     expect(distance(looked)).toBe(distance(plain));
+  });
+});
+
+// DESIGN.md § Edges, "Lines a reader can turn off": the rows are read off the
+// canvas, one per kind and one per label a hand link carries.
+describe("the lines a canvas counts", () => {
+  const options = { selection: [], palette };
+  const root = note("1");
+  const child = { ...note("1a"), parent: root.ref, origin: root.ref };
+  const two = { ...note("2"), links: [root.ref, child.ref] };
+  const three = { ...note("3"), links: [child.ref] };
+  const four = { ...note("4"), references: [root.ref] };
+  const field = drawnNodes([root, child, two, three, four], new Set());
+
+  it("counts each kind once per line, and each hand link under its label", () => {
+    const model = buildModel(field, {
+      ...options,
+      edgeLooks: [
+        { from: two.ref, to: root.ref, label: "uses" },
+        { from: three.ref, to: child.ref, label: "uses" },
+        { from: root.ref, to: child.ref, label: "grew from" },
+      ],
+    });
+    const lines = lineCounts(model.graph);
+    expect(lines.kinds).toEqual({
+      link: 3,
+      run: 2,
+      reference: 1,
+      genealogy: 1,
+    });
+    // A label on a line no hand drew names no relation.
+    expect([...lines.labels]).toEqual([
+      ["uses", 2],
+      [UNLABELLED_LINE, 1],
+    ]);
+  });
+
+  it("counts nothing reaching a note that went", () => {
+    const model = buildModel(field, {
+      ...options,
+      difference: {
+        added: new Set(),
+        removed: [three],
+        moved: [],
+        changed: new Set(),
+      },
+    });
+    expect(lineCounts(model.graph).kinds.link).toBe(2);
   });
 });

@@ -30,16 +30,22 @@ import {
   type DifferenceMark,
   differenceMarks,
   type DrawnNode,
+  drawnAs,
   drawnSetsOf,
   type GraphArrangement,
   type GraphDifference,
   type GraphEdgeLook,
+  type GraphEdgeLooks,
   edgeLookKey,
   edgeLooksByPair,
   type GraphField,
+  type GraphLines,
+  noLines,
+  UNLABELLED_LINE,
 } from "./contract.js";
 import { MAX_DENSITY } from "./density.js";
 import {
+  fieldSpread,
   placeFields,
   type SeedPoint,
   seedBox,
@@ -209,6 +215,11 @@ export interface GraphEdgeAttributes {
    *  line drawn as DESIGN.md § Edges alone says. It is read where the line is
    *  drawn and nowhere else: a look changes no {@link distance}. */
   look?: GraphEdgeLook;
+  /** The hand links this one line stands for, counted by the label each
+   *  carries ({@link UNLABELLED_LINE} for none), where a fold swallowed an end
+   *  of at least one of them — {@link foldedLinks}. Absent is a line that
+   *  stands for itself alone. */
+  carries?: ReadonlyMap<string, number>;
 }
 
 export type GraphModel = Graph<GraphNodeAttributes, GraphEdgeAttributes>;
@@ -240,6 +251,9 @@ export interface ModelOptions {
   palette: GraphPalette;
   /** Whose graph this is. Absent means nothing here is claimed as own. */
   viewer?: DidSyr;
+  /** {@link GraphSurfaceProps.spread}: every distance this model lays out,
+   *  times this. Absent is 1. */
+  spread?: number;
   /** Positions to carry over, so an update does not restart the settle. */
   keep?: ReadonlyMap<OwnedRef, { x: number; y: number }>;
   /** {@link GraphSurfaceProps.fields} — the graphs on the canvas, in order. */
@@ -250,6 +264,13 @@ export interface ModelOptions {
   /** Two states being compared, the notes that went already standing in
    *  `drawn` — `nodesWithGone` in `contract.ts` is what puts them there. */
   difference?: GraphDifference;
+  /** The region `drawn` was folded out of, and what folded it — what lets a
+   *  hand link into a folded branch be drawn to the mark standing for it.
+   *  Absent draws only the hand links whose two ends are both drawn. */
+  folds?: {
+    nodes: readonly NodeView[];
+    collapsed: ReadonlySet<OwnedRef>;
+  };
 }
 
 /** A graph's name, where the canvas writes it, and how far its field reaches —
@@ -281,6 +302,9 @@ export interface BuiltModel {
   /** The diagram the sets reading drew, absent on the genealogy. What a drop,
    *  a fold's frame and the region layer all answer off. */
   sets?: SetsDrawn;
+  /** Each mark's drawn parent as an index into {@link order}, -1 where none is
+   *  drawn — the tree a bundled line is routed along. */
+  parents: Int32Array;
 }
 
 export function buildModel(
@@ -292,7 +316,8 @@ export function buildModel(
   }
   const graph: GraphModel = new Graph({ type: "undirected" });
   const hues = hueSlots(drawnSetsOf(options.selection, options.notes ?? drawn));
-  const { seedOf, fields } = seedFields(drawn, options.fields ?? []);
+  const spread = fieldSpread(options.spread);
+  const { seedOf, fields } = seedFields(drawn, options.fields ?? [], spread);
   const starts = startPoints(drawn, seedOf, options.keep);
   const marks = differenceMarks(options.difference);
   // Two states that turn out to be the same ask nothing, so nothing recedes to
@@ -356,11 +381,15 @@ export function buildModel(
           (count) => (count ?? 0) + 1,
         );
       }
-      join(node.parent, node.ref, "genealogy", () =>
-        Math.max(
-          EDGE_MIN,
-          EDGE_FIRST * EDGE_DECAY ** Math.max(node.depth - 2, 0),
-        ),
+      join(
+        node.parent,
+        node.ref,
+        "genealogy",
+        () =>
+          Math.max(
+            EDGE_MIN,
+            EDGE_FIRST * EDGE_DECAY ** Math.max(node.depth - 2, 0),
+          ) * spread,
       );
     }
   }
@@ -374,7 +403,7 @@ export function buildModel(
       const from = graph.getNodeAttributes(before.ref);
       const to = graph.getNodeAttributes(after.ref);
       return Math.max(
-        EDGE_MIN,
+        EDGE_MIN * spread,
         Math.hypot(to.anchorX - from.anchorX, to.anchorY - from.anchorY),
       );
     });
@@ -384,19 +413,130 @@ export function buildModel(
     for (const [kind, targets] of connectionsOf(node)) {
       for (const target of targets) {
         if (target === node.ref || !graph.hasNode(target)) continue;
-        join(node.ref, target, kind, () => CONNECTION_DISTANCE);
+        join(node.ref, target, kind, () => CONNECTION_DISTANCE * spread);
       }
+    }
+  }
+
+  if (options.folds !== undefined) {
+    const { nodes, collapsed } = options.folds;
+    const looks = edgeLooksByPair(options.edgeLooks ?? []);
+    for (const { a, b, labels } of foldedLinks(nodes, collapsed, looks)) {
+      if (!graph.hasNode(a) || !graph.hasNode(b)) continue;
+      const direct = graph.undirectedEdge(a, b);
+      if (
+        direct !== undefined &&
+        graph.getEdgeAttribute(direct, "kind") === "link"
+      ) {
+        countLabel(labels, looks.get(edgeLookKey(a, b))?.label);
+      }
+      join(a, b, "link", () => CONNECTION_DISTANCE * spread);
+      graph.setEdgeAttribute(graph.undirectedEdge(a, b)!, "carries", labels);
     }
   }
 
   lookLines(graph, options.edgeLooks);
 
+  const order = drawn.map((entry) => entry.node.ref);
   return {
     graph,
-    order: drawn.map((entry) => entry.node.ref),
+    order,
     fields,
     difference: differenceLines(drawn, graph, marks, options.difference),
+    parents: Int32Array.from(drawn, ({ node }) =>
+      node.parent !== undefined && graph.hasNode(node.parent)
+        ? graph.getNodeAttributes(node.parent).index
+        : -1,
+    ),
   };
+}
+
+/**
+ * Every line `graph` draws, by kind and by the label on each hand link — a line
+ * reaching a note that went is drawn by the difference and is not counted.
+ */
+export function lineCounts(graph: GraphModel): GraphLines {
+  const kinds = noLines().kinds as Record<EdgeKind, number>;
+  const labels = new Map<string, number>();
+  graph.forEachEdge((_edge, attributes, source, target) => {
+    if (
+      graph.getNodeAttribute(source, "difference") === "gone" ||
+      graph.getNodeAttribute(target, "difference") === "gone"
+    ) {
+      return;
+    }
+    if (attributes.carries !== undefined) {
+      for (const [label, count] of attributes.carries) {
+        kinds.link += count;
+        labels.set(label, (labels.get(label) ?? 0) + count);
+      }
+      return;
+    }
+    kinds[attributes.kind] += 1;
+    if (attributes.kind !== "link") return;
+    countLabel(labels, attributes.look?.label);
+  });
+  const ranked = [...labels].sort(
+    (a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0),
+  );
+  return { kinds, labels: new Map(ranked) };
+}
+
+/** One line a fold stands in for: the two drawn marks and the hand links it
+ *  is, counted by label — {@link GraphEdgeAttributes.carries}. */
+export interface FoldedLink {
+  a: OwnedRef;
+  b: OwnedRef;
+  labels: Map<string, number>;
+}
+
+/** The hand links a carried line stands for, whatever they are labelled. */
+export function carriedCount(carries: ReadonlyMap<string, number>): number {
+  let count = 0;
+  for (const each of carries.values()) count += each;
+  return count;
+}
+
+function countLabel(labels: Map<string, number>, label: string | undefined) {
+  const row = label || UNLABELLED_LINE;
+  labels.set(row, (labels.get(row) ?? 0) + 1);
+}
+
+/**
+ * The hand links with an end a fold swallowed, as one entry per pair of marks
+ * that are drawn — each end moved onto the mega-node standing for it. A link
+ * with both ends under one fold is inside it and draws nothing. Each link is
+ * counted once, whichever of its two notes holds it. DESIGN.md § Edges, "Lines
+ * into a folded branch".
+ */
+export function foldedLinks(
+  nodes: readonly NodeView[],
+  collapsed: ReadonlySet<OwnedRef>,
+  looks: GraphEdgeLooks = new Map(),
+): FoldedLink[] {
+  if (collapsed.size === 0) return [];
+  const onto = drawnAs(nodes, collapsed);
+  const counted = new Set<string>();
+  const byPair = new Map<string, FoldedLink>();
+  for (const node of nodes) {
+    for (const target of node.links) {
+      if (target === node.ref) continue;
+      const link = edgeLookKey(node.ref, target);
+      if (counted.has(link)) continue;
+      counted.add(link);
+      const a = onto(node.ref);
+      const b = onto(target);
+      if (a === b || (a === node.ref && b === target)) continue;
+      const pair = edgeLookKey(a, b);
+      let folded = byPair.get(pair);
+      if (folded === undefined) {
+        folded = { a, b, labels: new Map() };
+        byPair.set(pair, folded);
+      }
+      countLabel(folded.labels, looks.get(link)?.label);
+    }
+  }
+  return [...byPair.values()];
 }
 
 /** Whether the question in front of the reader has anything to say about these
@@ -642,6 +782,7 @@ function buildSetsModel(
         : setsFields(packing, options.fields ?? []),
     difference: { arrived: [], gone: [] },
     sets: packing.drawn,
+    parents: new Int32Array(standing.length).fill(-1),
   };
 }
 
@@ -800,9 +941,13 @@ function startPoints(
 function seedFields(
   drawn: readonly DrawnNode[],
   asked: readonly GraphField[],
+  spread: number,
 ): { seedOf: (node: NodeView) => SeedPoint; fields: NamedField[] } {
   if (asked.length < 2) {
-    const seeds = seedField(drawn.map((entry) => entry.node));
+    const seeds = seedField(
+      drawn.map((entry) => entry.node),
+      spread,
+    );
     return { seedOf: (node) => seeds.get(node.ref) ?? ORIGIN, fields: [] };
   }
 
@@ -820,12 +965,13 @@ function seedFields(
     ...new Set([...asked.map((field) => field.ref), ...byField.keys()]),
   ];
   const seeds = new Map(
-    order.map((of) => [of, seedField(byField.get(of) ?? [])]),
+    order.map((of) => [of, seedField(byField.get(of) ?? [], spread)]),
   );
 
   const placed = new Map(
     placeFields(
       order.map((of) => seedBox((seeds.get(of) ?? new Map()).values())),
+      spread,
     ).map((where, at) => [order[at], where] as const),
   );
   const named = new Map(asked.map((field) => [field.ref, field.title]));

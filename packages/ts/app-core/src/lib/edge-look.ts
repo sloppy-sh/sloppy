@@ -38,6 +38,12 @@ export function looksOnCanvas(notes: readonly NodeView[]): GraphEdgeLook[] {
 }
 
 /** The line between two notes, as the edge sheet reads it. */
+/** Where one line stands among the lines lit with it, counted from 1. */
+export interface LineAmong {
+	at: number;
+	of: number;
+}
+
 export interface LineBetween {
 	/** The note the look is written on. */
 	on: NodeView;

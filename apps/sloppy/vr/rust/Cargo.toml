@@ -1,0 +1,27 @@
+[package]
+name = "sloppy_iroh"
+version = "0.0.1"
+edition = "2021"
+publish = false
+description = "The headset's link to a desk serving Sloppy: an iroh endpoint as a Godot class."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The API of Godot 4.4, the oldest editor the project opens in; a later editor
+# loads it unchanged.
+godot = { version = "=0.5.5", features = ["api-4-4"] }
+iroh = "=1.4.1"
+iroh-mdns-address-lookup = "=0.6.1"
+iroh-tickets = "=1.0.0"
+n0-future = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "io-util", "macros"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "=0.21.1"
+libc = "0.2"
+
+[profile.release]
+strip = true
+[workspace]

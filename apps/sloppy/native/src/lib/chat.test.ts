@@ -3,6 +3,8 @@ import type { AiKeysAccess } from '@sloppy/local';
 import {
 	CHAT_TOOLS,
 	servedInTheApp,
+	headsetOnly,
+	HEADSET_CHAT_BRIEF,
 	draftBranch,
 	heldAsideIn,
 	usedIn,
@@ -440,7 +442,19 @@ describe('a session', () => {
 
 		expect(opens[0].agent).toBe('claude_code');
 		expect(opens[0].cwd).toBe(standing[0].root);
-		expect(opens[0].tools.map((tool) => tool.name)).toEqual(CHAT_TOOLS.filter(servedInTheApp));
+		expect(opens[0].tools.map((tool) => tool.name)).toEqual(
+			CHAT_TOOLS.filter((act) => servedInTheApp(act) && !headsetOnly(act))
+		);
+	});
+
+	it('hands a session opened from a headset the act that takes the reader to a note, and says where they are', async () => {
+		await chat().open(asking({ surface: 'headset' }), () => {}, serve);
+		await chat().open(asking(), () => {}, serve);
+
+		expect(opens[0].tools.map((tool) => tool.name)).toContain('show_note');
+		expect(opens[0].brief).toContain(HEADSET_CHAT_BRIEF);
+		expect(opens[1].tools.map((tool) => tool.name)).not.toContain('show_note');
+		expect(opens[1].brief).not.toContain(HEADSET_CHAT_BRIEF);
 	});
 
 	it('says there is no project to chat about where none is open', async () => {
@@ -1041,6 +1055,12 @@ describe('the draft a chat works in', () => {
 
 		expect(started).toEqual([]);
 		expect(opens[0].cwd).toBe(`${COPIES}/${THREAD}`);
+	});
+
+	it('is taken of the folder named, whichever folder is in front of the desk', async () => {
+		await drafts().start(THREAD, '/work/orchard');
+
+		expect(started).toEqual([{ root: '/work/orchard', id: THREAD }]);
 	});
 
 	it('takes one copy where a page and a session ask for it at once', async () => {

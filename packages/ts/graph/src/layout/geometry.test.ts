@@ -167,6 +167,20 @@ describe("seedField", () => {
 
   // A subtree that started scattered would be a subtree the force pass has to
   // gather, and gathering is what makes a settle look like a hairball resolving.
+  // DESIGN.md § Edges, "Room between marks": a factor moves every mark alike
+  // and none relative to another, so each keeps its bearing and its sector.
+  it("draws the same field larger when it is given more room", () => {
+    const tight = seedField(notes);
+    const roomy = seedField(notes, 2.5);
+    for (const node of notes) {
+      const near = tight.get(node.ref) as SeedPoint;
+      const far = roomy.get(node.ref) as SeedPoint;
+      expect(far.x).toBeCloseTo(near.x * 2.5, 6);
+      expect(far.y).toBeCloseTo(near.y * 2.5, 6);
+      expect(far.outward).toBe(near.outward);
+    }
+  });
+
   it("starts a subtree inside a disc its own generation bounds", () => {
     const field = seedField(notes);
     const roots = notes.filter((node) => node.depth === 3);
@@ -221,6 +235,22 @@ describe("placeFields", () => {
     for (const [at, x] of moved.entries()) {
       expect(x - moved[0]).toBeCloseTo(spans[at] - spans[0], 10);
     }
+  });
+
+  it("stands fields given more room as far apart again", () => {
+    const near = placeFields(boxes);
+    const far = placeFields(
+      boxes.map((each) => ({
+        minX: each.minX * 2.5,
+        maxX: each.maxX * 2.5,
+        minY: each.minY * 2.5,
+      })),
+      2.5,
+    );
+    far.forEach((field, at) => {
+      expect(field.dx).toBeCloseTo(near[at].dx * 2.5, 6);
+      expect(field.nameY).toBeCloseTo(near[at].nameY * 2.5, 6);
+    });
   });
 
   it("gives a graph with nothing in it a field of its own", () => {

@@ -12,6 +12,12 @@ export type {
 	DeploymentMode,
 	KnownFolder,
 	OpenTabs,
+	ServeAccess,
+	SpeechAccess,
+	SpeechProgramAccess,
+	SpeechRecorderAccess,
+	SpeechSystemAccess,
+	SpeechSystemAllowed,
 	TabsAccess,
 	VaultAccess
 } from './runtime.js';
@@ -62,4 +68,5 @@ export type { GraphsState } from './stores/graphs.svelte.js';
 export { tags } from './stores/tags.svelte.js';
 export type { TagsState } from './stores/tags.svelte.js';
 export { folderName, tabs } from './stores/tabs.svelte.js';
+export { SERVED_ELSEWHERE, serving } from './stores/serving.svelte.js';
 export type { TabPage, TabRow } from './stores/tabs.svelte.js';

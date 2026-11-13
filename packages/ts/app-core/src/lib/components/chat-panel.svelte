@@ -5,6 +5,7 @@
 	// has read it.
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Mic from '@lucide/svelte/icons/mic';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import Square from '@lucide/svelte/icons/square';
 	import X from '@lucide/svelte/icons/x';
@@ -33,7 +34,9 @@
 		draftOnTheCanvas,
 		type DraftOnTheCanvas
 	} from '../draft-said.js';
+	import { hear, speechChosen } from '../hearing.js';
 	import type { NoteLanding } from '../pages/page-state.js';
+	import { runtime } from '../runtime.js';
 	import { chat } from '../stores/chat.svelte.js';
 	import { chatDraft, type DraftSide } from '../stores/chat-draft.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -89,6 +92,11 @@
 
 	/** How tall the composer grows before it scrolls instead. */
 	const COMPOSER_MAX = 160;
+
+	const UNHEARD = 'That could not be heard just now. Try again.';
+
+	/** How long a sentence about speaking stays in the status line. */
+	const HEARING_SAID_FOR_MS = 5_000;
 
 	const agents = $derived(chat.agents);
 	const keeping = $derived(chat.keeping);
@@ -179,6 +187,84 @@
 	 *  they are reading something else, and the thread stops following. */
 	let following = $state(true);
 
+	const recorder = runtime.speechRecorder();
+	/** Whether the microphone is offered: something here records, and
+	 *  something here can hear what it records. */
+	let canSpeak = $state(false);
+	let speaking = $state<'not' | 'starting' | 'listening' | 'hearing'>('not');
+	let speakingSays = $state<string | null>(null);
+	let speakingSaysUntil: ReturnType<typeof setTimeout> | undefined;
+	let gone = false;
+	const says = $derived(speakingSays ?? chat.says);
+
+	$effect(() => {
+		void open;
+		const { aiOffered, speechAgent, speechModel, speechProgramModel } = prefs.current;
+		void [aiOffered, speechAgent, speechModel, speechProgramModel];
+		if (!recorder) return;
+		let current = true;
+		void speechChosen().then((asked) => {
+			if (current) canSpeak = asked !== undefined;
+		});
+		return () => {
+			current = false;
+		};
+	});
+
+	function sayAboutSpeaking(words: string | null, briefly = false): void {
+		clearTimeout(speakingSaysUntil);
+		speakingSays = words;
+		if (briefly) speakingSaysUntil = setTimeout(() => (speakingSays = null), HEARING_SAID_FOR_MS);
+	}
+
+	function wordsOf(thrown: unknown): string {
+		const words = thrown instanceof Error ? thrown.message.trim() : '';
+		return words === '' ? UNHEARD : words;
+	}
+
+	/** Starts listening, or ends it and puts what was heard in the composer
+	 *  to be read over before it is sent. */
+	async function speak(): Promise<void> {
+		if (!recorder) return;
+		if (speaking === 'not') {
+			sayAboutSpeaking(null);
+			speaking = 'starting';
+			try {
+				await recorder.start();
+				if (gone) await recorder.stop();
+				else speaking = 'listening';
+			} catch (thrown) {
+				speaking = 'not';
+				sayAboutSpeaking(wordsOf(thrown), true);
+			}
+			return;
+		}
+		if (speaking !== 'listening') return;
+		speaking = 'hearing';
+		sayAboutSpeaking('Hearing…');
+		try {
+			const wav = await recorder.stop();
+			const asked = await speechChosen();
+			if (asked === undefined) throw new Error(UNHEARD);
+			const words = await hear(wav, asked);
+			sayAboutSpeaking(null);
+			if (words !== '') {
+				said = said.trim() === '' ? words : `${said.trimEnd()} ${words}`;
+				field?.focus();
+			}
+		} catch (thrown) {
+			sayAboutSpeaking(wordsOf(thrown), true);
+		} finally {
+			speaking = 'not';
+		}
+	}
+
+	onDestroy(() => {
+		gone = true;
+		clearTimeout(speakingSaysUntil);
+		if (speaking === 'listening') void recorder?.stop().catch(() => {});
+	});
+
 	// `field-sizing-content` on the base textarea is not in every engine this
 	// app runs in, so the height is set here rather than left to the browser.
 	$effect(() => {
@@ -227,7 +313,8 @@
 
 	async function send(): Promise<void> {
 		const words = said;
-		if ((words.trim() === '' && chat.attached.length === 0) || chat.running) return;
+		if ((words.trim() === '' && chat.attached.length === 0) || chat.running || speaking !== 'not')
+			return;
 		said = '';
 		aside = null;
 		following = true;
@@ -397,7 +484,9 @@
 					{#if chat.turns.length === 0}
 						<p class="px-1 py-2 text-sm text-muted-foreground">
 							Say what you want written about — a file, a folder, or what somebody new would need to
-							understand first. The microphone on your keyboard types into it too.
+							understand first. {canSpeak
+								? 'Press the microphone to speak instead.'
+								: 'The microphone on your keyboard types into it too.'}
 						</p>
 						{#if chatDraft.keeps}
 							<p class="px-1 text-sm text-muted-foreground">{WORKS_IN_A_DRAFT}</p>
@@ -459,8 +548,8 @@
 
 				<ChatPlaces />
 
-				{#if chat.says}
-					<p class="shrink-0 px-1 text-xs text-muted-foreground" role="status">{chat.says}</p>
+				{#if says}
+					<p class="shrink-0 px-1 text-xs text-muted-foreground" role="status">{says}</p>
 				{/if}
 
 				{#if aside}
@@ -499,7 +588,7 @@
 							type="submit"
 							class="size-control shrink-0"
 							aria-label="Send"
-							disabled={said.trim() === '' && chat.attached.length === 0}
+							disabled={(said.trim() === '' && chat.attached.length === 0) || speaking !== 'not'}
 						>
 							<ArrowUp class="size-4" />
 						</Button>
@@ -523,6 +612,29 @@
 					>
 						<Paperclip class="size-4" />
 					</Button>
+					{#if canSpeak}
+						{#if speaking === 'listening'}
+							<Button
+								variant="outline"
+								class="h-9 shrink-0 gap-1 px-2 text-xs"
+								aria-label="Stop listening"
+								onclick={() => void speak()}
+							>
+								<Square class="size-3.5" />
+								Listening…
+							</Button>
+						{:else}
+							<Button
+								variant="ghost"
+								class="size-9 shrink-0"
+								aria-label="Speak"
+								disabled={speaking !== 'not'}
+								onclick={() => void speak()}
+							>
+								<Mic class="size-4" />
+							</Button>
+						{/if}
+					{/if}
 					{#if routes.length > 0}
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>

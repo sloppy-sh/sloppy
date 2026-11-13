@@ -1,0 +1,16 @@
+# What the editor makes on opening and what an export writes.
+.godot/
+build/
+*.apk
+*.aab
+android/
+# The vendors plugin is fetched, never kept here — tools/fetch-vendors.sh.
+addons/godotopenxrvendors/
+# What rust/build.sh makes.
+bin/
+# The panels' theme packs are fetched, never kept here — tools/fetch-themes.sh.
+themes/*
+!themes/README.md
+# The palette's glyphs are fetched, never kept here — tools/fetch-icons.sh.
+icons/*
+!icons/README.md

@@ -42,6 +42,7 @@
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import ListTree from '@lucide/svelte/icons/list-tree';
 	import Maximize from '@lucide/svelte/icons/maximize';
+	import Spline from '@lucide/svelte/icons/spline';
 	import MessagesSquare from '@lucide/svelte/icons/messages-square';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Network from '@lucide/svelte/icons/network';
@@ -62,8 +63,10 @@
 		type GraphHoverAt,
 		type GraphMenuAt,
 		type GraphPictures,
+		type GraphLines,
 		type GraphRetag,
-		type GraphTransform
+		type GraphTransform,
+		noLines
 	} from '@sloppy/graph';
 	import {
 		DELETED_KEPT_FOR_DAYS,
@@ -113,6 +116,7 @@
 		GroundChoice,
 		HeldNote,
 		type HeldRegion,
+		LineSwitches,
 		ImportSheet,
 		namedBranches,
 		nameOr,
@@ -160,7 +164,7 @@
 	import PersonSurface from '../components/person-surface.svelte';
 	import SetsInFront from '../components/sets-in-front.svelte';
 	import { api } from '../api.js';
-	import { looksOnCanvas } from '../edge-look.js';
+	import { looksOnCanvas, type LineAmong } from '../edge-look.js';
 	import { graphHere } from '../graph-here.svelte.js';
 	import { runtime, type KnownFolder } from '../runtime.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
@@ -202,6 +206,7 @@
 		acceleratorFor,
 		THE_PALETTE,
 		NEW_NOTE,
+		onAControl,
 		opensPalette,
 		typedIntoWriting,
 		WRITE_UNDER
@@ -377,6 +382,26 @@
 
 	const graph = $derived(graphs.current);
 	const wallpaper = $derived(prefs.wallpaper(graph));
+	const hiddenLines = $derived(prefs.linesOff(graph));
+	/** The lines the canvas has to draw, as it last counted them. */
+	let lineCount = $state<GraphLines>(noLines());
+	const anyLines = $derived(
+		Object.values(lineCount.kinds).some((count) => count > 0) ||
+			hiddenLines.kinds.size > 0 ||
+			hiddenLines.labels.size > 0
+	);
+	let choosingLines = $state(false);
+	const bundle = $derived({
+		on: prefs.current.bundleLines,
+		strength: prefs.current.bundleStrength
+	});
+	function setBundle(next: { on: boolean; strength: number }) {
+		prefs.set('bundleLines', next.on);
+		prefs.set('bundleStrength', next.strength);
+	}
+	function setSpread(next: number) {
+		prefs.set('fieldSpread', next);
+	}
 	let choosingWallpaper = $state(false);
 	/** The picture up now. Written over when the app comes back from the
 	 *  background, so the ground takes its turn while nobody is looking at it. */
@@ -682,17 +707,49 @@
 
 	/** The line whose look is being set. It outlives the sheet's closing, so the
 	 *  sheet is still there to slide away, and each opening keys a fresh one. */
-	let lineAt = $state<{ from: NodeView; to: NodeView } | null>(null);
+	let lineAt = $state<{ from: NodeView; to: NodeView; among?: LineAmong } | null>(null);
 	let lineShowing = $state(false);
 	let opening = $state(0);
 
-	function setLookOn(from: OwnedRef, to: OwnedRef): void {
+	function setLookOn(from: OwnedRef, to: OwnedRef, among: LineAmong | undefined = undefined): void {
 		const one = nodes.get(from);
 		const other = nodes.get(to);
 		if (!one || !other) return;
-		lineAt = { from: one, to: other };
+		lineAt = { from: one, to: other, ...(among ? { among } : {}) };
 		opening += 1;
 		lineShowing = true;
+	}
+
+	/** The lines lit to be read before one is edited — DESIGN.md § Edges, the
+	 *  tapped one first. */
+	let litLines = $state<readonly (readonly [OwnedRef, OwnedRef])[] | null>(null);
+
+	function editLit(from: OwnedRef, to: OwnedRef): void {
+		const all = litLines ?? [];
+		const at = all.findIndex(([a, b]) => (a === from && b === to) || (a === to && b === from));
+		setLookOn(from, to, all.length > 1 ? { at: at + 1, of: all.length } : undefined);
+	}
+
+	/** A tap on a lit line opens it; a tap on any other lights it, and the
+	 *  bundle it was tapped in. */
+	function tapLine(
+		from: OwnedRef,
+		to: OwnedRef,
+		bundle: readonly (readonly [OwnedRef, OwnedRef])[]
+	): void {
+		const already = litLines?.some(
+			([a, b]) => (a === from && b === to) || (a === to && b === from)
+		);
+		if (already) editLit(from, to);
+		else litLines = bundle.length > 0 ? bundle : [[from, to]];
+	}
+
+	/** A tap on bare paper: nothing on the field stays chosen, and a note opened
+	 *  from it closes. A note being written is not the field's to close. */
+	function letGo(): void {
+		litLines = null;
+		picked.clear();
+		if (openNotes.length > 0 && writingNow === null && !walkingNow) hide();
 	}
 
 	const selection = $derived(tags.selected);
@@ -2284,13 +2341,13 @@
 
 	/** The column's groups: both may stand open, and they share what it has
 	 *  left. Which are open is this device's (DESIGN.md § Persistence). */
-	function toggleGroup(which: 'history' | 'tags'): void {
+	function toggleGroup(which: 'history' | 'tags' | 'lines'): void {
 		const held = prefs.current.columnGroups;
 		prefs.set('columnGroups', { ...held, [which]: !held[which] });
 	}
 
 	/** From the icon rail: widen the column and open that group in it. */
-	function openGroup(which: 'history' | 'tags'): void {
+	function openGroup(which: 'history' | 'tags' | 'lines'): void {
 		prefs.set('columnGroups', { ...prefs.current.columnGroups, [which]: true });
 		prefs.set('deskNavOpen', true);
 	}
@@ -2684,6 +2741,7 @@
 		// A field answers its own Escape by emptying itself, and the reader who
 		// typed into it did not ask the graph anything.
 		if (typedIntoWriting(event)) return;
+		if (litLines !== null && !lineShowing) litLines = null;
 		if (pointing) stopPointing();
 		// Capture, so this reads whether a surface is over the graph BEFORE that
 		// surface closes itself on the same keystroke — otherwise one Escape both
@@ -2703,6 +2761,11 @@
 			return;
 		}
 		if (typedIntoWriting(event)) return;
+		if (event.key === 'Enter' && litLines !== null && !lineShowing && !onAControl(event)) {
+			event.preventDefault();
+			editLit(litLines[0][0], litLines[0][1]);
+			return;
+		}
 		const act = acceleratorFor(event);
 		if (act === 'branch') {
 			event.preventDefault();
@@ -2829,6 +2892,8 @@
 					nodes={visible}
 					{collapsed}
 					{edgeLooks}
+					{hiddenLines}
+					onLines={(next) => (lineCount = next)}
 					{selection}
 					codeMoved={codeDrift.moved}
 					fields={foreign || asWas ? undefined : graphs.fields}
@@ -2849,6 +2914,8 @@
 					pictures={ownPictures}
 					reading={asWas ? undefined : foreign ? heldReading : reading}
 					ground={prefs.current.ground}
+					bundle={prefs.current.bundleLines ? prefs.current.bundleStrength : undefined}
+					spread={prefs.current.fieldSpread}
 					wallpaper={{
 						picture: showing,
 						strength: wallpaper?.strength ?? 0,
@@ -2863,12 +2930,17 @@
 					onRetag={pointing || foreign || notNow
 						? undefined
 						: (retag) => void moveBetweenSets(retag)}
-					onEdge={pointing || foreign || notNow ? undefined : setLookOn}
+					litEdges={pointing || foreign || notNow || chosen ? undefined : (litLines ?? undefined)}
+					onEdge={pointing || foreign || notNow ? undefined : tapLine}
+					onPaper={letGo}
 					onOpenNode={notNow
 						? (ref) => (bringingTo = ref)
 						: foreign
 							? (ref) => void readHeld(ref)
-							: show}
+							: (ref) => {
+									litLines = null;
+									show(ref);
+								}}
 					onExpand={(ref) => {
 						folded.delete(ref);
 						if (pointing) looking = ref;
@@ -3009,6 +3081,17 @@
 						<Maximize class="size-4" />
 					</Button>
 					{@render inkActs()}
+					{#if !desk.current && anyLines && !inSets}
+						<Button
+							variant="ghost"
+							size="icon"
+							class="size-9 shrink-0 rounded-full"
+							aria-label="Lines"
+							onclick={() => (choosingLines = true)}
+						>
+							<Spline class="size-4" />
+						</Button>
+					{/if}
 					<GroundChoice
 						value={prefs.current.ground}
 						pictured={wallpaper !== null}
@@ -3242,6 +3325,48 @@
 										onselect={(next) => tags.select(next)}
 										order={prefs.current.tagOrder}
 										onorder={(next) => prefs.set('tagOrder', next)}
+									/>
+								</div>
+							{/if}
+						</div>
+					{/if}
+				{/if}
+
+				{#if anyLines && !inSets}
+					{#if collapsed}
+						<button
+							type="button"
+							aria-label="Lines"
+							title="Lines"
+							onclick={() => openGroup('lines')}
+							class="mx-auto flex size-control shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+						>
+							<Spline class="size-4" />
+						</button>
+					{:else}
+						{@const open = prefs.current.columnGroups.lines}
+						<div class="flex min-h-0 flex-col {open ? 'flex-1' : 'shrink-0'}">
+							<button
+								type="button"
+								aria-expanded={open}
+								onclick={() => toggleGroup('lines')}
+								class="flex min-h-control shrink-0 items-center gap-1.5 border-t border-border px-1 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+							>
+								<ChevronDown
+									class="size-3.5 shrink-0 transition-transform {open ? '' : '-rotate-90'}"
+								/>
+								<span class="min-w-0 truncate">Lines</span>
+							</button>
+							{#if open}
+								<div class="min-h-0 flex-1 overflow-y-auto pt-1">
+									<LineSwitches
+										lines={lineCount}
+										hidden={hiddenLines}
+										onchange={(next) => prefs.setLinesOff(graph, next)}
+										{bundle}
+										onbundle={setBundle}
+										spread={prefs.current.fieldSpread}
+										onspread={setSpread}
 									/>
 								</div>
 							{/if}
@@ -3840,12 +3965,30 @@
 	{#key opening}
 		<EdgeSheet
 			open={lineShowing}
-			onOpenChange={(showing) => (lineShowing = showing)}
+			onOpenChange={(showing) => {
+				lineShowing = showing;
+				if (!showing) litLines = null;
+			}}
 			from={lineAt.from}
 			to={lineAt.to}
+			among={lineAt.among}
 		/>
 	{/key}
 {/if}
+
+<ResponsiveModal bind:open={choosingLines} title="Lines">
+	<div class="max-h-[60vh] overflow-y-auto px-1 pt-3 pb-2">
+		<LineSwitches
+			lines={lineCount}
+			hidden={hiddenLines}
+			onchange={(next) => prefs.setLinesOff(graph, next)}
+			{bundle}
+			onbundle={setBundle}
+			spread={prefs.current.fieldSpread}
+			onspread={setSpread}
+		/>
+	</div>
+</ResponsiveModal>
 
 <ResponsiveModal
 	bind:open={numbering}

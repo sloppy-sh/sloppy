@@ -161,7 +161,7 @@ describe("a review", () => {
 
 describe("which acts a role is handed", () => {
   const reading = CHAT_TOOLS.filter(
-    (act) => !chatToolWrites(act) && act !== "find_code",
+    (act) => !chatToolWrites(act) && act !== "find_code" && act !== "show_note",
   );
 
   it("leaves out the acts served only outside the app", () => {

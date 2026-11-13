@@ -40,6 +40,8 @@ import {
 	graphIn
 } from './local-mode';
 import { picked, readsPicked } from './places';
+import { tauriServe } from './serve';
+import { tauriSpeech, tauriSpeechProgram, tauriSpeechRecorder, tauriSpeechSystem } from './speech';
 import { IS_MOBILE, TAURI_PLATFORM } from './platform';
 
 /** An Android emulator's loopback is the emulated device itself; 10.0.2.2 is
@@ -61,6 +63,8 @@ const APP_ORIGIN = (import.meta.env.PUBLIC_SLOPPY_APP_ORIGIN || 'https://sloppy.
 );
 
 const device = LOCAL_MODE ? tauriFiles() : undefined;
+
+const aiKeys = device ? deviceAiKeys(device) : undefined;
 
 /** A phone and a tablet keep their graphs in one place, so opening one there
  *  answers with that place rather than asking. */
@@ -326,11 +330,22 @@ export function initNativeRuntime(): void {
 					identities: identitiesHere(device),
 					gitDefaults: new DeviceGitDefaults(device),
 					credentials: new DeviceCredentials(device),
-					aiKeys: deviceAiKeys(device),
+					aiKeys,
 					threads: new DeviceThreads(device),
 					builds: new DeviceBuilds(device),
 					placeFiles: (root: string) => (picked(root) ? device.at(root) : undefined),
 					askPlace: () => askPlace(device),
+					serve: tauriServe(),
+					speech: tauriSpeech(aiKeys),
+					// A phone or a tablet runs no program of the person's, and the
+					// speech plugin hears on a computer only.
+					...(IS_MOBILE
+						? {}
+						: {
+								speechProgram: tauriSpeechProgram(),
+								speechSystem: tauriSpeechSystem(),
+								speechRecorder: tauriSpeechRecorder()
+							}),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,

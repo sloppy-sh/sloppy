@@ -3,9 +3,20 @@
 // it is written down and opened only for the act that sends it; a page is
 // told which agents have one and never the key.
 
-import { type ChatAgent, CHAT_AGENTS } from "@sloppy/types";
+import {
+  CHAT_AGENTS,
+  type ChatAgent,
+  SPEECH_AGENTS,
+  type SpeechAgent,
+} from "@sloppy/types";
 import { decodeText, encodeText } from "@sloppy/vault";
 import type { Files } from "./files.js";
+
+/** Whom a key is held for: an agent that answers a chat, or one that hears. */
+export type KeyProvider = ChatAgent | SpeechAgent;
+const KEY_PROVIDERS: readonly KeyProvider[] = [
+  ...new Set<KeyProvider>([...CHAT_AGENTS, ...SPEECH_AGENTS]),
+];
 
 /** What this is called, under {@link Files.dataPath}. */
 export const AI_KEYS_FILE = "ai-keys.json";
@@ -34,14 +45,14 @@ export interface Sealer {
 }
 
 export interface HeldKey {
-  provider: ChatAgent;
+  provider: KeyProvider;
   sealed: string;
   backing: SealBacking;
 }
 
 /** An agent a key is held for, and what keeps it — never the key. */
 export interface KeyHeldFor {
-  provider: ChatAgent;
+  provider: KeyProvider;
   backing: SealBacking;
 }
 
@@ -49,12 +60,12 @@ export interface KeyHeldFor {
  *  hands a page a secret: `hold` takes one in, `held` says who has one. */
 export interface AiKeysAccess {
   held(): Promise<KeyHeldFor[]>;
-  hold(provider: ChatAgent, secret: string): Promise<SealBacking>;
-  forget(provider: ChatAgent): Promise<void>;
+  hold(provider: KeyProvider, secret: string): Promise<SealBacking>;
+  forget(provider: KeyProvider): Promise<void>;
 }
 
 /** The name a provider's key is sealed under. */
-export function keyIdentifier(provider: ChatAgent): string {
+export function keyIdentifier(provider: KeyProvider): string {
   return `sloppy.ai.${provider}`;
 }
 
@@ -73,7 +84,7 @@ export async function readAiKeys(data: Files): Promise<HeldKey[]> {
   return held.flatMap((one) => {
     const said = one as Partial<HeldKey> | null;
     if (
-      !CHAT_AGENTS.includes(said?.provider as ChatAgent) ||
+      !KEY_PROVIDERS.includes(said?.provider as KeyProvider) ||
       typeof said?.sealed !== "string" ||
       said.sealed === "" ||
       !SEAL_BACKINGS.includes(said.backing as SealBacking)
@@ -81,7 +92,7 @@ export async function readAiKeys(data: Files): Promise<HeldKey[]> {
       return [];
     return [
       {
-        provider: said.provider as ChatAgent,
+        provider: said.provider as KeyProvider,
         sealed: said.sealed,
         backing: said.backing as SealBacking,
       },
@@ -110,7 +121,7 @@ export class DeviceAiKeys implements AiKeysAccess {
     return held.map(({ provider, backing }) => ({ provider, backing }));
   }
 
-  async hold(provider: ChatAgent, secret: string): Promise<SealBacking> {
+  async hold(provider: KeyProvider, secret: string): Promise<SealBacking> {
     const given = secret.trim();
     if (given === "") throw new Error("Paste the key first.");
     const data = await this.data();
@@ -125,7 +136,7 @@ export class DeviceAiKeys implements AiKeysAccess {
     return backing;
   }
 
-  async forget(provider: ChatAgent): Promise<void> {
+  async forget(provider: KeyProvider): Promise<void> {
     const data = await this.data();
     const held = await readAiKeys(data);
     await writeAiKeys(
@@ -137,7 +148,7 @@ export class DeviceAiKeys implements AiKeysAccess {
 
   /** The key itself, opened for one act. Not on {@link AiKeysAccess}: a page
    *  is never handed this. */
-  async open(provider: ChatAgent): Promise<string | undefined> {
+  async open(provider: KeyProvider): Promise<string | undefined> {
     const held = (await readAiKeys(await this.data())).find(
       (one) => one.provider === provider,
     );

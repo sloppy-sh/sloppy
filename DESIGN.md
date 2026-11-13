@@ -1090,6 +1090,146 @@ wins only on the channels it names. Three channels, and nothing else moves:
 - **A look draws on the line that is there, and on nothing where there is none.** Two notes
   with no line between them stay two notes with no line between them, however carefully
   somebody has described one.
+- **A line is lit before it is edited.** The first tap lights it — full ink, the rest of the
+  lines receding, its two notes orbited and named, and on a bundle every line in it lit with
+  a count — and a second tap on a lit line opens its look; a tap elsewhere or Escape lets go.
+  A tap on bare paper lets go of everything chosen: the lit lines, the notes picked while
+  choosing (the choosing stays up, empty) and the note opened from the field, which closes.
+
+#### Lines a reader can turn off
+
+A graph somebody has linked by hand for a year carries hundreds of lines, and the question
+they bring to it is usually about one kind of them. So the reader says which lines the
+canvas draws, by what the lines are, and the canvas draws nothing at all for the rest.
+
+- **The rows are the four kinds, and under hand links, every relation on the canvas.** The
+  label a person set on a hand link is that relation's name, so `uses`, `used by` and
+  `reads and writes` are rows of their own, each with how many lines carry it, and the hand
+  links nobody labelled are one more row. The rows are read off the lines the canvas has to
+  draw, never declared: a relation nobody has written yet has no row, and one the canvas
+  stops drawing leaves. A label on any other kind of line names no relation, because only a
+  hand says what a relation is.
+- **Off is off, not dimmed.** Dimming answers a question of the graph — which notes carry
+  these tags — and keeps the shape so the answer is read against it (PRODUCT.md). Turning a
+  kind of line off is the reader deciding what they are looking at, which no note answers,
+  so those lines draw nothing and answer no tap. The marks stay where they are: a line moves
+  no mark, so taking it away moves none either.
+- **Kept per device, against the graph**, the way the picture under it is. Somebody who has
+  turned the genealogy off in one notebook has said nothing about another, and the choice
+  never reaches a peer.
+- **A difference is drawn whatever is turned off.** The lines a comparison strikes are its
+  answer, and a reader who hid the genealogy has still asked what moved.
+
+#### Room between marks
+
+A dense field can be given more room. "Room between marks" is a slider at the foot of the
+Lines panel, from 1 — the field as the genealogy lays it out — to 2.5.
+
+- **It scales every distance the layout decides, alike.** The field is drawn larger and the
+  marks are not: each mark slides out along its own bearing and settles where it was relative
+  to every other, so no sector turns, no run reorders and no neighbour changes. It moves no
+  mark relative to another, so it is a way of looking at the field, not an arrangement of it.
+- **Kept per device, for every graph**, like bundling the hand links. Nothing is stored on a
+  note and nothing reaches a peer: positions stay derived (AI.md § "Derived, never stored"),
+  and a peer reading the same graph draws the same shape at whatever room they gave it.
+
+#### A dense field recedes around the note in hand
+
+Past a point, hand links stop reading as lines and start reading as weather: every mark is
+reached by several, they cross everywhere, and the note somebody is reading is lost under
+its neighbours' connections. So a dense field draws its hand links a step quieter, and
+strikes the ones around the note in hand back up — focus and context, the field kept and the
+neighbourhood raised out of it.
+
+- **A field is dense past `DENSE_LINKS_MOST` hand links (200), or past
+  `DENSE_LINKS_PER_MARK` (2) for every mark drawn** (`scene.ts` in `@sloppy/graph`). Two a
+  mark is where a field stops being a tree with some lines across it; two hundred is where
+  even a large field's crossings outnumber what a reader can follow. Below both, nothing
+  here applies and the canvas draws exactly as above.
+- **The quiet step is a step the ladder already has**: the alpha a reference recedes to
+  while a tag question is up. It is never a new colour and never off — a dimmed field is
+  still the field.
+- **The note in hand is the note being read, and the mark under the pointer.** A hand link
+  reaching either is struck whole, as a line reaching the note being read always is; a hand
+  link between two of their one-hop neighbours stands at its own weight; the rest stay quiet.
+  The pointer is a mouse's alone, so a phone reads the neighbourhood of the note it opened,
+  and nothing here is behind a hover a tap cannot reach.
+- **Captions go to the lines that stand out.** The words a look puts on a line take the
+  caption budget's slots first where the line is struck whole, then the longest lines, and
+  never a quiet one: a caption on a line the field has receded would be the loudest thing
+  on it.
+
+#### Bundled along the tree
+
+A project with hundreds of hand links draws them straight across the field, and past a few
+dozen the field is a hairball: every line crosses every other and none of them can be
+followed. The genealogy already gives every mark a place in a tree, so a reader may route the
+hand links along it instead — Holten's hierarchical edge bundling, with the tree the canvas
+already draws as the hierarchy. Lines between the same two parts of the project then run
+together as one cord and part only near their ends, so a field of five hundred reads as a few
+dozen.
+
+- **One switch, off by default, kept per device like the ground.** "Bundle" is the last switch
+  in the Lines panel, with "How tightly" under it once it is on. It is a way of looking at
+  the field and nothing the notes say: it never publishes, and a peer pulling a subtree
+  receives nothing of it.
+- **Only hand links bend.** The genealogy and the run ARE the tree, and a reference is drawn
+  on the same ladder they are; bending those would draw the tree along itself. A hand link is
+  the line that crosses the tree, so it is the one routed along it.
+- **The path is the tree path, straightened by β.** A line from `a` to `b` takes as its
+  control points the marks from `a` up to the lowest ancestor the two share and down to `b` —
+  the shared ancestor included, since here it is a mark the two branches spring from rather
+  than a point in empty space. Two marks in different trees meet at the roots. Each control
+  point is pulled toward the straight line by Holten's straightening,
+  P'ᵢ = β·Pᵢ + (1 − β)·(P₀ + i/(N−1)·(P\_{N−1} − P₀)), and the line is drawn as the uniform
+  cubic B-spline through them with its ends tripled so it starts and ends on the marks.
+  **β defaults to 0.85**, Holten's own: tight enough that a bundle reads as one cord, loose
+  enough that its lines can be told apart. β = 0 is the straight line again.
+- **Everything else about the line is unchanged.** The break, the weight, the ink, a look's
+  arrowhead (pointed the way the curve arrives) and its words (at the middle of the curve, as
+  drawn) — the bundle is how the line runs and nothing else. A tap is answered against the
+  curve that is drawn. A pair the tree joins directly has no path to follow and stays
+  straight.
+- **A path is laid once per settle, never per frame.** While the field is still settling, or
+  a mark is being dragged, hand links are drawn straight; the paths are laid when the field
+  comes to rest, and a pan or a zoom only re-strokes them. `bundling.ts` in `@sloppy/graph`
+  holds the geometry and `bundling.test.ts` its rules.
+
+#### Lines into a folded branch
+
+A folded branch is one mark standing for every note under it (§ "The canvas"), so a hand link
+that reaches a note inside it has no mark to reach. **It is drawn to the mark standing for the
+branch, once per pair of drawn marks, and says how many it stands for** — twelve links from a
+folded branch to one note are one line, not twelve lines to a mark that is not drawn.
+
+- **One line, weighted by the count, in a hand link's ink and break.** It is still a line a
+  hand made, so it is still broken; what grows is its weight, which steps up by 0.4 of a hand
+  link's at 2, 5 and 10 lines and no further, so the heaviest cord is 2.2 times a single link
+  and never the loudest thing on the field.
+- **A line standing for several carries its count as its caption — "7 lines"** — at its
+  middle, under the same budget and the same room rules every caption on a line is held to.
+  A line standing for one carries none. The count leads even where a person set words on
+  the line between the two drawn marks themselves: their words name one of the lines, and
+  the cord is several.
+- **A link with both ends inside one fold is inside it** and draws nothing until the branch is
+  opened. The link the two drawn marks have themselves counts as one of the lines.
+- **Opening the branch draws the lines themselves again**, each to its own note. Nothing is
+  stored: the aggregation is a function of what is folded, and folding is the reader's.
+- **Genealogy and the run into a folded branch keep the rule they already had** — the
+  branch's own mark is where the tree reaches it, and a fold draws no line into itself.
+- **It pulls as one hand link does**, however many it stands for: the count is how the line
+  is drawn, and how far apart two marks sit stays the genealogy's to say.
+
+#### How the four compose
+
+**A line turned off is taken out before anything else is done with it**, so it is neither
+bundled, nor receded, nor counted into a folded branch's line: hiding `uses` takes its share
+out of every "N lines", and a cord left standing for none draws nothing. What is left is
+bundled where the reader asked, recedes or is struck whole on a dense field exactly as a
+straight line would be, and a cord's caption competes for the caption budget like any other —
+struck lines first, never a quiet one. The Lines panel counts every hand link a cord stands
+for under its own relation, so folding a branch moves no row's count but the links it closes
+inside itself.
 
 ### Contrast is measured, not assumed
 
@@ -1930,7 +2070,9 @@ nothing under it.
   read, which is `ReadingPanel` — the dock plus the strip across its head; and the chat with
   an agent about the project, which is the dock plus the thread and the composer — with, under
   the composer, one quiet line saying who is answering and what the conversation has spent,
-  the cost only where the agent says one. Anything else that wants to stand beside the graph
+  the cost only where the agent says one, and a microphone beside Attach where the computer
+  can record and hear: pressed, it listens until pressed again, and what was heard lands in
+  the composer to be read over, never sent on its own. Anything else that wants to stand beside the graph
   is a third use of the same dock, never a second copy of it. **A docked note fills the page
   on a tap** — the control sits in the note's own head beside what can be done with it —
   and comes back beside the graph on the next, or on Escape; the graph, the column and the
@@ -2241,6 +2383,227 @@ A composer riding above the keyboard uses
 `max(var(--kb-inset-bottom,0px), calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 0.5rem))`
 — the breath belongs INSIDE the bar term, since that term goes to 0 while the keyboard is
 up and the lift can be 0 in the panned case.
+
+## The field in a room
+
+**A headset reads the same graph standing in it**, and the reading holds to every rule this
+document gives the canvas; what changes is only that the field has a third dimension and the
+reader has a body. docs/ARCHITECTURE.md § "A headset beside the desk" is how it gets there.
+
+- **The colour language is the canvas's, channel for channel.** Hue is the sets in front of
+  the reader, from the same ranking (`drawnSetsOf`), lightness is depth on the same ramp, and
+  form is provenance. A mark is a **matte sphere** — no gloss, no glow, nothing that reads as
+  a light source — wearing a band of each set it is in, as latitudes in the order the rail
+  lists them. A sphere too far off to hold its bands falls back to its first hue, by the same
+  floor. The ring a published note wears is not drawn yet: what a headset is served does not
+  say which notes are published, and it is drawn once it does.
+- **Pulled is never only a colour.** A pulled note is a hollow shell with its edge broken,
+  the way the canvas draws it hollow and dashed, so that it is somebody else's thought reads
+  in greyscale and from across the room. Pointing at it says it was pulled from another graph;
+  whose graph is not said yet, for the same reason as the ring.
+- **The genealogy is the tree's own lines; a hand link is quieter.** What sprang from what
+  is drawn as the field's structure, solid and in ink. A link the author drew by hand is a
+  thinner, fainter line wearing the look its note sets (§ Edges), so the shape is read first
+  and the cross-references after. A line pointed at lights along its length with the two marks
+  it joins, and the trigger holds it while the hand says which notes it runs between, what its
+  author called it and how many lines run together there; pulled again, the hand keeps naming it and
+  says to hold A and tell the assistant how the line between those two notes should look, since nothing in the headset changes one
+  directly, and pointing at a mark or pulling on nothing lets it go.
+- **Where a mark stands is derived, never kept.** The genealogy places it, in whichever
+  arrangement the reader chose (below): a branch's direction is its ref's, a run keeps the
+  order it was written in, a child stands further out than its parent, crowding is eased
+  across the shell a mark stands on, and an address moves nothing. Turning, moving and
+  scaling the field, and what is folded, are this reader's for this session. Nothing about
+  where a mark stands is stored or sent, and a peer sees nothing of it.
+- **Titles stand on the marks nearest the reader**, among those ahead of them: the nearest
+  eight unless the reader asks for more or fewer, wherever they stand, the farthest of them
+  faintest. A title reads at one size however near or far its mark, the one pointed at or
+  sought a little larger, and stands toward the reader so nothing of its mark covers it. A
+  near mark whose note wears a picture wears it too, as a disc turned to the reader and edged
+  in the mark's own colour, and broken where the mark is pulled, so a logo reads from a few
+  steps away; its title stands above it. A picture fades in as its mark comes within those
+  few steps and out as it leaves, never blinking; the rest stay plain marks. A field of
+  floating words is a wall; a title is what a mark says to somebody close enough to be asking
+  about it, and coming nearer is how a reader asks about another.
+- **Sets are places in the room.** The Sets reading draws the tags in front of the reader as
+  translucent regions, each in its slot's hue, and stands each note among the tags it
+  carries. Pointing at a place lights its notes and dims the rest — highlight, not filter,
+  exactly as on the canvas. It is moved through as the field is — walked, flown, turned,
+  tilted, taken hold of, brought back, glided to a sought note, its nearest titles standing —
+  arrived in out of the same veil with the places coming up one after another, and seen whole
+  from a vantage of its own.
+- **Chrome is at the hand, never in the field.** What the reader can do is held on the
+  palette in their left hand (below); nothing floats over the graph unless the reader left it
+  there.
+- **A citation names the note it cites.** A note read in a panel cites another by its ref; the
+  panel shows the cited note's address and title where the field in front of the reader holds
+  it, and says only "a note" where it does not.
+- **Quiet, still.** No gamification, no celebration, no motion the reader did not cause. The
+  field moves when somebody takes hold of it.
+
+**The headset reads in the desk's look, and the room is the reader's choice.** On reaching a desk
+and on opening each project, the headset takes the look the desk is wearing — its ink and paper,
+its eight hue slots in their order, the faces it reads and titles in, the weight its style gives a
+card's edge and the room its density leaves between rows — so the field is recognisably the graph
+on the desk. The palette's look panel has "Follow the desk" on until somebody turns it off, and
+under it the headset's own look — one of Sloppy's five or any scheme the desk could wear — face and
+density, each chosen over the desk's on its own and kept on the headset: a reader who needs another face in the headset keeps the desk's colours and loses
+nothing else. Effects are not drawn; a texture over the whole of somebody's sight is not a page.
+There are four rooms. "The look's paper" stands the field on the look's own paper, as the desk
+draws it. "Dark" is a room of the Dark look's paper with nothing in it but the field, "My
+surroundings" stands the field in the room the reader is in, darkened a little behind it so a
+bright wall does not wash it out, and "Night sky" hangs it in a dark sky of stars with a faint band
+across it, the same stars in the same places every time, turning once an hour so it is felt rather
+than seen, and dim enough that the marks stay the brightest thing there. Under the night the room
+panel names the sky and offers "Skies": a page of the skies the night can be — those stars first,
+then the open and night skies Poly Haven publishes free, each with its small picture and its name,
+and under "Your skies" any panorama the person has put in its skies folder — the one the page names, which they
+reach by connecting the headset to a computer — a photograph of space as readily as of a place. Choosing a published sky fetches it to the headset
+once and fades the night over to it; it turns once an hour as the stars do, and is drawn dimmed —
+"Dim" takes up to all of its light off it, 40 in a hundred until somebody moves it — so the marks
+stay the brightest thing there. "Sharper" fetches a finer copy of the one chosen, and the page
+credits who photographed it. Which sky, how dim, and every sky fetched are kept on the headset; with
+no network, the skies already on it are the list, and the page says the rest need the network. In
+the last three the look's ink is worked out again against the dark
+— its ink or its paper, whichever stands further from it, lightened until it clears 7:1 — and its
+hues are held to the mark floor there, so a light look on the desk is never a glare in the headset
+and a title is a light word with a dark edge over either. The choice is kept on the headset; a
+headset that cannot show the room keeps the choice, says it cannot, and stays dark. A note or a
+thread read at the hand is a page from the same book as the desk: the look's heading, body and code
+faces, its ink on its card, rules as fine or as heavy as its style draws an edge, and the room
+between lines its density leaves. The look panel's "Panels" row dresses the note and chat panels
+instead in one of four open theme packs made for Godot — Material light, Material dark, Spacey or
+Clashy — in the pack's own faces and colours at the sizes the density reads at, kept on the headset.
+
+**Seated and standing alike.** Nothing needs the reader to stand, turn round or walk. Every view
+opens ahead of where they are looking and at the height of their eyes, whatever that height is;
+the field stands there at its own size, its middle level with their eyes. A field opened for the
+first time this session is arrived in rather than dropped into: the reader stands inside it with
+its middle a step ahead and no mark at their eyes, the room fogged so only what is near shows, and
+over two and a half seconds the fog draws back to the whole expanse while the field turns an
+eighth about them into place. A stick moved ends that at once. Everything a
+body could do is on the two sticks. The pointing hand's stick turns the field about them as it
+leans across — slowly for a small lean, a quarter turn a second leaned all the way — and tilts it
+about them as it leans ahead or back, over the top and under for as long as it is held, so a
+reader in a chair looks up a branch, or all the way round, without craning; taking hold of the field still turns and moves it, and
+both hands still scale it. The other stick walks, ahead and back and aside, and inside the field
+flies where they look, up and down too. A hand that shakes is steadied as much as the reader asks
+— off, a little or a lot — in the stick's lean and the grip's hold alike: a tremor is averaged
+away while a movement held longer than that comes through whole. The choice stands on the room
+panel and is kept on the headset. "Bring it back" stands the field before them again, upright,
+ahead of where they look now and at the height they are at now, which is how somebody who has sat
+down, stood up or turned finds it again. Nothing but the field they stand inside is placed behind
+or below the reader. Asked to be taken to a note, by the assistant or by finding it, the field
+glides from wherever it stands straight to that note, within reach ahead of them at the size it
+was, and the note stays lit.
+
+**The vantage.** On the room panel, beside Bring it back, "Vantage" carries the whole field out
+to stand before the reader, small enough to take in at once, and turns it slowly about its own
+middle, once a minute, the way a galaxy is drawn. "Back in", or any stick moved, carries it back
+to where it stood.
+
+**The palette is held in the left hand, the way a painter holds one,** and it is there when the
+reader wants it: the left hand's menu button brings it up and puts it away again, and a note
+opened from a mark brings it up. While it is away the whole of that hand's stick walks. Six
+panels stand round the controller, each a little wider than a hand and a hand's breadth and a half
+out from it, its words facing out, and every one is the same page: a title, one quiet line saying
+how things stand now, and rows under small headings in the groups a person would name them by —
+"Here" (the project being read; _Read_: Field, Sets; _Desk_: Projects, Disconnect; and under them
+what the hand is hearing), "Room" (_Light_: the look's paper, Dark, Night sky with its sky and
+Skies, My surroundings; _Moving_: Bring it back, Vantage or Back in, Steady hands), "Note" (the
+note open now), "Look" (_Following_: Follow the desk; _Colours and type_: Look, Face, Density;
+_Panels_), "Field" (below) and "Chat" (below). Every row is one height and stands one gap from the
+next, with a small glyph on its left so a panel is scanned before it is read, and words at one
+size: a name too long for its row ends
+in an ellipsis and is never set smaller. A row saying what something is set to carries it on its
+right; a row leading to a sub-page carries a chevron, and a sub-page — the lines, the skies, the
+looks — is a page like any other, with Back its last row. A chosen row is filled with ink and its
+words turned to paper; a row pointed at stands a few millimetres nearer the eyes, its card lit,
+and the hand pointing feels a short light tick; a row pressed dips and comes back. The panel
+turned most to the reader is the one the right hand's pointer chooses from, and not even that one
+once it is turned more than seventy degrees from their eyes, so a ray cannot press what the reader
+cannot see; and while that ray is within a hand's width of the palette, the palette stands still
+in the room rather than following the hand, so the left hand's drift never pulls a row from under
+the right's, and it eases back under the hand a moment after the ray has gone. A swipe of the left
+stick while the palette is up turns the next panel round to them, in a tenth of a second. The look
+row opens the Looks page: the desk's look first, then Sloppy's five, then every scheme the desk
+could wear, light or dark, narrowed by the letters their names begin with until a handful are
+left, so any of them is four picks from the page; each stands beside a swatch of its paper and its
+ink, is painted on the headset exactly as the desk would paint it, and once chosen is kept on the
+headset. The collection is kept as it was last heard from a desk; before one is reached the page
+offers Sloppy's five and says the rest come with a desk. A note opened from a mark is held on the
+palette, smaller, and its panel turned to the reader; the right hand's grip on it pulls it off and
+it grows to its own size, goes where the hand takes it, and stays floating where it is let go. Let
+go near its place on the palette it goes back on. A note opened while another is floating takes
+that one's place in the room.
+
+**Three arrangements, one field.** The reader chooses how the field stands, on the palette's
+field panel, and choosing walks every mark to its new place over half a second while the reader
+stays where they are.
+
+- **Inside**, the first a headset opens on: the root stands a step ahead and each generation is
+  a shell around them — the first an arm's length and a step out, each deeper one a step
+  further — so they look outward at the branches and walk or fly out along one to read it.
+  Every subtree owns a cone of the sky as wide as its share of the notes under its parent, so no
+  branch stands in front of another; the first generation shares the horizon round the reader
+  that way, each at its ref's own bearing. A run fills the cap of its parent's cone as a spiral
+  in the order it was written, the first nearest the middle, so thirty siblings are a cluster to
+  step into and never a line. A graph with several notes that spring from nothing stands the
+  reader among all of them at once. Marks and lines are drawn as large in the tree, since both
+  stand at their own size, and a hand link bends round the reader from one end's shell to the
+  other's rather than crossing where they stand.
+- **Tree** stands the field ahead of the reader at its own size, a step or two beyond reach,
+  to be walked and flown into as Inside is and turned or scaled in the hands: a branch leaves
+  the sphere at its ref's bearing and a run fans across its parent's outward line, by the rules
+  `geometry.ts` gives the canvas. It is the field with its layers made plain.
+- **Sets** is the Sets reading above.
+
+**The field panel is how the reader has the field drawn,** and every choice on it is kept on the
+headset and sent nowhere. Spacing — the room between marks, from the field as the genealogy lays
+it out to two and a half times that — mark size and how many titles stand are sliders: the right hand points
+at one and the left stick leans it, the palette staying where it is while a slider has the
+stick. Pictures are shown or hidden, the arrangement is one of the three, and the field moves as
+each changes, live. The same panel turns lines off as § Edges, "Lines a reader can turn off"
+gives the canvas — what sprang from what, what was drawn by hand, and under it every relation a
+hand link names, each with how many lines carry it — kept per graph, and off is off. A field
+past two hundred hand links, or two a mark, draws them quiet — the step a note outside a lit
+set in Sets recedes to — as § Edges, "A dense field recedes around the note in hand" does: the hand links of the note being read and of the mark
+pointed at are struck whole, those between their neighbours stand at their own weight, and the
+panel says so.
+
+**Speaking to the desk.** The reader can ask with their voice, on the pointing hand: **hold A and
+speak.** There is one button, and everything said goes to the desk's chat. Release sends what was
+said; a press too short to be speech is a bump and does nothing. While the button is held the chat
+says "Listening…", and when the words come back it says "Heard:" and them, so a mishearing is seen
+before anything happens.
+
+The chat is the same chat the desk has, in a thread of the project being read. It stands on a
+panel at the hand, and the answer arrives on it as it is written, short, as if spoken. The threads
+are the desk's: the ones the person has there are listed, a new one can be started, several can
+stand at once, and what is said from the headset is in the thread on the desk when the headset
+comes off. The palette's chat panel lists the project's threads, newest first and four at a time,
+the older ones a row away, the one answering saying so, with a new thread beside them; a thread
+opened is held on the panel as a note is, pulled off into the room and put back the same way, each
+act the assistant takes one quiet line in it, and Stop beneath it while an answer is under way.
+An answer can also be stopped by speaking over it: holding A while it is written stops it where it
+is and listens, the chat saying "Stopped. Listening…", and what is said goes into the same thread.
+While it answers the headset is still the reader's — every panel, stick and grip does what it
+always does, and the answer goes on arriving on its page while they are elsewhere.
+
+**The assistant takes the reader to a note they describe** — "take me to the note about why we
+chose iroh". It finds the note itself and the reader is carried to it: that note's mark lights
+with a halo of its own and its title stands, and the field glides from where it is, in a little
+over a second, until the mark is at reading distance ahead of their eyes, at eye height, in the
+arrangement they had and at its size. The halo stays until they point at another mark,
+pull the trigger on nothing or move the field, and any touch of a stick stops the glide where it is. Nothing of the glide is
+kept. Where nothing fits, the assistant says so in its answer.
+
+While a project is open the reading panel says "Hold A and speak to ask." where the desk can hear,
+and where it cannot it says what the desk says: where to set speech up. Every refusal is the desk's
+own sentence. The words name what happens — never how the desk hears or where the words are made.
+**The headset keeps none of it**: the voice goes to the desk only while the button is held, words
+come back, and the desk turns the voice into words with what the person chose there and keeps no
+copy.
 
 ## The canvas
 

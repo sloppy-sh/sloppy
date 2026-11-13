@@ -16,6 +16,10 @@ import {
   edgeLookKey,
   edgeLooksByPair,
   type GraphEdgeLook,
+  lineHidden,
+  noLines,
+  sameLines,
+  UNLABELLED_LINE,
 } from "./contract.js";
 
 const DID = "did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc";
@@ -356,5 +360,68 @@ describe("the tags a field draws as places", () => {
       ["alpha", 3],
     ]);
     expect(drawnSetSlots([]).size).toBe(0);
+  });
+});
+
+describe("the lines a reader turned off", () => {
+  const hidden = {
+    kinds: new Set(["genealogy"] as const),
+    labels: new Set(["uses", UNLABELLED_LINE]),
+  };
+
+  it("turns off a kind whole, and a hand link by its label", () => {
+    expect(lineHidden(hidden, "genealogy", undefined)).toBe(true);
+    expect(lineHidden(hidden, "genealogy", "anything")).toBe(true);
+    expect(lineHidden(hidden, "link", "uses")).toBe(true);
+    expect(lineHidden(hidden, "link", undefined)).toBe(true);
+    expect(lineHidden(hidden, "link", "")).toBe(true);
+    expect(lineHidden(hidden, "link", "reads")).toBe(false);
+  });
+
+  it("turns off no other kind of line by the words on it", () => {
+    expect(lineHidden(hidden, "reference", "uses")).toBe(false);
+    expect(lineHidden(hidden, "run", undefined)).toBe(false);
+  });
+
+  it("turns off nothing where nothing was turned off", () => {
+    expect(lineHidden(undefined, "link", undefined)).toBe(false);
+  });
+});
+
+describe("two counts of the lines", () => {
+  const counted = (labels: [string, number][]) => ({
+    ...noLines(),
+    labels: new Map(labels),
+  });
+
+  it("are the same where every row is", () => {
+    expect(sameLines(counted([["uses", 2]]), counted([["uses", 2]]))).toBe(
+      true,
+    );
+    expect(sameLines(noLines(), noLines())).toBe(true);
+  });
+
+  it("differ on a count, a row, or the order the rows come in", () => {
+    expect(sameLines(counted([["uses", 2]]), counted([["uses", 3]]))).toBe(
+      false,
+    );
+    expect(
+      sameLines(
+        counted([
+          ["a", 1],
+          ["b", 1],
+        ]),
+        counted([
+          ["b", 1],
+          ["a", 1],
+        ]),
+      ),
+    ).toBe(false);
+    expect(
+      sameLines(noLines(), {
+        ...noLines(),
+        kinds: { ...noLines().kinds, run: 1 },
+      }),
+    ).toBe(false);
   });
 });

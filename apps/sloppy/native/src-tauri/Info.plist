@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Sloppy serves your notes to a headset you pair on this network.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Sloppy turns what you say to a headset into words on this computer, so you can ask about your notes out loud.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Sloppy hears what you say to it, to turn your words into a question about your notes.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_sloppy._udp</string>
+	</array>
+</dict>
+</plist>

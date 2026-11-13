@@ -104,3 +104,4 @@ export * from './components/social/index.js';
 export * from './components/templates/index.js';
 export * from './components/appearance/index.js';
 export * from './components/graph/chosen.js';
+export * from './components/serve/index.js';

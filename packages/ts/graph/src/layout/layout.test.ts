@@ -33,7 +33,7 @@ function modelFor(
   return buildModel(drawn, { selection: [], palette, keep });
 }
 
-function startOf(model: BuiltModel): LayoutStart {
+function startOf(model: BuiltModel, spread = 1): LayoutStart {
   const index = (ref: string) => model.graph.getNodeAttributes(ref).index;
   const edges: LayoutStart["edges"] = [];
   model.graph.forEachEdge((_edge, attributes, source, target) => {
@@ -48,6 +48,7 @@ function startOf(model: BuiltModel): LayoutStart {
     kind: "start",
     epoch: 1,
     settleAtOnce: false,
+    spread,
     nodes: model.order.map((ref) => {
       const node = model.graph.getNodeAttributes(ref);
       return {
@@ -210,11 +211,42 @@ describe("LayoutEngine", () => {
       kind: "start",
       epoch: 0,
       settleAtOnce: false,
+      spread: 1,
       nodes: [],
       edges: [],
     });
     engine.settle();
     expect(engine.positions()).toHaveLength(0);
+  });
+});
+
+// DESIGN.md § Edges, "Room between marks": more room is the same field drawn
+// larger, so every mark keeps its bearing and its neighbours.
+describe("a field given more room", () => {
+  const nodes = corpus.nodes.slice(0, 400);
+  const drawn = drawnNodes(
+    nodes,
+    applyLod(nodes, new Set<OwnedRef>(), undefined, WHOLE_FIELD).collapsed,
+  );
+  const at = (spread: number) => {
+    const model = buildModel(drawn, { selection: [], palette, spread });
+    return settledPlaces(model, startOf(model, spread));
+  };
+
+  it("settles every mark as many times as far out, on the same bearing", () => {
+    const tight = at(1);
+    const roomy = at(2.5);
+    expect(roomy.size).toBe(tight.size);
+    for (const [ref, near] of tight) {
+      const far = roomy.get(ref) as Point;
+      const out = Math.hypot(near.x, near.y);
+      expect(Math.hypot(far.x, far.y)).toBeCloseTo(out * 2.5, 0);
+      if (out < 1) continue;
+      const turn = Math.atan2(far.y, far.x) - Math.atan2(near.y, near.x);
+      expect(Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn)))).toBeLessThan(
+        1e-3,
+      );
+    }
   });
 });
 

@@ -40,10 +40,10 @@ class TauriDrafts implements DraftAccess {
 		return this.held(root);
 	}
 
-	async start(id: Ulid): Promise<StandingDraft> {
+	async start(id: Ulid, root?: string): Promise<StandingDraft> {
 		let starting = this.starting.get(id);
 		if (!starting) {
-			starting = this.takes(this.here(), id).finally(() => this.starting.delete(id));
+			starting = this.takes(root ?? this.here(), id).finally(() => this.starting.delete(id));
 			this.starting.set(id, starting);
 		}
 		return starting;

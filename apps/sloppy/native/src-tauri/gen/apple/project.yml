@@ -44,6 +44,8 @@ targets:
           - CFBundleURLName: sloppy
             CFBundleURLSchemes: [sloppy]
         LSRequiresIPhoneOS: false
+        NSLocalNetworkUsageDescription: Sloppy serves your notes to a headset you pair on this network.
+        NSBonjourServices: [_sloppy._udp]
         UILaunchStoryboardName: LaunchScreen
         UIRequiredDeviceCapabilities: [arm64, metal]
         UISupportedInterfaceOrientations:

@@ -27,6 +27,8 @@ export * from "./window.js";
 export * from "./harness.js";
 export * from "./chat.js";
 export * from "./chat-served.js";
+export * from "./serve.js";
+export * from "./speech.js";
 export * from "./draft.js";
 export * from "./build.js";
 export * from "./block.js";

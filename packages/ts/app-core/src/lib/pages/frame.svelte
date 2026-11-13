@@ -28,6 +28,7 @@
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
+	import { serving } from '../stores/serving.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tabs } from '../stores/tabs.svelte.js';
 	import OpenAnother from '../components/open-another.svelte';
@@ -151,6 +152,7 @@
 
 	onMount(() => {
 		tabs.boot();
+		void serving.resume();
 		// The strip names a folder by the graph in it, which is on this list.
 		if (tabs.shows) void graphs.readFolders();
 	});

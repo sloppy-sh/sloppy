@@ -761,3 +761,17 @@ describe('the sections of a long page', () => {
 		expect(entries(found[0])).toContain('Appearance');
 	});
 });
+
+describe('a headset', () => {
+	it('is a section of its own, which says where serving is done in a browser', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		standIn('A headset');
+
+		expect(target.querySelector('#a-headset')?.textContent).toContain(
+			'Serving to a headset is done from the Sloppy app on a computer or tablet.'
+		);
+	});
+});

@@ -147,6 +147,8 @@ export function toolLine(block: ToolCallBlock): ToolLine {
 		case 'search_notes':
 		case 'find_code':
 			return { doing, subject: held.arguments.words };
+		case 'find_note':
+			return { doing, subject: held.arguments.said };
 		case 'read_note':
 		case 'read_around':
 		case 'move_note':
@@ -156,6 +158,7 @@ export function toolLine(block: ToolCallBlock): ToolLine {
 		case 'delete_note':
 		case 'restore_note':
 		case 'list_offers':
+		case 'show_note':
 			return { doing, note: held.arguments.note };
 		case 'write_note':
 			return { doing, subject: held.arguments.about };

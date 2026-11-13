@@ -1,6 +1,7 @@
 // The barrel for @sloppy/graph. Every module below states its own contract; a
 // line here would be a second copy of it.
 
+export { BUNDLE_STRENGTH } from "./bundling.js";
 export * from "./color.js";
 export * from "./contract.js";
 export * from "./density.js";

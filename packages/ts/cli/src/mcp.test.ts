@@ -1,13 +1,20 @@
-import { IDENTITIES_FILE, keepingDataAt, MemoryFiles } from "@sloppy/local";
+import {
+  IDENTITIES_FILE,
+  keepingDataAt,
+  MCP_PROTOCOL,
+  MemoryFiles,
+  NO_NOTES_HERE,
+} from "@sloppy/local";
 import {
   CHAT_TOOLS,
   CORE_CHAT_TOOLS,
+  headsetOnly,
   NotesListedSchema,
   NoteWrittenSchema,
   splitOwnedRef,
 } from "@sloppy/types";
 import { beforeEach, describe, expect, it } from "vitest";
-import { linesOf, MCP_PROTOCOL, NO_NOTES_HERE } from "./mcp.js";
+import { linesOf } from "./mcp.js";
 import { FINE, NOTHING_DONE, run } from "./run.js";
 
 const PROJECT = "/project";
@@ -114,15 +121,17 @@ describe("sloppy mcp", () => {
     });
   });
 
-  it("advertises the chat's twenty acts and no build's", async () => {
+  it("advertises the chat's twenty-one acts and no build's", async () => {
     await aProject();
 
     const { answers } = await served([message(1, "tools/list")]);
     const tools = (answers[0].result as { tools: Record<string, unknown>[] })
       .tools;
 
-    expect(tools.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
-    expect(tools).toHaveLength(20);
+    expect(tools.map((tool) => tool.name)).toEqual(
+      CHAT_TOOLS.filter((act) => !headsetOnly(act)),
+    );
+    expect(tools).toHaveLength(21);
     expect(tools.map((tool) => tool.name).slice(-3)).toEqual([
       "brief",
       "relate",
@@ -190,7 +199,9 @@ describe("sloppy mcp", () => {
     const core = await listed(["--profile=full", "--tools", "core"]);
     const lean = await listed([]);
 
-    expect(every.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
+    expect(every.map((tool) => tool.name)).toEqual(
+      CHAT_TOOLS.filter((act) => !headsetOnly(act)),
+    );
     expect(core.map((tool) => tool.name)).toEqual([...CORE_CHAT_TOOLS]);
     expect(lean.map((tool) => tool.name)).toEqual([...CORE_CHAT_TOOLS]);
     expect(JSON.stringify(core).length * 2).toBeLessThan(
@@ -202,7 +213,9 @@ describe("sloppy mcp", () => {
       "--tools",
       "default",
     ]);
-    expect(overridden.map((tool) => tool.name)).toEqual([...CHAT_TOOLS]);
+    expect(overridden.map((tool) => tool.name)).toEqual(
+      CHAT_TOOLS.filter((act) => !headsetOnly(act)),
+    );
   });
 
   it("leaves out the acts --without names, neither offered nor answered, and refuses a name that is no act", async () => {
@@ -473,56 +486,6 @@ describe("sloppy mcp", () => {
     }
     expect(err).toEqual([NO_NOTES_HERE]);
     expect(everyFile()).toEqual(before);
-  });
-
-  it("takes a notification and answers nothing", async () => {
-    await aProject();
-
-    const { answers } = await served([
-      JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
-      message(2, "ping"),
-    ]);
-
-    expect(answers).toEqual([{ jsonrpc: "2.0", id: 2, result: {} }]);
-  });
-
-  it("answers a line that is not a message with a parse error", async () => {
-    await aProject();
-
-    const { answers } = await served(["this is not json", "[1,2]"]);
-
-    expect(answers).toEqual([
-      {
-        jsonrpc: "2.0",
-        id: null,
-        error: { code: -32700, message: "Parse error" },
-      },
-      {
-        jsonrpc: "2.0",
-        id: null,
-        error: { code: -32700, message: "Parse error" },
-      },
-    ]);
-  });
-
-  it("answers a method it has none of as one", async () => {
-    await aProject();
-
-    const { answers } = await served([message(4, "resources/list")]);
-
-    expect(answers[0]).toMatchObject({ id: 4, error: { code: -32601 } });
-  });
-
-  it("answers each message in the order it came", async () => {
-    await aProject();
-
-    const { answers } = await served([
-      calling("list_notes", {}, 1),
-      message(2, "ping"),
-      calling("list_tags", {}, 3),
-    ]);
-
-    expect(answers.map((answer) => answer.id)).toEqual([1, 2, 3]);
   });
 });
 

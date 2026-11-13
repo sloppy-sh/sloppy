@@ -6,14 +6,16 @@ mod history;
 mod menubar;
 mod program;
 mod remotes;
+pub mod serve;
 mod signing;
+mod speech;
 mod tools;
 mod vault;
 
 use tauri::{Manager, Runtime};
 
 /// The whole of what this shell answers: `Files` and `History` in
-/// `@sloppy/local` and `ChatAccess` in
+/// `@sloppy/local` and `ChatAccess`, `ServeAccess` and `SpeechAccess` in
 /// `@sloppy/app-core`, which declare every one of them and what its answer
 /// means.
 pub(crate) fn commands<R: Runtime>(
@@ -79,6 +81,16 @@ pub(crate) fn commands<R: Runtime>(
         build::build_finish_task,
         build::build_finish,
         build::build_discard,
+        serve::serve_start,
+        serve::serve_pair,
+        serve::serve_stop,
+        serve::serve_status,
+        serve::serve_forget,
+        serve::serve_answer,
+        speech::speech_hear,
+        speech::speech_program_present,
+        speech::speech_system_present,
+        speech::speech_pick_model,
     ]
 }
 
@@ -104,7 +116,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_crypto_hw::init());
+        .plugin(tauri_plugin_crypto_hw::init())
+        .plugin(tauri_plugin_speech::init());
 
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_safe_area_insets_css::init());
@@ -117,6 +130,7 @@ pub fn run() {
         .setup(|app| {
             app.manage(vault::Folders::new(app.path().app_data_dir()?)?);
             app.manage(chat::Chat::default());
+            app.manage(serve::Serve::default());
 
             // A custom scheme only fires for an installed app: iOS and Android
             // take it from the generated manifests and macOS from the bundled

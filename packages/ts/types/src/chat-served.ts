@@ -22,7 +22,7 @@ export type ToolSet = (typeof TOOL_SETS)[number];
 export const ANSWER_SHAPES = ["default", "terse"] as const;
 export type AnswerShape = (typeof ANSWER_SHAPES)[number];
 
-export interface Serving {
+export interface ServingShape {
   doctrine: Doctrine;
   tools: ToolSet;
   answers: AnswerShape;
@@ -34,7 +34,7 @@ export interface Serving {
 }
 
 /** What `sloppy mcp` serves where nothing says otherwise. */
-export const DEFAULT_SERVING: Serving = {
+export const DEFAULT_SERVING: ServingShape = {
   doctrine: "answer-first",
   tools: "default",
   answers: "default",
@@ -42,7 +42,7 @@ export const DEFAULT_SERVING: Serving = {
 };
 
 /** Every saving at once. */
-export const LEAN_SERVING: Serving = {
+export const LEAN_SERVING: ServingShape = {
   doctrine: "answer-first",
   tools: "core",
   answers: "terse",
@@ -166,7 +166,7 @@ function landing(
 }
 
 /** The acts as `serving` advertises them. */
-export function servedChatTools(serving: Serving): AdvertisedTool[] {
+export function servedChatTools(serving: ServingShape): AdvertisedTool[] {
   if (serving.tools === "default") {
     return advertisedChatTools(serving.doctrine, true).map((tool) =>
       serving.landOnCode

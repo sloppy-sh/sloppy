@@ -205,14 +205,17 @@ class ChatDraftStore {
 	}
 
 	/** The same draft, without making it the one in front of somebody — what a
-	 *  thread writing while its reader is elsewhere works in. REJECTS in words
-	 *  for the person. */
-	async started(id: Ulid): Promise<StandingDraft> {
+	 *  thread writing while its reader is elsewhere works in. `root` is the
+	 *  folder it is a copy of; **absent is the one in front of somebody**.
+	 *  REJECTS in words for the person. */
+	async started(id: Ulid, root?: string): Promise<StandingDraft> {
 		const drafts = this.#access();
 		if (!drafts) throw new Error('There is no draft of the notes to write into.');
 		let starting = this.#starting.get(id);
 		if (!starting) {
-			starting = drafts.start(id).finally(() => this.#starting.delete(id));
+			starting = (root === undefined ? drafts.start(id) : drafts.start(id, root)).finally(() =>
+				this.#starting.delete(id)
+			);
 			this.#starting.set(id, starting);
 		}
 		const draft = await starting;

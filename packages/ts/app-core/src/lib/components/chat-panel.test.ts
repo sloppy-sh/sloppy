@@ -19,7 +19,15 @@ import type {
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NoteLanding } from '../pages/page-state.js';
-import { type ChatAccess, type ChatAsked, type ChatLive, initRuntime } from '../runtime.js';
+import {
+	type ChatAccess,
+	type ChatAsked,
+	type ChatLive,
+	initRuntime,
+	type SpeechAccess,
+	type SpeechRecorderAccess,
+	type SpeechSystemAccess
+} from '../runtime.js';
 import { seamSettledAgain } from '../seam.svelte.js';
 import { chat } from '../stores/chat.svelte.js';
 import { offers } from '../stores/offers.svelte.js';
@@ -962,6 +970,117 @@ describe('beginning another thread', () => {
 
 		expect(screen()).toContain('microphone on your keyboard');
 		expect(labelled('Record')).toBeUndefined();
+		expect(labelled('Speak')).toBeUndefined();
+	});
+});
+
+describe('speaking into the composer', () => {
+	const WAV = new Uint8Array([82, 73, 70, 70]);
+	let recorded: { starts: number; stops: number };
+	let heard: Uint8Array[];
+	let hearing: () => Promise<{ said: string }>;
+
+	const ear: SpeechAccess = {
+		hear: async (_, wav) => {
+			heard.push(wav);
+			return await hearing();
+		}
+	};
+	const recorder: SpeechRecorderAccess = {
+		start: async () => {
+			recorded.starts += 1;
+		},
+		stop: async () => {
+			recorded.stops += 1;
+			return WAV;
+		}
+	};
+	const thisComputer: SpeechSystemAccess = {
+		present: async () => true,
+		allowed: async () => 'authorized',
+		authorize: async () => 'authorized',
+		microphone: async () => 'authorized',
+		allowMicrophone: async () => 'authorized'
+	};
+
+	beforeEach(() => {
+		recorded = { starts: 0, stops: 0 };
+		heard = [];
+		hearing = async () => ({ said: ' plant the beans early ' });
+		prefs.set('aiOffered', true);
+		prefs.set('speechAgent', null);
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			chat: stub,
+			project: async () => files,
+			speech: ear,
+			speechSystem: thisComputer,
+			speechRecorder: recorder
+		});
+	});
+
+	afterEach(() => {
+		prefs.set('aiOffered', false);
+		initRuntime({
+			apiHost: () => '',
+			speech: undefined,
+			speechSystem: undefined,
+			speechRecorder: undefined
+		});
+	});
+
+	it('listens until pressed again, and puts the words in the composer unsent', async () => {
+		await chat.opened(HOME);
+		show();
+		await settle();
+
+		expect(screen()).toContain('Press the microphone to speak instead.');
+		expect(screen()).not.toContain('microphone on your keyboard');
+		type('About the garden:');
+		labelled('Speak')?.click();
+		await settle();
+
+		expect(recorded.starts).toBe(1);
+		expect(labelled('Stop listening')?.textContent).toContain('Listening…');
+		expect(labelled('Send')?.disabled).toBe(true);
+
+		labelled('Stop listening')?.click();
+		await settle();
+
+		expect(recorded.stops).toBe(1);
+		expect(heard).toEqual([WAV]);
+		expect(composer().value).toBe('About the garden: plant the beans early');
+		expect(stub.said).toEqual([]);
+		expect(labelled('Speak')).toBeDefined();
+		expect(labelled('Send')?.disabled).toBe(false);
+	});
+
+	it('says why nothing was heard, and leaves the composer as it was', async () => {
+		hearing = async () => {
+			throw new Error('No words could be heard in that recording.');
+		};
+		await chat.opened(HOME);
+		show();
+		await settle();
+
+		labelled('Speak')?.click();
+		await settle();
+		labelled('Stop listening')?.click();
+		await settle();
+
+		expect(screen()).toContain('No words could be heard in that recording.');
+		expect(composer().value).toBe('');
+		expect(labelled('Speak')).toBeDefined();
+	});
+
+	it('offers no microphone where nothing here can hear', async () => {
+		initRuntime({ apiHost: () => 'http://api.test', speechSystem: undefined });
+		await chat.opened(HOME);
+		show();
+		await settle();
+
+		expect(labelled('Speak')).toBeUndefined();
+		expect(screen()).toContain('The microphone on your keyboard types into it too.');
 	});
 });
 

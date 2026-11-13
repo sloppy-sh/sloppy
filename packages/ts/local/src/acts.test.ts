@@ -319,6 +319,35 @@ describe("a note and the notes around it", () => {
   });
 });
 
+describe("showing a note to a reader in a headset", () => {
+  it("says which note the reader is looking at, and writes nothing", async () => {
+    const parser = await wrote(
+      writes(PARSER, [ABOUT_THE_PARSER], { title: "The parser", address: "1" }),
+    );
+
+    const done = await performChatCall(files, {
+      call: "c2",
+      act: "show_note",
+      arguments: { note: parser },
+    });
+
+    expect(done.said).toBe("The reader is now looking at «The parser» (1).");
+    expect(done.facts).toEqual(expect.objectContaining({ act: "show_note" }));
+    expect(done.touched).toEqual([]);
+  });
+
+  it("answers a note that is not there with words the agent can act on", async () => {
+    const done = await performChatCall(files, {
+      call: "c2",
+      act: "show_note",
+      arguments: { note: `${SOMEBODY}/${ulid()}` },
+    });
+
+    expect(done.trouble).toBe(true);
+    expect(done.refused).toBe("no_note");
+  });
+});
+
 describe("a brief", () => {
   it("refuses one that names nothing, in words the agent can act on", async () => {
     const done = await performChatCall(files, {

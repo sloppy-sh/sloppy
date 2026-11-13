@@ -865,6 +865,44 @@ describe('acting on one note from the canvas', () => {
 	});
 });
 
+describe('a tap on bare paper', () => {
+	const paper = () => document.body.querySelector<HTMLButtonElement>('[data-paper]')!;
+
+	it('closes the note opened from the field, and its mark comes down', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		expect(onCanvas('1a').dataset.lifted).toBe('reading');
+
+		paper().click();
+		await settle();
+
+		expect(at.note).toBeNull();
+		expect(onCanvas('1a').dataset.lifted).toBeUndefined();
+	});
+
+	it('lets go of the notes chosen and keeps choosing', async () => {
+		await open();
+		menuOn('1').click();
+		await settle();
+		item('Choose this and others').click();
+		await settle();
+		onCanvas('1a').click();
+		await settle();
+
+		paper().click();
+		await settle();
+
+		expect(onCanvas('1').dataset.chosen).toBeUndefined();
+		expect(onCanvas('1a').dataset.chosen).toBeUndefined();
+		expect(choosingOnCanvas()).toBe('yes');
+
+		onCanvas('2').click();
+		await settle();
+		expect(onCanvas('2').dataset.chosen).toBe('yes');
+	});
+});
+
 // DESIGN.md § "The mark" keeps the word "chosen" for the notes somebody picked
 // out to act on; a selection is already the reader's tags.
 describe('choosing several notes to act on', () => {

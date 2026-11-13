@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://views/connect.gd" id="1"]
+
+[node name="Connect" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Panel" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.35, 1.75, -1.1)

@@ -274,6 +274,7 @@ export function chatModels(agent: ChatAgent): readonly ChatModel[] {
 export const CHAT_TOOLS = [
   "list_notes",
   "search_notes",
+  "find_note",
   "read_note",
   "write_note",
   "move_note",
@@ -292,6 +293,7 @@ export const CHAT_TOOLS = [
   "brief",
   "relate",
   "find_code",
+  "show_note",
 ] as const;
 export type ChatToolName = (typeof CHAT_TOOLS)[number];
 
@@ -309,6 +311,26 @@ export const OUTSIDE_THE_APP_TOOLS = [
 export function servedInTheApp(act: ChatToolName): boolean {
   return !(OUTSIDE_THE_APP_TOOLS as readonly string[]).includes(act);
 }
+
+/** Where a person is talking to the desk's chat from — docs/ARCHITECTURE.md
+ *  § "A headset beside the desk". */
+export const CHAT_SURFACES = ["desk", "headset"] as const;
+export type ChatSurface = (typeof CHAT_SURFACES)[number];
+
+/** The acts a session has only while a headset is listening to it, which
+ *  nothing outside the app and no build is served. */
+export const HEADSET_ONLY_TOOLS = [
+  "show_note",
+] as const satisfies readonly ChatToolName[];
+
+/** Whether `act` is one only a session opened from a headset is served. */
+export function headsetOnly(act: ChatToolName): boolean {
+  return (HEADSET_ONLY_TOOLS as readonly string[]).includes(act);
+}
+
+/** What a session opened from a headset is told beside the chat's own brief. */
+export const HEADSET_CHAT_BRIEF =
+  "The person is reading this project in a headset, standing in the graph. When they ask to be taken, shown or brought to a note, find it with find_note, then call show_note with its ref. Answer in a sentence or two, as if spoken, and never in a table.";
 
 /**
  * The acts a BUILD adds to those, named here beside them because a call
@@ -858,6 +880,49 @@ export const FindCodeArgumentsSchema = z.object({
 });
 export type FindCodeArguments = z.infer<typeof FindCodeArgumentsSchema>;
 
+/** Longer than anybody describes a note they are looking for. */
+export const FIND_SAID_MAX = 1_000;
+
+/** The most notes one `find_note` answer carries. */
+export const MOST_NOTES_FITTING = 5;
+
+export const FindNoteArgumentsSchema = z.object({
+  said: z
+    .string()
+    .trim()
+    .min(1)
+    .max(FIND_SAID_MAX)
+    .describe(
+      "What the person said they are looking for, in their own words, or an address like 1a1.",
+    ),
+});
+export type FindNoteArguments = z.infer<typeof FindNoteArgumentsSchema>;
+
+/** One note a description fits. */
+export interface FittingNote {
+  note: string;
+  title: string;
+  /** **Absent is a note with no address.** */
+  address?: string;
+  /** Why it fits, in a short sentence for the person. */
+  why: string;
+}
+
+/** What `find_note` answers: no more than {@link MOST_NOTES_FITTING}, best
+ *  first. **Absent `best` is nothing that fits well enough to take somebody
+ *  to.** */
+export interface NotesFitting {
+  found: FittingNote[];
+  best?: string;
+}
+
+export const ShowNoteArgumentsSchema = z.object({
+  note: OwnedRefSchema.describe(
+    "The note to take the reader to, as a search or a listing gives it.",
+  ),
+});
+export type ShowNoteArguments = z.infer<typeof ShowNoteArgumentsSchema>;
+
 export interface ChatToolSpec {
   /** One line for the agent, in the words it is being asked in. */
   description: string;
@@ -915,6 +980,13 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
     description: DOCTRINE_WORDS["answer-first"].search_notes,
     label: "Looking through the notes",
     arguments: SearchNotesArgumentsSchema,
+    writes: false,
+  },
+  find_note: {
+    description:
+      "The notes a description fits, best first, from their titles, tags, addresses and writing. Hand it what the person said, in their words; best is the note they mean, absent where none fits well.",
+    label: "Finding a note",
+    arguments: FindNoteArgumentsSchema,
     writes: false,
   },
   read_note: {
@@ -1040,6 +1112,13 @@ export const CHAT_TOOL_SPECS: Record<ChatToolName, ChatToolSpec> = {
     arguments: FindCodeArgumentsSchema,
     writes: false,
   },
+  show_note: {
+    description:
+      "Take the reader, standing in the graph in a headset, to one note: their view carries them to stand before its mark. Find the note first with find_note.",
+    label: "Showing a note",
+    arguments: ShowNoteArgumentsSchema,
+    writes: false,
+  },
 };
 
 /** Whether an act writes on the draft, which is what the thread's icon says. */
@@ -1072,13 +1151,19 @@ export function advertisedAs<Name extends string>(
 
 /** Every act of the chat's, as the endpoint serving them advertises them,
  *  in the words `doctrine` spells. **Absent `outside` is the app's chat**, which
- *  leaves out {@link OUTSIDE_THE_APP_TOOLS}. */
+ *  leaves out {@link OUTSIDE_THE_APP_TOOLS}; {@link HEADSET_ONLY_TOOLS} are in
+ *  it only on the `headset` surface, and never outside. */
 export function advertisedChatTools(
   doctrine: Doctrine = "answer-first",
   outside = false,
+  surface: ChatSurface = "desk",
 ): AdvertisedTool[] {
   const words: Partial<Record<ChatToolName, string>> = DOCTRINE_WORDS[doctrine];
-  const served = outside ? CHAT_TOOLS : CHAT_TOOLS.filter(servedInTheApp);
+  const served = CHAT_TOOLS.filter(
+    (act) =>
+      (outside || servedInTheApp(act)) &&
+      (!headsetOnly(act) || (!outside && surface === "headset")),
+  );
   return served.map((name) => {
     const spec = CHAT_TOOL_SPECS[name];
     return advertisedAs(name, {
@@ -1713,6 +1798,11 @@ export const ChatToolCallSchema = z.discriminatedUnion("act", [
   }),
   z.object({
     call: ChatCallIdSchema,
+    act: z.literal("find_note"),
+    arguments: FindNoteArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
     act: z.literal("read_note"),
     arguments: ReadNoteArgumentsSchema,
   }),
@@ -1800,6 +1890,11 @@ export const ChatToolCallSchema = z.discriminatedUnion("act", [
     call: ChatCallIdSchema,
     act: z.literal("find_code"),
     arguments: FindCodeArgumentsSchema,
+  }),
+  z.object({
+    call: ChatCallIdSchema,
+    act: z.literal("show_note"),
+    arguments: ShowNoteArgumentsSchema,
   }),
 ]);
 export type ChatToolCall = z.infer<typeof ChatToolCallSchema>;

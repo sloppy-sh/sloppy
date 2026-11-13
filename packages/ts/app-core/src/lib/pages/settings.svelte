@@ -8,6 +8,7 @@
 	import Download from '@lucide/svelte/icons/download';
 	import FileJson from '@lucide/svelte/icons/file-json';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import Glasses from '@lucide/svelte/icons/glasses';
 	import Globe from '@lucide/svelte/icons/globe';
 	import HistoryIcon from '@lucide/svelte/icons/history';
 	import LifeBuoy from '@lucide/svelte/icons/life-buoy';
@@ -51,6 +52,7 @@
 	} from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import HistorySurface from './history.svelte';
+	import HeadsetSettings from './settings-headset.svelte';
 	import { navShows } from './routes.js';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { tick } from 'svelte';
@@ -143,6 +145,7 @@
 					]),
 		...(offersCopy ? [{ id: 'your-writing', name: 'Your writing', icon: Download }] : []),
 		...(chat.reaches ? [{ id: 'an-assistant', name: 'An assistant', icon: Sparkles }] : []),
+		{ id: 'a-headset', name: 'A headset', icon: Glasses },
 		{ id: 'what-went-wrong', name: 'When something goes wrong', icon: LifeBuoy },
 		...(session.onDevice ? [] : [{ id: 'you', name: 'You', icon: UserRound }])
 	]);
@@ -570,6 +573,13 @@
 					<AiSettings />
 				</section>
 			{/if}
+		{/if}
+
+		{#if standing === 'a-headset'}
+			<section id="a-headset" tabindex="-1" class="space-y-6">
+				<h2 class="text-sm font-medium">A headset</h2>
+				<HeadsetSettings />
+			</section>
 		{/if}
 
 		{#if standing === 'what-went-wrong'}

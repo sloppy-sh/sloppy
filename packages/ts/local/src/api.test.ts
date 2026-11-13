@@ -115,6 +115,7 @@ describe("the folder a shell opened", () => {
     const lines = new TextDecoder().decode(ignore).split("\n");
     expect(lines).toContain("*.key");
     expect(lines).toContain("identities.json");
+    expect(lines).toContain("/.sloppy/paired.json");
     expect(lines).toContain("/attached/");
   });
 

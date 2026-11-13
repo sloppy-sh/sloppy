@@ -123,6 +123,9 @@ function factsTold(call: ChatToolCall, facts: ActFacts): string {
 			return facts.count === 0
 				? 'Nothing here says that.'
 				: `${notesSaid(facts.count)} carry those words.`;
+		case 'find_note':
+			if (facts.count === 0) return 'Nothing here fits that.';
+			return facts.count === 1 ? '1 note fits that.' : `${notesSaid(facts.count)} fit that.`;
 		case 'list_tags':
 			if (facts.count === 0) return 'No tags here yet.';
 			return facts.count === 1 ? '1 tag here.' : `${facts.count.toLocaleString()} tags here.`;
@@ -133,6 +136,8 @@ function factsTold(call: ChatToolCall, facts: ActFacts): string {
 			return facts.count === 1 ? '1 offer on it.' : `${facts.count.toLocaleString()} offers on it.`;
 		case 'read_note':
 			return heads(facts.note);
+		case 'show_note':
+			return `Showed ${heads(facts.note)} in the headset.`;
 		case 'read_graph':
 			return facts.name;
 		case 'read_around':

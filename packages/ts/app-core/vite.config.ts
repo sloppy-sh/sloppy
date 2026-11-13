@@ -10,6 +10,8 @@ export default defineConfig({
 	// `.svelte-kit/__package__`, and vitest would otherwise run all three.
 	test: {
 		environment: 'jsdom',
+		// A stylesheet imported as text is read as the desk reads it, not emptied.
+		css: { include: [/\?raw$/] },
 		include: ['src/**/*.test.ts'],
 		setupFiles: [
 			'./src/lib/one-realm.test-setup.ts',

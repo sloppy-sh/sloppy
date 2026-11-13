@@ -5,7 +5,7 @@ import {
   CORE_CHAT_TOOLS,
   DEFAULT_SERVING,
   LEAN_SERVING,
-  type Serving,
+  type ServingShape,
   servedChatTools,
 } from "./chat-served.js";
 import {
@@ -15,7 +15,7 @@ import {
   DOCTRINES,
 } from "./chat.js";
 
-const size = (serving: Serving) =>
+const size = (serving: ServingShape) =>
   JSON.stringify(servedChatTools(serving)).length;
 
 describe("the acts served to an assistant", () => {
@@ -55,6 +55,8 @@ describe("the acts served to an assistant", () => {
         "move_note",
         "number_note",
         "delete_note",
+        "show_note",
+        "find_note",
       ].sort(),
     );
   });

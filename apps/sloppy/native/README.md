@@ -19,6 +19,14 @@ SLOPPY_LOCAL_MODE=false pnpm ios:dev  # …talking to a server instead of openin
 
 All of them go through [`scripts/tauri.sh`](scripts/tauri.sh), which keeps the Xcode
 project patched.
+
+**Speaking to the desk in development, on a Mac.** `pnpm tauri:dev` runs a bare binary, and
+macOS lays its microphone and speech-recognition requests at the door of the app that started
+it — the terminal — and reads that app's `Info.plist` for the usage descriptions, not ours (ours
+carries both, embedded by Tauri; the built `.app` is judged on its own). iTerm2 declares both.
+Apple's Terminal, VS Code and Cursor declare the microphone and not speech recognition, and a
+speech request from a dev binary started in one of those is refused by killing the process. Start
+the dev app from iTerm2, or run the built app, to speak to it.
 **[XCODE_PROJECT.md](XCODE_PROJECT.md) is required reading before touching that project** —
 `tauri ios init` regenerates it as an iPhone app with no URL scheme, every time.
 

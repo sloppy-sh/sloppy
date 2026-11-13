@@ -1,4 +1,4 @@
-// The terse answer `sloppy mcp --answers terse` serves: the same facts an act
+// The terse answer a caller served with `answers: "terse"` reads: the same facts an act
 // answers with, spelled shorter — docs/ARCHITECTURE.md § "An assistant outside
 // the app".
 

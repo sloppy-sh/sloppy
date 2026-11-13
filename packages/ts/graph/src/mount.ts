@@ -19,9 +19,11 @@ import {
   type GraphEdgeLook,
   type GraphFieldInset,
   type GraphHoverAt,
+  type GraphLines,
   type GraphSurfaceProps,
   type GraphTransform,
   nodesWithGone,
+  sameLines,
 } from "./contract.js";
 import { screenDensity } from "./density.js";
 import { attachGestures, type ScreenBox } from "./gestures.js";
@@ -33,7 +35,7 @@ import {
   type LodResult,
   makeFold,
 } from "./lod.js";
-import { buildModel, type GraphEdgeAttributes } from "./model.js";
+import { buildModel, type GraphEdgeAttributes, lineCounts } from "./model.js";
 import {
   buildPalette,
   type GraphPalette,
@@ -42,7 +44,7 @@ import {
   readPaletteTokens,
 } from "./palette.js";
 import { type FrameStats, GraphScene, type SceneFonts } from "./scene.js";
-import { FIELD_GUTTER } from "./layout/geometry.js";
+import { FIELD_GUTTER, fieldSpread } from "./layout/geometry.js";
 import {
   packSets,
   retagInto,
@@ -70,6 +72,10 @@ const SPRING: Record<GraphEdgeAttributes["kind"], number> = {
 /** The most times a frame and the sets packing answer each other before the
  *  frame stands where it is. */
 const FRAME_PASSES = 3;
+
+/** The least energy a field given more room settles again at: enough to take
+ *  up the slack, too little to rearrange it. */
+const RESPREAD_ALPHA = 0.03;
 
 /** What the sets reading hands `drawnNodes`: a region's own room is what bounds
  *  the count there, so nothing is folded by generation. */
@@ -228,6 +234,11 @@ export function mountGraph(
   let focus = options.focus;
   let epoch = 0;
   let settled = false;
+  /** The spread the marks on the canvas were laid out at. */
+  let laidAt = fieldSpread(options.spread);
+  /** The energy the running settle is at, which a field given more room
+   *  carries on at rather than shaking itself up again. */
+  let energy = 1;
   let budgetFolded: ReadonlySet<OwnedRef> = new Set();
   let mountedKey = options.remountKey;
   let destroyed = false;
@@ -350,7 +361,8 @@ export function mountGraph(
     onPositions: (event: LayoutEvent) => {
       if (event.epoch !== epoch) return;
       settled = event.settled;
-      scene?.setPositions(event.positions);
+      energy = event.alpha;
+      scene?.setPositions(event.positions, event.settled);
       if (dragged) scene?.movePosition(dragged.index, dragged.world);
       // Spent on the settle that follows the ask, never on the rest the field
       // was already in: opening a note is itself a relayout, which would then
@@ -392,7 +404,7 @@ export function mountGraph(
    * theme change or a tag selection that restarted the settle would shake the
    * whole graph to answer a question about colour.
    */
-  const rebuild = (relayout = true): void => {
+  const rebuild = (relayout = true, carryOn = false): void => {
     if (!scene) return;
     const budget = lodBudget();
     const standing = drawnFrom;
@@ -429,6 +441,13 @@ export function mountGraph(
     const drawn = drawnNodes(nodes, lod.collapsed);
     const packing = sets ? pack(drawn, budget) : undefined;
     setsDrawn = packing?.drawn ?? null;
+    const spread = fieldSpread(props.spread);
+    // A field given more room slides out from where it stands, rather than
+    // settling again from its seeds.
+    const keep = sets
+      ? scene.snapshot()
+      : stretched(scene.snapshot(), spread / laidAt);
+    laidAt = spread;
 
     const model = buildModel(drawn, {
       arrangement: props.arrangement,
@@ -440,15 +459,20 @@ export function mountGraph(
         : { codeMoved: drawnRefs(nodes, lod.collapsed, props.codeMoved) }),
       palette,
       viewer: props.viewer,
-      keep: scene.snapshot(),
+      spread,
+      keep,
       fields: props.fields,
       difference,
       edgeLooks: props.edgeLooks,
+      folds: { nodes, collapsed: lod.collapsed },
     });
 
     const questioned = props.selection.length > 0;
+    scene.setHiddenLines(props.hiddenLines);
     if (recolour) scene.setTints(model, questioned);
     else scene.setModel(model, questioned);
+    tellLines(lineCounts(model.graph));
+    scene.setBundling(props.bundle ?? null);
     drawnFrom = {
       nodes: props.nodes,
       collapsed: props.collapsed,
@@ -462,6 +486,7 @@ export function mountGraph(
     };
     scene.setPicking(props.picking ?? null);
     scene.setChosen(orbited(props.chosen, packing));
+    scene.setLit(props.litEdges ?? null);
     scene.setReading(
       props.reading ? drawnReading(nodes, lod.collapsed, props.reading) : null,
     );
@@ -484,6 +509,7 @@ export function mountGraph(
 
     epoch += 1;
     settled = false;
+    energy = carryOn ? Math.max(RESPREAD_ALPHA, energy) : 1;
     layout.send({
       kind: "start",
       epoch,
@@ -500,7 +526,22 @@ export function mountGraph(
         };
       }),
       edges: edgeInputs(model),
+      spread,
+      ...(carryOn ? { alpha: energy } : {}),
     });
+  };
+
+  /** The count last raised through `onLines`, so a host hears of one only when
+   *  it changes. */
+  let toldLines: GraphLines | null = null;
+  const tellLines = (lines: GraphLines): void => {
+    if (!props.onLines) {
+      toldLines = null;
+      return;
+    }
+    if (toldLines !== null && sameLines(toldLines, lines)) return;
+    toldLines = lines;
+    props.onLines(lines);
   };
 
   /** Where the sets reading stands every mark at the zoom the field is at. */
@@ -669,9 +710,11 @@ export function mountGraph(
           // A line is what is left where a tap landed on no mark, and only
           // where nothing else has already said what a tap means.
           if (props.onEdge === undefined || comparing()) return;
-          if (props.picking !== undefined || props.chosen !== undefined) return;
-          const pair = built.hitEdge(world);
-          if (pair) props.onEdge(pair[0] as OwnedRef, pair[1] as OwnedRef);
+          if (props.picking !== undefined) return;
+          const bundle = built.bundleAt(world) as [OwnedRef, OwnedRef][];
+          if (bundle.length === 0) props.onPaper?.();
+          else if (props.chosen === undefined)
+            props.onEdge(bundle[0][0], bundle[0][1], bundle);
           return;
         }
         const node = built.attributesOf(target);
@@ -740,6 +783,7 @@ export function mountGraph(
       },
       onHover: (target) => {
         if (destroyed) return;
+        built.setPointed(target === null || asked(props) ? null : target);
         props.onHover?.(
           target === null || asked(props)
             ? null
@@ -861,7 +905,8 @@ export function mountGraph(
     update(next) {
       const remounting = next.remountKey !== mountedKey;
       const moved = layoutMoved(props, next);
-      const relayout = moved || remounting;
+      const respread = fieldSpread(next.spread) !== fieldSpread(props.spread);
+      const relayout = moved || remounting || respread;
       const intoSets =
         next.arrangement === "sets" && props.arrangement !== "sets";
       const outOfSets =
@@ -888,7 +933,10 @@ export function mountGraph(
       if (reframed) frame(next.inset);
       if (grounded) scene?.setGround(next.ground ?? "none");
       if (papered || washed) repaint();
-      if (takingOver) next.onHover?.(null);
+      if (takingOver) {
+        scene?.setPointed(null);
+        next.onHover?.(null);
+      }
       // The canvas comes to the note the choice is being made for, so the reader
       // is never asked to pick against a viewport they left somewhere else.
       if (asking && next.picking) {
@@ -902,7 +950,7 @@ export function mountGraph(
         framing = true;
         framed = false;
       }
-      rebuild(relayout);
+      rebuild(relayout, respread && !moved && !remounting);
       if (intoSets) frameAll();
       if (outOfSets) {
         setsDrawn = null;
@@ -1153,6 +1201,16 @@ function worldBox(viewport: Viewport, box: ScreenBox): Bounds {
   const from = viewport.toWorld(box.x, box.y);
   const to = viewport.toWorld(box.x + box.width, box.y + box.height);
   return { minX: from.x, minY: from.y, maxX: to.x, maxY: to.y };
+}
+
+/** Every point `by` times as far from the origin, which is where every field's
+ *  seeds are scaled from. */
+function stretched(points: Map<string, Point>, by: number): Map<string, Point> {
+  if (by === 1) return points;
+  for (const [ref, at] of points) {
+    points.set(ref, { x: at.x * by, y: at.y * by });
+  }
+  return points;
 }
 
 function edgeInputs(model: ReturnType<typeof buildModel>) {

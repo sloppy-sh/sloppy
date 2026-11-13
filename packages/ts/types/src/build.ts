@@ -21,6 +21,7 @@ import {
   isChatTool,
   SLOPPY_TOOLS,
   type SloppyToolName,
+  headsetOnly,
   servedInTheApp,
 } from "./chat.js";
 import { ProjectPathSchema } from "./code-anchor.js";
@@ -595,7 +596,7 @@ export const SLOPPY_TOOL_SPECS: Record<SloppyToolName, ChatToolSpec> = {
  */
 export function toolsForRole(role: BuildRole): readonly SloppyToolName[] {
   const reading = CHAT_TOOLS.filter(
-    (act) => !chatToolWrites(act) && servedInTheApp(act),
+    (act) => !chatToolWrites(act) && servedInTheApp(act) && !headsetOnly(act),
   );
   const writing =
     role === "implementer"

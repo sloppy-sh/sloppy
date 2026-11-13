@@ -17,7 +17,7 @@ updated: 2026-10-25T07:14:16.861Z
 
 ## What it is for
 
-Sloppy is its own app first, and reaches into the places people already work from there. The first of those has landed: [`serveMcp`](code:packages/ts/cli/src/mcp.ts#serveMcp) is `sloppy mcp`, a server an assistant starts in somebody's repository, serving the same acts the app's chat has through the same implementation, so a rule about addresses or offers is one rule wherever an agent comes in ([docs/ARCHITECTURE.md](code:docs/ARCHITECTURE.md) § "An assistant outside the app"). What a person can rely on: a new way in does not bring new rules with it.
+Sloppy is its own app first, and reaches into the places people already work from there. The first of those has landed: [`serveMcp`](code:packages/ts/local/src/serving.ts#serveMcp) is `sloppy mcp`, a server an assistant starts in somebody's repository, serving the same acts the app's chat has through the same implementation, so a rule about addresses or offers is one rule wherever an agent comes in ([docs/ARCHITECTURE.md](code:docs/ARCHITECTURE.md) § "An assistant outside the app"). What a person can rely on: a new way in does not bring new rules with it.
 
 <!-- block 01M5RYHZ4WACMT05X7FFZ8P40N -->
 

@@ -27,18 +27,31 @@ import type {
   Texture,
   TextureSource,
 } from "pixi.js";
+import {
+  awayFromPath,
+  bundledPath,
+  pathLength,
+  pointAlong,
+  routedThrough,
+  spanNearest,
+  traceBroken,
+  traceWhole,
+  treePath,
+} from "./bundling.js";
 import { clamp } from "./color.js";
 import {
   DRAWN_SETS_MOST,
   edgeLookKey,
   type GraphEdgeLook,
+  type GraphHiddenLines,
   type GraphPickMarks,
+  lineHidden,
   type GraphReadingMarks,
   type GraphPictures,
 } from "./contract.js";
 import type { GraphGround } from "./ground.js";
 import { GroundLayer } from "./ground-layer.js";
-import type { GraphNodeAttributes } from "./model.js";
+import type { GraphEdgeAttributes, GraphNodeAttributes } from "./model.js";
 import {
   type BuiltModel,
   type DifferenceLines,
@@ -231,6 +244,25 @@ const ARROW_REACH = 6;
 /** How far each barb stands off the line, in radians. */
 const ARROW_SPREAD = 0.42;
 
+/** The counts at which a line standing for several hand links steps up a
+ *  weight, and what each step adds to a hand link's own — DESIGN.md § Edges,
+ *  "Lines into a folded branch". */
+const CARRIED_STEPS = [2, 5, 10] as const;
+const CARRIED_STEP_WEIGHT = 0.4;
+
+/** What a line standing for `count` hand links is struck at, as a multiple of
+ *  one hand link's weight. */
+export function carriedWeight(count: number): number {
+  const steps = CARRIED_STEPS.filter((at) => count >= at).length;
+  return 1 + steps * CARRIED_STEP_WEIGHT;
+}
+
+/** The caption a line standing for `count` hand links carries, and none for
+ *  a line that stands for one. */
+export function carriedCaption(count: number): string | undefined {
+  return count >= 2 ? `${count} lines` : undefined;
+}
+
 /** How close to a line a tap lands and still means that line, in CSS pixels —
  *  a finger's reach, the way {@link GraphScene.hitTest} gives a leaf mark one. */
 const EDGE_TAP = 11;
@@ -248,6 +280,24 @@ const EDGE_LABEL_CHARS = 24;
  *  CSS pixels: measured from the edge of the box the words fill, so no line is
  *  ever struck through them. */
 const EDGE_LABEL_GAP = 13;
+
+/** A field drawing more hand links than this, or more than
+ *  {@link DENSE_LINKS_PER_MARK} for every mark, is dense — DESIGN.md § "A dense
+ *  field recedes around the note in hand". */
+export const DENSE_LINKS_MOST = 200;
+export const DENSE_LINKS_PER_MARK = 2;
+
+export function handLinksDense(links: number, marks: number): boolean {
+  return links > DENSE_LINKS_MOST || links > marks * DENSE_LINKS_PER_MARK;
+}
+
+/**
+ * Where one line stands against the note in hand: struck whole where it reaches
+ * the note being read — or, for a hand link in a dense field, the mark under the
+ * pointer — and quiet for a dense field's hand link reaching no further in than
+ * one hop from either. Every other line stands as its kind draws it.
+ */
+export type LineStanding = "struck" | "standing" | "quiet";
 
 /** The band a difference lays in the orbit, at the weight choosing takes: a
  *  canvas is never comparing and choosing at once, so the two never meet. */
@@ -407,6 +457,41 @@ interface LabelSlot {
   title: Text;
 }
 
+/** The note in hand on a dense field: the mark being read, the marks it and the
+ *  mark under the pointer are, and those one line away from either. */
+interface Near {
+  active: number | undefined;
+  held: ReadonlySet<number>;
+  around: ReadonlySet<number>;
+}
+
+/** The lit lines as they are drawn: each pair of marks both ways round as
+ *  `a:b`, the marks at their ends, the line tapped first, and how many the
+ *  reader lit. */
+interface Lit {
+  pairs: ReadonlySet<string>;
+  marks: ReadonlySet<number>;
+  first: [number, number];
+  count: number;
+}
+
+/** One line between two marks, as {@link GraphScene.positions} indices, and
+ *  the look on it where a person set one. */
+interface EdgeEnds {
+  kind: EdgeKind;
+  from: number;
+  to: number;
+  look?: GraphEdgeLook;
+}
+
+/** A hand link drawn once for several, where a fold swallowed an end of at
+ *  least one — {@link GraphEdgeAttributes.carries}. */
+interface CarriedLine {
+  from: number;
+  to: number;
+  count: number;
+}
+
 /**
  * A line somebody set a look on: the two marks it reaches as indices into
  * {@link GraphScene.positions}, oriented the way the look names them so an
@@ -420,6 +505,8 @@ interface LookedLine {
   /** The step of the depth ramp a genealogy line is struck at; 0 on the rest. */
   step: number;
   look: GraphEdgeLook;
+  /** {@link CarriedLine.count}, absent on a line standing for itself. */
+  carries?: number;
 }
 
 /** What one line is struck in: its ink, and what a look drawn on it takes. */
@@ -459,9 +546,28 @@ export class GraphScene {
   /** The lines a person set a look on, drawn one at a time because each one is
    *  broken, headed and captioned on its own. */
   private lookedLines: LookedLine[] = [];
+  private carriedLines: CarriedLine[] = [];
+  /** Each mark's drawn parent — {@link BuiltModel.parents}. */
+  private parents: ArrayLike<number> = [];
+  /** How tightly hand links are bundled along the tree, and `null` while they
+   *  are drawn straight. */
+  private bundleStrength: number | null = null;
+  /** Each bundled hand link's path, keyed `from:to`, laid once per settle — a
+   *  field still settling draws its hand links straight. */
+  private bundles = new Map<string, Float32Array>();
+  private bundlesStale = true;
+  private settled = true;
   /** Every pair a line is drawn between, whatever kind and whether or not a
    *  look is on it — what {@link hitEdge} answers a tap against. */
   private linePairs: number[] = [];
+  /** The marks a drawn line reaches from each mark, by index. */
+  private neighbours: number[][] = [];
+  /** How many hand links are drawn, which {@link handLinksDense} reads. */
+  private handLinks = 0;
+  private hiddenLines: GraphHiddenLines | undefined;
+  /** The mark a pointer is resting on, and `null` while it rests on none. */
+  private pointed: string | null = null;
+  private linesDirty = false;
   private differenceLines: DifferenceLines = { arrived: [], gone: [] };
   private comparing = false;
   /** The hue sweep running, and `null` while none is. */
@@ -481,6 +587,8 @@ export class GraphScene {
   private picking: GraphPickMarks | null = null;
   private chosen: ReadonlySet<string> | null = null;
   private reading: GraphReadingMarks | null = null;
+  /** The lines a reader lit, by the refs at their ends. */
+  private litRefs: readonly (readonly [string, string])[] = [];
 
   private positionsDirty = true;
   private modelDirty = false;
@@ -779,6 +887,33 @@ export class GraphScene {
     this.positionsDirty = true;
   }
 
+  /** The lines lit to be read before they are edited — DESIGN.md § Edges —
+   *  or null when none is. */
+  setLit(lit: readonly (readonly [string, string])[] | null): void {
+    this.litRefs = lit ?? [];
+    this.positionsDirty = true;
+  }
+
+  /** The lit lines that are drawn, as `a:b` mark indices both ways round, and
+   *  the marks at their ends; `null` while none is. */
+  private litNow(): Lit | null {
+    if (this.litRefs.length === 0) return null;
+    const pairs = new Set<string>();
+    const marks = new Set<number>();
+    let first: [number, number] | null = null;
+    for (const [one, other] of this.litRefs) {
+      const a = this.indexOf(one);
+      const b = this.indexOf(other);
+      if (a === undefined || b === undefined) continue;
+      first ??= [a, b];
+      pairs.add(`${a}:${b}`).add(`${b}:${a}`);
+      marks.add(a).add(b);
+    }
+    return first === null
+      ? null
+      : { pairs, marks, first, count: this.litRefs.length };
+  }
+
   /** The notes open on the reading surface, or null when none is. */
   setReading(reading: GraphReadingMarks | null): void {
     this.reading = reading;
@@ -1003,14 +1138,35 @@ export class GraphScene {
     this.dropPreviewSprites();
     this.forgetUnwantedPictures();
 
-    const byRef = new Map(model.order.map((ref, index) => [ref, index]));
+    this.bucketLines();
+
+    this.differenceLines = model.difference;
+    this.readComparing();
+    this.nameFields(model.fields);
+    this.modelDirty = true;
+    this.positionsDirty = true;
+  }
+
+  /** Sorts the model's lines by how each is drawn, leaving out the ones the
+   *  reader turned off. */
+  private bucketLines(): void {
+    const model = this.model;
+    const byRef = new Map(model?.order.map((ref, index) => [ref, index]));
     this.edgesByDepth = Array.from({ length: DEPTH_STEPS + 1 }, () => []);
     this.runPairs = [];
     this.referencePairs = [];
     this.linkPairs = [];
     this.lookedLines = [];
+    this.carriedLines = [];
+    this.parents = model?.parents ?? [];
+    this.bundlesStale = true;
     this.linePairs = [];
-    model.graph.forEachEdge((_edge, attributes, source, target) => {
+    this.neighbours = Array.from(
+      { length: model?.order.length ?? 0 },
+      () => [],
+    );
+    this.handLinks = 0;
+    model?.graph.forEachEdge((_edge, attributes, source, target) => {
       const a = byRef.get(source);
       const b = byRef.get(target);
       if (a === undefined || b === undefined) return;
@@ -1023,21 +1179,32 @@ export class GraphScene {
       ) {
         return;
       }
+      const drawn = this.unhidden(attributes);
+      if (drawn === null) return;
+      const { look, carries } = drawn;
       this.linePairs.push(a, b);
+      this.neighbours[a].push(b);
+      this.neighbours[b].push(a);
+      if (attributes.kind === "link") this.handLinks += 1;
       const deeper = Math.max(
         model.graph.getNodeAttributes(source).depth,
         model.graph.getNodeAttributes(target).depth,
       );
       const step = clamp(Math.round(deeper), 1, DEPTH_STEPS + 1) - 1;
-      if (attributes.look !== undefined) {
-        const from = byRef.get(attributes.look.from);
+      if (look !== undefined) {
+        const from = byRef.get(look.from);
         this.lookedLines.push({
           from: from === a ? a : b,
           to: from === a ? b : a,
           kind: attributes.kind,
           step,
-          look: attributes.look,
+          look,
+          ...(carries === undefined ? {} : { carries }),
         });
+        return;
+      }
+      if (carries !== undefined) {
+        this.carriedLines.push({ from: a, to: b, count: carries });
         return;
       }
       if (attributes.kind === "link") {
@@ -1054,12 +1221,47 @@ export class GraphScene {
       }
       this.edgesByDepth[step].push(a, b);
     });
+  }
 
-    this.differenceLines = model.difference;
-    this.readComparing();
-    this.nameFields(model.fields);
-    this.modelDirty = true;
-    this.positionsDirty = true;
+  /**
+   * What of one line is left once the reader's turned-off lines are taken out
+   * of it, or `null` where nothing is: a line standing for several hand links
+   * loses the ones whose label is off, and the look of the one it is itself.
+   */
+  private unhidden(
+    attributes: GraphEdgeAttributes,
+  ): { look?: GraphEdgeLook; carries?: number } | null {
+    const hidden = this.hiddenLines;
+    const { kind, look } = attributes;
+    if (attributes.carries === undefined) {
+      return lineHidden(hidden, kind, look?.label) ? null : { look };
+    }
+    if (hidden?.kinds.has(kind)) return null;
+    let carries = 0;
+    for (const [label, count] of attributes.carries) {
+      if (!lineHidden(hidden, kind, label)) carries += count;
+    }
+    if (carries === 0) return null;
+    return lineHidden(hidden, kind, look?.label)
+      ? { carries }
+      : { look, carries };
+  }
+
+  /** The lines the reader turned off; absent turns nothing off. */
+  setHiddenLines(hidden: GraphHiddenLines | undefined): void {
+    if (sameHidden(this.hiddenLines, hidden)) return;
+    this.hiddenLines = hidden;
+    this.bucketLines();
+    this.linesDirty = true;
+  }
+
+  /** The mark a pointer is resting on, and `null` once it has left it. */
+  setPointed(ref: string | null): void {
+    if (this.pointed === ref) return;
+    this.pointed = ref;
+    if (handLinksDense(this.handLinks, this.marks.length)) {
+      this.linesDirty = true;
+    }
   }
 
   /** Setting a `Text`'s string re-rasterises it, so the names are written once
@@ -1074,9 +1276,22 @@ export class GraphScene {
     });
   }
 
-  setPositions(positions: Float32Array): void {
+  /** `settled` false is a field still moving, which draws its hand links
+   *  straight until the positions that end the settle arrive. */
+  setPositions(positions: Float32Array, settled = true): void {
     if (positions.length !== this.positions.length) return;
     this.positions.set(positions);
+    this.positionsDirty = true;
+    this.settled = settled;
+    this.bundlesStale = true;
+  }
+
+  /** Bundle hand links along the tree at `strength` in [0, 1] — DESIGN.md
+   *  § Edges, "Bundled along the tree" — or draw them straight at `null`. */
+  setBundling(strength: number | null): void {
+    if (strength === this.bundleStrength) return;
+    this.bundleStrength = strength;
+    this.bundlesStale = true;
     this.positionsDirty = true;
   }
 
@@ -1092,6 +1307,8 @@ export class GraphScene {
     this.positions[index * 2] = world.x;
     this.positions[index * 2 + 1] = world.y;
     this.positionsDirty = true;
+    this.settled = false;
+    this.bundlesStale = true;
   }
 
   indexOf(ref: string): number | undefined {
@@ -1266,17 +1483,17 @@ export class GraphScene {
       this.drawShapes();
     }
     if (this.positionsDirty || scaleMoved) this.drawLift();
-    if (this.positionsDirty || scaleMoved) this.rebuildEdges();
+    const lines = this.positionsDirty || scaleMoved || this.linesDirty;
+    if (lines) this.rebuildEdges();
     if (this.positionsDirty || scaleMoved) this.drawDifference();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();
     if (this.positionsDirty || scaleMoved) this.drawCodeMoved();
-    if (this.positionsDirty || scaleMoved) {
-      this.layoutLabels(this.layoutFieldNames());
-    }
+    if (lines) this.layoutLabels(this.layoutFieldNames());
 
     this.world.position.set(this.viewport.x, this.viewport.y);
     this.world.scale.set(this.viewport.scale);
     this.positionsDirty = false;
+    this.linesDirty = false;
 
     this.cpuSamples.push(performance.now() - started);
     if (this.cpuSamples.length > 600) this.cpuSamples.shift();
@@ -1875,6 +2092,14 @@ export class GraphScene {
    * hand link where it was, which is why the alpha is read per kind.
    */
   private lineInk(kind: EdgeKind, step: number, receding: boolean): LineInk {
+    const ink = this.kindInk(kind, step, receding);
+    if (this.litRefs.length === 0) return ink;
+    const { palette } = this.options;
+    const alpha = palette.edgeAlphaWhileSelecting;
+    return { ...ink, alpha, captionAlpha: alpha / palette.edgeAlpha };
+  }
+
+  private kindInk(kind: EdgeKind, step: number, receding: boolean): LineInk {
     const { palette } = this.options;
     const width = this.lineWidth;
     const ink = (
@@ -1928,25 +2153,28 @@ export class GraphScene {
     // between two states". A hand link is the one thing that stays, as it stays
     // through a tag question.
     const receding = this.selecting || this.comparing;
+    if (this.bundlesStale) this.layBundles();
 
     this.edges.clear();
     this.edgesByDepth.forEach((pairs, step) => {
       if (pairs.length === 0) return;
       for (let at = 0; at < pairs.length; at += 2) {
-        const a = pairs[at] * 2;
-        const b = pairs[at + 1] * 2;
-        this.edges.moveTo(this.positions[a], this.positions[a + 1]);
-        this.edges.lineTo(this.positions[b], this.positions[b + 1]);
+        this.edgePath(this.edges, {
+          kind: "genealogy",
+          from: pairs[at],
+          to: pairs[at + 1],
+        });
       }
       this.edges.stroke(this.lineInk("genealogy", step, receding));
     });
 
     this.runs.clear();
     for (let at = 0; at < this.runPairs.length; at += 2) {
-      const a = this.runPairs[at] * 2;
-      const b = this.runPairs[at + 1] * 2;
-      this.runs.moveTo(this.positions[a], this.positions[a + 1]);
-      this.runs.lineTo(this.positions[b], this.positions[b + 1]);
+      this.edgePath(this.runs, {
+        kind: "run",
+        from: this.runPairs[at],
+        to: this.runPairs[at + 1],
+      });
     }
     if (this.runPairs.length > 0) {
       this.runs.stroke(this.lineInk("run", 0, receding));
@@ -1958,36 +2186,113 @@ export class GraphScene {
     // where it was — DESIGN.md § Edges.
     this.connections.clear();
     for (let at = 0; at < this.referencePairs.length; at += 2) {
-      const a = this.referencePairs[at] * 2;
-      const b = this.referencePairs[at + 1] * 2;
-      this.connections.moveTo(this.positions[a], this.positions[a + 1]);
-      this.connections.lineTo(this.positions[b], this.positions[b + 1]);
+      this.edgePath(this.connections, {
+        kind: "reference",
+        from: this.referencePairs[at],
+        to: this.referencePairs[at + 1],
+      });
     }
     if (this.referencePairs.length > 0) {
       this.connections.stroke(this.lineInk("reference", 0, receding));
     }
 
-    const dash = CONNECTION_DASH / this.viewport.scale;
+    const lit = this.litNow();
+    const near = lit === null ? this.near() : null;
+    const reading = lit === null ? this.readingIndex() : undefined;
+    const byStanding: Record<LineStanding, number[]> = {
+      struck: [],
+      standing: [],
+      quiet: [],
+    };
+    // The lines reaching the note being read are struck by
+    // `drawReadingLines`, over whatever they stand at here.
+    const standingOf = (a: number, b: number): LineStanding => {
+      if (lit !== null) return "standing";
+      const standing = this.lineStanding("link", a, b, near);
+      const reached = a === reading || b === reading;
+      return standing === "struck" && reached ? "standing" : standing;
+    };
     for (let at = 0; at < this.linkPairs.length; at += 2) {
-      const a = this.linkPairs[at] * 2;
-      const b = this.linkPairs[at + 1] * 2;
-      dashLine(
-        this.connections,
-        this.positions[a],
-        this.positions[a + 1],
-        this.positions[b],
-        this.positions[b + 1],
-        dash,
+      const a = this.linkPairs[at];
+      const b = this.linkPairs[at + 1];
+      byStanding[standingOf(a, b)].push(a, b);
+    }
+    for (const standing of ["quiet", "standing", "struck"] as const) {
+      const pairs = byStanding[standing];
+      if (pairs.length === 0) continue;
+      for (let at = 0; at < pairs.length; at += 2) {
+        this.edgePath(this.connections, {
+          kind: "link",
+          from: pairs[at],
+          to: pairs[at + 1],
+        });
+      }
+      this.connections.stroke(this.standingInk("link", 0, standing, receding));
+    }
+    for (const standing of ["quiet", "standing", "struck"] as const) {
+      this.strikeCarried(
+        this.carriedLines.filter(
+          (line) => standingOf(line.from, line.to) === standing,
+        ),
+        () => this.standingInk("link", 0, standing, receding),
       );
     }
-    if (this.linkPairs.length > 0) {
-      this.connections.stroke(this.lineInk("link", 0, receding));
-    }
 
-    const reading = this.readingIndex();
-    this.drawLooks(receding, reading);
-    if (reading !== undefined) this.drawReadingLines(reading);
+    this.drawLooks(receding, near, lit);
+    if (lit !== null) this.strikeOver((a, b) => lit.pairs.has(`${a}:${b}`));
+    else if (reading !== undefined) {
+      this.strikeOver((a, b) => a === reading || b === reading);
+    }
     this.lastEdgeScale = this.viewport.scale;
+  }
+
+  /** The note in hand, where the field is dense enough to recede around it;
+   *  `null` on a field that is not. */
+  private near(): Near | null {
+    const active = this.readingIndex();
+    if (!handLinksDense(this.handLinks, this.marks.length)) {
+      return null;
+    }
+    const pointed =
+      this.pointed === null ? undefined : this.indexOf(this.pointed);
+    const held = new Set<number>();
+    if (active !== undefined) held.add(active);
+    if (pointed !== undefined) held.add(pointed);
+    const around = new Set(held);
+    for (const at of held) {
+      for (const next of this.neighbours[at] ?? []) around.add(next);
+    }
+    return { active, held, around };
+  }
+
+  /** {@link LineStanding} for the line of `kind` between marks `a` and `b`. */
+  private lineStanding(
+    kind: EdgeKind,
+    a: number,
+    b: number,
+    near: Near | null,
+  ): LineStanding {
+    const active = near === null ? this.readingIndex() : near.active;
+    if (a === active || b === active) return "struck";
+    if (near === null || kind !== "link") return "standing";
+    if (near.held.has(a) || near.held.has(b)) return "struck";
+    return near.around.has(a) && near.around.has(b) ? "standing" : "quiet";
+  }
+
+  /** What a line standing at `standing` is struck in. A quiet hand link takes
+   *  the step a reference recedes to, so it stays on the ladder. */
+  private standingInk(
+    kind: EdgeKind,
+    step: number,
+    standing: LineStanding,
+    receding: boolean,
+  ): LineInk {
+    if (standing === "struck") return this.readingInk(kind, step);
+    const ink = this.lineInk(kind, step, receding);
+    if (standing === "standing") return ink;
+    const { palette } = this.options;
+    const alpha = palette.connectionAlphaWhileSelecting;
+    return { ...ink, alpha, captionAlpha: alpha / palette.connectionAlpha };
   }
 
   /** The mark of the note being read, where one is and is drawn. */
@@ -2015,68 +2320,168 @@ export class GraphScene {
   }
 
   /**
-   * The lines reaching the note being read, struck again over the rest — the
-   * ones a look is set on are already struck that way by `drawLooks`.
+   * The lines `over` names — those reaching the note being read, or those lit —
+   * struck again in full ink over the rest. The ones a look is set on are
+   * already struck that way by `drawLooks`.
    */
-  private drawReadingLines(at: number): void {
+  private strikeOver(over: (a: number, b: number) => boolean): void {
     const looked = new Set(
       this.lookedLines.map((line) => `${line.from}:${line.to}`),
     );
     const touches = (a: number, b: number): boolean =>
-      (a === at || b === at) && !looked.has(`${a}:${b}`);
-    const segment = (into: Graphics, a: number, b: number): void => {
-      into.moveTo(this.positions[a * 2], this.positions[a * 2 + 1]);
-      into.lineTo(this.positions[b * 2], this.positions[b * 2 + 1]);
-    };
-
+      over(a, b) && !looked.has(`${a}:${b}`);
     this.edgesByDepth.forEach((pairs, step) => {
       let any = false;
       for (let i = 0; i < pairs.length; i += 2) {
         if (!touches(pairs[i], pairs[i + 1])) continue;
-        segment(this.edges, pairs[i], pairs[i + 1]);
+        this.edgePath(this.edges, {
+          kind: "genealogy",
+          from: pairs[i],
+          to: pairs[i + 1],
+        });
         any = true;
       }
       if (any) this.edges.stroke(this.readingInk("genealogy", step));
     });
 
-    let runs = false;
-    for (let i = 0; i < this.runPairs.length; i += 2) {
-      if (!touches(this.runPairs[i], this.runPairs[i + 1])) continue;
-      segment(this.runs, this.runPairs[i], this.runPairs[i + 1]);
-      runs = true;
-    }
-    if (runs) this.runs.stroke(this.readingInk("run", 0));
+    const strike = (
+      into: Graphics,
+      kind: EdgeKind,
+      pairs: readonly number[],
+    ): void => {
+      let any = false;
+      for (let i = 0; i < pairs.length; i += 2) {
+        if (!touches(pairs[i], pairs[i + 1])) continue;
+        this.edgePath(into, { kind, from: pairs[i], to: pairs[i + 1] });
+        any = true;
+      }
+      if (any) into.stroke(this.readingInk(kind, 0));
+    };
+    strike(this.runs, "run", this.runPairs);
+    strike(this.connections, "reference", this.referencePairs);
+    strike(this.connections, "link", this.linkPairs);
+    this.strikeCarried(
+      this.carriedLines.filter((line) => touches(line.from, line.to)),
+      () => this.readingInk("link", 0),
+    );
+  }
 
-    let references = false;
-    for (let i = 0; i < this.referencePairs.length; i += 2) {
-      if (!touches(this.referencePairs[i], this.referencePairs[i + 1]))
-        continue;
-      segment(
-        this.connections,
-        this.referencePairs[i],
-        this.referencePairs[i + 1],
-      );
-      references = true;
+  /** Lines standing for several hand links, one stroke per step of weight. */
+  private strikeCarried(
+    lines: readonly CarriedLine[],
+    ink: () => LineInk,
+  ): void {
+    const byWeight = new Map<number, CarriedLine[]>();
+    for (const line of lines) {
+      const weight = carriedWeight(line.count);
+      const same = byWeight.get(weight);
+      if (same) same.push(line);
+      else byWeight.set(weight, [line]);
     }
-    if (references) this.connections.stroke(this.readingInk("reference", 0));
+    for (const [weight, same] of byWeight) {
+      for (const line of same) {
+        this.edgePath(this.connections, { kind: "link", ...line });
+      }
+      const struck = ink();
+      this.connections.stroke({ ...struck, width: struck.width * weight });
+    }
+  }
 
-    const dash = CONNECTION_DASH / this.viewport.scale;
-    let links = false;
-    for (let i = 0; i < this.linkPairs.length; i += 2) {
-      const a = this.linkPairs[i];
-      const b = this.linkPairs[i + 1];
-      if (!touches(a, b)) continue;
-      dashLine(
-        this.connections,
-        this.positions[a * 2],
-        this.positions[a * 2 + 1],
-        this.positions[b * 2],
-        this.positions[b * 2 + 1],
-        dash,
+  /** Every hand link's path along the tree, where bundling is on and the field
+   *  has settled; straight otherwise. */
+  private layBundles(): void {
+    this.bundles.clear();
+    const strength = this.bundleStrength;
+    if (strength === null || !this.settled) return;
+    this.bundlesStale = false;
+    const lay = (from: number, to: number): void => {
+      const path = bundledPath(
+        this.parents,
+        this.positions,
+        from,
+        to,
+        strength,
       );
-      links = true;
+      if (path !== null) this.bundles.set(`${from}:${to}`, path);
+    };
+    for (let at = 0; at < this.linkPairs.length; at += 2) {
+      lay(this.linkPairs[at], this.linkPairs[at + 1]);
     }
-    if (links) this.connections.stroke(this.readingInk("link", 0));
+    for (const line of this.carriedLines) lay(line.from, line.to);
+    for (const line of this.lookedLines) {
+      if (line.kind === "link") lay(line.from, line.to);
+    }
+  }
+
+  /** The bundled path between two marks in the order it was laid, or `null`
+   *  where the line between them is straight. */
+  private bundleBetween(a: number, b: number): Float32Array | null {
+    return (
+      this.bundles.get(`${a}:${b}`) ?? this.bundles.get(`${b}:${a}`) ?? null
+    );
+  }
+
+  /**
+   * The path one line lays into `into`, left for the caller to stroke: whole, or
+   * broken the way its look names or its kind already is. Every line between
+   * two marks is laid here.
+   */
+  private edgePath(into: Graphics, edge: EdgeEnds): void {
+    const from = this.positionOf(edge.from);
+    const to = this.positionOf(edge.to);
+    const stroke = edge.look?.stroke ?? EDGE_BREAK[edge.kind];
+    const bundled =
+      edge.kind === "link" ? this.bundleBetween(edge.from, edge.to) : null;
+    if (bundled !== null) {
+      this.bundledPath(into, bundled, stroke);
+      return;
+    }
+    if (stroke === "solid") {
+      into.moveTo(from.x, from.y);
+      into.lineTo(to.x, to.y);
+      return;
+    }
+    const span = Math.hypot(to.x - from.x, to.y - from.y);
+    brokenLine(
+      into,
+      from,
+      to,
+      stroke === "dashed"
+        ? dashSegments(span, CONNECTION_DASH / this.viewport.scale)
+        : dotSegments(span, LOOK_DOT / this.viewport.scale),
+    );
+  }
+
+  private bundledPath(
+    into: Graphics,
+    path: Float32Array,
+    stroke: EdgeStroke,
+  ): void {
+    if (stroke === "solid") {
+      traceWhole(into, path);
+      return;
+    }
+    const length = pathLength(path);
+    traceBroken(
+      into,
+      path,
+      stroke === "dashed"
+        ? dashSegments(length, CONNECTION_DASH / this.viewport.scale)
+        : dotSegments(length, LOOK_DOT / this.viewport.scale),
+    );
+  }
+
+  /** Where a line comes in to the mark at `end` from, which is the far mark on
+   *  a straight line and a point on the curve near `end` on a bundled one, so
+   *  an arrowhead points the way the line arrives. */
+  private approach(from: number, end: number, width: number): Point {
+    const path = this.bundles.get(`${from}:${end}`);
+    const reversed = path ? undefined : this.bundles.get(`${end}:${from}`);
+    if (!path && !reversed) return this.positionOf(from);
+    const along = (path ?? reversed)!;
+    const length = pathLength(along);
+    const back = (this.marks[end]?.radius ?? 0) + width * ARROW_REACH * 2;
+    return pointAlong(along, path ? length - back : back);
   }
 
   /** The layer each kind of line is drawn on, so a look stays on the line it is
@@ -2091,36 +2496,48 @@ export class GraphScene {
    * look names or the one the line already has, and an arrowhead at whichever
    * end it names — DESIGN.md § Edges, "A look a person set".
    */
-  private drawLooks(receding: boolean, reading?: number): void {
+  private drawLooks(
+    receding: boolean,
+    near: Near | null,
+    lit: Lit | null,
+  ): void {
     for (const line of this.lookedLines) {
       const into = this.layerFor(line.kind);
-      const ink =
-        line.from === reading || line.to === reading
-          ? this.readingInk(line.kind, line.step)
-          : this.lineInk(line.kind, line.step, receding);
-      const from = this.positionOf(line.from);
-      const to = this.positionOf(line.to);
-      const span = Math.hypot(to.x - from.x, to.y - from.y);
-      const stroke = line.look.stroke ?? EDGE_BREAK[line.kind];
-      if (stroke === "solid") {
-        into.moveTo(from.x, from.y);
-        into.lineTo(to.x, to.y);
-      } else {
-        brokenLine(
-          into,
-          from,
-          to,
-          stroke === "dashed"
-            ? dashSegments(span, CONNECTION_DASH / this.viewport.scale)
-            : dotSegments(span, LOOK_DOT / this.viewport.scale),
-        );
-      }
+      const struck = this.standingInk(
+        line.kind,
+        line.step,
+        lit === null
+          ? this.lineStanding(line.kind, line.from, line.to, near)
+          : lit.pairs.has(`${line.from}:${line.to}`)
+            ? "struck"
+            : "standing",
+        receding,
+      );
+      const ink = {
+        ...struck,
+        width: struck.width * carriedWeight(line.carries ?? 1),
+      };
+      this.edgePath(into, line);
       const { direction } = line.look;
       if (direction === "to" || direction === "both") {
-        this.arrowInto(into, from, to, line.to, ink.width);
+        const from = this.approach(line.from, line.to, ink.width);
+        this.arrowInto(
+          into,
+          from,
+          this.positionOf(line.to),
+          line.to,
+          ink.width,
+        );
       }
       if (direction === "from" || direction === "both") {
-        this.arrowInto(into, to, from, line.from, ink.width);
+        const to = this.approach(line.to, line.from, ink.width);
+        this.arrowInto(
+          into,
+          to,
+          this.positionOf(line.from),
+          line.from,
+          ink.width,
+        );
       }
       into.stroke(ink);
     }
@@ -2164,15 +2581,59 @@ export class GraphScene {
    * mark's, which {@link hitTest} answers first.
    */
   hitEdge(world: Point): [string, string] | null {
-    let best: [string, string] | null = null;
+    const hit = this.lineAt(world);
+    return hit === null ? null : this.refsOf(hit);
+  }
+
+  /**
+   * Every line a tap at `world` landed on: the one {@link hitEdge} answers,
+   * first, and — where that line is bundled — every other hand link routed
+   * through the span of the tree the tap was nearest, which is the cord a
+   * reader sees. Empty where the tap found no line.
+   */
+  bundleAt(world: Point): [string, string][] {
+    const hit = this.lineAt(world);
+    if (hit === null) return [];
+    const [a, b] = hit;
+    const drawn = this.bundles.get(`${a}:${b}`);
+    const reversed = drawn ? undefined : this.bundles.get(`${b}:${a}`);
+    if (!drawn && !reversed) return [this.refsOf(hit)];
+    const span = drawn
+      ? spanNearest(drawn, treePath(this.parents, a, b), world)
+      : spanNearest(reversed!, treePath(this.parents, b, a), world);
+    const lines = [...this.bundles.keys()].map(
+      (key) => key.split(":").map(Number) as [number, number],
+    );
+    const found: [string, string][] = [this.refsOf(hit)];
+    const seen = new Set([`${a}:${b}`, `${b}:${a}`]);
+    for (const at of routedThrough(this.parents, lines, span)) {
+      const [from, to] = lines[at];
+      if (seen.has(`${from}:${to}`)) continue;
+      seen.add(`${from}:${to}`).add(`${to}:${from}`);
+      found.push(this.refsOf(lines[at]));
+    }
+    return found;
+  }
+
+  private refsOf([a, b]: readonly [number, number]): [string, string] {
+    return [this.marks[a].ref, this.marks[b].ref];
+  }
+
+  /** The marks at the ends of the nearest line within a finger's reach. */
+  private lineAt(world: Point): [number, number] | null {
+    let best: [number, number] | null = null;
     let nearest = EDGE_TAP / this.viewport.scale;
     for (let at = 0; at < this.linePairs.length; at += 2) {
       const a = this.linePairs[at];
       const b = this.linePairs[at + 1];
-      const away = awayFromLine(world, this.positionOf(a), this.positionOf(b));
+      const bundled = this.bundleBetween(a, b);
+      const away =
+        bundled === null
+          ? awayFromLine(world, this.positionOf(a), this.positionOf(b))
+          : awayFromPath(world, bundled);
       if (away > nearest) continue;
       nearest = away;
-      best = [this.marks[a].ref, this.marks[b].ref];
+      best = [a, b];
     }
     return best;
   }
@@ -2439,11 +2900,12 @@ export class GraphScene {
       return;
     }
 
+    const lit = this.litNow()?.marks;
     const chosen = this.chosen;
-    if (chosen) {
+    if (chosen || lit) {
       const band = CHOSEN_BAND / this.viewport.scale;
       for (const mark of this.marks) {
-        if (!chosen.has(mark.ref)) continue;
+        if (!(chosen?.has(mark.ref) ?? lit?.has(mark.index))) continue;
         this.picks.circle(
           this.positions[mark.index * 2],
           this.positions[mark.index * 2 + 1],
@@ -2529,9 +2991,13 @@ export class GraphScene {
     const enter = LABEL_MIN_RADIUS / this.viewport.scale;
     const leave = enter * LABEL_HYSTERESIS;
 
+    const lit = this.litNow()?.marks;
     const wanted: Mark[] = [];
     for (const mark of this.marks) {
-      if (mark.radius < (held.has(mark.ref) ? leave : enter)) continue;
+      const named = lit?.has(mark.index) ?? false;
+      if (!named && mark.radius < (held.has(mark.ref) ? leave : enter)) {
+        continue;
+      }
       const x = this.positions[mark.index * 2];
       const y = this.positions[mark.index * 2 + 1];
       if (x < view.minX || x > view.maxX || y < view.minY || y > view.maxY) {
@@ -2539,7 +3005,8 @@ export class GraphScene {
       }
       wanted.push(mark);
     }
-    wanted.sort((a, b) => b.radius - a.radius);
+    const first = (mark: Mark) => Number(lit?.has(mark.index) ?? false);
+    wanted.sort((a, b) => first(b) - first(a) || b.radius - a.radius);
     wanted.length = Math.min(wanted.length, MAX_LABELS);
     const keeping = new Set(wanted.map((mark) => mark.ref));
 
@@ -2593,47 +3060,81 @@ export class GraphScene {
     const enter = EDGE_LABEL_MIN_SPAN;
     const leave = enter * LABEL_HYSTERESIS;
     const receding = this.selecting || this.comparing;
+    const lit = this.litNow();
+    const near = lit === null ? this.near() : null;
 
     const wanted: {
       key: string;
-      line: LookedLine;
+      words: string;
+      kind: EdgeKind;
+      step: number;
+      standing: LineStanding;
       middle: Point;
       ends: [Point, Point];
       span: number;
     }[] = [];
-    for (const line of this.lookedLines) {
-      const words = line.look.label;
-      if (words === undefined || words === "") continue;
-      const from = this.positionOf(line.from);
-      const to = this.positionOf(line.to);
-      const span =
-        Math.hypot(to.x - from.x, to.y - from.y) * this.viewport.scale;
-      const key = edgeLookKey(line.look.from, line.look.to);
-      if (span < (held.has(key) ? leave : enter)) continue;
-      const middle = this.viewport.toScreen(
-        (from.x + to.x) / 2,
-        (from.y + to.y) / 2,
+    const captioned: {
+      from: number;
+      to: number;
+      kind: EdgeKind;
+      step: number;
+      words: string | undefined;
+    }[] = [
+      ...this.lookedLines.map((line) => ({
+        ...line,
+        words: carriedCaption(line.carries ?? 1) ?? line.look.label,
+      })),
+      ...this.carriedLines.map((line) => ({
+        ...line,
+        kind: "link" as const,
+        step: 0,
+        words: carriedCaption(line.count),
+      })),
+    ];
+    for (const line of lit === null ? captioned : litCaption(lit, captioned)) {
+      if (line.words === undefined || line.words === "") continue;
+      const standing =
+        lit === null
+          ? this.lineStanding(line.kind, line.from, line.to, near)
+          : "struck";
+      if (standing === "quiet") continue;
+      const [from, to, middle, span] = this.middleOf(line.from, line.to);
+      const key = edgeLookKey(
+        this.marks[line.from].ref,
+        this.marks[line.to].ref,
       );
+      if (span * this.viewport.scale < (held.has(key) ? leave : enter)) {
+        continue;
+      }
+      const centre = this.viewport.toScreen(middle.x, middle.y);
       if (
-        middle.x < 0 ||
-        middle.x > this.width ||
-        middle.y < 0 ||
-        middle.y > this.height
+        centre.x < 0 ||
+        centre.x > this.width ||
+        centre.y < 0 ||
+        centre.y > this.height
       ) {
         continue;
       }
       wanted.push({
         key,
-        line,
-        middle,
+        words: line.words,
+        kind: line.kind,
+        step: line.step,
+        standing,
+        middle: centre,
         ends: [
           this.viewport.toScreen(from.x, from.y),
           this.viewport.toScreen(to.x, to.y),
         ],
-        span,
+        span: span * this.viewport.scale,
       });
     }
-    wanted.sort((a, b) => b.span - a.span);
+    // Struck lines take the slots first, then the longest.
+    wanted.sort(
+      (a, b) =>
+        Number(b.standing === "struck") - Number(a.standing === "struck") ||
+        b.span - a.span,
+    );
     wanted.length = Math.min(wanted.length, this.edgeLabelPool.length);
     const keeping = new Set(wanted.map((entry) => entry.key));
 
@@ -2657,7 +3158,7 @@ export class GraphScene {
         held.set(entry.key, at);
       }
       const text = this.edgeLabelPool[at];
-      const words = shorten(entry.line.look.label ?? "", EDGE_LABEL_CHARS);
+      const words = shorten(entry.words, EDGE_LABEL_CHARS);
       if (text.text !== words) text.text = words;
       const where = beside(
         entry.middle,
@@ -2673,13 +3174,38 @@ export class GraphScene {
       placed.push(box);
       text.position.set(where.x, where.y);
       text.tint = this.options.palette.ink;
-      text.alpha = this.lineInk(
-        entry.line.kind,
-        entry.line.step,
+      text.alpha = this.standingInk(
+        entry.kind,
+        entry.step,
+        entry.standing,
         receding,
       ).captionAlpha;
       text.visible = true;
     }
+  }
+
+  /**
+   * Where a line's words are bound: its two ends and its middle, with the
+   * length it is drawn at, in world units. On a bundled line the ends are the
+   * curve either side of its middle, so the words stand off the curve there.
+   */
+  private middleOf(a: number, b: number): [Point, Point, Point, number] {
+    const bundled = this.bundleBetween(a, b);
+    if (bundled === null) {
+      const from = this.positionOf(a);
+      const to = this.positionOf(b);
+      const middle = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+      return [from, to, middle, Math.hypot(to.x - from.x, to.y - from.y)];
+    }
+    const length = pathLength(bundled);
+    const half = length / 2;
+    const near = Math.min(half, EDGE_LABEL_MIN_SPAN / this.viewport.scale) / 2;
+    return [
+      pointAlong(bundled, half - near),
+      pointAlong(bundled, half + near),
+      pointAlong(bundled, half),
+      length,
+    ];
   }
 
   /**
@@ -2910,6 +3436,22 @@ function shorten(text: string, limit: number): string {
  * it has none — `noteLabel` in `@sloppy/types` — so a mega-node's count follows
  * whichever of the two named it rather than standing ahead of the title.
  */
+/** The one caption a lit field carries, on the line tapped first: how many
+ *  lines are lit where more than one is, and that line's own words where it
+ *  is lit alone. */
+function litCaption<
+  Line extends { from: number; to: number; words: string | undefined },
+>(lit: Lit, captioned: readonly Line[]): Line[] {
+  const [a, b] = lit.first;
+  const own = captioned.find(
+    (line) =>
+      (line.from === a && line.to === b) || (line.from === b && line.to === a),
+  );
+  if (lit.count < 2) return own === undefined ? [] : [own];
+  const base = own ?? { from: a, to: b, kind: "link", step: 0 };
+  return [{ ...base, words: carriedCaption(lit.count) } as Line];
+}
+
 function markCaption(attributes: GraphNodeAttributes): {
   label: string;
   title: string;
@@ -3237,6 +3779,18 @@ function strokeRing(
   }
 }
 
+function sameHidden(
+  a: GraphHiddenLines | undefined,
+  b: GraphHiddenLines | undefined,
+): boolean {
+  if (a === b) return true;
+  const kinds = (h: GraphHiddenLines | undefined) => h?.kinds ?? new Set();
+  const labels = (h: GraphHiddenLines | undefined) => h?.labels ?? new Set();
+  const same = (x: ReadonlySet<unknown>, y: ReadonlySet<unknown>): boolean =>
+    x.size === y.size && [...x].every((item) => y.has(item));
+  return same(kinds(a), kinds(b)) && same(labels(a), labels(b));
+}
+
 /**
  * Where each dash of a connection falls, as distances along the line. The
  * segment count is capped for cost, and the SPACING absorbs the cap — so a long
@@ -3290,23 +3844,6 @@ function brokenLine(
     graphics.moveTo(from.x + ux * segment.from, from.y + uy * segment.from);
     graphics.lineTo(from.x + ux * segment.to, from.y + uy * segment.to);
   }
-}
-
-function dashLine(
-  graphics: Graphics,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  dash: number,
-): void {
-  const length = Math.hypot(x2 - x1, y2 - y1);
-  brokenLine(
-    graphics,
-    { x: x1, y: y1 },
-    { x: x2, y: y2 },
-    dashSegments(length, dash),
-  );
 }
 
 /** Where to centre a `width` × {@link LABEL_LINE} box of words so that the whole
