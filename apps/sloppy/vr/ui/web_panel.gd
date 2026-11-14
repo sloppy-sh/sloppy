@@ -8,6 +8,7 @@ extends Node3D
 const Page := preload("res://ui/page.gd")
 const Pieces := preload("res://ui/pieces.gd")
 const Room := preload("res://room/room.gd")
+const WindowFrame := preload("res://ui/window_frame.gd")
 
 ## The page finished loading `url`.
 signal loaded(url: String, title: String)
@@ -50,6 +51,11 @@ var fallback: Control
 var allows: Callable = web_allows
 ## Whether a grip carries the panel itself rather than whoever holds it.
 var carries_itself := false
+## Whether the panel is a window, moved by its bar and resized by its corners;
+## set before it enters the tree.
+var windowed := false
+## Whether the bar offers to pin the window to the reader's view.
+var pinnable := false
 ## What the bar says: the page's title, or how opening it went.
 var title := ""
 ## The page's id with the plugin; 0 where there is none.
@@ -71,6 +77,9 @@ var _at := Vector2.ZERO
 var _scroll_left := 0.0
 var _carried_by: Node3D
 var _carry := Transform3D()
+var _window: Node3D
+## The page's pixels to a metre of the panel.
+var _density := 1.0
 
 
 ## Whether a page left to itself may go to `url`: the web, and nothing else.
@@ -98,6 +107,11 @@ func _ready() -> void:
 	_paint.albedo_color = Room.paper()
 	_face.material_override = _paint
 	add_child(_face)
+	_density = pixels.x / size.x
+	if windowed:
+		_window = WindowFrame.new(size, resize_to)
+		_window.took_ray.connect(_unpoint_face)
+		add_child(_window)
 	_engine = engine()
 	if _engine != null:
 		_open_with_plugin()
@@ -147,6 +161,48 @@ func go_back() -> bool:
 func close() -> void:
 	closed.emit()
 	queue_free()
+
+
+## The panel `given` metres across and tall about its middle, live while it is
+## drawn there and its page laid out again at that size once `done`.
+func resize_to(given: Vector2, done := true) -> void:
+	size = given
+	(_face.mesh as QuadMesh).size = given
+	if _window != null:
+		_window.fit(given)
+	if not done:
+		_place_bar()
+		return
+	pixels = Vector2i((given * _density).round())
+	_lay_pages_out()
+	_draw_bar()
+
+
+## Pins the window to the reader's view, or leaves it standing in the room
+## where it is now; pinned `at_once`, it is there now rather than easing there.
+func pin(on: bool, at_once := false) -> void:
+	if _window == null or on == is_pinned():
+		return
+	_window.pin(on, at_once)
+	_draw_bar()
+
+
+func is_pinned() -> bool:
+	return _window != null and _window.pinned
+
+
+func _toggle_pin() -> void:
+	pin(not is_pinned())
+
+
+## Each page the panel shows laid out again at `pixels`.
+func _lay_pages_out() -> void:
+	if _external is ExternalTexture:
+		(_external as ExternalTexture).size = Vector2(pixels)
+	if _viewport != null:
+		_viewport.size = pixels
+	if _engine != null and id != 0:
+		_engine.resize(id, pixels.x, pixels.y)
 
 
 ## The texture the face shows now; null before the page's first frame.
@@ -263,18 +319,47 @@ func _draw_bar() -> void:
 	_buttons.position = Vector3(size.x - BUTTONS_WIDE, 0.0, 0.0)
 	_bar.add_child(_buttons)
 	var room := size.x - BUTTONS_WIDE - Page.GAP
+	if pinnable and _window != null:
+		var pinning := Page.new("", [{"rows": [Page.mark("pin-off" if is_pinned() else "pin", _toggle_pin)]}], "", Page.ROW)
+		room -= Page.ROW + Page.GAP
+		pinning.position = Vector3(room + Page.GAP, 0.0, 0.0)
+		pinning.name = "Pin"
+		_bar.add_child(pinning)
 	var named := Pieces.words(Pieces.cut(title, room, Page.TITLE, Page.LETTER), room, Page.TITLE, Pieces.INK, Page.LETTER)
 	named.autowrap_mode = TextServer.AUTOWRAP_OFF
 	named.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	named.position = Vector3(0.0, -(tall + Page.GAP) * 0.5, 0.002)
 	_bar.add_child(named)
-	_bar.position = Vector3(-size.x / 2.0, size.y / 2.0 + BAR_GAP + tall, 0.0)
+	_bar.set_meta("tall", tall)
+	_place_bar()
 	add_child(_bar)
+	_fit_window()
 
 
-## The Back or Close button on the bar, by "back" or "close"; null with no bar.
+func _place_bar() -> void:
+	if _bar != null:
+		_bar.position = Vector3(-size.x / 2.0, size.y / 2.0 + BAR_GAP + float(_bar.get_meta("tall")), 0.0)
+
+
+## The window's corners at the page's and over the bar's top.
+func _fit_window() -> void:
+	if _window == null:
+		return
+	var over := 0.0
+	if _bar != null:
+		var top := 0.0
+		for row in _bar.get_children():
+			top = maxf(top, row.position.y)
+		over = _bar.position.y + top - size.y / 2.0
+	_window.fit(size, over)
+
+
+## The Back or Close button on the bar, by "back" or "close", or the pin by
+## "pin"; null with no bar.
 func bar_button(key: String) -> Node3D:
-	return _buttons.keyed.get(key) if _bar != null and is_instance_valid(_buttons) else null
+	if _bar == null or not is_instance_valid(_buttons):
+		return null
+	return _bar.get_node_or_null("Pin") if key == "pin" else _buttons.keyed.get(key)
 
 
 ## Where `pointer`'s ray meets the face, in the page's pixels; null where it misses.
@@ -295,6 +380,11 @@ func _pixel(pointer: Node3D) -> Variant:
 
 
 func hit(pointer: Node3D) -> float:
+	var own := _face_hit(pointer)
+	return own if _window == null else _window.nearer(pointer, own)
+
+
+func _face_hit(pointer: Node3D) -> float:
 	if _pixel(pointer) == null:
 		return INF
 	var ray: Array = pointer.ray()
@@ -305,6 +395,11 @@ func hit(pointer: Node3D) -> float:
 
 
 func point(pointer: Node3D) -> void:
+	if _window != null:
+		if _window.takes(pointer):
+			_window.point(pointer)
+			return
+		_window.unpoint(pointer)
 	var at = _pixel(pointer)
 	if at == null:
 		return
@@ -320,7 +415,13 @@ func point(pointer: Node3D) -> void:
 	_viewport.push_input(moved)
 
 
-func unpoint(_pointer: Node3D) -> void:
+func unpoint(pointer: Node3D) -> void:
+	if _window != null:
+		_window.unpoint(pointer)
+	_unpoint_face(pointer)
+
+
+func _unpoint_face(_pointer: Node3D) -> void:
 	if _engine != null:
 		if _pressed:
 			_engine.touch(id, _at.x, _at.y, "up")
@@ -333,14 +434,26 @@ func unpoint(_pointer: Node3D) -> void:
 
 
 func press(pointer: Node3D) -> void:
+	if _window != null and _window.takes(pointer):
+		_window.press(pointer)
+		return
 	_touch(pointer, true)
 
 
+func holds(pointer: Node3D) -> bool:
+	return _window != null and _window.holds(pointer)
+
+
 func release(pointer: Node3D) -> void:
+	if holds(pointer):
+		_window.release(pointer)
+		return
 	_touch(pointer, false)
 
 
-func scroll(_pointer: Node3D, amount: float) -> bool:
+func scroll(pointer: Node3D, amount: float) -> bool:
+	if _window != null and _window.takes(pointer):
+		return _window.scroll(pointer, amount)
 	if amount == 0.0:
 		return true
 	if _engine != null:
@@ -365,11 +478,15 @@ func take(pointer: Node3D) -> void:
 	if carries_itself and pointer.hand != null:
 		_carried_by = pointer
 		_carry = pointer.hand.global_transform.affine_inverse() * global_transform
+		if _window != null:
+			_window.carry(true)
 
 
 func let_go(pointer: Node3D) -> void:
 	if pointer == _carried_by:
 		_carried_by = null
+		if _window != null:
+			_window.carry(false)
 	let_go_of.emit(pointer)
 
 

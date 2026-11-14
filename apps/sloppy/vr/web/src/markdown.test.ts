@@ -7,7 +7,7 @@ import {
   PICTURES,
   REF,
 } from "./fixtures/note";
-import { CITED, DRAWING, toHtml } from "./markdown";
+import { CITED, DRAWING, tablesJoined, toHtml } from "./markdown";
 
 const page = (html: string) => {
   const holder = document.createElement("div");
@@ -113,5 +113,27 @@ describe("math", () => {
   it("is typeset where a note carries it", async () => {
     const shown = page(await toHtml({ markdown: "Area is $\\pi r^2$." }));
     expect(shown.querySelector(".katex")).not.toBeNull();
+  });
+});
+
+describe("a table written a row to a paragraph", () => {
+  const spread =
+    "| Type | Id |\n\n|------|----|\n\n| Ledger | `a1` |\n\n| Currency | `a2` |\n\nAfter.";
+
+  it("is read as one table", async () => {
+    const html = await toHtml({ markdown: spread });
+    expect(html.match(/<table>/g)).toHaveLength(1);
+    expect(html.match(/<tr>/g)).toHaveLength(3);
+    expect(html).toContain("<p>After.</p>");
+  });
+
+  it("leaves rows in a code fence as written", () => {
+    const fenced = "```\n| a | b |\n\n|---|---|\n```";
+    expect(tablesJoined(fenced)).toBe(fenced);
+  });
+
+  it("leaves pipes that open no table alone", () => {
+    const loose = "| just a line |\n\nand prose";
+    expect(tablesJoined(loose)).toBe(loose);
   });
 });

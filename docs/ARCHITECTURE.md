@@ -37,7 +37,7 @@ sloppy/
 │       ├── api/     @sloppy/api     — NestJS backend (hosted & self-hostable)
 │       ├── web/     @sloppy/web     — SvelteKit SPA shell
 │       ├── native/  @sloppy/native  — Tauri + SvelteKit shell (iOS, iPadOS, Android, desktop)
-│       ├── vr/                      — Godot 4.4 headset client (Quest); not a pnpm package
+│       ├── vr/                      — Godot 4.7 headset client (Quest); not a pnpm package
 │       └── landing/ @sloppy/landing — sloppy.sh, prerendered from bench/results
 ├── packages/
 │   └── ts/
@@ -4557,7 +4557,7 @@ desk: the W3ID of each, of the W3DS registry the person set under Settings → P
 that author's eVault, for the profile it shows in public and its picture. Nothing of the reader
 or the notes goes with it, and a headset asks only the desk.
 
-**The headset derives everything it draws.** `apps/sloppy/vr` is a Godot 4.4 project in
+**The headset derives everything it draws.** `apps/sloppy/vr` is a Godot 4.7 project in
 GDScript (mobile renderer, OpenXR, the Godot OpenXR Vendors plugin for Meta), outside the pnpm
 workspace; its README says how it and its extension are built and deployed. Four autoloads carry it: `Client`
 (`IrohLink` underneath, one request id per call, pairing where the desk asks for the code,

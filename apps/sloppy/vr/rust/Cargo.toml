@@ -9,9 +9,8 @@ description = "The headset's link to a desk serving Sloppy: an iroh endpoint as 
 crate-type = ["cdylib"]
 
 [dependencies]
-# The API of Godot 4.4, the oldest editor the project opens in; a later editor
-# loads it unchanged.
-godot = { version = "=0.5.5", features = ["api-4-4"] }
+# The API of Godot 4.7, the editor the project is made in.
+godot = { version = "=0.5.5", features = ["api-4-7"] }
 iroh = "=1.4.1"
 iroh-mdns-address-lookup = "=0.6.1"
 iroh-tickets = "=1.0.0"

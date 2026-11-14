@@ -18,5 +18,5 @@ The glyphs, by the name `Pieces.glyph` takes: `arrow-big-up`, `arrow-left`, `ble
 `bookmark-minus`, `chevron-down`, `chevron-right`, `chevron-up`, `circle`, `corner-down-left`,
 `delete`, `eye`, `folder-open`, `git-branch`, `globe`, `hand`, `heading`, `image`, `keyboard-off`,
 `layout-panel-top`, `link`, `log-out`, `message-square`, `monitor`, `moon`, `move`, `network`,
-`palette`, `pen-line`, `plus`, `rows-3`, `sparkles`, `spline`, `square`, `square-arrow-out-up-right`, `sun`, `sun-dim`,
+`palette`, `pen-line`, `pin`, `pin-off`, `plus`, `rows-3`, `sparkles`, `spline`, `square`, `square-arrow-out-up-right`, `sun`, `sun-dim`,
 `telescope`, `type`, `undo-2`, `unfold-horizontal`, `unplug`, `x`, `zoom-in`. A glyph not on this headset leaves its row's place for one empty.

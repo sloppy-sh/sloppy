@@ -1,8 +1,8 @@
 #!/bin/sh
 # Puts the Godot OpenXR Vendors plugin into addons/, at the release this project
-# is pinned to: the last one made for Godot 4.4.
+# is pinned to, which is made for Godot 4.6 and later.
 set -eu
-RELEASE="4.3.1-stable"
+RELEASE="5.2.0-stable"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 held="$(mktemp -d)"
 trap 'rm -rf "$held"' EXIT

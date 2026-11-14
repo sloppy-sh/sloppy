@@ -25,6 +25,7 @@ static var _rule := RegEx.create_from_string("^\\s*([-*_])(\\s*\\1){2,}\\s*$")
 static var _item := RegEx.create_from_string("^(\\s*)([-*+]|\\d+[.)])\\s+(\\[[ xX]\\]\\s+)?(.*)$")
 static var _quote := RegEx.create_from_string("^\\s*>\\s?(.*)$")
 static var _table := RegEx.create_from_string("^\\s*\\|.*\\|\\s*$")
+static var _delimiter := RegEx.create_from_string("^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)*\\|?\\s*$")
 static var _comment := RegEx.create_from_string("<!--[\\s\\S]*?-->")
 static var _code_span := RegEx.create_from_string("(`+)([\\s\\S]*?[^`])\\1(?!`)")
 static var _escaped := RegEx.create_from_string("\\\\([!-/:-@\\[-`{-~])")
@@ -84,10 +85,18 @@ static func to_bbcode(markdown: String, named: Dictionary = {}) -> String:
 		elif _table.search(line) != null:
 			_close(paragraph, blocks)
 			var rows: Array[String] = []
-			while at < lines.size() and _table.search(lines[at]) != null:
-				rows.append(lines[at].strip_edges())
-				at += 1
-			blocks.append(_code("\n".join(rows)))
+			while at < lines.size():
+				if _table.search(lines[at]) != null:
+					rows.append(lines[at].strip_edges())
+					at += 1
+					continue
+				var next := at
+				while next < lines.size() and lines[next].strip_edges() == "":
+					next += 1
+				if next == at or next >= lines.size() or _table.search(lines[next]) == null:
+					break
+				at = next
+			blocks.append(_table_of(rows))
 			continue
 		elif _quote.search(line) != null:
 			_close(paragraph, blocks)
@@ -117,6 +126,29 @@ static func to_bbcode(markdown: String, named: Dictionary = {}) -> String:
 		at += 1
 	_close(paragraph, blocks)
 	return "\n\n".join(blocks)
+
+
+## A markdown table's rows as a BBCode table, its first row bold; the row of
+## dashes under the head is dropped. Rows that are not a table stay as written.
+static func _table_of(rows: Array[String]) -> String:
+	var cells: Array = []
+	var widest := 0
+	for row in rows:
+		var trimmed := row.strip_edges().trim_prefix("|").trim_suffix("|")
+		var parts := trimmed.split("|")
+		if _delimiter.search(row) != null:
+			continue
+		cells.append(parts)
+		widest = maxi(widest, parts.size())
+	if cells.size() < 2 or widest < 2:
+		return _code("\n".join(rows))
+	var out := "[table=%d]" % widest
+	for at in cells.size():
+		var parts: PackedStringArray = cells[at]
+		for column in widest:
+			var said := inline(parts[column].strip_edges()) if column < parts.size() else ""
+			out += "[cell padding=6,2,6,2]" + ("[b]%s[/b]" % said if at == 0 else said) + "[/cell]"
+	return out + "[/table]"
 
 
 ## One line of markdown's inline marks as BBCode.

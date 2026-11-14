@@ -50,6 +50,44 @@ const schema: Options = {
   },
 };
 
+const PIPE_ROW = /^\s*\|.*\|\s*$/;
+const DELIMITER_ROW = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+const FENCE = /^\s*(```|~~~)/;
+
+/** `markdown` with the blank lines dropped from between a table's rows, so a
+ *  table written a row to a paragraph still reads as one table. Outside code
+ *  fences only; a run counts as a table once its second row is a delimiter. */
+export function tablesJoined(markdown: string): string {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const out: string[] = [];
+  let fenced = false;
+  let inTable = false;
+  for (let at = 0; at < lines.length; at++) {
+    const line = lines[at];
+    if (FENCE.test(line)) fenced = !fenced;
+    if (fenced || !PIPE_ROW.test(line)) {
+      if (line.trim() !== "" || !inTable) {
+        inTable = false;
+        out.push(line);
+        continue;
+      }
+      let next = at + 1;
+      while (next < lines.length && lines[next].trim() === "") next++;
+      if (next < lines.length && PIPE_ROW.test(lines[next])) continue;
+      inTable = false;
+      out.push(line);
+      continue;
+    }
+    if (!inTable) {
+      let next = at + 1;
+      while (next < lines.length && lines[next].trim() === "") next++;
+      inTable = next < lines.length && DELIMITER_ROW.test(lines[next]);
+    }
+    out.push(inTable ? line.trim() : line);
+  }
+  return out.join("\n");
+}
+
 /** The HTML for `asked.markdown`. Diagrams come out as their source inside
  *  `figure[data-diagram]`, for the page to draw where it can. */
 export async function toHtml(asked: Asked): Promise<string> {
@@ -72,7 +110,7 @@ export async function toHtml(asked: Asked): Promise<string> {
     .use(after)
     .use(decorate)
     .use(rehypeStringify);
-  return String(await processor.process(asked.markdown));
+  return String(await processor.process(tablesJoined(asked.markdown)));
 }
 
 function citations(named: Record<string, string>) {

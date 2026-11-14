@@ -5,7 +5,9 @@
 ## where it is not), `point(pointer)`, `unpoint(pointer)`, `press(pointer)`,
 ## `release(pointer)` and `scroll(pointer, amount) -> bool` (whether it took the
 ## stick). One that can be carried also has `take(pointer)` and `let_go(pointer)`,
-## which the grip does while the pointer is on it.
+## which the grip does while the pointer is on it. One that keeps the ray while
+## the trigger holds it has `holds(pointer) -> bool`: while it does, no other
+## target takes the ray, and the beam ends where its `hit` says.
 extends Node3D
 
 ## The trigger was pulled while this pointed at nothing.
@@ -76,9 +78,10 @@ func ray() -> Array:
 
 
 func _process(delta: float) -> void:
-	var nearest: Object = null
-	var best := INF
-	for target in targets:
+	var kept: bool = is_instance_valid(_on) and _on.has_method("holds") and _on.holds(self)
+	var nearest: Object = _on if kept else null
+	var best: float = _on.hit(self) if kept else INF
+	for target in [] if kept else targets:
 		if not is_instance_valid(target):
 			continue
 		var distance: float = target.hit(self)

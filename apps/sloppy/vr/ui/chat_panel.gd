@@ -5,6 +5,7 @@ extends Node3D
 const Markdown := preload("res://ui/markdown_to_bbcode.gd")
 const Room := preload("res://room/room.gd")
 const Dressing := preload("res://ui/theme.gd")
+const WindowFrame := preload("res://ui/window_frame.gd")
 
 signal closed
 ## A hand's grip took hold of the page, and let it go.
@@ -56,6 +57,10 @@ var _writing := -1
 ## Whether it was answering before the reader last said something into it.
 var _answering_before := false
 var _trouble := ""
+var _window: Node3D
+## The sheet's pixels to a metre of the panel, and the size it was last laid out at.
+var _density := 1.0
+var _laid := Vector2.ZERO
 
 @onready var _page: SubViewport = $Page
 @onready var _face: MeshInstance3D = $Face
@@ -70,6 +75,11 @@ func _ready() -> void:
 	face.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	face.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_face.material_override = face
+	_face.mesh = _face.mesh.duplicate()
+	_laid = (_face.mesh as QuadMesh).size
+	_density = _page.size.x / _laid.x
+	_window = WindowFrame.new(_laid, resize_to)
+	add_child(_window)
 	_body.scroll_following = true
 
 
@@ -91,6 +101,19 @@ func fill(held: Dictionary) -> void:
 func close() -> void:
 	closed.emit()
 	queue_free()
+
+
+## The panel `given` metres across and tall about its middle: drawn larger or
+## smaller while it is being sized, and laid out again at that size once `done`.
+func resize_to(given: Vector2, done := true) -> void:
+	_window.fit(given)
+	if not done:
+		_face.scale = Vector3(given.x / _laid.x, given.y / _laid.y, 1.0)
+		return
+	_laid = given
+	_face.scale = Vector3.ONE
+	(_face.mesh as QuadMesh).size = given
+	_page.size = Vector2i((given * _density).round())
 
 
 ## The reader said `words` into the thread; the answer is on its way.
@@ -210,6 +233,10 @@ func _pixel(pointer: Node3D) -> Variant:
 
 
 func hit(pointer: Node3D) -> float:
+	return _window.nearer(pointer, _sheet_hit(pointer))
+
+
+func _sheet_hit(pointer: Node3D) -> float:
 	if _pixel(pointer) == null:
 		return INF
 	var ray: Array = pointer.ray()
@@ -219,20 +246,29 @@ func hit(pointer: Node3D) -> float:
 	return (_face.global_transform * (from + along * (-from.z / along.z))).distance_to(ray[0])
 
 
-func point(_pointer: Node3D) -> void:
-	pass
+func point(pointer: Node3D) -> void:
+	if _window.takes(pointer):
+		_window.point(pointer)
+	else:
+		_window.unpoint(pointer)
 
 
-func unpoint(_pointer: Node3D) -> void:
-	pass
+func unpoint(pointer: Node3D) -> void:
+	_window.unpoint(pointer)
 
 
-func press(_pointer: Node3D) -> void:
-	pass
+func press(pointer: Node3D) -> void:
+	if _window.takes(pointer):
+		_window.press(pointer)
 
 
-func release(_pointer: Node3D) -> void:
-	pass
+func holds(pointer: Node3D) -> bool:
+	return _window.holds(pointer)
+
+
+func release(pointer: Node3D) -> void:
+	if _window.holds(pointer):
+		_window.release(pointer)
 
 
 func take(pointer: Node3D) -> void:
@@ -245,7 +281,9 @@ func let_go(pointer: Node3D) -> void:
 
 ## Scrolled up, the page stays where the reader left it as the answer grows;
 ## scrolled back to the end, it follows the answer again.
-func scroll(_pointer: Node3D, amount: float) -> bool:
+func scroll(pointer: Node3D, amount: float) -> bool:
+	if _window.takes(pointer):
+		return _window.scroll(pointer, amount)
 	var bar := _body.get_v_scroll_bar()
 	bar.value += amount * SCROLL
 	_body.scroll_following = bar.value + bar.page >= bar.max_value - 1.0

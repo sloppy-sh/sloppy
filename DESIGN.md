@@ -2582,6 +2582,24 @@ it grows to its own size, goes where the hand takes it, and stays floating where
 go near its place on the palette it goes back on. A note opened while another is floating takes
 that one's place in the room.
 
+**A page left in the room is a window,** as Meta's guidance for windows draws one: the note, the
+chat, the browser and a page pulled out of it. "The control bar is positioned centrally below a
+window": a rounded bar, quiet until the ray is on it, then in ink, and filled while held. The
+trigger on it takes hold, and the window follows the ray at the distance it was taken at, upright
+and turned to face the reader; the stick leaned ahead pushes it off and leaned back pulls it in,
+between a forearm's length from the eyes and three metres; let go, it stays where it stands.
+"Resize handles appear when hovering over a corner of a window": the ray near a corner shows an
+L there, and drawing it sizes the window "from the center, allowing easier adjustments with less
+movement", its proportions kept, from a little over half to twice the size it opened at, the page
+laid out again at its new size once the corner is let go. The browser's keys keep their place
+under it through both. The pin on the browser's bar, and on a page pulled out of it, pins it to the
+reader's view: a little under a metre away, to the right of where they look and a little below,
+facing them squarely and following the head a moment behind it, still through a small turn, its
+keys under it; its bar then places it anew in that view, kept on the headset with whether it is
+pinned, and unpinning it, or "Bring browser here", leaves it standing in the room. The grip still carries a window as it always has, and "Bring browser here"
+still stands the browser ahead of the reader; a page held on the palette is not a window and
+shows neither, and back on the palette it is the size it opened at.
+
 **Three arrangements, one field.** The reader chooses how the field stands, on the palette's
 field panel, and choosing walks every mark to its new place over half a second while the reader
 stays where they are.

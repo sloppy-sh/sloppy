@@ -22,9 +22,9 @@ const BELOW_EYES := 0.08
 ## where they look: past either, it is away from them.
 const AWAY_BEYOND := 1.5
 const SEEN_WITHIN := 50.0
-## In metres from the page's foot to the keyboard, and in degrees how far the
-## keyboard leans back toward the reader.
-const KEYBOARD_BELOW := 0.03
+## In metres from the page's foot to the keyboard, clear of the window's bar,
+## and in degrees how far the keyboard leans back toward the reader.
+const KEYBOARD_BELOW := WindowFrame.FOOT + 0.008
 const KEYBOARD_LEAN := 50.0
 const START := "res://web/start.html"
 ## What a page made from html with no base reports itself to be.
@@ -46,6 +46,9 @@ const PULLED_APART := 0.1
 ## Reports to the panel whether a text field on the page has focus, through the
 ## plugin's `sloppyTyping`, which any page may speak to.
 const WATCH_TYPING := "(() => { if (window.__sloppyTyping || !window.sloppyTyping) return; const typing = (at) => !!at && (at.isContentEditable || at.tagName === 'TEXTAREA' || (at.tagName === 'INPUT' && !/^(button|submit|reset|checkbox|radio|range|color|file|image|hidden)$/i.test(at.type))); const say = () => window.sloppyTyping.focus(typing(document.activeElement)); window.__sloppyTyping = say; document.addEventListener('focusin', say, true); document.addEventListener('focusout', () => setTimeout(say, 0), true); say(); })()"
+## Where the headset keeps whether the browser is pinned and where pinned
+## pages stand, in Room.KEPT.
+const KEPT_UNDER := "browser"
 ## Asks a page watched as above to say again whether a field has focus.
 const ASK_TYPING := "window.__sloppyTyping && window.__sloppyTyping()"
 
@@ -109,6 +112,7 @@ static func close_in(tree: SceneTree) -> void:
 static func bring_here(from: Node) -> void:
 	var panel := of(from.get_tree())
 	if panel != null:
+		panel.pin(false)
 		panel.global_transform = _ahead(from.get_viewport().get_camera_3d())
 		panel._look_where_it_is()
 
@@ -118,12 +122,36 @@ static func _made(from: Node) -> Node3D:
 	var panel: Node3D = (load("res://ui/browser_panel.gd") as GDScript).new()
 	_view(tree).add_child(panel)
 	panel.global_transform = _ahead(from.get_viewport().get_camera_3d())
+	if _kept("pinned", false) == true:
+		panel.pin(true, true)
 	panel._aimed_at()
 	return panel
 
 
+static func _kept(key: String, otherwise: Variant) -> Variant:
+	var file := ConfigFile.new()
+	return file.get_value(KEPT_UNDER, key, otherwise) if file.load(Room.KEPT) == OK else otherwise
+
+
+static func _keep(key: String, value: Variant) -> void:
+	var file := ConfigFile.new()
+	file.load(Room.KEPT)
+	file.set_value(KEPT_UNDER, key, value)
+	file.save(Room.KEPT)
+
+
 func _init() -> void:
 	carries_itself = true
+	windowed = true
+	pinnable = true
+
+
+## The browser's pin is kept for the next time it opens; a page pulled out of
+## it is pinned for as long as it stands.
+func pin(on: bool, at_once := false) -> void:
+	super(on, at_once)
+	if tabbed and _window != null:
+		_keep("pinned", is_pinned())
 
 
 func _ready() -> void:
@@ -131,10 +159,14 @@ func _ready() -> void:
 	if tabbed:
 		add_to_group(GROUP)
 	super()
+	if tabbed:
+		var place = _kept("pinned_at", WindowFrame.PINNED_AT)
+		_window.pinned_at = place if place is Vector3 else WindowFrame.PINNED_AT
+		_window.placed.connect(func(at: Vector3) -> void: _keep("pinned_at", at))
 	_tabs = [{"page": id, "title": title, "address": address, "frame": []}]
 	keyboard = Keyboard.new()
 	keyboard.name = "Keyboard"
-	keyboard.position = Vector3(-Keyboard.wide * 0.5, -size.y * 0.5 - KEYBOARD_BELOW, 0.0)
+	_place_keyboard()
 	keyboard.basis = Basis(Vector3.RIGHT, -deg_to_rad(KEYBOARD_LEAN))
 	add_child(keyboard)
 	keyboard.typed.connect(type_text)
@@ -148,6 +180,25 @@ func _ready() -> void:
 		tree_exiting.connect(_tell)
 		_tell()
 	_draw_bar()
+
+
+func _place_keyboard() -> void:
+	keyboard.position = Vector3(-Keyboard.wide * 0.5, -size.y * 0.5 - KEYBOARD_BELOW, 0.0)
+
+
+func resize_to(given: Vector2, done := true) -> void:
+	super(given, done)
+	_place_keyboard()
+
+
+## Every tab's page laid out again at the panel's size.
+func _lay_pages_out() -> void:
+	super()
+	if _engine == null:
+		return
+	for tab in _tabs:
+		if tab.page != 0 and tab.page != id:
+			_engine.resize(tab.page, pixels.x, pixels.y)
 
 
 func _notification(what: int) -> void:
@@ -232,6 +283,7 @@ func pull_out() -> Node3D:
 	_tabs.remove_at(_showing)
 	show_tab(mini(_showing, _tabs.size() - 1))
 	get_parent().add_child(panel)
+	panel._window.pinned_at = _pinned_beside()
 	panel.global_transform = beside
 	panel._show_frame(tab.frame)
 	panel.evaluate(ASK_TYPING)
@@ -249,6 +301,14 @@ func _beside() -> Transform3D:
 	if toward.length() < 1e-3:
 		return Transform3D(global_basis, at)
 	return Transform3D(Basis.looking_at(toward.normalized(), Vector3.UP), at)
+
+
+## Where a page pulled out is pinned until it is placed: turned right of where
+## this one is pinned by as much as stands it PULLED_APART to the right of it.
+func _pinned_beside() -> Vector3:
+	var at: Vector3 = _window.pinned_at
+	var turn := rad_to_deg(2.0 * atan((size.x + PULLED_APART) * 0.5 / at.z))
+	return Vector3(at.x + turn, at.y, at.z)
 
 
 ## Lets the view in front point at the panel and its keys.
@@ -457,6 +517,7 @@ func _draw_bar() -> void:
 		_rows.pull = _row(Page.choice(PULL_OUT, "square-arrow-out-up-right", pull_out), PULL_OUT_WIDE, Vector2(across + Page.GAP, tall + Page.GAP))
 	if tabbed:
 		_draw_strip(tall * 2.0 + Page.GAP)
+	_fit_window()
 
 
 ## The tabs from `_strip_from` that fit, the showing one filled, each with its

@@ -47,6 +47,8 @@ func _initialize() -> void:
 	_reads("before\n\n<!-- -->\n\nafter <!-- sloppy:inline {\"a\":1} -->", "before\n\nafter")
 	_reads("> quoted\n> still", "\tquoted still")
 	_reads("| a | b |\n| - | - |", "| a | b |\n| - | - |")
+	_says("| Type | Id |\n|---|---|\n| Ledger | `a1` |", "[table=2][cell padding=6,2,6,2][b]Type[/b][/cell][cell padding=6,2,6,2][b]Id[/b][/cell][cell padding=6,2,6,2]Ledger[/cell][cell padding=6,2,6,2][code]a1[/code][/cell][/table]")
+	_says("| Type | Id |\n\n|---|---|\n\n| Ledger | x |\n\nAfter.", "[table=2][cell padding=6,2,6,2][b]Type[/b][/cell][cell padding=6,2,6,2][b]Id[/b][/cell][cell padding=6,2,6,2]Ledger[/cell][cell padding=6,2,6,2]x[/cell][/table]\n\nAfter.")
 	_reads("$$\nx^2\n$$", "x^2")
 	_reads("---", "·   ·   ·")
 	_reads("**unclosed", "**unclosed")

@@ -11,6 +11,7 @@ const Dressing := preload("res://ui/theme.gd")
 const WebPanel := preload("res://ui/web_panel.gd")
 const Browser := preload("res://ui/browser_panel.gd")
 const Pieces := preload("res://ui/pieces.gd")
+const WindowFrame := preload("res://ui/window_frame.gd")
 
 signal closed
 ## A hand's grip took hold of the page, and let it go.
@@ -74,6 +75,11 @@ var _on_page := false
 var _pressing_page := false
 ## Whose writing the note carries, as last asked of the desk.
 var _writers: Array = []
+var _window: Node3D
+## The sheet's pixels to a metre of the panel, and the size it was last laid out at.
+var _density := 1.0
+var _laid := Vector2.ZERO
+var _web_at := Vector3.ZERO
 
 @onready var _page: SubViewport = $Page
 @onready var _face: MeshInstance3D = $Face
@@ -96,6 +102,12 @@ func _ready() -> void:
 	face.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	face.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_face.material_override = face
+	_face.mesh = _face.mesh.duplicate()
+	_laid = (_face.mesh as QuadMesh).size
+	_density = _page.size.x / _laid.x
+	_window = WindowFrame.new(_laid, resize_to)
+	_window.took_ray.connect(_unpoint_content)
+	add_child(_window)
 	$Page/Sheet/Margin/Column/Head/Close.pressed.connect(close)
 	_before.pressed.connect(func(): _turn(-1))
 	_next.pressed.connect(func(): _turn(1))
@@ -154,6 +166,26 @@ func open(project: String, ref: String, listed: Dictionary, pulled: bool, named:
 func close() -> void:
 	closed.emit()
 	queue_free()
+
+
+## The panel `given` metres across and tall about its middle: drawn larger or
+## smaller while it is being sized, and laid out again at that size once `done`.
+func resize_to(given: Vector2, done := true) -> void:
+	_window.fit(given)
+	var drawn := Vector3(given.x / _laid.x, given.y / _laid.y, 1.0)
+	if not done:
+		_face.scale = drawn
+		if _web != null:
+			_web.scale = drawn
+			_web.position = _web_at * drawn
+		return
+	_laid = given
+	_face.scale = Vector3.ONE
+	(_face.mesh as QuadMesh).size = given
+	if _web != null:
+		_web.scale = Vector3.ONE
+		_web.position = _web_at * drawn
+	_page.size = Vector2i((given * _density).round())
 
 
 ## What a note is called where it is shown: its address, then its title.
@@ -364,6 +396,7 @@ func _fit_page() -> void:
 	var page := Vector2(_page.size)
 	var middle := rect.get_center()
 	var at := Vector3((middle.x / page.x - 0.5) * face.x, (0.5 - middle.y / page.y) * face.y, PAGE_LIFT)
+	_web_at = at
 	if _web != null and _web.pixels == pixels:
 		_web.position = at
 		return
@@ -444,6 +477,10 @@ func _pixel(pointer: Node3D) -> Variant:
 
 
 func hit(pointer: Node3D) -> float:
+	return _window.nearer(pointer, _sheet_hit(pointer))
+
+
+func _sheet_hit(pointer: Node3D) -> float:
 	var at = _pixel(pointer)
 	if at == null:
 		return INF
@@ -455,6 +492,10 @@ func hit(pointer: Node3D) -> float:
 
 
 func point(pointer: Node3D) -> void:
+	if _window.takes(pointer):
+		_window.point(pointer)
+		return
+	_window.unpoint(pointer)
 	var on_page := _over_page(pointer)
 	if on_page != _on_page:
 		if _on_page:
@@ -476,6 +517,11 @@ func point(pointer: Node3D) -> void:
 
 
 func unpoint(pointer: Node3D) -> void:
+	_window.unpoint(pointer)
+	_unpoint_content(pointer)
+
+
+func _unpoint_content(pointer: Node3D) -> void:
 	if _web != null:
 		_web.unpoint(pointer)
 	_on_page = false
@@ -491,6 +537,9 @@ func _unpoint_sheet() -> void:
 
 
 func press(pointer: Node3D) -> void:
+	if _window.takes(pointer):
+		_window.press(pointer)
+		return
 	if _over_page(pointer):
 		_pressing_page = true
 		_web.press(pointer)
@@ -498,7 +547,14 @@ func press(pointer: Node3D) -> void:
 	_click(pointer, true)
 
 
+func holds(pointer: Node3D) -> bool:
+	return _window.holds(pointer)
+
+
 func release(pointer: Node3D) -> void:
+	if _window.holds(pointer):
+		_window.release(pointer)
+		return
 	if _pressing_page:
 		_pressing_page = false
 		if _web != null:
@@ -518,6 +574,8 @@ func let_go(pointer: Node3D) -> void:
 ## On the drawn page the stick is the page's only while more of it is below
 ## than the panel shows.
 func scroll(pointer: Node3D, amount: float) -> bool:
+	if _window.takes(pointer):
+		return _window.scroll(pointer, amount)
 	if not _asked.is_empty() and _web != null:
 		if _tall * PAGE_DENSITY <= float(_web.pixels.y):
 			return false

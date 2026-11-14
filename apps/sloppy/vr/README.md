@@ -1,6 +1,6 @@
 # Sloppy in a headset
 
-The notes a desk serves, read standing in them: a Godot 4.4 project in GDScript for
+The notes a desk serves, read standing in them: a Godot 4.7 project in GDScript for
 Meta Quest. docs/ARCHITECTURE.md § "A headset beside the desk" is what it speaks and
 DESIGN.md § "The field in a room" is how it draws.
 
@@ -8,17 +8,15 @@ It is not a pnpm package, and nothing in the monorepo's scripts builds it.
 
 ## What it needs
 
-- **Godot 4.4 or later**, the standard build (GDScript, no .NET). The project names 4.4;
-  a later editor opens it and offers to convert it, which is fine for working on it.
-- **The Godot OpenXR Vendors plugin, 4.3.1-stable** — the last release made for Godot
-  4.4. It is fetched rather than kept here:
+- **Godot 4.7 or later**, the standard build (GDScript, no .NET).
+- **The Godot OpenXR Vendors plugin, 5.2.0-stable**, made for Godot 4.6 and later. It is
+  fetched rather than kept here:
 
   ```sh
   ./tools/fetch-vendors.sh
   ```
 
-  That puts it in `addons/godotopenxrvendors/`, which git ignores. A later editor wants a
-  later plugin: 5.x is for Godot 4.6 and later.
+  That puts it in `addons/godotopenxrvendors/`, which git ignores.
 
 - **The panels' theme packs**, fetched the same way and kept out of git; `themes/README.md`
   names each one, where it comes from and its licence:
@@ -58,8 +56,8 @@ in front.
 
 `IrohLink` — the headset's link to a desk — is Rust, in `rust/` (the crate `sloppy_iroh`, on
 the `godot` crate and `iroh`), loaded by `sloppy_iroh.gdextension` from `bin/`, which git
-ignores. It is built against Godot 4.4's API (the crate's `api-4-4`), the oldest editor the
-project opens in, so the 4.7 editor this was built with loads it unchanged.
+ignores. It is built against Godot 4.7's API (the crate's `api-4-7`), the editor the project is made
+in.
 
 ```sh
 ./rust/build.sh              # bin/libsloppy_iroh.dylib for the editor on an Apple-silicon Mac,
